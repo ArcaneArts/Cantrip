@@ -11,8 +11,10 @@ RUN apt-get update && xargs -r apt-get install -y --no-install-recommends < /tmp
 COPY overlays/ /
 ARG CANTRIP_OS_WORKSPACES=1
 ARG CANTRIP_OS_EXECUTOR=0
+ARG CANTRIP_OS_REMOTE=0
 COPY --from=workspace-package /out/ /tmp/cantrip-packages/
 COPY --from=executor / /tmp/cantrip-executor/
+COPY --from=remote / /tmp/cantrip-remote/
 RUN if [ "$CANTRIP_OS_WORKSPACES" = 1 ]; then \
       apt-get update && apt-get install -y --no-install-recommends /tmp/cantrip-packages/*.deb; \
     elif [ "$CANTRIP_OS_WORKSPACES" != 0 ]; then exit 1; fi \
@@ -21,6 +23,10 @@ RUN if [ "$CANTRIP_OS_EXECUTOR" = 1 ]; then \
       apt-get update && apt-get install -y --no-install-recommends /tmp/cantrip-executor/*.deb; \
     elif [ "$CANTRIP_OS_EXECUTOR" != 0 ]; then exit 1; fi \
     && rm -rf /tmp/cantrip-executor /var/lib/apt/lists/*
+RUN if [ "$CANTRIP_OS_REMOTE" = 1 ]; then \
+      apt-get update && apt-get install -y --no-install-recommends /tmp/cantrip-remote/*.deb; \
+    elif [ "$CANTRIP_OS_REMOTE" != 0 ]; then exit 1; fi \
+    && rm -rf /tmp/cantrip-remote /var/lib/apt/lists/*
 COPY scripts/configure-system.sh /tmp/configure-system.sh
 RUN sh /tmp/configure-system.sh && rm /tmp/configure-system.sh
 COPY viewer/ /usr/share/novnc/

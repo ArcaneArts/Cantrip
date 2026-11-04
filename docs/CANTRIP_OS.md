@@ -21,7 +21,10 @@ package. Version 0.3.0 supplies persistent Linux accounts, lazy IceWM desktops,
 CLI lifecycle commands, a local workspace selector, and direct browser desktop
 links. The ordinary personal desktop remains usable without that package.
 The separate executor package now connects these workspaces to the owning worker.
-Linux capture/input and integrated remote desktop remain later work.
+The native Linux capture/input backend and optional
+[`cantrip-os-remote`](../cantrip_os/packages/remote/README.md) carrier are Phase 4
+checkpoints. Real-agent routing, clipboard APIs, integrated remote desktop and
+managed service access are still in progress.
 
 ## Optional package architecture
 
@@ -716,3 +719,16 @@ Host-only MCP Run/worktree/task-creation adapters remain unavailable in Linux
 sessions; use the source-aware product workflows.
 See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 [recorded evidence](../cantrip_os/ACCEPTANCE.md#product-file-checkpoint-2026-11-04).
+
+## Phase 4 package checkpoint
+
+The optional `cantrip-os-remote` 0.1.0 package runs the first-party Linux CUA
+helper as the selected workspace account behind a protected root carrier.
+Docker and ISO scripts include it with the executor edition by default;
+`CANTRIP_OS_REMOTE=0` omits it. Its retained state uses a namespace inside the
+existing workspace volume. Removing it leaves execution and desktops available.
+
+The existing Worker CUA service has been exercised against actual packaged
+Linux capture/input. This is not yet real-agent admission or integrated viewing.
+The remaining Phase 4 work includes agent routing, clipboard, measured streaming,
+human takeover, managed SSH/SFTP/VNC/TCP and refreshed ISO acceptance.

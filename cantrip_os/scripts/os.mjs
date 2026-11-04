@@ -83,8 +83,24 @@ export function executorEdition() {
   );
 }
 
+export function remoteEdition() {
+  return (
+    process.env.CANTRIP_OS_REMOTE ?? (executorEdition() === "1" ? "1" : "0")
+  );
+}
+
 export async function build(options = {}) {
   const executor = executorEdition();
+  const remote = remoteEdition();
+  let remoteContext = resolve(root, ".build/empty-remote");
+  await mkdir(remoteContext, { recursive: true });
+  if (remote === "1") {
+    const { prepareRemote } = await import("./remote-package.mjs");
+    remoteContext = await prepareRemote(
+      process.arch === "arm64" ? "arm64" : "amd64",
+      options,
+    );
+  }
   let executorContext = resolve(root, ".build/empty-executor");
   await mkdir(executorContext, { recursive: true });
   if (executor === "1") {
@@ -103,6 +119,10 @@ export async function build(options = {}) {
       `CANTRIP_OS_WORKSPACES=${process.env.CANTRIP_OS_WORKSPACES ?? "1"}`,
       "--build-arg",
       `CANTRIP_OS_EXECUTOR=${executor}`,
+      "--build-arg",
+      `CANTRIP_OS_REMOTE=${remote}`,
+      "--build-context",
+      `remote=${remoteContext}`,
       "--build-context",
       `executor=${executorContext}`,
       "-t",

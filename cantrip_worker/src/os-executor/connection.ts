@@ -49,10 +49,15 @@ export function executorCommand(
   return programCommand(transport, args, "cantrip-executor");
 }
 
+/** The same authenticated carrier, with no model credentials sent to the guest. */
+export function remoteCommand(transport: OsExecutorTransport, args: string[]) {
+  return programCommand(transport, args, "cantrip-remote");
+}
+
 function programCommand(
   transport: OsExecutorTransport,
   args: string[],
-  program: "cantrip-executor" | "cantrip-workspaces",
+  program: "cantrip-executor" | "cantrip-workspaces" | "cantrip-remote",
 ): { command: string; args: string[] } {
   if (transport.kind === "docker")
     return {
@@ -76,6 +81,8 @@ function programCommand(
       "BatchMode=yes",
       "-o",
       "StrictHostKeyChecking=yes",
+      "-o",
+      "ForwardAgent=no",
       "-o",
       "IdentitiesOnly=yes",
       "-o",
@@ -105,10 +112,17 @@ export async function workspaceControl<T>(
   return control<T>(transport, args, "cantrip-workspaces");
 }
 
+export function remoteControl<T>(
+  transport: OsExecutorTransport,
+  args: string[],
+): Promise<T> {
+  return control<T>(transport, args, "cantrip-remote");
+}
+
 async function control<T>(
   transport: OsExecutorTransport,
   args: string[],
-  program: "cantrip-executor" | "cantrip-workspaces",
+  program: "cantrip-executor" | "cantrip-workspaces" | "cantrip-remote",
 ): Promise<T> {
   const spec = programCommand(transport, args, program);
   return new Promise((resolve, reject) => {

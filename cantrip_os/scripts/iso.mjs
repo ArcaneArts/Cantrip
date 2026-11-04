@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { root, run, executorEdition } from "./os.mjs";
+import { root, run, executorEdition, remoteEdition } from "./os.mjs";
 import { withInstanceLock } from "./lock.mjs";
 
 await withInstanceLock("cantrip-os-iso-build", async () => {
@@ -10,6 +10,13 @@ await withInstanceLock("cantrip-os-iso-build", async () => {
   let executorContext = resolve(root, ".build/empty-executor");
   await mkdir(executorContext, { recursive: true });
   const executor = executorEdition();
+  const remote = remoteEdition();
+  let remoteContext = resolve(root, ".build/empty-remote");
+  await mkdir(remoteContext, { recursive: true });
+  if (remote === "1") {
+    const { prepareRemote } = await import("./remote-package.mjs");
+    remoteContext = await prepareRemote("amd64");
+  }
   if (executor === "1") {
     const { prepareExecutor } = await import("./executor-package.mjs");
     executorContext = await prepareExecutor("amd64");
@@ -20,6 +27,8 @@ await withInstanceLock("cantrip-os-iso-build", async () => {
     "linux/amd64",
     "--build-context",
     `executor=${executorContext}`,
+    "--build-context",
+    `remote=${remoteContext}`,
     "-t",
     "cantrip-os-iso-builder:dev",
     "-f",
@@ -34,6 +43,8 @@ await withInstanceLock("cantrip-os-iso-build", async () => {
     `CANTRIP_OS_WORKSPACES=${process.env.CANTRIP_OS_WORKSPACES ?? "1"}`,
     "-e",
     `CANTRIP_OS_EXECUTOR=${executor}`,
+    "-e",
+    `CANTRIP_OS_REMOTE=${remote}`,
     "--platform",
     "linux/amd64",
     "--mount",

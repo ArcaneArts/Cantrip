@@ -155,17 +155,18 @@ pub(super) fn perform(
             error
         });
     }
+    let global_position = target.bounds.to_global(position)?;
     Ok((
         target,
         InputReceipt {
             control: None,
             method: command.method(),
-            activation: true,
+            activation: command.prepares_window(),
             outcome: "dispatched",
             position: Some(position),
-            global_position: None,
+            global_position: Some(global_position),
             effects: None,
-            window_delivery: None,
+            window_delivery: Some("unverified"),
         },
     ))
 }

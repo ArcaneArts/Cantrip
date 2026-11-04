@@ -16,6 +16,18 @@ fn main() {
         ["--x11-display", display, "--desktop-generation", generation] => {
             cantrip_cua::linux::run(display, generation)
         }
+        #[cfg(target_os = "linux")]
+        [
+            "--x11-display",
+            display,
+            "--desktop-generation",
+            generation,
+            "--ready-fd",
+            ready,
+        ] => match ready.parse::<i32>() {
+            Ok(fd) => cantrip_cua::linux::run_ready(display, generation, fd),
+            Err(_) => Err(std::io::Error::other("Invalid readiness descriptor")),
+        },
         ["--cursor-sprite"] => {
             use cantrip_interaction::cursor::{CursorAppearance, CursorState};
             use std::io::Read;

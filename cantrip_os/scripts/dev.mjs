@@ -14,6 +14,8 @@ const inputs = [
   "viewer",
   "packages",
   ".dockerignore",
+  "../cantrip_cua",
+  "../cantrip_interaction",
 ];
 const excluded = new Set([
   ".git",
@@ -21,6 +23,8 @@ const excluded = new Set([
   ".state",
   "artifacts",
   "node_modules",
+  "target",
+  "__pycache__",
   ".cache",
   "logs",
 ]);
