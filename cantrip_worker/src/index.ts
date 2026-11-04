@@ -1,3 +1,4 @@
+import { discoverEndpointModels } from "./endpoint-models.js";
 import {
   osNativeMcpServers,
   osNativeMcpOperations,
@@ -3420,6 +3421,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         config.token = command.credential;
         config.tokenSource = "persisted";
         return { accepted: true };
+      case "model.endpoint.catalog":
+        return discoverEndpointModels(provider());
       case "model.ollama.catalog":
         return discoverOllamaModels(provider().baseUrl, provider().apiKey);
       case "model.chatgpt.catalog":
@@ -4779,7 +4782,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           path.join(os.tmpdir(), "cantrip-provider-test-"),
         );
         try {
-          await runtimeFor({
+          const result = await runtimeFor({
             ...managedRuntimeTarget(command),
             model: command.model,
             provider: provider(),
@@ -4799,6 +4802,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             provider: provider(),
             mcpServers: [],
           });
+          if (!result.text.trim()) {
+            throw new Error(
+              "Provider inference completed without response text.",
+            );
+          }
           return workerProviderConnectionTestResultSchema.parse({
             accepted: true,
             durationMs: Date.now() - startedAtMs,

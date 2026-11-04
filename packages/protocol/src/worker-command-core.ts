@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { providerInferenceConfigurationSchema } from "./inference-admission.js";
+import { nativeEndpointProviderKinds } from "./provider-definitions.js";
 import {
   directCapabilityPrepareCommandSchema,
   directCapabilityRenewCommandSchema,
@@ -122,6 +123,12 @@ export const workerCoreCommandSchemas = [
   z.object({
     type: z.literal("model.ollama.catalog"),
     provider: workerRuntimeProviderSchema.extend({ kind: z.literal("ollama") }),
+  }),
+  z.object({
+    type: z.literal("model.endpoint.catalog"),
+    provider: workerRuntimeProviderSchema.extend({
+      kind: z.enum(nativeEndpointProviderKinds),
+    }),
   }),
   z.object({
     type: z.literal("model.chatgpt.catalog"),

@@ -4,7 +4,7 @@ use crate::{
     wire::{self, JsString, Value},
     workers::{command_bus::LimitedCommandBus, repository::WorkerRepository},
 };
-use anyhow::Result;
+use anyhow::{Context, Result};
 use futures::FutureExt;
 use serde_json::{Value as Json, json};
 use std::{collections::HashSet, sync::Arc, time::Duration};
@@ -146,8 +146,10 @@ impl SettingsRepository {
         };
         anyhow::ensure!(owned_worker.is_some(), "Worker not found.");
         anyhow::ensure!(
-            runtime["kind"] == "ollama",
-            "Provider is not an Ollama provider."
+            runtime["kind"]
+                .as_str()
+                .is_some_and(super::endpoint_providers::worker_endpoint_kind),
+            "Provider does not use worker endpoint discovery."
         );
         let scope = format!("worker:{worker}");
         let existing = self
@@ -183,13 +185,14 @@ impl SettingsRepository {
         self.set_provider_catalog_sync_state(provider, &json!({"scopeKey":scope,"workerId":worker,"status":"refreshing","errorCode":null,"refreshStartedAt":now()})).await?;
         let refresh: Result<Option<Json>> = async {
             let mut runtime = Value::from_serialize(&runtime);
-            runtime["kind"] = Value::String("ollama".into());
-            runtime["name"] = Value::String("Ollama".into());
+            let kind = runtime["kind"].as_str().context("stored provider kind")?.to_owned();
+            let ollama = kind == "ollama";
+            runtime["name"] = Value::String(super::endpoint_providers::label(&kind).into());
             runtime["accountId"] = Value::Null;
             runtime["credentialHomeKey"] = Value::Null;
-            let result = commands.request(worker, Value::object([("type",Value::String("model.ollama.catalog".into())), ("provider",runtime)]), Some(Duration::from_secs(120)), None).await?;
-            let inventory = super::parse_response("ollamaModelInventorySchema", result.as_ref())?;
-            let models: Vec<_> = inventory["models"].as_array().expect("validated Ollama inventory").iter().map(normalize_model).collect();
+            let result = commands.request(worker, Value::object([("type",Value::String(if ollama {"model.ollama.catalog"} else {"model.endpoint.catalog"}.into())), ("provider",runtime)]), Some(Duration::from_secs(120)), None).await?;
+            let inventory = super::parse_response(if ollama {"ollamaModelInventorySchema"} else {"endpointModelInventorySchema"}, result.as_ref())?;
+            let models: Vec<_> = inventory["models"].as_array().expect("validated endpoint inventory").iter().map(|model| if ollama { normalize_model(model) } else { super::endpoint_providers::normalize_model(model) }).collect();
             let available = models.iter().map(|model|model["nativeModelId"].as_js_string().expect("validated model ID").clone()).collect();
             self.reconcile_provider_model_catalog(owner,provider,CatalogUpdate {
                 models, available, availability_scope:scope.clone(), auto_create:true, auto_create_native_ids:None,
@@ -201,7 +204,7 @@ impl SettingsRepository {
         match refresh {
             Ok(result) => Ok(result),
             Err(error) => {
-                self.set_provider_catalog_sync_state(provider,&json!({"scopeKey":scope,"workerId":worker,"status":if has_models {"stale"} else {"failed"},"errorCode":"ollama-catalog-refresh-failed"})).await?;
+                self.set_provider_catalog_sync_state(provider,&json!({"scopeKey":scope,"workerId":worker,"status":if has_models {"stale"} else {"failed"},"errorCode":if runtime["kind"]=="ollama" {"ollama-catalog-refresh-failed"} else {"endpoint-catalog-refresh-failed"}})).await?;
                 if has_models {
                     self.get_provider_model_catalog(owner, provider, true).await
                 } else {

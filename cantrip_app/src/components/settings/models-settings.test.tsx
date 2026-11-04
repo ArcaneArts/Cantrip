@@ -422,6 +422,11 @@ describe("provider setup presets", () => {
   it("offers every supported provider setup with distinct IDs and matching dialog defaults", () => {
     expect(providerSetupOptions.map(({ id }) => id)).toEqual([
       "ollama",
+      "lm-studio",
+      "llama-cpp",
+      "vllm",
+      "unsloth",
+      "litellm",
       "openrouter",
       "zai",
       "xai",

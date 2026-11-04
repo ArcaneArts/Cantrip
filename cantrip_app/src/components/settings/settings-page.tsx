@@ -1087,6 +1087,11 @@ function CatalogModelMetadata({
     );
   }
   const metadata = [
+    model.loaded === true
+      ? "Loaded"
+      : model.loaded === false
+        ? "Installed · not loaded"
+        : null,
     formatContextWindow(model.contextWindow),
     model.inputModalities.length ? model.inputModalities.join(" + ") : null,
     model.supportsTools ? "tools" : null,
@@ -2434,7 +2439,7 @@ export function SettingsPage({
                       onChange={(event) => {
                         setBaseUrl(event.target.value);
                         if (
-                          providerSetup !== "ollama" &&
+                          providerKind === "openai-compatible" &&
                           providerSetup !== "openai-compatible"
                         ) {
                           setProviderSetup("openai-compatible");
@@ -2507,7 +2512,7 @@ export function SettingsPage({
                     placeholder={
                       editingProvider?.hasApiKey
                         ? "Leave blank to keep saved key"
-                        : "Not required for local Ollama"
+                        : "Leave blank for an unauthenticated endpoint"
                     }
                   />
                 </Field>
@@ -2524,13 +2529,16 @@ export function SettingsPage({
                 Remove the saved API key
               </label>
             ) : null}
-            {providerSetup === "zai" ? (
+            {!isAccountProviderKind(providerKind) ? (
               <div className="flex flex-col gap-3 border-y py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-medium">Connection test</p>
                   <p className="text-xs text-muted-foreground">
                     Runs a tiny request through an online worker and bundled
-                    Codex. This uses a very small amount of Coding Plan quota.
+                    Codex using a saved model route.
+                    {providerSetup === "zai"
+                      ? " This uses a very small amount of Coding Plan quota."
+                      : null}
                   </p>
                   {connectionTestResult ? (
                     <p
@@ -2551,6 +2559,8 @@ export function SettingsPage({
                   disabled={
                     !editingProvider ||
                     !worker ||
+                    baseUrl.trim() !== editingProvider.baseUrl ||
+                    providerKind !== editingProvider.kind ||
                     Boolean(apiKey.trim()) ||
                     removeApiKey ||
                     testProviderConnection.isPending
@@ -2558,8 +2568,11 @@ export function SettingsPage({
                   title={
                     !editingProvider
                       ? "Add the provider before testing"
-                      : apiKey.trim() || removeApiKey
-                        ? "Save API key changes before testing"
+                      : apiKey.trim() ||
+                          removeApiKey ||
+                          baseUrl.trim() !== editingProvider.baseUrl ||
+                          providerKind !== editingProvider.kind
+                        ? "Save connection changes before testing"
                         : !worker
                           ? "Connect a worker before testing"
                           : "Test through bundled Codex"

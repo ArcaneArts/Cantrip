@@ -1,4 +1,9 @@
-import { settingsBundleSchema, type SettingsBundle } from "@cantrip/protocol";
+import {
+  nativeEndpointProviderKinds,
+  settingsBundleSchema,
+  type ModelProviderKind,
+  type SettingsBundle,
+} from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ComponentProps, ReactNode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
@@ -38,6 +43,11 @@ vi.mock("./models-settings", () => ({
     <div>
       <button onClick={() => onAddProvider("ollama")}>Add Ollama</button>
       <button onClick={() => onAddProvider("chatgpt")}>Add ChatGPT</button>
+      {nativeEndpointProviderKinds.map((kind) => (
+        <button key={kind} onClick={() => onAddProvider(kind)}>
+          Add {kind}
+        </button>
+      ))}
       {providers.map((provider) => (
         <button key={provider.id} onClick={() => onEditProvider(provider)}>
           Edit {provider.kind}
@@ -48,7 +58,7 @@ vi.mock("./models-settings", () => ({
 }));
 
 const now = "2026-10-07T12:00:00.000Z";
-function bundle(kinds: Array<"chatgpt" | "grok" | "ollama">): SettingsBundle {
+function bundle(kinds: ModelProviderKind[]): SettingsBundle {
   return settingsBundleSchema.parse({
     preferences: {
       theme: "system",
@@ -126,6 +136,35 @@ function typeSelect(view: TestRenderer.ReactTestRenderer) {
 }
 
 describe("provider dialog singleton protection", () => {
+  it.each(nativeEndpointProviderKinds)(
+    "keeps %s repeatable and retains its kind when changing the address",
+    async (kind) => {
+      const mounted = await mount(bundle([kind]));
+      try {
+        await click(mounted.view, `Add ${kind}`);
+        expect(typeSelect(mounted.view).props.value).toBe(kind);
+        expect(
+          typeSelect(mounted.view)
+            .findAllByType("option")
+            .find((option) => option.props.value === kind)!.props.disabled,
+        ).toBe(false);
+        const input = mounted.view.root
+          .findAllByType("input")
+          .find((input) => input.props.type === "url")!;
+        await act(async () =>
+          input.props.onChange({
+            target: { value: "http://another-gpu.lan:9000/proxy/v1" },
+          }),
+        );
+        expect(typeSelect(mounted.view).props.value).toBe(kind);
+        expect(
+          mounted.view.root.findByProps({ type: "submit" }).props.disabled,
+        ).toBe(false);
+      } finally {
+        await mounted.close();
+      }
+    },
+  );
   it("disables occupied account types and rejects their selection in another provider's dialog", async () => {
     const mounted = await mount(bundle(["chatgpt", "grok", "ollama"]));
     try {

@@ -1,5 +1,6 @@
 export * from "./inference-admission.js";
 export * from "./provider-definitions.js";
+export * from "./endpoint-models.js";
 export * from "./native-settings-state.js";
 export * from "./conversations.js";
 export * from "./file-documents.js";

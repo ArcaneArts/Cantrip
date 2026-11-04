@@ -1,4 +1,7 @@
-import type { ProviderModelAvailability } from "@cantrip/protocol";
+import {
+  isWorkerEndpointProviderKind,
+  type ProviderModelAvailability,
+} from "@cantrip/protocol";
 
 import type { ModelRuntime } from "../db/repository.js";
 import { isAccountProviderKind } from "./account-provider.js";
@@ -41,17 +44,10 @@ export function evaluateModelRouteAvailability(
     return { available: true, reason: null };
   }
 
-  if (runtime.provider.kind === "ollama") {
-    const workerState = availability.find(
-      (entry) => entry.workerId === workerId,
-    )?.state;
-    return workerState === "available"
-      ? { available: true, reason: null }
-      : {
-          available: false,
-          reason: `${runtime.model.name} is not available on this worker`,
-        };
-  }
+  // Listings describe past observations, not whether a model can load now.
+  // Let the authorized worker attempt the actual configured endpoint.
+  if (isWorkerEndpointProviderKind(runtime.provider.kind))
+    return { available: true, reason: null };
 
   if (isOpenRouterRuntime(runtime)) {
     const state = availability.find(

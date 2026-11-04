@@ -60,7 +60,7 @@ function codexCatalogEntryForRuntimeModel(
   const isZai =
     providerKind === "openai-compatible" && catalog.metadataSource === "zai";
   const supportsFreeformTools =
-    isZai || (providerKind !== "openai-compatible" && providerKind !== "grok");
+    isZai || providerKind === "chatgpt" || providerKind === "ollama";
   const supportsReasoning = catalog.supportsReasoning === true;
   const inputModalities = catalog.inputModalities
     .map((modality) => modality.trim().toLowerCase())

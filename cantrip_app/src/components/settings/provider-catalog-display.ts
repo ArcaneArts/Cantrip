@@ -5,7 +5,11 @@ import type {
   ProviderModelCatalogEntry,
   ProviderModelCatalogResult,
 } from "@cantrip/protocol";
-import { isZaiCodingPlanBaseUrl, providerDefinitions } from "@cantrip/protocol";
+import {
+  isZaiCodingPlanBaseUrl,
+  isWorkerEndpointProviderKind,
+  providerDefinitions,
+} from "@cantrip/protocol";
 
 export type CatalogDisplayStatus =
   "current" | "failed" | "manual" | "refreshing" | "stale" | "unknown";
@@ -22,7 +26,7 @@ export function providerRouteLabel(provider: ModelProviderSummary) {
 
 export function providerSupportsCatalog(provider: ModelProviderSummary) {
   if (
-    provider.kind === "ollama" ||
+    isWorkerEndpointProviderKind(provider.kind) ||
     provider.kind === "chatgpt" ||
     provider.kind === "grok"
   ) {
@@ -122,7 +126,7 @@ export function catalogScopeLabel(
   workerId: string | null,
 ) {
   if (!providerSupportsCatalog(provider)) return "Custom IDs";
-  if (provider.kind === "ollama") {
+  if (isWorkerEndpointProviderKind(provider.kind)) {
     const workers = new Set(
       catalog?.availability.flatMap(({ workerId: id }) => (id ? [id] : [])) ??
         [],
