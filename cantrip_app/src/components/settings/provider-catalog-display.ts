@@ -5,17 +5,14 @@ import type {
   ProviderModelCatalogEntry,
   ProviderModelCatalogResult,
 } from "@cantrip/protocol";
-import { isZaiCodingPlanBaseUrl } from "@cantrip/protocol";
+import { isZaiCodingPlanBaseUrl, providerDefinitions } from "@cantrip/protocol";
 
 export type CatalogDisplayStatus =
   "current" | "failed" | "manual" | "refreshing" | "stale" | "unknown";
 
 export function providerFamilyLabel(provider: ModelProviderSummary) {
   if (isZaiCodingPlanBaseUrl(provider.baseUrl)) return "Z.ai Coding Plan";
-  if (provider.kind === "openai-compatible") return "OpenAI compatible";
-  if (provider.kind === "chatgpt") return "ChatGPT";
-  if (provider.kind === "grok") return "Grok";
-  return provider.kind === "ollama" ? "Ollama" : provider.kind;
+  return providerDefinitions[provider.kind].label;
 }
 
 export function providerRouteLabel(provider: ModelProviderSummary) {

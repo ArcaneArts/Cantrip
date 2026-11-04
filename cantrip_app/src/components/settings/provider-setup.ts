@@ -1,5 +1,7 @@
 import {
   isZaiCodingPlanBaseUrl,
+  providerDefinitions,
+  providerSetupDefinition,
   ZAI_CODING_PLAN_BASE_URL,
   type ModelProviderKind,
   type ModelProviderSummary,
@@ -9,13 +11,7 @@ export type ProviderSetupKind =
   ModelProviderKind | "openai" | "openrouter" | "xai" | "zai";
 
 export const providerSetupOptions = [
-  {
-    id: "ollama",
-    label: "Ollama",
-    name: "Ollama",
-    kind: "ollama",
-    baseUrl: "http://127.0.0.1:11434/v1",
-  },
+  providerSetupDefinition("ollama"),
   {
     id: "openrouter",
     label: "OpenRouter",
@@ -44,27 +40,9 @@ export const providerSetupOptions = [
     kind: "openai-compatible",
     baseUrl: "https://api.openai.com/v1",
   },
-  {
-    id: "openai-compatible",
-    label: "Custom OpenAI compatible",
-    name: "OpenAI compatible",
-    kind: "openai-compatible",
-    baseUrl: "https://",
-  },
-  {
-    id: "chatgpt",
-    label: "ChatGPT Account",
-    name: "ChatGPT",
-    kind: "chatgpt",
-    baseUrl: "https://api.openai.com/v1",
-  },
-  {
-    id: "grok",
-    label: "Grok / SuperGrok Account",
-    name: "Grok",
-    kind: "grok",
-    baseUrl: "https://cli-chat-proxy.grok.com/v1",
-  },
+  providerSetupDefinition("openai-compatible"),
+  providerSetupDefinition("chatgpt"),
+  providerSetupDefinition("grok"),
 ] as const satisfies readonly {
   id: ProviderSetupKind;
   label: string;
@@ -82,7 +60,7 @@ export function providerSetupUnavailableReason(
   providers: readonly Pick<ModelProviderSummary, "id" | "kind">[],
   editingProviderId?: string,
 ): string | null {
-  if (kind !== "chatgpt" && kind !== "grok") return null;
+  if (providerDefinitions[kind].multipleInstances) return null;
   if (
     !providers.some(
       (provider) => provider.kind === kind && provider.id !== editingProviderId,
