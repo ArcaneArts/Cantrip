@@ -1710,7 +1710,10 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
   async deleteTerminal(
     ownerId: string,
     terminalId: string,
-  ): Promise<TerminalExecutionContext | null> {
+  ): Promise<Pick<
+    TerminalExecutionContext,
+    "terminalId" | "projectId" | "workerId" | "kind"
+  > | null> {
     return this.terminals.deleteTerminal(ownerId, terminalId);
   }
 

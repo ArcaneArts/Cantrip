@@ -27,7 +27,7 @@ impl Repository {
     }
     pub async fn list(&self, worker: &str, server: &str) -> Result<Vec<Value>> {
         let rows = context(self.database.query(
-            "SELECT to_jsonb(t)::text,w.absolute_path FROM terminals t INNER JOIN project_worktrees w ON w.id=t.worktree_id WHERE w.worker_id=$1 AND t.service_enabled=$2",
+            "SELECT to_jsonb(t)::text,w.absolute_path FROM terminals t INNER JOIN project_worktrees w ON w.id=t.worktree_id WHERE w.worker_id=$1 AND w.location_kind='worker-local' AND t.service_enabled=$2 AND t.cantrip_os_binding_id IS NULL",
             &[&worker, &true],
         ).await, &queries().list, &[Value::String(worker.into()), Value::Bool(true)])?;
         rows.iter()

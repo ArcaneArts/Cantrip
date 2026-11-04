@@ -243,6 +243,12 @@ function toTerminalWireSummary(
     status: terminal.status as TerminalWireSummary["status"],
     activeWorkerId: terminal.activeWorkerId,
     worktreeId: terminal.worktreeId,
+    ...(terminal.cantripOsBindingId
+      ? {
+          cantripOsBindingId: terminal.cantripOsBindingId,
+          cantripOsRuntimeGeneration: terminal.osRuntimeGeneration!,
+        }
+      : {}),
     linkedChatId: terminal.linkedChatId,
     runConfigurationId: terminal.runConfigurationId,
     runConfigurationRuntimeId: terminal.runConfigurationRuntimeId,

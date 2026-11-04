@@ -18,6 +18,11 @@ import { codexProviderConfiguration } from "./codex/provider-config.js";
 import { workerLogErrorIdentity, workerLogger } from "./logger.js";
 import type { RuntimeProvider } from "./protected-secrets.js";
 import {
+  osTerminalBridgeCommand,
+  osTerminalOutcome,
+  type OsTerminalLaunch,
+} from "./os-executor/terminal-launcher.js";
+import {
   TerminalCanonicalState,
   type TerminalCanonicalSnapshot,
 } from "./terminal-canonical-state.js";
@@ -150,6 +155,7 @@ type CodexLaunchCommand = Omit<
 export type TerminalLaunch =
   | { type: "shell" }
   | { type: "command"; command: string }
+  | OsTerminalLaunch
   | (CodexLaunchCommand & {
       type: "codex";
       binary: string;
@@ -289,6 +295,7 @@ export interface TerminalManagerOptions {
 }
 
 export interface TerminalLifecycleObservation {
+  executionOutcome?: "exited" | "interrupted" | "unknown";
   managedPreparationGeneration?: string;
   terminalId: string;
   status: "exited";
@@ -742,6 +749,9 @@ export class TerminalManager {
       data: session.buffer.slice(-boundedMaxChars),
       truncated: session.buffer.length > boundedMaxChars,
       exitCode: session.exited?.exitCode ?? null,
+      ...(session.exited?.executionOutcome
+        ? { executionOutcome: session.exited.executionOutcome }
+        : {}),
     });
   }
 
@@ -997,11 +1007,13 @@ export class TerminalManager {
         ? codexLaunch(session.launch, session.cwd, environment)
         : session.launch.type === "command"
           ? commandLaunch(session.launch.command, environment)
-          : {
-              command: shellCommand(),
-              args: [],
-              env: environment,
-            };
+          : session.launch.type === "os-shell"
+            ? { ...osTerminalBridgeCommand(session.launch), env: environment }
+            : {
+                command: shellCommand(),
+                args: [],
+                env: environment,
+              };
     const startedAtMs = Date.now();
     workerLogger.event("info", "Terminal process starting", {
       event: "terminal.process.starting",
@@ -1057,12 +1069,15 @@ export class TerminalManager {
       }
       const result = terminalOpenResultSchema.parse({
         status: "exited",
+        ...(session.launch.type === "os-shell"
+          ? { executionOutcome: osTerminalOutcome(session.launch) }
+          : {}),
         exitCode,
         signal: signal || null,
       }) as Extract<TerminalOpenResult, { status: "exited" }>;
       session.exited = result;
       const service = this.#services.get(terminalId);
-      if (service && !this.#closing) {
+      if (service && !this.#closing && result.executionOutcome !== "unknown") {
         const delay =
           session.restartDelayOverride ?? this.#serviceRestartDelayMs;
         session.restartDelayOverride = null;
@@ -1169,6 +1184,9 @@ export class TerminalManager {
         ? { managedPreparationGeneration: session.managedPreparationGeneration }
         : {}),
       status: "exited",
+      ...(result.executionOutcome
+        ? { executionOutcome: result.executionOutcome }
+        : {}),
       exitCode: result.exitCode,
       signal: result.signal,
     });

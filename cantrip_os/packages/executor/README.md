@@ -1,9 +1,9 @@
 # Optional execution package
 
 Phase 3 is in progress. The package supports captured project sources, native
-agent execution, and product file operations through the existing worker.
-Terminal, setup/Run, attachment/artifact integration and final distribution
-acceptance remain in subsequent cycles.
+agent execution, product file operations, and interactive Linux terminals
+through the existing worker. Setup/Run, attachment/artifact integration, and
+final distribution acceptance remain in subsequent cycles.
 Installing this package alone does not move an existing chat into Linux.
 
 `cantrip-os-executor` depends on the workspace package. It runs the pinned,
@@ -28,14 +28,14 @@ to `0` in this first cycle while product placement is being implemented.
 Workspace support remains enabled by default. Including the executor requires
 the workspace package; apt enforces that dependency.
 
-Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.3.0_<arch>.deb`.
+Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.4.0_<arch>.deb`.
 It contains the source/patch fingerprint manifest, binary hashes, licenses, and
 sandbox helper. Docker and ISO recipes install the same package.
 
 Inside Linux, after copying the package there:
 
 ```sh
-sudo apt install ./cantrip-os-executor_0.3.0_arm64.deb  # amd64 for the VM edition
+sudo apt install ./cantrip-os-executor_0.4.0_arm64.deb  # amd64 for the VM edition
 sudo cantrip-executor enable
 sudo cantrip-executor status
 sudo cantrip-executor attach OWNER_ID WORKER_ID
@@ -108,7 +108,7 @@ key through its trusted console; do not disable host-key checking. The test
 mutates its designated workspaces. Record runtime results in acceptance only
 after actually executing them.
 
-Version 0.3.0 adds `file-operations.mjs`, a small Node child started through the
+Version 0.3.0 added `file-operations.mjs`, a small Node child started through the
 native authenticated process API. It reuses the worker's filesystem semantics
 for Explorer, text/binary editing, and uploads. It has no listener, scheduler,
 conversation store, account key, or provider credential. Its temporary binary
@@ -120,3 +120,9 @@ uncertain transport delivery, recovery observes the saved operation and reports
 an unknown outcome when no completion exists. It does not resend the mutation.
 Older captured editors fail after a runtime change; verify the source and open
 it through a newly selected Linux agent. Their recoverable drafts remain intact.
+
+Interactive terminals use the native process API. Reviewed patch 0047 exposes
+its existing PTY resize implementation as `process/resize`, scoped to the
+initialized native session's process handle. The worker keeps durable process
+admissions before starting Bash and resumes known handles without replaying
+input. This package does not install the worker or a terminal scheduler.

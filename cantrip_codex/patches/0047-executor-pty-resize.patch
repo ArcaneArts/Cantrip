@@ -1,0 +1,278 @@
+diff --git a/codex-rs/exec-server-protocol/src/protocol.rs b/codex-rs/exec-server-protocol/src/protocol.rs
+index 5ff06e0..5c69012 100644
+--- a/codex-rs/exec-server-protocol/src/protocol.rs
++++ b/codex-rs/exec-server-protocol/src/protocol.rs
+@@ -27,6 +27,7 @@ pub const INITIALIZED_METHOD: &str = "initialized";
+ pub const EXEC_METHOD: &str = "process/start";
+ pub const EXEC_READ_METHOD: &str = "process/read";
+ pub const EXEC_WRITE_METHOD: &str = "process/write";
++pub const EXEC_RESIZE_METHOD: &str = "process/resize";
+ pub const EXEC_SIGNAL_METHOD: &str = "process/signal";
+ pub const EXEC_TERMINATE_METHOD: &str = "process/terminate";
+ pub const EXEC_OUTPUT_DELTA_METHOD: &str = "process/output";
+@@ -572,6 +573,19 @@ pub struct WriteResponse {
+     pub status: WriteStatus,
+ }
+ 
++/// Resize the live PTY owned by this executor session, never an OS pid.
++#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(rename_all = "camelCase")]
++pub struct ResizeParams {
++    pub process_id: ProcessId,
++    pub rows: u16,
++    pub cols: u16,
++}
++
++#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(rename_all = "camelCase")]
++pub struct ResizeResponse {}
++
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+ #[serde(rename_all = "camelCase")]
+ pub enum ProcessSignal {
+diff --git a/codex-rs/exec-server/src/local_process.rs b/codex-rs/exec-server/src/local_process.rs
+index fced427..bdcbf98 100644
+--- a/codex-rs/exec-server/src/local_process.rs
++++ b/codex-rs/exec-server/src/local_process.rs
+@@ -24,6 +24,7 @@ use codex_sandboxing::SandboxType;
+ use codex_sandboxing::is_likely_sandbox_denied;
+ use codex_utils_pty::ExecCommandSession;
+ use codex_utils_pty::ProcessSignal as PtyProcessSignal;
++use codex_utils_pty::TerminalSize;
+ use opentelemetry::trace::SpanContext;
+ use opentelemetry::trace::TraceContextExt;
+ use tokio::sync::Mutex;
+@@ -66,6 +67,8 @@ use crate::protocol::ProcessSandboxType;
+ use crate::protocol::ProcessSignal;
+ use crate::protocol::ReadParams;
+ use crate::protocol::ReadResponse;
++use crate::protocol::ResizeParams;
++use crate::protocol::ResizeResponse;
+ use crate::protocol::SignalParams;
+ use crate::protocol::SignalResponse;
+ use crate::protocol::TerminateParams;
+@@ -691,6 +694,34 @@ impl LocalProcess {
+         })
+     }
+ 
++    pub(crate) async fn exec_resize(
++        &self,
++        params: ResizeParams,
++    ) -> Result<ResizeResponse, JSONRPCErrorError> {
++        if params.rows == 0 || params.cols == 0 || params.rows > 1000 || params.cols > 1000 {
++            return Err(invalid_params(
++                "PTY dimensions must be between 1 and 1000".to_string(),
++            ));
++        }
++        let processes = self.inner.processes.lock().await;
++        let Some(ProcessEntry::Running(process)) = processes.get(&params.process_id) else {
++            return Err(invalid_request(
++                "PTY process is unknown or still starting".to_string(),
++            ));
++        };
++        if !process.tty || process.closed || process.exit_code.is_some() {
++            return Err(invalid_request("Process has no live PTY".to_string()));
++        }
++        process
++            .session
++            .resize(TerminalSize {
++                rows: params.rows,
++                cols: params.cols,
++            })
++            .map_err(|err| internal_error(format!("failed to resize PTY: {err}")))?;
++        Ok(ResizeResponse {})
++    }
++
+     pub(crate) async fn signal_process(
+         &self,
+         params: SignalParams,
+@@ -1290,6 +1321,81 @@ mod tests {
+         );
+     }
+ 
++    #[cfg(unix)]
++    #[tokio::test]
++    async fn resize_changes_the_actual_terminal_and_rejects_unknown_handles() {
++        let backend = LocalProcess::default();
++        let process_id = ProcessId::from("resize-test");
++        let mut params = test_exec_params(HashMap::new());
++        params.process_id = process_id.clone();
++        params.argv = vec![
++            "/bin/sh".to_string(),
++            "-c".to_string(),
++            "read line; stty size".to_string(),
++        ];
++        params.tty = true;
++        backend
++            .exec(params, ProcessTelemetry::default())
++            .await
++            .expect("start PTY");
++        assert!(
++            backend
++                .exec_resize(ResizeParams {
++                    process_id: process_id.clone(),
++                    rows: 0,
++                    cols: 100
++                })
++                .await
++                .is_err()
++        );
++        assert!(
++            backend
++                .exec_resize(ResizeParams {
++                    process_id: ProcessId::from("another-session"),
++                    rows: 33,
++                    cols: 101
++                })
++                .await
++                .is_err()
++        );
++        backend
++            .exec_resize(ResizeParams {
++                process_id: process_id.clone(),
++                rows: 33,
++                cols: 101,
++            })
++            .await
++            .expect("resize live PTY");
++        backend
++            .exec_write(WriteParams {
++                process_id: process_id.clone(),
++                write_id: "release-read".to_string(),
++                chunk: ByteChunk(b"\n".to_vec().into()),
++            })
++            .await
++            .expect("write PTY");
++        let mut output = Vec::new();
++        let mut after_seq = None;
++        loop {
++            let response = timeout(
++                Duration::from_secs(5),
++                read_process_until_change(&backend, &process_id, after_seq),
++            )
++            .await
++            .expect("PTY output");
++            for chunk in &response.chunks {
++                output.extend_from_slice(&chunk.chunk.0);
++            }
++            if response.closed {
++                assert_eq!(response.exit_code, Some(0));
++                break;
++            }
++            after_seq = response.next_seq.checked_sub(1);
++        }
++        assert!(String::from_utf8_lossy(&output).contains("33 101"));
++        backend.shutdown().await;
++    }
++
+     fn test_exec_params(env: HashMap<String, String>) -> ExecParams {
+         ExecParams {
+             metadata: None,
+diff --git a/codex-rs/exec-server/src/server/handler.rs b/codex-rs/exec-server/src/server/handler.rs
+index 5a54b9b..79d1c45 100644
+--- a/codex-rs/exec-server/src/server/handler.rs
++++ b/codex-rs/exec-server/src/server/handler.rs
+@@ -63,6 +63,8 @@ use crate::protocol::InitializeParams;
+ use crate::protocol::InitializeResponse;
+ use crate::protocol::ReadParams;
+ use crate::protocol::ReadResponse;
++use crate::protocol::ResizeParams;
++use crate::protocol::ResizeResponse;
+ use crate::protocol::SignalParams;
+ use crate::protocol::SignalResponse;
+ use crate::protocol::TerminateParams;
+@@ -258,6 +260,14 @@ impl ExecServerHandler {
+         session.process().exec_write(params).await
+     }
+ 
++    pub(crate) async fn exec_resize(
++        &self,
++        params: ResizeParams,
++    ) -> Result<ResizeResponse, JSONRPCErrorError> {
++        let session = self.require_initialized_for("exec")?;
++        session.process().exec_resize(params).await
++    }
++
+     pub(crate) async fn signal(
+         &self,
+         params: SignalParams,
+diff --git a/codex-rs/exec-server/src/server/process_handler.rs b/codex-rs/exec-server/src/server/process_handler.rs
+index 71fbe56..6890fa7 100644
+--- a/codex-rs/exec-server/src/server/process_handler.rs
++++ b/codex-rs/exec-server/src/server/process_handler.rs
+@@ -7,6 +7,8 @@ use crate::protocol::ExecParams;
+ use crate::protocol::ExecResponse;
+ use crate::protocol::ReadParams;
+ use crate::protocol::ReadResponse;
++use crate::protocol::ResizeParams;
++use crate::protocol::ResizeResponse;
+ use crate::protocol::SignalParams;
+ use crate::protocol::SignalResponse;
+ use crate::protocol::TerminateParams;
+@@ -62,6 +64,13 @@ impl ProcessHandler {
+         self.process.exec_write(params).await
+     }
+ 
++    pub(crate) async fn exec_resize(
++        &self,
++        params: ResizeParams,
++    ) -> Result<ResizeResponse, JSONRPCErrorError> {
++        self.process.exec_resize(params).await
++    }
++
+     pub(crate) async fn signal(
+         &self,
+         params: SignalParams,
+diff --git a/codex-rs/exec-server/src/server/registry.rs b/codex-rs/exec-server/src/server/registry.rs
+index 46690ba..084a284 100644
+--- a/codex-rs/exec-server/src/server/registry.rs
++++ b/codex-rs/exec-server/src/server/registry.rs
+@@ -13,6 +13,7 @@ use crate::protocol::ENVIRONMENT_INFO_METHOD;
+ use crate::protocol::ENVIRONMENT_STATUS_METHOD;
+ use crate::protocol::EXEC_METHOD;
+ use crate::protocol::EXEC_READ_METHOD;
++use crate::protocol::EXEC_RESIZE_METHOD;
+ use crate::protocol::EXEC_SIGNAL_METHOD;
+ use crate::protocol::EXEC_TERMINATE_METHOD;
+ use crate::protocol::EXEC_WRITE_METHOD;
+@@ -40,6 +41,7 @@ use crate::protocol::INITIALIZED_METHOD;
+ use crate::protocol::InitializeParams;
+ use crate::protocol::JSONRPCErrorError;
+ use crate::protocol::ReadParams;
++use crate::protocol::ResizeParams;
+ use crate::protocol::SignalParams;
+ use crate::protocol::TerminateParams;
+ use crate::protocol::WireCapabilityRootsDiscoverParams;
+@@ -129,6 +131,12 @@ pub(crate) fn build_router() -> RpcRouter<ExecServerHandler> {
+             handler.exec_write(params).await
+         },
+     );
++    router.request(
++        EXEC_RESIZE_METHOD,
++        |handler: Arc<ExecServerHandler>, params: ResizeParams| async move {
++            handler.exec_resize(params).await
++        },
++    );
+     router.request(
+         EXEC_SIGNAL_METHOD,
+         |handler: Arc<ExecServerHandler>, params: SignalParams| async move {
+diff --git a/codex-rs/exec-server/src/server/request_dispatcher.rs b/codex-rs/exec-server/src/server/request_dispatcher.rs
+index cc78c24..0286b86 100644
+--- a/codex-rs/exec-server/src/server/request_dispatcher.rs
++++ b/codex-rs/exec-server/src/server/request_dispatcher.rs
+@@ -19,6 +19,7 @@ use tracing::warn;
+ 
+ use crate::protocol::ENVIRONMENT_INFO_METHOD;
+ use crate::protocol::ENVIRONMENT_STATUS_METHOD;
++use crate::protocol::EXEC_RESIZE_METHOD;
+ use crate::protocol::EXEC_SIGNAL_METHOD;
+ use crate::protocol::EXEC_TERMINATE_METHOD;
+ use crate::protocol::FS_CLOSE_METHOD;
+@@ -296,6 +297,7 @@ impl RequestDispatcher {
+             method,
+             ENVIRONMENT_INFO_METHOD
+                 | ENVIRONMENT_STATUS_METHOD
++                | EXEC_RESIZE_METHOD
+                 | EXEC_SIGNAL_METHOD
+                 | EXEC_TERMINATE_METHOD
+                 | FS_CLOSE_METHOD

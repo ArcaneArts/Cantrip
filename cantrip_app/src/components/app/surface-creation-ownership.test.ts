@@ -12,6 +12,7 @@ import * as api from "@/lib/api";
 import {
   useBrowserCodeViewCreationOperations,
   useExplorerCreationOperations,
+  useTerminalCreationOperation,
 } from "./surface-creation-operations";
 
 afterEach(() => vi.restoreAllMocks());
@@ -170,5 +171,93 @@ it.each([true, false])(
     );
     await act(async () => renderer.unmount());
     queryClient.clear();
+  },
+);
+
+it.each(["implicit", "explicit-host", "another-project", "explicit-os"])(
+  "creates the intended terminal source for %s",
+  async (kind) => {
+    const queryClient = new QueryClient();
+    const created = {
+      id: "created",
+      projectId: "project",
+      position: 0,
+    } as import("@cantrip/protocol").TerminalSummary;
+    const create = vi.spyOn(api, "createTerminal").mockResolvedValue(created);
+    let operation!: ReturnType<typeof useTerminalCreationOperation>;
+    const Probe = () => {
+      operation = useTerminalCreationOperation({
+        queryClient,
+        openCreatedTab: vi.fn(),
+        setPendingTerminalInputs: vi.fn(),
+        defaultPlacement: () => ({
+          projectId: "project",
+          worktreeId: "linux-tree",
+          cantripOsBindingId: "linux",
+          cantripOsRuntimeGeneration: "generation",
+        }),
+      });
+      return null;
+    };
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          createElement(Probe),
+        ),
+      );
+    });
+    try {
+      const projectId = kind === "another-project" ? "other" : "project";
+      const explicit =
+        kind === "explicit-os"
+          ? {
+              worktreeId: "second-tree",
+              cantripOsBindingId: "second",
+              cantripOsRuntimeGeneration: "second-generation",
+            }
+          : kind === "explicit-host"
+            ? {
+                target: {
+                  kind: "worktree" as const,
+                  projectId,
+                  worktreeId: "host-tree",
+                },
+              }
+            : {};
+      await act(async () => {
+        await operation.mutateAsync({ projectId, ...explicit });
+      });
+      const args = create.mock.calls[0]!;
+      expect(args[0]).toBe(projectId);
+      if (kind === "implicit" || kind === "explicit-os") {
+        expect(args[1]).toBe("Linux terminal");
+        expect(args[2]).toBe(
+          kind === "implicit" ? "linux-tree" : "second-tree",
+        );
+        expect(args[7]).toEqual(
+          kind === "implicit"
+            ? {
+                cantripOsBindingId: "linux",
+                cantripOsRuntimeGeneration: "generation",
+              }
+            : {
+                cantripOsBindingId: "second",
+                cantripOsRuntimeGeneration: "second-generation",
+              },
+        );
+      } else {
+        expect(args).toHaveLength(7);
+        expect(args[1]).toBe("Terminal");
+        expect(args[4]).toEqual(
+          kind === "explicit-host" ? explicit.target : undefined,
+        );
+      }
+    } finally {
+      await act(async () => renderer.unmount());
+      queryClient.clear();
+    }
   },
 );

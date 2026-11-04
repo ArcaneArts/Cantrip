@@ -592,14 +592,16 @@ export function PersistentSurfaceLayer({
                     explorer.projectId,
                     explorer.worktreeId,
                     entry.path,
-                    explorer.cantripOsBindingId
-                      ? {
-                          cantripOsBindingId: explorer.cantripOsBindingId,
-                          cantripOsRuntimeGeneration:
-                            explorer.cantripOsRuntimeGeneration,
-                          workerId: explorer.activeWorkerId,
-                        }
-                      : undefined,
+                    ...(explorer.cantripOsBindingId
+                      ? ([
+                          {
+                            cantripOsBindingId: explorer.cantripOsBindingId,
+                            cantripOsRuntimeGeneration:
+                              explorer.cantripOsRuntimeGeneration,
+                            workerId: explorer.activeWorkerId,
+                          },
+                        ] as const)
+                      : ([] as const)),
                   )
           }
           onOpenGraphFile={(explorer, path) =>
@@ -620,6 +622,10 @@ export function PersistentSurfaceLayer({
           onRevealFolder={
             folderRevealLabel && selectedProject?.source
               ? async (explorer, entry, localFolder) => {
+                  if (explorer.cantripOsBindingId)
+                    throw new Error(
+                      "Open this Linux folder in its CantripOS workspace desktop.",
+                    );
                   const project = projects.data?.find(
                     (candidate: ProjectSummary) =>
                       candidate.id === explorer.projectId,
@@ -651,11 +657,17 @@ export function PersistentSurfaceLayer({
               directoryPath: entry.path,
               paneId: selectedSurface.paneId,
               title: `Terminal · ${entry.name}`,
-              target: {
-                kind: "worktree",
-                projectId: explorer.projectId,
-                worktreeId: explorer.worktreeId,
-              },
+              cantripOsBindingId: explorer.cantripOsBindingId,
+              cantripOsRuntimeGeneration: explorer.cantripOsRuntimeGeneration,
+              ...(explorer.cantripOsBindingId
+                ? { worktreeId: explorer.worktreeId }
+                : {
+                    target: {
+                      kind: "worktree",
+                      projectId: explorer.projectId,
+                      worktreeId: explorer.worktreeId,
+                    },
+                  }),
             });
           }}
           onlineWorkerIds={onlineWorkerIds}

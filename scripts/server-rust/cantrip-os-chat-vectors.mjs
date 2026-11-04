@@ -55,7 +55,12 @@ for (const input of projectChatWireFixtures(
   "2026-11-04T00:00:00.000Z",
 ).encryptedChatCreateSchema.filter((v) => v.cantripOsBindingId))
   add("encryptedChatCreateSchema", input);
-for (const type of ["explorer.operation", "file-document.operation"]) {
+for (const type of [
+  "explorer.operation",
+  "file-document.operation",
+  "terminal.open",
+  "project.script-commands",
+]) {
   const input = commands.commands.find((item) => item.type === type).input;
   for (const root of [
     os,
@@ -64,7 +69,12 @@ for (const type of ["explorer.operation", "file-document.operation"]) {
   ])
     add("workerRequestEnvelopeSchema", {
       ...input,
-      command: { ...input.command, root },
+      command: {
+        ...input.command,
+        ...(["terminal.open", "project.script-commands"].includes(type)
+          ? { worktreePath: root }
+          : { root }),
+      },
     });
 }
 const file = fileDocumentWireFixtures().fileDocumentCreateSchema[0];
@@ -78,6 +88,18 @@ for (const placement of [
   },
 ]) {
   add("fileDocumentCreateSchema", { ...file, ...placement });
+  add("encryptedTerminalCreateSchema", {
+    id: file.id,
+    ...placement,
+    titleProtection: {
+      classification: { recordKind: "terminal" },
+      protectedLabel: file.stateProtection.protectedState,
+    },
+    stateProtection: {
+      classification: { recordKind: "terminal-state" },
+      protectedState: file.stateProtection.protectedState,
+    },
+  });
   add("encryptedExplorerCreateSchema", {
     id: file.id,
     ...placement,

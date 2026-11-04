@@ -15,6 +15,7 @@ import * as schema from "../src/db/schema.js";
 import {
   protectedChatFields,
   protectedExplorerFields,
+  protectedTerminalFields,
 } from "./private-label-fixture.js";
 
 it("captures an OS binding before native preparation and preserves lane identity without a host fallback", async () => {
@@ -195,6 +196,49 @@ it("captures an OS binding before native preparation and preserves lane identity
         cantripOsRuntimeGeneration: undefined,
       }),
     ).resolves.toBeNull();
+    const terminal = await repository.createTerminal("owner", "project", {
+      ...protectedTerminalFields(),
+      ...placement,
+      worktreeId: binding.worktreeId,
+    });
+    expect(terminal).toMatchObject(placement);
+    expect(
+      await repository.getTerminalExecutionContext("owner", terminal!.id),
+    ).toMatchObject({
+      worktreePath: {
+        kind: "cantrip-os",
+        scope: {
+          bindingId: binding.id,
+          runtimeGeneration: generation,
+          uid: 20000,
+        },
+      },
+    });
+    expect(
+      await repository.getTerminalExecutionContext("other", terminal!.id),
+    ).toBeNull();
+    const consoleTerminal = await repository.getOrCreateChatConsole(
+      "owner",
+      input.id,
+      protectedTerminalFields(),
+    );
+    expect(consoleTerminal).toMatchObject({
+      ...placement,
+      linkedChatId: input.id,
+    });
+    await expect(
+      repository.createTerminal("owner", "project", {
+        ...protectedTerminalFields(),
+        ...placement,
+        cantripOsRuntimeGeneration: randomUUID(),
+      }),
+    ).rejects.toThrow(/unavailable/);
+    await expect(
+      db.query("UPDATE terminals SET os_runtime_generation=$1 WHERE id=$2", [
+        randomUUID(),
+        terminal!.id,
+      ]),
+    ).rejects.toThrow(/cannot be retargeted/);
     const context = await repository.getChatExecutionContext("owner", input.id);
     expect(context).toMatchObject({
       cwd: binding.guestPath,
@@ -335,6 +379,15 @@ it("captures an OS binding before native preparation and preserves lane identity
     await expect(
       repository.fileDocuments.executionContext("owner", file!.id),
     ).rejects.toThrow(/unavailable or changed/);
+    await expect(
+      repository.getTerminalExecutionContext("owner", terminal!.id),
+    ).rejects.toThrow(/unavailable or changed/);
+    await expect(
+      repository.getTerminalExecutionContext("owner", consoleTerminal!.id),
+    ).rejects.toThrow(/unavailable or changed/);
+    expect(
+      await repository.deleteTerminal("owner", terminal!.id),
+    ).toMatchObject({ terminalId: terminal!.id });
     await db.query("DELETE FROM projects WHERE id='project'");
   } finally {
     await db.close();

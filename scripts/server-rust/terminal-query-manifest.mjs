@@ -50,6 +50,7 @@ const database = new Proxy(
 const repo = new TerminalRepository(database, {
   getTerminalExecutionContext: async () => ({
     kind: contextKind,
+    worktreePath: "/fixture/terminal",
     linkedChatId: null,
     projectId: "fixture-project",
     workerId: "fixture-worker",

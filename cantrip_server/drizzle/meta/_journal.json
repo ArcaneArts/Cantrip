@@ -1730,6 +1730,13 @@
       "when": 1793780318146,
       "tag": "0246_cantrip_os_file_placements",
       "breakpoints": true
+    },
+    {
+      "idx": 247,
+      "version": "7",
+      "when": 1793786906758,
+      "tag": "0247_cantrip_os_terminal_placements",
+      "breakpoints": true
     }
   ]
 }

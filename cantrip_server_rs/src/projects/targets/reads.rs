@@ -252,7 +252,9 @@ pub(super) fn resource(kind: Kind, raw: &Value) -> Result<Value> {
     for (key, value) in mapped(raw, fields).as_object().unwrap() {
         result[key.as_str().unwrap()] = value.clone();
     }
-    if matches!(kind, Kind::Chat | Kind::Explorer) && !raw["cantrip_os_binding_id"].is_null() {
+    if matches!(kind, Kind::Chat | Kind::Explorer | Kind::Terminal)
+        && !raw["cantrip_os_binding_id"].is_null()
+    {
         result["cantripOsBindingId"] = raw["cantrip_os_binding_id"].clone();
         result["cantripOsRuntimeGeneration"] = raw[if matches!(kind, Kind::Chat) {
             "cantrip_os_runtime_generation"

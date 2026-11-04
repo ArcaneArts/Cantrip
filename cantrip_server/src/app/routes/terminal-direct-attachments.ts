@@ -185,11 +185,19 @@ export function installTerminalDirectAttachmentRoute(
             },
           );
           void opened
-            .then((result) => {
+            .then(async (result) => {
               const parsed = terminalOpenResultSchema.parse(result);
               if (parsed.status === "exited") {
+                await updateTerminalStatus(
+                  context.terminalId,
+                  parsed.executionOutcome === "unknown" ? "offline" : "exited",
+                );
                 markFailed?.(
-                  new Error("Terminal process exited during startup."),
+                  new Error(
+                    parsed.executionOutcome === "unknown"
+                      ? "The Linux terminal disconnected; command outcome is unknown."
+                      : "Terminal process exited during startup.",
+                  ),
                 );
               }
             })

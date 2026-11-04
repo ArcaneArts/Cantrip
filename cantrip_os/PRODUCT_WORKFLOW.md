@@ -1,8 +1,8 @@
 # CantripOS project attachment
 
 This checkpoint adds the client workflow for the executor, source provisioning,
-captured agent placement, and file/editor/Explorer operations. Plain terminals,
-setup/Run, attachment/artifact delivery and final distribution acceptance remain
+captured agent placement, file/editor/Explorer operations, and interactive Linux
+terminals. Setup/Run, attachment/artifact delivery and final distribution acceptance remain
 in subsequent product integration work. This checkpoint is not complete Phase 3
 acceptance.
 
@@ -74,3 +74,40 @@ An executor upgrade or restart does not retarget an old document. Save reports
 the stale placement; retain/copy the draft, refresh/verify the source, create a
 new Linux agent and reopen the file there. A completed uncertain save can be
 observed by its original operation identity; an unknown save is not replayed.
+
+## Linux terminals
+
+Select a current Linux agent, file, Explorer, or terminal and choose **Add project
+surface → Terminal**. The new **Linux terminal** captures that same source and
+runtime. **Open terminal** on a Linux Explorer folder uses that folder. An
+explicit host worktree target still creates a host terminal; choosing another
+project does not inherit the previous project's OS placement.
+
+Bash runs as the workspace UID in the selected guest checkout with passwordless
+`sudo`. `nano`, `htop`, and `python` are preinstalled. The existing worker carries
+terminal input/output and resize requests through the authenticated native
+executor. It keeps its own private carrier directory; the Linux path is never
+used as a host process directory. The Linux shell works while its desktop is
+closed. A managed Codex console remains the worker-side native client connected
+to the captured remote environment.
+
+Closing a terminal stops its own Linux process tree, including sudo children.
+Losing the carrier reports **Command outcome unknown**, keeps output visible,
+and offers **Reconnect to Linux**. Reconnect observes the admitted session and
+process; it never starts a replacement shell or resends uncertain input. A
+completed terminal stays completed. To deliberately start another shell, create
+a new terminal. An OS generation change requires a new captured resource after
+refresh/verification; existing terminals are not redirected.
+
+Terminal services and script-command discovery for Linux are reserved for the
+setup/Run integration cycle. Enabling a Linux terminal service currently reports
+that the delegated lifecycle is unavailable. It does not run the command on the
+host. Native Finder/Explorer reveal is likewise unavailable for OS file views;
+open the workspace's desktop to browse the guest folder.
+
+At this checkpoint native Linux tools and configured network MCP servers are
+available to OS agents. The pinned native environment cannot start worker-local
+stdio MCP processes. Cantrip/CodeGraph/host computer-use MCP injection is omitted
+for these sessions; an enabled user stdio MCP configuration reports an explicit
+error rather than running locally or being copied into Linux. Delegated Cantrip
+project tools remain part of the following integration work.

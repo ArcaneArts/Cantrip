@@ -140,6 +140,9 @@ export function TerminalView({
     "connecting" | "reconnecting" | "ready" | "exited"
   >("connecting");
   const [exitCode, setExitCode] = useState<number | null>(null);
+  const [executionOutcome, setExecutionOutcome] = useState<
+    "exited" | "interrupted" | "unknown" | undefined
+  >();
   const [error, setError] = useState<string | null>(null);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [loadedTerminalId, setLoadedTerminalId] = useState<string | null>(null);
@@ -164,6 +167,7 @@ export function TerminalView({
     }
     setState(reconnectAttemptRef.current === 0 ? "connecting" : "reconnecting");
     setExitCode(null);
+    setExecutionOutcome(undefined);
     setError(null);
     setRecoveryError(null);
     const connectionStartedAt = performance.now();
@@ -745,7 +749,7 @@ export function TerminalView({
           event: "surface.terminal.exited",
           exitCode: message.exitCode,
           operation: "process-exit",
-          status: "exited",
+          status: message.executionOutcome === "unknown" ? "unknown" : "exited",
           subsystem: "terminal",
           surfaceId: terminal.id,
         });
@@ -758,18 +762,23 @@ export function TerminalView({
         // allowing a linked console's owner to unmount it.
         outputQueue = outputQueue.then(async () => {
           if (disposed || transferRetired) return;
-          if (onExitRef.current && !stagingRef.current) {
+          if (
+            onExitRef.current &&
+            !stagingRef.current &&
+            message.executionOutcome !== "unknown"
+          ) {
             onExitRef.current();
           } else {
             await new Promise<void>((resolve) => {
               xterm.write(
-                `\r\n\x1b[90m[Process exited ${message.exitCode}]\x1b[0m\r\n`,
+                `\r\n\x1b[90m[${message.executionOutcome === "unknown" ? "Linux terminal disconnected; command outcome unknown" : message.executionOutcome === "interrupted" ? "Linux command interrupted" : `Process exited ${message.exitCode}`}]\x1b[0m\r\n`,
                 resolve,
               );
             });
             if (disposed) return;
             setLoadedTerminalId(terminal.id);
             setExitCode(message.exitCode);
+            setExecutionOutcome(message.executionOutcome);
             setState("exited");
           }
           connection?.close("normal");
@@ -1043,7 +1052,22 @@ export function TerminalView({
               className="pointer-events-none absolute right-4 top-3 rounded-md bg-muted/90 px-2 py-1 text-xs text-muted-foreground"
               role="status"
             >
-              Process exited {exitCode}
+              {executionOutcome === "unknown" ? (
+                <>
+                  Command outcome unknown.{" "}
+                  <button
+                    type="button"
+                    className="pointer-events-auto underline"
+                    onClick={() => setConnectionKey((value) => value + 1)}
+                  >
+                    Reconnect to Linux
+                  </button>
+                </>
+              ) : executionOutcome === "interrupted" ? (
+                "Linux command interrupted"
+              ) : (
+                <>Process exited {exitCode}</>
+              )}
             </div>
           ) : hasLoaded && state !== "ready" ? (
             <div className="pointer-events-none absolute right-4 top-3 flex items-center gap-2 rounded-md bg-muted/90 px-2 py-1 text-xs text-muted-foreground">

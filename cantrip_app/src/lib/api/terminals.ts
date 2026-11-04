@@ -1,3 +1,4 @@
+import type { OsFilePlacement } from "@/lib/os-file-placement";
 import {
   terminalWireListSchema,
   protectedScriptCommandListSchema,
@@ -101,6 +102,7 @@ export async function createTerminal(
   target?: ExecutionTarget,
   directoryPath?: string,
   targetRegion?: ProjectPaneRegion,
+  osPlacement: OsFilePlacement = {},
 ) {
   const id = crypto.randomUUID();
   const titleProtection = await surfaceTitleEncryption.protect(
@@ -124,6 +126,7 @@ export async function createTerminal(
         titleProtection,
         stateProtection,
         ...placement,
+        ...osPlacement,
         ...(paneId ? { paneId } : {}),
         ...(!paneId && targetRegion ? { targetRegion } : {}),
       }),

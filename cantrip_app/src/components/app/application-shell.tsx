@@ -1,3 +1,5 @@
+import { surfaceOsFilePlacement } from "@/lib/os-file-placement";
+import { surfaceWorktreeId } from "@/lib/sidebar-file-tabs";
 import { useProjectAlertCounts } from "@/lib/project-alert-counts";
 import {
   readAlertNavigation,
@@ -797,6 +799,11 @@ export function App() {
   });
   const newTerminal = useTerminalCreationOperation({
     ownedPlacement: true,
+    defaultPlacement: () => ({
+      ...surfaceOsFilePlacement(selectedSurface),
+      projectId: selectedSurface?.projectId,
+      worktreeId: surfaceWorktreeId(selectedSurface) ?? undefined,
+    }),
     openCreatedTab,
     queryClient,
     setPendingTerminalInputs,

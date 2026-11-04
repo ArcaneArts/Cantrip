@@ -1,5 +1,8 @@
+import { CantripOsFileRepository } from "./cantrip-os-files.js";
+import { CantripOsChatRepository } from "./cantrip-os-chats.js";
 import { requireWorkerLocalPath } from "./worker-local-source-path.js";
 import type {
+  CantripOsExecution,
   EncryptedTerminalCreate,
   EncryptedTerminalServiceConfiguration,
   EncryptedTerminalUpdate,
@@ -11,7 +14,7 @@ import type {
   TerminalWireSummary,
   WorktreeSelection,
 } from "@cantrip/protocol";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, isNotNull, sql } from "drizzle-orm";
 
 import * as schema from "../schema.js";
 import { removeResourceWorkspaceViews } from "../workspace-resource-removal.js";
@@ -37,11 +40,16 @@ export interface TerminalExecutionContext {
   status: TerminalWireSummary["status"];
   terminalId: string;
   workerId: string;
-  worktreePath: string;
+  worktreePath: string | CantripOsExecution;
   worktreeId: string;
   runConfigurationId: string | null;
   runConfigurationRuntimeId: string | null;
 }
+
+type TerminalRemovalContext = Pick<
+  TerminalExecutionContext,
+  "terminalId" | "projectId" | "workerId" | "kind"
+>;
 
 export interface TerminalRepositoryCollaborators {
   getProjectWorktreeContext(
@@ -109,22 +117,50 @@ export class TerminalRepository {
             worktreeId: input.worktreeId,
           } as const)
         : undefined);
-    const { placement } =
-      await this.collaborators.resolveProjectExecutionPlacement(
-        ownerId,
-        projectId,
-        "terminal",
-        target,
-        isWorkerConnected,
-      );
+    const osTarget = input.cantripOsBindingId
+      ? await new CantripOsChatRepository(this.database).select(
+          ownerId,
+          projectId,
+          input.cantripOsBindingId,
+        )
+      : null;
+    if (
+      osTarget &&
+      (input.target ||
+        (input.worktreeId && input.worktreeId !== osTarget.worktree.id))
+    )
+      throw new Error("OS terminal source and worktree selection differ.");
+    const placement = osTarget
+      ? { workerId: osTarget.workerId, worktreeId: osTarget.worktree.id }
+      : (
+          await this.collaborators.resolveProjectExecutionPlacement(
+            ownerId,
+            projectId,
+            "terminal",
+            target,
+            isWorkerConnected,
+          )
+        ).placement;
     const workerId = placement.workerId;
     const worktreeId = placement.worktreeId!;
 
     const position = await this.collaborators.nextProjectTabPosition(projectId);
     return this.database.transaction(async (transaction) => {
+      const capture = input.cantripOsBindingId
+        ? await new CantripOsFileRepository(
+            transaction as RepositoryDatabase,
+          ).capture(
+            ownerId,
+            projectId,
+            worktreeId,
+            input.cantripOsBindingId,
+            input.cantripOsRuntimeGeneration,
+          )
+        : {};
       const result = await transaction
         .insert(schema.terminals)
         .values({
+          ...capture,
           id: input.id,
           projectId,
           protectedLabel: input.titleProtection,
@@ -183,9 +219,25 @@ export class TerminalRepository {
     if (existing[0])
       return this.collaborators.toTerminalWireSummary(existing[0]);
 
+    const [chatCapture] = row.chat.cantripOsBindingId
+      ? await this.database
+          .select()
+          .from(schema.cantripOsChatPlacements)
+          .where(eq(schema.cantripOsChatPlacements.chatId, chatId))
+      : [];
+    if (row.chat.cantripOsBindingId && !chatCapture)
+      throw new Error("The OS chat placement is unavailable.");
     const result = await this.database
       .insert(schema.terminals)
       .values({
+        ...(chatCapture
+          ? {
+              cantripOsBindingId: chatCapture.bindingId,
+              osBindingGeneration: chatCapture.bindingGeneration,
+              osAttachmentGeneration: chatCapture.attachmentGeneration,
+              osRuntimeGeneration: chatCapture.runtimeGeneration,
+            }
+          : {}),
         id: input.id,
         projectId,
         protectedLabel: input.titleProtection,
@@ -253,6 +305,10 @@ export class TerminalRepository {
         "Run configuration terminals are controlled by their runtime.",
       );
     }
+    if (typeof owned.worktreePath !== "string" && input.enabled)
+      throw new Error(
+        "Linux terminal services require their delegated service lifecycle.",
+      );
     if (owned.linkedChatId) {
       throw new Error("Linked Codex consoles cannot run terminal services.");
     }
@@ -289,6 +345,7 @@ export class TerminalRepository {
           eq(schema.projectWorktrees.workerId, workerId),
           eq(schema.projectWorktrees.locationKind, "worker-local"),
           eq(schema.terminals.serviceEnabled, true),
+          isNull(schema.terminals.cantripOsBindingId),
         ),
       );
     return rows.map(({ terminal, worktree }) => {
@@ -357,11 +414,37 @@ export class TerminalRepository {
   async deleteTerminal(
     ownerId: string,
     terminalId: string,
-  ): Promise<TerminalExecutionContext | null> {
-    const context = await this.collaborators.getTerminalExecutionContext(
-      ownerId,
-      terminalId,
-    );
+  ): Promise<TerminalRemovalContext | null> {
+    // Removing a captured resource needs ownership, not a live executor. This
+    // projection cannot authorize execution or turn a stale OS root into Host.
+    const [captured] = await this.database
+      .select({ terminal: schema.terminals })
+      .from(schema.terminals)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.terminals.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.terminals.id, terminalId),
+          isNotNull(schema.terminals.cantripOsBindingId),
+        ),
+      )
+      .limit(1);
+    const context: TerminalRemovalContext | null = captured
+      ? {
+          terminalId: captured.terminal.id,
+          projectId: captured.terminal.projectId,
+          workerId: captured.terminal.activeWorkerId,
+          kind: captured.terminal.kind as TerminalExecutionContext["kind"],
+        }
+      : await this.collaborators.getTerminalExecutionContext(
+          ownerId,
+          terminalId,
+        );
     if (!context) return null;
     if (context.kind === "run-configuration") {
       const active = await this.database
@@ -442,7 +525,12 @@ export class TerminalRepository {
           rootKind: row.worktree.rootKind,
           workerId: row.terminal.activeWorkerId,
           worktreeId: row.worktree.id,
-          worktreePath: requireWorkerLocalPath(row.worktree.absolutePath),
+          worktreePath: await new CantripOsFileRepository(this.database).root(
+            ownerId,
+            row.terminal.projectId,
+            row.worktree,
+            row.terminal,
+          ),
           linkedChatId: row.terminal.linkedChatId,
           runConfigurationId: row.terminal.runConfigurationId,
           runConfigurationRuntimeId: row.terminal.runConfigurationRuntimeId,

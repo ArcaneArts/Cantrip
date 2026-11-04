@@ -1,3 +1,4 @@
+import type { OsFilePlacement } from "@/lib/os-file-placement";
 import type {
   ArchivedStandaloneChatSummary,
   BrowserSummary,
@@ -387,11 +388,16 @@ export function useProjectTaskCreationOperation({
 
 export function useTerminalCreationOperation({
   ownedPlacement = false,
+  defaultPlacement,
   openCreatedTab,
   queryClient,
   setPendingTerminalInputs,
 }: {
   ownedPlacement?: boolean;
+  defaultPlacement?: () => OsFilePlacement & {
+    projectId?: string;
+    worktreeId?: string;
+  };
   openCreatedTab: OpenCreatedTab;
   queryClient: QueryClient;
   setPendingTerminalInputs: Dispatch<SetStateAction<PendingTerminalInput[]>>;
@@ -406,7 +412,9 @@ export function useTerminalCreationOperation({
       target,
       initialInput: _initialInput,
       targetRegion,
-    }: {
+      cantripOsBindingId,
+      cantripOsRuntimeGeneration,
+    }: OsFilePlacement & {
       initialInput?: string;
       targetRegion?: "center" | "right" | "bottom" | "left";
       projectId: string;
@@ -415,16 +423,34 @@ export function useTerminalCreationOperation({
       title?: string;
       worktreeId?: string;
       target?: ExecutionTarget;
-    }) =>
-      createTerminal(
+    }) => {
+      const defaults =
+        !target && !worktreeId && !cantripOsBindingId
+          ? defaultPlacement?.()
+          : undefined;
+      const placement =
+        defaults?.projectId === projectId && defaults.cantripOsBindingId
+          ? defaults
+          : { cantripOsBindingId, cantripOsRuntimeGeneration, worktreeId };
+      return createTerminal(
         projectId,
-        title ?? "Terminal",
-        worktreeId,
+        title ?? (placement.cantripOsBindingId ? "Linux terminal" : "Terminal"),
+        placement.worktreeId,
         ownedPlacement ? undefined : paneId,
         target,
         directoryPath,
         ownedPlacement ? undefined : targetRegion,
-      ),
+        ...(placement.cantripOsBindingId
+          ? ([
+              {
+                cantripOsBindingId: placement.cantripOsBindingId,
+                cantripOsRuntimeGeneration:
+                  placement.cantripOsRuntimeGeneration,
+              },
+            ] as const)
+          : ([] as const)),
+      );
+    },
     onSuccess: (terminal, { initialInput, paneId, targetRegion }) => {
       queryClient.setQueryData<TerminalSummary[]>(
         ["terminals", terminal.projectId],

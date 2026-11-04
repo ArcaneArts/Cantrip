@@ -204,6 +204,10 @@ export async function handleProjectCommand(
       await runConfigurationRuntimes.stopForPath(command.path);
       return github.deleteRepository(command.path);
     case "project.script-commands":
+      if (typeof command.worktreePath !== "string")
+        throw new Error(
+          "Linux script discovery requires its delegated filesystem path; no Host files were read.",
+        );
       try {
         const commands = await discoverScriptCommands(
           (

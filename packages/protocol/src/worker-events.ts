@@ -401,6 +401,7 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
       terminalId: z.string().min(1).max(200),
       workerProcessGeneration: z.string().min(1).max(200),
       status: z.literal("exited"),
+      executionOutcome: z.enum(["exited", "interrupted", "unknown"]).optional(),
       exitCode: z.number().int(),
       signal: z.number().int().nullable(),
     })

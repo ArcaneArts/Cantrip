@@ -137,8 +137,16 @@ impl Service {
             self.repository
                 .database
                 .query(
-                    "UPDATE terminals SET status='exited',updated_at=$1 WHERE id=$2",
-                    &[&crate::auth::now(), &terminal],
+                    "UPDATE terminals SET status=$1,updated_at=$2 WHERE id=$3",
+                    &[
+                        &(if notification["executionOutcome"] == "unknown" {
+                            "offline"
+                        } else {
+                            "exited"
+                        }),
+                        &crate::auth::now(),
+                        &terminal,
+                    ],
                 )
                 .await?;
             (self.publish)(
