@@ -1,3 +1,6 @@
+import { resolveOsRunSource } from "./run-configuration-os-source.js";
+import { CantripOsPlacementError } from "../../db/repository/cantrip-os.js";
+import { CantripOsCoordinator } from "../../cantrip-os/coordinator.js";
 import { randomUUID } from "node:crypto";
 
 import type { AppLiveResource } from "@cantrip/protocol";
@@ -192,7 +195,10 @@ export function createRunConfigurationRuntime({
         .code(status)
         .send({ code: error.code, error: error.message });
     }
-    if (error instanceof ExecutionLaneConflictError) {
+    if (
+      error instanceof ExecutionLaneConflictError ||
+      error instanceof CantripOsPlacementError
+    ) {
       return reply.code(409).send({ code: "conflict", error: error.message });
     }
     return sendWorkerRequestFailure(reply, error);
@@ -747,10 +753,27 @@ export function createRunConfigurationRuntime({
     return worktreeCoordinator.serialize(
       input.projectId,
       async () => {
+        const osSource = input.osSource
+          ? await resolveOsRunSource(
+              repository,
+              ownerId,
+              input.projectId,
+              input.osSource,
+              input.targetWorktreeId,
+            )
+          : null;
+        if (
+          osSource?.runtime &&
+          osSource.runtime.configurationId !== input.configurationId
+        )
+          throw new ExecutionLaneConflictError(
+            "The captured Linux Run belongs to another configuration.",
+          );
         const replay =
           await repository.getRunConfigurationRuntimeOperationResult(
             ownerId,
             input.operationId,
+            osSource?.executionKey ?? "worker",
           );
         if (replay) {
           if (
@@ -769,23 +792,65 @@ export function createRunConfigurationRuntime({
           return runConfigurationRuntimeOperationResultSchema.parse(replay);
         }
 
-        const target = await resolveRunConfigurationRuntimeTarget(
-          ownerId,
-          input.projectId,
-          input.targetWorktreeId,
-        );
+        const target = osSource
+          ? {
+              kind: "cantrip-os" as const,
+              workerId: osSource.osExecution.target.scope.workerId,
+              worktree: { id: osSource.osExecution.target.scope.worktreeId },
+              osExecution: osSource.osExecution,
+            }
+          : {
+              kind: "worker-local" as const,
+              ...(await resolveRunConfigurationRuntimeTarget(
+                ownerId,
+                input.projectId,
+                input.targetWorktreeId,
+              )),
+            };
+        if (!bridge.isConnected(target.workerId))
+          throw new WorkerUnavailableError(
+            "The Run configuration worker is offline.",
+          );
+        ensureWorkerNotificationSubscription(ownerId, target.workerId);
         let definitionRevision: string | null = null;
         let codexEnvironmentRevision: string | null = null;
         let protectedSecrets: RunConfigurationProtectedSecret[] = [];
         if (input.operation !== "stop") {
-          const definition = (
-            await getRunConfigurationDefinition(
-              ownerId,
-              input.projectId,
-              input.operationId,
-              input.configurationId,
-            )
-          ).result;
+          const definition =
+            target.kind === "cantrip-os"
+              ? (
+                  await new CantripOsCoordinator(
+                    repository,
+                    bridge,
+                    serverId,
+                  ).runDefinition(
+                    ownerId,
+                    input.projectId,
+                    target.osExecution.definitions.scope.bindingId,
+                    {
+                      runtimeGeneration:
+                        target.osExecution.definitions.scope.runtimeGeneration,
+                      request: {
+                        type: "project.run-configuration-definitions.get",
+                        operationId: input.operationId,
+                        projectId: input.projectId,
+                        configurationId: input.configurationId,
+                      },
+                    },
+                  )
+                ).result
+              : (
+                  await getRunConfigurationDefinition(
+                    ownerId,
+                    input.projectId,
+                    input.operationId,
+                    input.configurationId,
+                  )
+                ).result;
+          if (definition.operation !== "get")
+            throw new Error(
+              "The Run configuration definition response was misrouted.",
+            );
           if (!definition.result.found) {
             throw new CliCommandRequestError(
               "not-found",
@@ -847,10 +912,12 @@ export function createRunConfigurationRuntime({
                 codexEnvironmentRevision,
               };
         const durable =
-          await repository.requestRunConfigurationRuntimeOperation(
-            ownerId,
-            operationRequest,
-          );
+          await repository.requestRunConfigurationRuntimeOperation(ownerId, {
+            ...operationRequest,
+            ...(target.kind === "cantrip-os"
+              ? { osExecution: target.osExecution }
+              : {}),
+          });
         if (durable.operation.outcome !== "accepted") {
           return runConfigurationRuntimeOperationResultSchema.parse(durable);
         }
@@ -878,37 +945,63 @@ export function createRunConfigurationRuntime({
             runConfigurationRuntimeWorkerOperationResultSchema.parse(
               await bridge.request(
                 target.workerId,
-                input.operation === "stop"
-                  ? {
-                      type: "project.run-configuration-runtime.stop",
-                      identity,
-                    }
-                  : {
-                      type:
-                        input.operation === "start"
-                          ? "project.run-configuration-runtime.start"
-                          : "project.run-configuration-runtime.restart",
-                      identity,
-                      rootKind: target.rootKind,
-                      sourcePath: target.sourcePath,
-                      targetPath: target.targetPath,
-                      protectedSecrets,
-                    },
+                target.kind === "cantrip-os"
+                  ? input.operation === "stop"
+                    ? {
+                        type: "cantrip-os.run-runtime.stop",
+                        ...target.osExecution,
+                        identity,
+                      }
+                    : {
+                        type:
+                          input.operation === "start"
+                            ? "cantrip-os.run-runtime.start"
+                            : "cantrip-os.run-runtime.restart",
+                        ...target.osExecution,
+                        identity,
+                        protectedSecrets,
+                      }
+                  : input.operation === "stop"
+                    ? {
+                        type: "project.run-configuration-runtime.stop",
+                        identity,
+                      }
+                    : {
+                        type:
+                          input.operation === "start"
+                            ? "project.run-configuration-runtime.start"
+                            : "project.run-configuration-runtime.restart",
+                        identity,
+                        rootKind: target.rootKind,
+                        sourcePath: target.sourcePath,
+                        targetPath: target.targetPath,
+                        protectedSecrets,
+                      },
                 { timeoutMs: 30_000 },
               ),
             );
         } catch (error) {
+          const uncertainLinux = target.kind === "cantrip-os";
           const failed = runConfigurationRuntimeWorkerObservationSchema.parse({
             ...identity,
-            state: "failed",
+            state: uncertainLinux ? "lost" : "failed",
             startedAt: runtime.startedAt,
             endedAt: new Date().toISOString(),
             exitCode: null,
             signal: null,
             failure: {
-              phase: input.operation === "stop" ? "stop" : "spawn",
-              code: "worker-request-failed",
-              message: errorMessage(error).slice(0, 1_000),
+              phase:
+                target.kind === "cantrip-os"
+                  ? "reconcile"
+                  : input.operation === "stop"
+                    ? "stop"
+                    : "spawn",
+              code: uncertainLinux
+                ? "linux-worker-outcome-unknown"
+                : "worker-request-failed",
+              message: uncertainLinux
+                ? "Linux Run delivery or termination was not confirmed. No command was repeated."
+                : errorMessage(error).slice(0, 1_000),
               retryable: true,
             },
           });
@@ -934,7 +1027,7 @@ export function createRunConfigurationRuntime({
           const rejected = runConfigurationRuntimeWorkerObservationSchema.parse(
             {
               ...identity,
-              state: "failed",
+              state: target.kind === "cantrip-os" ? "lost" : "failed",
               startedAt: runtime.startedAt,
               endedAt: new Date().toISOString(),
               exitCode: null,
@@ -994,7 +1087,7 @@ export function createRunConfigurationRuntime({
         if (applied.reason === "invalid-transition") {
           const invalid = runConfigurationRuntimeWorkerObservationSchema.parse({
             ...identity,
-            state: "failed",
+            state: target.kind === "cantrip-os" ? "lost" : "failed",
             startedAt: runtime.startedAt,
             endedAt: new Date().toISOString(),
             exitCode: null,
@@ -1057,18 +1150,40 @@ export function createRunConfigurationRuntime({
     requestInput: unknown,
   ) => {
     const input = runConfigurationRuntimeStatusQuerySchema.parse(requestInput);
+    const osSource = input.osSource
+      ? await resolveOsRunSource(
+          repository,
+          ownerId,
+          input.projectId,
+          input.osSource,
+          input.targetWorktreeId,
+        )
+      : null;
+    if (
+      osSource?.runtime &&
+      input.configurationId !== null &&
+      osSource.runtime.configurationId !== input.configurationId
+    )
+      throw new ExecutionLaneConflictError(
+        "The captured Linux Run belongs to another configuration.",
+      );
     return runConfigurationRuntimeStatusResultSchema.parse({
       operationId: input.operationId,
       projectId: input.projectId,
-      runtimes: await repository.listRunConfigurationRuntimes(
-        ownerId,
-        input.projectId,
-        {
-          configurationId: input.configurationId ?? undefined,
-          worktreeId: input.targetWorktreeId ?? undefined,
-          limit: input.limit,
-        },
-      ),
+      runtimes: osSource?.runtime
+        ? [osSource.runtime]
+        : await repository.listRunConfigurationRuntimes(
+            ownerId,
+            input.projectId,
+            {
+              configurationId: input.configurationId ?? undefined,
+              worktreeId: input.targetWorktreeId ?? undefined,
+              limit: input.limit,
+              ...(osSource
+                ? { osDefinition: osSource.osExecution.definitions.scope }
+                : {}),
+            },
+          ),
     });
   };
 
@@ -1077,12 +1192,28 @@ export function createRunConfigurationRuntime({
     requestInput: unknown,
   ) => {
     const input = runConfigurationRuntimeOutputQuerySchema.parse(requestInput);
-    const runtime = await repository.getRunConfigurationRuntime(
-      ownerId,
-      input.projectId,
-      input.configurationId,
-      input.worktreeId,
-    );
+    const osSource = input.osSource
+      ? await resolveOsRunSource(
+          repository,
+          ownerId,
+          input.projectId,
+          input.osSource,
+          input.worktreeId,
+        )
+      : null;
+    const runtime =
+      osSource?.runtime ??
+      (await repository.getRunConfigurationRuntime(
+        ownerId,
+        input.projectId,
+        input.configurationId,
+        input.worktreeId,
+        osSource?.executionKey ?? "worker",
+      ));
+    if (runtime && runtime.configurationId !== input.configurationId)
+      throw new ExecutionLaneConflictError(
+        "The captured Linux Run belongs to another configuration.",
+      );
     if (!runtime?.terminalId) {
       throw new CliCommandRequestError(
         "not-found",
@@ -1100,7 +1231,12 @@ export function createRunConfigurationRuntime({
     const protectedOutput =
       protectedRunConfigurationRuntimeWorkerOutputSchema.parse(
         await bridge.request(runtime.workerId, {
-          type: "project.run-configuration-runtime.output",
+          ...(osSource
+            ? {
+                type: "cantrip-os.run-runtime.output" as const,
+                ...osSource.osExecution,
+              }
+            : { type: "project.run-configuration-runtime.output" as const }),
           requestOperationId: input.operationId,
           serverId,
           identity: {
@@ -1188,12 +1324,16 @@ export function createRunConfigurationRuntime({
         if (!input.success) {
           return reply.code(400).send(invalidBody(input.error.issues));
         }
-        return reply.send(
-          await queryRunConfigurationRuntimeStatus(
-            applicationOwnerId(),
-            input.data,
-          ),
-        );
+        try {
+          return reply.send(
+            await queryRunConfigurationRuntimeStatus(
+              applicationOwnerId(),
+              input.data,
+            ),
+          );
+        } catch (error) {
+          return sendRunApiFailure(reply, error);
+        }
       },
     );
 

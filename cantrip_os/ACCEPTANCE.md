@@ -985,3 +985,50 @@ Public Run API dispatch, reconciliation/retirement routing, the header source
 picker, and complete distribution acceptance remain pending. No product action
 is represented as complete by these database tests. Logs are retained under
 ignored `artifacts/phase3-run-placement/`.
+
+## Public Linux Run API checkpoint (2026-11-04)
+
+Both Server implementations route the existing Run lifecycle, status, protected
+output, and reconnect operations through explicit Linux source selections and
+immutable runtime captures. Client input contains binding epochs or a runtime ID;
+it cannot supply guest paths, accounts, or executor transports. The guest executor
+packages remain the checksum-verified 0.6.0 builds from the preceding checkpoints.
+
+- Actual Node Server/Fastify → Worker controller/common supervisor → native guest
+  operations passed in ARM64 Docker (11.05 seconds for the full source/Run test)
+  and the installed AMD64 VM (100.12 seconds). Ordinary Run used the source's
+  Primary even when selected through a secondary binding; explicit worktree Run
+  used its independent Linux directory. Actual Python output identified each
+  working directory and the workspace UID. The test decrypted the real protected
+  output and stopped both processes through captured runtime IDs.
+- Dropping the real Worker Start reply retained a Lost runtime. A different Start
+  operation was rejected before another process launch. Explicit Stop confirmed
+  termination and returned Idle. Stale binding generations were rejected without
+  dispatch, and ordinary Host status did not expose Linux runtime records.
+- A further Docker pass exercised actual reconnect dispatch with two distinct
+  captures and the same shared definition Primary (11.54 seconds).
+- Native HTTP authorization/routing parity passed against its explicit fixture
+  Worker, including source selection, protected output envelopes, reconnect,
+  stale generations, unknown delivery, and Stop. This fixture does not claim
+  another real guest or cryptographic execution test. Native PGlite/PostgreSQL
+  repository checks and source contracts also passed (four tests).
+- Focused protocol/common Worker lifecycle checks passed (39 tests). Existing
+  Server Run API, metadata, and connection-order checks passed (22 tests). Server
+  type checking retained its two existing Task errors. `pnpm check` retained the
+  same reviewed `agentOperations` digest mismatch; no audit exemption was added.
+  Worker type checking retained its five CUA/MCP errors, and public export checks
+  retained seven unreviewed exports after allowing the new selection schema.
+  Native Clippy reported the unchanged `cantrip_os/control.rs` argument-count
+  and `http/agent_tasks.rs` nested-condition findings. Standalone fixture type
+  checking reported two dependent nullability errors in unchanged history and
+  telemetry code, with no errors in the integration fixture.
+
+The Worker can now confirm an explicit Stop after memory loss from its recorded
+native journal. An unconfirmed cleanup stays unknown and can be retried with a
+new Stop operation; it is never converted into a successful idle state by a
+missing in-memory session. Host already-stopping behavior is preserved.
+
+Logs and actual guest receipts are retained under ignored
+`artifacts/phase3-run-product/`. The header source picker, safe definition
+retirement/deletion, broader delegated project/Git/artifact tools, and fresh
+Docker/ISO acceptance remain outstanding. This is not Phase 3 completion.

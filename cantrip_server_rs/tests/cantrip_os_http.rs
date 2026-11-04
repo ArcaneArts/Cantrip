@@ -15,7 +15,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -82,6 +82,8 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     assert!(service.workers.bridge.attach(&worker, peer.clone(), None));
     let provisions = Arc::new(AtomicUsize::new(0));
     let count = provisions.clone();
+    let lose_run_reply = Arc::new(AtomicBool::new(false));
+    let lose_reply = lose_run_reply.clone();
     let bridge = service.workers.bridge.clone();
     let target = worker.clone();
     let actual_owner = owner.clone();
@@ -91,6 +93,7 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
         let mut attached = false;
         let mut profiles = Vec::new();
         let mut operations = HashMap::new();
+        let mut runs = HashMap::<String, Value>::new();
         while let Some(frame) = output.recv().await {
             let Outgoing::Text(encoded) = frame else {
                 break;
@@ -102,7 +105,53 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
                 "cantrip-os.run-definition" => {
                     assert!(command.get("sourcePath").is_none());
                     assert!(command["request"].get("sourcePath").is_none());
-                    json!({"operation":"capabilities","operationId":command["request"]["operationId"],"projectId":command["request"]["projectId"],"capabilities":[]})
+                    let request = &command["request"];
+                    if request["type"] == "project.run-configuration-definitions.get" {
+                        let configuration = &request["configurationId"];
+                        let document = json!({"schema":"cantrip.run-configuration","version":1,"id":configuration,"name":"Native HTTP fixture","provider":"shell","workingDirectory":".","target":{"kind":"command","command":"python --version"},"commandOverride":null,"arguments":[],"environment":{"includeCodexEnvironment":false,"files":[],"variables":[],"secrets":[]},"beforeLaunch":[],"platformOverrides":{},"options":{"shell":"bash"},"stop":{"gracePeriodMs":1000}});
+                        json!({"operation":"get","operationId":request["operationId"],"projectId":request["projectId"],"result":{"found":true,"entry":{"relativePath":format!(".cantrip/run-configurations/{}.json",configuration.as_str().unwrap()),"revision":"a".repeat(64),"id":configuration,"status":"ready","document":document,"diagnostics":[]}},"codexEnvironment":{"enabled":false,"configured":false,"valid":true,"revision":null,"hasSetup":false,"diagnostics":[]},"secretReferences":[]})
+                    } else {
+                        json!({"operation":"capabilities","operationId":request["operationId"],"projectId":request["projectId"],"capabilities":[]})
+                    }
+                }
+                "cantrip-os.run-runtime.start"
+                | "cantrip-os.run-runtime.restart"
+                | "cantrip-os.run-runtime.stop" => {
+                    assert!(command.get("sourcePath").is_none());
+                    assert!(command.get("targetPath").is_none());
+                    assert_eq!(command["definitions"]["kind"], "cantrip-os");
+                    assert_eq!(
+                        command["target"]["scope"]["worktreeId"],
+                        command["identity"]["worktreeId"]
+                    );
+                    let stopped = command["type"] == "cantrip-os.run-runtime.stop";
+                    let now =
+                        chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                    let mut observation = command["identity"].clone();
+                    for (key, value) in json!({"state":if stopped {"idle"}else{"running"},"startedAt":now,"endedAt":if stopped {json!(now)}else{Value::Null},"exitCode":if stopped {json!(0)}else{Value::Null},"signal":null,"failure":null}).as_object().unwrap() {
+                        observation[key] = value.clone();
+                    }
+                    runs.insert(
+                        command["identity"]["runtimeId"]
+                            .as_str()
+                            .unwrap()
+                            .to_owned(),
+                        observation.clone(),
+                    );
+                    if !stopped && lose_reply.swap(false, Ordering::SeqCst) {
+                        bridge.receive(&target, &peer, &json!({"kind":"response","requestId":request["requestId"],"ok":false,"error":{"message":"Fixture lost the admitted Run reply"}}).to_string());
+                        continue;
+                    }
+                    json!({"outcome":"accepted","observation":observation})
+                }
+                "project.run-configuration-runtime.reconcile" => {
+                    json!({"runtimes":command["identities"].as_array().unwrap().iter().map(|identity|json!({"found":false,"identity":identity})).collect::<Vec<_>>(),"orphanedRuntimeIds":[]})
+                }
+                "cantrip-os.run-runtime.reconcile" => {
+                    json!({"runtimes":command["captures"].as_array().unwrap().iter().map(|capture|match runs.get(capture["identity"]["runtimeId"].as_str().unwrap()){Some(observation)=>json!({"found":true,"observation":observation}),None=>json!({"found":false,"identity":capture["identity"]})}).collect::<Vec<_>>(),"orphanedRuntimeIds":[]})
+                }
+                "cantrip-os.run-runtime.output" => {
+                    json!({"requestOperationId":command["requestOperationId"],"identity":command["identity"],"protectedOutput":{"formatVersion":1,"domain":"run-content","keyRevision":1,"envelope":{"version":1,"algorithm":"AES-256-GCM","keyRevision":1,"nonce":"AAAAAAAAAAAAAAAA","ciphertext":"AAAAAAAAAAAAAAAAAAAAAA"}}})
                 }
                 "cantrip-os.inspect" => observed(attached, &profiles),
                 "cantrip-os.attach" => {
@@ -249,6 +298,18 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     assert_eq!(run["source"]["bindingId"], binding["id"]);
     assert_eq!(run["source"]["worktreeId"], binding["worktreeId"]);
     assert_eq!(run["result"]["operation"], "capabilities");
+    Box::pin(exercise_run_http(RunHttpFixture {
+        client: &client,
+        base: &base,
+        project: &project,
+        owner: &owner,
+        worker: &worker,
+        service: &service,
+        binding: &binding,
+        attached: &attached,
+        lose_run_reply: &lose_run_reply,
+    }))
+    .await?;
     assert_eq!(
         client
             .post(format!("{base}/api/cantrip-os/inspect"))
@@ -267,5 +328,149 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     server.await??;
     database.close().await?;
     runtime.close().await?;
+    Ok(())
+}
+
+// HTTP/authorization parity uses an explicit fixture Worker. Real Linux
+// process and protected-output acceptance runs in the Node integration suite.
+struct RunHttpFixture<'a> {
+    client: &'a reqwest::Client,
+    base: &'a str,
+    project: &'a str,
+    owner: &'a str,
+    worker: &'a str,
+    service: &'a Arc<AuthService>,
+    binding: &'a Value,
+    attached: &'a Value,
+    lose_run_reply: &'a Arc<AtomicBool>,
+}
+async fn exercise_run_http(fixture: RunHttpFixture<'_>) -> Result<()> {
+    let RunHttpFixture {
+        client,
+        base,
+        project,
+        owner,
+        worker,
+        service,
+        binding,
+        attached,
+        lose_run_reply,
+    } = fixture;
+    let configuration = id();
+    let selection = json!({"kind":"binding","bindingId":binding["id"],"bindingGeneration":binding["bindingGeneration"],"attachmentGeneration":attached["instance"]["attachmentGeneration"],"runtimeGeneration":attached["instance"]["runtimeGeneration"]});
+    let run_url = format!("{base}/api/run-configuration-runtimes");
+    let start = json!({"operation":"start","operationId":id(),"projectId":project,"configurationId":configuration,"targetWorktreeId":null,"osSource":selection});
+    let response = client
+        .post(format!("{run_url}/operations"))
+        .json(&start)
+        .send()
+        .await?;
+    let status = response.status();
+    let admitted = response.json().await?;
+    assert_eq!(status, 202, "{admitted}");
+    assert_eq!(admitted["runtime"]["state"], "running");
+    assert_eq!(admitted["runtime"]["worktreeId"], binding["worktreeId"]);
+    let captured = json!({"kind":"runtime","runtimeId":admitted["runtime"]["id"]});
+    let status_request = json!({"operationId":id(),"projectId":project,"configurationId":configuration,"targetWorktreeId":null,"osSource":selection});
+    let response = client
+        .post(format!("{run_url}/status"))
+        .json(&status_request)
+        .send()
+        .await?;
+    let status = response.status();
+    let status_result = response.json().await?;
+    assert_eq!(status, 200, "{status_result}");
+    assert_eq!(
+        status_result["runtimes"][0]["id"],
+        admitted["runtime"]["id"]
+    );
+    let output = client.post(format!("{run_url}/output")).json(&json!({"operationId":id(),"projectId":project,"configurationId":configuration,"worktreeId":binding["worktreeId"],"osSource":captured})).send().await?;
+    let status = output.status();
+    let output = output.json().await?;
+    assert_eq!(status, 200, "{output}");
+    assert_eq!(output["protectedOutput"]["domain"], "run-content");
+    service
+        .run_configuration_observations
+        .worker_connected(owner.to_owned(), worker.to_owned());
+    service.run_configuration_observations.drained().await;
+    let reconciled = client
+        .post(format!("{run_url}/status"))
+        .json(&status_request)
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(
+        reconciled["runtimes"][0]["state"], "running",
+        "{reconciled}"
+    );
+
+    let host_status = client.post(format!("{run_url}/status")).json(&json!({"operationId":id(),"projectId":project,"configurationId":configuration,"targetWorktreeId":null})).send().await?.json().await?;
+    assert_eq!(host_status["runtimes"], json!([]));
+    let mut stale = start.clone();
+    stale["operationId"] = json!(id());
+    stale["osSource"]["bindingGeneration"] = json!(id());
+    assert_eq!(
+        client
+            .post(format!("{run_url}/operations"))
+            .json(&stale)
+            .send()
+            .await?
+            .status(),
+        409
+    );
+    let stop_request = json!({"operation":"stop","operationId":id(),"projectId":project,"configurationId":configuration,"targetWorktreeId":binding["worktreeId"],"osSource":captured});
+    let stopped = client
+        .post(format!("{run_url}/operations"))
+        .json(&stop_request)
+        .send()
+        .await?;
+    let status = stopped.status();
+    let stopped = stopped.json().await?;
+    assert_eq!(status, 202, "{stopped}");
+    assert_eq!(stopped["runtime"]["state"], "idle");
+    lose_run_reply.store(true, Ordering::SeqCst);
+    let mut lost_start = start.clone();
+    lost_start["operationId"] = json!(id());
+    assert_eq!(
+        client
+            .post(format!("{run_url}/operations"))
+            .json(&lost_start)
+            .send()
+            .await?
+            .status(),
+        502
+    );
+    let lost = client
+        .post(format!("{run_url}/status"))
+        .json(&status_request)
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(lost["runtimes"][0]["state"], "lost", "{lost}");
+    lost_start["operationId"] = json!(id());
+    assert_eq!(
+        client
+            .post(format!("{run_url}/operations"))
+            .json(&lost_start)
+            .send()
+            .await?
+            .status(),
+        409
+    );
+
+    let mut stop_request = stop_request;
+    stop_request["operationId"] = json!(id());
+    let stopped = client
+        .post(format!("{run_url}/operations"))
+        .json(&stop_request)
+        .send()
+        .await?;
+    let status = stopped.status();
+    let stopped = stopped.json().await?;
+    assert_eq!(status, 202, "{stopped}");
+    assert_eq!(stopped["runtime"]["state"], "idle");
+
     Ok(())
 }

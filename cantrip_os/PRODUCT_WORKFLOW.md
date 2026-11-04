@@ -155,8 +155,8 @@ replacement mutation for that admission. A changed runtime or missing Primary
 binding reports an error. Provider validation checks files and executables in
 Linux. Definitions remain revisioned files under `.cantrip/run-configurations`.
 
-This is an API/package checkpoint. The header source picker and delegated Run
-Server lifecycle routing follow next; the existing header still controls host Runs.
+This remains an API/package checkpoint; the existing header still controls host
+Runs until its explicit source picker is implemented.
 The Worker now integrates the native driver into its common Run supervisor with
 explicit `cantrip-os.run-runtime.*` commands. Every command captures both the
 definition Primary and execution target. Reconciliation after Worker memory loss
@@ -167,7 +167,20 @@ Server persistence now gives Host and Linux Runs separate identities, even for
 the same linked worktree and configuration. A Linux identity captures its
 definition Primary, target, workspace, and binding/attachment/runtime generations.
 Replacing the OS generation creates another runtime and terminal; existing
-records retain their original capture. The public Run endpoints and selection
-controls have not yet been connected to these records.
+records retain their original capture. Both Server implementations now accept
+an optional `osSource` on the existing Run lifecycle, status, and output POSTs.
+For a new Run this names a binding ID plus binding, attachment, and runtime
+generations. The Server resolves owned Primary/target paths; the client supplies
+no guest account, path, or transport. Ordinary Run uses `targetWorktreeId: null`
+for that source's Primary; worktree Run supplies the exact worktree ID in the same
+source and workspace. The selected chat does not affect either choice.
+
+Existing Run output tabs and Stop actions can send
+`osSource: { kind: "runtime", runtimeId }` to retain the stored capture even after
+the current source selection or instance generation changes. Host requests omit
+`osSource`; their runtime lists do not include Linux Runs. A lost Linux delivery
+reports an unknown outcome, blocks another Start for that generation, and permits
+an explicit Stop retry. Only confirmed cleanup returns Idle. The header source
+picker and definition retirement remain the next integration block.
 Linux definition deletion is not admitted by this checkpoint: it must join
 that lifecycle so active Runs stop before their definition and tabs are removed.

@@ -261,18 +261,53 @@ export function createWorkerNotificationRuntime({
     workerId: string,
   ): Promise<void> => {
     if (!bridge.isConnected(workerId)) return;
-    const active =
-      await repository.listActiveRunConfigurationRuntimeIdentitiesForWorker(
+    const [host, linux] = await Promise.all([
+      repository.listActiveRunConfigurationRuntimeIdentitiesForWorker(
         ownerId,
         workerId,
-      );
-    const reconciliation =
-      runConfigurationRuntimeWorkerReconciliationSchema.parse(
-        await bridge.request(workerId, {
-          type: "project.run-configuration-runtime.reconcile",
-          identities: active,
-        }),
-      );
+      ),
+      repository.listActiveRunConfigurationRuntimeIdentitiesForWorker(
+        ownerId,
+        workerId,
+        "cantrip-os",
+      ),
+    ]);
+    const captures = await Promise.all(
+      linux.map(async (identity) => {
+        const captured = await repository.getRunConfigurationRuntimeCapture(
+          ownerId,
+          identity.runtimeId,
+        );
+        if (!captured?.osExecution)
+          throw new Error("The Linux Run capture is missing.");
+        return { ...captured.osExecution, identity };
+      }),
+    );
+    const active = [...host, ...linux];
+    const replies = await Promise.all(
+      [
+        {
+          type: "project.run-configuration-runtime.reconcile" as const,
+          identities: host,
+        },
+        { type: "cantrip-os.run-runtime.reconcile" as const, captures },
+      ].map(async (command) => {
+        try {
+          return runConfigurationRuntimeWorkerReconciliationSchema.parse(
+            await bridge.request(workerId, command),
+          );
+        } catch (error) {
+          app.log.warn(
+            { err: error, workerId, command: command.type },
+            "Could not confirm Run processes after worker reconnect",
+          );
+          return { runtimes: [], orphanedRuntimeIds: [] };
+        }
+      }),
+    );
+    const reconciliation = {
+      runtimes: replies.flatMap((reply) => reply.runtimes),
+    };
     await Promise.all(
       active.map(async (identity) => {
         const lookup = reconciliation.runtimes.find((candidate) =>

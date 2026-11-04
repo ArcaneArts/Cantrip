@@ -525,6 +525,7 @@ const cantripOsExports = [
   "cantripOsRunRootsSchema",
   "cantripOsRunLaunchSchema",
   "cantripOsRunCaptureSchema",
+  "cantripOsRunSelectionSchema",
   "workerCantripOsRunCommandSchemas",
   "cantripOsDispatchScopeSchema",
   "cantripOsSourceDispatchScopeSchema",

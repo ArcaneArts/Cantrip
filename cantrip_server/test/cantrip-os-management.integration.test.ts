@@ -28,9 +28,18 @@ import { WorkerRoutingRegistry } from "../../cantrip_worker/src/routing-registry
 import { protectWorkerRepositoryOperationContent } from "../../cantrip_worker/src/repository-operation-encryption.js";
 import type { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.js";
 import { installCantripOsRoutes } from "../src/app/routes/cantrip-os.js";
-import { CantripOsRepository } from "../src/db/repository/cantrip-os.js";
 import type { RepositoryDatabase } from "../src/db/repository/database.js";
-import type { ServerRepository } from "../src/db/repository.js";
+import { ServerRepository } from "../src/db/repository.js";
+import { SecretVault } from "../src/security/secret-vault.js";
+import { createRunConfigurationRuntime } from "../src/app/runtime/run-configuration-runtime.js";
+import { createWorkerNotificationRuntime } from "../src/app/runtime/worker-notification-runtime.js";
+import type { ProjectWorktreeCoordinator } from "../src/worktrees/coordinator.js";
+import type { LimitedWorkerCommandBus } from "../src/workers/limited-command-bus.js";
+import { RunConfigurationRuntimeSupervisor } from "../../cantrip_worker/src/run-configuration-runtime-supervisor.js";
+import { OsRunExecution } from "../../cantrip_worker/src/os-executor/run-execution.js";
+import { handleOsRunCommand } from "../../cantrip_worker/src/os-executor/run-commands.js";
+import { openWorkerRunContent } from "../../cantrip_worker/src/run-content-encryption.js";
+import { runConfigurationRuntimeOutputContentSchema } from "@cantrip/protocol/run-configuration-runtime";
 import * as schema from "../src/db/schema.js";
 import { readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -76,6 +85,7 @@ describe.skipIf(!enabled)(
         app = Fastify();
       let guestWorkspaceId: string | undefined;
       let connection: OsExecutorConnection | undefined;
+      let runtimes: RunConfigurationRuntimeSupervisor | undefined;
       try {
         const migrations = fileURLToPath(
           new URL("../drizzle", import.meta.url),
@@ -101,71 +111,141 @@ describe.skipIf(!enabled)(
           "INSERT INTO projects(id,owner_id,protected_label,origin_kind,folder_management,worktree_policy,git_capability,github_capability) VALUES($1,$2,'{}','managed-folder','external','direct',true,false)",
           [projectId, ownerId],
         );
-        const repository = new CantripOsRepository(
+        const productRepository = new ServerRepository(
           drizzle(database, { schema }) as RepositoryDatabase,
+          new SecretVault({
+            activeKeyId: "fixture",
+            keys: [{ id: "fixture", key }],
+          }),
         );
+        const repository = productRepository.cantripOs;
+        const notifications: Promise<unknown>[] = [];
+        runtimes = new RunConfigurationRuntimeSupervisor({
+          authorize: async () => {
+            throw new Error("Linux Run used a host path");
+          },
+          linux: new OsRunExecution(
+            directory,
+            controller,
+            runAuthority,
+            async () => {
+              throw new Error("This fixture defines no secrets");
+            },
+          ),
+          notify: (observation) => {
+            notifications.push(
+              productRepository.applyRunConfigurationRuntimeObservation(
+                ownerId,
+                workerId,
+                observation,
+              ),
+            );
+          },
+        });
         let provisions = 0,
           drop = true;
+        let dropRunReply = false;
         const commands: WorkerCommand[] = [];
-        installCantripOsRoutes(app, {
-          applicationOwnerId: () => ownerId,
-          serverId,
-          repository: {
-            cantripOs: repository,
-            getWorker: async (owner: string, worker: string) =>
-              owner === ownerId && worker === workerId
-                ? { id: workerId }
-                : null,
-          } as unknown as Pick<ServerRepository, "cantripOs" | "getWorker">,
-          bridge: {
-            request: async (_worker, wire) => {
-              const command = await routing.resolveCommand(
-                workerCommandSchema.parse(wire),
-              );
-              commands.push(command);
-              const trusted =
-                command.type === "cantrip-os.source.provision"
-                  ? await prepareOsSourceCommand(command, encryption, routing)
-                  : command;
-              if (!trusted.type.startsWith("cantrip-os."))
-                throw new Error("Unexpected test dispatch");
-              const result = await (
-                trusted.type === "cantrip-os.run-definition"
+        const bridge = {
+          isConnected: (id: string) => id === workerId,
+          request: async (_worker: string, wire: unknown) => {
+            const command = await routing.resolveCommand(
+              workerCommandSchema.parse(wire),
+            );
+            commands.push(command);
+            const trusted =
+              command.type === "cantrip-os.source.provision"
+                ? await prepareOsSourceCommand(command, encryption, routing)
+                : command;
+            if (
+              trusted.type === "project.run-configuration-runtime.reconcile"
+            ) {
+              return {
+                runtimes: trusted.identities.map((identity) => ({
+                  found: false,
+                  identity,
+                })),
+                orphanedRuntimeIds: [],
+              };
+            }
+            if (!trusted.type.startsWith("cantrip-os."))
+              throw new Error("Unexpected test dispatch");
+            const result = await (
+              trusted.type.startsWith("cantrip-os.run-runtime.")
+                ? handleOsRunCommand(
+                    trusted as Parameters<typeof handleOsRunCommand>[0],
+                    runtimes!,
+                    encryption,
+                  )
+                : trusted.type === "cantrip-os.run-definition"
                   ? runDefinitions.execute(trusted)
                   : controller.handle(
                       trusted as Parameters<typeof controller.handle>[0],
                     )
-              ).catch((error) => {
-                console.error("Acceptance worker dispatch:", error);
-                throw error;
-              });
-              if (
-                command.type === "cantrip-os.run-definition" &&
-                dropDefinitionReply
-              ) {
-                dropDefinitionReply = false;
+            ).catch((error) => {
+              console.error("Acceptance worker dispatch:", error);
+              throw error;
+            });
+            if (
+              command.type === "cantrip-os.run-definition" &&
+              dropDefinitionReply
+            ) {
+              dropDefinitionReply = false;
+              throw new Error(
+                "Lost reply after the Linux definition was saved",
+              );
+            }
+            if (
+              trusted.type === "cantrip-os.run-runtime.start" &&
+              dropRunReply
+            ) {
+              dropRunReply = false;
+              throw new Error(
+                "Lost Run reply after admission to the real executor",
+              );
+            }
+            const protectedResult = await routing.protectResult(
+              command.type,
+              result,
+            );
+            if (command.type === "cantrip-os.source.provision") {
+              provisions++;
+              if (drop) {
+                drop = false;
                 throw new Error(
-                  "Lost reply after the Linux definition was saved",
+                  "Lost response after the real guest operation completed",
                 );
               }
-              const protectedResult = await routing.protectResult(
-                command.type,
-                result,
-              );
-              if (command.type === "cantrip-os.source.provision") {
-                provisions++;
-                if (drop) {
-                  drop = false;
-                  throw new Error(
-                    "Lost response after the real guest operation completed",
-                  );
-                }
-              }
-              return protectedResult;
-            },
+            }
+            return protectedResult;
           },
+        } as unknown as LimitedWorkerCommandBus;
+        installCantripOsRoutes(app, {
+          applicationOwnerId: () => ownerId,
+          serverId,
+          repository: productRepository,
+          bridge,
         });
-        const post = async (url: string, payload: unknown = {}) => {
+        const runRuntime = createRunConfigurationRuntime({
+          applicationOwnerId: () => ownerId,
+          serverId,
+          repository: productRepository,
+          bridge,
+          appendAudit: async () => {},
+          ensureWorkerNotificationSubscription: () => {},
+          publishLiveInvalidation: () => {},
+          updateTerminalStatus: (id, status) =>
+            productRepository.setTerminalStatus(id, status),
+          worktreeCoordinator: {
+            serialize: async (_id: string, operation: () => Promise<unknown>) =>
+              operation(),
+          } as unknown as ProjectWorktreeCoordinator,
+        });
+        runRuntime.installAppRuntimeRoutes(app);
+        const post = async (
+          url: string,
+          payload: Record<string, unknown> = {},
+        ) => {
           const response = await app.inject({ method: "POST", url, payload });
           expect(response.statusCode, response.body).toBe(200);
           return response.json();
@@ -473,7 +553,7 @@ describe.skipIf(!enabled)(
             source: { kind: "git-worktree", revision, branch: null },
           },
         });
-        expect(identityFailure.state).toBe("failed");
+        expect(identityFailure).toMatchObject({ state: "failed" });
         await expect(
           connection.request("fs/getMetadata", {
             path: guestFileUri(rejectedPath),
@@ -499,7 +579,11 @@ describe.skipIf(!enabled)(
           name: "Linux Python",
           provider: "shell",
           workingDirectory: ".",
-          target: { kind: "command", command: "python --version" },
+          target: {
+            kind: "command",
+            command:
+              'python -c \'import os,json,time;print(json.dumps({"uid":os.getuid(),"cwd":os.getcwd()}),flush=True);time.sleep(60)\'',
+          },
           commandOverride: null,
           arguments: [],
           environment: {
@@ -602,6 +686,210 @@ describe.skipIf(!enabled)(
           ).statusCode,
         ).toBe(400);
         expect(commands).toHaveLength(callsBeforeDelete);
+        const osSource = {
+          kind: "binding" as const,
+          bindingId: worktree.id,
+          bindingGeneration: worktree.bindingGeneration,
+          attachmentGeneration: attached.instance.attachmentGeneration,
+          runtimeGeneration: attached.instance.runtimeGeneration,
+        };
+        const startRun = async (targetWorktreeId: string | null) => {
+          const response = await app.inject({
+            method: "POST",
+            url: "/api/run-configuration-runtimes/operations",
+            payload: {
+              operation: "start",
+              operationId: randomUUID(),
+              projectId,
+              configurationId,
+              targetWorktreeId,
+              osSource,
+            },
+          });
+          expect(response.statusCode, response.body).toBe(202);
+          return response.json();
+        };
+        const ordinary = await startRun(null);
+        const secondary = await startRun(worktree.worktreeId);
+        expect(ordinary.runtime.worktreeId).toBe(binding.worktreeId);
+        expect(secondary.runtime.worktreeId).toBe(worktree.worktreeId);
+        expect(ordinary.runtime.id).not.toBe(secondary.runtime.id);
+        const status = await post("/api/run-configuration-runtimes/status", {
+          operationId: randomUUID(),
+          projectId,
+          configurationId,
+          targetWorktreeId: null,
+          osSource,
+        });
+        expect(
+          status.runtimes.map((row: { id: string }) => row.id).sort(),
+        ).toEqual([ordinary.runtime.id, secondary.runtime.id].sort());
+        const notificationRuntime = createWorkerNotificationRuntime({
+          app,
+          repository: productRepository,
+          bridge,
+          publishLiveInvalidation: () => {},
+          updateTerminalStatus: (
+            id: string,
+            status: Parameters<ServerRepository["setTerminalStatus"]>[1],
+          ) => productRepository.setTerminalStatus(id, status),
+        } as unknown as Parameters<typeof createWorkerNotificationRuntime>[0]);
+        await notificationRuntime.reconcileRunConfigurationRuntimesForWorker(
+          ownerId,
+          workerId,
+        );
+        const reconciled = commands.findLast(
+          (command) => command.type === "cantrip-os.run-runtime.reconcile",
+        );
+        expect(reconciled).toMatchObject({
+          captures: [
+            {
+              definitions: { scope: { bindingId: binding.id } },
+              target: { scope: { worktreeId: binding.worktreeId } },
+            },
+            {
+              definitions: { scope: { bindingId: binding.id } },
+              target: { scope: { worktreeId: worktree.worktreeId } },
+            },
+          ],
+        });
+        const nativeRuns = [];
+        for (const [admitted, expectedCwd] of [
+          [ordinary, binding.guestPath],
+          [secondary, worktree.guestPath],
+        ] as const) {
+          const selection = { kind: "runtime", runtimeId: admitted.runtime.id };
+          let content = "";
+          for (let attempt = 0; attempt < 120; attempt++) {
+            const operationId = randomUUID();
+            const output = await post(
+              "/api/run-configuration-runtimes/output",
+              {
+                operationId,
+                projectId,
+                configurationId,
+                worktreeId: admitted.runtime.worktreeId,
+                osSource: selection,
+              },
+            );
+            const opened = await openWorkerRunContent({
+              serverId,
+              projectId,
+              worktreeId: admitted.runtime.worktreeId,
+              operationId,
+              operation: "run.configuration.output",
+              opaque: output.protectedOutput,
+              schema: runConfigurationRuntimeOutputContentSchema,
+              service: encryption,
+              direction: "response",
+            });
+            content = opened.data;
+            if (content.includes(expectedCwd)) break;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+          expect(content).toContain(expectedCwd);
+          expect(content).toContain(`"uid": ${workspace.uid}`);
+          nativeRuns.push({ runtime: admitted.runtime, output: content });
+          const stopResponse = await app.inject({
+            method: "POST",
+            url: "/api/run-configuration-runtimes/operations",
+            payload: {
+              operation: "stop",
+              operationId: randomUUID(),
+              projectId,
+              configurationId,
+              targetWorktreeId: admitted.runtime.worktreeId,
+              osSource: selection,
+            },
+          });
+          expect(stopResponse.statusCode, stopResponse.body).toBe(202);
+          const stopped = stopResponse.json();
+          expect(stopped.runtime.state).toBe("idle");
+        }
+        dropRunReply = true;
+        const lostRequest = {
+          operation: "start",
+          operationId: randomUUID(),
+          projectId,
+          configurationId,
+          targetWorktreeId: worktree.worktreeId,
+          osSource,
+        };
+        const lost = await app.inject({
+          method: "POST",
+          url: "/api/run-configuration-runtimes/operations",
+          payload: lostRequest,
+        });
+        expect(lost.statusCode, lost.body).toBe(502);
+        const lostStatus = await post(
+          "/api/run-configuration-runtimes/status",
+          {
+            operationId: randomUUID(),
+            projectId,
+            configurationId,
+            targetWorktreeId: worktree.worktreeId,
+            osSource,
+          },
+        );
+        const uncertainRun = lostStatus.runtimes[0];
+        expect(uncertainRun.state).toBe("lost");
+        const startCount = commands.filter(
+          (command) => command.type === "cantrip-os.run-runtime.start",
+        ).length;
+        const noReplay = await app.inject({
+          method: "POST",
+          url: "/api/run-configuration-runtimes/operations",
+          payload: {
+            ...lostRequest,
+            operationId: randomUUID(),
+          },
+        });
+        expect(noReplay.statusCode, noReplay.body).toBe(409);
+        expect(
+          commands.filter(
+            (command) => command.type === "cantrip-os.run-runtime.start",
+          ),
+        ).toHaveLength(startCount);
+        const confirmedStop = await app.inject({
+          method: "POST",
+          url: "/api/run-configuration-runtimes/operations",
+          payload: {
+            operation: "stop",
+            operationId: randomUUID(),
+            projectId,
+            configurationId,
+            targetWorktreeId: worktree.worktreeId,
+            osSource: { kind: "runtime", runtimeId: uncertainRun.id },
+          },
+        });
+        expect(confirmedStop.statusCode, confirmedStop.body).toBe(202);
+        expect(confirmedStop.json().runtime.state).toBe("idle");
+        await Promise.all(notifications);
+        const hostStatus = await post(
+          "/api/run-configuration-runtimes/status",
+          {
+            operationId: randomUUID(),
+            projectId,
+            configurationId,
+            targetWorktreeId: null,
+          },
+        );
+        expect(hostStatus.runtimes).toEqual([]);
+        const callsBeforeStaleSelection = commands.length;
+        const staleSelection = await app.inject({
+          method: "POST",
+          url: "/api/run-configuration-runtimes/operations",
+          payload: {
+            operation: "start",
+            operationId: randomUUID(),
+            projectId,
+            configurationId,
+            targetWorktreeId: null,
+            osSource: { ...osSource, bindingGeneration: randomUUID() },
+          },
+        });
+        expect(staleSelection.statusCode, staleSelection.body).toBe(409);
+        expect(commands.length).toBe(callsBeforeStaleSelection);
         const nativeDefinition = await connection.request<{
           dataBase64: string;
         }>("fs/readFile", {
@@ -648,10 +936,13 @@ describe.skipIf(!enabled)(
           savedDefinition,
           definitions,
           paths,
+          nativeRuns,
+          uncertainRun,
+          confirmedStop: confirmedStop.json(),
           admission: await repository.provisionAdmission(ownerId, binding.id),
         };
         const artifacts = new URL(
-          "../../cantrip_os/artifacts/phase3-run-definitions/",
+          "../../cantrip_os/artifacts/phase3-run-product/",
           import.meta.url,
         );
         await mkdir(artifacts, { recursive: true });
@@ -660,6 +951,7 @@ describe.skipIf(!enabled)(
           JSON.stringify(proof, null, 2),
         );
       } finally {
+        await runtimes?.closeAll();
         await connection?.close();
         if (guestWorkspaceId)
           await executorControl(transport, ["close", guestWorkspaceId]);
