@@ -2290,16 +2290,51 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter '@cantrip/app^...' -r build
-      - name: Record the actual reference host
-        run: >-
-          node -e "const fs = require('node:fs'); const os = require('node:os'); fs.mkdirSync('.qa/rust-server/source-reference-cpu', { recursive: true }); fs.writeFileSync('.qa/rust-server/source-reference-cpu/runtime.json', JSON.stringify({ platform: process.platform, arch: process.arch, node: process.version, cpus: os.availableParallelism(), load: os.loadavg(), freeMemory: os.freemem(), totalMemory: os.totalmem() }, null, 2))"
-      - name: Profile the unchanged reference scenarios inside their workers
-        run: pnpm --filter @cantrip/server exec vitest run --config ../scripts/server-rust/source-reference-profile.config.mjs --maxWorkers=2 test/local-foundation.test.ts test/managed-chat-account-failover.test.ts
-      - name: Measure cold Source startup and experimental migration batching
+      - name: Exercise actual Windows owned process-tree teardown
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force '.qa/rust-server/source-reference-volumes' | Out-Null
+          node --test scripts/server-rust/windows-worker-tree.test.mjs *> '.qa/rust-server/source-reference-volumes/windows-tree.log'
+          $probeExit = $LASTEXITCODE
+          Get-Content '.qa/rust-server/source-reference-volumes/windows-tree.log'
+          exit $probeExit
+      - name: Compare original reference tests across disposable storage locations
         if: always()
-        run: node scripts/server-rust/source-reference-startup-benchmark.mjs matrix .qa/rust-server/source-reference-cpu/
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $probeOriginalTemp = $env:TEMP
+          $probeOriginalTmp = $env:TMP
+          $probeRoots = @{ windows = $env:TEMP; runner = $env:RUNNER_TEMP }
+          $probeOrder = @('windows', 'runner', 'runner', 'windows')
+          $probeDirectory = '.qa/rust-server/source-reference-volumes'
+          New-Item -ItemType Directory -Force $probeDirectory | Out-Null
+          $probeRecords = @()
+          try {
+            for ($probeIndex = 0; $probeIndex -lt $probeOrder.Count; $probeIndex++) {
+              $probeMode = $probeOrder[$probeIndex]
+              $probeRoot = Join-Path $probeRoots[$probeMode] "cantrip-reference-volume-$env:GITHUB_RUN_ID-$probeIndex"
+              New-Item -ItemType Directory -Force $probeRoot | Out-Null
+              $env:TEMP = $probeRoot
+              $env:TMP = $probeRoot
+              $probeLabel = "$probeIndex-$probeMode"
+              $probeRuntime = "$probeDirectory/$probeLabel-runtime.json"
+              node -e "const fs = require('node:fs'); const os = require('node:os'); fs.writeFileSync(process.argv[1], JSON.stringify({platform:process.platform,node:process.version,cpus:os.availableParallelism(),tmpdir:os.tmpdir(),temp:process.env.TEMP,tmp:process.env.TMP,runnerTemp:process.env.RUNNER_TEMP,freeMemory:os.freemem(),totalMemory:os.totalmem()},null,2))" $probeRuntime
+              $probeArguments = @('--filter', '@cantrip/server', 'exec', 'vitest', 'run', '--maxWorkers=2', 'test/local-foundation.test.ts', 'test/managed-chat-account-failover.test.ts', '--reporter=default', '--reporter=json', "--outputFile=../$probeDirectory/$probeLabel-results.json")
+              $probeStart = Get-Date
+              & pnpm @probeArguments *> "$probeDirectory/$probeLabel.log"
+              $probeExit = $LASTEXITCODE
+              $probeRecords += [PSCustomObject]@{ trial=$probeIndex; location=$probeMode; directory=$probeRoot; exitCode=$probeExit; elapsedSeconds=((Get-Date)-$probeStart).TotalSeconds; assertions='Original two files, maxWorkers=2, unchanged 15000ms test deadline'; commit=$env:GITHUB_SHA }
+              Get-Content "$probeDirectory/$probeLabel.log" -Tail 12
+            }
+          } finally {
+            $env:TEMP = $probeOriginalTemp
+            $env:TMP = $probeOriginalTmp
+            ConvertTo-Json -InputObject $probeRecords -Depth 5 | Set-Content "$probeDirectory/trials.json"
+          }
+          if ($probeRecords | Where-Object { $_.exitCode -ne 0 }) { exit 1 }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: source-reference-worker-diagnostic-windows
-          path: .qa/rust-server/source-reference-cpu/
+          name: source-reference-volume-diagnostic-windows
+          path: .qa/rust-server/source-reference-volumes/
