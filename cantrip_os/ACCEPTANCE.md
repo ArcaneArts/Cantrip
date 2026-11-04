@@ -813,3 +813,46 @@ retains captured inputs and reuses the prepared operation. Screenshots and
 receipts are under ignored `artifacts/phase3-worktrees/`. Run, delegated project
 tools and broader Git UI, attachments/artifacts, notifications, and current
 Docker/ISO distribution acceptance remain later blocks.
+
+## Linux Run definition checkpoint (2026-11-04)
+
+Executor 0.5.0 packages a finite Run definition helper. The Worker remains the
+orchestrator; the helper has no listener, scheduler, conversation state, account
+key, or provider credential. It reads/writes the ordinary revisioned definition
+repository and performs discovery and validation using Linux files and tools.
+
+- The exact ARM64 package passed the actual Node HTTP/Worker/native executor
+  workflow in Docker. Selecting a secondary Linux worktree resolved definition
+  files to its source's Primary. Linux validation found Bash, and native reads
+  verified the saved definition existed in Primary and not the secondary tree.
+- A response deliberately lost after saving was recovered after recreating the
+  Worker operation handler. The same admission returned its original `created`
+  receipt; changed input with that operation UUID was rejected. Stale runtime
+  selection was rejected before Worker dispatch. Deletion is intentionally not
+  part of this checkpoint, pending active-Run retirement integration.
+- The checksum-verified final AMD64 package passed the same actual workflow in
+  the installed VM (56.0 seconds). Package installation and both runtime tests
+  used executor 0.5.0, not a helper copied outside its package.
+- Native protocol parity, the native HTTP route, and PGlite/PostgreSQL source
+  selection passed five tests. The HTTP test uses a Worker response fixture;
+  actual guest execution is established by the separate Docker/VM workflow.
+- Seven Worker process/admission cases and six client API cases passed. These
+  cover observing a process without another start, uncertain stdin without
+  replay, persisted observed completion, and retained client operation identity.
+  App type checking passed. Required `pnpm check` retains the existing boundary
+  audit digest mismatch; Server/Worker retain the same two Task and five CUA/MCP
+  type errors. Public-surface compatibility retains its existing seven-export
+  mismatch after accounting for the five reviewed additions; its other four
+  cases pass, including the new Worker discriminator.
+
+Final package SHA-256 values:
+
+```text
+arm64 206f681d3ef3945a2ed1033931838acc7e83b34ba58d1a00388b631f2ba345f2
+amd64 d97651c1e8a9104248df42369538dac5662c01d737c810c19577cb7a0e1ca27b
+```
+
+Receipts and logs are under ignored `artifacts/phase3-run-definitions/`.
+The header source picker, delegated Run lifecycle, project tools/Git,
+attachments/artifacts, notifications, and fresh Docker/ISO acceptance remain
+subsequent blocks. This checkpoint is not full Phase 3 completion.

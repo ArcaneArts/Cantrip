@@ -611,6 +611,10 @@ export const contractRoots = [
   "cantripOsProjectSourceSummarySchema",
   "cantripOsProjectWorktreeSummarySchema",
   "cantripOsSourceBindingSummarySchema",
+  "cantripOsRunDefinitionRequestSchema",
+  "cantripOsRunDefinitionApiSchema",
+  "cantripOsRunDefinitionResponseSchema",
+  "cantripOsRunPrimarySchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.

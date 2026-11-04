@@ -1,9 +1,52 @@
 import { describe, expect, it, vi } from "vitest";
 import type { OsExecutorConnection } from "./connection.js";
-import { OsProcessOutcomeUnknownError, runGuestProcess } from "./process.js";
+import {
+  OsProcessOutcomeUnknownError,
+  runGuestProcess,
+  observeGuestProcess,
+} from "./process.js";
 
 const connection = (request: unknown) => ({ request }) as OsExecutorConnection;
 describe("native guest process receipts", () => {
+  it("observes an admitted process without starting it or sending input", async () => {
+    const request = vi.fn(async () => ({
+      chunks: [],
+      nextSeq: 1,
+      exited: true,
+      closed: true,
+      exitCode: 0,
+    }));
+    expect(
+      (await observeGuestProcess(connection(request), "known-process"))
+        .exitCode,
+    ).toBe(0);
+    expect(request.mock.calls).toEqual([
+      [
+        "process/read",
+        {
+          processId: "known-process",
+          afterSeq: null,
+          maxBytes: 65536,
+          waitMs: 200,
+        },
+      ],
+    ]);
+  });
+  it("chunks finite input and preserves an uncertain write without repeating it", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "process/write") throw new Error("delivery lost");
+      return {};
+    });
+    await expect(
+      runGuestProcess(connection(request), ["helper"], "/workspace", {
+        stdin: "x".repeat(64000),
+      }),
+    ).rejects.toBeInstanceOf(OsProcessOutcomeUnknownError);
+    expect(request.mock.calls.map(([method]) => method)).toEqual([
+      "process/start",
+      "process/write",
+    ]);
+  });
   it("drains pages after exit, tolerates lifecycle sequence gaps and decodes each stream", async () => {
     const unicode = Buffer.from("日本語");
     const pages = [

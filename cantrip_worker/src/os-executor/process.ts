@@ -42,23 +42,25 @@ export interface GuestProcessResult {
 /** Finite administrative Git/provisioning commands use the pinned executor's
  * process API. The callback durably records the ID before dispatch. There is no
  * host spawn or automatic retry, including after uncertain start delivery. */
-export async function runGuestProcess(
+async function finiteGuestProcess(
   connection: OsExecutorConnection,
   argv: string[],
   cwd: string,
   options: {
     processId?: string;
     env?: Record<string, string>;
+    stdin?: string;
     signal?: AbortSignal;
     maxDurationMs?: number;
     maxOutputBytes?: number;
     prepared?: (processId: string) => Promise<void>;
   } = {},
+  observeOnly = false,
 ): Promise<GuestProcessResult> {
   const processId = options.processId ?? randomUUID();
   const uri = guestFileUri(cwd);
   options.signal?.throwIfAborted();
-  await options.prepared?.(processId);
+  if (!observeOnly) await options.prepared?.(processId);
   options.signal?.throwIfAborted();
   const deadline = Date.now() + (options.maxDurationMs ?? 30 * 60_000);
   const limit = options.maxOutputBytes ?? 4 * 1024 * 1024;
@@ -70,15 +72,35 @@ export async function runGuestProcess(
   let knownExited = false;
   let terminationDeadline: number | null = null;
   try {
-    await connection.request("process/start", {
-      processId,
-      argv,
-      cwd: uri,
-      env: options.env ?? {},
-      tty: false,
-      arg0: null,
-      sandbox: null,
-    });
+    if (!observeOnly) {
+      await connection.request("process/start", {
+        processId,
+        argv,
+        cwd: uri,
+        env: options.env ?? {},
+        tty: false,
+        pipeStdin: options.stdin !== undefined,
+        arg0: null,
+        sandbox: null,
+      });
+      if (options.stdin !== undefined) {
+        const input = Buffer.from(options.stdin);
+        for (let offset = 0; offset < input.length; offset += 32768) {
+          const written = await connection.request<{ status: string }>(
+            "process/write",
+            {
+              processId,
+              writeId: randomUUID(),
+              chunk: input.subarray(offset, offset + 32768).toString("base64"),
+            },
+          );
+          if (written.status !== "accepted")
+            throw new Error(
+              "Linux process input delivery was not acknowledged.",
+            );
+        }
+      }
+    }
     for (;;) {
       const reason = options.signal?.aborted
         ? "cancelled"
@@ -154,4 +176,31 @@ export async function runGuestProcess(
   } catch (error) {
     throw new OsProcessOutcomeUnknownError(processId, error);
   }
+}
+
+export function runGuestProcess(
+  connection: OsExecutorConnection,
+  argv: string[],
+  cwd: string,
+  options: NonNullable<Parameters<typeof finiteGuestProcess>[3]> = {},
+) {
+  return finiteGuestProcess(connection, argv, cwd, options);
+}
+
+/** Observe a known native process. No start request or input is ever sent. */
+export function observeGuestProcess(
+  connection: OsExecutorConnection,
+  processId: string,
+) {
+  return finiteGuestProcess(
+    connection,
+    [],
+    "/",
+    {
+      processId,
+      maxDurationMs: 180_000,
+      maxOutputBytes: 8 * 1024 * 1024,
+    },
+    true,
+  );
 }

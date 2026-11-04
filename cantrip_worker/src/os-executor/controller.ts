@@ -28,7 +28,10 @@ import { installLinkedSource } from "./linked.js";
 import { OsOperationStore, type OsOperationRecord } from "./operations.js";
 import { guestFileUri } from "./paths.js";
 
-type WireCommand = Extract<WorkerCommand, { type: `cantrip-os.${string}` }>;
+type WireCommand = Exclude<
+  Extract<WorkerCommand, { type: `cantrip-os.${string}` }>,
+  { type: "cantrip-os.run-definition" }
+>;
 type Provision = Extract<WireCommand, { type: "cantrip-os.source.provision" }>;
 type Command =
   | Exclude<WireCommand, Provision>

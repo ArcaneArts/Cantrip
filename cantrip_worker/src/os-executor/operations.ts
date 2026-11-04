@@ -166,4 +166,36 @@ export class OsOperationStore {
     }
     return record;
   }
+
+  /** Save a conclusively observed completion of an existing admission. This
+   * never admits or dispatches a replacement process. */
+  async recordObservedCompletion(record: OsOperationRecord, receipt: unknown) {
+    const file = this.file(record.scope, record.operationId);
+    if (this.active.has(file))
+      throw new Error("The OS operation is still active.");
+    const current = await this.inspect(record.scope, record.operationId);
+    if (
+      !current ||
+      current.command !== record.command ||
+      current.admissionFingerprint !== record.admissionFingerprint ||
+      !isDeepStrictEqual(current.scope, record.scope)
+    )
+      throw new Error("The observed OS operation identity changed.");
+    if (current.state === "ready") return current;
+    if (current.state !== "unknown")
+      throw new Error("Only an unknown admission can be recovered.");
+    const recovered: OsOperationRecord = {
+      ...current,
+      receipt,
+      state: "ready",
+      error: null,
+      updatedAt: new Date().toISOString(),
+    };
+    const temporary = `${file}.${randomUUID()}`;
+    await writeFile(temporary, JSON.stringify(recovered) + "\n", {
+      mode: 0o600,
+    });
+    await rename(temporary, file);
+    return recovered;
+  }
 }

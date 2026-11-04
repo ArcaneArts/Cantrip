@@ -7,6 +7,8 @@
     "@noble/hashes": "2.3.0",
     "croner": "10.0.1",
     "esbuild": "0.28.1",
-    "zod": "4.4.3"
+    "zod": "4.4.3",
+    "dotenv": "17.4.2",
+    "smol-toml": "1.8.0"
   }
 }

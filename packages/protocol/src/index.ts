@@ -55,3 +55,4 @@ export * from "./project-alert-agent-tools.js";
 export * from "./project-alert-goals.js";
 
 export * from "./cantrip-os-management.js";
+export * from "./cantrip-os-run.js";

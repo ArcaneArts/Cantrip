@@ -679,7 +679,9 @@ Linux-owned file views were exercised through the actual client, Server, Worker
 and guest. Executor 0.4.0 adds captured interactive Linux shells with native PTY
 resizing and observation-only reconnect. The worktree admission cycle exposes
 Linux-owned Git worktrees through Settings with editor/terminal routing to their
-original source identity. Setup/Run and final distribution acceptance remain
-pending.
+original source identity. Executor 0.5.0 adds source-specific Primary Run
+definition files, discovery, and Linux validation through the protected Worker
+path. The Run header source picker, process lifecycle, and final distribution
+acceptance remain pending.
 See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 [recorded evidence](../cantrip_os/ACCEPTANCE.md#product-file-checkpoint-2026-11-04).

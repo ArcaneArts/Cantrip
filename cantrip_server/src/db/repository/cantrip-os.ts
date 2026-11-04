@@ -28,6 +28,7 @@ import {
   createLinuxWorktreeBinding,
   type LinuxWorktreeAdmission,
 } from "./cantrip-os-worktrees.js";
+import { resolveOsRunPrimary } from "./cantrip-os-run.js";
 
 const instance = (row: typeof schema.cantripOsInstances.$inferSelect) =>
   cantripOsInstanceSummarySchema.parse({
@@ -69,6 +70,22 @@ const fail = (message: string): never => {
  * authenticated worker; clients cannot supply UID/path or success receipts. */
 export class CantripOsRepository {
   constructor(private readonly database: RepositoryDatabase) {}
+
+  runPrimary(
+    ownerId: string,
+    projectId: string,
+    bindingId: string,
+    runtimeGeneration: string,
+  ) {
+    return resolveOsRunPrimary(
+      this.database,
+      this,
+      ownerId,
+      projectId,
+      bindingId,
+      runtimeGeneration,
+    );
+  }
 
   async createLinuxWorktree(
     ownerId: string,

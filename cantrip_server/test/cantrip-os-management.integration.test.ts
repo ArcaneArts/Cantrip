@@ -14,6 +14,7 @@ import {
   type WorkerCommand,
 } from "@cantrip/protocol";
 import { CantripOsController } from "../../cantrip_worker/src/os-executor/controller.js";
+import { OsRunDefinitionOperations } from "../../cantrip_worker/src/os-executor/run-definitions.js";
 import {
   executorControl,
   OsExecutorConnection,
@@ -61,6 +62,16 @@ describe.skipIf(!enabled)(
       } as unknown as WorkerEncryptionService;
       const controller = new CantripOsController(directory, workerId),
         routing = new WorkerRoutingRegistry(directory);
+      const runAuthority = {
+        ownerId: () => ownerId,
+        serverIdentity: () => serverId,
+      };
+      let runDefinitions = new OsRunDefinitionOperations(
+        directory,
+        controller,
+        runAuthority,
+      );
+      let dropDefinitionReply = false;
       const database = new PGlite(),
         app = Fastify();
       let guestWorkspaceId: string | undefined;
@@ -118,12 +129,25 @@ describe.skipIf(!enabled)(
                   : command;
               if (!trusted.type.startsWith("cantrip-os."))
                 throw new Error("Unexpected test dispatch");
-              const result = await controller
-                .handle(trusted as Parameters<typeof controller.handle>[0])
-                .catch((error) => {
-                  console.error("Acceptance worker dispatch:", error);
-                  throw error;
-                });
+              const result = await (
+                trusted.type === "cantrip-os.run-definition"
+                  ? runDefinitions.execute(trusted)
+                  : controller.handle(
+                      trusted as Parameters<typeof controller.handle>[0],
+                    )
+              ).catch((error) => {
+                console.error("Acceptance worker dispatch:", error);
+                throw error;
+              });
+              if (
+                command.type === "cantrip-os.run-definition" &&
+                dropDefinitionReply
+              ) {
+                dropDefinitionReply = false;
+                throw new Error(
+                  "Lost reply after the Linux definition was saved",
+                );
+              }
               const protectedResult = await routing.protectResult(
                 command.type,
                 result,
@@ -462,6 +486,153 @@ describe.skipIf(!enabled)(
           binding.guestPath,
         );
         expect(retainedWorktrees.stdout.match(/^worktree /gm)).toHaveLength(2);
+        const runUrl = `${root}/${worktree.id}/run-definitions`;
+        const runRequest = (request: Record<string, unknown>) => ({
+          runtimeGeneration: attached.instance.runtimeGeneration,
+          request: { operationId: randomUUID(), projectId, ...request },
+        });
+        const configurationId = randomUUID();
+        const runDocument = {
+          schema: "cantrip.run-configuration",
+          version: 1,
+          id: configurationId,
+          name: "Linux Python",
+          provider: "shell",
+          workingDirectory: ".",
+          target: { kind: "command", command: "python --version" },
+          commandOverride: null,
+          arguments: [],
+          environment: {
+            includeCodexEnvironment: true,
+            files: [],
+            variables: [],
+            secrets: [],
+          },
+          beforeLaunch: [],
+          platformOverrides: {},
+          options: { shell: "bash" },
+          stop: { gracePeriodMs: 1000 },
+        };
+        const writeDefinition = runRequest({
+          type: "project.run-configuration-definitions.write",
+          request: { document: runDocument, expectedRevision: null },
+        });
+        dropDefinitionReply = true;
+        const lostDefinition = await app.inject({
+          method: "POST",
+          url: runUrl,
+          payload: writeDefinition,
+        });
+        expect(lostDefinition.statusCode, lostDefinition.body).toBe(409);
+        runDefinitions = new OsRunDefinitionOperations(
+          directory,
+          controller,
+          runAuthority,
+        );
+        const savedDefinition = await post(runUrl, writeDefinition);
+        expect(savedDefinition.result.result.outcome).toBe("created");
+        expect(savedDefinition.source.bindingId).toBe(binding.id);
+        expect(savedDefinition.source.worktreeId).toBe(binding.worktreeId);
+        expect(savedDefinition.source.guestPath).toBe(binding.guestPath);
+        const sameDefinition = await post(runUrl, writeDefinition);
+        expect(sameDefinition).toEqual(savedDefinition);
+        const changedAdmission = {
+          ...writeDefinition,
+          request: {
+            ...writeDefinition.request,
+            request: {
+              expectedRevision: null,
+              document: { ...runDocument, name: "Changed admission" },
+            },
+          },
+        };
+        expect(
+          (
+            await app.inject({
+              method: "POST",
+              url: runUrl,
+              payload: changedAdmission,
+            })
+          ).statusCode,
+        ).toBe(409);
+        const definitions = await post(
+          runUrl,
+          runRequest({ type: "project.run-configuration-definitions.list" }),
+        );
+        expect(definitions.result.inventory.entries).toHaveLength(1);
+        expect(definitions.result.validations[0].platform).toBe("linux");
+        expect(
+          definitions.result.validations[0].valid,
+          JSON.stringify(definitions.result.validations),
+        ).toBe(true);
+        const readDefinition = await post(
+          runUrl,
+          runRequest({
+            type: "project.run-configuration-definitions.get",
+            configurationId,
+          }),
+        );
+        expect(readDefinition.result.result.entry.document.name).toBe(
+          "Linux Python",
+        );
+        const paths = await post(
+          runUrl,
+          runRequest({
+            type: "project.run-configuration-definitions.paths",
+            purpose: "directory",
+            query: "",
+          }),
+        );
+        expect(paths.result.operation).toBe("paths");
+        const callsBeforeDelete = commands.length;
+        expect(
+          (
+            await app.inject({
+              method: "POST",
+              url: runUrl,
+              payload: runRequest({
+                type: "project.run-configuration-definitions.delete",
+                request: {
+                  id: configurationId,
+                  expectedRevision:
+                    savedDefinition.result.result.entry.revision,
+                },
+              }),
+            })
+          ).statusCode,
+        ).toBe(400);
+        expect(commands).toHaveLength(callsBeforeDelete);
+        const nativeDefinition = await connection.request<{
+          dataBase64: string;
+        }>("fs/readFile", {
+          path: guestFileUri(
+            `${binding.guestPath}/.cantrip/run-configurations/${configurationId}.json`,
+          ),
+          sandbox: null,
+        });
+        expect(
+          JSON.parse(
+            Buffer.from(nativeDefinition.dataBase64, "base64").toString(),
+          ).name,
+        ).toBe("Linux Python");
+        await expect(
+          connection.request("fs/getMetadata", {
+            path: guestFileUri(
+              `${worktree.guestPath}/.cantrip/run-configurations/${configurationId}.json`,
+            ),
+            sandbox: null,
+          }),
+        ).rejects.toThrow();
+        const staleRun = runRequest({
+          type: "project.run-configuration-definitions.list",
+        });
+        staleRun.runtimeGeneration = randomUUID();
+        const callsBeforeStale = commands.length;
+        expect(
+          (await app.inject({ method: "POST", url: runUrl, payload: staleRun }))
+            .statusCode,
+        ).toBe(409);
+        expect(commands).toHaveLength(callsBeforeStale);
         const proof = {
           transport: transport.kind,
           instance: attached.instance,
@@ -474,10 +645,13 @@ describe.skipIf(!enabled)(
           worktreeRecovered,
           worktreeProcess,
           identityFailure,
+          savedDefinition,
+          definitions,
+          paths,
           admission: await repository.provisionAdmission(ownerId, binding.id),
         };
         const artifacts = new URL(
-          "../../cantrip_os/artifacts/phase3-worktrees/",
+          "../../cantrip_os/artifacts/phase3-run-definitions/",
           import.meta.url,
         );
         await mkdir(artifacts, { recursive: true });

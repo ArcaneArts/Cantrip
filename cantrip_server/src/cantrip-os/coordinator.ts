@@ -1,4 +1,6 @@
 import {
+  cantripOsRunDefinitionResponseSchema,
+  type cantripOsRunDefinitionApiSchema,
   cantripOsDispatchScopeSchema,
   cantripOsObservedInstanceSchema,
   cantripOsOperationResultSchema,
@@ -30,6 +32,49 @@ export class CantripOsCoordinator {
     private readonly bridge: Pick<WorkerCommandBus, "request">,
     private readonly serverId: string,
   ) {}
+
+  async runDefinition(
+    ownerId: string,
+    projectId: string,
+    bindingId: string,
+    input: ReturnType<typeof cantripOsRunDefinitionApiSchema.parse>,
+  ) {
+    if (input.request.projectId !== projectId)
+      return fail("The Run definition belongs to another project.");
+    const execution = await this.repository.cantripOs.runPrimary(
+      ownerId,
+      projectId,
+      bindingId,
+      input.runtimeGeneration,
+    );
+    const result = await this.bridge.request(
+      execution.scope.workerId,
+      {
+        type: "cantrip-os.run-definition",
+        execution,
+        request: input.request,
+      },
+      { ownerId, timeoutMs: 180_000 },
+    );
+    const response = cantripOsRunDefinitionResponseSchema.parse({
+      source: {
+        bindingId: execution.scope.bindingId,
+        worktreeId: execution.scope.worktreeId,
+        projectSourceId: execution.scope.projectSourceId,
+        guestPath: execution.scope.guestPath,
+        runtimeGeneration: execution.scope.runtimeGeneration,
+      },
+      result,
+    });
+    if (
+      response.result.operationId !== input.request.operationId ||
+      response.result.projectId !== projectId ||
+      `project.run-configuration-definitions.${response.result.operation}` !==
+        input.request.type
+    )
+      return fail("The Linux Run definition response was misrouted.");
+    return response;
+  }
 
   async inspect(
     ownerId: string,
