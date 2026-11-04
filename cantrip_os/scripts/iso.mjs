@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { root, run } from "./os.mjs";
+import { root, run, executorEdition } from "./os.mjs";
 import { withInstanceLock } from "./lock.mjs";
 
 await withInstanceLock("cantrip-os-iso-build", async () => {
@@ -9,7 +9,8 @@ await withInstanceLock("cantrip-os-iso-build", async () => {
   await mkdir(output, { recursive: true });
   let executorContext = resolve(root, ".build/empty-executor");
   await mkdir(executorContext, { recursive: true });
-  if (process.env.CANTRIP_OS_EXECUTOR === "1") {
+  const executor = executorEdition();
+  if (executor === "1") {
     const { prepareExecutor } = await import("./executor-package.mjs");
     executorContext = await prepareExecutor("amd64");
   }
@@ -32,7 +33,7 @@ await withInstanceLock("cantrip-os-iso-build", async () => {
     "-e",
     `CANTRIP_OS_WORKSPACES=${process.env.CANTRIP_OS_WORKSPACES ?? "1"}`,
     "-e",
-    `CANTRIP_OS_EXECUTOR=${process.env.CANTRIP_OS_EXECUTOR ?? "0"}`,
+    `CANTRIP_OS_EXECUTOR=${executor}`,
     "--platform",
     "linux/amd64",
     "--mount",

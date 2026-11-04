@@ -4,14 +4,16 @@ The client supports executor attachment, source provisioning, captured agent
 placement, file/editor/Explorer operations, interactive Linux terminals, Run
 configurations with per-configuration destinations and safe deletion, attachments
 and returned artifact links. Executor 0.9.0 adds explicit GUI launches on the
-assigned desktop. Final distribution acceptance remains in progress. Host-only
+assigned desktop. Docker, live/installed ISO and package lifecycle results are
+recorded in [acceptance](ACCEPTANCE.md#phase-3-acceptance-and-distribution-2026-11-04). Host-only
 Run/worktree/task-creation MCP adapters remain unavailable in Linux sessions;
 use the source-aware product workflows described below.
 
 ## Attach and select
 
 1. Start an executor-enabled OS from the repository root:
-   `CANTRIP_OS_EXECUTOR=1 pnpm os`. Keep its printed workspace-selector URL.
+   `pnpm os`. The optional executor is included by default. Keep the printed
+   workspace-selector URL.
 2. Open a project in Cantrip, then **Project Settings → CantripOS**.
 3. Choose **Attach OS**, the existing worker, and **Docker on this worker**.
    Enter the actual container name (`cantrip-os` by default), then
@@ -68,9 +70,9 @@ separate view identities, including when their relative filenames match.
 A linked worktree's ordinary source files remain the same files on both sides.
 An explicit Linux dependency overlay remains guest-specific. Linked directory
 commit lookups use the original worker's Git metadata. Full Git graph/history
-product workflows for Linux-owned sources and live file notifications remain
-part of the following integration work; refresh explicitly to observe external
-changes at this checkpoint.
+product workflows for Linux-owned sources are not all adapted yet. Native agent
+file watching is source-aware; refresh Explorer explicitly to observe external
+changes.
 
 An executor upgrade or restart does not retarget an old document. Save reports
 the stale placement; retain/copy the draft, refresh/verify the source, create a
@@ -154,7 +156,8 @@ before Git worktree creation. Existing admissions never start another mutation.
 Linked checkouts retain Git ownership on their original worker. Create their
 host worktrees through the existing worker workflow and link each exact
 worktree explicitly. This Linux-owned creation form does not rewrite host Git
-metadata. Run and broader Git product integration remain subsequent work.
+metadata. Run uses the explicit Linux source as described below; broader Git
+graph/history UI integration remains later work.
 
 ## Linux Run configurations
 
@@ -195,7 +198,7 @@ is shared with Host, so affected Host and Linux Runs are both stopped. Separate
 checkouts remain separate even when their configuration UUIDs match. Unconfirmed
 cleanup keeps the definition and captured handles; inspect the outcome and retry
 explicitly. This requires executor 0.7.0 for Linux. Attachment and returned file links require
-executor 0.8.0. Fresh Docker/ISO acceptance remains in progress.
+executor 0.8.0. Fresh Docker/ISO results are recorded in the final Phase 3 acceptance checkpoint.
 
 ## Explicit GUI commands
 

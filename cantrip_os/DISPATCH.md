@@ -1,10 +1,10 @@
 # Server-owned executor dispatch
 
 This is the Phase 3 source-admission checkpoint. Both Server implementations
-provide the same administrative HTTP routes and worker commands. The interactive
-attachment picker, terminal/editor routing, and Run integration remain subsequent
-checkpoints. The [native runtime and chat placement](NATIVE_RUNTIME.md) build on
-these APIs; these components alone do not complete Phase 3.
+provide the same administrative HTTP routes and worker commands. The [client workflows](PRODUCT_WORKFLOW.md) now connect attachment, terminals,
+editor/Explorer and Run to these routes. The [native runtime and chat placement](NATIVE_RUNTIME.md)
+build on the same authority. Final [acceptance](ACCEPTANCE.md#phase-3-acceptance-and-distribution-2026-11-04)
+records product and distribution results.
 
 The existing worker owns the Docker/SSH carrier, encryption keys, source mounting,
 and native executor sessions. The Server owns the OS attachment, workspace/source

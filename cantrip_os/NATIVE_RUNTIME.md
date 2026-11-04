@@ -6,7 +6,9 @@ credentials stay on the owning worker; native shell, filesystem, search, and pat
 tools use the guest executor. Both Server implementations now capture placement
 when creating a new agent chat, and the worker selects this adapter for that
 captured chat. The [client attachment/selection workflow](PRODUCT_WORKFLOW.md)
-is available; the remaining product surfaces are still being implemented.
+connects these placements to terminals, editor/Explorer, setup/Run, attachments
+and returned file links. Final [acceptance](ACCEPTANCE.md#phase-3-acceptance-and-distribution-2026-11-04)
+records real-model evidence separately from native fixtures.
 
 `OsNativeEnvironment` captures the source/instance/workspace identities and
 attachment, runtime, and binding generations. Each placement needs its own private
@@ -63,9 +65,9 @@ before creating another OS-bound chat; automatic re-admission of existing chats
 across OS replacement is not provided by this checkpoint. Both Server and worker
 whole-turn failover paths refuse to replay an OS turn after an uncertain result.
 
-Plain Linux terminals, editor/Explorer, setup/Run routing,
-attachment materialization, and served artifact downloads remain subsequent
-product work. Component tests below do not claim that complete workflow.
+Plain Linux terminals, editor/Explorer, setup/Run routing, attachment
+materialization and returned file links now use this captured placement. See the
+[product workflow](PRODUCT_WORKFLOW.md) and final acceptance for the complete flow.
 
 ## Reproduce the component tests
 
@@ -94,7 +96,7 @@ of the Docker variable for an installed VM. The turn fixture also accepts:
 
 The model endpoint is deterministic Responses test scaffolding. The actual pinned
 runtime performs the model loop, tool selection, shell/read/search, native patch,
-file creation, and Python artifact execution. These tests do not claim a live
-provider conversation, product-selected chat, attachment transfer, or served
-artifact download. Proofs are written to each test's private temporary directory;
+file creation, attachment materialization, Worker-owned HTTP MCP and Python
+artifact execution. These fixtures do not claim a live provider conversation or
+product-selected chat; those have separate recorded acceptance. Proofs are written to each test's private temporary directory;
 retained copies belong under ignored `artifacts/phase3-native-runtime/`.
