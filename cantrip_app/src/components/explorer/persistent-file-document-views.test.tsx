@@ -40,6 +40,35 @@ function surface(
 }
 const onOpenFile = vi.fn();
 const onModeChange = vi.fn(async (_tabId: string, _mode: string) => {});
+it("retains editor callbacks when shell commands change and calls the latest command", async () => {
+  const first = vi.fn();
+  const latest = vi.fn();
+  const modes = vi.fn(async () => {});
+  const render = (open: typeof first) => (
+    <PersistentFileDocumentViews
+      surfaces={[surface()]}
+      activeTabId="tab"
+      appearance={{} as CodeAppearance}
+      onOpenFile={open}
+      onModeChange={async () => {
+        await modes();
+      }}
+    />
+  );
+  await act(async () => {
+    renderer = create(render(first));
+  });
+  const before = renderer!.root.findByType(FileDocumentView).props;
+  await act(async () => renderer!.update(render(latest)));
+  const after = renderer!.root.findByType(FileDocumentView).props;
+  expect(after.onOpenFile).toBe(before.onOpenFile);
+  expect(after.onModeChange).toBe(before.onModeChange);
+  after.onOpenFile("next.rs");
+  expect(first).not.toHaveBeenCalled();
+  expect(latest).toHaveBeenCalledWith("project", "tree", "next.rs");
+  await act(async () => after.onModeChange("preview"));
+  expect(modes).toHaveBeenCalledOnce();
+});
 it("mounts incoming document views passively with their transfer state", async () => {
   const state = {
     explorerId: "incoming-tab",
@@ -147,6 +176,23 @@ it("unmounts a closed view and does not reuse its document for another resource"
   expect(renderer!.root.findAllByType(FileDocumentView)).toHaveLength(0);
   await act(async () => renderer!.update(tree([surface("unresolved")])));
   expect(renderer!.root.findAllByType(FileDocumentView)).toHaveLength(0);
+});
+
+it("retains a Linux document's captured placement when following a link", async () => {
+  const entity = {
+    ...document,
+    cantripOsBindingId: "binding",
+    cantripOsRuntimeGeneration: "generation",
+  };
+  await act(async () => {
+    renderer = create(tree([{ ...surface(), entity } as ProjectSurface]));
+  });
+  renderer!.root.findByType(FileDocumentView).props.onOpenFile("next.py");
+  expect(onOpenFile).toHaveBeenLastCalledWith("project", "tree", "next.py", {
+    cantripOsBindingId: "binding",
+    cantripOsRuntimeGeneration: "generation",
+    workerId: "worker",
+  });
 });
 
 it("routes document links with their project and worktree instead of rebinding the view", async () => {

@@ -12,7 +12,10 @@ import { ServerRepository } from "../src/db/repository.js";
 import type { RepositoryDatabase } from "../src/db/repository/database.js";
 import type { SecretVault } from "../src/security/secret-vault.js";
 import * as schema from "../src/db/schema.js";
-import { protectedChatFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedExplorerFields,
+} from "./private-label-fixture.js";
 
 it("captures an OS binding before native preparation and preserves lane identity without a host fallback", async () => {
   const db = new PGlite();
@@ -108,6 +111,90 @@ it("captures an OS binding before native preparation and preserves lane identity
       activeWorktreeId: binding.worktreeId,
       activeWorkerId: "worker",
     });
+    expect(chat).toMatchObject({
+      cantripOsBindingId: binding.id,
+      cantripOsRuntimeGeneration: generation,
+    });
+    const placement = {
+      cantripOsBindingId: binding.id,
+      cantripOsRuntimeGeneration: generation,
+    };
+    const explorer = await repository.createExplorer("owner", "project", {
+      ...protectedExplorerFields(),
+      ...placement,
+      worktreeId: binding.worktreeId,
+      attachToTabLayout: false,
+    });
+    expect(explorer).toMatchObject(placement);
+    expect(
+      await repository.getExplorerExecutionContext("owner", explorer!.id),
+    ).toMatchObject({
+      root: {
+        kind: "cantrip-os",
+        scope: { bindingId: binding.id, runtimeGeneration: generation },
+      },
+    });
+    const fileInput = {
+      id: randomUUID(),
+      worktreeId: binding.worktreeId,
+      ...placement,
+      stateProtection: {
+        classification: { recordKind: "file-document-state" as const },
+        protectedState: {
+          formatVersion: 1 as const,
+          keyRevision: 1,
+          envelope: {
+            version: 1 as const,
+            algorithm: "AES-256-GCM" as const,
+            keyRevision: 1,
+            nonce: "AAAAAAAAAAAAAAAA",
+            ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+          },
+        },
+      },
+    };
+    const file = await repository.fileDocuments.create(
+      "owner",
+      "project",
+      fileInput,
+    );
+    expect(file).toMatchObject(placement);
+    expect(
+      await repository.fileDocuments.create("owner", "project", fileInput),
+    ).toEqual(file);
+    expect(
+      await repository.fileDocuments.executionContext("owner", file!.id),
+    ).toMatchObject({
+      root: { kind: "cantrip-os", scope: { bindingId: binding.id } },
+    });
+    expect(await repository.fileDocuments.get("other", file!.id)).toBeNull();
+    await expect(
+      repository.fileDocuments.create("other", "project", {
+        ...fileInput,
+        id: randomUUID(),
+      }),
+    ).rejects.toThrow();
+    await expect(
+      repository.fileDocuments.create("owner", "project", {
+        ...fileInput,
+        id: randomUUID(),
+        cantripOsRuntimeGeneration: randomUUID(),
+      }),
+    ).rejects.toThrow(/unavailable/);
+    await expect(
+      db.query(
+        "UPDATE file_documents SET os_runtime_generation=$1 WHERE id=$2",
+        [randomUUID(), file!.id],
+      ),
+    ).rejects.toThrow(/cannot be retargeted/);
+    await expect(
+      repository.fileDocuments.create("owner", "project", {
+        ...fileInput,
+        id: randomUUID(),
+        cantripOsBindingId: undefined,
+        cantripOsRuntimeGeneration: undefined,
+      }),
+    ).resolves.toBeNull();
     const context = await repository.getChatExecutionContext("owner", input.id);
     expect(context).toMatchObject({
       cwd: binding.guestPath,
@@ -241,6 +328,12 @@ it("captures an OS binding before native preparation and preserves lane identity
     );
     await expect(
       repository.getChatExecutionContext("owner", input.id),
+    ).rejects.toThrow(/unavailable or changed/);
+    await expect(
+      repository.getExplorerExecutionContext("owner", explorer!.id),
+    ).rejects.toThrow(/unavailable or changed/);
+    await expect(
+      repository.fileDocuments.executionContext("owner", file!.id),
     ).rejects.toThrow(/unavailable or changed/);
     await db.query("DELETE FROM projects WHERE id='project'");
   } finally {

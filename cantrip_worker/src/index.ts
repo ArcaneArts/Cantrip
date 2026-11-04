@@ -319,6 +319,7 @@ import { WorkerConnection } from "./transport.js";
 import { WorkerEncryptionService } from "./worker-encryption.js";
 import { WorktreeManager } from "./worktrees.js";
 import { CantripOsController } from "./os-executor/controller.js";
+import { OsFileOperations } from "./os-executor/files.js";
 import { OsNativeEnvironment } from "./os-executor/native-environment.js";
 import { OsAgentPlacements } from "./os-executor/agent-placements.js";
 import type { CantripOsExecution } from "@cantrip/protocol";
@@ -952,6 +953,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const cantripOs = new CantripOsController(
     config.dataDirectory,
     config.workerId,
+  );
+  const osFiles = new OsFileOperations(
+    config.dataDirectory,
+    cantripOs,
+    workerEncryption,
   );
   let codegraphNotificationEmitter:
     ((notification: WorkerNotification) => boolean) | null = null;
@@ -4208,6 +4214,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "explorer.operation":
       case "file-document.operation":
         return handleExplorerCommand(command, {
+          osFiles,
           fileImports: explorerFileImports,
           binaryWrites: binaryFileWrites,
           surfaceStreamReplay,
@@ -6823,6 +6830,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     if (stopping) return;
 
     stopping = true;
+    await osFiles.dispose().catch(() => undefined);
     await binaryFileWrites.dispose().catch(() => undefined);
     await explorerFileImports.dispose().catch(() => undefined);
     // Abort downloads/probes together before awaiting the other shutdown owners.

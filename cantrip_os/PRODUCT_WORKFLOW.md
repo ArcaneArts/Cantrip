@@ -1,9 +1,10 @@
 # CantripOS project attachment
 
 This checkpoint adds the client workflow for the executor, source provisioning,
-and captured agent placement. File/editor/Explorer, plain terminal, setup/Run,
-attachments, and artifact delivery are the following product integration block;
-the attachment screen alone is not complete Phase 3 acceptance.
+captured agent placement, and file/editor/Explorer operations. Plain terminals,
+setup/Run, attachment/artifact delivery and final distribution acceptance remain
+in subsequent product integration work. This checkpoint is not complete Phase 3
+acceptance.
 
 ## Attach and select
 
@@ -52,3 +53,24 @@ host directory as a fallback.
 The workspace selector URL opens its independent desktop. Shell execution does
 not require starting that desktop. Cantrip's integrated desktop transport and
 Linux computer use remain later work.
+
+## Files and editor
+
+Select a newly created Linux agent, then use its **Files** sidebar. Opening a
+file creates an immutable document view for that exact OS binding and runtime
+generation. Read, edit/save, search, create, rename, delete, import, and binary
+operations execute in Linux through the optional executor package. Related file
+links retain that placement. Host and Linux views of a linked worktree have
+separate view identities, including when their relative filenames match.
+
+A linked worktree's ordinary source files remain the same files on both sides.
+An explicit Linux dependency overlay remains guest-specific. Linked directory
+commit lookups use the original worker's Git metadata. Full Git graph/history
+product workflows for Linux-owned sources and live file notifications remain
+part of the following integration work; refresh explicitly to observe external
+changes at this checkpoint.
+
+An executor upgrade or restart does not retarget an old document. Save reports
+the stale placement; retain/copy the draft, refresh/verify the source, create a
+new Linux agent and reopen the file there. A completed uncertain save can be
+observed by its original operation identity; an unknown save is not replayed.

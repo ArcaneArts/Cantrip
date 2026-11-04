@@ -4,7 +4,7 @@ use crate::database::{Executor, Transaction};
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 
-fn available(source: &Value) -> Result<()> {
+pub(crate) fn available(source: &Value) -> Result<()> {
     let b = &source["binding"];
     let i = &source["instance"];
     ensure!(
@@ -66,7 +66,6 @@ pub async fn resolve(
     available(&source)?;
     let b = &source["binding"];
     let i = &source["instance"];
-    let w = &source["workspace"];
     ensure!(
         b["bindingGeneration"] == p["binding_generation"]
             && i["attachmentGeneration"] == p["attachment_generation"]
@@ -75,11 +74,18 @@ pub async fn resolve(
             && i["workerId"] == worktree["worker_id"],
         "CantripOS execution placement is unavailable or changed; no host fallback was attempted."
     );
-    let execution = checked(
-        "cantripOsExecutionSchema",
-        json!({"kind":"cantrip-os","transport":source["transport"],"scope":{"ownerId":owner,"workerId":i["workerId"],"instanceId":i["id"],"guestInstanceId":i["guestInstanceId"],"attachmentGeneration":p["attachment_generation"],"runtimeGeneration":p["runtime_generation"],"bindingId":b["id"],"bindingGeneration":p["binding_generation"],"projectId":b["projectId"],"projectSourceId":b["projectSourceId"],"sourceKind":source["sourceKind"],"worktreeId":b["worktreeId"],"workspaceId":w["id"],"guestWorkspaceId":w["guestWorkspaceId"],"uid":w["uid"],"gid":w["gid"],"homeGuestPath":w["homeGuestPath"],"guestPath":b["guestPath"],"mode":b["mode"],"linkedWorkerPath":b["linkedWorkerPath"],"dependencyOverlays":b["dependencyOverlays"]}}),
-    )?;
+    let execution = execution_for_source(owner, &source, p)?;
     Ok(Some(
         json!({"cwd":b["guestPath"],"osExecution":execution,"computerUseEnabled":false}),
     ))
+}
+
+pub(crate) fn execution_for_source(owner: &str, source: &Value, p: &Value) -> Result<Value> {
+    let b = &source["binding"];
+    let i = &source["instance"];
+    let w = &source["workspace"];
+    checked(
+        "cantripOsExecutionSchema",
+        json!({"kind":"cantrip-os","transport":source["transport"],"scope":{"ownerId":owner,"workerId":i["workerId"],"instanceId":i["id"],"guestInstanceId":i["guestInstanceId"],"attachmentGeneration":p["attachment_generation"],"runtimeGeneration":p["runtime_generation"],"bindingId":b["id"],"bindingGeneration":p["binding_generation"],"projectId":b["projectId"],"projectSourceId":b["projectSourceId"],"sourceKind":source["sourceKind"],"worktreeId":b["worktreeId"],"workspaceId":w["id"],"guestWorkspaceId":w["guestWorkspaceId"],"uid":w["uid"],"gid":w["gid"],"homeGuestPath":w["homeGuestPath"],"guestPath":b["guestPath"],"mode":b["mode"],"linkedWorkerPath":b["linkedWorkerPath"],"dependencyOverlays":b["dependencyOverlays"]}}),
+    )
 }

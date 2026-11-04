@@ -1,3 +1,8 @@
+import {
+  surfaceOsFilePlacement,
+  sameOsFilePlacement,
+  type OsFilePlacement,
+} from "@/lib/os-file-placement";
 import type {
   ChatSummary,
   ExplorerSummary,
@@ -17,6 +22,8 @@ import type {
 } from "@/components/explorer/explorer-view";
 import type { AppToastInput } from "@/components/ui/app-toast";
 import { createExplorer, getProjectWorktrees } from "@/lib/api";
+import { getCantripOsBindings } from "@/lib/api/cantrip-os";
+import { projectFilePath } from "@/components/chat/markdown-file-link";
 import { errorMessage as errorText } from "@/lib/error-message";
 import type { ProjectSurface } from "@/lib/project-surface";
 import {
@@ -105,9 +112,13 @@ export function useSidebarExplorerMutations({
     mutationFn: ({
       projectId,
       worktreeId,
+      cantripOsBindingId,
+      cantripOsRuntimeGeneration,
     }: {
       projectId: string;
       worktreeId?: string;
+      cantripOsBindingId?: string;
+      cantripOsRuntimeGeneration?: string;
     }) =>
       createExplorer(
         projectId,
@@ -115,7 +126,11 @@ export function useSidebarExplorerMutations({
         worktreeId,
         undefined,
         undefined,
-        { attachToTabLayout: false },
+        {
+          attachToTabLayout: false,
+          cantripOsBindingId,
+          cantripOsRuntimeGeneration,
+        },
       ),
     onSuccess: (explorer) => {
       queryClient.setQueryData<ExplorerSummary[]>(
@@ -148,6 +163,7 @@ export function createProjectExplorerFileOpening({
     projectId: string,
     worktreeId: string,
     path: string,
+    placement?: OsFilePlacement & { workerId?: string },
   ) => Promise<void>;
   queryClient: QueryClient;
   selectedProject: ProjectSummary | undefined;
@@ -158,8 +174,13 @@ export function createProjectExplorerFileOpening({
     projectId: string,
     worktreeId: string,
     path: string,
+    placement?: OsFilePlacement & { workerId?: string },
   ) => {
-    void openOwnedFile(projectId, worktreeId, path).catch((error: unknown) =>
+    void (
+      placement
+        ? openOwnedFile(projectId, worktreeId, path, placement)
+        : openOwnedFile(projectId, worktreeId, path)
+    ).catch((error: unknown) =>
       showAppToast({
         title: "Could not open file",
         message: errorText(error),
@@ -172,29 +193,43 @@ export function createProjectExplorerFileOpening({
     reference: string,
     messageWorktreeId?: string | null,
   ) => {
-    void resolveChatFileReferenceTarget({
-      reference,
-      projectId: chat.projectId,
-      activeWorktreeId: chat.activeWorktreeId,
-      messageWorktreeId,
-      source:
-        selectedProject?.id === chat.projectId ? selectedProject.source : null,
-      worktrees:
-        queryClient.getQueryData<ProjectWorktreeSummary[]>([
-          "worktrees",
-          chat.projectId,
-        ]) ??
-        worktrees ??
-        [],
-      refreshWorktrees: async () => {
-        const refreshed = await getProjectWorktrees(chat.projectId);
-        queryClient.setQueryData<ProjectWorktreeSummary[]>(
-          ["worktrees", chat.projectId],
-          refreshed,
-        );
-        return refreshed;
-      },
-    })
+    const resolvedTarget = chat.cantripOsBindingId
+      ? (async () => {
+          const tree = messageWorktreeId ?? chat.activeWorktreeId;
+          const binding = (await getCantripOsBindings(chat.projectId)).find(
+            (item) =>
+              item.id === chat.cantripOsBindingId && item.worktreeId === tree,
+          );
+          if (!binding) return null;
+          const path = projectFilePath(reference, binding.guestPath);
+          return path ? { path, worktreeId: tree } : null;
+        })()
+      : resolveChatFileReferenceTarget({
+          reference,
+          projectId: chat.projectId,
+          activeWorktreeId: chat.activeWorktreeId,
+          messageWorktreeId,
+          source:
+            selectedProject?.id === chat.projectId
+              ? selectedProject.source
+              : null,
+          worktrees:
+            queryClient.getQueryData<ProjectWorktreeSummary[]>([
+              "worktrees",
+              chat.projectId,
+            ]) ??
+            worktrees ??
+            [],
+          refreshWorktrees: async () => {
+            const refreshed = await getProjectWorktrees(chat.projectId);
+            queryClient.setQueryData<ProjectWorktreeSummary[]>(
+              ["worktrees", chat.projectId],
+              refreshed,
+            );
+            return refreshed;
+          },
+        });
+    void resolvedTarget
       .then((resolved) => {
         if (!resolved) {
           showAppToast({
@@ -205,11 +240,13 @@ export function createProjectExplorerFileOpening({
           });
           return;
         }
-        return openOwnedFile(
-          chat.projectId,
-          resolved.worktreeId,
-          resolved.path,
-        );
+        return chat.cantripOsBindingId
+          ? openOwnedFile(chat.projectId, resolved.worktreeId, resolved.path, {
+              cantripOsBindingId: chat.cantripOsBindingId,
+              cantripOsRuntimeGeneration: chat.cantripOsRuntimeGeneration,
+              workerId: chat.activeWorkerId ?? undefined,
+            })
+          : openOwnedFile(chat.projectId, resolved.worktreeId, resolved.path);
       })
       .catch((error: unknown) =>
         showAppToast({
@@ -252,7 +289,20 @@ export function useSidebarExplorerModel({
     revealedWorktreeId ??
     surfaceWorktreeId(selectedSurface) ??
     primaryWorktreeId(worktrees ?? []);
+  const sidebarOsPlacement =
+    revealedWorktreeId &&
+    revealedWorktreeId !== surfaceWorktreeId(selectedSurface)
+      ? {}
+      : surfaceOsFilePlacement(selectedSurface);
+  const sidebarDesiredWorkerId = sidebarOsPlacement.cantripOsBindingId
+    ? selectedSurface?.kind === "file"
+      ? selectedSurface.entity.workerId
+      : selectedSurface?.kind === "chat" || selectedSurface?.kind === "explorer"
+        ? selectedSurface.entity.activeWorkerId
+        : null
+    : null;
   const sidebarExplorer = preferredSidebarExplorer({
+    desiredOsPlacement: sidebarOsPlacement,
     desiredWorktreeId: sidebarDesiredWorktreeId,
     explorers: explorers ?? [],
     layout: tabLayout,
@@ -294,18 +344,24 @@ export function useSidebarExplorerModel({
     selectedProjectIdRef,
     sidebarDesiredWorktreeId,
     sidebarExplorer,
+    sidebarOsPlacement,
+    sidebarDesiredWorkerId,
   } as const;
 }
 
 type SidebarExplorerModel = ReturnType<typeof useSidebarExplorerModel>;
 
 export function sidebarExplorerProvisioningDetails({
+  sidebarOsPlacement = {},
+  sidebarDesiredWorkerId,
   onlineWorkerIds,
   selectedProject,
   selectedProjectWorkerId,
   sidebarDesiredWorktreeId,
   sidebarExplorer,
 }: {
+  sidebarOsPlacement?: OsFilePlacement;
+  sidebarDesiredWorkerId?: string | null;
   onlineWorkerIds: ReadonlySet<string>;
   selectedProject: ProjectSummary | undefined;
   selectedProjectWorkerId: string | null;
@@ -313,7 +369,9 @@ export function sidebarExplorerProvisioningDetails({
   sidebarExplorer: ExplorerSummary | null;
 }) {
   const sidebarFileWorkerId =
-    sidebarExplorer?.activeWorkerId ?? selectedProjectWorkerId;
+    sidebarExplorer?.activeWorkerId ??
+    sidebarDesiredWorkerId ??
+    selectedProjectWorkerId;
   const sidebarFileWorkerOnline = Boolean(
     sidebarFileWorkerId && onlineWorkerIds.has(sidebarFileWorkerId),
   );
@@ -323,17 +381,19 @@ export function sidebarExplorerProvisioningDetails({
     (!selectedProject.capabilities.worktrees || sidebarDesiredWorktreeId)
       ? {
           projectId: selectedProject.id,
+          ...sidebarOsPlacement,
           ...(sidebarDesiredWorktreeId
             ? { worktreeId: sidebarDesiredWorktreeId }
             : {}),
         }
       : null;
   const sidebarExplorerCreationKey = sidebarExplorerCreationInput
-    ? `${sidebarExplorerCreationInput.projectId}:${sidebarExplorerCreationInput.worktreeId ?? "default"}`
+    ? `${sidebarExplorerCreationInput.projectId}:${sidebarExplorerCreationInput.worktreeId ?? "default"}${sidebarOsPlacement.cantripOsBindingId ? `:${sidebarOsPlacement.cantripOsBindingId}:${sidebarOsPlacement.cantripOsRuntimeGeneration}` : ""}`
     : null;
   const sidebarHasDesiredExplorer = Boolean(
     sidebarExplorerCreationInput &&
     sidebarExplorer &&
+    sameOsFilePlacement(sidebarExplorer, sidebarOsPlacement) &&
     (!sidebarDesiredWorktreeId ||
       sidebarExplorer.worktreeId === sidebarDesiredWorktreeId),
   );
@@ -368,7 +428,13 @@ export function useSidebarExplorerProvisioning({
   model: Pick<
     SidebarExplorerModel,
     "sidebarDesiredWorktreeId" | "sidebarExplorer"
-  >;
+  > &
+    Partial<
+      Pick<
+        SidebarExplorerModel,
+        "sidebarOsPlacement" | "sidebarDesiredWorkerId"
+      >
+    >;
   mutations: Pick<SidebarExplorerMutations, "createSidebarExplorerMutation">;
   selectedProject: ProjectSummary | undefined;
   selectedProjectId: string | null;
@@ -377,7 +443,12 @@ export function useSidebarExplorerProvisioning({
   workers: WorkerSummary[] | undefined;
 }) {
   const { sidebarExplorerCreationKeyRef } = lifecycle;
-  const { sidebarDesiredWorktreeId, sidebarExplorer } = model;
+  const {
+    sidebarDesiredWorktreeId,
+    sidebarExplorer,
+    sidebarOsPlacement,
+    sidebarDesiredWorkerId,
+  } = model;
   const { createSidebarExplorerMutation } = mutations;
   const onlineWorkerIds = useMemo(
     () =>
@@ -400,6 +471,8 @@ export function useSidebarExplorerProvisioning({
     selectedProjectWorkerId,
     sidebarDesiredWorktreeId,
     sidebarExplorer,
+    sidebarOsPlacement,
+    sidebarDesiredWorkerId,
   });
   useEffect(() => {
     if (

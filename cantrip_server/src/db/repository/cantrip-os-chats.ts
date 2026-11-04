@@ -92,33 +92,46 @@ export class CantripOsChatRepository {
       return fail(
         "The chat worktree differs from its captured OS binding; no host fallback was attempted.",
       );
-    const osExecution = cantripOsExecutionSchema.parse({
-      kind: "cantrip-os",
-      transport: source.transport,
-      scope: {
-        ownerId,
-        workerId: i.workerId,
-        instanceId: i.id,
-        guestInstanceId: i.guestInstanceId,
-        attachmentGeneration: placement.attachmentGeneration,
-        runtimeGeneration: placement.runtimeGeneration,
-        bindingId: b.id,
-        bindingGeneration: placement.bindingGeneration,
-        projectId: b.projectId,
-        projectSourceId: b.projectSourceId,
-        sourceKind: source.sourceKind,
-        worktreeId: b.worktreeId,
-        workspaceId: w.id,
-        guestWorkspaceId: w.guestWorkspaceId,
-        uid: w.uid,
-        gid: w.gid,
-        homeGuestPath: w.homeGuestPath,
-        guestPath: b.guestPath,
-        mode: b.mode,
-        linkedWorkerPath: b.linkedWorkerPath,
-        dependencyOverlays: b.dependencyOverlays,
-      },
-    });
+    const osExecution = cantripOsExecutionForSource(ownerId, source, placement);
     return { cwd: b.guestPath, osExecution, computerUseEnabled: false };
   }
+}
+
+export function cantripOsExecutionForSource(
+  ownerId: string,
+  source: Source,
+  placement: {
+    bindingGeneration: string;
+    attachmentGeneration: string;
+    runtimeGeneration: string;
+  },
+): CantripOsExecution {
+  const { binding: b, workspace: w, instance: i } = source;
+  return cantripOsExecutionSchema.parse({
+    kind: "cantrip-os",
+    transport: source.transport,
+    scope: {
+      ownerId,
+      workerId: i.workerId,
+      instanceId: i.id,
+      guestInstanceId: i.guestInstanceId,
+      attachmentGeneration: placement.attachmentGeneration,
+      runtimeGeneration: placement.runtimeGeneration,
+      bindingId: b.id,
+      bindingGeneration: placement.bindingGeneration,
+      projectId: b.projectId,
+      projectSourceId: b.projectSourceId,
+      sourceKind: source.sourceKind,
+      worktreeId: b.worktreeId,
+      workspaceId: w.id,
+      guestWorkspaceId: w.guestWorkspaceId,
+      uid: w.uid,
+      gid: w.gid,
+      homeGuestPath: w.homeGuestPath,
+      guestPath: b.guestPath,
+      mode: b.mode,
+      linkedWorkerPath: b.linkedWorkerPath,
+      dependencyOverlays: b.dependencyOverlays,
+    },
+  });
 }

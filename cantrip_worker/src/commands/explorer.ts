@@ -1,3 +1,5 @@
+import { workerLogger, workerLogError } from "../logger.js";
+import { executeExplorerRequest } from "./explorer-request.js";
 import {
   BinaryFileWrites,
   BinaryWriteConflictError,
@@ -12,24 +14,11 @@ import {
   openWorkerSurfaceStreamContent,
   protectWorkerSurfaceStreamContent,
 } from "../surface-stream-encryption.js";
-import {
-  listExplorerDirectory,
-  searchExplorerFiles,
-  listExplorerDirectoryCommits,
-  readExplorerFile,
-  readExplorerBinaryFile,
-  readExplorerLogTail,
-  readExplorerTextPreview,
-  writeExplorerFile,
-  createExplorerDirectory,
-  createExplorerFile,
-  renameExplorerEntry,
-  deleteExplorerEntry,
-  readExplorerMediaFile,
-} from "../explorer.js";
 import { BinaryFileChangedError } from "../explorer-binary.js";
 import { TextPreviewRequiredError } from "../explorer-text-preview.js";
-import type { WorkerCommand } from "@cantrip/protocol";
+import type { WorkerCommand, CantripOsExecution } from "@cantrip/protocol";
+import type { ExplorerOperationRequestContent } from "@cantrip/protocol/surface-stream";
+import type { ExplorerRequestContext } from "./explorer-request.js";
 import type { SurfaceStreamReplayGuard } from "../surface-stream-encryption.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
 import { decodeSurfacePrivateStateForWorker } from "../surface-private-state-encryption.js";
@@ -41,6 +30,13 @@ export type ExplorerCommand = Extract<
   { type: "explorer.operation" | "file-document.operation" }
 >;
 export interface ExplorerCommandDependencies {
+  osFiles?: {
+    execute(
+      root: CantripOsExecution,
+      request: ExplorerOperationRequestContent,
+      context: ExplorerRequestContext,
+    ): Promise<{ outcome: SurfaceOperationOutcomeContent; complete: boolean }>;
+  };
   fileImports: ExplorerFileImports;
   binaryWrites?: BinaryFileWrites;
   surfaceStreamReplay: Pick<SurfaceStreamReplayGuard, "reserve" | "accept">;
@@ -98,7 +94,10 @@ export async function handleExplorerCommand(
           if (
             location.projectId !== command.projectId ||
             location.worktreeId !== command.worktreeId ||
-            location.workerId !== command.workerId
+            location.workerId !== command.workerId ||
+            (typeof command.root !== "string" &&
+              (command.root.scope.projectId !== location.projectId ||
+                command.root.scope.worktreeId !== location.worktreeId))
           ) {
             throw new Error("File document checkout binding does not match.");
           }
@@ -121,228 +120,33 @@ export async function handleExplorerCommand(
             );
           }
         }
-        switch (request.type) {
-          case "explorer.binary.write.begin":
-          case "explorer.binary.write.chunk":
-          case "explorer.binary.write.commit":
-          case "explorer.binary.write.status":
-          case "explorer.binary.write.abort": {
-            if (!dependencies.binaryWrites)
-              throw new Error(
-                "This worker does not support streamed binary saves.",
-              );
-            const value = await dependencies.binaryWrites.execute(
-              {
-                serverId: command.serverId,
-                surfaceKind: streamContext.surfaceKind,
-                surfaceId: streamContext.surfaceId,
-                root: command.root,
-              },
-              request,
-            );
-            outcome = {
-              ok: true,
-              result: { type: "explorer.binary.write", value },
-            };
-            break;
-          }
-          case "explorer.file.import": {
-            const value = await dependencies.fileImports.write(
-              JSON.stringify([
-                command.serverId,
-                streamContext.surfaceId,
-                command.operationId,
-              ]),
-              command.root,
-              command.sequence,
-              request,
-            );
-            complete = request.eof;
-            outcome = {
-              ok: true,
-              result: { type: "explorer.file.imported", value },
-            };
-            break;
-          }
-          case "explorer.file.import.cancel":
-            await dependencies.fileImports.cancel(
-              JSON.stringify([
-                command.serverId,
-                streamContext.surfaceId,
-                command.operationId,
-              ]),
-            );
-            outcome = {
-              ok: true,
-              result: {
-                type: "explorer.file.imported",
-                value: { offset: 0, entry: null },
-              },
-            };
-            break;
-          case "explorer.directory.list":
-            outcome = {
-              ok: true as const,
-              result: {
-                type: request.type,
-                value: await listExplorerDirectory(command.root, request.path),
-              },
-            };
-            break;
-          case "explorer.files.search":
-            outcome = {
-              ok: true as const,
-              result: {
-                type: request.type,
-                value: await searchExplorerFiles(
-                  command.root,
-                  request.query,
-                  request.limit,
-                ),
-              },
-            };
-            break;
-          case "explorer.directory.commits":
-            outcome = {
-              ok: true as const,
-              result: {
-                type: request.type,
-                value: await listExplorerDirectoryCommits(
-                  command.root,
-                  request.path,
-                ),
-              },
-            };
-            break;
-          case "explorer.binary.read":
-            outcome = {
-              ok: true,
-              result: {
-                type: "explorer.binary",
-                value: await readExplorerBinaryFile(
-                  command.root,
-                  request.path,
-                  request.offset,
-                  request.limit,
-                  request.version,
-                ),
-              },
-            };
-            break;
-          case "explorer.file.read":
-            outcome = {
-              ok: true as const,
-              result: {
-                type: "explorer.file" as const,
-                value: await readExplorerFile(command.root, request.path),
-              },
-            };
-            break;
-          case "explorer.file.tail":
-            outcome = {
-              ok: true,
-              result: {
-                type: "explorer.file.tail",
-                value: await readExplorerLogTail(
-                  command.root,
-                  request.path,
-                  request.cursor,
-                ),
-              },
-            };
-            break;
-          case "explorer.file.preview":
-            outcome = {
-              ok: true,
-              result: {
-                type: "explorer.file.preview",
-                value: await readExplorerTextPreview(
-                  command.root,
-                  request.path,
-                  request.offset,
-                  request.version,
-                ),
-              },
-            };
-            break;
-          case "explorer.file.write":
-            outcome = {
-              ok: true as const,
-              result: {
-                type: "explorer.file" as const,
-                value: await writeExplorerFile(
-                  command.root,
-                  request.path,
-                  request.content,
-                  request.version,
-                ),
-              },
-            };
-            break;
-          case "explorer.file.create":
-            outcome = {
-              ok: true as const,
-              result: {
-                type: "explorer.file.created" as const,
-                value: await createExplorerFile(
-                  command.root,
-                  request.path,
-                  request.name,
-                ),
-              },
-            };
-            break;
-          case "explorer.directory.create":
-            outcome = {
-              ok: true as const,
-              result: {
-                type: "explorer.directory.created" as const,
-                value: await createExplorerDirectory(
-                  command.root,
-                  request.path,
-                ),
-              },
-            };
-            break;
-          case "explorer.entry.rename":
-            outcome = {
-              ok: true as const,
-              result: {
-                type: "explorer.entry.mutated" as const,
-                value: await renameExplorerEntry(
-                  command.root,
-                  request.path,
-                  request.name,
-                ),
-              },
-            };
-            break;
-          case "explorer.entry.delete":
-            outcome = {
-              ok: true as const,
-              result: {
-                type: "explorer.entry.mutated" as const,
-                value: await deleteExplorerEntry(command.root, request.path),
-              },
-            };
-            break;
-          case "explorer.media.read": {
-            const value = await readExplorerMediaFile(
-              command.root,
-              request.path,
-              request.offset,
-              request.limit,
-              request.mediaType,
-            );
-            complete = value.eof;
-            outcome = {
-              ok: true as const,
-              result: { type: "explorer.media" as const, value },
-            };
-            break;
-          }
-        }
+        ({ outcome, complete } =
+          typeof command.root === "string"
+            ? await executeExplorerRequest(
+                command.root,
+                request,
+                dependencies,
+                streamContext,
+              )
+            : await (dependencies.osFiles?.execute(
+                command.root,
+                request,
+                streamContext,
+              ) ??
+                Promise.reject(
+                  new Error(
+                    "This worker does not support CantripOS file operations.",
+                  ),
+                )));
       } catch (error) {
+        if (typeof command.root !== "string")
+          workerLogger.event("warn", "CantripOS file operation failed", {
+            event: "os.files.operation-failed",
+            subsystem: "cantrip-os",
+            operation: request.type,
+            status: "failed",
+            error: workerLogError(error),
+          });
         outcome = {
           ok: false as const,
           ...(error instanceof TextPreviewRequiredError

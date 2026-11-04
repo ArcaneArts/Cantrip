@@ -153,6 +153,8 @@ export async function getFileDocuments(
 
 export async function createFileDocument(input: {
   id: string;
+  cantripOsBindingId?: string;
+  cantripOsRuntimeGeneration?: string;
   projectId: string;
   workerId: string;
   worktreeId: string;
@@ -178,6 +180,8 @@ export async function createFileDocument(input: {
         body: JSON.stringify({
           id: input.id,
           worktreeId: input.worktreeId,
+          cantripOsBindingId: input.cantripOsBindingId,
+          cantripOsRuntimeGeneration: input.cantripOsRuntimeGeneration,
           stateProtection,
         }),
       },
@@ -205,6 +209,8 @@ export async function createFileDocument(input: {
     opened.projectId !== input.projectId ||
     opened.workerId !== input.workerId ||
     opened.worktreeId !== input.worktreeId ||
+    opened.cantripOsBindingId !== input.cantripOsBindingId ||
+    opened.cantripOsRuntimeGeneration !== input.cantripOsRuntimeGeneration ||
     opened.path !== input.path
   ) {
     throw new CantripApiError(

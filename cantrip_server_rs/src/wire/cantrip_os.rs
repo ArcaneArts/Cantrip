@@ -9,12 +9,19 @@ pub(super) fn refine(
 ) -> Result<bool, ValidationError> {
     if !matches!(
         tag,
-        "cantrip-os-guest-path" | "cantrip-os-overlay-path" | "cantrip-os-unique-overlays"
+        "cantrip-os-guest-path"
+            | "cantrip-os-overlay-path"
+            | "cantrip-os-unique-overlays"
+            | "cantrip-os-file-placement"
     ) {
         return Ok(false);
     }
     let value = result.value.as_ref().ok_or(ValidationError::Operation)?;
     let valid = match tag {
+        "cantrip-os-file-placement" => {
+            value.get("cantripOsBindingId").is_some()
+                == value.get("cantripOsRuntimeGeneration").is_some()
+        }
         "cantrip-os-guest-path" => {
             let units = value
                 .as_js_string()

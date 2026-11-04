@@ -45,6 +45,12 @@ export function toChatWireSummary(
     status: chat.status as ChatWireSummary["status"],
     activeWorkerId: chat.activeWorkerId,
     activeWorktreeId: chat.activeWorktreeId,
+    ...(chat.cantripOsBindingId
+      ? {
+          cantripOsBindingId: chat.cantripOsBindingId,
+          cantripOsRuntimeGeneration: chat.cantripOsRuntimeGeneration,
+        }
+      : {}),
     activeScratchRootId: chat.activeScratchRootId,
     placementRevision: chat.placementRevision,
     worktreeMode: chat.worktreeMode as ChatWireSummary["worktreeMode"],

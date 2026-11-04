@@ -8,7 +8,10 @@ export {
   cantripOsProvisionAdmissions,
   cantripOsChatPlacements,
 } from "./schema-cantrip-os.js";
-import { projectSourceIdentities } from "./schema-cantrip-os.js";
+import {
+  projectSourceIdentities,
+  cantripOsSourceBindings,
+} from "./schema-cantrip-os.js";
 import type { CuaEffectConfiguration } from "@cantrip/protocol/computer-use-effects";
 export {
   conversationUsageClients,
@@ -3264,6 +3267,11 @@ export const runConfigurationSecretOperations = pgTable(
 export const chats = pgTable(
   "chats",
   {
+    cantripOsBindingId: text("cantrip_os_binding_id").references(
+      () => cantripOsSourceBindings.id,
+      { onDelete: "restrict" },
+    ),
+    cantripOsRuntimeGeneration: text("cantrip_os_runtime_generation"),
     id: text("id").primaryKey(),
     ownerId: text("owner_id")
       .notNull()
@@ -3942,6 +3950,14 @@ export const terminals = pgTable(
 export const fileDocuments = pgTable(
   "file_documents",
   {
+    cantripOsBindingId: text("cantrip_os_binding_id").references(
+      () => cantripOsSourceBindings.id,
+      { onDelete: "restrict" },
+    ),
+    osBindingGeneration: text("os_binding_generation"),
+    osAttachmentGeneration: text("os_attachment_generation"),
+    osRuntimeGeneration: text("os_runtime_generation"),
+
     id: text("id").primaryKey(),
     projectId: text("project_id")
       .notNull()
@@ -3962,6 +3978,14 @@ export const fileDocuments = pgTable(
 );
 
 export const explorers = pgTable("explorers", {
+  cantripOsBindingId: text("cantrip_os_binding_id").references(
+    () => cantripOsSourceBindings.id,
+    { onDelete: "restrict" },
+  ),
+  osBindingGeneration: text("os_binding_generation"),
+  osAttachmentGeneration: text("os_attachment_generation"),
+  osRuntimeGeneration: text("os_runtime_generation"),
+
   id: text("id").primaryKey(),
   projectId: text("project_id")
     .notNull()

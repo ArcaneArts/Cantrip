@@ -1,8 +1,9 @@
 # Optional execution package
 
-Phase 3 is in progress. This cycle supplies the guest package and worker-side
-native executor carrier. Project bindings, server-authorized placement, native
-agent environment selection, and product UI follow in dependent cycles.
+Phase 3 is in progress. The package supports captured project sources, native
+agent execution, and product file operations through the existing worker.
+Terminal, setup/Run, attachment/artifact integration and final distribution
+acceptance remain in subsequent cycles.
 Installing this package alone does not move an existing chat into Linux.
 
 `cantrip-os-executor` depends on the workspace package. It runs the pinned,
@@ -27,14 +28,14 @@ to `0` in this first cycle while product placement is being implemented.
 Workspace support remains enabled by default. Including the executor requires
 the workspace package; apt enforces that dependency.
 
-Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.2.0_<arch>.deb`.
+Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.3.0_<arch>.deb`.
 It contains the source/patch fingerprint manifest, binary hashes, licenses, and
 sandbox helper. Docker and ISO recipes install the same package.
 
 Inside Linux, after copying the package there:
 
 ```sh
-sudo apt install ./cantrip-os-executor_0.2.0_arm64.deb  # amd64 for the VM edition
+sudo apt install ./cantrip-os-executor_0.3.0_arm64.deb  # amd64 for the VM edition
 sudo cantrip-executor enable
 sudo cantrip-executor status
 sudo cantrip-executor attach OWNER_ID WORKER_ID
@@ -106,3 +107,16 @@ needs passwordless sudo for package control. Obtain the disposable VM's host
 key through its trusted console; do not disable host-key checking. The test
 mutates its designated workspaces. Record runtime results in acceptance only
 after actually executing them.
+
+Version 0.3.0 adds `file-operations.mjs`, a small Node child started through the
+native authenticated process API. It reuses the worker's filesystem semantics
+for Explorer, text/binary editing, and uploads. It has no listener, scheduler,
+conversation store, account key, or provider credential. Its temporary binary
+staging key is generated locally inside the workspace. Node is a declared
+package dependency; removing the executor removes this integration helper.
+
+Product file mutations record durable admissions and completion receipts. After
+uncertain transport delivery, recovery observes the saved operation and reports
+an unknown outcome when no completion exists. It does not resend the mutation.
+Older captured editors fail after a runtime change; verify the source and open
+it through a newly selected Linux agent. Their recoverable drafts remain intact.

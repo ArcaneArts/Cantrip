@@ -549,14 +549,20 @@ export function useExplorerCreationOperations({
       createExplorer(
         explorer.projectId,
         `Graph · ${entry.name}`,
-        undefined,
+        explorer.cantripOsBindingId ? explorer.worktreeId : undefined,
         ownedPlacement ? undefined : paneId,
+        explorer.cantripOsBindingId
+          ? undefined
+          : {
+              kind: "worktree",
+              projectId: explorer.projectId,
+              worktreeId: explorer.worktreeId,
+            },
         {
-          kind: "worktree",
-          projectId: explorer.projectId,
-          worktreeId: explorer.worktreeId,
+          attachToTabLayout: !ownedPlacement,
+          cantripOsBindingId: explorer.cantripOsBindingId,
+          cantripOsRuntimeGeneration: explorer.cantripOsRuntimeGeneration,
         },
-        { attachToTabLayout: !ownedPlacement },
       ),
     onError: (error) => setPopoutError(errorText(error)),
     onSuccess: (createdExplorer, { entry, paneId }) => {

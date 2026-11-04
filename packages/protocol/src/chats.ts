@@ -382,6 +382,8 @@ export const standaloneChatScratchReconciliationResultSchema = z
   .strict();
 
 const chatSummaryBaseSchema = z.object({
+  cantripOsBindingId: z.uuid().optional(),
+  cantripOsRuntimeGeneration: z.uuid().optional(),
   id: z.string().min(1),
   experience: z.enum(["agent", "task"]).default("agent"),
   position: z.number().int().nonnegative(),

@@ -643,3 +643,46 @@ its product filesystem routing remains the next block. Linked source sidebar
 currently observes the original worker files. Plain Linux terminals, setup/Run,
 attachments, artifact downloads, and a real product-dispatched model turn are
 not claimed by this checkpoint. Fresh ISO distribution acceptance also remains.
+
+## Product file checkpoint (2026-11-04)
+
+Executor 0.3.0 was built for ARM64 and AMD64, then installed in disposable
+Docker and the installed AMD64 VM. This is package-level validation; fresh image
+and ISO distribution acceptance is still pending.
+
+| Package                               | SHA-256                                                            |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| `cantrip-os-executor_0.3.0_arm64.deb` | `8e7ed1f398406f8913ded6777ef68b10f153d12e768b6087d47ddc30d77fcd66` |
+| `cantrip-os-executor_0.3.0_amd64.deb` | `3956baba47d5ba2d40a5da57b7e6fe80dba58053b7d8b9205cc710a907822649` |
+
+Actual product testing used only Codex's in-app browser and the disposable
+Server/Worker stack. The linked Files sidebar created `product-linux.py`, the
+owned editor saved `print("CantripOS 日本")`, and the same bytes were read and
+executed as UID 20001 inside Docker. The Linux-owned Files sidebar showed its
+separate source; after upgrading the package, an old editor save correctly
+failed on the changed runtime. Refresh/verify and a newly captured Linux agent
+opened a new document view, which saved `print("Linux editor 日本")`; execution
+as UID 20000 printed that exact output. Screenshots and logs are under ignored
+`cantrip_os/artifacts/phase3-files/`.
+
+The real native product-file test passed in both Docker and the installed VM:
+160 KB Unicode text across native pages, binary write begin/chunk/commit,
+completed-save recovery after helper restart, wrong-server rejection, stale
+generation rejection, and a Worker admission with no guest completion returning
+unknown without creating the requested file. This exposed and fixed a digest
+mismatch caused by JSON property order.
+
+Focused Server tests: 51 passed. Host filesystem regression tests: 53 passed.
+Client tests: 87 passed, covering distinct host/OS sidebar and document identities, retained
+editor callbacks, recovery, and editor modes. Production app build passed.
+Native Rust source/contract tests passed on native PGlite and PostgreSQL.
+Actual Node/Rust comparisons on native PGlite passed 42 file-document cases and
+133 project-surface cases (4 and 68 retained-state snapshots). The file comparison
+fixture now moves both source and worker together, preserving the source/worker
+constraint introduced in Phase 3. Older Worker schemas rejected both OS-root
+commands; current schemas accepted them.
+The required `pnpm check` still stops on the existing unreviewed
+`agentOperations` digest (expected `691b6132…`, candidate `c01cedeb…`). Worker and
+Server type checks retain their existing five CUA/MCP and two Task errors.
+These results do not establish terminal/Run, full provider-agent product turns,
+attachment/artifact, live notification, or fresh ISO acceptance.

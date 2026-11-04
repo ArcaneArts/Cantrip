@@ -153,6 +153,76 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
             .await
             .is_err()
     );
+    assert_eq!(chat["cantripOsBindingId"].as_str(), binding["id"].as_str());
+    let explorers = cantrip_server::project_surfaces::Repository::new(database.clone());
+    let explorer_id = id();
+    let explorer_input = cantrip_server::wire::Value::from_serialize(&json!({
+        "id":explorer_id,"worktreeId":binding["worktreeId"],"cantripOsBindingId":binding["id"],"cantripOsRuntimeGeneration":instance["runtimeGeneration"],"attachToTabLayout":false,
+        "titleProtection":{"classification":{"recordKind":"explorer"},"protectedLabel":input["protectedRequest"]},
+        "stateProtection":{"classification":{"recordKind":"explorer-state"},"protectedState":input["protectedRequest"]}
+    }));
+    let explorer = explorers
+        .create(
+            cantrip_server::project_surfaces::Kind::Explorer,
+            "owner",
+            "project",
+            &explorer_input,
+            None,
+        )
+        .await?
+        .unwrap();
+    assert_eq!(
+        explorer["cantripOsBindingId"].as_str(),
+        binding["id"].as_str()
+    );
+    let explorer_context = explorers
+        .context(
+            cantrip_server::project_surfaces::Kind::Explorer,
+            "owner",
+            &explorer_id,
+        )
+        .await?
+        .unwrap();
+    assert_eq!(explorer_context["root"], context["osExecution"]);
+    let documents = cantrip_server::file_documents::Repository::new(database.clone());
+    let document_id = id();
+    let document_input = cantrip_server::wire::Value::from_serialize(
+        &json!({"id":document_id,"worktreeId":binding["worktreeId"],"cantripOsBindingId":binding["id"],"cantripOsRuntimeGeneration":instance["runtimeGeneration"],"stateProtection":{"classification":{"recordKind":"file-document-state"},"protectedState":input["protectedRequest"]}}),
+    );
+    let document = documents
+        .create("owner", "project", &document_input)
+        .await?
+        .unwrap();
+    assert_eq!(
+        documents
+            .create("owner", "project", &document_input)
+            .await?
+            .unwrap(),
+        document
+    );
+    assert_eq!(
+        documents
+            .execution_context("owner", &document_id)
+            .await?
+            .unwrap()["root"],
+        context["osExecution"]
+    );
+    assert!(documents.get("other", &document_id).await?.is_none());
+    assert!(
+        documents
+            .create("other", "project", &document_input)
+            .await
+            .is_err()
+    );
+    assert!(
+        database
+            .query(
+                "UPDATE file_documents SET os_runtime_generation=$1 WHERE id=$2",
+                &[&id(), &document_id]
+            )
+            .await
+            .is_err()
+    );
     let next = id();
     repository
         .observe(
@@ -185,6 +255,22 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
             .is_err()
     );
     assert!(chats.execution_context("owner", &chat_id).await.is_err());
+    assert!(
+        explorers
+            .context(
+                cantrip_server::project_surfaces::Kind::Explorer,
+                "owner",
+                &explorer_id
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        documents
+            .execution_context("owner", &document_id)
+            .await
+            .is_err()
+    );
     let mut current = scope.clone();
     current["runtimeGeneration"] = json!(next);
     receipt["runtimeGeneration"] = current["runtimeGeneration"].clone();

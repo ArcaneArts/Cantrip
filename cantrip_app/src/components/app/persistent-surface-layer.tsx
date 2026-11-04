@@ -592,6 +592,14 @@ export function PersistentSurfaceLayer({
                     explorer.projectId,
                     explorer.worktreeId,
                     entry.path,
+                    explorer.cantripOsBindingId
+                      ? {
+                          cantripOsBindingId: explorer.cantripOsBindingId,
+                          cantripOsRuntimeGeneration:
+                            explorer.cantripOsRuntimeGeneration,
+                          workerId: explorer.activeWorkerId,
+                        }
+                      : undefined,
                   )
           }
           onOpenGraphFile={(explorer, path) =>
@@ -599,6 +607,14 @@ export function PersistentSurfaceLayer({
               explorer.projectId,
               explorer.worktreeId,
               path,
+              explorer.cantripOsBindingId
+                ? {
+                    cantripOsBindingId: explorer.cantripOsBindingId,
+                    cantripOsRuntimeGeneration:
+                      explorer.cantripOsRuntimeGeneration,
+                    workerId: explorer.activeWorkerId,
+                  }
+                : undefined,
             )
           }
           onRevealFolder={

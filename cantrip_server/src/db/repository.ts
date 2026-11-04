@@ -263,6 +263,12 @@ function toExplorerWireSummary(
     position: explorer.position,
     activeWorkerId: explorer.activeWorkerId,
     worktreeId: explorer.worktreeId,
+    ...(explorer.cantripOsBindingId
+      ? {
+          cantripOsBindingId: explorer.cantripOsBindingId,
+          cantripOsRuntimeGeneration: explorer.osRuntimeGeneration!,
+        }
+      : {}),
     stateProtection: explorer.protectedState,
     fileMode: explorer.fileMode as ExplorerWireSummary["fileMode"],
     createdAt: toISOString(explorer.createdAt),

@@ -1,4 +1,6 @@
-import { requireWorkerLocalPath } from "./worker-local-source-path.js";
+import type { CantripOsExecution } from "@cantrip/protocol";
+import { CantripOsFileRepository } from "./cantrip-os-files.js";
+import { CantripOsChatRepository } from "./cantrip-os-chats.js";
 import type {
   EncryptedExplorerCreate,
   EncryptedExplorerPin,
@@ -25,7 +27,7 @@ import type { ProjectWorktreeExecutionContext } from "./projects.js";
 export interface ExplorerExecutionContext {
   explorerId: string;
   projectId: string;
-  root: string;
+  root: string | CantripOsExecution;
   workerId: string;
   worktreeId: string;
 }
@@ -96,21 +98,49 @@ export class ExplorerRepository {
             worktreeId: input.worktreeId,
           } as const)
         : undefined);
-    const { placement } =
-      await this.collaborators.resolveProjectExecutionPlacement(
-        ownerId,
-        projectId,
-        "explorer",
-        target,
-        isWorkerConnected,
-      );
+    const osTarget = input.cantripOsBindingId
+      ? await new CantripOsChatRepository(this.database).select(
+          ownerId,
+          projectId,
+          input.cantripOsBindingId,
+        )
+      : null;
+    if (
+      osTarget &&
+      (input.target ||
+        (input.worktreeId && input.worktreeId !== osTarget.worktree.id))
+    )
+      throw new Error("OS source and worktree selection differ.");
+    const placement = osTarget
+      ? { workerId: osTarget.workerId, worktreeId: osTarget.worktree.id }
+      : (
+          await this.collaborators.resolveProjectExecutionPlacement(
+            ownerId,
+            projectId,
+            "explorer",
+            target,
+            isWorkerConnected,
+          )
+        ).placement;
     const workerId = placement.workerId;
     const worktreeId = placement.worktreeId!;
     const position = await this.collaborators.nextProjectTabPosition(projectId);
     return this.database.transaction(async (transaction) => {
+      const osCapture = input.cantripOsBindingId
+        ? await new CantripOsFileRepository(
+            transaction as RepositoryDatabase,
+          ).capture(
+            ownerId,
+            projectId,
+            worktreeId,
+            input.cantripOsBindingId,
+            input.cantripOsRuntimeGeneration,
+          )
+        : {};
       const result = await transaction
         .insert(schema.explorers)
         .values({
+          ...osCapture,
           id: input.id,
           projectId,
           protectedLabel: input.titleProtection,
@@ -205,7 +235,12 @@ export class ExplorerRepository {
       ? {
           explorerId: row.explorer.id,
           projectId: row.explorer.projectId,
-          root: requireWorkerLocalPath(row.worktree.absolutePath),
+          root: await new CantripOsFileRepository(this.database).root(
+            ownerId,
+            row.explorer.projectId,
+            row.worktree,
+            row.explorer,
+          ),
           workerId: row.explorer.activeWorkerId,
           worktreeId: row.worktree.id,
         }
