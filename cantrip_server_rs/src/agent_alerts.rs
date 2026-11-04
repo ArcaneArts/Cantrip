@@ -77,7 +77,8 @@ pub fn validate_binding(
             changed.push(label);
         }
     }
-    let exact = operation != "context.get" || binding["contextKind"] == "standalone";
+    let exact = binding["contextKind"] == "standalone"
+        || matches!(operation, "alert.raise" | "alert.resolve" | "task.create");
     if exact {
         for (key, label) in [
             ("executionLaneId", "execution lane"),

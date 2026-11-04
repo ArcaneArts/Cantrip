@@ -18,6 +18,78 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The MCP Task admission milestone is based on `64b2e4961`. Native Task tools
+now use dispatch enqueue directly, retain retry history, preserve request order
+and deduplication, return the Source validation/error contracts and append the
+authenticated worker owner's audit before publishing HTTP. Audit failures remain
+best effort after a committed mutation. The public Task start path retains its
+retry reset. Read-only project bindings follow Source's safe lane-transition
+rules; mutation bindings still require the exact lane and permission context.
+
+The HTTP relay now uses the actual Source compatibility schema. It accepts
+legacy bindings, discards unknown claims and filters future grants before strict
+authorization. The manifest contains 605 roots and 10,266 nodes. All 603 previous
+ordered schema graphs are unchanged; the new transform is unreachable from every
+old graph, and the previous parser dispatch/refinements retain their bytes.
+The two new roots pass 2,432 Source/native value, issue and exact-error comparisons.
+
+All three stores and all three auth modes pass 24 paired Task HTTP cases per
+peer: 216 pairs and 432 calls, including actual query/audit failures and 21
+matching audit rows per peer/profile. The retry-history suite covers MCP and
+public starts on the same matrix, preserving opaque payloads, model selection,
+revision and operation identity through 36 real server restarts. MCP retains the
+latched retry history; public start resets it. Local checks also pass 1,054
+protocol tests, 44 Source tests, three typechecks, strict all-target Clippy,
+Rustfmt and the existing Alert-source HTTP scenario.
+
+Local PostgreSQL tests prove that all 18 successful, invalid and forbidden calls
+across the three auth modes withhold HTTP headers until the real audit INSERT
+finishes. Six more cases abort the caller while that INSERT is blocked and
+verify its audit still commits after release. Another 12 create/replay calls
+observe one committed Task/cycle and both App Live invalidations while a real audit INSERT is blocked; after the
+trigger raises, both servers still return 200 without an audit row. Eighteen
+additional create/replay calls observe no extra retry-reset transaction. Before
+the fix, terminating that extra transaction's real PostgreSQL backend produced
+500 after the Rust dispatch commit in each auth mode; the retained before and
+after reports distinguish the actual interruption from its corrected absence.
+
+Run these development checks locally:
+
+```sh
+node scripts/server-rust/cargo.mjs test --test mcp_operation_contracts -- --nocapture
+node --import tsx scripts/server-rust/task-read-query-manifest.mjs
+node --import tsx scripts/server-rust/agent-task-http-compatibility.mjs --database pglite --report /tmp/task-mcp-http.json
+node --import tsx scripts/server-rust/agent-task-retry-history-compatibility.mjs --database pglite --report /tmp/task-mcp-history.json
+node --import tsx scripts/server-rust/agent-task-postcommit-compatibility.mjs --report /tmp/task-mcp-postcommit.json
+node --import tsx scripts/server-rust/agent-task-audit-publication-compatibility.mjs --report /tmp/task-mcp-audit.json
+node --import tsx scripts/server-rust/agent-task-audit-failure-compatibility.mjs --report /tmp/task-mcp-audit-failure.json
+CANTRIP_CODEX_BIN=/absolute/path/to/bundle/codex node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --agent-tasks --database pglite --report /tmp/actual-native-agent-tasks.json
+```
+
+Repeat the two database-parameterized suites with `bundled-postgres` and
+`postgres`. Each runs anonymous, password and account modes. The native scenario
+uses the existing encrypted browser APIs, unchanged full worker and actual
+native MCP tools to create/replay an encrypted child, execute it through the
+scheduler, wait for completion and recover its transcript after server/worker
+restart. Artifact provenance remains part of each acceptance result. The
+older reference bundle fails current patch verification and actually rejects the
+worker ownership command (`--scope`). A separately built local candidate uses
+the current 51 patches plus unmerged native patch 0052 (artifact patch digest
+`ce401e59e302422924639b2bb8b5ee2310b364fc7448ba1644d904e355270a6a`). With
+that candidate, both Source and Rust complete seven actual native Task tool
+calls: list, create, replay, list, status, paused wait and completed wait. The
+unchanged worker executes the child and the browser decrypts its actual native
+answer, with inherited model and Goal mode off. Captured browser/server requests
+do not contain the private child text.
+
+Both runs then fail the unchanged worker shutdown assertion at
+`full-worker.mjs:172`; the final worker-stopped log is absent. Native restart
+acceptance is not reached. The paired process and isolated Rust investigator
+remain failed results, and the candidate is not exact-current-patch packaging
+acceptance. Reports and a separately asserted execution subset retain those
+limits. Other MCP domains, supported-platform packaging, shared coordination,
+migrations/rollback and the default server cutover remain open.
+
 The latest integration includes main `2031c9884` and worker-owned inference
 snapshots over HTTP and owner-scoped Live. It corrects two native compile errors
 in the incoming status implementation and retains connection identity through

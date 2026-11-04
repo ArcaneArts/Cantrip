@@ -8,6 +8,7 @@ import { actualChatCustomizationsClient } from "./actual-chat-customizations-cli
 import { actualSkillSettingsClient } from "./actual-skill-settings-client.mjs";
 import { actualMcpSettingsClient } from "./actual-mcp-settings-client.mjs";
 import { actualProviderTestClient } from "./actual-provider-test-client.mjs";
+import { actualAgentTaskClient } from "./actual-agent-task-client.mjs";
 
 export async function actualProjectChatClient({
   page,
@@ -150,7 +151,15 @@ export async function actualProjectChatClient({
         ),
       { chatId: chat.id, prompt, configuration },
     );
-    assert.equal(admitted.status, "started");
+    if (process.argv.includes("--agent-tasks")) {
+      // Current managed project Chats durably queue GUI input before execution.
+      assert.equal(admitted.status, "queued");
+      assert.equal(admitted.prompt.chatId, chat.id);
+      assert.equal(admitted.prompt.text, prompt);
+      assert.equal(typeof admitted.prompt.id, "string");
+    } else {
+      assert.equal(admitted.status, "started");
+    }
     const readMessages = () =>
       page.evaluate(async (chatId) => {
         const messages = await (
@@ -182,6 +191,26 @@ export async function actualProjectChatClient({
     result.steps.push(
       "the existing Agent conversation SDK replays one creation identity, prepares the real native CLI, records usage and decrypts a full-worker native response",
     );
+
+    if (process.argv.includes("--agent-tasks")) {
+      await actualAgentTaskClient({
+        page,
+        fixture,
+        projectId,
+        workerId,
+        startWorker,
+        stopWorker,
+        result,
+        requests,
+        model,
+        chat,
+        configuration,
+        readMessages,
+        idle,
+        reply,
+      });
+      return;
+    }
 
     model.reply({
       calls: [

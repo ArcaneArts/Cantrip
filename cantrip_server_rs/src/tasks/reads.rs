@@ -2,14 +2,18 @@ use super::*;
 impl Repository {
     pub async fn get(&self, owner: &str, chat: &str) -> Result<Option<Value>> {
         let ex = Executor::Database(&self.database);
-        let Some(task) = owned(ex, owner, chat, false).await? else {
+        let rows = self.database.query("SELECT to_jsonb(t)::text FROM tasks t JOIN chats c ON c.id=t.chat_id JOIN projects p ON p.id=c.project_id WHERE p.owner_id=$1 AND t.chat_id=$2 LIMIT 1", &[&owner,&chat]).await;
+        let rows = query_error::read(rows, "get", owner, chat)?;
+        let Some(row) = rows.first() else {
             return Ok(None);
         };
+        let task = serde_json::from_str::<Value>(&row.get::<String>(0)?)?;
         let cycle = one(ex,"SELECT to_jsonb(c)::text FROM task_dispatch_cycles c WHERE c.chat_id=$1 ORDER BY c.created_at DESC,c.id DESC LIMIT 1",&[&chat]).await?;
         summary(&task, cycle.as_ref()).map(Some)
     }
     pub async fn list(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
-        let rows = self.database.query("SELECT to_jsonb(t)::text FROM tasks t JOIN chats c ON c.id=t.chat_id JOIN projects p ON p.id=c.project_id WHERE p.owner_id=$1 AND c.project_id=$2 AND c.archived_at IS NULL ORDER BY t.created_at DESC,t.chat_id DESC",&[&owner,&project]).await?;
+        let rows = self.database.query("SELECT to_jsonb(t)::text FROM tasks t JOIN chats c ON c.id=t.chat_id JOIN projects p ON p.id=c.project_id WHERE p.owner_id=$1 AND c.project_id=$2 AND c.archived_at IS NULL ORDER BY t.created_at DESC,t.chat_id DESC",&[&owner,&project]).await;
+        let rows = query_error::read(rows, "list", owner, project)?;
         let tasks = rows
             .iter()
             .map(|r| Ok(serde_json::from_str::<Value>(&r.get::<String>(0)?)?))

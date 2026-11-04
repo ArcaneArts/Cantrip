@@ -19,6 +19,7 @@ import { taskWireCases } from "./task-wire-fixtures.mjs";
 import { publicChatWireCases } from "./public-chat-wire-fixtures.mjs";
 import { projectAutomationWireCases } from "./project-automation-wire-fixtures.mjs";
 import { endpointProviderWireCases } from "./endpoint-provider-wire-fixtures.mjs";
+import { mcpCompatibleWireCases } from "./mcp-compatible-wire-fixtures.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -67,6 +68,8 @@ export function* vectorCases(name, samples = securityFixtures[name]) {
     };
   }
   yield prepare(undefined, false);
+  for (const input of mcpCompatibleWireCases(name, samples))
+    yield prepare(input);
   for (const input of endpointProviderWireCases(name)) yield prepare(input);
   for (const input of agentOperationWireCases(name)) yield prepare(input);
   for (const input of projectChatWireCases(name)) yield prepare(input);

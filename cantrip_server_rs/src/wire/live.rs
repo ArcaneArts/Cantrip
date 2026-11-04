@@ -80,6 +80,9 @@ pub(super) fn transform(
     result: &mut Parsed,
     path: &[Value],
 ) -> Result<(), ValidationError> {
+    if tag == "mcp-compatible-call" {
+        return super::mcp::compatible_call(result);
+    }
     if tag == "automation-weekdays" {
         let values = result
             .value

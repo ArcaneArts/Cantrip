@@ -1,4 +1,37 @@
 use super::{Parsed, ValidationError, Value, value::json};
+
+pub(super) fn compatible_call(result: &mut Parsed) -> Result<(), ValidationError> {
+    let Value::Object(call) = result.value.as_mut().ok_or(ValidationError::Operation)? else {
+        return Err(ValidationError::Operation);
+    };
+    let Some(Value::Object(binding)) = call.get_mut("binding") else {
+        return Err(ValidationError::Operation);
+    };
+    binding.shift_remove("canonicalRoot");
+    let operations = binding
+        .shift_remove("allowedOperations")
+        .ok_or(ValidationError::Operation)?;
+    let operations = operations.as_array().ok_or(ValidationError::Operation)?;
+    if !binding.contains_key("contextKind") {
+        binding.insert("contextKind".into(), json!("project"));
+    }
+    if !binding.contains_key("scratchRootId") {
+        binding.insert("scratchRootId".into(), Value::Null);
+    }
+    binding.insert(
+        "allowedOperations".into(),
+        Value::Array(
+            operations
+                .iter()
+                .filter(|operation| {
+                    super::parse("cantripAgentOperationNameSchema", Some(operation)).is_ok()
+                })
+                .cloned()
+                .collect(),
+        ),
+    );
+    Ok(())
+}
 pub(super) fn refine(
     tag: &str,
     result: &mut Parsed,
