@@ -2745,6 +2745,8 @@ export class CodexAppServer implements CodexRuntime {
       threadId: options.threadId,
       expectedTurnId: options.expectedTurnId,
       signal: options.inferenceSignal,
+      recovery: options.recovery,
+      recoveryKey: options.recoveryKey,
     });
     try {
       return await this.prepareInferenceExecution(options, inference);
@@ -2858,6 +2860,11 @@ export class CodexAppServer implements CodexRuntime {
       operationId:
         options.operationGeneration ??
         `turn:${options.clientMessageId}:${randomUUID()}`,
+      recoveryKey: `chat:${options.chatId}:message:${options.clientMessageId}`,
+      recovery: options.inferenceRecovery?.() ?? {
+        messageId: options.clientMessageId,
+        threadId: options.threadId,
+      },
       provider: options.provider,
       chatId: options.chatId,
       threadId: options.threadId,
@@ -3102,6 +3109,7 @@ export class CodexAppServer implements CodexRuntime {
     await this.ensureStarted(options.model, options.provider);
     const inference = await this.#inference?.acquire({
       operationId: `operation:${options.operationId}`,
+      recoveryKey: `operation:${options.operationId}`,
       provider: options.provider,
     });
     try {
@@ -5124,6 +5132,7 @@ export class CodexAppServer implements CodexRuntime {
     await this.ensureStarted(options.model, options.provider);
     const inference = await this.#inference?.acquire({
       operationId: `label:${options.operationId ?? randomUUID()}`,
+      recoveryKey: options.operationId ? `label:${options.operationId}` : null,
       provider: options.provider,
       chatId: options.chatId,
       signal: options.signal,

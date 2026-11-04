@@ -1,4 +1,10 @@
 import { randomUUID } from "node:crypto";
+import {
+  WorkerInferenceJournal,
+  recoveryIdentity,
+  type InferenceRecoveryIdentity,
+  type InferenceJournalRecord,
+} from "./inference-journal.js";
 import type { NativeInferenceOwnership } from "./native-inference-ownership.js";
 import { observeInferenceCommand } from "./inference-command.js";
 import {
@@ -15,6 +21,8 @@ export interface InferenceRequest {
   providerId: string;
   chatId?: string | null;
   projectId?: string | null;
+  recoveryKey?: string | null;
+  recovery?: InferenceRecoveryIdentity | null;
   /** The execution owner's signal, never the lifetime of an observing UI. */
   signal?: AbortSignal;
 }
@@ -80,6 +88,8 @@ interface Ticket {
   lease: InferenceLease;
   resuming?: Promise<void>;
   observe?: (state: InferenceTicketState) => void;
+  journalKey: string | null;
+  durableQueueReady: boolean;
 }
 
 /**
@@ -96,6 +106,7 @@ export class WorkerInferenceAdmission {
   private revision = 0;
   private notificationPending = false;
   private closing = false;
+  private readonly journal: WorkerInferenceJournal | null;
 
   constructor(
     private readonly scope: Pick<
@@ -104,7 +115,13 @@ export class WorkerInferenceAdmission {
     >,
     private readonly onObserverError: (error: unknown) => void,
     private readonly nativeOwnership?: NativeInferenceOwnership,
+    private readonly onJournalError: (error: unknown) => void = onObserverError,
   ) {
+    this.journal = nativeOwnership
+      ? new WorkerInferenceJournal(scope.workerGeneration, (command) =>
+          nativeOwnership.journal(command),
+        )
+      : null;
     nativeOwnership?.onLost(() => {
       for (const runtime of this.runtimes) void this.retire(runtime);
     });
@@ -113,7 +130,15 @@ export class WorkerInferenceAdmission {
   async close(): Promise<void> {
     this.closing = true;
     const retired = [...this.runtimes].map((runtime) => this.retire(runtime));
-    await Promise.all([...retired, this.nativeOwnership?.close()]);
+    await Promise.all(retired);
+    await this.journal?.flush();
+    await this.nativeOwnership?.close();
+  }
+
+  /** Previous-generation metadata, for canonical receipt reconciliation. This
+   * never contains inputs and is not a competing delivery queue. */
+  recoverySnapshot(): readonly InferenceJournalRecord[] {
+    return this.journal?.recoverySnapshot() ?? [];
   }
 
   /** Returns false for stale configuration; equal revisions cannot change a limit. */
@@ -167,6 +192,8 @@ export class WorkerInferenceAdmission {
 
   /** The opaque runtime handle prevents old callbacks from acting on a replacement. */
   createRuntime(): InferenceRuntime {
+    if (this.closing)
+      throw new Error("The inference admission service is closing.");
     const runtime: Runtime = {
       generation: randomUUID(),
       records: new Map(),
@@ -181,7 +208,8 @@ export class WorkerInferenceAdmission {
           const environment = await this.nativeOwnership?.prepare(
             runtime.generation,
           );
-          if (runtime.retiring || runtime.retired)
+          await this.journal?.initialize();
+          if (this.closing || runtime.retiring || runtime.retired)
             throw new Error("The inference runtime was retired during launch.");
           runtime.prepared = true;
           for (const pool of this.pools.values()) this.drain(pool);
@@ -241,7 +269,10 @@ export class WorkerInferenceAdmission {
       if (
         previous.input.providerId !== input.providerId ||
         previous.input.chatId !== input.chatId ||
-        previous.input.projectId !== input.projectId
+        previous.input.projectId !== input.projectId ||
+        (previous.input.recoveryKey ?? null) !== (input.recoveryKey ?? null) ||
+        recoveryIdentity(previous.input.recovery) !==
+          recoveryIdentity(input.recovery)
       )
         throw new Error(
           "An inference operation cannot change identity during redelivery.",
@@ -264,7 +295,10 @@ export class WorkerInferenceAdmission {
     const ticket: Ticket = {
       runtime,
       pool,
-      input: { ...input },
+      input: {
+        ...input,
+        recovery: input.recovery ? { ...input.recovery } : null,
+      },
       state: "waiting",
       controller: new AbortController(),
       enqueuedAt: Date.now(),
@@ -274,6 +308,9 @@ export class WorkerInferenceAdmission {
       reject,
       stopListening: () => {},
       observe: observeInferenceCommand(),
+      journalKey:
+        this.journal?.key(runtime.generation, input.operationId) ?? null,
+      durableQueueReady: !this.journal,
       handle: {
         ready,
         status: () => this.status(ticket),
@@ -292,6 +329,28 @@ export class WorkerInferenceAdmission {
     };
     runtime.records.set(input.operationId, ticket);
     pool.queue.push(ticket);
+    if (this.journal && ticket.journalKey) {
+      void this.journal
+        .enqueue(ticket.journalKey, {
+          operationId: input.operationId,
+          providerId: input.providerId,
+          runtimeGeneration: runtime.generation,
+          recoveryKey: input.recoveryKey ?? null,
+          recovery: ticket.input.recovery ?? null,
+          chatId: input.chatId ?? null,
+          projectId: input.projectId ?? null,
+        })
+        .then(() => {
+          if (ticket.state !== "waiting") return;
+          ticket.durableQueueReady = true;
+          this.drain(pool);
+          this.changed();
+        })
+        .catch((error) => {
+          this.cancel(ticket, error);
+          this.reportJournalError(error);
+        });
+    }
     if (input.signal) {
       const signal = input.signal;
       const cancel = () =>
@@ -339,7 +398,14 @@ export class WorkerInferenceAdmission {
       ticket.controller.abort(reason);
       return;
     }
-    this.release(ticket);
+    this.release(
+      ticket,
+      ticket.runtime.retiring
+        ? "runtime-exited"
+        : ticket.startedAt === null
+          ? "never-started"
+          : "interrupted",
+    );
     ticket.reject(reason);
     ticket.controller.abort(reason);
   }
@@ -377,7 +443,21 @@ export class WorkerInferenceAdmission {
       .catch(() => {});
     ticket.state = "waiting";
     ticket.enqueuedAt = Date.now();
+    ticket.durableQueueReady = !this.journal;
     ticket.pool.queue.push(ticket);
+    if (this.journal && ticket.journalKey)
+      void this.journal
+        .requeue(ticket.journalKey)
+        .then(() => {
+          if (ticket.state !== "waiting") return;
+          ticket.durableQueueReady = true;
+          this.drain(ticket.pool);
+          this.changed();
+        })
+        .catch((error) => {
+          this.cancel(ticket, error);
+          this.reportJournalError(error);
+        });
     ticket.observe?.(ticket.state);
     this.drain(ticket.pool);
     this.changed();
@@ -391,15 +471,19 @@ export class WorkerInferenceAdmission {
         "A started inference must be settled by its execution owner.",
       );
     const waiting = ticket.state === "waiting";
-    this.release(ticket);
+    this.release(ticket, outcome);
     if (waiting)
       ticket.reject(
         new Error(`Inference settled before admission: ${outcome}.`),
       );
   }
 
-  private release(ticket: Ticket): void {
+  private release(ticket: Ticket, outcome: InferenceSettlement): void {
     ticket.state = "released";
+    if (this.journal && ticket.journalKey)
+      void this.journal
+        .release(ticket.journalKey, outcome)
+        .catch((error) => this.reportJournalError(error));
     ticket.observe?.(ticket.state);
     ticket.observe = undefined;
     ticket.stopListening();
@@ -422,13 +506,41 @@ export class WorkerInferenceAdmission {
       pool.queue.length &&
       pool.active.size < pool.configuration.maxConcurrentInference
     ) {
-      const ticket = pool.queue.shift()!;
+      // An asynchronous metadata write cannot let a newer waiter bypass the
+      // head. Install the reservation before starting its durable grant write.
+      const ticket = pool.queue[0]!;
+      if (!ticket.durableQueueReady) break;
+      pool.queue.shift();
       if (ticket.state !== "waiting") continue;
       ticket.state = "granted";
       ticket.grantedAt = Date.now();
       pool.active.add(ticket);
       ticket.observe?.(ticket.state);
-      ticket.resolve(ticket.lease);
+      if (this.journal && ticket.journalKey)
+        void this.journal
+          .grant(ticket.journalKey)
+          .then(() => {
+            if (
+              ticket.state === "granted" &&
+              !ticket.controller.signal.aborted &&
+              !ticket.runtime.retiring &&
+              !ticket.runtime.retired
+            )
+              ticket.resolve(ticket.lease);
+          })
+          .catch((error) => {
+            this.cancel(ticket, error);
+            this.reportJournalError(error);
+          });
+      else ticket.resolve(ticket.lease);
+    }
+  }
+
+  private reportJournalError(error: unknown): void {
+    try {
+      this.onJournalError(error);
+    } catch {
+      /* Diagnostics do not own tickets. */
     }
   }
 

@@ -1,3 +1,4 @@
+import type { InferenceRecoveryIdentity } from "../inference-journal.js";
 import type {
   ChildProcessWithoutNullStreams,
   ProcessEnvOptions,
@@ -379,6 +380,8 @@ export interface RunAgentTurnOptions {
   nativeInput?: ReadonlyArray<Record<string, unknown>>;
   nativeClientUserMessageId?: string;
   operationGeneration?: string;
+  /** Read after managed preparation/retry selected the exact canonical attempt. */
+  inferenceRecovery?: () => InferenceRecoveryIdentity;
   /** Exact logical-root cancellation before native dispatch; never a chat-wide active-turn interrupt. */
   preparationSignal?: AbortSignal;
   /** Performs initial managed preparation inside native retry/cancellation handling, without model input. */
@@ -468,6 +471,8 @@ export type PrepareAdmittedNativeExecutionOptions = Pick<
   | "onNativeInteractionRequest"
 > & {
   operationGeneration: string;
+  recovery?: InferenceRecoveryIdentity;
+  recoveryKey?: string;
   threadId: string;
   /** Native preallocated identity. Matching it does not itself start a turn. */
   expectedTurnId?: string;

@@ -1602,6 +1602,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               },
             ),
         ),
+        (error) =>
+          workerLogger.rateLimited(
+            `inference-journal:${key}`,
+            "warn",
+            "Inference admission metadata operation failed",
+            {
+              event: "inference.journal.failed",
+              workerGeneration: workerProcessGeneration,
+              error: workerLogError(error),
+            },
+          ),
       );
       inferenceAdmissions.set(key, admission);
     }
@@ -5433,6 +5444,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 : undefined,
               operationGeneration:
                 command.nativeCommandReceipt?.operationGeneration,
+              inferenceRecovery: () => {
+                const receipt =
+                  nativeCommandState.receipt ?? command.nativeCommandReceipt;
+                return {
+                  commandId: receipt?.operationId,
+                  commandGeneration: receipt?.operationGeneration,
+                  messageId: command.clientMessageId,
+                  threadId:
+                    nativeCommandState.dispatch?.threadId ?? command.threadId,
+                };
+              },
               automationPaused: pausedChats.has(command.chatId),
               nativeInput: queuedNativeInput?.input,
               nativeClientUserMessageId: command.nativeClientUserMessageId,
