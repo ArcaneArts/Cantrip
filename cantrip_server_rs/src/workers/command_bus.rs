@@ -134,12 +134,66 @@ pub struct CommandStats {
     pub routed_requests: f64,
     pub succeeded_requests: f64,
 }
-struct State {
-    owners: HashMap<String, String>,
+// Narrow transport headroom, not provider inference capacity. Keep this
+// allowlist aligned with workers/limited-command-bus.ts; new input stays ordinary.
+fn is_execution_control(command: &Value) -> bool {
+    match command["type"].as_str() {
+        Some("chat.native-control") => matches!(
+            command["control"]["kind"].as_str(),
+            Some("interrupt" | "pause" | "reply")
+        ),
+        Some(
+            "inference.configure"
+            | "worker.version"
+            | "worker.restart"
+            | "worker.credential.rotate"
+            | "worker.encryption.refresh"
+            | "chat.interrupt"
+            | "chat.pause.set"
+            | "chat.queue.changed"
+            | "chat.settings.read"
+            | "chat.queue.prepare"
+            | "chat.automation.resume"
+            | "agent.interaction.respond"
+            | "agent.interaction.respond.protected"
+            | "agent.interaction.cancel"
+            | "chat.native-logical.cancel"
+            | "chat.native-logical.complete"
+            | "chat.goal.get"
+            | "chat.goal.clear",
+        ) => true,
+        _ => false,
+    }
+}
+
+struct CommandLane {
     account_active: ActiveLimit,
     worker_active: ActiveLimit,
     account_rate: SlidingWindow,
     worker_rate: SlidingWindow,
+}
+impl CommandLane {
+    fn new(limits: &CommandLimits, control: bool) -> Self {
+        Self {
+            account_active: ActiveLimit::new(if control {
+                limits.account_concurrency.min(8)
+            } else {
+                limits.account_concurrency
+            }),
+            worker_active: ActiveLimit::new(if control {
+                limits.worker_concurrency.min(8)
+            } else {
+                limits.worker_concurrency
+            }),
+            account_rate: SlidingWindow::new(limits.account_rate_per_minute),
+            worker_rate: SlidingWindow::new(limits.worker_rate_per_minute),
+        }
+    }
+}
+
+struct State {
+    owners: HashMap<String, String>,
+    lanes: [CommandLane; 2],
     failed: f64,
     routed: f64,
     succeeded: f64,
@@ -158,12 +212,14 @@ struct ActiveRequest {
     bus: Arc<LimitedCommandBus>,
     owner: String,
     worker: String,
+    lane: usize,
 }
 impl Drop for ActiveRequest {
     fn drop(&mut self) {
         let mut state = self.bus.state.lock().unwrap();
-        state.worker_active.release(&self.worker);
-        state.account_active.release(&self.owner);
+        let lane = &mut state.lanes[self.lane];
+        lane.worker_active.release(&self.worker);
+        lane.account_active.release(&self.owner);
     }
 }
 struct RequestTask(Arc<LimitedCommandBus>);
@@ -255,10 +311,10 @@ impl LimitedCommandBus {
             clock,
             state: Mutex::new(State {
                 owners: HashMap::new(),
-                account_active: ActiveLimit::new(limits.account_concurrency),
-                worker_active: ActiveLimit::new(limits.worker_concurrency),
-                account_rate: SlidingWindow::new(limits.account_rate_per_minute),
-                worker_rate: SlidingWindow::new(limits.worker_rate_per_minute),
+                lanes: [
+                    CommandLane::new(&limits, false),
+                    CommandLane::new(&limits, true),
+                ],
                 failed: 0.0,
                 routed: 0.0,
                 succeeded: 0.0,
@@ -270,7 +326,11 @@ impl LimitedCommandBus {
     pub fn stats(&self) -> CommandStats {
         let state = self.state.lock().unwrap();
         CommandStats {
-            active_requests: state.account_active.total(),
+            active_requests: state
+                .lanes
+                .iter()
+                .map(|lane| lane.account_active.total())
+                .sum(),
             connected_workers: self.delegate.stats().connected_workers,
             failed_requests: state.failed,
             routed_requests: state.routed,
@@ -318,6 +378,8 @@ impl LimitedCommandBus {
         command: &Value,
     ) -> Result<ActiveRequest, CommandFailure> {
         let mut state = self.state.lock().unwrap();
+        let lane_index = usize::from(is_execution_control(command));
+        let lane = &mut state.lanes[lane_index];
         let rejected = if !self.quotas.consume_relay_at(
             owner,
             &worker.identity,
@@ -329,11 +391,11 @@ impl LimitedCommandBus {
                 RelayLimitError::new("Relay bandwidth quota reached. Retry later.", 1),
             ))
         } else {
-            let account = state
+            let account = lane
                 .account_rate
                 .consume(owner, (self.clock)())
                 .unwrap_or(0);
-            let worker_retry = state
+            let worker_retry = lane
                 .worker_rate
                 .consume(&worker.identity, (self.clock)())
                 .unwrap_or(0);
@@ -346,13 +408,13 @@ impl LimitedCommandBus {
                         retry,
                     ),
                 ))
-            } else if !state.account_active.acquire(owner) {
+            } else if !lane.account_active.acquire(owner) {
                 Some((
                     "account-concurrency-limit",
                     RelayLimitError::new("Account worker-command concurrency limit reached.", 1),
                 ))
-            } else if !state.worker_active.acquire(&worker.identity) {
-                state.account_active.release(owner);
+            } else if !lane.worker_active.acquire(&worker.identity) {
+                lane.account_active.release(owner);
                 Some((
                     "worker-concurrency-limit",
                     RelayLimitError::new("Worker command concurrency limit reached.", 1),
@@ -372,6 +434,7 @@ impl LimitedCommandBus {
             bus: self.clone(),
             owner: owner.into(),
             worker: worker.identity.clone(),
+            lane: lane_index,
         })
     }
     async fn run(

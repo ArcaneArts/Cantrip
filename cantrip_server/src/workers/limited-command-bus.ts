@@ -31,12 +31,64 @@ interface LimitedWorkerCommandBusOptions {
   workerRatePerMinute: number;
 }
 
+// Keep this narrow allowlist aligned with workers/command_bus.rs. Commands
+// carrying new inference input use the ordinary lane, including native steer.
+const EXECUTION_CONTROL_COMMANDS = new Set<WorkerCommand["type"]>([
+  "inference.configure",
+  "worker.version",
+  "worker.restart",
+  "worker.credential.rotate",
+  "worker.encryption.refresh",
+  "chat.interrupt",
+  "chat.pause.set",
+  "chat.queue.changed",
+  "chat.settings.read",
+  "chat.queue.prepare",
+  "chat.automation.resume",
+  "agent.interaction.respond",
+  "agent.interaction.respond.protected",
+  "agent.interaction.cancel",
+  "chat.native-logical.cancel",
+  "chat.native-logical.complete",
+  "chat.goal.get",
+  "chat.goal.clear",
+]);
+function isExecutionControl(command: WorkerCommand): boolean {
+  if (command.type === "chat.native-control") {
+    const kind = command.control?.kind;
+    return kind === "interrupt" || kind === "pause" || kind === "reply";
+  }
+  return EXECUTION_CONTROL_COMMANDS.has(command.type);
+}
+
+class CommandLane {
+  readonly accountActive: ActiveLimit;
+  readonly accountRate: SlidingWindowRateLimiter;
+  readonly workerActive: ActiveLimit;
+  readonly workerRate: SlidingWindowRateLimiter;
+
+  constructor(options: LimitedWorkerCommandBusOptions, control: boolean) {
+    this.accountActive = new ActiveLimit(
+      control
+        ? Math.min(8, options.accountConcurrency)
+        : options.accountConcurrency,
+    );
+    this.workerActive = new ActiveLimit(
+      control
+        ? Math.min(8, options.workerConcurrency)
+        : options.workerConcurrency,
+    );
+    this.accountRate = new SlidingWindowRateLimiter(
+      options.accountRatePerMinute,
+    );
+    this.workerRate = new SlidingWindowRateLimiter(options.workerRatePerMinute);
+  }
+}
+
 export class LimitedWorkerCommandBus implements WorkerCommandBus {
-  readonly #accountActive: ActiveLimit;
-  readonly #accountRate: SlidingWindowRateLimiter;
+  readonly #ordinary: CommandLane;
+  readonly #control: CommandLane;
   readonly #ownerIds = new Map<string, string>();
-  readonly #workerActive: ActiveLimit;
-  readonly #workerRate: SlidingWindowRateLimiter;
   #failedRequests = 0;
   #routedRequests = 0;
   #succeededRequests = 0;
@@ -45,14 +97,8 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
     readonly delegate: WorkerCommandBus,
     readonly options: LimitedWorkerCommandBusOptions,
   ) {
-    this.#accountActive = new ActiveLimit(options.accountConcurrency);
-    this.#accountRate = new SlidingWindowRateLimiter(
-      options.accountRatePerMinute,
-    );
-    this.#workerActive = new ActiveLimit(options.workerConcurrency);
-    this.#workerRate = new SlidingWindowRateLimiter(
-      options.workerRatePerMinute,
-    );
+    this.#ordinary = new CommandLane(options, false);
+    this.#control = new CommandLane(options, true);
   }
 
   attach(
@@ -83,7 +129,9 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
   stats(): WorkerCommandBusStats {
     const delegate = this.delegate.stats?.();
     return {
-      activeRequests: this.#accountActive.total(),
+      activeRequests:
+        this.#ordinary.accountActive.total() +
+        this.#control.accountActive.total(),
       connectedWorkers: delegate?.connectedWorkers ?? 0,
       failedRequests: this.#failedRequests,
       routedRequests: this.#routedRequests,
@@ -183,8 +231,11 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
       this.#logLimit(workerId, command.type, "relay-bandwidth-quota");
       throw new RelayLimitError("Relay bandwidth quota reached. Retry later.");
     }
-    const accountRetry = this.#accountRate.consume(ownerId);
-    const workerRetry = this.#workerRate.consume(workerId);
+    // A full inference queue cannot consume cancellation/configuration headroom.
+    // These are transport resource limits, never provider inference permits.
+    const lane = isExecutionControl(command) ? this.#control : this.#ordinary;
+    const accountRetry = lane.accountRate.consume(ownerId);
+    const workerRetry = lane.workerRate.consume(workerId);
     const retryAfter = Math.max(accountRetry ?? 0, workerRetry ?? 0);
     if (retryAfter > 0) {
       this.#failedRequests += 1;
@@ -194,7 +245,7 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
         retryAfter,
       );
     }
-    const releaseAccount = this.#accountActive.acquire(ownerId);
+    const releaseAccount = lane.accountActive.acquire(ownerId);
     if (!releaseAccount) {
       this.#failedRequests += 1;
       this.#logLimit(workerId, command.type, "account-concurrency-limit");
@@ -202,7 +253,7 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
         "Account worker-command concurrency limit reached.",
       );
     }
-    const releaseWorker = this.#workerActive.acquire(workerId);
+    const releaseWorker = lane.workerActive.acquire(workerId);
     if (!releaseWorker) {
       releaseAccount();
       this.#failedRequests += 1;
