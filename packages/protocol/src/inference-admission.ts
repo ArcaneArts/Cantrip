@@ -31,6 +31,15 @@ export const inferenceTicketStateSchema = z.enum([
   "released",
 ]);
 
+// These monotonic durations describe observation in the current worker generation.
+// Wall-clock timestamps and total elapsed retain their existing meaning.
+export const inferenceTimingSchema = z.object({
+  queueWaitMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  reservedMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  executionMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  suspendedMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+});
+
 export const inferenceOperationStatusSchema = z.object({
   purpose: z.enum(["turn", "label", "child", "helper"]).default("helper"),
   operationId: z.string().min(1),
@@ -43,6 +52,7 @@ export const inferenceOperationStatusSchema = z.object({
   enqueuedAt: z.number().int().nonnegative(),
   grantedAt: z.number().int().nonnegative().nullable(),
   startedAt: z.number().int().nonnegative().nullable(),
+  timing: inferenceTimingSchema.optional(),
 });
 
 export const inferencePoolStatusSchema =
@@ -65,6 +75,7 @@ export type ProviderInferenceConfiguration = z.infer<
   typeof providerInferenceConfigurationSchema
 >;
 export type InferenceTicketState = z.infer<typeof inferenceTicketStateSchema>;
+export type InferenceTiming = z.infer<typeof inferenceTimingSchema>;
 export type InferenceOperationStatus = z.infer<
   typeof inferenceOperationStatusSchema
 >;

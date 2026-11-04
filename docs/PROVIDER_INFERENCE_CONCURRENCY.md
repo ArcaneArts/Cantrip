@@ -20,6 +20,27 @@ requests can be cancelled immediately. Observers receive coalesced snapshots
 with worker generation, revision, counts, and one-based waiting positions.
 Observer failures cannot hold or release execution capacity.
 
+Operation snapshots optionally include monotonic `timing` counters for the
+current worker/runtime generation: `queueWaitMs`, `reservedMs`, `executionMs`,
+and `suspendedMs`. Queue time includes every FIFO reacquisition; reserved time
+covers a granted ticket before execution starts. Execution includes ordinary
+tool round trips and cancellation until confirmed settlement. It is not a
+measurement of model sampling throughput. A confirmed suspension and the later
+reacquisition wait are measured separately. Released handles retain frozen
+counters. Wall-clock timestamps and existing total-elapsed metrics are unchanged.
+Recovered placeholder records omit timing because a new monotonic clock cannot
+reconstruct the previous process's durations reliably. Replacement operations
+measure their own current-generation observation, without inventing missing time.
+
+The worker writes one debug diagnostic per queue/grant/start/cancel/suspend/resume/
+release transition, plus canonical recovery decisions. Diagnostics include opaque
+operation/provider/runtime/worker identities, the current worker generation and
+available timing counters; recovery also identifies the previous generation.
+They contain no prompt, title, credentials or token-stream events, introduce no
+completed-event registry, and use the existing bounded service log buffer/archive.
+Recovery decisions already installed in the current recovery set are not logged
+again on each refresh. Diagnostic callback failures cannot change ownership.
+
 Runtime retirement requires confirmed execution termination; a caller must not
 retire a runtime on a timeout, missing output, or an observing UI disconnect.
 Retirement invalidates its grants, removes its pending requests, and releases

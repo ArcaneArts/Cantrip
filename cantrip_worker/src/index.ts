@@ -1641,6 +1641,29 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             },
             signal,
           ),
+        ({
+          action,
+          timing,
+          state,
+          outcome,
+          workerGeneration,
+          runtimeGeneration,
+          previousWorkerGeneration,
+          ...identity
+        }) =>
+          workerLogger.event("debug", "Inference admission lifecycle", {
+            event: `inference.ticket.${action}`,
+            subsystem: "inference-admission",
+            ...identity,
+            workerGenerationId: workerGeneration,
+            runtimeGenerationId: runtimeGeneration,
+            ...(previousWorkerGeneration
+              ? { previousWorkerGenerationId: previousWorkerGeneration }
+              : {}),
+            status: state,
+            ...(outcome ? { reasonCode: outcome } : {}),
+            ...(timing ? { ...timing } : {}),
+          }),
       );
       admission.subscribe((status) => {
         // Only the currently authenticated server/owner binding may publish.
