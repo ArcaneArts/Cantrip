@@ -236,6 +236,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     const connectionId = randomUUID();
     const previous = await this.#coordinator.claimWorker({
       connectionId,
+      continuityIdentity,
       ownerId: resolvedOwnerId,
       workerId,
     });
@@ -345,6 +346,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         this.#dispatchNotification(workerId, notification);
         this.#publishBounded({
           kind: "worker-notification",
+          connectionId,
           ownerId: resolvedOwnerId,
           workerId,
           notification,
@@ -466,6 +468,14 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       code: code ?? 1008,
       reason: reason ?? "Worker credential was revoked",
     });
+  }
+
+  connectionIdentity(
+    workerId: string,
+  ): WorkerConnectionContinuityIdentity | null {
+    if (this.#connections.has(workerId))
+      return this.#local.connectionIdentity(workerId);
+    return this.#coordinator.cachedWorker(workerId)?.continuityIdentity ?? null;
   }
 
   isConnected(workerId: string): boolean {
@@ -821,14 +831,23 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         await this.#receiveFrame(message);
         return;
       case "worker-notification": {
-        const presence = this.#coordinator.cachedWorker(message.workerId);
-        if (presence?.ownerId !== message.ownerId) return;
         const notification = workerNotificationSchema.safeParse(
           message.notification,
         );
-        if (notification.success) {
-          this.#dispatchNotification(message.workerId, notification.data);
-        }
+        if (!notification.success) return;
+        const presence =
+          notification.data.type === "inference.status"
+            ? await this.#coordinator.findWorker(message.workerId)
+            : this.#coordinator.cachedWorker(message.workerId);
+        if (
+          presence?.ownerId !== message.ownerId ||
+          (message.connectionId !== undefined &&
+            presence.connectionId !== message.connectionId) ||
+          (notification.data.type === "inference.status" &&
+            !message.connectionId)
+        )
+          return;
+        this.#dispatchNotification(message.workerId, notification.data);
         return;
       }
       case "worker-presence":

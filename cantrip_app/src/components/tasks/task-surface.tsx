@@ -1,3 +1,4 @@
+import { useChatInferenceQueue } from "@/components/chat/inference-queue-notice";
 import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
 import {
   EMPTY_MODEL_CONFIGURATION,
@@ -219,6 +220,11 @@ export function TaskSurface({
     clientEncryption.getSnapshot,
     clientEncryption.getSnapshot,
   );
+  const inferenceQueue = useChatInferenceQueue({
+    chatId: chat.id,
+    workerId: chat.activeWorkerId,
+    enabled: visible && Boolean(worker?.online),
+  });
   const workerName = worker?.name;
   const workerEncryptionReadiness = taskWorkerEncryptionReadiness(
     worker,
@@ -712,9 +718,11 @@ export function TaskSurface({
           <Loader2 className="size-4 animate-spin text-violet-500" />
           <div className="min-w-0">
             <p className="text-sm font-medium">
-              {task.data.state === "finalizing"
-                ? "Finalizing Task"
-                : "Planning Task"}
+              {inferenceQueue.data
+                ? "Queued for provider capacity"
+                : task.data.state === "finalizing"
+                  ? "Finalizing Task"
+                  : "Planning Task"}
             </p>
             <p className="truncate text-xs text-muted-foreground">
               Read-only investigation · round {task.data.planningRound}

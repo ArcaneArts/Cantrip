@@ -151,9 +151,44 @@ of old pending journal records remain to be integrated. Merely loading ordinals
 is not yet complete FIFO recovery across a restart. In-memory runtime/controller
 tombstones also still need the final bounded-lifecycle audit.
 
+## Configuration and live queue feedback
+
+Provider setup and editing expose **Maximum concurrent inference**, defaulting
+new providers to 8 and preserving the saved value when editing. Both the HTML
+control and protocol accept positive integers up to PostgreSQL's integer bound.
+The setting applies to every model, account, and project on each worker.
+
+Workers publish coalesced `inference.status` notifications on admission changes.
+A configuration handshake publishes an initial snapshot even when its revision
+is unchanged. `GET /api/workers/:workerId/inference` returns a fresh,
+owner-authorized snapshot through the worker control lane. Both servers validate
+the server, owner, worker, actual authenticated process generation, and monotonic
+revision before relaying a `worker-inference` Live status event. Coordinated Node
+relays carry the authenticated continuity identity in their worker presence and
+reject notifications from replaced relay connections. No prompt or title is
+included in status metadata.
+
+The UI obtains initial snapshots and reconciles reconnects through that endpoint.
+Same-generation Live events directly update the query cache. A different generation
+is confirmed with a fresh snapshot instead of trusting a delayed event; cancelled
+fetches cannot overwrite newer Live data. Per-chat and per-provider selectors
+avoid redrawing unrelated transcripts. Provider settings show utilization per
+worker. Chat composers and Task overviews show one-based provider queue positions,
+current utilization, and automatic-start wording without an ETA. Goal and Task
+execution badges distinguish provider waiting from active inference. The existing
+Stop/Cancel controls cancel eligible queued turns; later prompts remain in the
+canonical chat queue and do not receive a provider queue position yet.
+
+Operation purpose distinguishes the root turn and its naming from independent
+children/helpers, so a queued child does not falsely label an actively sampling
+parent as queued. Status delivery retains only the latest snapshot during socket
+congestion, with a retry timer only while an actual connected write is blocked;
+there is no capacity polling or idle update loop. Reconnect obtains a fresh
+snapshot instead of replaying status from a previous authenticated binding.
+
 The remaining milestones must complete durable pending-operation/order recovery, ordinary
 transport backpressure recovery, provider deletion/route-change and
-archival cancellation, app feedback, bounded operation history, and the exhaustive
+archival cancellation, execution-versus-wait accounting, bounded operation history, and the exhaustive
 inference-path/lifecycle audit. This intermediate implementation is not the
 completed feature; source integration is not evidence of exercised runtime behavior.
 

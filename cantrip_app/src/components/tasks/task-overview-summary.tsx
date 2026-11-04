@@ -1,3 +1,4 @@
+import { ChatInferenceQueue } from "@/components/chat/inference-queue-notice";
 import type {
   ChatMessage,
   ChatSummary,
@@ -77,6 +78,11 @@ export function TaskOverviewSummary({
     : null;
   return (
     <section className="border-b py-5" aria-label="Task progress">
+      <ChatInferenceQueue
+        chatId={chat.id}
+        workerId={chat.activeWorkerId}
+        enabled={visible && chat.status !== "offline"}
+      />
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
         <div>
           <dt className="text-xs text-muted-foreground">Elapsed</dt>

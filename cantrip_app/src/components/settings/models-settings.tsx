@@ -1,3 +1,4 @@
+import { ProviderInferenceUsage } from "./provider-inference-usage";
 import type {
   ModelProfileSummary,
   ModelProviderSummary,
@@ -364,6 +365,7 @@ export function ModelsSettings({
               <span className="text-right">Actions</span>
             </div>
             {renderProviderOverview(provider)}
+            <ProviderInferenceUsage providerId={provider.id} />
           </section>
         ) : (
           <section

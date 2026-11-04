@@ -1,3 +1,4 @@
+import type { WorkerConnectionContinuityIdentity } from "../workers/bridge.js";
 import { randomUUID } from "node:crypto";
 
 import { createClient } from "redis";
@@ -17,6 +18,7 @@ const MAX_COORDINATION_MESSAGE_BYTES =
   Math.ceil(((CUA_CONTROL_BYTES + 16) * 4) / 3) + 64 * 1_024;
 
 export interface WorkerPresenceClaim {
+  continuityIdentity?: WorkerConnectionContinuityIdentity;
   connectionId: string;
   expiresAt: number;
   instanceId: string;
@@ -79,6 +81,7 @@ export type RelayCoordinationPayload =
     })
   | (CoordinationPayloadBase & {
       kind: "worker-notification";
+      connectionId?: string;
       ownerId: string;
       workerId: string;
       notification: unknown;
@@ -176,6 +179,16 @@ function parsePresence(value: unknown): WorkerPresenceClaim | null {
   ) {
     return null;
   }
+  const continuity = Reflect.get(value, "continuityIdentity");
+  if (
+    continuity !== undefined &&
+    (typeof continuity !== "object" ||
+      continuity === null ||
+      !validString(Reflect.get(continuity, "credentialId")) ||
+      !validString(Reflect.get(continuity, "workerProcessGeneration")) ||
+      Reflect.get(continuity, "ownerId") !== Reflect.get(value, "ownerId"))
+  )
+    return null;
   return value as WorkerPresenceClaim;
 }
 

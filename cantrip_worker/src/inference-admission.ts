@@ -17,6 +17,7 @@ import {
 } from "@cantrip/protocol";
 
 export interface InferenceRequest {
+  purpose?: InferenceOperationStatus["purpose"];
   operationId: string;
   providerId: string;
   chatId?: string | null;
@@ -267,6 +268,7 @@ export class WorkerInferenceAdmission {
     const previous = runtime.records.get(input.operationId);
     if (previous) {
       if (
+        (previous.input.purpose ?? "helper") !== (input.purpose ?? "helper") ||
         previous.input.providerId !== input.providerId ||
         previous.input.chatId !== input.chatId ||
         previous.input.projectId !== input.projectId ||
@@ -588,6 +590,7 @@ export class WorkerInferenceAdmission {
 
   private status(ticket: Ticket): InferenceOperationStatus {
     return {
+      purpose: ticket.input.purpose ?? "helper",
       operationId: ticket.input.operationId,
       runtimeGeneration: ticket.runtime.generation,
       providerId: ticket.input.providerId,

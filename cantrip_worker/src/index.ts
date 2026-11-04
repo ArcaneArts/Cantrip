@@ -1614,6 +1614,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             },
           ),
       );
+      admission.subscribe((status) => {
+        // Only the currently authenticated server/owner binding may publish.
+        if (JSON.stringify(nativeNamespaceScope()) !== key) return;
+        workerNotificationEmitter?.({ type: "inference.status", status });
+      });
       inferenceAdmissions.set(key, admission);
     }
     return admission;
@@ -3344,11 +3349,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       return runtimeProvider;
     };
     switch (command.type) {
+      case "inference.status":
+        return inferenceAdmissionForWorker().snapshot();
       case "inference.configure": {
         const admission = inferenceAdmissionForWorker();
         for (const configuration of command.configurations)
           admission.configure(configuration);
-        return admission.snapshot();
+        const status = admission.snapshot();
+        // Reconnection needs a snapshot even when configuration did not change.
+        workerNotificationEmitter?.({ type: "inference.status", status });
+        return status;
       }
       case "cantrip-os.run-runtime.start":
       case "cantrip-os.run-runtime.restart":

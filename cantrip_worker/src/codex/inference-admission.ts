@@ -1,3 +1,4 @@
+import type { InferenceOperationStatus } from "@cantrip/protocol";
 import {
   recoveryIdentity,
   type InferenceRecoveryIdentity,
@@ -47,6 +48,7 @@ export interface InferencePreparationScope {
 }
 
 interface Request {
+  purpose?: InferenceOperationStatus["purpose"];
   operationId: string;
   provider: {
     id: string;
@@ -86,6 +88,7 @@ export class CodexInferenceAdmission {
   acquire(input: Request): Promise<CodexInferenceExecution> {
     const identity = JSON.stringify([
       input.provider.id,
+      input.purpose ?? "helper",
       input.chatId ?? null,
       input.projectId ?? null,
       input.threadId ?? null,
@@ -117,6 +120,7 @@ export class CodexInferenceAdmission {
     });
     const ticket = this.runtime.request({
       operationId: input.operationId,
+      purpose: input.purpose,
       providerId: input.provider.id,
       chatId: input.chatId,
       projectId: input.projectId,
@@ -338,6 +342,10 @@ export class CodexInferenceAdmission {
     const scope = root?.ticket.status();
     const execution = await this.acquire({
       operationId: `native-inference:${input.threadId}:${input.turnId}`,
+      purpose:
+        input.rootThreadId && input.rootThreadId !== input.threadId
+          ? "child"
+          : "turn",
       provider: input.provider,
       chatId: scope?.chatId,
       projectId: scope?.projectId,
