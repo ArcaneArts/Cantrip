@@ -92,8 +92,36 @@ pub fn operate(
 async fn execute(service: Arc<AuthService>, owner: String, input: Value) -> Result<Value> {
     let repository = Repository::new(service.repository.database.clone());
     let project = text(&input, "projectId")?;
+    let os_source = if input["osSource"].is_null() {
+        None
+    } else {
+        let selection: serde_json::Value = serde_json::from_str(&input["osSource"].stringify())?;
+        let selected = crate::cantrip_os::Repository::new(service.repository.database.clone())
+            .selected_run(
+                &owner,
+                project,
+                &selection,
+                input["targetWorktreeId"].as_str(),
+            )
+            .await
+            .map_err(|error| conflict(error.to_string()))?;
+        let selected = Value::from_serialize(&selected);
+        if !selected["runtime"].is_null()
+            && selected["runtime"]["configurationId"] != input["configurationId"]
+        {
+            return Err(conflict(
+                "The captured Linux Run belongs to another configuration.",
+            ));
+        }
+        Some(selected)
+    };
+    let execution_key = os_source
+        .as_ref()
+        .map(|source| text(source, "executionKey"))
+        .transpose()?
+        .unwrap_or("worker");
     if let Some(replay) = repository
-        .operation_result(&owner, text(&input, "operationId")?)
+        .operation_result_in_execution(&owner, text(&input, "operationId")?, execution_key)
         .await?
     {
         if ["projectId", "configurationId", "operation"]
@@ -111,35 +139,39 @@ async fn execute(service: Arc<AuthService>, owner: String, input: Value) -> Resu
             Some(&replay),
         );
     }
-    let targets = TargetRepository::new(service.repository.database.clone());
-    let target = if let Some(target) = input["targetWorktreeId"].as_str() {
-        target.to_owned()
+    let target = if let Some(source) = os_source.as_ref() {
+        json!({"workerId":source["osExecution"]["target"]["scope"]["workerId"],"worktree":json!({"id":source["osExecution"]["target"]["scope"]["worktreeId"]})})
     } else {
-        let primary = targets
-            .observation_source(&owner, project, &|id| {
-                service.workers.bridge.is_connected(id)
-            })
+        let targets = TargetRepository::new(service.repository.database.clone());
+        let target = if let Some(target) = input["targetWorktreeId"].as_str() {
+            target.to_owned()
+        } else {
+            let primary = targets
+                .observation_source(&owner, project, &|id| {
+                    service.workers.bridge.is_connected(id)
+                })
+                .await?
+                .ok_or_else(|| {
+                    api(
+                        404,
+                        "not-found",
+                        "The project Primary source was not found.",
+                    )
+                })?;
+            text(&primary, "worktreeId")?.to_owned()
+        };
+        targets
+            .worktree_context(&owner, project, &target)
             .await?
+            .filter(|v| v["worktree"]["lifecycleState"] == "ready")
             .ok_or_else(|| {
                 api(
                     404,
                     "not-found",
-                    "The project Primary source was not found.",
+                    "The Run configuration target worktree is not ready.",
                 )
-            })?;
-        text(&primary, "worktreeId")?.to_owned()
+            })?
     };
-    let target = targets
-        .worktree_context(&owner, project, &target)
-        .await?
-        .filter(|v| v["worktree"]["lifecycleState"] == "ready")
-        .ok_or_else(|| {
-            api(
-                404,
-                "not-found",
-                "The Run configuration target worktree is not ready.",
-            )
-        })?;
     let worker = text(&target, "workerId")?;
     if !service.workers.bridge.is_connected(worker) {
         return Err(api(
@@ -153,7 +185,19 @@ async fn execute(service: Arc<AuthService>, owner: String, input: Value) -> Resu
     let mut codex_revision = Value::Null;
     let mut protected = Vec::new();
     if input["operation"] != "stop" {
-        let definition = definition(&service, &owner, &input).await?;
+        let definition = if let Some(source) = os_source.as_ref() {
+            let d = &source["osExecution"]["definitions"]["scope"];
+            let request = serde_json::json!({"runtimeGeneration":text(d,"runtimeGeneration")?,"request":{"type":"project.run-configuration-definitions.get","operationId":text(&input,"operationId")?,"projectId":project,"configurationId":text(&input,"configurationId")?}});
+            let response = crate::cantrip_os::coordinator::Coordinator::new(service.clone())
+                .run_definition(&owner, project, text(d, "bindingId")?, &request)
+                .await?;
+            crate::settings::parse_response(
+                "runConfigurationGetResponseSchema",
+                Some(&Value::from_serialize(&response["result"])),
+            )?
+        } else {
+            definition(&service, &owner, &input).await?
+        };
         if definition["result"]["found"] != true {
             return Err(api(
                 404,
@@ -199,7 +243,22 @@ async fn execute(service: Arc<AuthService>, owner: String, input: Value) -> Resu
             codex_revision = definition["codexEnvironment"]["revision"].clone();
         }
     }
-    let mut durable=repository.request_operation(&owner,&json!({"operationId":input["operationId"],"projectId":input["projectId"],"configurationId":input["configurationId"],"worktreeId":target["worktree"]["id"],"workerId":worker,"operation":input["operation"],"definitionRevision":revision,"codexEnvironmentRevision":codex_revision})).await?;
+    let mut admission = json!({"operationId":input["operationId"],"projectId":input["projectId"],"configurationId":input["configurationId"],"worktreeId":target["worktree"]["id"],"workerId":worker,"operation":input["operation"],"definitionRevision":revision,"codexEnvironmentRevision":codex_revision});
+    if let Some(source) = os_source.as_ref() {
+        admission["osExecution"] = source["osExecution"].clone();
+    }
+    let mut durable = repository
+        .request_operation(&owner, &admission)
+        .await
+        .map_err(|error| {
+            if let Some(conflict_error) =
+                error.downcast_ref::<super::execution::PlacementConflict>()
+            {
+                conflict(conflict_error.to_string())
+            } else {
+                error
+            }
+        })?;
     if durable["operation"]["outcome"] != "accepted" {
         return crate::settings::parse_response(
             "runConfigurationRuntimeOperationResultSchema",
@@ -225,15 +284,21 @@ async fn execute(service: Arc<AuthService>, owner: String, input: Value) -> Resu
     ] {
         identity[key] = runtime[field].clone();
     }
-    let mut command = json!({"type":format!("project.run-configuration-runtime.{}",text(&input,"operation")?),"identity":identity});
+    let mut command = if let Some(source) = os_source.as_ref() {
+        json!({"type":format!("cantrip-os.run-runtime.{}",text(&input,"operation")?),"identity":identity,"definitions":source["osExecution"]["definitions"],"target":source["osExecution"]["target"]})
+    } else {
+        json!({"type":format!("project.run-configuration-runtime.{}",text(&input,"operation")?),"identity":identity})
+    };
     if input["operation"] != "stop" {
-        command["rootKind"] = json!(if target["worktree"]["rootKind"] == "folder-root" {
-            "folder-root"
-        } else {
-            "git-root"
-        });
-        command["sourcePath"] = target["sourcePath"].clone();
-        command["targetPath"] = target["worktree"]["path"].clone();
+        if os_source.is_none() {
+            command["rootKind"] = json!(if target["worktree"]["rootKind"] == "folder-root" {
+                "folder-root"
+            } else {
+                "git-root"
+            });
+            command["sourcePath"] = target["sourcePath"].clone();
+            command["targetPath"] = target["worktree"]["path"].clone();
+        }
         command["protectedSecrets"] = Value::Array(protected);
     }
     let result: Result<Value> = async {
@@ -252,7 +317,7 @@ async fn execute(service: Arc<AuthService>, owner: String, input: Value) -> Resu
         Ok(value) => value,
         Err(error) => {
             let message = crate::settings::operation_error_message(&error);
-            let observation = failed(
+            let mut observation = failed(
                 &identity,
                 &runtime,
                 if input["operation"] == "stop" {
@@ -263,6 +328,10 @@ async fn execute(service: Arc<AuthService>, owner: String, input: Value) -> Resu
                 "worker-request-failed",
                 JsString::new(message.units().iter().copied().take(1000).collect()),
             )?;
+            if os_source.is_some() {
+                observation["state"] = json!("lost");
+                observation["failure"] = json!({"phase":"reconcile","code":"linux-worker-outcome-unknown","message":"Linux Run delivery or termination was not confirmed. No command was repeated.","retryable":true});
+            }
             mark_failed(&service, &owner, worker, &observation, true).await?;
             invalidate(&service, &owner, &runtime)?;
             return Err(error);
@@ -280,14 +349,11 @@ async fn execute(service: Arc<AuthService>, owner: String, input: Value) -> Resu
                 "The worker rejected stale Run configuration lifecycle state.",
             )
         };
-        mark_failed(
-            &service,
-            &owner,
-            worker,
-            &failed(&identity, &runtime, "reconcile", code, message.into())?,
-            false,
-        )
-        .await?;
+        let mut rejected = failed(&identity, &runtime, "reconcile", code, message.into())?;
+        if os_source.is_some() {
+            rejected["state"] = json!("lost");
+        }
+        mark_failed(&service, &owner, worker, &rejected, false).await?;
         return Err(conflict(message));
     }
     if result["observation"].is_null() {
@@ -299,20 +365,17 @@ async fn execute(service: Arc<AuthService>, owner: String, input: Value) -> Resu
         .context("The Run configuration runtime observation was unauthorized.")?;
     if applied["reason"] == "invalid-transition" {
         let message = "The worker returned an invalid Run configuration state transition.";
-        mark_failed(
-            &service,
-            &owner,
-            worker,
-            &failed(
-                &identity,
-                &runtime,
-                "reconcile",
-                "worker-invalid-transition",
-                message.into(),
-            )?,
-            false,
-        )
-        .await?;
+        let mut invalid = failed(
+            &identity,
+            &runtime,
+            "reconcile",
+            "worker-invalid-transition",
+            message.into(),
+        )?;
+        if os_source.is_some() {
+            invalid["state"] = json!("lost");
+        }
+        mark_failed(&service, &owner, worker, &invalid, false).await?;
         return Err(conflict(message));
     }
     let runtime = &applied["runtime"];

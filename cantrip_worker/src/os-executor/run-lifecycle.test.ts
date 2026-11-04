@@ -82,6 +82,85 @@ function controlledDriver() {
 }
 
 describe("Linux Run common lifecycle", () => {
+  it("acknowledges an explicit stop after memory loss only when recorded native cleanup confirms it", async () => {
+    const driver = controlledDriver();
+    const supervisor = new RunConfigurationRuntimeSupervisor({
+      authorize: async () => {
+        throw new Error("Host");
+      },
+      linux: driver,
+    });
+    const input = fixture();
+    const command = {
+      type: "cantrip-os.run-runtime.stop" as const,
+      identity: input.identity,
+      definitions: input.definitions,
+      target: input.target,
+    };
+    await expect(supervisor.stop(command)).rejects.toThrow(
+      "could not be confirmed",
+    );
+    driver.stopRecorded.mockResolvedValue({
+      outcome: "interrupted",
+      exitCode: 137,
+      signal: null,
+    });
+    expect(await supervisor.stop(command)).toMatchObject({
+      outcome: "accepted",
+      observation: { ...input.identity, state: "idle", exitCode: 137 },
+    });
+    expect(driver.start).not.toHaveBeenCalled();
+    await supervisor.closeAll();
+  });
+  it("confirms the journal when stopping a lost runtime whose in-memory handle was cleared", async () => {
+    const driver = controlledDriver();
+    const supervisor = new RunConfigurationRuntimeSupervisor({
+      authorize: async () => {
+        throw new Error("Host");
+      },
+      linux: driver,
+    });
+    const input = fixture();
+    await supervisor.start({ type: "cantrip-os.run-runtime.start", ...input });
+    driver.started();
+    driver.signal.mockImplementation(async () => {
+      driver.finish({ outcome: "interrupted", exitCode: null, signal: null });
+    });
+    await supervisor.reconcileLinux([]);
+    expect(supervisor.status(input.identity, input)).toMatchObject({
+      found: true,
+      observation: { state: "lost" },
+    });
+    const identity = { ...input.identity, operationId: randomUUID() };
+    const command = {
+      type: "cantrip-os.run-runtime.stop" as const,
+      identity,
+      definitions: input.definitions,
+      target: input.target,
+    };
+    await expect(supervisor.stop(command)).rejects.toThrow(
+      "could not be confirmed",
+    );
+    expect(supervisor.status(identity, input)).toMatchObject({
+      found: true,
+      observation: { state: "stopping" },
+    });
+    driver.stopRecorded.mockResolvedValue({
+      outcome: "interrupted",
+      exitCode: null,
+      signal: null,
+    });
+    expect(
+      (
+        await supervisor.stop({
+          ...command,
+          identity: { ...identity, operationId: randomUUID() },
+        })
+      ).observation?.state,
+    ).toBe("idle");
+    expect(driver.stopRecorded).toHaveBeenCalledTimes(2);
+    await supervisor.closeAll();
+  });
   it("fails a missing Linux executor without invoking Host authorization", async () => {
     const authorize = vi.fn(async () => {
       throw new Error("Host authorization");

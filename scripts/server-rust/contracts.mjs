@@ -618,6 +618,7 @@ export const contractRoots = [
   "cantripOsRunRootsSchema",
   "cantripOsRunLaunchSchema",
   "cantripOsRunCaptureSchema",
+  "cantripOsRunSelectionSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.

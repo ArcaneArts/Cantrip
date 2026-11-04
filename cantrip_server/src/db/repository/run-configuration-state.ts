@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { CantripOsPlacementError } from "./cantrip-os-error.js";
 import {
   cantripOsRunRootsSchema,
   type CantripOsRunRoots,
@@ -636,7 +637,17 @@ export class RunConfigurationStateRepository {
 
       let current = runtimeRows[0];
       if (current && !isDeepStrictEqual(current.osExecution, requestedCapture))
-        throw new Error("The Run configuration placement capture changed.");
+        throw new CantripOsPlacementError(
+          "The Run configuration placement capture changed.",
+        );
+      if (
+        osExecution &&
+        current?.state === "lost" &&
+        input.operation === "start"
+      )
+        throw new CantripOsPlacementError(
+          "Stop the uncertain Linux Run before starting another generation.",
+        );
       let outcome: RunConfigurationRuntimeOperationRecord["outcome"];
       let generation = current?.generation ?? 0;
       if (!current) {
@@ -660,10 +671,11 @@ export class RunConfigurationStateRepository {
           outcome = "not-active";
         }
       } else if (input.operation === "stop") {
-        if (current.state === "stopping") {
+        if (current.state === "stopping" && !osExecution) {
           outcome = "already-stopping";
         } else if (
-          ["starting", "running", "restarting"].includes(current.state)
+          ["starting", "running", "restarting"].includes(current.state) ||
+          (osExecution && ["lost", "stopping"].includes(current.state))
         ) {
           outcome = "accepted";
         } else {
@@ -903,6 +915,13 @@ export class RunConfigurationStateRepository {
       configurationId?: string;
       worktreeId?: string;
       executionKey?: string | null;
+      osDefinition?: Pick<
+        CantripOsRunRoots["definitions"]["scope"],
+        | "bindingId"
+        | "bindingGeneration"
+        | "attachmentGeneration"
+        | "runtimeGeneration"
+      >;
       limit?: number;
     } = {},
   ): Promise<RunConfigurationRuntime[]> {
@@ -919,12 +938,15 @@ export class RunConfigurationStateRepository {
       .where(
         and(
           eq(schema.runConfigurationRuntimes.projectId, projectId),
-          input.executionKey === null
+          input.executionKey === null || input.osDefinition
             ? undefined
             : eq(
                 schema.runConfigurationRuntimes.executionKey,
                 input.executionKey ?? "worker",
               ),
+          input.osDefinition
+            ? sql`${schema.runConfigurationRuntimes.osExecution}->'definitions'->'scope'->>'bindingId' = ${input.osDefinition.bindingId} AND ${schema.runConfigurationRuntimes.osExecution}->'definitions'->'scope'->>'bindingGeneration' = ${input.osDefinition.bindingGeneration} AND ${schema.runConfigurationRuntimes.osExecution}->'definitions'->'scope'->>'attachmentGeneration' = ${input.osDefinition.attachmentGeneration} AND ${schema.runConfigurationRuntimes.osExecution}->'definitions'->'scope'->>'runtimeGeneration' = ${input.osDefinition.runtimeGeneration}`
+            : undefined,
           input.configurationId
             ? eq(
                 schema.runConfigurationRuntimes.configurationId,

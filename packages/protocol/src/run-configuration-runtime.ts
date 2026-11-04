@@ -1,3 +1,4 @@
+import { cantripOsRunSelectionSchema } from "./cantrip-os-run-selection.js";
 import { z } from "zod";
 
 import {
@@ -94,6 +95,7 @@ export const runConfigurationRuntimeSchema = z
   .strict();
 
 const runConfigurationLifecycleRequestFields = {
+  osSource: cantripOsRunSelectionSchema.optional(),
   operationId: runConfigurationOperationIdSchema,
   projectId: runConfigurationRuntimeIdentitySchema.shape.projectId,
   configurationId: runConfigurationRuntimeIdentitySchema.shape.configurationId,
@@ -125,6 +127,7 @@ export const runConfigurationRuntimeLifecycleRequestSchema =
 
 export const runConfigurationRuntimeStatusQuerySchema = z
   .object({
+    osSource: cantripOsRunSelectionSchema.optional(),
     operationId: runConfigurationOperationIdSchema,
     projectId: runConfigurationRuntimeIdentitySchema.shape.projectId,
     configurationId:
@@ -142,6 +145,7 @@ export const runConfigurationRuntimeStatusQuerySchema = z
 
 export const runConfigurationRuntimeOutputQuerySchema = z
   .object({
+    osSource: cantripOsRunSelectionSchema.optional(),
     operationId: runConfigurationOperationIdSchema,
     ...runConfigurationRuntimeIdentitySchema.shape,
     tail: z

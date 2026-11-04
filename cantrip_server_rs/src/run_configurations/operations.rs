@@ -5,6 +5,7 @@ use crate::{
     wire::{Value, value::json},
 };
 use anyhow::{Context, Result, bail, ensure};
+use futures::future::BoxFuture;
 
 fn active(row: &Value) -> bool {
     matches!(
@@ -115,16 +116,22 @@ impl Repository {
 
     /// Persist admission and the operation receipt in one transaction. Replays
     /// return current runtime state, while retaining the original receipt.
-    pub async fn request_operation(&self, owner: &str, input: &Value) -> Result<Value> {
-        let position =
-            project_layout::next_position(&self.database, text(input, "projectId")?).await?;
-        let (owner, mut input) = (owner.to_owned(), input.clone());
-        let roots = execution::roots(&input)?;
-        input["executionKey"] = Value::String(execution::key(&roots)?.into());
-        input["osExecution"] = roots;
-        self.database
-            .transaction(|tx| Box::pin(admit(tx, owner, input, position)))
-            .await
+    pub fn request_operation<'a>(
+        &'a self,
+        owner: &'a str,
+        input: &'a Value,
+    ) -> BoxFuture<'a, Result<Value>> {
+        Box::pin(async move {
+            let position =
+                project_layout::next_position(&self.database, text(input, "projectId")?).await?;
+            let (owner, mut input) = (owner.to_owned(), input.clone());
+            let roots = execution::roots(&input)?;
+            input["executionKey"] = Value::String(execution::key(&roots)?.into());
+            input["osExecution"] = roots;
+            self.database
+                .transaction(|tx| Box::pin(admit(tx, owner, input, position)))
+                .await
+        })
     }
 }
 
@@ -166,10 +173,18 @@ async fn admit(tx: &Transaction<'_>, owner: String, input: Value, position: i64)
         return replay(tx, &owner, &input, &row).await;
     }
     if let Some(row) = current.as_ref() {
-        ensure!(
-            row["os_execution"] == input["osExecution"],
-            "The Run configuration placement capture changed."
-        );
+        if row["os_execution"] != input["osExecution"] {
+            return Err(super::execution::PlacementConflict(
+                "The Run configuration placement capture changed.",
+            )
+            .into());
+        }
+        if !input["osExecution"].is_null() && row["state"] == "lost" && requested == "start" {
+            return Err(super::execution::PlacementConflict(
+                "Stop the uncertain Linux Run before starting another generation.",
+            )
+            .into());
+        }
     }
     let mut generation = current
         .as_ref()
@@ -187,9 +202,9 @@ async fn admit(tx: &Transaction<'_>, owner: String, input: Value, position: i64)
             }
         }
         Some(row) if requested == "stop" => {
-            if row["state"] == "stopping" {
+            if row["state"] == "stopping" && input["osExecution"].is_null() {
                 "already-stopping"
-            } else if active(row) {
+            } else if active(row) || (!input["osExecution"].is_null() && row["state"] == "lost") {
                 "accepted"
             } else {
                 "not-active"

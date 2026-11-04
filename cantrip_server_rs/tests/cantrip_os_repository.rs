@@ -137,6 +137,17 @@ async fn exercise_run_captures(
             .await
             .is_err()
     );
+    let lost = cantrip_server::wire::Value::from_serialize(
+        &json!({"runtimeId":runtime["id"].as_str(),"projectId":"project","configurationId":configuration,"worktreeId":worktree["worktreeId"],"workerId":"worker","definitionRevision":"a".repeat(64),"codexEnvironmentRevision":null,"generation":1,"operationId":request["operationId"].as_str(),"terminalId":runtime["terminalId"].as_str(),"state":"lost","startedAt":null,"endedAt":chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis,true),"exitCode":null,"signal":null,"failure":{"phase":"reconcile","code":"linux-outcome-unknown","message":"Unknown native outcome","retryable":true}}),
+    );
+    assert!(runs.observe("owner", "worker", &lost).await?.is_some());
+    let mut next = request.clone();
+    next["operationId"] = cantrip_server::wire::Value::from_serialize(&id());
+    assert!(runs.request_operation("owner", &next).await.is_err());
+    assert_eq!(
+        runs.captured("owner", runtime_id).await?.unwrap()["runtime"]["generation"].as_f64(),
+        Some(1.0)
+    );
     let mut stop = request.clone();
     stop["operation"] = cantrip_server::wire::Value::from_serialize(&"stop");
     stop["operationId"] = cantrip_server::wire::Value::from_serialize(&id());
@@ -146,6 +157,11 @@ async fn exercise_run_captures(
     assert_eq!(stopped["runtime"]["id"], runtime["id"]);
     assert_eq!(stopped["runtime"]["state"].as_str(), Some("stopping"));
     assert_eq!(stopped["runtime"]["generation"].as_f64(), Some(1.0));
+    stop["operationId"] = cantrip_server::wire::Value::from_serialize(&id());
+    assert_eq!(
+        runs.request_operation("owner", &stop).await?["operation"]["outcome"].as_str(),
+        Some("accepted")
+    );
     // Compare against the actual Node implementation, not a copied hash formula.
     let mut oracle = std::process::Command::new("node");
     oracle

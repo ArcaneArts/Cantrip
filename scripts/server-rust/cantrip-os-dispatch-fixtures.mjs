@@ -158,6 +158,16 @@ export function osDispatchFixtures() {
   const { serverId: _server, ...executionScope } = osSourceScope;
   const { serverId: _linkedServer, ...linkedExecutionScope } = linked;
   return {
+    cantripOsRunSelectionSchema: [
+      {
+        kind: "binding",
+        bindingId: id,
+        bindingGeneration: id,
+        attachmentGeneration: id,
+        runtimeGeneration: id,
+      },
+      { kind: "runtime", runtimeId: id },
+    ],
     cantripOsRunRootsSchema: [runRoots],
     cantripOsRunLaunchSchema: [runLaunch],
     cantripOsRunCaptureSchema: [runCapture],

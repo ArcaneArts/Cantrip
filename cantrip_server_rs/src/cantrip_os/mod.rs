@@ -4,6 +4,7 @@ mod control;
 pub mod coordinator;
 pub mod files;
 pub(crate) mod run;
+mod run_selection;
 mod sources;
 mod worktrees;
 use crate::database::{Database, Parameters, Row};

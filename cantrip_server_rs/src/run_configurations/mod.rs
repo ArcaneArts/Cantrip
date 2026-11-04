@@ -156,6 +156,18 @@ impl Repository {
             Ok(json!({"runtime":summary(&row)?,"executionKey":row["execution_key"],"osExecution":row["os_execution"]}))
         }).transpose()
     }
+    pub async fn list_in_definition(
+        &self,
+        owner: &str,
+        project: &str,
+        configuration: Option<&str>,
+        worktree: Option<&str>,
+        limit: i64,
+        scope: &Value,
+    ) -> Result<Vec<Value>> {
+        let limit = limit.clamp(1, 256);
+        self.database.query("SELECT to_jsonb(r)::text FROM run_configuration_runtimes r JOIN projects p ON p.id=r.project_id AND p.owner_id=$1 WHERE r.project_id=$2 AND ($3::text IS NULL OR r.configuration_id=$3) AND ($4::text IS NULL OR r.worktree_id=$4) AND r.os_execution->'definitions'->'scope'->>'bindingId'=$5 AND r.os_execution->'definitions'->'scope'->>'bindingGeneration'=$6 AND r.os_execution->'definitions'->'scope'->>'attachmentGeneration'=$7 AND r.os_execution->'definitions'->'scope'->>'runtimeGeneration'=$8 ORDER BY (r.state IN ('starting','running','restarting','stopping')) DESC,r.updated_at DESC,r.configuration_id ASC LIMIT $9",&[&owner,&project,&configuration,&worktree,&text(scope,"bindingId")?,&text(scope,"bindingGeneration")?,&text(scope,"attachmentGeneration")?,&text(scope,"runtimeGeneration")?,&limit]).await?.iter().map(|row|summary(&raw(row.get(0)?)?)).collect()
+    }
     pub async fn active_os_captures(&self, owner: &str, worker: &str) -> Result<Vec<Value>> {
         let rows=self.database.query("SELECT to_jsonb(r)::text FROM run_configuration_runtimes r WHERE owner_id=$1 AND worker_id=$2 AND os_execution IS NOT NULL AND state IN ('starting','running','restarting','stopping') ORDER BY created_at ASC LIMIT 256",&[&owner,&worker]).await?;
         rows.iter()

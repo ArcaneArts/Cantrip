@@ -687,11 +687,18 @@ The existing Worker Run supervisor now owns these Linux generations through
 explicit captured definition/target roots, with start/restart/stop/output and
 observation-only reconciliation commands. Host and Linux reconciliation are
 separate so one family cannot retire the other's active processes.
-The Run header source picker, Server runtime routing, and final distribution
-acceptance remain pending.
+Both Server implementations now expose the captured Linux placement through
+ordinary Run lifecycle, status, protected output, and reconnect reconciliation.
+An explicit source selection resolves Primary independently of the selected chat;
+worktree Run resolves its binding in that same source/workspace. Uncertain Linux
+Runs require a confirmed Stop before a new Start generation.
+The Run header source picker, definition retirement routing, and final
+distribution acceptance remain pending.
 Server runtime persistence now separates Host and Linux execution epochs and
 retains immutable definition/target captures. Both Server implementations admit
 Linux-owned worktrees through their canonical OS source rather than a Host-only
-source join. The public lifecycle routes and source picker remain the next block.
+source join. Public requests contain owned binding epochs or a captured runtime
+ID; guest paths, accounts, and transports are resolved on the Server. The source
+picker and definition retirement remain the next block.
 See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 [recorded evidence](../cantrip_os/ACCEPTANCE.md#product-file-checkpoint-2026-11-04).

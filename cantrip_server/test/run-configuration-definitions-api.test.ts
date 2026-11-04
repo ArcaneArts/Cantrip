@@ -175,6 +175,9 @@ const bridge: WorkerCommandBus = {
       case "project.run-configuration-definitions.write":
       case "project.run-configuration-definitions.delete":
         return definitionService.execute(command);
+      case "cantrip-os.run-runtime.reconcile":
+        expect(command.captures).toEqual([]);
+        return { runtimes: [], orphanedRuntimeIds: [] };
       case "project.run-configuration-runtime.reconcile":
         return reconcileRuntime(command.identities);
       case "project.run-configuration-runtime.start":

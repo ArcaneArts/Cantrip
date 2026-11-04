@@ -6,6 +6,15 @@ use crate::{
 use anyhow::{Result, ensure};
 use sha2::{Digest, Sha256};
 
+#[derive(Debug)]
+pub struct PlacementConflict(pub &'static str);
+impl std::fmt::Display for PlacementConflict {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0)
+    }
+}
+impl std::error::Error for PlacementConflict {}
+
 pub fn roots(input: &Value) -> Result<Value> {
     if input["osExecution"].is_null() {
         return Ok(Value::Null);

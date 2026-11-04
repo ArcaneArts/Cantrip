@@ -1,3 +1,4 @@
+import type { CantripOsRunRoots } from "@cantrip/protocol";
 import type {
   ArchivedChatWireSummary,
   ArchivedStandaloneChatWireSummary,
@@ -917,6 +918,13 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
       configurationId?: string;
       worktreeId?: string;
       executionKey?: string | null;
+      osDefinition?: Pick<
+        CantripOsRunRoots["definitions"]["scope"],
+        | "bindingId"
+        | "bindingGeneration"
+        | "attachmentGeneration"
+        | "runtimeGeneration"
+      >;
       limit?: number;
     } = {},
   ): Promise<RunConfigurationRuntime[]> {

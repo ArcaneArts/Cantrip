@@ -618,7 +618,21 @@ export class RunConfigurationRuntimeSupervisor {
     return this.#withLock(command.identity.runtimeId, async () => {
       const session = this.#runtimes.get(command.identity.runtimeId);
       if (!session) {
-        if ("definitions" in command) await this.#stopRecorded(command);
+        if ("definitions" in command) {
+          const stopped = await this.#stopRecorded(command);
+          return runConfigurationRuntimeWorkerOperationResultSchema.parse({
+            outcome: "accepted",
+            observation: {
+              ...command.identity,
+              state: "idle",
+              startedAt: null,
+              endedAt: new Date().toISOString(),
+              exitCode: stopped.exitCode,
+              signal: stopped.signal,
+              failure: null,
+            },
+          });
+        }
         return this.#operationResult("not-found", null);
       }
       this.#assertStableIdentity(session, command.identity);
@@ -648,7 +662,12 @@ export class RunConfigurationRuntimeSupervisor {
           "The stop target does not match the active generation.",
         );
       }
-      if (!activeState(session.state) && !session.process) {
+      const recordedCleanup = Boolean(
+        session.linuxRoots &&
+        !session.process &&
+        ["lost", "stopping"].includes(session.state),
+      );
+      if (!activeState(session.state) && !session.process && !recordedCleanup) {
         return this.#operationResult("replayed", session);
       }
 
@@ -666,7 +685,9 @@ export class RunConfigurationRuntimeSupervisor {
             session.stopGracePeriodMs,
             false,
           )
-        : null;
+        : recordedCleanup && "definitions" in command
+          ? await this.#stopRecorded(command)
+          : null;
       if (session.operationId !== command.identity.operationId) {
         return this.#operationResult("stale", session);
       }

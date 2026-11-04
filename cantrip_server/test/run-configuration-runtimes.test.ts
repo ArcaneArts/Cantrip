@@ -724,6 +724,23 @@ describe("Run configuration runtime persistence", () => {
         linux.runtime!.id,
       ),
     ).toBeNull();
+    await repository.applyRunConfigurationRuntimeObservation(
+      LOCAL_USER_ID,
+      workerId,
+      observation(linux.runtime!, "lost"),
+    );
+    await expect(
+      repository.requestRunConfigurationRuntimeOperation(LOCAL_USER_ID, {
+        ...request,
+        operationId: randomUUID(),
+      }),
+    ).rejects.toThrow("Stop the uncertain Linux Run");
+    expect(
+      (await repository.getRunConfigurationRuntimeCapture(
+        LOCAL_USER_ID,
+        linux.runtime!.id,
+      ))!.runtime.generation,
+    ).toBe(1);
     const stopping = await repository.requestRunConfigurationRuntimeOperation(
       LOCAL_USER_ID,
       {
@@ -739,10 +756,22 @@ describe("Run configuration runtime persistence", () => {
       state: "stopping",
       generation: 1,
     });
+    const retryStop = await repository.requestRunConfigurationRuntimeOperation(
+      LOCAL_USER_ID,
+      {
+        ...request,
+        operation: "stop",
+        operationId: randomUUID(),
+        definitionRevision: null,
+        codexEnvironmentRevision: null,
+      },
+    );
+    expect(retryStop.operation.outcome).toBe("accepted");
+    expect(retryStop.runtime!.generation).toBe(1);
     await repository.applyRunConfigurationRuntimeObservation(
       LOCAL_USER_ID,
       workerId,
-      observation(stopping.runtime!, "idle"),
+      observation(retryStop.runtime!, "idle"),
     );
     expect(
       await repository.getRunConfigurationRuntime(
