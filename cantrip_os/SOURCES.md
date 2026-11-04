@@ -1,10 +1,11 @@
 # Linux source backend
 
-Phase 3 is in progress. These are worker-side materialization APIs and repeatable
-acceptance fixtures. Canonical server identities were delivered in the preceding
-milestone. Client target selection, authorized command dispatch, full product Git
-routing, and native agent placement remain dependent work. Calling a helper by
-itself does not grant project authority or retarget a chat.
+These worker-side materialization APIs use canonical server source identities.
+The [client workflows](PRODUCT_WORKFLOW.md) now connect target selection, authorized
+dispatch and captured native agents to these sources. Git ownership differs by
+source mode as described below; this does not claim every Host Git UI/MCP adapter
+is available for Linux. Calling a helper alone does not grant project authority
+or retarget a chat. See the final [acceptance](ACCEPTANCE.md#phase-3-acceptance-and-distribution-2026-11-04).
 
 ## Linked Docker worktrees
 

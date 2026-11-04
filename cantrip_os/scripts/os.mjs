@@ -74,8 +74,17 @@ export async function inspect() {
     throw error;
   }
 }
+// The ordinary OS remains selectable with WORKSPACES=0; an explicit executor
+// choice always wins and apt reports incompatible package selections normally.
+export function executorEdition() {
+  return (
+    process.env.CANTRIP_OS_EXECUTOR ??
+    (process.env.CANTRIP_OS_WORKSPACES === "0" ? "0" : "1")
+  );
+}
+
 export async function build(options = {}) {
-  const executor = process.env.CANTRIP_OS_EXECUTOR ?? "0";
+  const executor = executorEdition();
   let executorContext = resolve(root, ".build/empty-executor");
   await mkdir(executorContext, { recursive: true });
   if (executor === "1") {

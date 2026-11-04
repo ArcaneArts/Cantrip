@@ -1,8 +1,8 @@
 # CantripOS
 
-- Status: OS foundation and optional workspace desktops implemented for personal testing. Remaining Cantrip
-  integrations are planned; runtime evidence is scoped in the checkpoint below.
-- Updated: 2026-11-03.
+- Status: Phase 3 execution and source ownership implemented and exercised in Docker
+  and an installed VM. Linux computer use and managed remote access are next.
+- Updated: 2026-11-04.
 - Scope: a customized, bootable Linux distribution for one Cantrip owner's
   agents, also distributed as a directly runnable Docker image.
 
@@ -20,7 +20,8 @@ Multiple workspace sessions ship as the optional `cantrip-os-workspaces` Debian
 package. Version 0.3.0 supplies persistent Linux accounts, lazy IceWM desktops,
 CLI lifecycle commands, a local workspace selector, and direct browser desktop
 links. The ordinary personal desktop remains usable without that package.
-Cantrip runtime connections and later integrations remain planned.
+The separate executor package now connects these workspaces to the owning worker.
+Linux capture/input and integrated remote desktop remain later work.
 
 ## Optional package architecture
 
@@ -58,47 +59,42 @@ measurements third. Each dependent cycle begins only after the previous merge.
 
 The phase-2 acceptance record covers Docker and installed-VM lifecycle, browser
 input/clipboard separation, retained profiles, shared sudo/package installation,
-and measured 4 GiB resource use. The next implementation milestone is execution
-and source ownership, still delivered through optional packages. Checkout mounts,
-worker placement, agent tools, and Linux CUA integration are not implemented by
-the workspace package.
+and measured 4 GiB resource use. Execution and source ownership are supplied by
+the separate executor package. The workspace package itself does not provide
+agent orchestration or Linux computer use.
 
-Phase 3 is being implemented in sequential delivery cycles: optional
-executor package/worker attachment; source bindings and provisioning; native
-agent execution; terminals/editor/Run and target selection; then full acceptance
-and refreshed media. The package foundation lives under
-`cantrip_os/packages/executor/`. Its first cycle provides a native executor
-carrier, not an end-to-end project placement claim. Completion still requires
-the real client/agent and both source modes described below.
+Phase 3 was delivered through sequential PR/worktree/auto-merge cycles. The
+optional `cantrip-os-executor` 0.9.0 package runs the pinned native executor as
+selected workspace accounts, with unrestricted sudo. The existing worker keeps
+orchestration, the app-server, model-provider credentials and authenticated MCP;
+Cantrip Server retains placement, leases and conversation authority.
 
-The first execution cycle has passed native ARM64 Docker and installed AMD64 VM
-package, filesystem/process, lifecycle, and reboot acceptance. The base package
-manifest now includes htop, nano, and Python 3 in both editions. Source ownership
-is delivered in reviewable milestones: canonical identities/placement, actual
-materialization backends, then authorized product dispatch. The
-[materialization backend](../cantrip_os/SOURCES.md) implements linked Docker
-worktrees, Linux-owned checkout/worktree provisioning, and dependency overlays.
-The [client workflow](../cantrip_os/PRODUCT_WORKFLOW.md) now attaches an OS,
-provisions a source, and creates an explicitly bound Linux agent. Complete
-product execution acceptance remains subsequent work.
+[Source provisioning](../cantrip_os/SOURCES.md) supports an exact linked Docker
+worktree, explicit Linux dependency overlays, and independent Linux-owned
+checkouts/worktrees. [Native execution](../cantrip_os/NATIVE_RUNTIME.md) routes
+shell/PTY, reads/search, patches/writes and relevant native file watching into the
+captured source. [Product workflows](../cantrip_os/PRODUCT_WORKFLOW.md) connect
+attachment/selection, terminals, editor/Explorer, setup/Run, uploaded files and
+returned artifact links. Run configurations are combined in one list with
+per-configuration destinations. `cantrip-desktop` explicitly uses the assigned
+workspace display while ordinary shells remain independent of desktop lifetime.
 
-The [native runtime adapter](../cantrip_os/NATIVE_RUNTIME.md) now exercises the
-pinned app-server against Docker and an installed VM, including native patching,
-permissions, and process-tree cancellation. Its deterministic model fixture is
-component acceptance. Both Server implementations now capture a binding for a
-new agent chat before native preparation and select a private worker-side runtime.
-Project Settings → CantripOS now provides attachment, source selection, and
-Linux-owned Git worktree admission. Captured terminals and file/editor/Explorer
-operations use those targets. A real local-provider agent has written and run
-code through the full product; its recorded checkpoint distinguishes provider
-limitations from the deterministic native patch fixture. Header Run selection,
-Linux definition editing/setup, captured output/Stop, and Run file/editor routing
-are now available in one combined Host/CantripOS configuration list. Source-scoped
-definition retirement is implemented. Worker-owned network MCP, Linux attachment
-materialization, and captured chat file references are connected; their acceptance
-records distinguish native fixtures from real-model product tests. Broader
-source-aware delegated tools, GUI launch context, and fresh distribution acceptance
-remain.
+The [acceptance record](../cantrip_os/ACCEPTANCE.md#phase-3-acceptance-and-distribution-2026-11-04)
+distinguishes real-model product evidence from deterministic native fixtures.
+Actual tests cover both source modes, selected UID/cwd/bytes, returned artifacts,
+root process-tree cancellation, uncertain transport outcomes, retained identities
+and data, stale-handle rejection, package disable/remove/reinstall, a fresh Docker
+image and live ISO installation followed by disk boot without the ISO.
+
+Public Docker/ISO scripts include the optional executor by default.
+`CANTRIP_OS_EXECUTOR=0` omits it; `CANTRIP_OS_WORKSPACES=0` defaults to omitting both
+integration packages. An explicit executor selection wins. The ordinary Debian/
+IceWM desktop remains usable without either package. Host-only MCP Run/worktree/
+task-creation adapters are unavailable in Linux sessions; use the source-aware
+product workflows. Linux computer use, integrated desktop transport, general
+SSH/SFTP/TCP services, cloud provisioning, mirroring and backups remain later
+phases. The tested matrix and provider/platform limitations are recorded rather
+than implied to work on untested hardware.
 
 The canonical model keeps `project_sources.absolute_path` worker-local. A shared
 source identity preserves worktree IDs and leases, while Linux-owned source
@@ -636,8 +632,8 @@ remote checkouts, and mandatory Docker/ISO deliverables are settled. Remaining
 choices are implementation investigations, not reasons to re-request approval
 for those decisions:
 
-- Exact pinned Debian release, package profiles, and container service manager.
-- Native executor integration coverage and remaining filesystem/PTY adapters.
+- Additional package profiles beyond the tested Debian 13 desktop.
+- Additional tool adapters beyond the tested native filesystem/PTY surface.
 - Stream implementation and optional accessibility/Wayland support.
 - Safe guest-native Git access for linked host worktrees, if needed beyond the
   initial worker-routed Git operations.
@@ -706,7 +702,7 @@ when another configuration is selected; Edit resolves their original definition.
 captured Run target into terminal file placement, including earlier Linux Runs.
 Executor 0.7.0 adds source-scoped definition deletion after confirmed cleanup of
 affected Host/Linux Runs. Unknown cleanup retains the file and captured state.
-Final distribution acceptance remains pending.
+Distribution acceptance is recorded in the final Phase 3 checkpoint.
 Server runtime persistence now separates Host and Linux execution epochs and
 retains immutable definition/target captures. Both Server implementations admit
 Linux-owned worktrees through their canonical OS source rather than a Host-only
@@ -715,7 +711,7 @@ ID; guest paths, accounts, and transports are resolved on the Server. The combin
 configuration list, definition retirement, attachments and returned file links
 are connected. Executor 0.9.0 adds explicit `cantrip-desktop` GUI launches on the
 assigned workspace display, with ordinary shell lifetimes independent of it.
-Final distribution acceptance remains in progress.
+See the final Phase 3 acceptance record for distribution results and limits.
 Host-only MCP Run/worktree/task-creation adapters remain unavailable in Linux
 sessions; use the source-aware product workflows.
 See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and

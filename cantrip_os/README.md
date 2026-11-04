@@ -3,7 +3,7 @@
 Debian 13 (trixie), IceWM, Chromium, PCManFM, Mousepad, xterm, htop, nano,
 and Python 3 (`python3` and `python`). These applications are included in both
 Docker and bootable/installed editions through the shared desktop manifest. This is a
-standalone OS testing environment; Cantrip integration comes later.
+standalone OS with optional, removable Cantrip integration packages.
 
 Workspace management is an optional Debian package. Its source, build commands,
 and service lifecycle are described in [the package guide](packages/workspaces/README.md).
@@ -21,11 +21,16 @@ The [authorized dispatch APIs](DISPATCH.md) and [native runtime adapter](NATIVE_
 are available as internal checkpoints, including captured placement for new agent
 chats. The [client attachment/selection workflow](PRODUCT_WORKFLOW.md) is available
 in Project Settings → CantripOS. Captured Linux agents, files/editor/Explorer,
-terminals, and the combined Run list now use these bindings. Delegated
-project/Git/artifact tools and final distribution acceptance remain in progress.
-The executor edition is currently opt-in with `CANTRIP_OS_EXECUTOR=1`.
+terminals, the combined Run list, attachments and returned artifact links now use
+these bindings. `cantrip-desktop` launches GUI apps on the assigned workspace.
+The public Docker/ISO scripts include the optional executor by default. Set
+`CANTRIP_OS_EXECUTOR=0` to omit only execution support, or
+`CANTRIP_OS_WORKSPACES=0` to build the ordinary OS without either integration
+package. An explicit executor selection overrides that default. Host-only MCP
+Run/worktree/task-creation adapters remain unavailable in Linux sessions; use the
+source-aware product workflows. Final distribution acceptance is recorded below.
 
-The first personal-testing checkpoint is ready. See [acceptance results](ACCEPTANCE.md)
+Phase 3 execution and distribution acceptance is recorded. See [acceptance results](ACCEPTANCE.md)
 for the actual tested builds and platform limits. Iterate in Docker first; build
 the ISO when you want the same source configuration as bootable media.
 
@@ -266,4 +271,5 @@ If pnpm reports that Node is too old, select an installed supported Node version
 (e.g. `nvm use 24`) and rerun. No application/server/worker build is needed.
 
 Server-owned attachment and protected source provisioning are described in the
-[dispatch guide](DISPATCH.md). Agent and product routing remain in progress.
+[dispatch guide](DISPATCH.md); the [product guide](PRODUCT_WORKFLOW.md) covers
+agent selection and the connected file, terminal, Run and artifact workflows.

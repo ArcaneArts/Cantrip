@@ -1341,3 +1341,123 @@ Packages and explicit native contexts are retained under ignored artifacts/packa
 and .build/gui-runtime/. Logs, receipts and browser images are retained under
 ignored artifacts/phase3-workspace-gui/. Fresh distribution and package lifecycle
 acceptance remain in progress.
+
+## Phase 3 acceptance and distribution (2026-11-04)
+
+Phase 3 execution/source ownership is implemented. Earlier checkpoints above
+record what was available at each merge; their pending-work statements are
+historical. The [product guide](PRODUCT_WORKFLOW.md) describes the current
+attachment, source selection and execution workflow. Linux computer use and
+integrated remote desktop remain outside this phase.
+
+The public Docker and ISO scripts now include executor 0.9.0 and workspace
+package 0.3.0 by default. `CANTRIP_OS_EXECUTOR=0` omits the executor;
+`CANTRIP_OS_WORKSPACES=0` defaults to omitting both integration packages. An
+explicit executor choice wins and apt enforces package dependencies. The
+ordinary Debian/IceWM desktop works without either integration package.
+
+### Complete workflow evidence
+
+- A real local-provider Cantrip agent used its captured Linux Primary checkout,
+  read/searched an uploaded UTF-8 attachment, invoked Worker-owned HTTP MCP,
+  wrote and executed Python, and returned a 251-byte JSON artifact. Its UID was
+  20000 and its cwd was the intended guest checkout. Host copies were absent.
+  Explorer and a returned Markdown file link opened the same Linux file in the
+  editor. A separately captured terminal observed the source bytes. Ollama's
+  malformed custom-tool payload required a new explicitly stopped/restarted
+  turn and shell `apply_patch` interception; this is not a claim that that
+  provider's custom-tool protocol was repaired.
+- Separate native-runtime fixtures exercise the real pinned app-server's
+  read/search, native patch/write, attachment transfer, HTTP MCP and Python
+  artifact execution. Actual fresh Docker tests passed (2 tests, 30.75 seconds);
+  the freshly installed VM passed the same two tests (75.00 seconds). These
+  deterministic model fixtures are distinct from the real-model product test.
+- Earlier actual Docker/installed-VM checkpoints cover Linux-owned exact-revision
+  provisioning, Git worktrees, linked edits in both directions with unchanged
+  Host Git metadata, explicit Linux dependency overlays, executable bits,
+  symlinks, Unicode paths, relevant native file watching and two separate targets.
+  Product Run acceptance covers independent Primary and explicit-worktree
+  targets, setup/environment, output, stop/restart and source-scoped deletion.
+  The combined Run list has per-configuration destinations and no global picker.
+- Actual transport interruption recovered saved history/outcomes without replaying
+  a mutation. Stale bindings/documents/chats are rejected, preserving drafts and
+  history. Worker-loss Run cleanup is reported truthfully rather than guessed.
+- Fresh installed-VM cancellation passed (17.82 seconds including runner setup):
+  a sudo parent, detached root child and descendant were stopped while an
+  independent native session remained alive. Earlier Docker cancellation and
+  two-desktop GUI checks passed. Closing a desktop leaves independent commands
+  alive; `cantrip-desktop` uses only its assigned display and fails there if it
+  is stopped, without selecting the personal console.
+
+### Fresh Docker, package lifecycle and bootable media
+
+A fresh native ARM64 image, `cantrip-os-acceptance-test:dev`, ran with 4 GiB and
+only its three named data volumes. Its image ID is
+`sha256:e3247343dcaba4ac61dc8f5ced03b1b3d076d7c5fb7159090209a9ec94ef4a12`.
+The foreground `pnpm os` printed browser/VNC/root-shell information, streamed
+logs, and stopped the container on SIGINT while retaining volumes. The ordinary
+OS build with `CANTRIP_OS_WORKSPACES=0` booted with both packages absent and a
+working IceWM desktop, Python and nano. Browser checks used only Codex's in-app
+browser.
+
+Fresh 0.9.0 package lifecycle tests passed in Docker and the installed test VM:
+disable, remove, reinstall, purge and reinstall retained workspace data and
+instance identity. The personal desktop and an independent workspace desktop
+kept running. Deliberately unsupported saved-state version 99 produced an actual
+startup failure without overwriting that state; restoring it recovered service.
+This intentional failure is part of the passing test, not a clean-start claim.
+
+The refreshed AMD64 ISO was actually built and booted under QEMU TCG (2 CPUs,
+4 GiB). Automatic login, sudo, DHCP/HTTPS, IceWM, xterm and Chromium rendered.
+`cantrip-install --erase /dev/vda` installed to a new disposable 16 GiB virtual
+disk; both BIOS and EFI bootloader installation completed. The VM then booted
+from `/dev/vda3` (ext4) with no ISO attached, using kernel
+`6.12.115+deb13.1-amd64`. This run exercised BIOS disk boot; it does not claim a
+fresh EFI firmware boot or physical/cloud hardware test.
+
+The installed system retained instance ID, workspace UID/GID/home/display,
+workspace document bytes and the native executor's `cap_kill=ep`. Its runtime
+generation changed and the old live-ISO handle was actually rejected. The new
+installed system then passed the native operations and root-tree cancellation
+checks above. Test SSH access was installed only in disposable acceptance VMs;
+this does not add a public SSH service to the distributed OS. Live shutdown
+emitted a nonfatal Debian virtio-GPU queue warning before clean QEMU exit. The
+installed test VM also logged an unavailable AF_VSOCK CID from its test SSH
+generator; ordinary TCP SSH and the execution tests succeeded.
+
+### Artifacts, validation and limits
+
+The ignored local distribution artifacts are:
+
+- `artifacts/cantrip-os-amd64.iso`, its `.sha256` and `.packages` inventory.
+  ISO SHA-256: `eda20dbb59e6f6e4784cc01e59bb9820798719cea877686a495f8d5dc77cb0a8`.
+- `artifacts/packages/cantrip-os-executor_0.9.0_arm64.deb`:
+  `dda5bc85c619dce15c3a9397e5806822b00084e35d32dcb50ff0492e628d9511`.
+- `artifacts/packages/cantrip-os-executor_0.9.0_amd64.deb`:
+  `7db6195637b801daeea0272a7146ff243e11b5dc51e8e5252c382fae4cb1f906`.
+- `artifacts/phase3-distribution/`: build/test logs, live/installed identity
+  proofs and browser images. Prior real-model and GUI evidence is retained under
+  `phase3-chat-artifacts/` and `phase3-workspace-gui/`. Earlier 0.9.0 packages are
+  archived with that GUI checkpoint rather than confused with the refreshed ones.
+
+These packages rebuild shared helpers and packaging using explicit tested ARM64
+and AMD64 native bundles from 0.8.0. Native source did not change for the GUI or
+distribution cycles; this is not a claim of fresh native compilation for 0.9.0.
+The ordinary build still compiles the pinned source by default. Seven OS carrier/
+lifecycle tests passed; scoped formatting and diff checks passed. Required local
+`pnpm check` was attempted and stops on Main's unrelated
+`chat-turn-runtime.ts` decomposition budget (2029 lines, maximum 1999). Earlier
+checkpoints record focused protocol, both Server implementations, Worker, app and
+native checks, including their unrelated baseline failures. No hosted checks are
+claimed.
+
+Current limits: automatic re-admission of old chats after OS restart is not
+provided; verify the source and create a new Linux agent. Explorer requires an
+explicit refresh for external edits. Linked Git mutation stays with the original
+Worker; broad Linux-owned Git graph/history UI adapters and Host-only MCP
+Run/worktree/task-creation tools are not all adapted. Use the source-aware product
+workflows. Private repository credentials must already work inside Linux.
+Linux computer use, integrated desktop transport, general SSH/SFTP/TCP product
+access, cloud provisioning, backups and automatic mirroring remain later phases.
+The tested platform matrix is native ARM64 Docker and emulated AMD64 live/
+installed VMs, not arbitrary hardware.

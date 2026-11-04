@@ -1,9 +1,10 @@
 # Optional execution package
 
-Phase 3 is in progress. The package supports captured project sources, native
+The package supports captured project sources, native
 agent execution, product file operations, interactive Linux terminals, setup/Run,
 attachment/artifact delivery and explicit workspace GUI commands through the
-existing worker. Final distribution acceptance remains in progress.
+existing worker. Docker/installed-VM and distribution evidence is recorded in
+[acceptance](../../ACCEPTANCE.md#phase-3-acceptance-and-distribution-2026-11-04).
 Installing this package alone does not move an existing chat into Linux.
 
 `cantrip-os-executor` depends on the workspace package. It runs the pinned,
@@ -23,8 +24,10 @@ CANTRIP_OS_EXECUTOR=1 node cantrip_os/scripts/iso.mjs
 ```
 
 Cold Rust builds take time. BuildKit caches source downloads and compilation;
-ordinary theme/package edits reuse the native build. Executor inclusion defaults
-to `0`; set it to `1` to include the optional integration package.
+ordinary theme/package edits reuse the native build. The public Docker/ISO
+scripts include the optional executor by default. Set `CANTRIP_OS_EXECUTOR=0` to
+omit it. With `CANTRIP_OS_WORKSPACES=0`, it is also omitted unless explicitly
+requested.
 Workspace support remains enabled by default. Including the executor requires
 the workspace package; apt enforces that dependency.
 
