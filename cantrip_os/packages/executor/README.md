@@ -28,14 +28,14 @@ to `0` in this first cycle while product placement is being implemented.
 Workspace support remains enabled by default. Including the executor requires
 the workspace package; apt enforces that dependency.
 
-Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.6.0_<arch>.deb`.
+Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.7.0_<arch>.deb`.
 It contains the source/patch fingerprint manifest, binary hashes, licenses, and
 sandbox helper. Docker and ISO recipes install the same package.
 
 Inside Linux, after copying the package there:
 
 ```sh
-sudo apt install ./cantrip-os-executor_0.6.0_arm64.deb  # amd64 for the VM edition
+sudo apt install ./cantrip-os-executor_0.7.0_arm64.deb  # amd64 for the VM edition
 sudo cantrip-executor enable
 sudo cantrip-executor status
 sudo cantrip-executor attach OWNER_ID WORKER_ID
@@ -148,4 +148,11 @@ also reach detached root children after `sudo`/`setsid` forks. Ordinary commands
 keep the selected workspace UID and unrestricted sudo. GCC is used only in the
 package build stage. No compiler, scheduler, or new daemon is added by this
 helper. This generation driver is an execution component; product Run routing
-and the source picker are the following milestone.
+are integrated with a combined Host/CantripOS configuration list.
+
+Version 0.7.0 adds revisioned definition deletion to the finite Linux helper.
+The Server reads the actual definition revision before stopping any Run, retires
+all Host/Linux runtimes that use that same source, and removes the file only after
+cleanup is confirmed. A separate Linux checkout with the same configuration UUID
+retains its independent source identity. Unknown cleanup preserves the definition
+and captured runtime; an explicit retry observes recorded native work.

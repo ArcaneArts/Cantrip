@@ -40,7 +40,7 @@ fn active(runtime: &Value) -> bool {
     matches!(
         runtime["state"].as_str(),
         Some("starting" | "running" | "restarting" | "stopping")
-    )
+    ) || (!runtime["osDefinition"].is_null() && runtime["state"] == "lost")
 }
 fn invalidate(
     service: &AuthService,
@@ -59,12 +59,23 @@ pub async fn retire(
     configuration: Option<&str>,
     worktree: Option<&str>,
 ) -> Result<()> {
+    retire_in_source(service, owner, project, configuration, worktree, None).await
+}
+
+pub async fn retire_in_source(
+    service: &AuthService,
+    owner: &str,
+    project: &str,
+    configuration: Option<&str>,
+    worktree: Option<&str>,
+    source: Option<&str>,
+) -> Result<()> {
     let repository = Repository::new(service.repository.database.clone());
     let targets = TargetRepository::new(service.repository.database.clone());
     let terminals = crate::terminals::Repository::new(service.repository.database.clone());
     loop {
         let runtimes = repository
-            .list(owner, project, configuration, worktree, 256)
+            .list_for_retirement(owner, project, configuration, worktree, source)
             .await?;
         if runtimes.is_empty() {
             return Ok(());
@@ -84,13 +95,26 @@ pub async fn retire(
                     message:"Every active Run configuration worker must be online before deletion.",
                 }.into());
             }
-            let context = targets
-                .worktree_context(owner, project, text(current, "worktreeId")?)
-                .await?
-                .filter(|context| context["worktree"]["lifecycleState"] == "ready")
-                .ok_or_else(|| {
-                    target_error(404, "The Run configuration target worktree is not ready.")
-                })?;
+            let capture = repository.captured(owner, text(current, "id")?).await?;
+            let os = capture
+                .as_ref()
+                .map(|value| value["osExecution"].clone())
+                .filter(|value| !value.is_null());
+            ensure!(
+                current["osDefinition"].is_null() || os.is_some(),
+                conflict("The captured Linux Run target is unavailable.")
+            );
+            let context = if os.is_some() {
+                json!({"workerId":current["workerId"],"worktree":json!({"id":current["worktreeId"]})})
+            } else {
+                targets
+                    .worktree_context(owner, project, text(current, "worktreeId")?)
+                    .await?
+                    .filter(|context| context["worktree"]["lifecycleState"] == "ready")
+                    .ok_or_else(|| {
+                        target_error(404, "The Run configuration target worktree is not ready.")
+                    })?
+            };
             let worker = text(&context, "workerId")?;
             if !service.workers.bridge.is_connected(worker) {
                 return Err(target_error(
@@ -98,7 +122,11 @@ pub async fn retire(
                     "The Run configuration target worker is offline.",
                 ));
             }
-            let admitted=repository.request_operation(owner,&json!({"operationId":uuid::Uuid::new_v4().to_string(),"projectId":project,"configurationId":current["configurationId"],"worktreeId":context["worktree"]["id"],"workerId":worker,"operation":"stop","definitionRevision":Value::Null,"codexEnvironmentRevision":Value::Null})).await?;
+            let mut admission = json!({"operationId":uuid::Uuid::new_v4().to_string(),"projectId":project,"configurationId":current["configurationId"],"worktreeId":context["worktree"]["id"],"workerId":worker,"operation":"stop","definitionRevision":Value::Null,"codexEnvironmentRevision":Value::Null});
+            if let Some(os) = &os {
+                admission["osExecution"] = os.clone();
+            }
+            let admitted = repository.request_operation(owner, &admission).await?;
             let stopping = &admitted["runtime"];
             ensure!(
                 stopping["terminalId"]
@@ -107,15 +135,15 @@ pub async fn retire(
                 conflict("An active Run configuration instance lost its terminal binding.")
             );
             let identity = json!({"runtimeId":stopping["id"],"projectId":stopping["projectId"],"configurationId":stopping["configurationId"],"worktreeId":stopping["worktreeId"],"workerId":stopping["workerId"],"definitionRevision":stopping["definitionRevision"],"codexEnvironmentRevision":stopping["codexEnvironmentRevision"],"generation":stopping["generation"],"operationId":stopping["requestedOperationId"],"terminalId":stopping["terminalId"]});
+            let command = if let Some(os) = os {
+                json!({"type":"cantrip-os.run-runtime.stop","definitions":os["definitions"],"target":os["target"],"identity":identity})
+            } else {
+                json!({"type":"project.run-configuration-runtime.stop","identity":identity})
+            };
             let result = service
                 .workers
                 .commands
-                .request(
-                    worker,
-                    json!({"type":"project.run-configuration-runtime.stop","identity":identity}),
-                    Some(Duration::from_secs(30)),
-                    None,
-                )
+                .request(worker, command, Some(Duration::from_secs(30)), None)
                 .await?;
             let result = crate::settings::parse_response(
                 "runConfigurationRuntimeWorkerOperationResultSchema",

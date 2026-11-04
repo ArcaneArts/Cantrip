@@ -154,6 +154,16 @@ impl Repository {
         let limit = limit.clamp(1, 256);
         self.database.query("SELECT to_jsonb(r)::text FROM run_configuration_runtimes r INNER JOIN projects p ON p.id=r.project_id AND p.owner_id=$1 WHERE r.project_id=$2 AND ($3::text IS NULL OR r.configuration_id=$3) AND ($4::text IS NULL OR r.worktree_id=$4) AND ($6::text IS NULL OR r.execution_key=$6) ORDER BY (r.state IN ('starting','running','restarting','stopping')) DESC,r.updated_at DESC,r.configuration_id ASC LIMIT $5", &[&owner,&project,&configuration,&worktree,&limit,&execution_key]).await?.iter().map(|row|summary(&raw(row.get(0)?)?)).collect()
     }
+    pub async fn list_for_retirement(
+        &self,
+        owner: &str,
+        project: &str,
+        configuration: Option<&str>,
+        worktree: Option<&str>,
+        source: Option<&str>,
+    ) -> Result<Vec<Value>> {
+        self.database.query("SELECT to_jsonb(r)::text FROM run_configuration_runtimes r JOIN projects p ON p.id=r.project_id AND p.owner_id=$1 WHERE r.project_id=$2 AND ($3::text IS NULL OR r.configuration_id=$3) AND ($4::text IS NULL OR r.worktree_id=$4) AND ($5::text IS NULL OR r.os_execution->'definitions'->'scope'->>'projectSourceId'=$5 OR (r.os_execution IS NULL AND EXISTS(SELECT 1 FROM project_worktrees w WHERE w.id=r.worktree_id AND w.project_source_id=$5))) ORDER BY (r.state IN ('starting','running','restarting','stopping') OR (r.os_execution IS NOT NULL AND r.state='lost')) DESC,r.updated_at DESC,r.configuration_id ASC LIMIT 256", &[&owner,&project,&configuration,&worktree,&source]).await?.iter().map(|row|summary(&raw(row.get(0)?)?)).collect()
+    }
     pub async fn captured(&self, owner: &str, runtime_id: &str) -> Result<Option<Value>> {
         let rows=self.database.query("SELECT to_jsonb(r)::text FROM run_configuration_runtimes r WHERE id=$1 AND owner_id=$2 LIMIT 1",&[&runtime_id,&owner]).await?;
         rows.first().map(|row| {
@@ -203,7 +213,7 @@ impl Repository {
         if ids.is_empty() {
             return Ok(0);
         }
-        Ok(self.database.query("DELETE FROM run_configuration_runtimes WHERE owner_id=$1 AND project_id=$2 AND id=ANY($3::text[]) AND state NOT IN ('starting','running','restarting','stopping') RETURNING id", &[&owner,&project,&ids]).await?.len())
+        Ok(self.database.query("DELETE FROM run_configuration_runtimes WHERE owner_id=$1 AND project_id=$2 AND id=ANY($3::text[]) AND state NOT IN ('starting','running','restarting','stopping') AND (os_execution IS NULL OR state <> 'lost') RETURNING id", &[&owner,&project,&ids]).await?.len())
     }
     pub async fn observe(
         &self,

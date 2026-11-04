@@ -44,6 +44,9 @@ export const cantripOsRunDefinitionRequestSchema = z.discriminatedUnion(
     runConfigurationDefinitionWorkerCommandSchemas[7].omit({
       sourcePath: true,
     }),
+    runConfigurationDefinitionWorkerCommandSchemas[8].omit({
+      sourcePath: true,
+    }),
   ],
 );
 export const cantripOsRunDefinitionWorkerCommandSchema = z

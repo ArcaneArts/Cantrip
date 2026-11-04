@@ -1,3 +1,4 @@
+import { linuxRunDefinitionApi } from "@/lib/run-definition-source";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { WorkerSummary } from "@cantrip/protocol";
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
@@ -385,11 +386,10 @@ export function RunConfigurationControl({
   });
   const remove = useMutation({
     mutationFn: async (item: CatalogRunConfigurationItem) => {
-      if (item.catalog.binding)
-        throw new Error(
-          "Delete is not available for Linux Run configurations yet.",
-        );
-      const result = await deleteRunConfiguration(
+      const remove = item.catalog.binding
+        ? linuxRunDefinitionApi(item.catalog.binding).deleteRunConfiguration
+        : deleteRunConfiguration;
+      const result = await remove(
         projectId,
         item.configurationId,
         item.revision,
@@ -404,9 +404,36 @@ export function RunConfigurationControl({
       }
       return result;
     },
-    onSuccess: async () => {
+    onSuccess: async (_result, item) => {
+      // A confirmed deletion is distinct from an unavailable captured epoch.
+      // Remove only this definition's cache entry and select a remaining row.
+      queryClient.setQueryData<RunConfigurationListInventory>(
+        item.catalog.key === "host"
+          ? ["run-configurations", projectId]
+          : ["run-configurations", projectId, item.catalog.key],
+        (current) =>
+          current
+            ? {
+                ...current,
+                entries: current.entries.filter(
+                  (entry) => entry.id !== item.configurationId,
+                ),
+                validations: current.validations.filter(
+                  (entry) => entry.configurationId !== item.configurationId,
+                ),
+              }
+            : current,
+      );
       setDeleteConfigurationId(null);
       await refresh();
+      setSelectedId((current) =>
+        current === item.id
+          ? (model.configurations.find(
+              (candidate) =>
+                candidate.id !== item.id && candidate.catalog.available,
+            )?.id ?? null)
+          : current,
+      );
     },
   });
   const operate = (
@@ -650,12 +677,7 @@ export function RunConfigurationControl({
                               <Pencil className="size-4" /> Edit
                             </StyledDropdownMenuItem>
                             <StyledDropdownMenuItem
-                              disabled={Boolean(item.catalog.binding)}
-                              title={
-                                item.catalog.binding
-                                  ? "Delete is not available for Linux Run configurations yet."
-                                  : undefined
-                              }
+                              disabled={!item.catalog.available}
                               className="text-destructive focus:text-destructive"
                               onSelect={() => {
                                 setMenuOpen(false);

@@ -134,6 +134,23 @@ async fn exercise_run_captures(
             .len(),
         1
     );
+    assert_eq!(
+        runs.list_for_retirement(
+            "owner",
+            "project",
+            Some(&configuration),
+            None,
+            roots["definitions"]["scope"]["projectSourceId"].as_str()
+        )
+        .await?
+        .len(),
+        1
+    );
+    assert!(
+        runs.list_for_retirement("owner", "project", Some(&configuration), None, Some(&id()))
+            .await?
+            .is_empty()
+    );
     let captured = runs
         .captured("owner", runtime["id"].as_str().unwrap())
         .await?
@@ -183,6 +200,12 @@ async fn exercise_run_captures(
         &json!({"runtimeId":runtime["id"].as_str(),"projectId":"project","configurationId":configuration,"worktreeId":worktree["worktreeId"],"workerId":"worker","definitionRevision":"a".repeat(64),"codexEnvironmentRevision":null,"generation":1,"operationId":request["operationId"].as_str(),"terminalId":runtime["terminalId"].as_str(),"state":"lost","startedAt":null,"endedAt":chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis,true),"exitCode":null,"signal":null,"failure":{"phase":"reconcile","code":"linux-outcome-unknown","message":"Unknown native outcome","retryable":true}}),
     );
     assert!(runs.observe("owner", "worker", &lost).await?.is_some());
+    assert_eq!(
+        runs.delete("owner", "project", &[runtime_id.to_owned()])
+            .await?,
+        0
+    );
+
     let mut next = request.clone();
     next["operationId"] = cantrip_server::wire::Value::from_serialize(&id());
     assert!(runs.request_operation("owner", &next).await.is_err());

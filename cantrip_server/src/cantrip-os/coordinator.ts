@@ -21,6 +21,15 @@ const fail = (message: string): never => {
   throw new CantripOsPlacementError(message);
 };
 
+export interface CantripOsDefinitionLifecycle {
+  serialize<T>(projectId: string, operation: () => Promise<T>): Promise<T>;
+  retire(
+    ownerId: string,
+    projectId: string,
+    filter: { configurationId: string; projectSourceId: string },
+  ): Promise<void>;
+}
+
 /** Server authority produces every dispatch scope from canonical owned rows.
  * Only the first durable admission may dispatch a provisioning mutation. */
 export class CantripOsCoordinator {
@@ -31,9 +40,67 @@ export class CantripOsCoordinator {
     >,
     private readonly bridge: Pick<WorkerCommandBus, "request">,
     private readonly serverId: string,
+    private readonly definitionLifecycle?: CantripOsDefinitionLifecycle,
   ) {}
 
   async runDefinition(
+    ownerId: string,
+    projectId: string,
+    bindingId: string,
+    input: ReturnType<typeof cantripOsRunDefinitionApiSchema.parse>,
+  ) {
+    const request = input.request;
+    if (request.projectId !== projectId)
+      return fail("The Run definition belongs to another project.");
+    if (request.type !== "project.run-configuration-definitions.delete")
+      return this.dispatchRunDefinition(ownerId, projectId, bindingId, input);
+    const lifecycle = this.definitionLifecycle;
+    if (!lifecycle)
+      return fail(
+        "Linux Run deletion requires its runtime lifecycle authority.",
+      );
+    return lifecycle.serialize(projectId, async () => {
+      const current = await this.dispatchRunDefinition(
+        ownerId,
+        projectId,
+        bindingId,
+        {
+          ...input,
+          request: {
+            type: "project.run-configuration-definitions.get",
+            projectId,
+            configurationId: request.request.id,
+            operationId: crypto.randomUUID(),
+          },
+        },
+      );
+      if (current.result.operation !== "get")
+        return fail("The Linux definition read was misrouted.");
+      const found = current.result.result.found;
+      const revision = found ? current.result.result.entry.revision : null;
+      if (!found || revision !== request.request.expectedRevision)
+        return cantripOsRunDefinitionResponseSchema.parse({
+          source: current.source,
+          result: {
+            operation: "delete",
+            operationId: request.operationId,
+            projectId,
+            result: {
+              outcome: found ? "revision-mismatch" : "not-found",
+              id: request.request.id,
+              currentRevision: revision,
+            },
+          },
+        });
+      await lifecycle.retire(ownerId, projectId, {
+        configurationId: request.request.id,
+        projectSourceId: current.source.projectSourceId,
+      });
+      return this.dispatchRunDefinition(ownerId, projectId, bindingId, input);
+    });
+  }
+
+  private async dispatchRunDefinition(
     ownerId: string,
     projectId: string,
     bindingId: string,

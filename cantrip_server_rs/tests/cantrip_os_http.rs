@@ -110,6 +110,12 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
                         let configuration = &request["configurationId"];
                         let document = json!({"schema":"cantrip.run-configuration","version":1,"id":configuration,"name":"Native HTTP fixture","provider":"shell","workingDirectory":".","target":{"kind":"command","command":"python --version"},"commandOverride":null,"arguments":[],"environment":{"includeCodexEnvironment":false,"files":[],"variables":[],"secrets":[]},"beforeLaunch":[],"platformOverrides":{},"options":{"shell":"bash"},"stop":{"gracePeriodMs":1000}});
                         json!({"operation":"get","operationId":request["operationId"],"projectId":request["projectId"],"result":{"found":true,"entry":{"relativePath":format!(".cantrip/run-configurations/{}.json",configuration.as_str().unwrap()),"revision":"a".repeat(64),"id":configuration,"status":"ready","document":document,"diagnostics":[]}},"codexEnvironment":{"enabled":false,"configured":false,"valid":true,"revision":null,"hasSetup":false,"diagnostics":[]},"secretReferences":[]})
+                    } else if request["type"] == "project.run-configuration-definitions.delete" {
+                        assert!(
+                            runs.values()
+                                .all(|observation| observation["state"] == "idle")
+                        );
+                        json!({"operation":"delete","operationId":request["operationId"],"projectId":request["projectId"],"result":{"outcome":"deleted","id":request["request"]["id"],"revision":"a".repeat(64)}})
                     } else {
                         json!({"operation":"capabilities","operationId":request["operationId"],"projectId":request["projectId"],"capabilities":[]})
                     }
@@ -537,6 +543,56 @@ async fn exercise_run_http(fixture: RunHttpFixture<'_>) -> Result<()> {
     let stopped = stopped.json().await?;
     assert_eq!(status, 202, "{stopped}");
     assert_eq!(stopped["runtime"]["state"], "idle");
+    let mut fresh = start.clone();
+    fresh["operationId"] = json!(id());
+    assert_eq!(
+        client
+            .post(format!("{run_url}/operations"))
+            .json(&fresh)
+            .send()
+            .await?
+            .status(),
+        202
+    );
+    let definition_url = format!(
+        "{base}/api/projects/{project}/cantrip-os/bindings/{}/run-definitions",
+        binding["id"].as_str().unwrap()
+    );
+    let mut deletion = json!({"runtimeGeneration":attached["instance"]["runtimeGeneration"],"bindingGeneration":binding["bindingGeneration"],"attachmentGeneration":attached["instance"]["attachmentGeneration"],"request":{"type":"project.run-configuration-definitions.delete","projectId":project,"operationId":id(),"request":{"id":configuration,"expectedRevision":"b".repeat(64)}}});
+    let mismatch = client
+        .post(&definition_url)
+        .json(&deletion)
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(
+        mismatch["result"]["result"]["outcome"], "revision-mismatch",
+        "{mismatch}"
+    );
+    let still_running = client
+        .post(format!("{run_url}/status"))
+        .json(&status_request)
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(still_running["runtimes"][0]["state"], "running");
+    deletion["request"]["operationId"] = json!(id());
+    deletion["request"]["request"]["expectedRevision"] = json!("a".repeat(64));
+    let deleted = client.post(&definition_url).json(&deletion).send().await?;
+    let status = deleted.status();
+    let deleted = deleted.json().await?;
+    assert_eq!(status, 200, "{deleted}");
+    assert_eq!(deleted["result"]["result"]["outcome"], "deleted");
+    let remaining = client
+        .post(format!("{run_url}/status"))
+        .json(&status_request)
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(remaining["runtimes"], json!([]));
 
     Ok(())
 }

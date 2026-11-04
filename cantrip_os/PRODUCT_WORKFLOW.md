@@ -171,10 +171,13 @@ stays unavailable after an OS restart. Refresh and verify the OS, then explicitl
 choose the current configuration from the combined list. It never selects Host
 as a fallback. Existing resources retain their earlier captures.
 
-Linux definition deletion is currently disabled while its stop/retirement path
-is integrated. Stop controls remain available. This is a Run integration milestone;
-it does not complete the remaining delegated project/Git/artifact tools or fresh
-Docker/ISO acceptance.
+**Delete** checks the stored definition revision, stops affected instances, then
+removes the definition and their Run surfaces. For a linked checkout the definition
+is shared with Host, so affected Host and Linux Runs are both stopped. Separate
+checkouts remain separate even when their configuration UUIDs match. Unconfirmed
+cleanup keeps the definition and captured handles; inspect the outcome and retry
+explicitly. This requires executor 0.7.0 for Linux. Broader delegated project/Git/
+artifact tools and fresh Docker/ISO acceptance remain in progress.
 
 ## Run API reference
 

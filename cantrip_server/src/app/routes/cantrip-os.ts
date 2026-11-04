@@ -7,7 +7,10 @@ import {
   cantripOsWorkspaceCreateSchema,
 } from "@cantrip/protocol";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { CantripOsCoordinator } from "../../cantrip-os/coordinator.js";
+import {
+  CantripOsCoordinator,
+  type CantripOsDefinitionLifecycle,
+} from "../../cantrip-os/coordinator.js";
 import type { ServerRepository } from "../../db/repository.js";
 import { CantripOsPlacementError } from "../../db/repository/cantrip-os.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
@@ -18,6 +21,7 @@ export function installCantripOsRoutes(
   dependencies: {
     applicationOwnerId: () => string;
     serverId: string;
+    definitionLifecycle?: CantripOsDefinitionLifecycle;
     repository: Pick<ServerRepository, "cantripOs" | "getWorker">;
     bridge: Pick<WorkerCommandBus, "request">;
   },
@@ -27,6 +31,7 @@ export function installCantripOsRoutes(
     repository,
     dependencies.bridge,
     dependencies.serverId,
+    dependencies.definitionLifecycle,
   );
   type Params = { Params: Record<string, string> };
   type Request = FastifyRequest<Params>;

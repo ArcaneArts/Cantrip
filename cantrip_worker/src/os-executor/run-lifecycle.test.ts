@@ -82,6 +82,49 @@ function controlledDriver() {
 }
 
 describe("Linux Run common lifecycle", () => {
+  it("confirms a naturally exited Linux generation under the new Stop operation after its launch reply was lost", async () => {
+    const driver = controlledDriver();
+    const supervisor = new RunConfigurationRuntimeSupervisor({
+      authorize: async () => {
+        throw new Error("Host");
+      },
+      linux: driver,
+    });
+    const input = fixture();
+    await supervisor.start({ type: "cantrip-os.run-runtime.start", ...input });
+    driver.started();
+    driver.finish({ outcome: "exited", exitCode: 0, signal: null });
+    await vi.waitFor(() =>
+      expect(supervisor.status(input.identity, input)).toMatchObject({
+        found: true,
+        observation: { state: "exited" },
+      }),
+    );
+    const identity = { ...input.identity, operationId: randomUUID() };
+    const command = {
+      type: "cantrip-os.run-runtime.stop" as const,
+      ...input,
+      identity,
+    };
+    await expect(supervisor.stop(command)).rejects.toThrow(
+      "could not be confirmed",
+    );
+    driver.stopRecorded.mockResolvedValue({
+      outcome: "exited",
+      exitCode: 0,
+      signal: null,
+    });
+    const retryIdentity = { ...identity, operationId: randomUUID() };
+    expect(
+      await supervisor.stop({ ...command, identity: retryIdentity }),
+    ).toMatchObject({
+      observation: { ...retryIdentity, state: "idle", exitCode: 0 },
+    });
+    expect(driver.start).toHaveBeenCalledTimes(1);
+    expect(driver.stopRecorded).toHaveBeenCalledTimes(2);
+    await supervisor.closeAll();
+  });
+
   it("acknowledges an explicit stop after memory loss only when recorded native cleanup confirms it", async () => {
     const driver = controlledDriver();
     const supervisor = new RunConfigurationRuntimeSupervisor({

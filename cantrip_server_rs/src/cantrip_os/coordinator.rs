@@ -35,6 +35,80 @@ impl Coordinator {
             input["request"]["projectId"] == project,
             "The Run definition belongs to another project."
         );
+        if input["request"]["type"] != "project.run-configuration-definitions.delete" {
+            return self
+                .dispatch_run_definition(owner, project, binding, input)
+                .await;
+        }
+        let service = self.service.clone();
+        let (owner, project, binding, input) = (
+            owner.to_owned(),
+            project.to_owned(),
+            binding.to_owned(),
+            input.clone(),
+        );
+        service
+            .project_operations
+            .clone()
+            .serialize(&owner.clone(), &project.clone(), false, move || {
+                Box::pin(async move {
+                    Self::new(service)
+                        .delete_run_definition(&owner, &project, &binding, &input)
+                        .await
+                })
+            })
+            .await
+    }
+
+    async fn delete_run_definition(
+        &self,
+        owner: &str,
+        project: &str,
+        binding: &str,
+        input: &Value,
+    ) -> Result<Value> {
+        let request = &input["request"];
+        let mut query = input.clone();
+        query["request"] = json!({"type":"project.run-configuration-definitions.get", "projectId":project, "configurationId":request["request"]["id"], "operationId":uuid::Uuid::new_v4().to_string()});
+        let current = self
+            .dispatch_run_definition(owner, project, binding, &query)
+            .await?;
+        let found = current["result"]["result"]["found"] == true;
+        let revision = if found {
+            current["result"]["result"]["entry"]["revision"].clone()
+        } else {
+            Value::Null
+        };
+        if !found || revision != request["request"]["expectedRevision"] {
+            return super::checked(
+                "cantripOsRunDefinitionResponseSchema",
+                json!({"source":current["source"], "result":{"operation":"delete", "operationId":request["operationId"], "projectId":project, "result":{"outcome":if found {"revision-mismatch"} else {"not-found"}, "id":request["request"]["id"], "currentRevision":revision}}}),
+            );
+        }
+        crate::run_configurations::retirement::retire_in_source(
+            &self.service,
+            owner,
+            project,
+            Some(text(&request["request"], "id")?),
+            None,
+            Some(text(&current["source"], "projectSourceId")?),
+        )
+        .await?;
+        self.dispatch_run_definition(owner, project, binding, input)
+            .await
+    }
+
+    async fn dispatch_run_definition(
+        &self,
+        owner: &str,
+        project: &str,
+        binding: &str,
+        input: &Value,
+    ) -> Result<Value> {
+        ensure!(
+            input["request"]["projectId"] == project,
+            "The Run definition belongs to another project."
+        );
         if !input["bindingGeneration"].is_null() || !input["attachmentGeneration"].is_null() {
             let selected = self.repository.context(owner, project, binding).await?;
             ensure!(

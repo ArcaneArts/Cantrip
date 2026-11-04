@@ -11826,6 +11826,12 @@
       "path": ["command", "options", "285", "request"],
       "index": 7,
       "case": 1004
+    },
+    {
+      "kind": "union",
+      "path": ["command", "options", "285", "request"],
+      "index": 8,
+      "case": 1005
     }
   ],
   "cases": [
@@ -46590,6 +46596,54 @@
                   "gracePeriodMs": 3000
                 }
               }
+            }
+          }
+        }
+      }
+    },
+    {
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.run-definition",
+          "execution": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "request": {
+            "type": "project.run-configuration-definitions.delete",
+            "operationId": "00000000-0000-4000-8000-000000000001",
+            "projectId": "12345678-1234-4234-8234-123456789abc",
+            "request": {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
             }
           }
         }

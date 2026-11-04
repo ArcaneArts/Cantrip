@@ -662,11 +662,11 @@ export class RunConfigurationRuntimeSupervisor {
           "The stop target does not match the active generation.",
         );
       }
-      const recordedCleanup = Boolean(
-        session.linuxRoots &&
-        !session.process &&
-        ["lost", "stopping"].includes(session.state),
-      );
+      // The Server may have retained an uncertain launch even after this
+      // Worker observed its natural exit. Confirm the recorded Linux tree and
+      // acknowledge the current Stop identity rather than replaying its old
+      // launch/exit observation.
+      const recordedCleanup = Boolean(session.linuxRoots && !session.process);
       if (!activeState(session.state) && !session.process && !recordedCleanup) {
         return this.#operationResult("replayed", session);
       }

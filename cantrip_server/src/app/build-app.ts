@@ -964,6 +964,13 @@ export async function buildApp({
     serverId,
     repository,
     bridge,
+    definitionLifecycle: {
+      serialize: (projectId, operation) =>
+        worktreeCoordinator.serialize(projectId, operation, {
+          notifyProjectChanged: false,
+        }),
+      retire: runConfigurationRuntime.retireRunConfigurationRuntimes,
+    },
   });
 
   installProjectRoutes(app, {
