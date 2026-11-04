@@ -2306,6 +2306,20 @@ jobs:
           $qaIntegrationExit = $LASTEXITCODE
           Get-Content '.qa/rust-server/settings-integration-qa-windows/workspace-capture.log'
           exit $qaIntegrationExit
+      - name: Compare current Task pause diagnostics against Source
+        if: ${{ !cancelled() }}
+        run: |
+          node --import tsx scripts/server-rust/task-pause-queries.mjs *> '.qa/rust-server/settings-integration-qa-windows/task-pause-capture.log'
+          $qaIntegrationExit = $LASTEXITCODE
+          Get-Content '.qa/rust-server/settings-integration-qa-windows/task-pause-capture.log' -Tail 5
+          exit $qaIntegrationExit
+      - name: Run all worker native gateway checks including actual TCP resets
+        if: ${{ !cancelled() }}
+        run: |
+          pnpm --filter @cantrip/worker exec vitest run test/managed-native-gateway.test.ts --maxWorkers=2 --reporter=default --reporter=json --outputFile=../.qa/rust-server/settings-integration-qa-windows/gateway-results.json *> '.qa/rust-server/settings-integration-qa-windows/gateway-run.log'
+          $qaIntegrationExit = $LASTEXITCODE
+          Get-Content '.qa/rust-server/settings-integration-qa-windows/gateway-run.log' -Tail 15
+          exit $qaIntegrationExit
       - name: Retain all original editor retirement and file ownership checks
         if: ${{ !cancelled() }}
         run: |
