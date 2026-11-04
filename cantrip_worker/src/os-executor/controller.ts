@@ -19,6 +19,7 @@ import {
   type OsExecutorTransport,
 } from "./connection.js";
 import {
+  createLinuxWorktree,
   inspectLinuxSource,
   provisionLinuxSource,
   type LinuxSourceReceipt,
@@ -249,7 +250,9 @@ export class CantripOsController {
           throw new Error("Source mode changed after admission.");
         if (
           intent.mode === "linux-owned" &&
-          intent.source.kind !== scope.sourceKind
+          (intent.source.kind === "git-worktree"
+            ? "git"
+            : intent.source.kind) !== scope.sourceKind
         )
           throw new Error("Source kind changed after admission.");
         return this.result(
@@ -315,6 +318,13 @@ export class CantripOsController {
                 throw new Error(
                   "Linux-owned provisioning requires its selected Linux source.",
                 );
+              if (
+                intent.source.kind === "git-worktree" &&
+                !scope.repositoryFingerprint
+              )
+                throw new Error(
+                  "A Linux worktree requires its canonical repository identity.",
+                );
               const { connection, binding, sessionId } = await this.connection(
                 transport,
                 scope,
@@ -322,29 +332,46 @@ export class CantripOsController {
               record.native = { binding, sessionId };
               await save();
               try {
-                const source = await provisionLinuxSource(
-                  connection,
-                  {
-                    sourceId: scope.projectSourceId,
-                    operationId: command.operationId,
-                    guestPath: scope.guestPath,
-                    sourceKind: intent.source.kind,
-                    repositoryUrl:
-                      intent.source.kind === "git"
-                        ? intent.source.repositoryUrl
-                        : null,
-                    revision:
-                      intent.source.kind === "git"
-                        ? intent.source.revision
-                        : null,
+                const mutations = {
+                  prepared: async (processId, argv) => {
+                    record.processes.push({ processId, argv });
+                    await save();
                   },
-                  {
-                    prepared: async (processId, argv) => {
-                      record.processes.push({ processId, argv });
-                      await save();
-                    },
-                  },
-                );
+                } satisfies import("./checkouts.js").SourceMutationOptions;
+                const source =
+                  intent.source.kind === "git-worktree"
+                    ? await createLinuxWorktree(
+                        connection,
+                        {
+                          sourceId: scope.projectSourceId,
+                          sourceGuestPath: `${scope.homeGuestPath}/checkouts/${scope.projectSourceId}`,
+                          worktreeId: scope.worktreeId,
+                          guestPath: scope.guestPath,
+                          revision: intent.source.revision,
+                          branch: intent.source.branch,
+                          expectedRepositoryFingerprint:
+                            scope.repositoryFingerprint!,
+                        },
+                        mutations,
+                      )
+                    : await provisionLinuxSource(
+                        connection,
+                        {
+                          sourceId: scope.projectSourceId,
+                          operationId: command.operationId,
+                          guestPath: scope.guestPath,
+                          sourceKind: intent.source.kind,
+                          repositoryUrl:
+                            intent.source.kind === "git"
+                              ? intent.source.repositoryUrl
+                              : null,
+                          revision:
+                            intent.source.kind === "git"
+                              ? intent.source.revision
+                              : null,
+                        },
+                        mutations,
+                      );
                 return {
                   kind: "source",
                   source: cantripOsSourceReceiptSchema.parse({
