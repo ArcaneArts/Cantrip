@@ -1,5 +1,10 @@
 import { CodexInteractions } from "./interactions.js";
 import { CodexAuthRecovery } from "./auth-recovery.js";
+import {
+  CodexInferenceAdmission,
+  type CodexInferenceExecution,
+} from "./inference-admission.js";
+import type { WorkerInferenceAdmission } from "../inference-admission.js";
 import { codexProviderLogContext } from "./provider-config.js";
 export {
   planQuestionId,
@@ -1739,6 +1744,7 @@ export class CodexAppServer implements CodexRuntime {
   #skillRoots: string[] = [];
   #appServerSessionId = randomUUID();
   #nativeTransportGeneration: string | null = null;
+  #inference: CodexInferenceAdmission | null = null;
   #child: ChildProcessWithoutNullStreams | null = null;
   readonly #authRecovery = new CodexAuthRecovery({
     providerAccessTokens: () => this.providerAccessTokens,
@@ -1775,6 +1781,7 @@ export class CodexAppServer implements CodexRuntime {
     private readonly globalSkillRoots: readonly string[] = [],
     private readonly configurationHome: string | null = null,
     private readonly nativeEnvironment: CodexNativeEnvironment | null = null,
+    private readonly inferenceAdmission: WorkerInferenceAdmission | null = null,
   ) {}
 
   private workspaceContext(cwd: string) {
@@ -2716,6 +2723,28 @@ export class CodexAppServer implements CodexRuntime {
   async prepareAdmittedNativeExecution(
     options: PrepareAdmittedNativeExecutionOptions,
   ): Promise<AdmittedNativeExecution> {
+    if (this.inferenceAdmission && !this.#inference)
+      throw new Error("The native inference process is no longer connected.");
+    const inference = await this.#inference?.acquire({
+      operationId: options.operationGeneration,
+      provider: options.provider,
+      chatId: options.chatId,
+      threadId: options.threadId,
+      expectedTurnId: options.expectedTurnId,
+      signal: options.inferenceSignal,
+    });
+    try {
+      return await this.prepareInferenceExecution(options, inference);
+    } catch (error) {
+      inference?.notDispatched();
+      throw error;
+    }
+  }
+
+  private async prepareInferenceExecution(
+    options: PrepareAdmittedNativeExecutionOptions,
+    inference?: CodexInferenceExecution,
+  ): Promise<AdmittedNativeExecution> {
     const epoch = this.#preparationEpoch;
     const baseline = await this.snapshotWorkspace(options.cwd);
     this.assertPreparationEpoch(epoch);
@@ -2744,6 +2773,7 @@ export class CodexAppServer implements CodexRuntime {
     };
     const fail = (error: Error) => {
       if (!current()) return;
+      inference?.notDispatched();
       this.releaseActiveTurn(active);
       clearTurnInspectionTelemetry(active);
       active.reject(error);
@@ -2760,6 +2790,8 @@ export class CodexAppServer implements CodexRuntime {
       completion: result,
       assertCurrent,
       fail,
+      dispatchInference: () => inference?.dispatched(),
+      rejectInference: () => inference?.rejected(),
       bindReceipt: (receipt) => {
         const value = receipt as { turn?: { id?: unknown } } | null;
         const turnId = value?.turn?.id;
@@ -2774,6 +2806,7 @@ export class CodexAppServer implements CodexRuntime {
           fail(error);
           throw error;
         }
+        inference?.bindTurn(turnId);
         const observed = active.admission!.initialTurnId;
         if (observed && observed !== turnId) {
           const error = new Error(
@@ -2797,6 +2830,34 @@ export class CodexAppServer implements CodexRuntime {
   private async runTurnAttempt(
     options: RunAgentTurnOptions,
   ): Promise<AgentTurnResult> {
+    await this.ensureStarted(
+      options.model,
+      options.provider,
+      options.subagentDefaults,
+      options.executionProfile,
+    );
+    const inference = await this.#inference?.acquire({
+      operationId:
+        options.operationGeneration ??
+        `turn:${options.clientMessageId}:${randomUUID()}`,
+      provider: options.provider,
+      chatId: options.chatId,
+      threadId: options.threadId,
+      signal: options.preparationSignal,
+    });
+    try {
+      return await this.executeInferenceTurn(options, inference);
+    } finally {
+      // After forwarding, only a native terminal receipt or actual process exit
+      // may release capacity. A rejected observer promise is not that evidence.
+      inference?.notDispatched();
+    }
+  }
+
+  private async executeInferenceTurn(
+    options: RunAgentTurnOptions,
+    inference?: CodexInferenceExecution,
+  ): Promise<AgentTurnResult> {
     const resultMode = options.resultMode ?? { kind: "visible" as const };
     if (options.automationPaused) this.#pausedChats.add(options.chatId);
     await this.ensureStarted(
@@ -2815,6 +2876,7 @@ export class CodexAppServer implements CodexRuntime {
     if (!threadId) {
       throw new Error("Could not start a Codex thread.");
     }
+    inference?.bindThread(threadId);
     options.onThreadLoaded?.(threadId);
     // Managed executions already own goal continuation through native
     // admissions. Optional goal metadata must not gate normal GUI input.
@@ -2941,11 +3003,17 @@ export class CodexAppServer implements CodexRuntime {
       await options.onBeforeNativeDispatch?.(threadId);
       options.preparationSignal?.throwIfAborted();
       dispatchedInput = params.input;
+      inference?.dispatched();
       response = (await this.request(
         "turn/start",
         params,
       )) as TurnStartResponse;
     } catch (error) {
+      if (
+        error instanceof CodexNativeRpcError &&
+        error.requestMethod === "turn/start"
+      )
+        inference?.rejected();
       const deferred =
         dispatchedInput &&
         error instanceof CodexNativeRpcError &&
@@ -2966,6 +3034,7 @@ export class CodexAppServer implements CodexRuntime {
       throw error;
     }
     this.bindTurnStartResponse(response.turn.id, activeTurn);
+    inference?.bindTurn(response.turn.id);
     await options.onNativeReceipt?.(response);
     if (options.captureProtectedDiagnostics) {
       emitTurnActivity(
@@ -4712,6 +4781,7 @@ export class CodexAppServer implements CodexRuntime {
     chatId: string,
     threadId: string | null,
   ): Promise<{ interrupted: boolean }> {
+    const cancelledInference = this.#inference?.cancelWaiting(chatId) ?? false;
     const active = findActiveChatTurn(
       this.#executions.activeTurns,
       chatId,
@@ -4728,12 +4798,12 @@ export class CodexAppServer implements CodexRuntime {
           params: { threadId },
           dispatch: async () => {
             pendingRetry?.controller.abort();
-            return { interrupted: Boolean(pendingRetry) };
+            return { interrupted: cancelledInference || Boolean(pendingRetry) };
           },
         });
-        return { interrupted: Boolean(pendingRetry) };
+        return { interrupted: cancelledInference || Boolean(pendingRetry) };
       }
-      if (!pendingRetry) return { interrupted: false };
+      if (!pendingRetry) return { interrupted: cancelledInference };
       pendingRetry.controller.abort();
       workerLogger.event("info", "Codex capacity retry interrupted", {
         event: "codex.turn.capacity-retry-interrupted",
@@ -5962,6 +6032,15 @@ export class CodexAppServer implements CodexRuntime {
       },
     );
     this.#child = child;
+    const inference = this.inferenceAdmission
+      ? new CodexInferenceAdmission(this.inferenceAdmission)
+      : null;
+    this.#inference = inference;
+    // This hook must survive replacement of #child after WebSocket loss.
+    child.once("exit", () => {
+      inference?.processExited();
+      if (this.#inference === inference) this.#inference = null;
+    });
     this.#runtimeStartedAtMs = startedAtMs;
     const processRuntimeId = this.#runtimeId;
     const processStartedAtMs = startedAtMs;
@@ -6267,6 +6346,7 @@ export class CodexAppServer implements CodexRuntime {
     }
 
     const diagnosticPayload = this.#rpcRequests.diagnosticPayload(message);
+    this.#inference?.observe(message.method, message.params);
     const diagnosticId = this.recordDiagnostic({
       at: new Date().toISOString(),
       direction: "from-runtime",
@@ -7968,6 +8048,7 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private handleExit(error: Error): void {
+    this.#inference?.observationLost();
     this.clearManagedExecutionGateHandlers();
     this.#nativeTransportGeneration = null;
     this.#liveManagedModelCatalog.clear();

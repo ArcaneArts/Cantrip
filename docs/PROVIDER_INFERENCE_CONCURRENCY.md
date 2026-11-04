@@ -30,11 +30,23 @@ lifetime; retirement releases the record set.
 ## Delivery status
 
 The foundation includes persisted configuration, runtime propagation, worker
-ownership, and the admission primitive. Execution entry points are not yet
-gated by this milestone. The subsequent implementation milestones must wire
-native turn and goal-cycle admission, auxiliary inference and suspended waits,
+ownership, and the admission primitive. Root GUI chat turns and managed native
+turns (terminal input, queued starts, Tasks, and autonomous goal cycles) now acquire
+before forwarding their actual native start. Each completed cycle releases its
+ticket independently of later workspace reconciliation and UI publication. A
+continuation must acquire again through the same provider queue.
+
+Native ticket correlation lives separately from UI execution tracking. Actual
+turn IDs and terminal notifications settle tickets; a native rejection before
+an observed start releases the unused reservation. A disconnected socket cancels
+unforwarded work but retains dispatched holders until actual process exit. The
+captured process-exit hook remains valid after socket or child-handle replacement.
+Explicit Stop can cancel a queued chat before it has a native turn ID.
+
+The remaining milestones must cover auxiliary inference and suspended waits,
 durable recovery and live settings propagation, app feedback, and the final
-inference-path audit. This foundation alone does not limit running inference.
+inference-path audit. Parallel child inference and helper operations are not yet
+covered. This intermediate implementation is not the completed feature.
 
 Local review is restricted to source inspection, formatting, and diff checks by
 the goal's explicit no-testing instruction. Runtime behavior remains unexecuted.

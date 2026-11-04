@@ -53,6 +53,8 @@ import {
 } from "./managed-native-policy.js";
 
 interface Execution {
+  inferenceAbort: AbortController;
+  inferenceForwarded?: boolean;
   receipt: NativeCommandReceipt;
   session: NativeCommandSession;
   handle?: AdmittedNativeExecution;
@@ -208,7 +210,13 @@ export class ManagedNativeCommandSession {
     const released = new Promise<void>((resolve) => {
       markReleased = resolve;
     });
-    return { receipt, session, released, markReleased };
+    return {
+      receipt,
+      session,
+      released,
+      markReleased,
+      inferenceAbort: new AbortController(),
+    };
   }
 
   /** Waits for the actual current publication/lane cleanup, without serializing controls. */
@@ -654,7 +662,7 @@ export class ManagedNativeCommandSession {
       operation,
       this.options.policy,
     );
-    const admission = await this.admit(operation);
+    const admission = await this.admit(operation, signal);
     try {
       signal.throwIfAborted();
       await admission.beforeForward();
@@ -703,6 +711,7 @@ export class ManagedNativeCommandSession {
     )
       return;
     execution.nativeDecline = { ...event };
+    execution.handle?.rejectInference?.();
     execution.handle?.fail(new Error(event.reason));
   }
 
@@ -778,6 +787,7 @@ export class ManagedNativeCommandSession {
 
   async admit(
     operation: ManagedNativeOperation,
+    inferenceSignal?: AbortSignal,
   ): Promise<ManagedNativeAdmission> {
     let forward: ManagedNativeAdmission["forward"];
     if (
@@ -939,9 +949,15 @@ export class ManagedNativeCommandSession {
     const releasePublication = () =>
       (released ??= publication?.release() ?? Promise.resolve());
     let settlement: Promise<void> | undefined;
+    let cancelledWaitingRoot: Execution | null = null;
     const assertRootCurrent = () => {
       if (expected) this.assertActivationGeneration(expected.generation);
-      if (!start && root && this.active !== root)
+      if (
+        !start &&
+        root &&
+        this.active !== root &&
+        !(cancelledWaitingRoot === root && this.active === null)
+      )
         throw new Error("The native mutation belongs to a replaced execution.");
     };
 
@@ -1000,6 +1016,21 @@ export class ManagedNativeCommandSession {
       operationGeneration: grant.receipt.operationGeneration,
       ...(forward ? { forward } : {}),
       beforeForward: async () => {
+        if (
+          operation.method === "turn/interrupt" ||
+          operation.method === "turn/pause" ||
+          operation.method === "thread/goal/clear" ||
+          (operation.method === "thread/goal/set" &&
+            intent.goalStatus === "paused")
+        ) {
+          if (this.active && !this.active.inferenceForwarded)
+            cancelledWaitingRoot = this.active;
+          this.active?.inferenceAbort.abort(
+            new Error(
+              "Native execution was stopped while waiting for capacity.",
+            ),
+          );
+        }
         const priorGoalResponse =
           operation.method === "thread/goal/clear" ||
           (operation.method === "thread/goal/set" &&
@@ -1022,6 +1053,12 @@ export class ManagedNativeCommandSession {
                 operationGeneration: grant.receipt.operationGeneration,
                 threadId: session.threadId!,
                 expectedTurnId: operation.expectedTurnId,
+                inferenceSignal: inferenceSignal
+                  ? AbortSignal.any([
+                      inferenceSignal,
+                      execution.inferenceAbort.signal,
+                    ])
+                  : execution.inferenceAbort.signal,
               });
             void execution.handle.completion
               .then(
@@ -1108,6 +1145,10 @@ export class ManagedNativeCommandSession {
             this.assertTransport(session);
             execution.handle?.assertCurrent();
           }
+          if (start) {
+            execution.handle?.dispatchInference?.();
+            execution.inferenceForwarded = true;
+          }
         } catch (error) {
           execution.handle?.fail(
             error instanceof Error
@@ -1131,6 +1172,7 @@ export class ManagedNativeCommandSession {
             }
           }
           const rejected = frame !== null && "error" in frame;
+          if (rejected && start) execution.handle?.rejectInference?.();
           const deferred =
             start &&
             !execution.nativeTurnId &&

@@ -461,6 +461,8 @@ export type PrepareAdmittedNativeExecutionOptions = Pick<
   threadId: string;
   /** Native preallocated identity. Matching it does not itself start a turn. */
   expectedTurnId?: string;
+  /** Execution-owner cancellation while waiting for provider capacity. */
+  inferenceSignal?: AbortSignal;
 };
 
 export interface ManagedExecutionAttempt {
@@ -556,6 +558,10 @@ export interface AdmittedNativeExecution {
   /** Actual native receipt, never fabricated to create a turn identity. */
   bindReceipt(receipt: unknown): void;
   fail(error: Error): void;
+  /** Grant has reached the exact native forwarding boundary. */
+  dispatchInference?(): void;
+  /** Actual rejected native start receipt, never a timeout. */
+  rejectInference?(): void;
 }
 
 export interface RuntimeSubagentDefaults {
