@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { NativeInferenceOwnership } from "./native-inference-ownership.js";
 import { observeInferenceCommand } from "./inference-command.js";
 import {
   providerInferenceConfigurationSchema,
@@ -42,15 +43,18 @@ export interface InferenceTicket {
 
 export interface InferenceRuntime {
   readonly generation: string;
+  prepareNativeLaunch(): Promise<NodeJS.ProcessEnv>;
   request(input: InferenceRequest): InferenceTicket;
   /** Retire only after the associated runtime is confirmed unable to execute. */
-  exited(): void;
+  exited(): Promise<void>;
 }
 
 interface Runtime {
   generation: string;
   records: Map<string, Ticket>;
   retired: boolean;
+  prepared: boolean;
+  retiring: Promise<void> | null;
   handle: InferenceRuntime;
 }
 
@@ -91,6 +95,7 @@ export class WorkerInferenceAdmission {
   >();
   private revision = 0;
   private notificationPending = false;
+  private closing = false;
 
   constructor(
     private readonly scope: Pick<
@@ -98,7 +103,18 @@ export class WorkerInferenceAdmission {
       "serverId" | "ownerId" | "workerId" | "workerGeneration"
     >,
     private readonly onObserverError: (error: unknown) => void,
-  ) {}
+    private readonly nativeOwnership?: NativeInferenceOwnership,
+  ) {
+    nativeOwnership?.onLost(() => {
+      for (const runtime of this.runtimes) void this.retire(runtime);
+    });
+  }
+
+  async close(): Promise<void> {
+    this.closing = true;
+    const retired = [...this.runtimes].map((runtime) => this.retire(runtime));
+    await Promise.all([...retired, this.nativeOwnership?.close()]);
+  }
 
   /** Returns false for stale configuration; equal revisions cannot change a limit. */
   configure(input: {
@@ -155,12 +171,24 @@ export class WorkerInferenceAdmission {
       generation: randomUUID(),
       records: new Map(),
       retired: false,
+      prepared: !this.nativeOwnership,
+      retiring: null,
       handle: {
         get generation() {
           return runtime.generation;
         },
+        prepareNativeLaunch: async () => {
+          const environment = await this.nativeOwnership?.prepare(
+            runtime.generation,
+          );
+          if (runtime.retiring || runtime.retired)
+            throw new Error("The inference runtime was retired during launch.");
+          runtime.prepared = true;
+          for (const pool of this.pools.values()) this.drain(pool);
+          return environment ?? {};
+        },
         request: (input) => this.request(runtime, input),
-        exited: () => this.exited(runtime),
+        exited: () => this.retire(runtime),
       },
     };
     this.runtimes.add(runtime);
@@ -195,8 +223,15 @@ export class WorkerInferenceAdmission {
   }
 
   private request(runtime: Runtime, input: InferenceRequest): InferenceTicket {
-    if (runtime.retired || !this.runtimes.has(runtime))
+    if (
+      this.closing ||
+      runtime.retiring ||
+      runtime.retired ||
+      !this.runtimes.has(runtime)
+    )
       throw new Error("The inference runtime has exited.");
+    if (!runtime.prepared)
+      throw new Error("Native inference ownership is not prepared.");
     if (!input.operationId || !input.providerId)
       throw new Error(
         "Inference admission requires an operation and provider identity.",
@@ -279,7 +314,9 @@ export class WorkerInferenceAdmission {
     if (
       ticket.state !== "granted" ||
       ticket.controller.signal.aborted ||
-      ticket.runtime.retired
+      ticket.runtime.retired ||
+      ticket.runtime.retiring ||
+      (this.nativeOwnership && !this.nativeOwnership.available)
     )
       throw new Error("The inference grant is no longer available.");
     ticket.state = "running";
@@ -376,6 +413,11 @@ export class WorkerInferenceAdmission {
   }
 
   private drain(pool: Pool): void {
+    if (
+      this.closing ||
+      (this.nativeOwnership && !this.nativeOwnership.available)
+    )
+      return;
     while (
       pool.queue.length &&
       pool.active.size < pool.configuration.maxConcurrentInference
@@ -388,6 +430,27 @@ export class WorkerInferenceAdmission {
       ticket.observe?.(ticket.state);
       ticket.resolve(ticket.lease);
     }
+  }
+
+  private retire(runtime: Runtime): Promise<void> {
+    if (runtime.retiring) return runtime.retiring;
+    if (runtime.retired) return Promise.resolve();
+    // Block reentry synchronously, before cancelling waiters can drain a pool.
+    let resolve!: () => void;
+    runtime.retiring = new Promise<void>((done) => {
+      resolve = done;
+    });
+    for (const pool of this.pools.values())
+      pool.queue = pool.queue.filter((ticket) => ticket.runtime !== runtime);
+    for (const ticket of runtime.records.values()) this.cancel(ticket);
+    const settled = () => {
+      this.exited(runtime);
+      resolve();
+    };
+    if (this.nativeOwnership)
+      void this.nativeOwnership.retire(runtime.generation).then(settled);
+    else settled();
+    return runtime.retiring;
   }
 
   private exited(runtime: Runtime): void {

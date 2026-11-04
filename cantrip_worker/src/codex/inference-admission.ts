@@ -71,6 +71,7 @@ export class CodexInferenceAdmission {
     { identity: string; result: Promise<CodexInferenceExecution> }
   >();
   private exited = false;
+  private retirement: Promise<void> | null = null;
 
   constructor(private readonly admission: WorkerInferenceAdmission) {
     this.runtime = admission.createRuntime();
@@ -250,19 +251,26 @@ export class CodexInferenceAdmission {
     }
   }
 
-  /** Must be invoked by the actual process-exit hook, even if the socket changed. */
-  processExited(): void {
-    if (this.exited) return;
+  /** Establish ownership before launching the real native process. */
+  prepareNativeLaunch(): Promise<NodeJS.ProcessEnv> {
+    return this.runtime.prepareNativeLaunch();
+  }
+
+  /** Launcher exit requests fencing; only the native lease proves settlement. */
+  processExited(): Promise<void> {
+    if (this.retirement) return this.retirement;
     this.exited = true;
-    this.runtime.exited();
-    for (const operation of this.operations) {
-      operation.settled = true;
-      operation.preparationEnded?.();
-    }
-    this.operations.clear();
-    this.completed.clear();
-    this.nativeEntries.clear();
-    this.requests.clear();
+    this.retirement = this.runtime.exited().then(() => {
+      for (const operation of this.operations) {
+        operation.settled = true;
+        operation.preparationEnded?.();
+      }
+      this.operations.clear();
+      this.completed.clear();
+      this.nativeEntries.clear();
+      this.requests.clear();
+    });
+    return this.retirement;
   }
 
   /** Native Core may use an existing root ticket or admit an independent child. */
