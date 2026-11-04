@@ -219,6 +219,12 @@ export class CantripOsCoordinator {
     projectId: string,
     input: ReturnType<typeof cantripOsBindingCreateSchema.parse>,
   ) {
+    if (input.mode === "linux-worktree")
+      return this.repository.cantripOs.createLinuxWorktree(
+        ownerId,
+        projectId,
+        input,
+      );
     if (input.mode === "linux-owned")
       return (
         await this.repository.cantripOs.createLinuxSource(ownerId, {
@@ -256,6 +262,7 @@ export class CantripOsCoordinator {
       projectSourceId: binding.projectSourceId,
       worktreeId: binding.worktreeId,
       sourceKind: context.sourceKind,
+      repositoryFingerprint: context.repositoryFingerprint,
       workspaceId: workspace.id,
       guestWorkspaceId: workspace.guestWorkspaceId,
       uid: workspace.uid,

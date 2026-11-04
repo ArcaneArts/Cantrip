@@ -87,9 +87,12 @@ pinned app-server against Docker and an installed VM, including native patching,
 permissions, and process-tree cancellation. Its deterministic model fixture is
 component acceptance. Both Server implementations now capture a binding for a
 new agent chat before native preparation and select a private worker-side runtime.
-Project Settings → CantripOS now provides attachment and source selection.
-Terminals, file/editor/Explorer, setup/Run, attachments, and artifacts are the
-remaining product routing block.
+Project Settings → CantripOS now provides attachment, source selection, and
+Linux-owned Git worktree admission. Captured terminals and file/editor/Explorer
+operations use those targets. A real local-provider agent has written and run
+code through the full product; its recorded checkpoint distinguishes provider
+limitations from the deterministic native patch fixture. Setup/Run, delegated
+project tools, attachments/artifacts, and fresh distribution acceptance remain.
 
 The canonical model keeps `project_sources.absolute_path` worker-local. A shared
 source identity preserves worktree IDs and leases, while Linux-owned source
@@ -673,8 +676,10 @@ External implementation references consulted on 2026-11-03:
 The Phase 3 product file checkpoint supplies captured Explorer/document
 placements and optional executor 0.3.0 filesystem support. Linked and
 Linux-owned file views were exercised through the actual client, Server, Worker
-and guest. The following terminal cycle adds captured interactive Linux shells
-with native PTY resizing and observation-only reconnect. Setup/Run and final
-distribution acceptance remain pending.
+and guest. Executor 0.4.0 adds captured interactive Linux shells with native PTY
+resizing and observation-only reconnect. The worktree admission cycle exposes
+Linux-owned Git worktrees through Settings with editor/terminal routing to their
+original source identity. Setup/Run and final distribution acceptance remain
+pending.
 See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 [recorded evidence](../cantrip_os/ACCEPTANCE.md#product-file-checkpoint-2026-11-04).

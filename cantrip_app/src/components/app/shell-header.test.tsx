@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -11,6 +12,55 @@ vi.mock("./use-mouse-back", () => ({
     mouseBack.callback = callback;
   },
 }));
+
+it.each([false, true])(
+  "uses the captured Linux location without a host fallback (binding cached: %s)",
+  (cached) => {
+    const client = new QueryClient();
+    client.setQueryData(
+      ["cantrip-os-bindings", "linux-project"],
+      cached
+        ? [
+            {
+              id: "linux-binding",
+              guestPath: "/linux/worktrees/selected",
+              provisionedRuntimeGeneration: "current",
+            },
+          ]
+        : [],
+    );
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <ShellHeader
+            bindings={{
+              appMode: "ide",
+              showContentTitlebar: true,
+              renderProjectRunConfigurationControl: () => null,
+              selectedTerminal: {
+                title: "Linux terminal",
+                projectId: "linux-project",
+                cantripOsBindingId: "linux-binding",
+                cantripOsRuntimeGeneration: "previous",
+              },
+              selectedProject: {
+                name: "Project",
+                source: { displayPath: "/host/checkout" },
+              },
+            }}
+          />
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    expect(markup).toContain("CantripOS");
+    expect(markup).not.toContain("/host/checkout");
+    if (cached) {
+      expect(markup).toContain("/linux/worktrees/selected");
+      expect(markup).toContain("previous runtime");
+    } else expect(markup).toContain("captured Linux target");
+    client.clear();
+  },
+);
 
 describe("file document header", () => {
   it.each([false, true])(

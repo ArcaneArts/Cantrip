@@ -111,3 +111,28 @@ stdio MCP processes. Cantrip/CodeGraph/host computer-use MCP injection is omitte
 for these sessions; an enabled user stdio MCP configuration reports an explicit
 error rather than running locally or being copied into Linux. Delegated Cantrip
 project tools remain part of the following integration work.
+
+## Linux-owned Git worktrees
+
+For a Git project, open **Project Settings → CantripOS** and provision a
+Linux-owned checkout. On its source card choose **New Linux worktree**, enter
+an exact commit SHA, and optionally name a new branch. Leaving the branch empty
+creates a detached worktree. The new worktree belongs to the same Linux source
+and workspace account; it does not move Primary or create another clone.
+
+Its ready card can open a **New Linux agent**. The Files sidebar, editor, and
+new terminals selected from that surface use the worktree. The agent/terminal
+header displays its Linux location. Worktrees appear under the workspace's
+`worktrees/` directory, alongside its `checkouts/` directory for Primary sources.
+
+Keep the form open after an uncertain response and choose **Continue worktree
+admission** to observe the same operation. Its inputs stay captured. A ready
+or unknown binding also remains visible in the source list; **Observe outcome**
+reads its saved provisioning admission. A source must be verified in its current
+runtime before admitting a new worktree. A changed Git common directory fails
+before Git worktree creation. Existing admissions never start another mutation.
+
+Linked checkouts retain Git ownership on their original worker. Create their
+host worktrees through the existing worker workflow and link each exact
+worktree explicitly. This Linux-owned creation form does not rewrite host Git
+metadata. Run and broader Git product integration remain subsequent work.

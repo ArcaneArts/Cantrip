@@ -63,6 +63,10 @@ impl Coordinator {
             ("projectSourceId", b["projectSourceId"].clone()),
             ("worktreeId", b["worktreeId"].clone()),
             ("sourceKind", context["sourceKind"].clone()),
+            (
+                "repositoryFingerprint",
+                context["repositoryFingerprint"].clone(),
+            ),
             ("workspaceId", w["id"].clone()),
             ("guestWorkspaceId", w["guestWorkspaceId"].clone()),
             ("uid", w["uid"].clone()),

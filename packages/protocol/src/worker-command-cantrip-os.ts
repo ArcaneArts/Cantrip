@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { repositoryOperationOpaqueSchema } from "./repository-operation.js";
+import { gitBranchNameInputSchema } from "./git-contracts.js";
 import {
   cantripOsDependencyOverlaysSchema,
   cantripOsGuestPathSchema,
@@ -40,11 +41,14 @@ const sourceScope = scope
   })
   .strict();
 
+const sourceDispatchScope = sourceScope.extend({
+  repositoryFingerprint: z.string().min(1).nullable().optional(),
+});
 export const cantripOsSourceDispatchScopeSchema = z.discriminatedUnion("mode", [
-  sourceScope
+  sourceDispatchScope
     .extend({ mode: z.literal("linked"), linkedWorkerPath: z.string().min(1) })
     .strict(),
-  sourceScope
+  sourceDispatchScope
     .extend({ mode: z.literal("linux-owned"), linkedWorkerPath: z.null() })
     .strict(),
 ]);
@@ -87,6 +91,13 @@ export const cantripOsProvisionIntentSchema = z.discriminatedUnion("mode", [
             kind: z.literal("git"),
             repositoryUrl: z.string().min(1).max(32_768),
             revision: z.string().regex(/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i),
+          })
+          .strict(),
+        z
+          .object({
+            kind: z.literal("git-worktree"),
+            revision: z.string().regex(/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i),
+            branch: gitBranchNameInputSchema.nullable(),
           })
           .strict(),
         z.object({ kind: z.literal("folder") }).strict(),

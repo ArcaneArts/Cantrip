@@ -22,6 +22,12 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import * as schema from "../schema.js";
 import type { RepositoryDatabase } from "./database.js";
 import { requireWorkerLocalPath } from "./worker-local-source-path.js";
+import { CantripOsPlacementError } from "./cantrip-os-error.js";
+export { CantripOsPlacementError } from "./cantrip-os-error.js";
+import {
+  createLinuxWorktreeBinding,
+  type LinuxWorktreeAdmission,
+} from "./cantrip-os-worktrees.js";
 
 const instance = (row: typeof schema.cantripOsInstances.$inferSelect) =>
   cantripOsInstanceSummarySchema.parse({
@@ -54,7 +60,6 @@ const binding = (
     updatedAt: row.updatedAt.toISOString(),
   });
 
-export class CantripOsPlacementError extends Error {}
 const fail = (message: string): never => {
   throw new CantripOsPlacementError(message);
 };
@@ -64,6 +69,20 @@ const fail = (message: string): never => {
  * authenticated worker; clients cannot supply UID/path or success receipts. */
 export class CantripOsRepository {
   constructor(private readonly database: RepositoryDatabase) {}
+
+  async createLinuxWorktree(
+    ownerId: string,
+    projectId: string,
+    input: LinuxWorktreeAdmission,
+  ) {
+    const result = await createLinuxWorktreeBinding(
+      this.database,
+      ownerId,
+      projectId,
+      input,
+    );
+    return binding(result.row, result.instanceId);
+  }
 
   async list(ownerId: string) {
     const rows = await this.database
@@ -673,6 +692,7 @@ export class CantripOsRepository {
               ? row.localSource?.sourceKind
               : row.linuxSource?.sourceKind) ??
             fail("Source details are unavailable."),
+          repositoryFingerprint: row.linuxSource?.repositoryFingerprint ?? null,
           sourceMatches:
             row.worktree.projectSourceId === row.binding.projectSourceId &&
             row.worktree.workerId === row.binding.workerId &&

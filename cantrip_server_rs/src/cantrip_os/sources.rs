@@ -5,6 +5,9 @@ use serde_json::{Value, json};
 
 impl Repository {
     pub async fn create_binding(&self, owner: &str, project: &str, input: &Value) -> Result<Value> {
+        if input["mode"] == "linux-worktree" {
+            return self.create_worktree(owner, project, input).await;
+        }
         let (owner, project, input) = (owner.to_owned(), project.to_owned(), input.clone());
         self.database.transaction(|tx|Box::pin(async move {
             let target=decode(tx.query("SELECT jsonb_build_object('workspace',to_jsonb(w),'instance',to_jsonb(i),'git',p.git_capability)::text FROM cantrip_os_workspaces w JOIN cantrip_os_instances i ON i.id=w.instance_id JOIN projects p ON p.id=$3 AND p.owner_id=i.owner_id JOIN workers a ON a.id=i.worker_id AND a.owner_id=$1 AND a.unlinked_at IS NULL WHERE w.id=$2 AND i.owner_id=$1 FOR UPDATE OF w,i,p", &[&owner,&text(&input,"workspaceId")?,&project]).await?)?;

@@ -20,6 +20,7 @@ import { sidebarFileName } from "@/lib/sidebar-file-tabs";
 import { cn } from "@/lib/utils";
 import { useMouseBack } from "./use-mouse-back";
 import { windowHeaderBindings } from "./window-header-bindings";
+import { OsSurfaceLocation } from "./os-surface-location";
 import {
   SelectedPaneTabStrip,
   selectedPaneTabStripVisible,
@@ -110,6 +111,15 @@ export function ShellHeader({
     worktrees,
     windowContentEmpty,
   } = bindings;
+  const osHeaderTarget = selectedTerminal?.cantripOsBindingId
+    ? selectedTerminal
+    : selectedChat?.cantripOsBindingId
+      ? selectedChat
+      : selectedExplorer?.cantripOsBindingId
+        ? selectedExplorer
+        : selectedFileDocument?.cantripOsBindingId
+          ? selectedFileDocument
+          : undefined;
   useMouseBack(
     showSettings
       ? () => setShowSettings(false)
@@ -441,62 +451,77 @@ export function ShellHeader({
               )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
-              {windowContentEmpty
-                ? null
-                : showImporter
-                  ? "Add a worker-owned source"
-                  : showSettings
-                    ? "Account preferences"
-                    : showArchivedStandaloneChats
-                      ? "Recover or permanently delete conversations"
-                      : showServerAdmin
-                        ? "Account access and server policy"
-                        : appMode === "chat"
-                          ? selectedStandaloneChat
-                            ? `Standalone conversation · ${selectedStandaloneChat.status}`
-                            : "Your standalone conversations"
-                          : showProjectSettings
-                            ? (selectedProject?.github?.nameWithOwner ??
-                              selectedProject?.name ??
-                              "Project preferences")
-                            : projectOverviewSelected && selectedProject
-                              ? activeProjectOverviewSection === "overview"
-                                ? "Project overview"
-                                : `Project ${projectOverviewSectionLabel(activeProjectOverviewSection).toLowerCase()}`
-                              : gitHistoryProject
-                                ? null
-                                : selectedProjectView?.kind === "remote-desktop"
-                                  ? "Managed project-worker desktop"
-                                  : selectedCodeTab
-                                    ? activeFilePath
-                                      ? null
-                                      : (activeWorktree?.displayPath ??
-                                        selectedProject?.source?.displayPath ??
-                                        "Code")
-                                    : selectedBrowser
-                                      ? selectedBrowser.url
-                                      : selectedExplorer || selectedFileDocument
-                                        ? activeFilePath
-                                          ? null
-                                          : explorerDisplayPath
-                                        : selectedTerminal
-                                          ? selectedTerminal.linkedChatId
-                                            ? (activeWorktree?.displayPath ??
-                                              selectedProject?.source
-                                                ?.displayPath ??
-                                              "Agent")
-                                            : (activeWorktree?.displayPath ??
-                                              selectedProject?.source
-                                                ?.displayPath ??
-                                              "Terminal")
-                                          : selectedChat
-                                            ? (activeWorktree?.displayPath ??
-                                              selectedProject?.source
-                                                ?.displayPath ??
-                                              "Agent")
-                                            : (selectedProject?.source
-                                                ?.displayPath ??
-                                              "Choose a project to begin")}
+              {windowContentEmpty ? null : showImporter ? (
+                "Add a worker-owned source"
+              ) : showSettings ? (
+                "Account preferences"
+              ) : showArchivedStandaloneChats ? (
+                "Recover or permanently delete conversations"
+              ) : showServerAdmin ? (
+                "Account access and server policy"
+              ) : appMode === "chat" ? (
+                selectedStandaloneChat ? (
+                  `Standalone conversation · ${selectedStandaloneChat.status}`
+                ) : (
+                  "Your standalone conversations"
+                )
+              ) : showProjectSettings ? (
+                (selectedProject?.github?.nameWithOwner ??
+                selectedProject?.name ??
+                "Project preferences")
+              ) : projectOverviewSelected && selectedProject ? (
+                activeProjectOverviewSection === "overview" ? (
+                  "Project overview"
+                ) : (
+                  `Project ${projectOverviewSectionLabel(activeProjectOverviewSection).toLowerCase()}`
+                )
+              ) : gitHistoryProject ? null : selectedProjectView?.kind ===
+                "remote-desktop" ? (
+                "Managed project-worker desktop"
+              ) : selectedCodeTab ? (
+                activeFilePath ? null : (
+                  (activeWorktree?.displayPath ??
+                  selectedProject?.source?.displayPath ??
+                  "Code")
+                )
+              ) : selectedBrowser ? (
+                selectedBrowser.url
+              ) : selectedExplorer || selectedFileDocument ? (
+                activeFilePath ? null : osHeaderTarget ? (
+                  <OsSurfaceLocation
+                    projectId={osHeaderTarget.projectId}
+                    bindingId={osHeaderTarget.cantripOsBindingId}
+                    runtimeGeneration={
+                      osHeaderTarget.cantripOsRuntimeGeneration
+                    }
+                  />
+                ) : (
+                  explorerDisplayPath
+                )
+              ) : osHeaderTarget ? (
+                <OsSurfaceLocation
+                  projectId={osHeaderTarget.projectId}
+                  bindingId={osHeaderTarget.cantripOsBindingId}
+                  runtimeGeneration={osHeaderTarget.cantripOsRuntimeGeneration}
+                />
+              ) : selectedTerminal ? (
+                selectedTerminal.linkedChatId ? (
+                  (activeWorktree?.displayPath ??
+                  selectedProject?.source?.displayPath ??
+                  "Agent")
+                ) : (
+                  (activeWorktree?.displayPath ??
+                  selectedProject?.source?.displayPath ??
+                  "Terminal")
+                )
+              ) : selectedChat ? (
+                (activeWorktree?.displayPath ??
+                selectedProject?.source?.displayPath ??
+                "Agent")
+              ) : (
+                (selectedProject?.source?.displayPath ??
+                "Choose a project to begin")
+              )}
             </p>
           </div>
           <div

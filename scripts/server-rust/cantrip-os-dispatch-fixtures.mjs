@@ -111,9 +111,29 @@ export function osDispatchFixtures() {
       { kind: "cantrip-os", scope: linkedExecutionScope, transport },
     ],
     cantripOsDispatchScopeSchema: [osScope],
-    cantripOsSourceDispatchScopeSchema: [osSourceScope, linked],
+    cantripOsSourceDispatchScopeSchema: [
+      osSourceScope,
+      { ...osSourceScope, repositoryFingerprint: "fingerprint" },
+      linked,
+    ],
     cantripOsProvisionIntentSchema: [
       intent,
+      {
+        mode: "linux-owned",
+        source: {
+          kind: "git-worktree",
+          revision: "a".repeat(40),
+          branch: "test/日本",
+        },
+      },
+      {
+        mode: "linux-owned",
+        source: {
+          kind: "git-worktree",
+          revision: "a".repeat(40),
+          branch: null,
+        },
+      },
       { mode: "linux-owned", source: { kind: "folder" } },
       {
         mode: "linked",
@@ -164,6 +184,12 @@ export function osDispatchFixtures() {
     ],
     cantripOsBindingCreateSchema: [
       { mode: "linux-owned", workspaceId: id, sourceKind: "git" },
+      {
+        mode: "linux-worktree",
+        sourceBindingId: id,
+        expectedRuntimeGeneration: id,
+        operationId: id,
+      },
       {
         mode: "linked",
         workspaceId: id,
