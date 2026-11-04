@@ -2298,43 +2298,21 @@ jobs:
           $probeExit = $LASTEXITCODE
           Get-Content '.qa/rust-server/source-reference-volumes/windows-tree.log'
           exit $probeExit
-      - name: Compare original reference tests across disposable storage locations
+      - name: Trace original reference statement durations
         if: always()
         shell: pwsh
         run: |
           $PSNativeCommandUseErrorActionPreference = $false
-          $probeOriginalTemp = $env:TEMP
-          $probeOriginalTmp = $env:TMP
-          $probeRoots = @{ windows = $env:TEMP; runner = $env:RUNNER_TEMP }
-          $probeOrder = @('windows', 'runner', 'runner', 'windows')
           $probeDirectory = '.qa/rust-server/source-reference-volumes'
           New-Item -ItemType Directory -Force $probeDirectory | Out-Null
-          $probeRecords = @()
-          try {
-            for ($probeIndex = 0; $probeIndex -lt $probeOrder.Count; $probeIndex++) {
-              $probeMode = $probeOrder[$probeIndex]
-              $probeRoot = Join-Path $probeRoots[$probeMode] "cantrip-reference-volume-$env:GITHUB_RUN_ID-$probeIndex"
-              New-Item -ItemType Directory -Force $probeRoot | Out-Null
-              $env:TEMP = $probeRoot
-              $env:TMP = $probeRoot
-              $probeLabel = "$probeIndex-$probeMode"
-              $probeRuntime = "$probeDirectory/$probeLabel-runtime.json"
-              node -e "const fs = require('node:fs'); const os = require('node:os'); fs.writeFileSync(process.argv[1], JSON.stringify({platform:process.platform,node:process.version,cpus:os.availableParallelism(),tmpdir:os.tmpdir(),temp:process.env.TEMP,tmp:process.env.TMP,runnerTemp:process.env.RUNNER_TEMP,freeMemory:os.freemem(),totalMemory:os.totalmem()},null,2))" $probeRuntime
-              $probeArguments = @('--filter', '@cantrip/server', 'exec', 'vitest', 'run', '--maxWorkers=2', 'test/local-foundation.test.ts', 'test/managed-chat-account-failover.test.ts', '--reporter=default', '--reporter=json', "--outputFile=../$probeDirectory/$probeLabel-results.json")
-              $probeStart = Get-Date
-              & pnpm @probeArguments *> "$probeDirectory/$probeLabel.log"
-              $probeExit = $LASTEXITCODE
-              $probeRecords += [PSCustomObject]@{ trial=$probeIndex; location=$probeMode; directory=$probeRoot; exitCode=$probeExit; elapsedSeconds=((Get-Date)-$probeStart).TotalSeconds; assertions='Original two files, maxWorkers=2, unchanged 15000ms test deadline'; commit=$env:GITHUB_SHA }
-              Get-Content "$probeDirectory/$probeLabel.log" -Tail 12
-            }
-          } finally {
-            $env:TEMP = $probeOriginalTemp
-            $env:TMP = $probeOriginalTmp
-            ConvertTo-Json -InputObject $probeRecords -Depth 5 | Set-Content "$probeDirectory/trials.json"
-          }
-          if ($probeRecords | Where-Object { $_.exitCode -ne 0 }) { exit 1 }
+          $env:CANTRIP_REFERENCE_TRACE_PATH = Join-Path (Get-Location) "$probeDirectory/statement-trace.json"
+          node -e "const fs = require('node:fs'); const os = require('node:os'); fs.writeFileSync(process.argv[1], JSON.stringify({platform:process.platform,node:process.version,cpus:os.availableParallelism(),tmpdir:os.tmpdir(),freeMemory:os.freemem(),totalMemory:os.totalmem()},null,2))" "$probeDirectory/statement-runtime.json"
+          pnpm --filter @cantrip/server exec vitest run --maxWorkers=2 test/local-foundation.test.ts test/managed-chat-account-failover.test.ts --reporter=default --reporter=json --outputFile=../.qa/rust-server/source-reference-volumes/statement-results.json *> "$probeDirectory/statement-run.log"
+          $probeExit = $LASTEXITCODE
+          Get-Content "$probeDirectory/statement-run.log" -Tail 20
+          exit $probeExit
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: source-reference-volume-diagnostic-windows
+          name: source-reference-statement-diagnostic-windows
           path: .qa/rust-server/source-reference-volumes/

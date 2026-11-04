@@ -1,3 +1,8 @@
+import { afterEach as __cantripTraceAfterEach } from "vitest";
+import { writeFileSync as __cantripTraceWrite } from "node:fs";
+const __cantripTraceRecords: Array<[number, number]> = [];
+function __cantripReferenceTrace(line: number) { __cantripTraceRecords.push([line, performance.now()]); }
+__cantripTraceAfterEach(() => { if (process.env.CANTRIP_REFERENCE_TRACE_PATH) __cantripTraceWrite(process.env.CANTRIP_REFERENCE_TRACE_PATH, JSON.stringify({ node: process.version, originalSourceSha256: "674ffba436356b665f479e3bf6fe6951bb97cd1a8cc41c5bc00fbcc312e4ab87", records: __cantripTraceRecords }, null, 2)); });
 import { foundationAccountHandoff } from "./foundation-account-handoff-fixture.js";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -2372,15 +2377,18 @@ afterAll(async () => {
 
 describe("local server foundation", () => {
   it("persists server configuration, workers, and conversations", async () => {
-    const firstDatabase = await connectDatabase(config);
-    const firstApp = await buildApp({
+    __cantripReferenceTrace(2375);
+const firstDatabase = await connectDatabase(config);
+    __cantripReferenceTrace(2376);
+const firstApp = await buildApp({
       config,
       database: firstDatabase,
       logger: false,
       workerBridge,
     });
 
-    const mutationPreflight = await firstApp.inject({
+    __cantripReferenceTrace(2383);
+const mutationPreflight = await firstApp.inject({
       method: "OPTIONS",
       url: "/api/projects/order",
       headers: {
@@ -2389,36 +2397,51 @@ describe("local server foundation", () => {
         "access-control-request-headers": "content-type",
       },
     });
-    expect(mutationPreflight).toMatchObject({ statusCode: 204 });
-    expect(mutationPreflight.headers["access-control-allow-methods"]).toContain(
+    __cantripReferenceTrace(2392);
+expect(mutationPreflight).toMatchObject({ statusCode: 204 });
+    __cantripReferenceTrace(2393);
+expect(mutationPreflight.headers["access-control-allow-methods"]).toContain(
       "PATCH",
     );
-    expect(mutationPreflight.headers["access-control-allow-methods"]).toContain(
+    __cantripReferenceTrace(2396);
+expect(mutationPreflight.headers["access-control-allow-methods"]).toContain(
       "DELETE",
     );
 
-    const bootstrap = serverBootstrapSchema.parse(
+    __cantripReferenceTrace(2400);
+const bootstrap = serverBootstrapSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/bootstrap" })).json(),
     );
-    expect(bootstrap.auth).toMatchObject({
+    __cantripReferenceTrace(2403);
+expect(bootstrap.auth).toMatchObject({
       mode: "none",
       state: "authenticated",
       currentUser: { kind: "anonymous", role: "owner" },
       registration: { enabled: false },
     });
-    expect(bootstrap.routing.directWorkerConnections).toBe(false);
-    expect(bootstrap.capabilities.worktrees).toBe(true);
-    expect(bootstrap.capabilities.projectReplicas).toBe(true);
-    expect(bootstrap.capabilities.replicaProvisioning).toBe(true);
-    expect(bootstrap.capabilities.browserFleetDiscovery).toBe(true);
-    expect(bootstrap.capabilities.crossWorkerExecutionTargets).toBe(true);
-    expect(bootstrap.capabilities.remoteDesktopFleet).toBe(true);
-    expect(bootstrap.capabilities.gitSync).toBe(true);
+    __cantripReferenceTrace(2409);
+expect(bootstrap.routing.directWorkerConnections).toBe(false);
+    __cantripReferenceTrace(2410);
+expect(bootstrap.capabilities.worktrees).toBe(true);
+    __cantripReferenceTrace(2411);
+expect(bootstrap.capabilities.projectReplicas).toBe(true);
+    __cantripReferenceTrace(2412);
+expect(bootstrap.capabilities.replicaProvisioning).toBe(true);
+    __cantripReferenceTrace(2413);
+expect(bootstrap.capabilities.browserFleetDiscovery).toBe(true);
+    __cantripReferenceTrace(2414);
+expect(bootstrap.capabilities.crossWorkerExecutionTargets).toBe(true);
+    __cantripReferenceTrace(2415);
+expect(bootstrap.capabilities.remoteDesktopFleet).toBe(true);
+    __cantripReferenceTrace(2416);
+expect(bootstrap.capabilities.gitSync).toBe(true);
 
-    const initialSettings = settingsBundleWireSchema.parse(
+    __cantripReferenceTrace(2418);
+const initialSettings = settingsBundleWireSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
     );
-    expect(initialSettings.preferences).toMatchObject({
+    __cantripReferenceTrace(2421);
+expect(initialSettings.preferences).toMatchObject({
       theme: "system",
       highContrast: false,
       proMode: false,
@@ -2449,9 +2472,12 @@ describe("local server foundation", () => {
       defaultPermissionProfileId: ":workspace",
       mobileProjectTabConfigurations: {},
     });
-    expect(initialSettings.providers).toEqual([]);
-    expect(initialSettings.models).toEqual([]);
-    const providerResponse = await firstApp.inject({
+    __cantripReferenceTrace(2452);
+expect(initialSettings.providers).toEqual([]);
+    __cantripReferenceTrace(2453);
+expect(initialSettings.models).toEqual([]);
+    __cantripReferenceTrace(2454);
+const providerResponse = await firstApp.inject({
       method: "POST",
       url: "/api/settings/providers",
       payload: {
@@ -2473,14 +2499,20 @@ describe("local server foundation", () => {
         },
       },
     });
-    expect(providerResponse.statusCode, providerResponse.body).toBe(201);
-    expect(providerResponse.body).not.toContain("server-only-secret");
-    expect(providerResponse.body).not.toContain("apiKey");
-    const provider = modelProviderWireSummarySchema.parse(
+    __cantripReferenceTrace(2476);
+expect(providerResponse.statusCode, providerResponse.body).toBe(201);
+    __cantripReferenceTrace(2477);
+expect(providerResponse.body).not.toContain("server-only-secret");
+    __cantripReferenceTrace(2478);
+expect(providerResponse.body).not.toContain("apiKey");
+    __cantripReferenceTrace(2479);
+const provider = modelProviderWireSummarySchema.parse(
       providerResponse.json(),
     );
-    expect(provider.hasApiKey).toBe(true);
-    const editedProvider = modelProviderWireSummarySchema.parse(
+    __cantripReferenceTrace(2482);
+expect(provider.hasApiKey).toBe(true);
+    __cantripReferenceTrace(2483);
+const editedProvider = modelProviderWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -2493,12 +2525,14 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(editedProvider).toMatchObject({
+    __cantripReferenceTrace(2496);
+expect(editedProvider).toMatchObject({
       name: "Edited test provider",
       baseUrl: "https://edited-models.example.test/v1",
       hasApiKey: true,
     });
-    const selectedModel = modelProfileSummarySchema.parse(
+    __cantripReferenceTrace(2501);
+const selectedModel = modelProfileSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -2516,7 +2550,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    const editedModel = modelProfileSummarySchema.parse(
+    __cantripReferenceTrace(2519);
+const editedModel = modelProfileSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -2535,7 +2570,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(editedModel).toMatchObject({
+    __cantripReferenceTrace(2538);
+expect(editedModel).toMatchObject({
       name: "Edited test model",
       routingPolicy: "priority",
       routes: [
@@ -2546,13 +2582,16 @@ describe("local server foundation", () => {
         }),
       ],
     });
-    const invalidProModeOpacity = await firstApp.inject({
+    __cantripReferenceTrace(2549);
+const invalidProModeOpacity = await firstApp.inject({
       method: "PATCH",
       url: "/api/settings",
       payload: { proModeOpacity: 101 },
     });
-    expect(invalidProModeOpacity.statusCode).toBe(400);
-    const updatedSettings = settingsBundleWireSchema.parse(
+    __cantripReferenceTrace(2554);
+expect(invalidProModeOpacity.statusCode).toBe(400);
+    __cantripReferenceTrace(2555);
+const updatedSettings = settingsBundleWireSchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -2594,7 +2633,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(updatedSettings.preferences).toEqual({
+    __cantripReferenceTrace(2597);
+expect(updatedSettings.preferences).toEqual({
       ...initialSettings.preferences,
       theme: "dark",
       highContrast: true,
@@ -2636,7 +2676,8 @@ describe("local server foundation", () => {
         "project-1": ["group-1", null],
       },
     });
-    const mergedMobileTabs = settingsBundleWireSchema.parse(
+    __cantripReferenceTrace(2639);
+const mergedMobileTabs = settingsBundleWireSchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -2649,13 +2690,15 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(mergedMobileTabs.preferences.mobileProjectTabConfigurations).toEqual(
+    __cantripReferenceTrace(2652);
+expect(mergedMobileTabs.preferences.mobileProjectTabConfigurations).toEqual(
       {
         "project-1": ["group-1", null],
         "project-2": ["group-2"],
       },
     );
-    expect(
+    __cantripReferenceTrace(2658);
+expect(
       settingsBundleWireSchema.parse(
         (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
       ).preferences.mobileProjectTabConfigurations,
@@ -2663,8 +2706,10 @@ describe("local server foundation", () => {
       "project-1": ["group-1", null],
       "project-2": ["group-2"],
     });
-    const initialChatGptAccount = protectedProviderAccount();
-    const chatGptProvider = modelProviderWireSummarySchema.parse(
+    __cantripReferenceTrace(2666);
+const initialChatGptAccount = protectedProviderAccount();
+    __cantripReferenceTrace(2667);
+const chatGptProvider = modelProviderWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -2679,21 +2724,25 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(chatGptProvider.accounts).toEqual([
+    __cantripReferenceTrace(2682);
+expect(chatGptProvider.accounts).toEqual([
       expect.objectContaining({
         ...initialChatGptAccount,
         position: 0,
       }),
     ]);
-    const primaryChatGptAccount = chatGptProvider.accounts[0]!;
-    await firstDatabase.repository.storeModelProviderAccountCredential(
+    __cantripReferenceTrace(2688);
+const primaryChatGptAccount = chatGptProvider.accounts[0]!;
+    __cantripReferenceTrace(2689);
+await firstDatabase.repository.storeModelProviderAccountCredential(
       LOCAL_USER_ID,
       chatGptProvider.id,
       primaryChatGptAccount.id,
       protectedProviderCredentialFixture("B"),
       providerCredentialMetadataFixture(),
     );
-    await firstDatabase.repository.recordModelProviderAccountUsage({
+    __cantripReferenceTrace(2696);
+await firstDatabase.repository.recordModelProviderAccountUsage({
       accountId: primaryChatGptAccount.id,
       ownerId: LOCAL_USER_ID,
       planType: "plus",
@@ -2702,7 +2751,8 @@ describe("local server foundation", () => {
       usedPercent: 37,
     });
 
-    expect(
+    __cantripReferenceTrace(2705);
+expect(
       await firstApp.inject({
         method: "POST",
         url: "/api/internal/workers/heartbeat",
@@ -2710,7 +2760,8 @@ describe("local server foundation", () => {
         payload: {},
       }),
     ).toMatchObject({ statusCode: 401 });
-    const heartbeatResponse = await firstApp.inject({
+    __cantripReferenceTrace(2713);
+const heartbeatResponse = await firstApp.inject({
       method: "POST",
       url: "/api/internal/workers/heartbeat",
       headers: { authorization: "Bearer test-worker-token" },
@@ -2737,8 +2788,10 @@ describe("local server foundation", () => {
         startedAt: "2026-08-07T12:00:00.000Z",
       },
     });
-    expect(heartbeatResponse.statusCode).toBe(202);
-    const placementSettings = settingsBundleWireSchema.parse(
+    __cantripReferenceTrace(2740);
+expect(heartbeatResponse.statusCode).toBe(202);
+    __cantripReferenceTrace(2741);
+const placementSettings = settingsBundleWireSchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -2751,7 +2804,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(placementSettings.preferences).toMatchObject({
+    __cantripReferenceTrace(2754);
+expect(placementSettings.preferences).toMatchObject({
       defaultWorkerId: "test-worker",
       automaticReplicaProvisioning: true,
       automaticReplicaSynchronization: "fast-forward-primary",
@@ -2760,14 +2814,16 @@ describe("local server foundation", () => {
         "project-2": ["group-2"],
       },
     });
-    expect(
+    __cantripReferenceTrace(2763);
+expect(
       await firstApp.inject({
         method: "PATCH",
         url: "/api/settings",
         payload: { defaultWorkerId: "unknown-worker" },
       }),
     ).toMatchObject({ statusCode: 400 });
-    expect(
+    __cantripReferenceTrace(2770);
+expect(
       (
         await firstApp.inject({
           method: "GET",
@@ -2779,7 +2835,8 @@ describe("local server foundation", () => {
       planType: "plus",
       weeklyUsage: { usedPercent: 37 },
     });
-    expect(
+    __cantripReferenceTrace(2782);
+expect(
       (
         await firstApp.inject({
           method: "POST",
@@ -2791,7 +2848,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     ).toMatchObject({ userCode: "TEST-CODE" });
-    expect(
+    __cantripReferenceTrace(2794);
+expect(
       await firstApp.inject({
         method: "POST",
         url: "/api/codex/auth/logout",
@@ -2801,49 +2859,63 @@ describe("local server foundation", () => {
         },
       }),
     ).toMatchObject({ statusCode: 204 });
-    expect(authProviderIds).toEqual([chatGptProvider.id]);
-    expect(authCredentialHomeKeys).toEqual([chatGptProvider.id]);
-    expect(authProviderKinds).toEqual(["chatgpt"]);
-    expect(clearedProviderAccounts).toEqual([
+    __cantripReferenceTrace(2804);
+expect(authProviderIds).toEqual([chatGptProvider.id]);
+    __cantripReferenceTrace(2805);
+expect(authCredentialHomeKeys).toEqual([chatGptProvider.id]);
+    __cantripReferenceTrace(2806);
+expect(authProviderKinds).toEqual(["chatgpt"]);
+    __cantripReferenceTrace(2807);
+expect(clearedProviderAccounts).toEqual([
       expect.objectContaining({
         providerAccountId: primaryChatGptAccount.id,
         providerId: chatGptProvider.id,
         type: "provider.auth.account.clear",
       }),
     ]);
-    await firstDatabase.repository.storeModelProviderAccountCredential(
+    __cantripReferenceTrace(2814);
+await firstDatabase.repository.storeModelProviderAccountCredential(
       LOCAL_USER_ID,
       chatGptProvider.id,
       primaryChatGptAccount.id,
       protectedProviderCredentialFixture("B"),
       providerCredentialMetadataFixture(),
     );
-    const workAccount = protectedProviderAccount();
-    const additionalAccountResponse = await firstApp.inject({
+    __cantripReferenceTrace(2821);
+const workAccount = protectedProviderAccount();
+    __cantripReferenceTrace(2822);
+const additionalAccountResponse = await firstApp.inject({
       method: "POST",
       url: `/api/settings/providers/${chatGptProvider.id}/accounts`,
       payload: workAccount,
     });
-    expect(
+    __cantripReferenceTrace(2827);
+expect(
       additionalAccountResponse.statusCode,
       additionalAccountResponse.body,
     ).toBe(201);
-    const additionalAccount = additionalAccountResponse.json<{
+    __cantripReferenceTrace(2831);
+const additionalAccount = additionalAccountResponse.json<{
       id: string;
       position: number;
     }>();
-    expect(additionalAccount).toMatchObject({ ...workAccount, position: 1 });
-    expect(additionalAccount).not.toHaveProperty("label");
-    const reorderAccountsResponse = await firstApp.inject({
+    __cantripReferenceTrace(2835);
+expect(additionalAccount).toMatchObject({ ...workAccount, position: 1 });
+    __cantripReferenceTrace(2836);
+expect(additionalAccount).not.toHaveProperty("label");
+    __cantripReferenceTrace(2837);
+const reorderAccountsResponse = await firstApp.inject({
       method: "PATCH",
       url: `/api/settings/providers/${chatGptProvider.id}/accounts/order`,
       payload: { ids: [additionalAccount.id, primaryChatGptAccount.id] },
     });
-    expect(
+    __cantripReferenceTrace(2842);
+expect(
       reorderAccountsResponse.statusCode,
       reorderAccountsResponse.body,
     ).toBe(204);
-    expect(
+    __cantripReferenceTrace(2846);
+expect(
       modelProviderAccountWireListSchema
         .parse(
           (
@@ -2858,24 +2930,29 @@ describe("local server foundation", () => {
       { id: additionalAccount.id, position: 0 },
       { id: primaryChatGptAccount.id, position: 1 },
     ]);
-    expect(
+    __cantripReferenceTrace(2861);
+expect(
       await firstApp.inject({
         method: "PATCH",
         url: `/api/settings/providers/${chatGptProvider.id}/accounts/order`,
         payload: { ids: [additionalAccount.id] },
       }),
     ).toMatchObject({ statusCode: 400 });
-    expect(
+    __cantripReferenceTrace(2868);
+expect(
       await firstApp.inject({
         method: "GET",
         url: `/api/codex/auth/status?providerId=${chatGptProvider.id}&accountId=${additionalAccount.id}`,
       }),
     ).toMatchObject({ statusCode: 200 });
-    expect(authCredentialHomeKeys.at(-1)).toBe(chatGptProvider.id);
-    const pooledSettings = settingsBundleWireSchema.parse(
+    __cantripReferenceTrace(2874);
+expect(authCredentialHomeKeys.at(-1)).toBe(chatGptProvider.id);
+    __cantripReferenceTrace(2875);
+const pooledSettings = settingsBundleWireSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
     );
-    expect(
+    __cantripReferenceTrace(2878);
+expect(
       pooledSettings.providers
         .find((provider) => provider.id === chatGptProvider.id)
         ?.accounts.find((account) => account.id === additionalAccount.id),
@@ -2883,7 +2960,8 @@ describe("local server foundation", () => {
       credentialState: "signed-out",
       workerBindings: [],
     });
-    expect(
+    __cantripReferenceTrace(2886);
+expect(
       await firstApp.inject({
         method: "POST",
         url: "/api/settings/providers",
@@ -2896,8 +2974,10 @@ describe("local server foundation", () => {
         },
       }),
     ).toMatchObject({ statusCode: 409 });
-    const initialGrokAccount = protectedProviderAccount();
-    const grokProvider = modelProviderWireSummarySchema.parse(
+    __cantripReferenceTrace(2899);
+const initialGrokAccount = protectedProviderAccount();
+    __cantripReferenceTrace(2900);
+const grokProvider = modelProviderWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -2912,17 +2992,20 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(grokProvider.accounts).toEqual([
+    __cantripReferenceTrace(2915);
+expect(grokProvider.accounts).toEqual([
       expect.objectContaining({ ...initialGrokAccount, position: 0 }),
     ]);
-    await firstDatabase.repository.storeModelProviderAccountCredential(
+    __cantripReferenceTrace(2918);
+await firstDatabase.repository.storeModelProviderAccountCredential(
       LOCAL_USER_ID,
       grokProvider.id,
       grokProvider.accounts[0]!.id,
       protectedProviderCredentialFixture("C"),
       providerCredentialMetadataFixture(),
     );
-    expect(
+    __cantripReferenceTrace(2925);
+expect(
       (
         await firstApp.inject({
           method: "GET",
@@ -2936,10 +3019,14 @@ describe("local server foundation", () => {
       planType: null,
       weeklyUsage: null,
     });
-    expect(authProviderKinds.at(-1)).toBe("chatgpt");
-    expect(authCredentialHomeKeys.at(-1)).toBe(chatGptProvider.id);
-    const backupGrokAccount = protectedProviderAccount();
-    expect(
+    __cantripReferenceTrace(2939);
+expect(authProviderKinds.at(-1)).toBe("chatgpt");
+    __cantripReferenceTrace(2940);
+expect(authCredentialHomeKeys.at(-1)).toBe(chatGptProvider.id);
+    __cantripReferenceTrace(2941);
+const backupGrokAccount = protectedProviderAccount();
+    __cantripReferenceTrace(2942);
+expect(
       (
         await firstApp.inject({
           method: "POST",
@@ -2948,7 +3035,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     ).toMatchObject({ ...backupGrokAccount, position: 1 });
-    expect(
+    __cantripReferenceTrace(2951);
+expect(
       await firstApp.inject({
         method: "POST",
         url: "/api/settings/providers",
@@ -2961,7 +3049,8 @@ describe("local server foundation", () => {
         },
       }),
     ).toMatchObject({ statusCode: 409 });
-    expect(
+    __cantripReferenceTrace(2964);
+expect(
       githubRepositoryListSchema.parse(
         await workerRepositoryOperation(
           firstApp,
@@ -2971,7 +3060,8 @@ describe("local server foundation", () => {
         ),
       ),
     ).toMatchObject([{ nameWithOwner: "ArcaneArts/Cantrip", imported: false }]);
-    expect(
+    __cantripReferenceTrace(2974);
+expect(
       githubRepositoryOwnerListSchema.parse(
         await workerRepositoryOperation(
           firstApp,
@@ -2983,7 +3073,8 @@ describe("local server foundation", () => {
       { login: "cantrip-test", kind: "user" },
       { login: "ArcaneArts", kind: "organization" },
     ]);
-    const createdRepository = await workerRepositoryOperation(
+    __cantripReferenceTrace(2986);
+const createdRepository = await workerRepositoryOperation(
       firstApp,
       bootstrap.server.id,
       "github.repositories.create",
@@ -2996,13 +3087,15 @@ describe("local server foundation", () => {
         },
       },
     );
-    expect(githubRepositorySchema.parse(createdRepository)).toMatchObject({
+    __cantripReferenceTrace(2999);
+expect(githubRepositorySchema.parse(createdRepository)).toMatchObject({
       id: "github-created-repository",
       nameWithOwner: "ArcaneArts/cantrip-labs",
       isPrivate: true,
       imported: false,
     });
-    expect(repositoryCreateCommands.at(-1)?.request).toEqual({
+    __cantripReferenceTrace(3005);
+expect(repositoryCreateCommands.at(-1)?.request).toEqual({
       owner: "ArcaneArts",
       name: "cantrip-labs",
       description: "A Cantrip project",
@@ -3010,7 +3103,8 @@ describe("local server foundation", () => {
       visibility: "private",
     });
 
-    const cantripRepositoryFields: Record<string, string> = {
+    __cantripReferenceTrace(3013);
+const cantripRepositoryFields: Record<string, string> = {
       ...repositoryMetadataResultSchema.parse(
         await workerRepositoryOperation(
           firstApp,
@@ -3027,7 +3121,8 @@ describe("local server foundation", () => {
       ).values,
       repositoryBlindIndex: randomBytes(32).toString("base64url"),
     };
-    const parallelRepositoryFields = {
+    __cantripReferenceTrace(3030);
+const parallelRepositoryFields = {
       ...repositoryMetadataResultSchema.parse(
         await workerRepositoryOperation(
           firstApp,
@@ -3044,8 +3139,10 @@ describe("local server foundation", () => {
       ).values,
       repositoryBlindIndex: randomBytes(32).toString("base64url"),
     };
-    heldProjectCloneName = "ArcaneArts/Cantrip";
-    const projectResponse = await firstApp.inject({
+    __cantripReferenceTrace(3047);
+heldProjectCloneName = "ArcaneArts/Cantrip";
+    __cantripReferenceTrace(3048);
+const projectResponse = await firstApp.inject({
       method: "POST",
       url: "/api/projects/from-github",
       payload: {
@@ -3054,11 +3151,14 @@ describe("local server foundation", () => {
         ...cantripRepositoryFields,
       },
     });
-    expect(projectResponse.statusCode, projectResponse.body).toBe(202);
-    const queuedProject = projectWireSummarySchema.parse(
+    __cantripReferenceTrace(3057);
+expect(projectResponse.statusCode, projectResponse.body).toBe(202);
+    __cantripReferenceTrace(3058);
+const queuedProject = projectWireSummarySchema.parse(
       projectResponse.json(),
     );
-    expect(queuedProject).toMatchObject({
+    __cantripReferenceTrace(3061);
+expect(queuedProject).toMatchObject({
       originKind: "github",
       capabilities: {
         git: true,
@@ -3071,7 +3171,8 @@ describe("local server foundation", () => {
       setupError: null,
       source: null,
     });
-    const preferredProject = projectWireSummarySchema.parse(
+    __cantripReferenceTrace(3074);
+const preferredProject = projectWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -3080,16 +3181,20 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(preferredProject.preferredWorkerId).toBe("test-worker");
-    expect(
+    __cantripReferenceTrace(3083);
+expect(preferredProject.preferredWorkerId).toBe("test-worker");
+    __cantripReferenceTrace(3084);
+expect(
       await firstApp.inject({
         method: "PATCH",
         url: `/api/projects/${queuedProject.id}/preferred-worker`,
         payload: { workerId: "unknown-worker" },
       }),
     ).toMatchObject({ statusCode: 404 });
-    await vi.waitFor(() => expect(releaseProjectClone).not.toBeNull());
-    const parallelResponse = await firstApp.inject({
+    __cantripReferenceTrace(3091);
+await vi.waitFor(() => expect(releaseProjectClone).not.toBeNull());
+    __cantripReferenceTrace(3092);
+const parallelResponse = await firstApp.inject({
       method: "POST",
       url: "/api/projects/from-github",
       payload: {
@@ -3098,11 +3203,14 @@ describe("local server foundation", () => {
         ...parallelRepositoryFields,
       },
     });
-    expect(parallelResponse.statusCode).toBe(202);
-    const parallelProject = projectWireSummarySchema.parse(
+    __cantripReferenceTrace(3101);
+expect(parallelResponse.statusCode).toBe(202);
+    __cantripReferenceTrace(3102);
+const parallelProject = projectWireSummarySchema.parse(
       parallelResponse.json(),
     );
-    await vi.waitFor(async () => {
+    __cantripReferenceTrace(3105);
+await vi.waitFor(async () => {
       const currentProjects = projectWireListSchema.parse(
         (await firstApp.inject({ method: "GET", url: "/api/projects" })).json(),
       );
@@ -3115,17 +3223,22 @@ describe("local server foundation", () => {
           ?.setupStatus,
       ).toBe("cloning");
     });
-    expect(
+    __cantripReferenceTrace(3118);
+expect(
       await firstApp.inject({
         method: "DELETE",
         url: `/api/projects/${parallelProject.id}`,
         payload: { deleteLocalFiles: false },
       }),
     ).toMatchObject({ statusCode: 204 });
-    heldProjectCloneName = null;
-    releaseProjectClone?.();
-    releaseProjectClone = null;
-    const project = await vi.waitFor(async () => {
+    __cantripReferenceTrace(3125);
+heldProjectCloneName = null;
+    __cantripReferenceTrace(3126);
+releaseProjectClone?.();
+    __cantripReferenceTrace(3127);
+releaseProjectClone = null;
+    __cantripReferenceTrace(3128);
+const project = await vi.waitFor(async () => {
       const current = projectWireListSchema
         .parse(
           (
@@ -3144,7 +3257,8 @@ describe("local server foundation", () => {
       });
       return current!;
     });
-    expect(
+    __cantripReferenceTrace(3147);
+expect(
       projectReplicaJobListSchema.parse(
         (
           await firstApp.inject({
@@ -3161,7 +3275,8 @@ describe("local server foundation", () => {
         projectReplicaId: expect.any(String),
       }),
     ]);
-    expect(
+    __cantripReferenceTrace(3164);
+expect(
       await firstApp.inject({
         method: "POST",
         url: `/api/projects/${project.id}/replicas`,
@@ -3173,18 +3288,23 @@ describe("local server foundation", () => {
         },
       }),
     ).toMatchObject({ statusCode: 409 });
-    const initialWorkspaces = projectWorkspaceWireListSchema.parse(
+    __cantripReferenceTrace(3176);
+const initialWorkspaces = projectWorkspaceWireListSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/workspaces" })).json(),
     );
-    const defaultWorkspace = initialWorkspaces.workspaces[0]!;
-    expect(defaultWorkspace).toMatchObject({
+    __cantripReferenceTrace(3179);
+const defaultWorkspace = initialWorkspaces.workspaces[0]!;
+    __cantripReferenceTrace(3180);
+expect(defaultWorkspace).toMatchObject({
       nameProtection: { state: "system-default" },
       storage: { kind: "system" },
       isDefault: true,
       projectIds: [project.id],
     });
-    const encryptionClientId = "261eec06-fd9d-4244-8bea-b44b29245ac9";
-    expect(
+    __cantripReferenceTrace(3186);
+const encryptionClientId = "261eec06-fd9d-4244-8bea-b44b29245ac9";
+    __cantripReferenceTrace(3187);
+expect(
       await firstApp.inject({
         method: "POST",
         url: "/api/encryption/profile/initialize",
@@ -3227,7 +3347,8 @@ describe("local server foundation", () => {
         },
       }),
     ).toMatchObject({ statusCode: 201 });
-    const renamedDefaultWorkspace = projectWorkspaceWireSummarySchema.parse(
+    __cantripReferenceTrace(3230);
+const renamedDefaultWorkspace = projectWorkspaceWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -3239,11 +3360,13 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(renamedDefaultWorkspace).toMatchObject({
+    __cantripReferenceTrace(3242);
+expect(renamedDefaultWorkspace).toMatchObject({
       nameProtection: { state: "encrypted" },
       isDefault: true,
     });
-    const personalWorkspace = projectWorkspaceWireSummarySchema.parse(
+    __cantripReferenceTrace(3246);
+const personalWorkspace = projectWorkspaceWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -3256,13 +3379,15 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(personalWorkspace).toMatchObject({
+    __cantripReferenceTrace(3259);
+expect(personalWorkspace).toMatchObject({
       nameProtection: { state: "encrypted" },
       storage: { kind: "managed" },
       isDefault: false,
       projectIds: [],
     });
-    expect(
+    __cantripReferenceTrace(3265);
+expect(
       await firstApp.inject({
         method: "PATCH",
         url: `/api/workspaces/${personalWorkspace.id}`,
@@ -3272,7 +3397,8 @@ describe("local server foundation", () => {
         },
       }),
     ).toMatchObject({ statusCode: 400 });
-    const renamedPersonalWorkspace = projectWorkspaceWireSummarySchema.parse(
+    __cantripReferenceTrace(3275);
+const renamedPersonalWorkspace = projectWorkspaceWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -3284,7 +3410,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    const promotedWorkspace = projectWorkspaceWireSummarySchema.parse(
+    __cantripReferenceTrace(3287);
+const promotedWorkspace = projectWorkspaceWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -3296,40 +3423,48 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(promotedWorkspace).toMatchObject({
+    __cantripReferenceTrace(3299);
+expect(promotedWorkspace).toMatchObject({
       nameProtection: { state: "encrypted" },
       isDefault: true,
     });
-    const updatedWorkspaces = projectWorkspaceWireListSchema.parse(
+    __cantripReferenceTrace(3303);
+const updatedWorkspaces = projectWorkspaceWireListSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/workspaces" })).json(),
     ).workspaces;
-    expect(updatedWorkspaces.filter(({ isDefault }) => isDefault)).toEqual([
+    __cantripReferenceTrace(3306);
+expect(updatedWorkspaces.filter(({ isDefault }) => isDefault)).toEqual([
       expect.objectContaining({ id: personalWorkspace.id }),
     ]);
-    expect(
+    __cantripReferenceTrace(3309);
+expect(
       updatedWorkspaces.find(({ id }) => id === defaultWorkspace.id),
     ).toMatchObject({
       nameProtection: { state: "encrypted" },
       isDefault: false,
     });
-    expect(
+    __cantripReferenceTrace(3315);
+expect(
       updatedWorkspaces.filter(({ projectIds }) =>
         projectIds.includes(project.id),
       ),
     ).toEqual([expect.objectContaining({ id: defaultWorkspace.id })]);
-    expect(
+    __cantripReferenceTrace(3320);
+expect(
       await firstApp.inject({
         method: "DELETE",
         url: `/api/workspaces/${personalWorkspace.id}`,
       }),
     ).toMatchObject({ statusCode: 409 });
-    expect(
+    __cantripReferenceTrace(3326);
+expect(
       await firstApp.inject({
         method: "DELETE",
         url: `/api/workspaces/${defaultWorkspace.id}`,
       }),
     ).toMatchObject({ statusCode: 409 });
-    const emptyWorkspace = projectWorkspaceWireSummarySchema.parse(
+    __cantripReferenceTrace(3332);
+const emptyWorkspace = projectWorkspaceWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -3342,14 +3477,17 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(
+    __cantripReferenceTrace(3345);
+expect(
       await firstApp.inject({
         method: "DELETE",
         url: `/api/workspaces/${emptyWorkspace.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
-    const projectShareTunnelId = randomUUID();
-    const projectShareRecord = (operationId: string, revision: number) => ({
+    __cantripReferenceTrace(3351);
+const projectShareTunnelId = randomUUID();
+    __cantripReferenceTrace(3352);
+const projectShareRecord = (operationId: string, revision: number) => ({
       operationId,
       revision,
       protectedContent: {
@@ -3365,7 +3503,8 @@ describe("local server foundation", () => {
         },
       },
     });
-    const projectShareResponse = await firstApp.inject({
+    __cantripReferenceTrace(3368);
+const projectShareResponse = await firstApp.inject({
       method: "POST",
       url: `/api/projects/${project.id}/network-shares`,
       payload: {
@@ -3374,17 +3513,21 @@ describe("local server foundation", () => {
         protectedRecord: projectShareRecord(projectShareTunnelId, 1),
       },
     });
-    expect(projectShareResponse.statusCode).toBe(201);
-    const projectShare = projectShareAttachmentWireSchema.parse(
+    __cantripReferenceTrace(3377);
+expect(projectShareResponse.statusCode).toBe(201);
+    __cantripReferenceTrace(3378);
+const projectShare = projectShareAttachmentWireSchema.parse(
       projectShareResponse.json(),
     );
-    expect(projectShare).toMatchObject({
+    __cantripReferenceTrace(3381);
+expect(projectShare).toMatchObject({
       attachmentId: projectShareTunnelId,
       projectId: project.id,
       protocol: "webdav",
       tunnelId: projectShareTunnelId,
     });
-    const reusedProjectShare = projectShareAttachmentWireSchema.parse(
+    __cantripReferenceTrace(3387);
+const reusedProjectShare = projectShareAttachmentWireSchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -3397,9 +3540,12 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(reusedProjectShare.attachmentId).toBe(projectShare.attachmentId);
-    const staleShareTunnelId = randomUUID();
-    const staleShareResponse = await firstApp.inject({
+    __cantripReferenceTrace(3400);
+expect(reusedProjectShare.attachmentId).toBe(projectShare.attachmentId);
+    __cantripReferenceTrace(3401);
+const staleShareTunnelId = randomUUID();
+    __cantripReferenceTrace(3402);
+const staleShareResponse = await firstApp.inject({
       method: "POST",
       url: `/api/projects/${project.id}/network-shares`,
       payload: {
@@ -3408,22 +3554,28 @@ describe("local server foundation", () => {
         protectedRecord: projectShareRecord(staleShareTunnelId, 1),
       },
     });
-    expect(staleShareResponse.statusCode, staleShareResponse.body).toBe(409);
-    expect(staleShareResponse.json()).toMatchObject({
+    __cantripReferenceTrace(3411);
+expect(staleShareResponse.statusCode, staleShareResponse.body).toBe(409);
+    __cantripReferenceTrace(3412);
+expect(staleShareResponse.json()).toMatchObject({
       code: "project-share-state-stale",
       failureStage: "share-state-validation",
       requestId: expect.any(String),
       workerId: project.source?.workerId,
     });
-    expect(openedProjectShares).toHaveLength(2);
-    expect(openedProjectShares[0]).toMatchObject({
+    __cantripReferenceTrace(3418);
+expect(openedProjectShares).toHaveLength(2);
+    __cantripReferenceTrace(3419);
+expect(openedProjectShares[0]).toMatchObject({
       shareId: projectShare.attachmentId,
       protectedRecord: projectShareRecord(projectShareTunnelId, 1),
     });
-    expect(JSON.stringify(openedProjectShares)).not.toContain(
+    __cantripReferenceTrace(3423);
+expect(JSON.stringify(openedProjectShares)).not.toContain(
       project.source?.path,
     );
-    const projectShareTunnels = tunnelWireListSchema.parse(
+    __cantripReferenceTrace(3426);
+const projectShareTunnels = tunnelWireListSchema.parse(
       (
         await firstApp.inject({
           method: "GET",
@@ -3431,7 +3583,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(projectShareTunnels).toEqual([
+    __cantripReferenceTrace(3434);
+expect(projectShareTunnels).toEqual([
       expect.objectContaining({
         projectId: project.id,
         origin: "project-share",
@@ -3446,17 +3599,20 @@ describe("local server foundation", () => {
         protectedRecord: expect.objectContaining({ revision: 2 }),
       }),
     ]);
-    expect(
+    __cantripReferenceTrace(3449);
+expect(
       await firstApp.inject({
         method: "DELETE",
         url: `/api/project-shares/${projectShare.attachmentId}`,
       }),
     ).toMatchObject({ statusCode: 204 });
-    expect(closedProjectShareIds).toEqual([
+    __cantripReferenceTrace(3455);
+expect(closedProjectShareIds).toEqual([
       projectShare.attachmentId,
       projectShare.attachmentId,
     ]);
-    expect(
+    __cantripReferenceTrace(3459);
+expect(
       tunnelWireListSchema.parse(
         (
           await firstApp.inject({
@@ -3466,7 +3622,8 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toEqual([]);
-    const codeTab = codeTabWireSummarySchema.parse(
+    __cantripReferenceTrace(3469);
+const codeTab = codeTabWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -3477,27 +3634,33 @@ describe("local server foundation", () => {
     );
     // Native Code tabs retain metadata and file authority, not embedded
     // workbench sessions. File read/save coverage lives in native-code-file-context.
-    const renamedCodeFields = protectedDisplayLabelFields(
+    __cantripReferenceTrace(3480);
+const renamedCodeFields = protectedDisplayLabelFields(
       "code-tab",
       codeTab.id,
     );
-    const renamedCodeResponse = await firstApp.inject({
+    __cantripReferenceTrace(3484);
+const renamedCodeResponse = await firstApp.inject({
       method: "PATCH",
       url: `/api/code-tabs/${codeTab.id}`,
       payload: { titleProtection: renamedCodeFields.titleProtection },
     });
-    expect(renamedCodeResponse.statusCode, renamedCodeResponse.body).toBe(200);
-    const renamedCode = codeTabWireSummarySchema.parse(
+    __cantripReferenceTrace(3489);
+expect(renamedCodeResponse.statusCode, renamedCodeResponse.body).toBe(200);
+    __cantripReferenceTrace(3490);
+const renamedCode = codeTabWireSummarySchema.parse(
       renamedCodeResponse.json(),
     );
-    expect(renamedCode).toMatchObject({
+    __cantripReferenceTrace(3493);
+expect(renamedCode).toMatchObject({
       id: codeTab.id,
       projectId: project.id,
       activeWorkerId: codeTab.activeWorkerId,
       worktreeId: codeTab.worktreeId,
       titleProtection: renamedCodeFields.titleProtection,
     });
-    expect(
+    __cantripReferenceTrace(3500);
+expect(
       codeTabWireListSchema.parse(
         (
           await firstApp.inject({
@@ -3507,7 +3670,8 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toEqual([renamedCode]);
-    for (const suffix of [
+    __cantripReferenceTrace(3510);
+for (const suffix of [
       "protected-attachment-intents",
       "protected-attachments",
       "save-all",
@@ -3521,7 +3685,8 @@ describe("local server foundation", () => {
       });
       expect(retiredResponse.statusCode, suffix).toBe(404);
     }
-    expect(
+    __cantripReferenceTrace(3524);
+expect(
       tunnelWireListSchema.parse(
         (
           await firstApp.inject({
@@ -3531,14 +3696,17 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toEqual([]);
-    expect(
+    __cantripReferenceTrace(3534);
+expect(
       await firstApp.inject({
         method: "DELETE",
         url: `/api/code-tabs/${codeTab.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
-    const remoteSurfaceFields = protectedBrowserRemoteSurfaceFields();
-    const remoteSurface = remoteSurfaceWireSummarySchema.parse(
+    __cantripReferenceTrace(3540);
+const remoteSurfaceFields = protectedBrowserRemoteSurfaceFields();
+    __cantripReferenceTrace(3541);
+const remoteSurface = remoteSurfaceWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -3553,7 +3721,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(remoteSurface).toMatchObject({
+    __cantripReferenceTrace(3556);
+expect(remoteSurface).toMatchObject({
       workerId: "test-worker",
       kind: "browser",
       status: "idle",
@@ -3564,7 +3733,8 @@ describe("local server foundation", () => {
         profileId: null,
       },
     });
-    expect(
+    __cantripReferenceTrace(3567);
+expect(
       remoteSurfaceWireListSchema.parse(
         (
           await firstApp.inject({
@@ -3574,11 +3744,13 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toHaveLength(1);
-    const renamedSurfaceFields = protectedDisplayLabelFields(
+    __cantripReferenceTrace(3577);
+const renamedSurfaceFields = protectedDisplayLabelFields(
       "remote-surface",
       remoteSurface.id,
     );
-    expect(
+    __cantripReferenceTrace(3581);
+expect(
       remoteSurfaceWireSummarySchema.parse(
         (
           await firstApp.inject({
@@ -3589,7 +3761,8 @@ describe("local server foundation", () => {
         ).json(),
       ).titleProtection,
     ).toEqual(renamedSurfaceFields.titleProtection);
-    expect(
+    __cantripReferenceTrace(3592);
+expect(
       remoteSurfaceWireSummarySchema.parse(
         (
           await firstApp.inject({
@@ -3599,7 +3772,8 @@ describe("local server foundation", () => {
         ).json(),
       ).status,
     ).toBe("suspended");
-    expect(
+    __cantripReferenceTrace(3602);
+expect(
       remoteSurfaceWireSummarySchema.parse(
         (
           await firstApp.inject({
@@ -3609,12 +3783,16 @@ describe("local server foundation", () => {
         ).json(),
       ).status,
     ).toBe("active");
-    await firstApp.ready();
-    let resolveRejectedOrigin: ((code: number) => void) | null = null;
-    const rejectedOriginPromise = new Promise<number>((resolve) => {
+    __cantripReferenceTrace(3612);
+await firstApp.ready();
+    __cantripReferenceTrace(3613);
+let resolveRejectedOrigin: ((code: number) => void) | null = null;
+    __cantripReferenceTrace(3614);
+const rejectedOriginPromise = new Promise<number>((resolve) => {
       resolveRejectedOrigin = resolve;
     });
-    const rejectedSocket = await firstApp.injectWS(
+    __cantripReferenceTrace(3617);
+const rejectedSocket = await firstApp.injectWS(
       `/api/remote-surfaces/${remoteSurface.id}/connect`,
       { headers: { origin: "https://attacker.example" } },
       {
@@ -3623,13 +3801,18 @@ describe("local server foundation", () => {
         },
       },
     );
-    expect(await rejectedOriginPromise).toBe(1008);
-    rejectedSocket.terminate();
-    let resolveReadyMessage: ((message: unknown) => void) | null = null;
-    const readyMessagePromise = new Promise<unknown>((resolve) => {
+    __cantripReferenceTrace(3626);
+expect(await rejectedOriginPromise).toBe(1008);
+    __cantripReferenceTrace(3627);
+rejectedSocket.terminate();
+    __cantripReferenceTrace(3628);
+let resolveReadyMessage: ((message: unknown) => void) | null = null;
+    __cantripReferenceTrace(3629);
+const readyMessagePromise = new Promise<unknown>((resolve) => {
       resolveReadyMessage = resolve;
     });
-    const surfaceSocket = await firstApp.injectWS(
+    __cantripReferenceTrace(3632);
+const surfaceSocket = await firstApp.injectWS(
       `/api/remote-surfaces/${remoteSurface.id}/connect?width=800&height=600&devicePixelRatio=2`,
       { headers: { origin: "http://127.0.0.1:5173" } },
       {
@@ -3640,16 +3823,21 @@ describe("local server foundation", () => {
         },
       },
     );
-    const readyMessage = await readyMessagePromise;
-    const connection = remoteSurfaceConnectionMessageSchema.parse(readyMessage);
-    expect(connection).toMatchObject({
+    __cantripReferenceTrace(3643);
+const readyMessage = await readyMessagePromise;
+    __cantripReferenceTrace(3644);
+const connection = remoteSurfaceConnectionMessageSchema.parse(readyMessage);
+    __cantripReferenceTrace(3645);
+expect(connection).toMatchObject({
       type: "ready",
       surfaceId: remoteSurface.id,
       transport: "websocket",
     });
-    if (connection.type !== "ready") throw new Error("Surface did not attach.");
+    __cantripReferenceTrace(3650);
+if (connection.type !== "ready") throw new Error("Surface did not attach.");
 
-    surfaceSocket.send(
+    __cantripReferenceTrace(3652);
+surfaceSocket.send(
       encodeRemoteSurfaceFrame(
         {
           protocolVersion: 1,
@@ -3661,7 +3849,8 @@ describe("local server foundation", () => {
         new Uint8Array([1, 2, 3]),
       ),
     );
-    await vi.waitFor(() =>
+    __cantripReferenceTrace(3664);
+await vi.waitFor(() =>
       expect(relayedSurfaceFrames.at(-1)).toEqual({
         workerId: "test-worker",
         sequence: 0,
@@ -3669,12 +3858,14 @@ describe("local server foundation", () => {
       }),
     );
 
-    const workerFrame = new Promise<Uint8Array>((resolve) => {
+    __cantripReferenceTrace(3672);
+const workerFrame = new Promise<Uint8Array>((resolve) => {
       surfaceSocket.once("message", (data) =>
         resolve(new Uint8Array(data as ArrayBuffer)),
       );
     });
-    for (const listener of surfaceFrameListeners) {
+    __cantripReferenceTrace(3677);
+for (const listener of surfaceFrameListeners) {
       listener(
         {
           protocolVersion: 1,
@@ -3686,17 +3877,21 @@ describe("local server foundation", () => {
         new Uint8Array([9, 8, 7]),
       );
     }
-    expect([...decodeRemoteSurfaceFrame(await workerFrame).payload]).toEqual([
+    __cantripReferenceTrace(3689);
+expect([...decodeRemoteSurfaceFrame(await workerFrame).payload]).toEqual([
       9, 8, 7,
     ]);
-    surfaceSocket.terminate();
-    expect(
+    __cantripReferenceTrace(3692);
+surfaceSocket.terminate();
+    __cantripReferenceTrace(3693);
+expect(
       await firstApp.inject({
         method: "DELETE",
         url: `/api/remote-surfaces/${remoteSurface.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
-    expect(
+    __cantripReferenceTrace(3699);
+expect(
       await firstDatabase.repository.listProjectWorktrees(
         LOCAL_USER_ID,
         project.id,
@@ -3711,13 +3906,16 @@ describe("local server foundation", () => {
         workerId: "test-worker",
       },
     ]);
-    const [primaryWorktree] =
+    __cantripReferenceTrace(3714);
+const [primaryWorktree] =
       await firstDatabase.repository.listProjectWorktrees(
         LOCAL_USER_ID,
         project.id,
       );
-    expect(primaryWorktree).toBeDefined();
-    const repositoryOperation = (
+    __cantripReferenceTrace(3719);
+expect(primaryWorktree).toBeDefined();
+    __cantripReferenceTrace(3720);
+const repositoryOperation = (
       type: RepositoryOperationType,
       args: Record<string, unknown> = {},
     ) =>
@@ -3725,7 +3923,8 @@ describe("local server foundation", () => {
         projectId: project.id,
         worktreeId: primaryWorktree!.id,
       });
-    expect(
+    __cantripReferenceTrace(3728);
+expect(
       githubPullRequestListSchema.parse(
         await repositoryOperation("github.pull-requests.list", {
           state: "open",
@@ -3738,36 +3937,42 @@ describe("local server foundation", () => {
       pullRequests: [{ number: 42, state: "open" }],
       nextCursor: "next-pr-cursor",
     });
-    expect(issueListRequests).toContainEqual({
+    __cantripReferenceTrace(3741);
+expect(issueListRequests).toContainEqual({
       kind: "pull-request",
       cursor: "cursor-3",
       limit: 25,
     });
-    const createdIssue = await repositoryOperation("github.issue.create", {
+    __cantripReferenceTrace(3746);
+const createdIssue = await repositoryOperation("github.issue.create", {
       request: {
         title: "Issue created from Cantrip",
         body: "Issue details from the Git tab.",
       },
     });
-    expect(githubIssueDetailSchema.parse(createdIssue)).toMatchObject({
+    __cantripReferenceTrace(3752);
+expect(githubIssueDetailSchema.parse(createdIssue)).toMatchObject({
       number: 43,
       title: "Issue created from Cantrip",
       body: "Issue details from the Git tab.",
     });
-    expect(createdIssues).toContainEqual({
+    __cantripReferenceTrace(3757);
+expect(createdIssues).toContainEqual({
       title: "Issue created from Cantrip",
       body: "Issue details from the Git tab.",
     });
     // The server cannot validate encrypted arguments. The worker command
     // schema retains these input boundaries before dispatch.
-    expect(
+    __cantripReferenceTrace(3763);
+expect(
       workerCommandSchema.safeParse({
         type: "github.issue.create",
         repository: "ArcaneArts/Cantrip",
         request: { title: "   " },
       }).success,
     ).toBe(false);
-    expect(
+    __cantripReferenceTrace(3770);
+expect(
       workerCommandSchema.safeParse({
         type: "github.inbox.list",
         repository: "ArcaneArts/Cantrip",
@@ -3775,17 +3980,21 @@ describe("local server foundation", () => {
         kind: "discussion",
       }).success,
     ).toBe(false);
-    expect(
+    __cantripReferenceTrace(3778);
+expect(
       githubIssueDetailSchema.parse(
         await repositoryOperation("github.issue.get", { number: 42 }),
       ),
     ).toMatchObject({ number: 42, body: "Issue details" });
-    await repositoryOperation("github.issue.comment", {
+    __cantripReferenceTrace(3783);
+await repositoryOperation("github.issue.comment", {
       number: 42,
       body: "Comment from Cantrip",
     });
-    expect(issueComments).toContain("Comment from Cantrip");
-    expect(
+    __cantripReferenceTrace(3787);
+expect(issueComments).toContain("Comment from Cantrip");
+    __cantripReferenceTrace(3788);
+expect(
       githubIssueDetailSchema.parse(
         await repositoryOperation("github.issue.close", {
           number: 42,
@@ -3793,11 +4002,13 @@ describe("local server foundation", () => {
         }),
       ).state,
     ).toBe("closed");
-    expect(closedIssues).toContainEqual({
+    __cantripReferenceTrace(3796);
+expect(closedIssues).toContainEqual({
       number: 42,
       comment: "Closing from Cantrip",
     });
-    const createdPullRequest = await repositoryOperation(
+    __cantripReferenceTrace(3800);
+const createdPullRequest = await repositoryOperation(
       "github.pull-request.create",
       {
         request: {
@@ -3812,7 +4023,8 @@ describe("local server foundation", () => {
         },
       },
     );
-    expect(
+    __cantripReferenceTrace(3815);
+expect(
       githubPullRequestCreateResultSchema.parse(createdPullRequest),
     ).toMatchObject({
       pullRequest: {
@@ -3823,7 +4035,8 @@ describe("local server foundation", () => {
       },
       warnings: [],
     });
-    expect(pullRequestCreateCommands.at(-1)).toMatchObject({
+    __cantripReferenceTrace(3826);
+expect(pullRequestCreateCommands.at(-1)).toMatchObject({
       cwd: primaryWorktree!.path,
       repository: "ArcaneArts/Cantrip",
       request: {
@@ -3836,11 +4049,13 @@ describe("local server foundation", () => {
         linkedIssueNumbers: [42],
       },
     });
-    const pullRequestDetail = await repositoryOperation(
+    __cantripReferenceTrace(3839);
+const pullRequestDetail = await repositoryOperation(
       "github.pull-request.get",
       { number: 44 },
     );
-    expect(
+    __cantripReferenceTrace(3843);
+expect(
       githubPullRequestDetailSchema.parse(pullRequestDetail),
     ).toMatchObject({
       number: 44,
@@ -3848,12 +4063,14 @@ describe("local server foundation", () => {
       reviewDecision: "review-required",
       checksState: "success",
     });
-    expect(pullRequestGetCommands.at(-1)).toMatchObject({
+    __cantripReferenceTrace(3851);
+expect(pullRequestGetCommands.at(-1)).toMatchObject({
       cwd: primaryWorktree!.path,
       repository: "ArcaneArts/Cantrip",
       number: 44,
     });
-    expect(
+    __cantripReferenceTrace(3856);
+expect(
       workerCommandSchema.safeParse({
         type: "github.pull-request.get",
         cwd: primaryWorktree!.path,
@@ -3861,7 +4078,8 @@ describe("local server foundation", () => {
         number: "not-a-number",
       }).success,
     ).toBe(false);
-    expect(
+    __cantripReferenceTrace(3864);
+expect(
       await firstApp.inject({
         method: "POST",
         url: `/api/projects/${project.id}/worktrees/missing-worktree/repository-operation`,
@@ -3873,7 +4091,8 @@ describe("local server foundation", () => {
         },
       }),
     ).toMatchObject({ statusCode: 404 });
-    for (const payload of [
+    __cantripReferenceTrace(3876);
+for (const payload of [
       { type: "comment", body: "General feedback" },
       {
         type: "submit-review",
@@ -3899,7 +4118,8 @@ describe("local server foundation", () => {
       );
       expect(githubPullRequestDetailSchema.parse(result).number).toBe(44);
     }
-    expect(pullRequestReviewCommands.slice(-4)).toMatchObject([
+    __cantripReferenceTrace(3902);
+expect(pullRequestReviewCommands.slice(-4)).toMatchObject([
       {
         type: "github.pull-request.review.mutate",
         cwd: primaryWorktree!.path,
@@ -3925,7 +4145,8 @@ describe("local server foundation", () => {
         action: { type: "reply", commentId: 99, body: "Updated." },
       },
     ]);
-    expect(
+    __cantripReferenceTrace(3928);
+expect(
       workerCommandSchema.safeParse({
         type: "github.pull-request.review.mutate",
         cwd: primaryWorktree!.path,
@@ -3937,7 +4158,8 @@ describe("local server foundation", () => {
         },
       }).success,
     ).toBe(false);
-    const lifecyclePreviewResult = await repositoryOperation(
+    __cantripReferenceTrace(3940);
+const lifecyclePreviewResult = await repositoryOperation(
       "github.pull-request.lifecycle.preview",
       {
         number: 44,
@@ -3949,14 +4171,17 @@ describe("local server foundation", () => {
         },
       },
     );
-    const lifecyclePreview = githubPullRequestLifecyclePreviewSchema.parse(
+    __cantripReferenceTrace(3952);
+const lifecyclePreview = githubPullRequestLifecyclePreviewSchema.parse(
       lifecyclePreviewResult,
     );
-    expect(lifecyclePreview).toMatchObject({
+    __cantripReferenceTrace(3955);
+expect(lifecyclePreview).toMatchObject({
       confirmationPhrase: "squash #44",
       destructive: true,
     });
-    const lifecycleApplyResult = await repositoryOperation(
+    __cantripReferenceTrace(3959);
+const lifecycleApplyResult = await repositoryOperation(
       "github.pull-request.lifecycle.apply",
       {
         number: 44,
@@ -3967,16 +4192,19 @@ describe("local server foundation", () => {
         },
       },
     );
-    expect(
+    __cantripReferenceTrace(3970);
+expect(
       githubPullRequestDetailSchema.parse(lifecycleApplyResult),
     ).toMatchObject({ state: "closed", merged: true });
-    expect(pullRequestLifecyclePreviewCommands.at(-1)).toMatchObject({
+    __cantripReferenceTrace(3973);
+expect(pullRequestLifecyclePreviewCommands.at(-1)).toMatchObject({
       cwd: primaryWorktree!.path,
       repository: "ArcaneArts/Cantrip",
       number: 44,
       action: { type: "merge", method: "squash" },
     });
-    expect(pullRequestLifecycleApplyCommands.at(-1)).toMatchObject({
+    __cantripReferenceTrace(3979);
+expect(pullRequestLifecycleApplyCommands.at(-1)).toMatchObject({
       cwd: primaryWorktree!.path,
       repository: "ArcaneArts/Cantrip",
       number: 44,
@@ -3985,12 +4213,14 @@ describe("local server foundation", () => {
         confirmation: "squash #44",
       },
     });
-    const preparedCheckout = githubPullRequestCheckoutPreparedSchema.parse(
+    __cantripReferenceTrace(3988);
+const preparedCheckout = githubPullRequestCheckoutPreparedSchema.parse(
       await repositoryOperation("github.pull-request.checkout.prepare", {
         number: 44,
       }),
     );
-    const checkoutMetadata = repositoryMetadataResultSchema.parse(
+    __cantripReferenceTrace(3993);
+const checkoutMetadata = repositoryMetadataResultSchema.parse(
       await repositoryOperation("repository.metadata.register", {
         values: {
           name: preparedCheckout.name,
@@ -3999,7 +4229,8 @@ describe("local server foundation", () => {
         },
       }),
     ).values;
-    const checkoutResponse = await firstApp.inject({
+    __cantripReferenceTrace(4002);
+const checkoutResponse = await firstApp.inject({
       method: "POST",
       url: `/api/projects/${project.id}/worktrees`,
       payload: {
@@ -4011,11 +4242,14 @@ describe("local server foundation", () => {
         },
       },
     });
-    expect(checkoutResponse.statusCode, checkoutResponse.body).toBe(201);
-    const checkoutWorktree = projectWorktreeSummarySchema.parse(
+    __cantripReferenceTrace(4014);
+expect(checkoutResponse.statusCode, checkoutResponse.body).toBe(201);
+    __cantripReferenceTrace(4015);
+const checkoutWorktree = projectWorktreeSummarySchema.parse(
       checkoutResponse.json(),
     );
-    expect(
+    __cantripReferenceTrace(4018);
+expect(
       githubPullRequestCheckoutResultSchema.parse({
         pullRequest: preparedCheckout.pullRequest,
         worktree: {
@@ -4038,12 +4272,14 @@ describe("local server foundation", () => {
       },
       reused: false,
     });
-    expect(pullRequestCheckoutCommands.at(-1)).toMatchObject({
+    __cantripReferenceTrace(4041);
+expect(pullRequestCheckoutCommands.at(-1)).toMatchObject({
       cwd: primaryWorktree!.path,
       repository: "ArcaneArts/Cantrip",
       number: 44,
     });
-    expect(pullRequestWorktreeCommands.at(-1)).toMatchObject({
+    __cantripReferenceTrace(4046);
+expect(pullRequestWorktreeCommands.at(-1)).toMatchObject({
       sourcePath: primaryWorktree!.path,
       mode: {
         type: "newBranch",
@@ -4051,14 +4287,17 @@ describe("local server foundation", () => {
         startPoint: "4".repeat(40),
       },
     });
-    const history = gitHistorySchema.parse(
+    __cantripReferenceTrace(4054);
+const history = gitHistorySchema.parse(
       await repositoryOperation("git.history"),
     );
-    expect(history).toMatchObject({
+    __cantripReferenceTrace(4057);
+expect(history).toMatchObject({
       branch: "main",
       commits: [{ subject: "feat: test history" }],
     });
-    const fileHistory = gitFileHistorySchema.parse(
+    __cantripReferenceTrace(4061);
+const fileHistory = gitFileHistorySchema.parse(
       await repositoryOperation("git.file.history", {
         path: "README.md",
         revision: "HEAD",
@@ -4066,18 +4305,21 @@ describe("local server foundation", () => {
         limit: 25,
       }),
     );
-    expect(fileHistory).toMatchObject({
+    __cantripReferenceTrace(4069);
+expect(fileHistory).toMatchObject({
       path: "README.md",
       commits: [{ subject: "Update README" }],
     });
-    expect(gitFileHistoryCommands.at(-1)).toMatchObject({
+    __cantripReferenceTrace(4073);
+expect(gitFileHistoryCommands.at(-1)).toMatchObject({
       cwd: primaryWorktree!.path,
       path: "README.md",
       revision: "HEAD",
       cursor: 0,
       limit: 25,
     });
-    const blame = gitBlameSchema.parse(
+    __cantripReferenceTrace(4080);
+const blame = gitBlameSchema.parse(
       await repositoryOperation("git.file.blame", {
         path: "README.md",
         revision: "main",
@@ -4085,17 +4327,20 @@ describe("local server foundation", () => {
         limit: 100,
       }),
     );
-    expect(blame).toMatchObject({
+    __cantripReferenceTrace(4088);
+expect(blame).toMatchObject({
       path: "README.md",
       ranges: [{ startLine: 1, endLine: 2 }],
     });
-    expect(gitFileBlameCommands.at(-1)).toMatchObject({
+    __cantripReferenceTrace(4092);
+expect(gitFileBlameCommands.at(-1)).toMatchObject({
       cwd: primaryWorktree!.path,
       revision: "main",
       cursor: 200,
       limit: 100,
     });
-    const searchResult = gitCommitSearchResultSchema.parse(
+    __cantripReferenceTrace(4098);
+const searchResult = gitCommitSearchResultSchema.parse(
       await repositoryOperation("git.commit.search", {
         query: {
           message: "searched",
@@ -4107,7 +4352,8 @@ describe("local server foundation", () => {
         limit: 25,
       }),
     );
-    expect(searchResult).toMatchObject({
+    __cantripReferenceTrace(4110);
+expect(searchResult).toMatchObject({
       query: {
         message: "searched",
         author: "Cantrip",
@@ -4117,30 +4363,36 @@ describe("local server foundation", () => {
       },
       commits: [{ subject: "fix: searched commit" }],
     });
-    expect(gitCommitSearchCommands.at(-1)).toMatchObject({
+    __cantripReferenceTrace(4120);
+expect(gitCommitSearchCommands.at(-1)).toMatchObject({
       cwd: primaryWorktree!.path,
       cursor: 10,
       limit: 25,
     });
-    const recoveryList = gitRecoveryCandidateListSchema.parse(
+    __cantripReferenceTrace(4125);
+const recoveryList = gitRecoveryCandidateListSchema.parse(
       await repositoryOperation("git.recovery.list", {
         kind: "reflog",
         cursor: 20,
         limit: 25,
       }),
     );
-    expect(recoveryList.entries[0]).toMatchObject({ kind: "reflog" });
-    const recoveryAction = {
+    __cantripReferenceTrace(4132);
+expect(recoveryList.entries[0]).toMatchObject({ kind: "reflog" });
+    __cantripReferenceTrace(4133);
+const recoveryAction = {
       type: "reset" as const,
       mode: "mixed" as const,
       target: "1".repeat(40),
     };
-    const recoveryPreview = gitRecoveryPreviewSchema.parse(
+    __cantripReferenceTrace(4138);
+const recoveryPreview = gitRecoveryPreviewSchema.parse(
       await repositoryOperation("git.recovery.preview", {
         action: recoveryAction,
       }),
     );
-    const recoveryApply = gitRecoveryResultSchema.parse(
+    __cantripReferenceTrace(4143);
+const recoveryApply = gitRecoveryResultSchema.parse(
       await repositoryOperation("git.recovery.apply", {
         request: {
           action: recoveryAction,
@@ -4149,11 +4401,13 @@ describe("local server foundation", () => {
         },
       }),
     );
-    expect(recoveryApply).toMatchObject({
+    __cantripReferenceTrace(4152);
+expect(recoveryApply).toMatchObject({
       action: recoveryAction,
       headAfter: "1".repeat(40),
     });
-    expect(gitRecoveryCommands).toEqual(
+    __cantripReferenceTrace(4156);
+expect(gitRecoveryCommands).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: "git.recovery.list",
@@ -4168,7 +4422,8 @@ describe("local server foundation", () => {
         }),
       ]),
     );
-    for (const invalidCommand of [
+    __cantripReferenceTrace(4171);
+for (const invalidCommand of [
       { type: "git.recovery.list" },
       { type: "git.commit.search", query: {} },
       { type: "git.file.history", path: "../secret" },
@@ -4181,23 +4436,29 @@ describe("local server foundation", () => {
         invalidCommand.type,
       ).toBe(false);
     }
-    const gitStatus = gitStatusSchema.parse(
+    __cantripReferenceTrace(4184);
+const gitStatus = gitStatusSchema.parse(
       await repositoryOperation("git.status"),
     );
-    expect(gitStatus).toMatchObject({
+    __cantripReferenceTrace(4187);
+expect(gitStatus).toMatchObject({
       branch: "main",
       ahead: 1,
       files: [{ path: "README.md", unstaged: true }],
     });
-    const gitAction = gitActionResultSchema.parse(
+    __cantripReferenceTrace(4192);
+const gitAction = gitActionResultSchema.parse(
       await repositoryOperation("git.action", { action: { type: "stageAll" } }),
     );
-    expect(gitAction).toMatchObject({
+    __cantripReferenceTrace(4195);
+expect(gitAction).toMatchObject({
       output: "Git action complete",
       status: { files: [] },
     });
-    const terminalFields = protectedTerminalFields();
-    const terminalProtection = {
+    __cantripReferenceTrace(4199);
+const terminalFields = protectedTerminalFields();
+    __cantripReferenceTrace(4200);
+const terminalProtection = {
       ownerId: LOCAL_USER_ID,
       componentKey: surfaceComponentKey,
       keyRevision: 1,
@@ -4209,17 +4470,20 @@ describe("local server foundation", () => {
         recordKind: "terminal-state" as const,
       },
     };
-    const terminalContent = {
+    __cantripReferenceTrace(4212);
+const terminalContent = {
       version: 1 as const,
       classification: { recordKind: "terminal-state" as const },
       directory: { kind: "relative-path" as const, path: "packages/app" },
       serviceCommand: "",
     };
-    terminalFields.stateProtection = await encryptSurfacePrivateState({
+    __cantripReferenceTrace(4218);
+terminalFields.stateProtection = await encryptSurfacePrivateState({
       ...terminalProtection,
       content: terminalContent,
     });
-    const terminal = terminalWireSummarySchema.parse(
+    __cantripReferenceTrace(4222);
+const terminal = terminalWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -4228,13 +4492,15 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(terminal).toMatchObject({
+    __cantripReferenceTrace(4231);
+expect(terminal).toMatchObject({
       projectId: project.id,
       ...terminalFields,
       activeWorkerId: "test-worker",
       serviceEnabled: false,
     });
-    expect(
+    __cantripReferenceTrace(4237);
+expect(
       terminalWireListSchema.parse(
         (
           await firstApp.inject({
@@ -4244,11 +4510,13 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toHaveLength(1);
-    const renamedTerminal = protectedDisplayLabelFields(
+    __cantripReferenceTrace(4247);
+const renamedTerminal = protectedDisplayLabelFields(
       "terminal",
       terminal.id,
     );
-    expect(
+    __cantripReferenceTrace(4251);
+expect(
       terminalWireSummarySchema.parse(
         (
           await firstApp.inject({
@@ -4259,11 +4527,13 @@ describe("local server foundation", () => {
         ).json(),
       ).titleProtection,
     ).toEqual(renamedTerminal.titleProtection);
-    const serviceState = await encryptSurfacePrivateState({
+    __cantripReferenceTrace(4262);
+const serviceState = await encryptSurfacePrivateState({
       ...terminalProtection,
       content: { ...terminalContent, serviceCommand: "pnpm dev" },
     });
-    const enabledService = terminalWireSummarySchema.parse(
+    __cantripReferenceTrace(4266);
+const enabledService = terminalWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PUT",
@@ -4272,12 +4542,14 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(enabledService).toMatchObject({
+    __cantripReferenceTrace(4275);
+expect(enabledService).toMatchObject({
       status: "running",
       serviceEnabled: true,
       stateProtection: serviceState,
     });
-    expect(terminalServiceReconciliations.at(-1)?.services).toEqual([
+    __cantripReferenceTrace(4280);
+expect(terminalServiceReconciliations.at(-1)?.services).toEqual([
       expect.objectContaining({
         terminalId: terminal.id,
         serverId: bootstrap.server.id,
@@ -4285,8 +4557,10 @@ describe("local server foundation", () => {
         stateProtection: serviceState,
       }),
     ]);
-    const service = terminalServiceReconciliations.at(-1)!.services[0]!;
-    expect(
+    __cantripReferenceTrace(4288);
+const service = terminalServiceReconciliations.at(-1)!.services[0]!;
+    __cantripReferenceTrace(4289);
+expect(
       await decryptSurfacePrivateState({
         ...terminalProtection,
         context: {
@@ -4297,9 +4571,12 @@ describe("local server foundation", () => {
         opaque: service.stateProtection,
       }),
     ).toEqual({ ...terminalContent, serviceCommand: "pnpm dev" });
-    expect(JSON.stringify(service)).not.toContain("pnpm dev");
-    expect(JSON.stringify(service)).not.toContain("packages/app");
-    expect(
+    __cantripReferenceTrace(4300);
+expect(JSON.stringify(service)).not.toContain("pnpm dev");
+    __cantripReferenceTrace(4301);
+expect(JSON.stringify(service)).not.toContain("packages/app");
+    __cantripReferenceTrace(4302);
+expect(
       (
         await firstApp.inject({
           method: "POST",
@@ -4307,8 +4584,10 @@ describe("local server foundation", () => {
         })
       ).statusCode,
     ).toBe(202);
-    expect(terminalServiceRestarts).toContain(terminal.id);
-    const disabledService = terminalWireSummarySchema.parse(
+    __cantripReferenceTrace(4310);
+expect(terminalServiceRestarts).toContain(terminal.id);
+    __cantripReferenceTrace(4311);
+const disabledService = terminalWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PUT",
@@ -4317,13 +4596,16 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(disabledService).toMatchObject({
+    __cantripReferenceTrace(4320);
+expect(disabledService).toMatchObject({
       status: "idle",
       serviceEnabled: false,
       stateProtection: serviceState,
     });
-    expect(terminalServiceReconciliations.at(-1)?.services).toEqual([]);
-    expect(
+    __cantripReferenceTrace(4325);
+expect(terminalServiceReconciliations.at(-1)?.services).toEqual([]);
+    __cantripReferenceTrace(4326);
+expect(
       (
         await firstApp.inject({
           method: "PUT",
@@ -4332,7 +4614,8 @@ describe("local server foundation", () => {
         })
       ).statusCode,
     ).toBe(200);
-    expect(
+    __cantripReferenceTrace(4335);
+expect(
       (
         await firstApp.inject({
           method: "DELETE",
@@ -4340,9 +4623,11 @@ describe("local server foundation", () => {
         })
       ).statusCode,
     ).toBe(204);
-    expect(closedTerminalIds).toContain(terminal.id);
+    __cantripReferenceTrace(4343);
+expect(closedTerminalIds).toContain(terminal.id);
 
-    const duplicateResponse = await firstApp.inject({
+    __cantripReferenceTrace(4345);
+const duplicateResponse = await firstApp.inject({
       method: "POST",
       url: "/api/projects/from-github",
       payload: {
@@ -4351,24 +4636,33 @@ describe("local server foundation", () => {
         ...cantripRepositoryFields,
       },
     });
-    expect(duplicateResponse.statusCode).toBe(409);
+    __cantripReferenceTrace(4354);
+expect(duplicateResponse.statusCode).toBe(409);
 
-    const chatResponse = await firstApp.inject({
+    __cantripReferenceTrace(4356);
+const chatResponse = await firstApp.inject({
       method: "POST",
       url: `/api/projects/${project.id}/chats`,
       payload: protectedChatFields(),
     });
-    expect(chatResponse.statusCode, chatResponse.body).toBe(201);
-    const chat = chatWireSummarySchema.parse(chatResponse.json());
-    const attachmentText = "A durable worker-owned attachment.";
-    const attachmentId = randomUUID();
-    const uploadOperationId = randomUUID();
-    const attachmentScope = {
+    __cantripReferenceTrace(4361);
+expect(chatResponse.statusCode, chatResponse.body).toBe(201);
+    __cantripReferenceTrace(4362);
+const chat = chatWireSummarySchema.parse(chatResponse.json());
+    __cantripReferenceTrace(4363);
+const attachmentText = "A durable worker-owned attachment.";
+    __cantripReferenceTrace(4364);
+const attachmentId = randomUUID();
+    __cantripReferenceTrace(4365);
+const uploadOperationId = randomUUID();
+    __cantripReferenceTrace(4366);
+const attachmentScope = {
       ...attachmentProtection,
       chatId: chat.id,
       attachmentId,
     };
-    const protectedMetadata = await encryptAttachmentMetadata({
+    __cantripReferenceTrace(4371);
+const protectedMetadata = await encryptAttachmentMetadata({
       ...attachmentScope,
       content: {
         version: 1,
@@ -4381,7 +4675,8 @@ describe("local server foundation", () => {
         sha256: attachmentContentDigest(Buffer.from(attachmentText)),
       },
     });
-    const uploadChunk = await encryptAttachmentChunk({
+    __cantripReferenceTrace(4384);
+const uploadChunk = await encryptAttachmentChunk({
       ...attachmentScope,
       operationId: uploadOperationId,
       direction: "upload",
@@ -4389,7 +4684,8 @@ describe("local server foundation", () => {
       eof: true,
       plaintext: Buffer.from(attachmentText),
     });
-    const uploadedAttachment = chatAttachmentOpaqueSummarySchema.parse(
+    __cantripReferenceTrace(4392);
+const uploadedAttachment = chatAttachmentOpaqueSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -4409,13 +4705,15 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(uploadedAttachment).toMatchObject({
+    __cantripReferenceTrace(4412);
+expect(uploadedAttachment).toMatchObject({
       chatId: chat.id,
       id: attachmentId,
       protectedMetadata,
       sizeBytes: Buffer.byteLength(attachmentText),
     });
-    expect(
+    __cantripReferenceTrace(4418);
+expect(
       await decryptAttachmentMetadata({
         ...attachmentScope,
         encrypted: uploadedAttachment.protectedMetadata,
@@ -4426,17 +4724,23 @@ describe("local server foundation", () => {
       previewText: attachmentText,
       source: "paste",
     });
-    const downloadOperationId = randomUUID();
-    const attachmentContent = await firstApp.inject({
+    __cantripReferenceTrace(4429);
+const downloadOperationId = randomUUID();
+    __cantripReferenceTrace(4430);
+const attachmentContent = await firstApp.inject({
       method: "GET",
       url: `/api/attachments/${uploadedAttachment.id}/content?operationId=${downloadOperationId}`,
     });
-    expect(attachmentContent.statusCode).toBe(200);
-    const downloaded = attachmentDownloadOpaqueSchema.parse(
+    __cantripReferenceTrace(4434);
+expect(attachmentContent.statusCode).toBe(200);
+    __cantripReferenceTrace(4435);
+const downloaded = attachmentDownloadOpaqueSchema.parse(
       attachmentContent.json(),
     );
-    expect(downloaded.operationId).toBe(downloadOperationId);
-    const downloadedBytes = await Promise.all(
+    __cantripReferenceTrace(4438);
+expect(downloaded.operationId).toBe(downloadOperationId);
+    __cantripReferenceTrace(4439);
+const downloadedBytes = await Promise.all(
       downloaded.chunks.map((chunk) =>
         decryptAttachmentChunk({
           ...attachmentScope,
@@ -4447,11 +4751,16 @@ describe("local server foundation", () => {
         }),
       ),
     );
-    expect(Buffer.concat(downloadedBytes).toString()).toBe(attachmentText);
-    downloadedBytes.forEach((bytes) => bytes.fill(0));
-    expect(attachmentContent.body).not.toContain(attachmentText);
-    expect(attachmentContent.body).not.toContain("notes.txt");
-    const selectedChat = chatWireSummarySchema.parse(
+    __cantripReferenceTrace(4450);
+expect(Buffer.concat(downloadedBytes).toString()).toBe(attachmentText);
+    __cantripReferenceTrace(4451);
+downloadedBytes.forEach((bytes) => bytes.fill(0));
+    __cantripReferenceTrace(4452);
+expect(attachmentContent.body).not.toContain(attachmentText);
+    __cantripReferenceTrace(4453);
+expect(attachmentContent.body).not.toContain("notes.txt");
+    __cantripReferenceTrace(4454);
+const selectedChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -4460,11 +4769,13 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(selectedChat).toMatchObject({
+    __cantripReferenceTrace(4463);
+expect(selectedChat).toMatchObject({
       modelId: selectedModel.id,
     });
 
-    const initialPermissionProfiles = chatPermissionProfileStateSchema.parse(
+    __cantripReferenceTrace(4467);
+const initialPermissionProfiles = chatPermissionProfileStateSchema.parse(
       (
         await firstApp.inject({
           method: "GET",
@@ -4472,7 +4783,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(initialPermissionProfiles).toMatchObject({
+    __cantripReferenceTrace(4475);
+expect(initialPermissionProfiles).toMatchObject({
       available: true,
       selectedId: ":read-only",
       effectiveId: ":read-only",
@@ -4480,17 +4792,20 @@ describe("local server foundation", () => {
       usesDefault: true,
       forcedByWorktreePolicy: false,
     });
-    expect(initialPermissionProfiles.profiles).toContainEqual({
+    __cantripReferenceTrace(4483);
+expect(initialPermissionProfiles.profiles).toContainEqual({
       id: ":yolo",
       description: "Unrestricted access without approval prompts",
       allowed: true,
     });
-    await firstApp.inject({
+    __cantripReferenceTrace(4488);
+await firstApp.inject({
       method: "PATCH",
       url: "/api/settings",
       payload: { defaultPermissionProfileId: ":workspace" },
     });
-    expect(
+    __cantripReferenceTrace(4493);
+expect(
       chatPermissionProfileStateSchema.parse(
         (
           await firstApp.inject({
@@ -4504,16 +4819,20 @@ describe("local server foundation", () => {
       defaultId: ":workspace",
       usesDefault: true,
     });
-    await firstApp.inject({
+    __cantripReferenceTrace(4507);
+await firstApp.inject({
       method: "PATCH",
       url: "/api/settings",
       payload: { defaultPermissionProfileId: ":read-only" },
     });
     // Bound settings are commands, not immediate server-side selection writes.
     // Simulate the native worker's admission and evidence against the real DB.
-    const nativeCommands = firstDatabase.repository.nativeCommands;
-    let nativeSettingsRevision = 0;
-    await nativeCommands.refreshSettingsState(
+    __cantripReferenceTrace(4514);
+const nativeCommands = firstDatabase.repository.nativeCommands;
+    __cantripReferenceTrace(4515);
+let nativeSettingsRevision = 0;
+    __cantripReferenceTrace(4516);
+await nativeCommands.refreshSettingsState(
       LOCAL_USER_ID,
       chat.id,
       async (scope) => ({
@@ -4528,7 +4847,8 @@ describe("local server foundation", () => {
         contentFingerprint: "c".repeat(64),
       }),
     );
-    const changePermission = async (id: string | null, rejected = false) => {
+    __cantripReferenceTrace(4531);
+const changePermission = async (id: string | null, rejected = false) => {
       const before = (await firstDatabase.repository.getChatExecutionContext(
         LOCAL_USER_ID,
         chat.id,
@@ -4654,32 +4974,40 @@ describe("local server foundation", () => {
         requestSpy.mockRestore();
       }
     };
-    const selectedPermissionProfile = await changePermission(
+    __cantripReferenceTrace(4657);
+const selectedPermissionProfile = await changePermission(
       ":danger-full-access",
     );
-    expect(selectedPermissionProfile).toMatchObject({
+    __cantripReferenceTrace(4660);
+expect(selectedPermissionProfile).toMatchObject({
       selectedId: ":danger-full-access",
       effectiveId: ":danger-full-access",
     });
-    const selectedYoloProfile = await changePermission(":yolo");
-    expect(selectedYoloProfile).toMatchObject({
+    __cantripReferenceTrace(4664);
+const selectedYoloProfile = await changePermission(":yolo");
+    __cantripReferenceTrace(4665);
+expect(selectedYoloProfile).toMatchObject({
       selectedId: ":yolo",
       effectiveId: ":yolo",
     });
-    expect(await changePermission(":blocked", true)).toMatchObject({
+    __cantripReferenceTrace(4669);
+expect(await changePermission(":blocked", true)).toMatchObject({
       selectedId: ":yolo",
       effectiveId: ":yolo",
     });
-    expect(
+    __cantripReferenceTrace(4673);
+expect(
       (await nativeCommands.settingsState(LOCAL_USER_ID, chat.id))
         ?.desiredStatus,
     ).toBe("rejected");
-    await firstApp.inject({
+    __cantripReferenceTrace(4677);
+await firstApp.inject({
       method: "PATCH",
       url: `/api/projects/${project.id}/worktree-policy`,
       payload: { policy: "required-for-writes" },
     });
-    expect(
+    __cantripReferenceTrace(4682);
+expect(
       chatPermissionProfileStateSchema.parse(
         (
           await firstApp.inject({
@@ -4693,18 +5021,21 @@ describe("local server foundation", () => {
       effectiveId: ":read-only",
       forcedByWorktreePolicy: true,
     });
-    await firstApp.inject({
+    __cantripReferenceTrace(4696);
+await firstApp.inject({
       method: "PATCH",
       url: `/api/projects/${project.id}/worktree-policy`,
       payload: { policy: "agent-managed" },
     });
 
-    const approvalContext =
+    __cantripReferenceTrace(4702);
+const approvalContext =
       (await firstDatabase.repository.getChatExecutionContext(
         LOCAL_USER_ID,
         chat.id,
       ))!;
-    const approvalTurn = nativeCommandAdmissionSchema.parse({
+    __cantripReferenceTrace(4707);
+const approvalTurn = nativeCommandAdmissionSchema.parse({
       workerId: approvalContext.workerId,
       operationId: randomUUID(),
       origin: "gui",
@@ -4726,19 +5057,23 @@ describe("local server foundation", () => {
       expectedActivationGeneration: null,
       intent: { scope: "thread", settingKeys: [], expectedTurnId: null },
     });
-    const approvalGrant = await nativeCommands.admit(
+    __cantripReferenceTrace(4729);
+const approvalGrant = await nativeCommands.admit(
       LOCAL_USER_ID,
       approvalTurn,
     );
-    expect(approvalGrant.receipt.status).toBe("accepted");
-    await nativeCommands.dispatch(LOCAL_USER_ID, {
+    __cantripReferenceTrace(4733);
+expect(approvalGrant.receipt.status).toBe("accepted");
+    __cantripReferenceTrace(4734);
+await nativeCommands.dispatch(LOCAL_USER_ID, {
       workerId: approvalTurn.workerId,
       operationId: approvalTurn.operationId,
       operationGeneration: approvalGrant.receipt.operationGeneration,
       payloadDigest: approvalTurn.payloadDigest,
       session: approvalTurn.session,
     });
-    const approvalInput: AgentInteractionRequestCreate = {
+    __cantripReferenceTrace(4741);
+const approvalInput: AgentInteractionRequestCreate = {
       requestKey: "runtime-1:approval-1",
       projectId: project.id,
       provenance: {
@@ -4768,16 +5103,19 @@ describe("local server foundation", () => {
       },
       expiresAt: "2030-08-08T18:00:00Z",
     };
-    const approval =
+    __cantripReferenceTrace(4771);
+const approval =
       await firstDatabase.repository.recordAgentInteractionRequest(
         approvalInput,
       );
-    expect(
+    __cantripReferenceTrace(4775);
+expect(
       await firstDatabase.repository.recordAgentInteractionRequest(
         approvalInput,
       ),
     ).toEqual(approval);
-    expect(
+    __cantripReferenceTrace(4780);
+expect(
       (
         await firstDatabase.repository.getChatExecutionContext(
           LOCAL_USER_ID,
@@ -4785,7 +5123,8 @@ describe("local server foundation", () => {
         )
       )?.status,
     ).toBe("waiting-for-approval");
-    expect(
+    __cantripReferenceTrace(4788);
+expect(
       agentInteractionRequestListSchema.parse(
         (
           await firstApp.inject({
@@ -4795,14 +5134,17 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toMatchObject([{ id: approval.id, status: "pending" }]);
-    const permissionChangedDuringApproval = await changePermission(null);
-    expect(permissionChangedDuringApproval).toMatchObject({
+    __cantripReferenceTrace(4798);
+const permissionChangedDuringApproval = await changePermission(null);
+    __cantripReferenceTrace(4799);
+expect(permissionChangedDuringApproval).toMatchObject({
       selectedId: ":read-only",
       defaultId: ":read-only",
       usesDefault: true,
     });
 
-    expect(
+    __cantripReferenceTrace(4805);
+expect(
       (
         await firstApp.inject({
           method: "POST",
@@ -4818,14 +5160,16 @@ describe("local server foundation", () => {
       ).statusCode,
     ).toBe(409);
 
-    const resolution = {
+    __cantripReferenceTrace(4821);
+const resolution = {
       idempotencyKey: "resolution-1",
       response: {
         kind: "commandExecution" as const,
         decision: "decline" as const,
       },
     };
-    const resolvedApproval = agentInteractionRequestSchema.parse(
+    __cantripReferenceTrace(4828);
+const resolvedApproval = agentInteractionRequestSchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -4834,12 +5178,14 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(resolvedApproval).toMatchObject({
+    __cantripReferenceTrace(4837);
+expect(resolvedApproval).toMatchObject({
       status: "resolved",
       response: { kind: "commandExecution", decision: "decline" },
       resolvedByUserId: LOCAL_USER_ID,
     });
-    expect(
+    __cantripReferenceTrace(4842);
+expect(
       (
         await firstApp.inject({
           method: "POST",
@@ -4848,7 +5194,8 @@ describe("local server foundation", () => {
         })
       ).statusCode,
     ).toBe(200);
-    expect(
+    __cantripReferenceTrace(4851);
+expect(
       (
         await firstApp.inject({
           method: "POST",
@@ -4857,7 +5204,8 @@ describe("local server foundation", () => {
         })
       ).statusCode,
     ).toBe(409);
-    expect(
+    __cantripReferenceTrace(4860);
+expect(
       (
         await firstDatabase.repository.getChatExecutionContext(
           LOCAL_USER_ID,
@@ -4865,7 +5213,8 @@ describe("local server foundation", () => {
         )
       )?.status,
     ).toBe("running");
-    await nativeCommands.settle(LOCAL_USER_ID, {
+    __cantripReferenceTrace(4868);
+await nativeCommands.settle(LOCAL_USER_ID, {
       workerId: approvalTurn.workerId,
       operationId: approvalTurn.operationId,
       operationGeneration: approvalGrant.receipt.operationGeneration,
@@ -4876,7 +5225,8 @@ describe("local server foundation", () => {
       executionComplete: true,
     });
 
-    const expiringRequest =
+    __cantripReferenceTrace(4879);
+const expiringRequest =
       await firstDatabase.repository.recordAgentInteractionRequest({
         requestKey: "runtime-1:approval-expired",
         projectId: project.id,
@@ -4906,7 +5256,8 @@ describe("local server foundation", () => {
         },
         expiresAt: "2020-01-01T00:00:00.000Z",
       });
-    expect(
+    __cantripReferenceTrace(4909);
+expect(
       agentInteractionRequestSchema.parse(
         (
           await firstApp.inject({
@@ -4916,9 +5267,11 @@ describe("local server foundation", () => {
         ).json(),
       ).status,
     ).toBe("expired");
-    await firstDatabase.repository.setChatStatus(chat.id, "idle");
+    __cantripReferenceTrace(4919);
+await firstDatabase.repository.setChatStatus(chat.id, "idle");
 
-    const permissionRequest =
+    __cantripReferenceTrace(4921);
+const permissionRequest =
       await firstDatabase.repository.recordAgentInteractionRequest({
         requestKey: "runtime-1:approval-permissions",
         projectId: project.id,
@@ -4943,7 +5296,8 @@ describe("local server foundation", () => {
         },
         expiresAt: null,
       });
-    await expect(
+    __cantripReferenceTrace(4946);
+await expect(
       firstDatabase.repository.validateAgentInteractionResolution(
         LOCAL_USER_ID,
         permissionRequest.id,
@@ -4960,10 +5314,13 @@ describe("local server foundation", () => {
         },
       ),
     ).rejects.toThrow(/subset of the requested permissions/u);
-    await firstDatabase.repository.interruptAgentInteractionRequests(chat.id);
-    await firstDatabase.repository.setChatStatus(chat.id, "idle");
+    __cantripReferenceTrace(4963);
+await firstDatabase.repository.interruptAgentInteractionRequests(chat.id);
+    __cantripReferenceTrace(4964);
+await firstDatabase.repository.setChatStatus(chat.id, "idle");
 
-    const secretRequest =
+    __cantripReferenceTrace(4966);
+const secretRequest =
       await firstDatabase.repository.recordAgentInteractionRequest({
         requestKey: "runtime-1:approval-secret",
         projectId: project.id,
@@ -4991,7 +5348,8 @@ describe("local server foundation", () => {
         },
         expiresAt: null,
       });
-    expect(
+    __cantripReferenceTrace(4994);
+expect(
       agentInteractionRequestSchema.parse(
         (
           await firstApp.inject({
@@ -5011,9 +5369,11 @@ describe("local server foundation", () => {
       kind: "userInput",
       answers: { token: { answers: ["[redacted]"] } },
     });
-    await firstDatabase.repository.setChatStatus(chat.id, "idle");
+    __cantripReferenceTrace(5014);
+await firstDatabase.repository.setChatStatus(chat.id, "idle");
 
-    const interruptedRequest =
+    __cantripReferenceTrace(5016);
+const interruptedRequest =
       await firstDatabase.repository.recordAgentInteractionRequest({
         requestKey: "runtime-1:approval-interrupted",
         projectId: project.id,
@@ -5033,8 +5393,10 @@ describe("local server foundation", () => {
         },
         expiresAt: null,
       });
-    await firstDatabase.repository.resetInterruptedChatExecutions();
-    expect(
+    __cantripReferenceTrace(5036);
+await firstDatabase.repository.resetInterruptedChatExecutions();
+    __cantripReferenceTrace(5037);
+expect(
       (
         await firstDatabase.repository.getAgentInteractionRequest(
           LOCAL_USER_ID,
@@ -5042,7 +5404,8 @@ describe("local server foundation", () => {
         )
       )?.status,
     ).toBe("interrupted");
-    expect(
+    __cantripReferenceTrace(5045);
+expect(
       (
         await firstDatabase.repository.getChatExecutionContext(
           LOCAL_USER_ID,
@@ -5050,9 +5413,11 @@ describe("local server foundation", () => {
         )
       )?.status,
     ).toBe("failed");
-    await firstDatabase.repository.setChatStatus(chat.id, "idle");
+    __cantripReferenceTrace(5053);
+await firstDatabase.repository.setChatStatus(chat.id, "idle");
 
-    const customizationTarget = customizationContentScopeSchema.parse(
+    __cantripReferenceTrace(5055);
+const customizationTarget = customizationContentScopeSchema.parse(
       (
         await firstApp.inject({
           method: "GET",
@@ -5060,8 +5425,10 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    const skillsOperationId = "08bc829f-8c6a-4aec-9b2c-36239ad22d32";
-    expect(
+    __cantripReferenceTrace(5063);
+const skillsOperationId = "08bc829f-8c6a-4aec-9b2c-36239ad22d32";
+    __cantripReferenceTrace(5064);
+expect(
       protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
@@ -5076,8 +5443,10 @@ describe("local server foundation", () => {
       scope: customizationTarget,
     });
 
-    const inventoryOperationId = "a4c99bde-b302-4784-b064-b99b3b97a815";
-    expect(
+    __cantripReferenceTrace(5079);
+const inventoryOperationId = "a4c99bde-b302-4784-b064-b99b3b97a815";
+    __cantripReferenceTrace(5080);
+expect(
       protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
@@ -5091,11 +5460,14 @@ describe("local server foundation", () => {
       operation: "customization.inventory.read",
       scope: customizationTarget,
     });
-    expect(customizationInventoryThreadIds.at(-1)).toBe(
+    __cantripReferenceTrace(5094);
+expect(customizationInventoryThreadIds.at(-1)).toBe(
       approvalTurn.session.threadId,
     );
-    const previewOperationId = "4d299a12-8c01-4d19-8eaf-0e966d8db12a";
-    expect(
+    __cantripReferenceTrace(5097);
+const previewOperationId = "4d299a12-8c01-4d19-8eaf-0e966d8db12a";
+    __cantripReferenceTrace(5098);
+expect(
       protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
@@ -5109,8 +5481,10 @@ describe("local server foundation", () => {
       operation: "customization.external.preview",
       scope: customizationTarget,
     });
-    const mcpResourceOperationId = "67c5b79c-caa7-4d1a-9a4f-fd00be321d9a";
-    expect(
+    __cantripReferenceTrace(5112);
+const mcpResourceOperationId = "67c5b79c-caa7-4d1a-9a4f-fd00be321d9a";
+    __cantripReferenceTrace(5113);
+expect(
       protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
@@ -5129,8 +5503,10 @@ describe("local server foundation", () => {
       operation: "customization.mcp.resource.read",
     });
 
-    const configureSkillOperationId = "5ddd4be8-a280-4f4e-b745-0be96068093a";
-    expect(
+    __cantripReferenceTrace(5132);
+const configureSkillOperationId = "5ddd4be8-a280-4f4e-b745-0be96068093a";
+    __cantripReferenceTrace(5133);
+expect(
       protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
@@ -5148,8 +5524,10 @@ describe("local server foundation", () => {
       operationId: configureSkillOperationId,
       operation: "customization.skill.configure",
     });
-    const skillRootsOperationId = "891db5ef-a6fb-4e5b-8954-917176576d6f";
-    expect(
+    __cantripReferenceTrace(5151);
+const skillRootsOperationId = "891db5ef-a6fb-4e5b-8954-917176576d6f";
+    __cantripReferenceTrace(5152);
+expect(
       protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
@@ -5167,8 +5545,10 @@ describe("local server foundation", () => {
       operationId: skillRootsOperationId,
       operation: "customization.skill-roots.set",
     });
-    const mcpOauthOperationId = "2a39a88b-5384-4678-81e3-a18160313aef";
-    expect(
+    __cantripReferenceTrace(5170);
+const mcpOauthOperationId = "2a39a88b-5384-4678-81e3-a18160313aef";
+    __cantripReferenceTrace(5171);
+expect(
       protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
@@ -5187,8 +5567,10 @@ describe("local server foundation", () => {
       operation: "customization.mcp.oauth.start",
       lifecycle: "pending",
     });
-    const mcpOauthStatusOperationId = "20a9b172-9f0b-4d34-946d-fef443460aae";
-    expect(
+    __cantripReferenceTrace(5190);
+const mcpOauthStatusOperationId = "20a9b172-9f0b-4d34-946d-fef443460aae";
+    __cantripReferenceTrace(5191);
+expect(
       protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
@@ -5207,8 +5589,10 @@ describe("local server foundation", () => {
       operation: "customization.mcp.oauth.status",
       lifecycle: "completed",
     });
-    const mcpReloadOperationId = "64112f3c-c9b0-4450-9fe2-2408a4d3a9fa";
-    expect(
+    __cantripReferenceTrace(5210);
+const mcpReloadOperationId = "64112f3c-c9b0-4450-9fe2-2408a4d3a9fa";
+    __cantripReferenceTrace(5211);
+expect(
       protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
@@ -5226,8 +5610,10 @@ describe("local server foundation", () => {
       operationId: mcpReloadOperationId,
       operation: "customization.mcp.reload",
     });
-    const importOperationId = "8a616f2c-4b84-40d4-9ce4-15c6fcbe987e";
-    const importStarted = protectedCustomizationResponseSchema.parse(
+    __cantripReferenceTrace(5229);
+const importOperationId = "8a616f2c-4b84-40d4-9ce4-15c6fcbe987e";
+    __cantripReferenceTrace(5230);
+const importStarted = protectedCustomizationResponseSchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -5240,9 +5626,12 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(importStarted.lifecycle).toBe("pending");
-    const importStatusOperationId = "6c95ca67-bc25-4402-a1ae-24ab6130d001";
-    expect(
+    __cantripReferenceTrace(5243);
+expect(importStarted.lifecycle).toBe("pending");
+    __cantripReferenceTrace(5244);
+const importStatusOperationId = "6c95ca67-bc25-4402-a1ae-24ab6130d001";
+    __cantripReferenceTrace(5245);
+expect(
       protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
@@ -5262,22 +5651,28 @@ describe("local server foundation", () => {
       lifecycle: "completed",
     });
 
-    const messageText = "$skill-creator Persist this message.";
-    const messageId = randomUUID();
-    const promptId = randomUUID();
-    const classification = {
+    __cantripReferenceTrace(5265);
+const messageText = "$skill-creator Persist this message.";
+    __cantripReferenceTrace(5266);
+const messageId = randomUUID();
+    __cantripReferenceTrace(5267);
+const promptId = randomUUID();
+    __cantripReferenceTrace(5268);
+const classification = {
       role: "user" as const,
       mode: "default" as const,
       attachmentIds: [uploadedAttachment.id],
     };
-    const readableAttachment = chatAttachmentSummarySchema.parse({
+    __cantripReferenceTrace(5273);
+const readableAttachment = chatAttachmentSummarySchema.parse({
       ...uploadedAttachment,
       ...(await decryptAttachmentMetadata({
         ...attachmentScope,
         encrypted: uploadedAttachment.protectedMetadata,
       })),
     });
-    const message = {
+    __cantripReferenceTrace(5280);
+const message = {
       id: messageId,
       classification,
       idempotencyKey: "first-message",
@@ -5295,11 +5690,13 @@ describe("local server foundation", () => {
         },
       }),
     };
-    const queueClassification = {
+    __cantripReferenceTrace(5298);
+const queueClassification = {
       mode: classification.mode,
       attachmentIds: classification.attachmentIds,
     };
-    const messagePayload = {
+    __cantripReferenceTrace(5302);
+const messagePayload = {
       message,
       modelId: selectedModel.id,
       queuedPrompt: {
@@ -5319,19 +5716,24 @@ describe("local server foundation", () => {
         }),
       },
     };
-    expect(JSON.stringify(messagePayload)).not.toContain(messageText);
-    const firstMessageResponse = await firstApp.inject({
+    __cantripReferenceTrace(5322);
+expect(JSON.stringify(messagePayload)).not.toContain(messageText);
+    __cantripReferenceTrace(5323);
+const firstMessageResponse = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${chat.id}/turns`,
       payload: messagePayload,
     });
-    expect(firstMessageResponse.statusCode, firstMessageResponse.body).toBe(
+    __cantripReferenceTrace(5328);
+expect(firstMessageResponse.statusCode, firstMessageResponse.body).toBe(
       202,
     );
-    const firstOpaqueMessage = chatMessageOpaqueSummarySchema.parse(
+    __cantripReferenceTrace(5331);
+const firstOpaqueMessage = chatMessageOpaqueSummarySchema.parse(
       firstMessageResponse.json().message,
     );
-    const firstMessage = chatMessageSchema.parse({
+    __cantripReferenceTrace(5334);
+const firstMessage = chatMessageSchema.parse({
       ...firstOpaqueMessage,
       content: (
         await decryptChatMessageProtectedContent({
@@ -5342,7 +5744,8 @@ describe("local server foundation", () => {
         })
       ).content,
     });
-    const repeatedMessage = chatMessageOpaqueSummarySchema.parse(
+    __cantripReferenceTrace(5345);
+const repeatedMessage = chatMessageOpaqueSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -5351,8 +5754,10 @@ describe("local server foundation", () => {
         })
       ).json().message,
     );
-    expect(repeatedMessage.id).toBe(firstMessage.id);
-    const readChatMessages = async (chatId = chat.id, app = firstApp) => {
+    __cantripReferenceTrace(5354);
+expect(repeatedMessage.id).toBe(firstMessage.id);
+    __cantripReferenceTrace(5355);
+const readChatMessages = async (chatId = chat.id, app = firstApp) => {
       const response = await app.inject({
         method: "GET",
         url: `/api/chats/${chatId}/messages`,
@@ -5380,35 +5785,49 @@ describe("local server foundation", () => {
         ),
       );
     };
-    await vi.waitFor(async () => {
+    __cantripReferenceTrace(5383);
+await vi.waitFor(async () => {
       const messages = await readChatMessages();
       expect(messages, `worker turns dispatched: ${turnRequests}`).toHaveLength(
         4,
       );
     });
-    expect(turnRequests).toBe(1);
-    expect(turnPolicyContexts[0]).toEqual({ policies: [] });
-    expect(JSON.stringify(turnPolicyContexts[0])).not.toContain("bodyMarkdown");
+    __cantripReferenceTrace(5389);
+expect(turnRequests).toBe(1);
+    __cantripReferenceTrace(5390);
+expect(turnPolicyContexts[0]).toEqual({ policies: [] });
+    __cantripReferenceTrace(5391);
+expect(JSON.stringify(turnPolicyContexts[0])).not.toContain("bodyMarkdown");
     // The relay cannot extract skill names from ciphertext; the worker receives
     // the original mention when it opens the protected prompt.
-    expect(turnSkillNames[0]).toEqual([]);
-    expect(turnPrompts[0]).toBe(messageText);
-    expect(turnAttachmentIds[0]).toEqual([uploadedAttachment.id]);
-    expect(firstMessage.content).toContainEqual({
+    __cantripReferenceTrace(5394);
+expect(turnSkillNames[0]).toEqual([]);
+    __cantripReferenceTrace(5395);
+expect(turnPrompts[0]).toBe(messageText);
+    __cantripReferenceTrace(5396);
+expect(turnAttachmentIds[0]).toEqual([uploadedAttachment.id]);
+    __cantripReferenceTrace(5397);
+expect(firstMessage.content).toContainEqual({
       type: "attachment",
       attachment: readableAttachment,
     });
-    expect(turnTimeouts).toEqual([null]);
-    expect(turnModelIds).toContain(selectedModel.id);
-    expect(turnPermissionProfileIds[0]).toBe(":read-only");
-    expect(
+    __cantripReferenceTrace(5401);
+expect(turnTimeouts).toEqual([null]);
+    __cantripReferenceTrace(5402);
+expect(turnModelIds).toContain(selectedModel.id);
+    __cantripReferenceTrace(5403);
+expect(turnPermissionProfileIds[0]).toBe(":read-only");
+    __cantripReferenceTrace(5404);
+expect(
       await firstApp.inject({
         method: "POST",
         url: `/api/chats/${chat.id}/compact`,
       }),
     ).toMatchObject({ statusCode: 200 });
-    expect(compactRequests).toBe(1);
-    const firstSync = agentThreadSyncSchema.parse(
+    __cantripReferenceTrace(5410);
+expect(compactRequests).toBe(1);
+    __cantripReferenceTrace(5411);
+const firstSync = agentThreadSyncSchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -5416,17 +5835,22 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(firstSync.turns).toHaveLength(1);
-    await firstApp.inject({
+    __cantripReferenceTrace(5419);
+expect(firstSync.turns).toHaveLength(1);
+    __cantripReferenceTrace(5420);
+await firstApp.inject({
       method: "POST",
       url: `/api/chats/${chat.id}/sync`,
     });
-    const completedMessages = await readChatMessages();
-    expect(completedMessages.at(-1)).toMatchObject({
+    __cantripReferenceTrace(5424);
+const completedMessages = await readChatMessages();
+    __cantripReferenceTrace(5425);
+expect(completedMessages.at(-1)).toMatchObject({
       role: "assistant",
       content: [{ type: "text", text: "8", phase: "final_answer" }],
     });
-    expect(
+    __cantripReferenceTrace(5429);
+expect(
       completedMessages.some((message) =>
         message.content.some(
           (content) =>
@@ -5434,7 +5858,8 @@ describe("local server foundation", () => {
         ),
       ),
     ).toBe(true);
-    expect(
+    __cantripReferenceTrace(5437);
+expect(
       completedMessages
         .flatMap((message) => message.content)
         .flatMap((content) =>
@@ -5443,8 +5868,10 @@ describe("local server foundation", () => {
     ).toEqual(
       expect.arrayContaining(["reasoning", "contextCompaction", "turnSummary"]),
     );
-    const renamedChatFields = protectedChatFields(chat.id);
-    const renamedChat = chatWireSummarySchema.parse(
+    __cantripReferenceTrace(5446);
+const renamedChatFields = protectedChatFields(chat.id);
+    __cantripReferenceTrace(5447);
+const renamedChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -5453,10 +5880,12 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(renamedChat.titleProtection).toEqual(
+    __cantripReferenceTrace(5456);
+expect(renamedChat.titleProtection).toEqual(
       renamedChatFields.titleProtection,
     );
-    const forkedChat = chatWireSummarySchema.parse(
+    __cantripReferenceTrace(5459);
+const forkedChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -5468,7 +5897,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    const duplicatedChat = chatWireSummarySchema.parse(
+    __cantripReferenceTrace(5471);
+const duplicatedChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -5477,18 +5907,23 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    const forkedMessages = await readChatMessages(forkedChat.id);
-    expect(forkedMessages).toHaveLength(completedMessages.length);
-    expect(forkedMessages.map((message) => message.content)).toEqual(
+    __cantripReferenceTrace(5480);
+const forkedMessages = await readChatMessages(forkedChat.id);
+    __cantripReferenceTrace(5481);
+expect(forkedMessages).toHaveLength(completedMessages.length);
+    __cantripReferenceTrace(5482);
+expect(forkedMessages.map((message) => message.content)).toEqual(
       completedMessages.map((message) => message.content),
     );
-    expect(
+    __cantripReferenceTrace(5485);
+expect(
       forkedMessages.every(
         (message) =>
           !completedMessages.some((source) => source.id === message.id),
       ),
     ).toBe(true);
-    expect(
+    __cantripReferenceTrace(5491);
+expect(
       await firstApp.inject({
         method: "POST",
         url: `/api/chats/${forkedChat.id}/turns`,
@@ -5504,17 +5939,23 @@ describe("local server foundation", () => {
         }),
       }),
     ).toMatchObject({ statusCode: 202 });
-    await vi.waitFor(() => expect(turnPrompts).toHaveLength(2));
-    expect(turnPolicyContexts[1]).toEqual({ policies: [] });
-    expect(turnPrompts[1]).toContain(
+    __cantripReferenceTrace(5507);
+await vi.waitFor(() => expect(turnPrompts).toHaveLength(2));
+    __cantripReferenceTrace(5508);
+expect(turnPolicyContexts[1]).toEqual({ policies: [] });
+    __cantripReferenceTrace(5509);
+expect(turnPrompts[1]).toContain(
       "Continue this existing Cantrip conversation",
     );
-    expect(turnPrompts[1]).toContain("The local agent replied.");
-    await vi.waitFor(async () => {
+    __cantripReferenceTrace(5512);
+expect(turnPrompts[1]).toContain("The local agent replied.");
+    __cantripReferenceTrace(5513);
+await vi.waitFor(async () => {
       const forkMessages = await readChatMessages(forkedChat.id);
       expect(forkMessages).toHaveLength(completedMessages.length + 4);
     });
-    const richChat = chatWireSummarySchema.parse(
+    __cantripReferenceTrace(5517);
+const richChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -5523,9 +5964,12 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    const richLiveEvents: AppLiveServerMessage[] = [];
-    let richLiveClient: WebSocket | null = null;
-    const richLiveSocket = await firstApp.injectWS(
+    __cantripReferenceTrace(5526);
+const richLiveEvents: AppLiveServerMessage[] = [];
+    __cantripReferenceTrace(5527);
+let richLiveClient: WebSocket | null = null;
+    __cantripReferenceTrace(5528);
+const richLiveSocket = await firstApp.injectWS(
       "/api/live",
       { headers: { origin: config.appOrigins[0] } },
       {
@@ -5539,9 +5983,11 @@ describe("local server foundation", () => {
         },
       },
     );
-    if (!richLiveClient)
+    __cantripReferenceTrace(5542);
+if (!richLiveClient)
       throw new Error("Rich live socket did not initialize.");
-    richLiveClient.send(
+    __cantripReferenceTrace(5544);
+richLiveClient.send(
       JSON.stringify({
         type: "initialize",
         protocolVersion: 1,
@@ -5549,28 +5995,33 @@ describe("local server foundation", () => {
         resume: null,
       }),
     );
-    await vi.waitFor(() =>
+    __cantripReferenceTrace(5552);
+await vi.waitFor(() =>
       expect(richLiveEvents.at(-1)).toMatchObject({ type: "ready" }),
     );
-    richLiveClient.send(
+    __cantripReferenceTrace(5555);
+richLiveClient.send(
       JSON.stringify({
         type: "subscribe",
         requestId: "rich-chat",
         scopes: [{ kind: "chat", chatId: richChat.id }],
       }),
     );
-    await vi.waitFor(() =>
+    __cantripReferenceTrace(5562);
+await vi.waitFor(() =>
       expect(richLiveEvents.at(-1)).toMatchObject({
         type: "subscribed",
         requestId: "rich-chat",
       }),
     );
-    await firstApp.inject({
+    __cantripReferenceTrace(5568);
+await firstApp.inject({
       method: "PATCH",
       url: `/api/chats/${richChat.id}/model`,
       payload: { modelId: selectedModel.id },
     });
-    await firstApp.inject({
+    __cantripReferenceTrace(5573);
+await firstApp.inject({
       method: "POST",
       url: `/api/chats/${richChat.id}/turns`,
       payload: await protectChatTurn({
@@ -5584,12 +6035,15 @@ describe("local server foundation", () => {
         idempotencyKey: "rich-events",
       }),
     });
-    let richMessages = chatMessageListSchema.parse([]);
-    await vi.waitFor(async () => {
+    __cantripReferenceTrace(5587);
+let richMessages = chatMessageListSchema.parse([]);
+    __cantripReferenceTrace(5588);
+await vi.waitFor(async () => {
       richMessages = await readChatMessages(richChat.id);
       expect(richMessages).toHaveLength(7);
     });
-    expect(richMessages.map((message) => message.content[0])).toMatchObject([
+    __cantripReferenceTrace(5592);
+expect(richMessages.map((message) => message.content[0])).toMatchObject([
       { type: "text", text: "Render rich events" },
       { type: "text", phase: "commentary" },
       { type: "activity", activity: { type: "reasoning" } },
@@ -5598,7 +6052,8 @@ describe("local server foundation", () => {
       { type: "text", phase: "final_answer" },
       { type: "activity", activity: { type: "turnSummary" } },
     ]);
-    expect(
+    __cantripReferenceTrace(5601);
+expect(
       richMessages.slice(1).map((message) => {
         const content = message.content[0];
         return content?.type === "text" || content?.type === "activity"
@@ -5643,7 +6098,8 @@ describe("local server foundation", () => {
         sequence: 4,
       },
     ]);
-    expect(
+    __cantripReferenceTrace(5646);
+expect(
       richMessages.filter((message) =>
         message.content.some(
           (content) =>
@@ -5651,7 +6107,8 @@ describe("local server foundation", () => {
         ),
       ),
     ).toHaveLength(1);
-    await vi.waitFor(async () => {
+    __cantripReferenceTrace(5654);
+await vi.waitFor(async () => {
       const streamedMessages = richLiveEvents.filter(
         (event) => event.type === "event" && event.resource === "chat-message",
       );
@@ -5706,8 +6163,10 @@ describe("local server foundation", () => {
         ),
       ).toBe(true);
     });
-    richLiveSocket.terminate();
-    const projectUsage = projectTokenUsageSchema.parse(
+    __cantripReferenceTrace(5709);
+richLiveSocket.terminate();
+    __cantripReferenceTrace(5710);
+const projectUsage = projectTokenUsageSchema.parse(
       (
         await firstApp.inject({
           method: "GET",
@@ -5715,7 +6174,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(projectUsage.total).toEqual({
+    __cantripReferenceTrace(5718);
+expect(projectUsage.total).toEqual({
       inputTokens: 800,
       cachedInputTokens: 200,
       cacheWriteInputTokens: 0,
@@ -5723,22 +6183,26 @@ describe("local server foundation", () => {
       reasoningOutputTokens: 100,
       totalTokens: 1_100,
     });
-    expect(projectUsage.daily.at(-1)).toMatchObject({ totalTokens: 1_100 });
-    expect(projectUsage.providers).toContainEqual(
+    __cantripReferenceTrace(5726);
+expect(projectUsage.daily.at(-1)).toMatchObject({ totalTokens: 1_100 });
+    __cantripReferenceTrace(5727);
+expect(projectUsage.providers).toContainEqual(
       expect.objectContaining({
         id: provider.id,
         name: "Edited test provider",
         totalTokens: 1_100,
       }),
     );
-    expect(projectUsage.models).toContainEqual(
+    __cantripReferenceTrace(5734);
+expect(projectUsage.models).toContainEqual(
       expect.objectContaining({
         id: selectedModel.id,
         name: "Edited test model",
         totalTokens: 1_100,
       }),
     );
-    await firstDatabase.repository.recordTokenUsage(LOCAL_USER_ID, {
+    __cantripReferenceTrace(5741);
+await firstDatabase.repository.recordTokenUsage(LOCAL_USER_ID, {
       projectId: project.id,
       chatId: richChat.id,
       sourceKey: `chat:${richChat.id}:rich-turn-1`,
@@ -5754,7 +6218,8 @@ describe("local server foundation", () => {
         totalTokens: 1_300,
       },
     });
-    const refreshedProjectUsage = projectTokenUsageSchema.parse(
+    __cantripReferenceTrace(5757);
+const refreshedProjectUsage = projectTokenUsageSchema.parse(
       (
         await firstApp.inject({
           method: "GET",
@@ -5762,7 +6227,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(refreshedProjectUsage.total).toEqual({
+    __cantripReferenceTrace(5765);
+expect(refreshedProjectUsage.total).toEqual({
       inputTokens: 1_650,
       cachedInputTokens: 300,
       cacheWriteInputTokens: 0,
@@ -5770,17 +6236,20 @@ describe("local server foundation", () => {
       reasoningOutputTokens: 250,
       totalTokens: 2_250,
     });
-    const usageSettings = settingsBundleWireSchema.parse(
+    __cantripReferenceTrace(5773);
+const usageSettings = settingsBundleWireSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
     );
-    expect(
+    __cantripReferenceTrace(5776);
+expect(
       usageSettings.providers.find(({ id }) => id === provider.id)?.tokenUsage,
     ).toEqual({
       inputTokens: refreshedProjectUsage.total.inputTokens,
       outputTokens: refreshedProjectUsage.total.outputTokens,
       totalTokens: refreshedProjectUsage.total.totalTokens,
     });
-    expect(
+    __cantripReferenceTrace(5783);
+expect(
       usageSettings.models.find(({ id }) => id === selectedModel.id)
         ?.tokenUsage,
     ).toEqual({
@@ -5788,13 +6257,15 @@ describe("local server foundation", () => {
       outputTokens: refreshedProjectUsage.total.outputTokens,
       totalTokens: refreshedProjectUsage.total.totalTokens,
     });
-    expect(
+    __cantripReferenceTrace(5791);
+expect(
       await firstApp.inject({
         method: "GET",
         url: "/api/projects/missing-project/token-usage",
       }),
     ).toMatchObject({ statusCode: 404 });
-    const reorderedTerminal = terminalWireSummarySchema.parse(
+    __cantripReferenceTrace(5797);
+const reorderedTerminal = terminalWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -5803,8 +6274,10 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    const scriptOperationId = crypto.randomUUID();
-    expect(
+    __cantripReferenceTrace(5806);
+const scriptOperationId = crypto.randomUUID();
+    __cantripReferenceTrace(5807);
+expect(
       protectedScriptCommandListSchema.parse(
         (
           await firstApp.inject({
@@ -5819,8 +6292,10 @@ describe("local server foundation", () => {
       worktreeId: reorderedTerminal.id,
       protectedCommands: protectedScriptCommands,
     });
-    const explorerFields = protectedExplorerFields();
-    const explorer = explorerWireSummarySchema.parse(
+    __cantripReferenceTrace(5822);
+const explorerFields = protectedExplorerFields();
+    __cantripReferenceTrace(5823);
+const explorer = explorerWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -5829,11 +6304,13 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(explorer).toMatchObject({
+    __cantripReferenceTrace(5832);
+expect(explorer).toMatchObject({
       stateProtection: explorerFields.stateProtection,
       fileMode: "preview",
     });
-    expect(
+    __cantripReferenceTrace(5836);
+expect(
       explorerWireListSchema.parse(
         (
           await firstApp.inject({
@@ -5843,7 +6320,8 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toHaveLength(1);
-    expect(
+    __cantripReferenceTrace(5846);
+expect(
       explorerDirectorySchema.parse(
         await explorerOperation(firstApp, bootstrap.server.id, explorer.id, {
           type: "explorer.directory.list",
@@ -5851,7 +6329,8 @@ describe("local server foundation", () => {
         }),
       ).entries[0],
     ).toMatchObject({ name: "README.md", markdown: true });
-    expect(
+    __cantripReferenceTrace(5854);
+expect(
       explorerDirectoryCommitsSchema.parse(
         await explorerOperation(firstApp, bootstrap.server.id, explorer.id, {
           type: "explorer.directory.commits",
@@ -5863,7 +6342,8 @@ describe("local server foundation", () => {
       tracked: true,
       lastCommit: { subject: "Document Explorer" },
     });
-    expect(
+    __cantripReferenceTrace(5866);
+expect(
       explorerFileSchema.parse(
         await explorerOperation(firstApp, bootstrap.server.id, explorer.id, {
           type: "explorer.file.read",
@@ -5872,7 +6352,8 @@ describe("local server foundation", () => {
       ).content,
     ).toContain("Cantrip explorer");
     // Media now travels as encrypted chunks, not plaintext HTTP Range bodies.
-    const readMedia = async (offset: number, limit: number) =>
+    __cantripReferenceTrace(5875);
+const readMedia = async (offset: number, limit: number) =>
       explorerMediaFileChunkSchema.parse(
         await explorerOperation(firstApp, bootstrap.server.id, explorer.id, {
           type: "explorer.media.read",
@@ -5881,39 +6362,51 @@ describe("local server foundation", () => {
           limit,
         }),
       );
-    const firstChunk = await readMedia(0, 256 * 1_024);
-    const lastChunk = await readMedia(256 * 1_024, 256 * 1_024);
-    expect(firstChunk).toMatchObject({
+    __cantripReferenceTrace(5884);
+const firstChunk = await readMedia(0, 256 * 1_024);
+    __cantripReferenceTrace(5885);
+const lastChunk = await readMedia(256 * 1_024, 256 * 1_024);
+    __cantripReferenceTrace(5886);
+expect(firstChunk).toMatchObject({
       mimeType: "image/png",
       size: explorerMediaBytes.byteLength,
       offset: 0,
       eof: false,
     });
-    expect(lastChunk).toMatchObject({
+    __cantripReferenceTrace(5892);
+expect(lastChunk).toMatchObject({
       size: explorerMediaBytes.byteLength,
       offset: 256 * 1_024,
       eof: true,
     });
-    expect(
+    __cantripReferenceTrace(5897);
+expect(
       Buffer.concat([
         Buffer.from(firstChunk.data, "base64"),
         Buffer.from(lastChunk.data, "base64"),
       ]).equals(explorerMediaBytes),
     ).toBe(true);
-    const rangedMedia = await readMedia(2, 6);
-    expect(rangedMedia).toMatchObject({ offset: 2, eof: false });
-    expect(Buffer.from(rangedMedia.data, "base64")).toEqual(
+    __cantripReferenceTrace(5903);
+const rangedMedia = await readMedia(2, 6);
+    __cantripReferenceTrace(5904);
+expect(rangedMedia).toMatchObject({ offset: 2, eof: false });
+    __cantripReferenceTrace(5905);
+expect(Buffer.from(rangedMedia.data, "base64")).toEqual(
       explorerMediaBytes.subarray(2, 8),
     );
-    await expect(readMedia(999999, 6)).rejects.toThrow(
+    __cantripReferenceTrace(5908);
+await expect(readMedia(999999, 6)).rejects.toThrow(
       "The media read offset is outside the file.",
     );
-    expect(await readMedia(explorerMediaBytes.byteLength, 6)).toMatchObject({
+    __cantripReferenceTrace(5911);
+expect(await readMedia(explorerMediaBytes.byteLength, 6)).toMatchObject({
       data: "",
       eof: true,
     });
-    const explorerWriteVersion = "a".repeat(64);
-    expect(
+    __cantripReferenceTrace(5915);
+const explorerWriteVersion = "a".repeat(64);
+    __cantripReferenceTrace(5916);
+expect(
       explorerFileSchema.parse(
         await explorerOperation(firstApp, bootstrap.server.id, explorer.id, {
           type: "explorer.file.write",
@@ -5926,12 +6419,14 @@ describe("local server foundation", () => {
       content: "# Edited in Monaco\n",
       version: "b".repeat(64),
     });
-    expect(explorerWrites.at(-1)).toEqual({
+    __cantripReferenceTrace(5929);
+expect(explorerWrites.at(-1)).toEqual({
       path: "README.md",
       content: "# Edited in Monaco\n",
       version: explorerWriteVersion,
     });
-    const explorerProtection = {
+    __cantripReferenceTrace(5934);
+const explorerProtection = {
       ownerId: LOCAL_USER_ID,
       componentKey: surfaceComponentKey,
       keyRevision: 1,
@@ -5943,16 +6438,19 @@ describe("local server foundation", () => {
         recordKind: "explorer-state" as const,
       },
     };
-    const explorerStateContent = {
+    __cantripReferenceTrace(5946);
+const explorerStateContent = {
       version: 1 as const,
       classification: { recordKind: "explorer-state" as const },
       selectedPath: "README.md",
     };
-    const explorerStateProtection = await encryptSurfacePrivateState({
+    __cantripReferenceTrace(5951);
+const explorerStateProtection = await encryptSurfacePrivateState({
       ...explorerProtection,
       content: explorerStateContent,
     });
-    const explorerEditorState = explorerWireSummarySchema.parse(
+    __cantripReferenceTrace(5955);
+const explorerEditorState = explorerWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -5964,24 +6462,28 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(explorerEditorState).toMatchObject({
+    __cantripReferenceTrace(5967);
+expect(explorerEditorState).toMatchObject({
       stateProtection: explorerStateProtection,
       fileMode: "edit",
     });
-    expect(
+    __cantripReferenceTrace(5971);
+expect(
       await decryptSurfacePrivateState({
         ...explorerProtection,
         opaque: explorerEditorState.stateProtection,
       }),
     ).toEqual(explorerStateContent);
-    expect(
+    __cantripReferenceTrace(5977);
+expect(
       await firstApp.inject({
         method: "PATCH",
         url: `/api/explorers/${explorer.id}/view-state`,
         payload: { selectedPath: "", fileMode: "source" },
       }),
     ).toMatchObject({ statusCode: 400 });
-    expect(
+    __cantripReferenceTrace(5984);
+expect(
       explorerWireListSchema.parse(
         (
           await firstApp.inject({
@@ -5994,11 +6496,13 @@ describe("local server foundation", () => {
       stateProtection: explorerStateProtection,
       fileMode: "edit",
     });
-    const renamedExplorer = protectedDisplayLabelFields(
+    __cantripReferenceTrace(5997);
+const renamedExplorer = protectedDisplayLabelFields(
       "explorer",
       explorer.id,
     );
-    expect(
+    __cantripReferenceTrace(6001);
+expect(
       explorerWireSummarySchema.parse(
         (
           await firstApp.inject({
@@ -6009,8 +6513,10 @@ describe("local server foundation", () => {
         ).json(),
       ).titleProtection,
     ).toEqual(renamedExplorer.titleProtection);
-    const browserFields = protectedDisplayLabelFields("browser");
-    const browserProtection = {
+    __cantripReferenceTrace(6012);
+const browserFields = protectedDisplayLabelFields("browser");
+    __cantripReferenceTrace(6013);
+const browserProtection = {
       ownerId: LOCAL_USER_ID,
       componentKey: surfaceComponentKey,
       keyRevision: 1,
@@ -6022,7 +6528,8 @@ describe("local server foundation", () => {
         recordKind: "browser-state" as const,
       },
     };
-    const browserState = (revision: number, url: string) =>
+    __cantripReferenceTrace(6025);
+const browserState = (revision: number, url: string) =>
       encryptSurfacePrivateState({
         ...browserProtection,
         content: {
@@ -6032,7 +6539,8 @@ describe("local server foundation", () => {
           url,
         },
       });
-    const browser = browserWireSummarySchema.parse(
+    __cantripReferenceTrace(6035);
+const browser = browserWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -6044,7 +6552,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(
+    __cantripReferenceTrace(6047);
+expect(
       remoteSurfaceWireListSchema.parse(
         (
           await firstApp.inject({
@@ -6060,9 +6569,12 @@ describe("local server foundation", () => {
         workerId: "test-worker",
       }),
     );
-    const renamedBrowser = protectedDisplayLabelFields("browser", browser.id);
-    const browserDocsState = await browserState(2, "https://example.com/docs");
-    expect(
+    __cantripReferenceTrace(6063);
+const renamedBrowser = protectedDisplayLabelFields("browser", browser.id);
+    __cantripReferenceTrace(6064);
+const browserDocsState = await browserState(2, "https://example.com/docs");
+    __cantripReferenceTrace(6065);
+expect(
       browserWireSummarySchema.parse(
         (
           await firstApp.inject({
@@ -6081,7 +6593,8 @@ describe("local server foundation", () => {
       stateProtection: browserDocsState,
       stateRevision: 2,
     });
-    expect(
+    __cantripReferenceTrace(6084);
+expect(
       await firstApp.inject({
         method: "PATCH",
         url: `/api/browsers/${browser.id}`,
@@ -6091,7 +6604,8 @@ describe("local server foundation", () => {
         },
       }),
     ).toMatchObject({ statusCode: 409 });
-    const browserSurface = remoteSurfaceWireListSchema
+    __cantripReferenceTrace(6094);
+const browserSurface = remoteSurfaceWireListSchema
       .parse(
         (
           await firstApp.inject({
@@ -6101,20 +6615,25 @@ describe("local server foundation", () => {
         ).json(),
       )
       .find(({ id }) => id === browser.id)!;
-    expect(browserSurface.configuration).toEqual({
+    __cantripReferenceTrace(6104);
+expect(browserSurface.configuration).toEqual({
       kind: "browser",
       profileId: null,
     });
-    expect(browserSurface.stateRevision).toBe(2);
-    if (!browserSurface.stateProtection)
+    __cantripReferenceTrace(6108);
+expect(browserSurface.stateRevision).toBe(2);
+    __cantripReferenceTrace(6109);
+if (!browserSurface.stateProtection)
       throw new Error("Browser protected state missing.");
-    expect(
+    __cantripReferenceTrace(6111);
+expect(
       await decryptSurfacePrivateState({
         ...browserProtection,
         opaque: browserSurface.stateProtection,
       }),
     ).toMatchObject({ revision: 2, url: "https://example.com/docs" });
-    const projectView = projectViewWireSummarySchema.parse(
+    __cantripReferenceTrace(6117);
+const projectView = projectViewWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -6126,11 +6645,13 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    const renamedProjectView = protectedDisplayLabelFields(
+    __cantripReferenceTrace(6129);
+const renamedProjectView = protectedDisplayLabelFields(
       "project-view",
       projectView.id,
     );
-    expect(
+    __cantripReferenceTrace(6133);
+expect(
       projectViewWireSummarySchema.parse(
         (
           await firstApp.inject({
@@ -6144,8 +6665,10 @@ describe("local server foundation", () => {
       kind: "history",
       titleProtection: renamedProjectView.titleProtection,
     });
-    const desktopFields = protectedDisplayLabelFields("project-view");
-    const desktopProtection = {
+    __cantripReferenceTrace(6147);
+const desktopFields = protectedDisplayLabelFields("project-view");
+    __cantripReferenceTrace(6148);
+const desktopProtection = {
       ownerId: LOCAL_USER_ID,
       componentKey: surfaceComponentKey,
       keyRevision: 1,
@@ -6157,7 +6680,8 @@ describe("local server foundation", () => {
         recordKind: "remote-desktop-state" as const,
       },
     };
-    const initialDesktopState = await encryptSurfacePrivateState({
+    __cantripReferenceTrace(6160);
+const initialDesktopState = await encryptSurfacePrivateState({
       ...desktopProtection,
       content: {
         version: 1,
@@ -6166,7 +6690,8 @@ describe("local server foundation", () => {
         target: { kind: "monitor", id: null, name: null },
       },
     });
-    const remoteDesktop = remoteDesktopWireSummarySchema.parse(
+    __cantripReferenceTrace(6169);
+const remoteDesktop = remoteDesktopWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -6175,14 +6700,17 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(remoteDesktop).toMatchObject({
+    __cantripReferenceTrace(6178);
+expect(remoteDesktop).toMatchObject({
       projectId: project.id,
       workerId: "test-worker",
       status: "idle",
       stateProtection: initialDesktopState,
     });
-    expect(JSON.stringify(remoteDesktop)).not.toContain("password");
-    expect(
+    __cantripReferenceTrace(6184);
+expect(JSON.stringify(remoteDesktop)).not.toContain("password");
+    __cantripReferenceTrace(6185);
+expect(
       remoteDesktopWireListSchema.parse(
         (
           await firstApp.inject({
@@ -6192,13 +6720,15 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toContainEqual(expect.objectContaining({ id: remoteDesktop.id }));
-    const desktopTarget = {
+    __cantripReferenceTrace(6195);
+const desktopTarget = {
       kind: "window" as const,
       id: "window-42",
       application: "Code",
       title: "Cantrip",
     };
-    const targetedDesktopState = await encryptSurfacePrivateState({
+    __cantripReferenceTrace(6201);
+const targetedDesktopState = await encryptSurfacePrivateState({
       ...desktopProtection,
       content: {
         version: 1,
@@ -6207,7 +6737,8 @@ describe("local server foundation", () => {
         target: desktopTarget,
       },
     });
-    const targetedDesktop = remoteDesktopWireSummarySchema.parse(
+    __cantripReferenceTrace(6210);
+const targetedDesktop = remoteDesktopWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -6219,14 +6750,17 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(targetedDesktop.stateRevision).toBe(2);
-    expect(
+    __cantripReferenceTrace(6222);
+expect(targetedDesktop.stateRevision).toBe(2);
+    __cantripReferenceTrace(6223);
+expect(
       await decryptSurfacePrivateState({
         ...desktopProtection,
         opaque: targetedDesktop.stateProtection,
       }),
     ).toMatchObject({ revision: 2, target: desktopTarget });
-    expect(
+    __cantripReferenceTrace(6229);
+expect(
       projectViewWireListSchema
         .parse(
           (
@@ -6241,7 +6775,8 @@ describe("local server foundation", () => {
       kind: "remote-desktop",
       titleProtection: desktopFields.titleProtection,
     });
-    const initialTabLayout = projectTabLayoutWireSummarySchema.parse(
+    __cantripReferenceTrace(6244);
+const initialTabLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "GET",
@@ -6249,12 +6784,14 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(
+    __cantripReferenceTrace(6252);
+expect(
       initialTabLayout.panes
         .filter(({ region }) => region === "center")
         .every(({ members }) => members.length === 1),
     ).toBe(true);
-    expect(
+    __cantripReferenceTrace(6257);
+expect(
       initialTabLayout.panes
         .filter(({ region }) => region === "right")
         .map(({ members }) => members.map(({ tabKey }) => tabKey)),
@@ -6265,20 +6802,24 @@ describe("local server foundation", () => {
         `view:${remoteDesktop.id}`,
       ],
     ]);
-    expect(
+    __cantripReferenceTrace(6268);
+expect(
       initialTabLayout.panes
         .filter(({ region }) => region === "bottom")
         .map(({ members }) => members.map(({ tabKey }) => tabKey)),
     ).toEqual([[`terminal:${reorderedTerminal.id}`]]);
-    expect(
+    __cantripReferenceTrace(6273);
+expect(
       initialTabLayout.panes.flatMap(({ members }) =>
         members.map(({ tabKey }) => tabKey),
       ),
     ).toContain(`view:${remoteDesktop.id}`);
-    const explorerPane = initialTabLayout.panes.find(({ members }) =>
+    __cantripReferenceTrace(6278);
+const explorerPane = initialTabLayout.panes.find(({ members }) =>
       members.some(({ tabKey }) => tabKey === `explorer:${explorer.id}`),
     )!;
-    const groupedIssuesView = projectViewWireSummarySchema.parse(
+    __cantripReferenceTrace(6281);
+const groupedIssuesView = projectViewWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -6291,7 +6832,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    const groupedTabLayout = projectTabLayoutWireSummarySchema.parse(
+    __cantripReferenceTrace(6294);
+const groupedTabLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "GET",
@@ -6299,18 +6841,23 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(groupedTabLayout.panes).toHaveLength(initialTabLayout.panes.length);
-    expect(
+    __cantripReferenceTrace(6302);
+expect(groupedTabLayout.panes).toHaveLength(initialTabLayout.panes.length);
+    __cantripReferenceTrace(6303);
+expect(
       groupedTabLayout.panes
         .find(({ id }) => id === explorerPane.id)
         ?.members.map(({ tabKey }) => tabKey),
     ).toEqual([`explorer:${explorer.id}`, `view:${groupedIssuesView.id}`]);
-    expect(
+    __cantripReferenceTrace(6308);
+expect(
       groupedTabLayout.panes.find(({ id }) => id === explorerPane.id)
         ?.titleProtection,
     ).toBeNull();
-    const paneLabel = protectedDisplayLabelFields("tab-group", explorerPane.id);
-    const renamedGroupLayout = projectTabLayoutWireSummarySchema.parse(
+    __cantripReferenceTrace(6312);
+const paneLabel = protectedDisplayLabelFields("tab-group", explorerPane.id);
+    __cantripReferenceTrace(6313);
+const renamedGroupLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -6322,22 +6869,26 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(
+    __cantripReferenceTrace(6325);
+expect(
       renamedGroupLayout.panes.find(({ id }) => id === explorerPane.id)
         ?.titleProtection,
     ).toEqual(paneLabel.titleProtection);
-    const trackerLabel = protectedDisplayLabelFields(
+    __cantripReferenceTrace(6329);
+const trackerLabel = protectedDisplayLabelFields(
       "project-view",
       groupedIssuesView.id,
     );
-    expect(
+    __cantripReferenceTrace(6333);
+expect(
       await firstApp.inject({
         method: "PATCH",
         url: `/api/project-views/${groupedIssuesView.id}`,
         payload: { titleProtection: trackerLabel.titleProtection },
       }),
     ).toMatchObject({ statusCode: 200 });
-    const independentlyNamedLayout = projectTabLayoutWireSummarySchema.parse(
+    __cantripReferenceTrace(6340);
+const independentlyNamedLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "GET",
@@ -6345,7 +6896,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(
+    __cantripReferenceTrace(6348);
+expect(
       independentlyNamedLayout.panes.find(({ id }) => id === explorerPane.id),
     ).toMatchObject({
       titleProtection: paneLabel.titleProtection,
@@ -6354,7 +6906,8 @@ describe("local server foundation", () => {
         { titleProtection: trackerLabel.titleProtection },
       ],
     });
-    const reorderedTabLayout = projectTabLayoutWireSummarySchema.parse(
+    __cantripReferenceTrace(6357);
+const reorderedTabLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -6369,12 +6922,14 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(
+    __cantripReferenceTrace(6372);
+expect(
       reorderedTabLayout.panes
         .find(({ id }) => id === explorerPane.id)
         ?.members.map(({ tabKey }) => tabKey),
     ).toEqual([`view:${groupedIssuesView.id}`, `explorer:${explorer.id}`]);
-    expect(
+    __cantripReferenceTrace(6377);
+expect(
       await firstApp.inject({
         method: "PATCH",
         url: `/api/projects/${project.id}/panes/member`,
@@ -6387,7 +6942,8 @@ describe("local server foundation", () => {
         },
       }),
     ).toMatchObject({ statusCode: 409 });
-    const splitTabLayout = projectTabLayoutWireSummarySchema.parse(
+    __cantripReferenceTrace(6390);
+const splitTabLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -6402,18 +6958,22 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(splitTabLayout.panes[0]?.members).toMatchObject([
+    __cantripReferenceTrace(6405);
+expect(splitTabLayout.panes[0]?.members).toMatchObject([
       {
         tabKey: `view:${groupedIssuesView.id}`,
         titleProtection: trackerLabel.titleProtection,
       },
     ]);
-    expect(splitTabLayout.panes[0]?.titleProtection).toBeNull();
-    expect(
+    __cantripReferenceTrace(6411);
+expect(splitTabLayout.panes[0]?.titleProtection).toBeNull();
+    __cantripReferenceTrace(6412);
+expect(
       splitTabLayout.panes.find(({ id }) => id === explorerPane.id)
         ?.titleProtection,
     ).toBeNull();
-    const reorderedGroupsLayout = projectTabLayoutWireSummarySchema.parse(
+    __cantripReferenceTrace(6416);
+const reorderedGroupsLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -6429,7 +6989,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(
+    __cantripReferenceTrace(6432);
+expect(
       reorderedGroupsLayout.panes
         .filter(({ region }) => region === "center")
         .map(({ id }) => id),
@@ -6439,7 +7000,8 @@ describe("local server foundation", () => {
         .map(({ id }) => id)
         .reverse(),
     );
-    const mergedTabLayout = projectTabLayoutWireSummarySchema.parse(
+    __cantripReferenceTrace(6442);
+const mergedTabLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -6453,7 +7015,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(
+    __cantripReferenceTrace(6456);
+expect(
       mergedTabLayout.panes.find(({ id }) => id === explorerPane.id),
     ).toMatchObject({
       anchorTabKey: `explorer:${explorer.id}`,
@@ -6463,7 +7026,8 @@ describe("local server foundation", () => {
         { tabKey: `view:${groupedIssuesView.id}` },
       ],
     });
-    const concurrentOrders = await Promise.all([
+    __cantripReferenceTrace(6466);
+const concurrentOrders = await Promise.all([
       firstApp.inject({
         method: "PATCH",
         url: `/api/projects/${project.id}/panes/order`,
@@ -6488,14 +7052,18 @@ describe("local server foundation", () => {
         },
       }),
     ]);
-    expect(concurrentOrders.map(({ statusCode }) => statusCode).sort()).toEqual(
+    __cantripReferenceTrace(6491);
+expect(concurrentOrders.map(({ statusCode }) => statusCode).sort()).toEqual(
       [200, 409],
     );
-    let resolveDesktopReady: ((message: unknown) => void) | null = null;
-    const desktopReadyPromise = new Promise<unknown>((resolve) => {
+    __cantripReferenceTrace(6494);
+let resolveDesktopReady: ((message: unknown) => void) | null = null;
+    __cantripReferenceTrace(6495);
+const desktopReadyPromise = new Promise<unknown>((resolve) => {
       resolveDesktopReady = resolve;
     });
-    const desktopSocket = await firstApp.injectWS(
+    __cantripReferenceTrace(6498);
+const desktopSocket = await firstApp.injectWS(
       `/api/remote-surfaces/${remoteDesktop.id}/connect`,
       { headers: { origin: "http://127.0.0.1:5173" } },
       {
@@ -6506,15 +7074,19 @@ describe("local server foundation", () => {
         },
       },
     );
-    expect(
+    __cantripReferenceTrace(6509);
+expect(
       remoteSurfaceConnectionMessageSchema.parse(await desktopReadyPromise),
     ).toMatchObject({ type: "ready", surfaceId: remoteDesktop.id });
-    expect(surfaceAttachCommands.at(-1)?.desktopStream).toEqual({
+    __cantripReferenceTrace(6512);
+expect(surfaceAttachCommands.at(-1)?.desktopStream).toEqual({
       targetFps: 60,
       quality: "balanced",
     });
-    const desktopAttach = surfaceAttachCommands.at(-1)!;
-    expect(desktopAttach).toMatchObject({
+    __cantripReferenceTrace(6516);
+const desktopAttach = surfaceAttachCommands.at(-1)!;
+    __cantripReferenceTrace(6517);
+expect(desktopAttach).toMatchObject({
       configuration: { kind: "desktop" },
       stateResource: "remote-desktop-row",
       stateRevision: 2,
@@ -6523,20 +7095,24 @@ describe("local server foundation", () => {
       serverId: bootstrap.server.id,
       stateProtection: targetedDesktopState,
     });
-    expect(
+    __cantripReferenceTrace(6526);
+expect(
       await decryptSurfacePrivateState({
         ...desktopProtection,
         opaque: desktopAttach.stateProtection!,
       }),
     ).toMatchObject({ revision: 2, target: desktopTarget });
-    desktopSocket.terminate();
-    expect(
+    __cantripReferenceTrace(6532);
+desktopSocket.terminate();
+    __cantripReferenceTrace(6533);
+expect(
       await firstApp.inject({
         method: "DELETE",
         url: `/api/project-views/${remoteDesktop.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
-    expect(
+    __cantripReferenceTrace(6539);
+expect(
       projectTabLayoutWireSummarySchema
         .parse(
           (
@@ -6550,7 +7126,8 @@ describe("local server foundation", () => {
           members.some(({ tabKey }) => tabKey === `view:${remoteDesktop.id}`),
         ),
     ).toBe(false);
-    const consoleFirstChat = chatWireSummarySchema.parse(
+    __cantripReferenceTrace(6553);
+const consoleFirstChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -6559,12 +7136,14 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    await firstApp.inject({
+    __cantripReferenceTrace(6562);
+await firstApp.inject({
       method: "PATCH",
       url: `/api/chats/${consoleFirstChat.id}/model`,
       payload: { modelId: selectedModel.id },
     });
-    const consoleFirstTerminal = terminalWireSummarySchema.parse(
+    __cantripReferenceTrace(6567);
+const consoleFirstTerminal = terminalWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -6573,8 +7152,10 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(consoleFirstTerminal.linkedChatId).toBe(consoleFirstChat.id);
-    expect(
+    __cantripReferenceTrace(6576);
+expect(consoleFirstTerminal.linkedChatId).toBe(consoleFirstChat.id);
+    __cantripReferenceTrace(6577);
+expect(
       await firstDatabase.repository.getChatExecutionContext(
         LOCAL_USER_ID,
         consoleFirstChat.id,
@@ -6583,16 +7164,20 @@ describe("local server foundation", () => {
       modelId: selectedModel.id,
       threadId: "codex-console-thread-1",
     });
-    await firstApp.inject({
+    __cantripReferenceTrace(6586);
+await firstApp.inject({
       method: "DELETE",
       url: `/api/terminals/${consoleFirstTerminal.id}`,
     });
-    await firstApp.inject({
+    __cantripReferenceTrace(6590);
+await firstApp.inject({
       method: "DELETE",
       url: `/api/chats/${consoleFirstChat.id}`,
     });
-    const linkedConsoleFields = protectedTerminalFields();
-    const existingLinkedConsole = terminalWireListSchema
+    __cantripReferenceTrace(6594);
+const linkedConsoleFields = protectedTerminalFields();
+    __cantripReferenceTrace(6595);
+const existingLinkedConsole = terminalWireListSchema
       .parse(
         (
           await firstApp.inject({
@@ -6602,8 +7187,10 @@ describe("local server foundation", () => {
         ).json(),
       )
       .find(({ linkedChatId }) => linkedChatId === chat.id);
-    expect(existingLinkedConsole).toBeDefined();
-    const linkedConsole = terminalWireSummarySchema.parse(
+    __cantripReferenceTrace(6605);
+expect(existingLinkedConsole).toBeDefined();
+    __cantripReferenceTrace(6606);
+const linkedConsole = terminalWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -6612,14 +7199,16 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(linkedConsole).toMatchObject({
+    __cantripReferenceTrace(6615);
+expect(linkedConsole).toMatchObject({
       linkedChatId: chat.id,
       projectId: project.id,
       id: existingLinkedConsole!.id,
       titleProtection: existingLinkedConsole!.titleProtection,
       stateProtection: existingLinkedConsole!.stateProtection,
     });
-    expect(
+    __cantripReferenceTrace(6622);
+expect(
       terminalWireSummarySchema.parse(
         (
           await firstApp.inject({
@@ -6630,35 +7219,42 @@ describe("local server foundation", () => {
         ).json(),
       ).id,
     ).toBe(linkedConsole.id);
-    expect(
+    __cantripReferenceTrace(6633);
+expect(
       await firstApp.inject({
         method: "DELETE",
         url: `/api/terminals/${linkedConsole.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
-    expect(
+    __cantripReferenceTrace(6639);
+expect(
       await firstApp.inject({
         method: "DELETE",
         url: `/api/chats/${duplicatedChat.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
-    expect(
+    __cantripReferenceTrace(6645);
+expect(
       await firstApp.inject({
         method: "PATCH",
         url: "/api/projects/order",
         payload: { ids: [project.id] },
       }),
     ).toMatchObject({ statusCode: 204 });
-    const changedModelResponse = await firstApp.inject({
+    __cantripReferenceTrace(6652);
+const changedModelResponse = await firstApp.inject({
       method: "PATCH",
       url: `/api/chats/${chat.id}/model`,
       payload: { modelId: selectedModel.id },
     });
-    expect(changedModelResponse.statusCode).toBe(200);
-    expect(
+    __cantripReferenceTrace(6657);
+expect(changedModelResponse.statusCode).toBe(200);
+    __cantripReferenceTrace(6658);
+expect(
       chatWireSummarySchema.parse(changedModelResponse.json()).modelId,
     ).toBe(selectedModel.id);
-    expect(
+    __cantripReferenceTrace(6661);
+expect(
       await firstApp.inject({
         method: "POST",
         url: `/api/chats/${chat.id}/turns`,
@@ -6674,10 +7270,13 @@ describe("local server foundation", () => {
         }),
       }),
     ).toMatchObject({ statusCode: 202 });
-    await vi.waitFor(() => expect(turnModelIds).toHaveLength(3));
-    expect(turnModelIds.at(-1)).toBe(selectedModel.id);
+    __cantripReferenceTrace(6677);
+await vi.waitFor(() => expect(turnModelIds).toHaveLength(3));
+    __cantripReferenceTrace(6678);
+expect(turnModelIds.at(-1)).toBe(selectedModel.id);
 
-    const queueChat = chatWireSummarySchema.parse(
+    __cantripReferenceTrace(6680);
+const queueChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -6686,18 +7285,21 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    await firstApp.inject({
+    __cantripReferenceTrace(6689);
+await firstApp.inject({
       method: "PATCH",
       url: `/api/chats/${queueChat.id}/model`,
       payload: { modelId: selectedModel.id },
     });
-    const queuedAttachment = await uploadTextAttachment(
+    __cantripReferenceTrace(6694);
+const queuedAttachment = await uploadTextAttachment(
       firstApp,
       queueChat.id,
       "queued.txt",
       "queued attachment",
     );
-    await firstApp.inject({
+    __cantripReferenceTrace(6700);
+await firstApp.inject({
       method: "POST",
       url: `/api/chats/${queueChat.id}/turns`,
       payload: await protectChatTurn({
@@ -6711,15 +7313,20 @@ describe("local server foundation", () => {
         idempotencyKey: "queue-running",
       }),
     });
-    await vi.waitFor(() => expect(releaseHeldTurn).not.toBeNull());
-    const heldReceipt = heldTurnCommand!.nativeCommandReceipt!;
-    expect(heldReceipt.status).toBe("accepted");
-    const queueContext =
+    __cantripReferenceTrace(6714);
+await vi.waitFor(() => expect(releaseHeldTurn).not.toBeNull());
+    __cantripReferenceTrace(6715);
+const heldReceipt = heldTurnCommand!.nativeCommandReceipt!;
+    __cantripReferenceTrace(6716);
+expect(heldReceipt.status).toBe("accepted");
+    __cantripReferenceTrace(6717);
+const queueContext =
       (await firstDatabase.repository.getChatExecutionContext(
         LOCAL_USER_ID,
         queueChat.id,
       ))!;
-    const heldDispatch = await nativeCommands.dispatch(LOCAL_USER_ID, {
+    __cantripReferenceTrace(6722);
+const heldDispatch = await nativeCommands.dispatch(LOCAL_USER_ID, {
       workerId: queueContext.workerId,
       operationId: heldReceipt.operationId,
       operationGeneration: heldReceipt.operationGeneration,
@@ -6736,14 +7343,17 @@ describe("local server foundation", () => {
         connectionId: "foundation-queue-view",
       },
     });
-    expect(heldDispatch.receipt.status).toBe("dispatched");
-    expect(
+    __cantripReferenceTrace(6739);
+expect(heldDispatch.receipt.status).toBe("dispatched");
+    __cantripReferenceTrace(6740);
+expect(
       await firstDatabase.repository.getChatExecutionContext(
         LOCAL_USER_ID,
         queueChat.id,
       ),
     ).toMatchObject({ status: "running", threadId: "codex-console-thread-1" });
-    expect(
+    __cantripReferenceTrace(6746);
+expect(
       (
         await firstApp.inject({
           method: "POST",
@@ -6751,7 +7361,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     ).toEqual({ interrupted: true });
-    expect(interruptCommands.at(-1)).toMatchObject({
+    __cantripReferenceTrace(6754);
+expect(interruptCommands.at(-1)).toMatchObject({
       type: "chat.native-control",
       chatId: queueChat.id,
       threadId: "codex-console-thread-1",
@@ -6759,7 +7370,8 @@ describe("local server foundation", () => {
       control: { kind: "interrupt" },
     });
 
-    beginQueuedNativeCommand = async (command) => {
+    __cantripReferenceTrace(6762);
+beginQueuedNativeCommand = async (command) => {
       if (command.chatId !== queueChat.id) return;
       const context = (await firstDatabase.repository.getChatExecutionContext(
         LOCAL_USER_ID,
@@ -6829,7 +7441,8 @@ describe("local server foundation", () => {
       };
     };
 
-    const firstQueuedTurn = await protectChatTurn({
+    __cantripReferenceTrace(6832);
+const firstQueuedTurn = await protectChatTurn({
       service: chatEncryptionService,
       messageId: randomUUID(),
       promptId: randomUUID(),
@@ -6840,7 +7453,8 @@ describe("local server foundation", () => {
       attachments: [queuedAttachment],
       idempotencyKey: "queued-first",
     });
-    const firstQueued = await openQueuedPrompt(
+    __cantripReferenceTrace(6843);
+const firstQueued = await openQueuedPrompt(
       (
         await firstApp.inject({
           method: "POST",
@@ -6849,8 +7463,10 @@ describe("local server foundation", () => {
         })
       ).json().prompt,
     );
-    expect(firstQueued.attachments).toEqual([queuedAttachment]);
-    const secondQueuedTurn = await protectChatTurn({
+    __cantripReferenceTrace(6852);
+expect(firstQueued.attachments).toEqual([queuedAttachment]);
+    __cantripReferenceTrace(6853);
+const secondQueuedTurn = await protectChatTurn({
       service: chatEncryptionService,
       messageId: randomUUID(),
       promptId: randomUUID(),
@@ -6860,7 +7476,8 @@ describe("local server foundation", () => {
       text: "Second follow-up",
       idempotencyKey: "queued-second",
     });
-    const secondQueued = await openQueuedPrompt(
+    __cantripReferenceTrace(6863);
+const secondQueued = await openQueuedPrompt(
       (
         await firstApp.inject({
           method: "POST",
@@ -6869,27 +7486,33 @@ describe("local server foundation", () => {
         })
       ).json().prompt,
     );
-    const queueSnapshot = (
+    __cantripReferenceTrace(6872);
+const queueSnapshot = (
       await firstApp.inject({
         method: "GET",
         url: `/api/chats/${queueChat.id}/queue`,
       })
     ).json();
-    expect(
+    __cantripReferenceTrace(6878);
+expect(
       encryptedQueuedPromptListSchema
         .parse(queueSnapshot.items)
         .map(({ id }) => id),
     ).toEqual([firstQueued.id, secondQueued.id]);
-    const unversionedReorder = await firstApp.inject({
+    __cantripReferenceTrace(6883);
+const unversionedReorder = await firstApp.inject({
       method: "PATCH",
       url: `/api/chats/${queueChat.id}/queue/order`,
       payload: { ids: [secondQueued.id, firstQueued.id] },
     });
-    expect(unversionedReorder.statusCode).toBe(409);
-    expect(unversionedReorder.json()).toEqual({
+    __cantripReferenceTrace(6888);
+expect(unversionedReorder.statusCode).toBe(409);
+    __cantripReferenceTrace(6889);
+expect(unversionedReorder.json()).toEqual({
       code: "queue-revision-required",
     });
-    expect(
+    __cantripReferenceTrace(6892);
+expect(
       await firstApp.inject({
         method: "PATCH",
         url: `/api/chats/${queueChat.id}/queue/order`,
@@ -6900,7 +7523,8 @@ describe("local server foundation", () => {
         },
       }),
     ).toMatchObject({ statusCode: 204 });
-    const editedQueuedTurn = await protectChatTurn({
+    __cantripReferenceTrace(6903);
+const editedQueuedTurn = await protectChatTurn({
       service: chatEncryptionService,
       messageId: secondQueuedTurn.message.id,
       promptId: secondQueued.id,
@@ -6910,20 +7534,24 @@ describe("local server foundation", () => {
       text: "Edited second follow-up",
       idempotencyKey: "queued-second",
     });
-    const reorderedQueue = (
+    __cantripReferenceTrace(6913);
+const reorderedQueue = (
       await firstApp.inject({
         method: "GET",
         url: `/api/chats/${queueChat.id}/queue`,
       })
     ).json();
-    const reorderedItems = encryptedQueuedPromptListSchema.parse(
+    __cantripReferenceTrace(6919);
+const reorderedItems = encryptedQueuedPromptListSchema.parse(
       reorderedQueue.items,
     );
-    expect(reorderedItems.map(({ id }) => id)).toEqual([
+    __cantripReferenceTrace(6922);
+expect(reorderedItems.map(({ id }) => id)).toEqual([
       secondQueued.id,
       firstQueued.id,
     ]);
-    const editedQueued = await openQueuedPrompt(
+    __cantripReferenceTrace(6926);
+const editedQueued = await openQueuedPrompt(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -6936,14 +7564,16 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(editedQueued).toMatchObject({
+    __cantripReferenceTrace(6939);
+expect(editedQueued).toMatchObject({
       id: secondQueued.id,
       position: 0,
       frozen: true,
       mode: "plan",
       text: "Edited second follow-up",
     });
-    const readQueueItem = async (id: string) => {
+    __cantripReferenceTrace(6946);
+const readQueueItem = async (id: string) => {
       const response = await firstApp.inject({
         method: "GET",
         url: `/api/chats/${queueChat.id}/queue`,
@@ -6955,7 +7585,8 @@ describe("local server foundation", () => {
       expect(item).toBeDefined();
       return item!;
     };
-    const planSteerResponse = await firstApp.inject({
+    __cantripReferenceTrace(6958);
+const planSteerResponse = await firstApp.inject({
       method: "POST",
       url: `/api/queued-prompts/${secondQueued.id}/steer`,
       payload: {
@@ -6963,12 +7594,15 @@ describe("local server foundation", () => {
         operationId: randomUUID(),
       },
     });
-    expect(planSteerResponse.statusCode).toBe(409);
-    expect(planSteerResponse.json()).toEqual({
+    __cantripReferenceTrace(6966);
+expect(planSteerResponse.statusCode).toBe(409);
+    __cantripReferenceTrace(6967);
+expect(planSteerResponse.json()).toEqual({
       error:
         "Plan and Goal mode prompts cannot steer an active turn. Leave this prompt queued for the next turn.",
     });
-    const frozenFirstResponse = await firstApp.inject({
+    __cantripReferenceTrace(6971);
+const frozenFirstResponse = await firstApp.inject({
       method: "PATCH",
       url: `/api/queued-prompts/${firstQueued.id}`,
       payload: {
@@ -6977,8 +7611,10 @@ describe("local server foundation", () => {
         operationId: randomUUID(),
       },
     });
-    expect(frozenFirstResponse.statusCode).toBe(200);
-    expect(
+    __cantripReferenceTrace(6980);
+expect(frozenFirstResponse.statusCode).toBe(200);
+    __cantripReferenceTrace(6981);
+expect(
       await firstApp.inject({
         method: "POST",
         url: `/api/queued-prompts/${firstQueued.id}/steer`,
@@ -6990,11 +7626,15 @@ describe("local server foundation", () => {
         },
       }),
     ).toMatchObject({ statusCode: 200 });
-    expect(steeredPrompts).toContain("First follow-up");
-    expect(steeredAttachmentIds).toContainEqual([queuedAttachment.id]);
+    __cantripReferenceTrace(6993);
+expect(steeredPrompts).toContain("First follow-up");
+    __cantripReferenceTrace(6994);
+expect(steeredAttachmentIds).toContainEqual([queuedAttachment.id]);
 
-    const originalPauseRequest = workerBridge.request.bind(workerBridge);
-    const pauseRequestSpy = vi
+    __cantripReferenceTrace(6996);
+const originalPauseRequest = workerBridge.request.bind(workerBridge);
+    __cantripReferenceTrace(6997);
+const pauseRequestSpy = vi
       .spyOn(workerBridge, "request")
       .mockImplementation(async (workerId, command, options) => {
         if (
@@ -7056,7 +7696,8 @@ describe("local server foundation", () => {
           active: { threadId: queueContext.threadId!, turnId: "turn-held" },
         };
       });
-    const queuePauseResponse = await (async () => {
+    __cantripReferenceTrace(7059);
+const queuePauseResponse = await (async () => {
       try {
         return await firstApp.inject({
           method: "PATCH",
@@ -7067,19 +7708,26 @@ describe("local server foundation", () => {
         pauseRequestSpy.mockRestore();
       }
     })();
-    expect(queuePauseResponse.statusCode, queuePauseResponse.body).toBe(200);
-    expect(chatPauseStateSchema.parse(queuePauseResponse.json())).toEqual({
+    __cantripReferenceTrace(7070);
+expect(queuePauseResponse.statusCode, queuePauseResponse.body).toBe(200);
+    __cantripReferenceTrace(7071);
+expect(chatPauseStateSchema.parse(queuePauseResponse.json())).toEqual({
       paused: true,
     });
-    expect(pauseCommands.at(-1)).toEqual({
+    __cantripReferenceTrace(7074);
+expect(pauseCommands.at(-1)).toEqual({
       chatId: queueChat.id,
       paused: true,
     });
 
-    const turnsBeforeRelease = turnRequests;
-    releaseHeldTurn?.();
-    releaseHeldTurn = null;
-    await nativeCommands.settle(LOCAL_USER_ID, {
+    __cantripReferenceTrace(7079);
+const turnsBeforeRelease = turnRequests;
+    __cantripReferenceTrace(7080);
+releaseHeldTurn?.();
+    __cantripReferenceTrace(7081);
+releaseHeldTurn = null;
+    __cantripReferenceTrace(7082);
+await nativeCommands.settle(LOCAL_USER_ID, {
       workerId: queueContext.workerId,
       operationId: heldReceipt.operationId,
       operationGeneration: heldReceipt.operationGeneration,
@@ -7089,9 +7737,12 @@ describe("local server foundation", () => {
       rejectionCode: null,
       executionComplete: true,
     });
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(turnRequests).toBe(turnsBeforeRelease);
-    const unfrozenSecondResponse = await firstApp.inject({
+    __cantripReferenceTrace(7092);
+await new Promise((resolve) => setTimeout(resolve, 25));
+    __cantripReferenceTrace(7093);
+expect(turnRequests).toBe(turnsBeforeRelease);
+    __cantripReferenceTrace(7094);
+const unfrozenSecondResponse = await firstApp.inject({
       method: "PATCH",
       url: `/api/queued-prompts/${secondQueued.id}`,
       payload: {
@@ -7100,10 +7751,14 @@ describe("local server foundation", () => {
         operationId: randomUUID(),
       },
     });
-    expect(unfrozenSecondResponse.statusCode).toBe(200);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(turnRequests).toBe(turnsBeforeRelease);
-    expect(
+    __cantripReferenceTrace(7103);
+expect(unfrozenSecondResponse.statusCode).toBe(200);
+    __cantripReferenceTrace(7104);
+await new Promise((resolve) => setTimeout(resolve, 25));
+    __cantripReferenceTrace(7105);
+expect(turnRequests).toBe(turnsBeforeRelease);
+    __cantripReferenceTrace(7106);
+expect(
       chatWireListSchema
         .parse(
           (
@@ -7115,19 +7770,24 @@ describe("local server foundation", () => {
         )
         .find(({ id }) => id === queueChat.id),
     ).toMatchObject({ automationPaused: true, status: "idle" });
-    const queueResumeResponse = await firstApp.inject({
+    __cantripReferenceTrace(7118);
+const queueResumeResponse = await firstApp.inject({
       method: "PATCH",
       url: `/api/chats/${queueChat.id}/pause`,
       payload: { paused: false },
     });
-    expect(queueResumeResponse.statusCode, queueResumeResponse.body).toBe(200);
-    expect(chatPauseStateSchema.parse(queueResumeResponse.json())).toEqual({
+    __cantripReferenceTrace(7123);
+expect(queueResumeResponse.statusCode, queueResumeResponse.body).toBe(200);
+    __cantripReferenceTrace(7124);
+expect(chatPauseStateSchema.parse(queueResumeResponse.json())).toEqual({
       paused: false,
     });
-    await vi.waitFor(() =>
+    __cantripReferenceTrace(7127);
+await vi.waitFor(() =>
       expect(turnPrompts).toContain("Edited second follow-up"),
     );
-    await vi.waitFor(async () => {
+    __cantripReferenceTrace(7130);
+await vi.waitFor(async () => {
       const remaining = encryptedQueuedPromptListSchema.parse(
         (
           await firstApp.inject({
@@ -7138,8 +7798,10 @@ describe("local server foundation", () => {
       );
       expect(remaining).toHaveLength(0);
     });
-    beginQueuedNativeCommand = undefined;
-    expect(
+    __cantripReferenceTrace(7141);
+beginQueuedNativeCommand = undefined;
+    __cantripReferenceTrace(7142);
+expect(
       (await readChatMessages(queueChat.id)).find((message) =>
         message.content.some(
           (item) =>
@@ -7148,7 +7810,8 @@ describe("local server foundation", () => {
       )?.mode,
     ).toBe("plan");
 
-    const routedModel = modelProfileSummarySchema.parse(
+    __cantripReferenceTrace(7151);
+const routedModel = modelProfileSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -7171,14 +7834,18 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(routedModel.routes).toMatchObject([
+    __cantripReferenceTrace(7174);
+expect(routedModel.routes).toMatchObject([
       { providerId: chatGptProvider.id, position: 0 },
       { providerId: provider.id, position: 1 },
     ]);
 
-    authUsageByCredentialHomeKey.set(chatGptProvider.id, 98);
-    authUsageByCredentialHomeKey.set(additionalAccount.id, 37);
-    await firstDatabase.repository.recordModelProviderAccountUsage({
+    __cantripReferenceTrace(7179);
+authUsageByCredentialHomeKey.set(chatGptProvider.id, 98);
+    __cantripReferenceTrace(7180);
+authUsageByCredentialHomeKey.set(additionalAccount.id, 37);
+    __cantripReferenceTrace(7181);
+await firstDatabase.repository.recordModelProviderAccountUsage({
       accountId: primaryChatGptAccount.id,
       ownerId: LOCAL_USER_ID,
       planType: "plus",
@@ -7186,14 +7853,16 @@ describe("local server foundation", () => {
       resetsAt: null,
       usedPercent: 98,
     });
-    await firstDatabase.repository.storeModelProviderAccountCredential(
+    __cantripReferenceTrace(7189);
+await firstDatabase.repository.storeModelProviderAccountCredential(
       LOCAL_USER_ID,
       chatGptProvider.id,
       additionalAccount.id,
       protectedProviderCredentialFixture("D"),
       providerCredentialMetadataFixture(),
     );
-    await firstDatabase.repository.recordModelProviderAccountUsage({
+    __cantripReferenceTrace(7196);
+await firstDatabase.repository.recordModelProviderAccountUsage({
       accountId: additionalAccount.id,
       ownerId: LOCAL_USER_ID,
       planType: "plus",
@@ -7203,7 +7872,8 @@ describe("local server foundation", () => {
     });
     // Chat creation prepares its native runtime from the selected default.
     // A later turn body must not be used to replace that prepared binding.
-    const selectNewChatModel = async (modelId: string) => {
+    __cantripReferenceTrace(7206);
+const selectNewChatModel = async (modelId: string) => {
       const response = await firstApp.inject({
         method: "PATCH",
         url: "/api/settings",
@@ -7211,8 +7881,10 @@ describe("local server foundation", () => {
       });
       expect(response.statusCode, response.body).toBe(200);
     };
-    await selectNewChatModel(routedModel.id);
-    const pooledChat = chatWireSummarySchema.parse(
+    __cantripReferenceTrace(7214);
+await selectNewChatModel(routedModel.id);
+    __cantripReferenceTrace(7215);
+const pooledChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -7221,14 +7893,17 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    const pooledThreadId = (
+    __cantripReferenceTrace(7224);
+const pooledThreadId = (
       await firstDatabase.repository.getChatExecutionContext(
         LOCAL_USER_ID,
         pooledChat.id,
       )
     )?.threadId;
-    expect(pooledThreadId).toBe("codex-console-thread-1");
-    const poolHandoff = await foundationAccountHandoff({
+    __cantripReferenceTrace(7230);
+expect(pooledThreadId).toBe("codex-console-thread-1");
+    __cantripReferenceTrace(7231);
+const poolHandoff = await foundationAccountHandoff({
       repository: firstDatabase.repository,
       ownerId: LOCAL_USER_ID,
       chatId: pooledChat.id,
@@ -7242,8 +7917,10 @@ describe("local server foundation", () => {
         }),
       },
     });
-    advanceAccountHandoff = poolHandoff.run;
-    const pooledTurn = await firstApp.inject({
+    __cantripReferenceTrace(7245);
+advanceAccountHandoff = poolHandoff.run;
+    __cantripReferenceTrace(7246);
+const pooledTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${pooledChat.id}/turns`,
       payload: await protectChatTurn({
@@ -7257,12 +7934,16 @@ describe("local server foundation", () => {
         modelId: routedModel.id,
       }),
     });
-    expect(pooledTurn.statusCode).toBe(202);
-    await vi.waitFor(() =>
+    __cantripReferenceTrace(7260);
+expect(pooledTurn.statusCode).toBe(202);
+    __cantripReferenceTrace(7261);
+await vi.waitFor(() =>
       expect(turnProviderAccountIds.at(-1)).toBe(additionalAccount.id),
     );
-    expect(turnCredentialHomeKeys.at(-1)).toBe(additionalAccount.id);
-    await vi.waitFor(async () => {
+    __cantripReferenceTrace(7264);
+expect(turnCredentialHomeKeys.at(-1)).toBe(additionalAccount.id);
+    __cantripReferenceTrace(7265);
+await vi.waitFor(async () => {
       expect(
         (
           await firstDatabase.repository.getChatExecutionContext(
@@ -7272,14 +7953,16 @@ describe("local server foundation", () => {
         )?.status,
       ).toBe("idle");
     });
-    expect(
+    __cantripReferenceTrace(7275);
+expect(
       await firstDatabase.repository.getChatExecutionContext(
         LOCAL_USER_ID,
         pooledChat.id,
       ),
     ).toMatchObject({ providerAccountId: additionalAccount.id });
 
-    const stickyTurn = await firstApp.inject({
+    __cantripReferenceTrace(7282);
+const stickyTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${pooledChat.id}/turns`,
       payload: await protectChatTurn({
@@ -7293,15 +7976,20 @@ describe("local server foundation", () => {
         modelId: routedModel.id,
       }),
     });
-    expect(stickyTurn.statusCode).toBe(202);
-    await vi.waitFor(() =>
+    __cantripReferenceTrace(7296);
+expect(stickyTurn.statusCode).toBe(202);
+    __cantripReferenceTrace(7297);
+await vi.waitFor(() =>
       expect(turnPrompts.at(-1)).toBe("Continue on the current account."),
     );
-    await vi.waitFor(() =>
+    __cantripReferenceTrace(7300);
+await vi.waitFor(() =>
       expect(turnProviderAccountIds.at(-1)).toBe(additionalAccount.id),
     );
-    expect(turnThreadIds.at(-1)).toBe(pooledThreadId);
-    await vi.waitFor(async () => {
+    __cantripReferenceTrace(7303);
+expect(turnThreadIds.at(-1)).toBe(pooledThreadId);
+    __cantripReferenceTrace(7304);
+await vi.waitFor(async () => {
       expect(
         (
           await firstDatabase.repository.getChatExecutionContext(
@@ -7312,9 +8000,12 @@ describe("local server foundation", () => {
       ).toBe("idle");
     });
 
-    authUsageByCredentialHomeKey.set(chatGptProvider.id, 50);
-    authUsageByCredentialHomeKey.set(additionalAccount.id, 98);
-    await firstDatabase.repository.recordModelProviderAccountUsage({
+    __cantripReferenceTrace(7315);
+authUsageByCredentialHomeKey.set(chatGptProvider.id, 50);
+    __cantripReferenceTrace(7316);
+authUsageByCredentialHomeKey.set(additionalAccount.id, 98);
+    __cantripReferenceTrace(7317);
+await firstDatabase.repository.recordModelProviderAccountUsage({
       accountId: primaryChatGptAccount.id,
       ownerId: LOCAL_USER_ID,
       planType: "plus",
@@ -7322,7 +8013,8 @@ describe("local server foundation", () => {
       resetsAt: null,
       usedPercent: 50,
     });
-    await firstDatabase.repository.recordModelProviderAccountUsage({
+    __cantripReferenceTrace(7325);
+await firstDatabase.repository.recordModelProviderAccountUsage({
       accountId: additionalAccount.id,
       ownerId: LOCAL_USER_ID,
       planType: "plus",
@@ -7330,7 +8022,8 @@ describe("local server foundation", () => {
       resetsAt: null,
       usedPercent: 98,
     });
-    const reserveTurn = await firstApp.inject({
+    __cantripReferenceTrace(7333);
+const reserveTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${pooledChat.id}/turns`,
       payload: await protectChatTurn({
@@ -7344,13 +8037,16 @@ describe("local server foundation", () => {
         modelId: routedModel.id,
       }),
     });
-    expect(reserveTurn.statusCode).toBe(202);
-    await vi.waitFor(() =>
+    __cantripReferenceTrace(7347);
+expect(reserveTurn.statusCode).toBe(202);
+    __cantripReferenceTrace(7348);
+await vi.waitFor(() =>
       expect(turnPrompts.at(-1)).toBe(
         "Continue with remaining weekly allowance.",
       ),
     );
-    await vi.waitFor(async () =>
+    __cantripReferenceTrace(7353);
+await vi.waitFor(async () =>
       expect(
         (
           await firstDatabase.repository.getChatExecutionContext(
@@ -7360,13 +8056,19 @@ describe("local server foundation", () => {
         )?.status,
       ).toBe("idle"),
     );
-    expect(turnProviderAccountIds.at(-1)).toBe(additionalAccount.id);
-    expect(turnCredentialHomeKeys.at(-1)).toBe(additionalAccount.id);
-    expect(turnThreadIds.at(-1)).toBe(pooledThreadId);
-    expect(poolHandoff.count()).toBe(0);
+    __cantripReferenceTrace(7363);
+expect(turnProviderAccountIds.at(-1)).toBe(additionalAccount.id);
+    __cantripReferenceTrace(7364);
+expect(turnCredentialHomeKeys.at(-1)).toBe(additionalAccount.id);
+    __cantripReferenceTrace(7365);
+expect(turnThreadIds.at(-1)).toBe(pooledThreadId);
+    __cantripReferenceTrace(7366);
+expect(poolHandoff.count()).toBe(0);
 
-    authUsageByCredentialHomeKey.set(additionalAccount.id, 100);
-    await firstDatabase.repository.recordModelProviderAccountUsage({
+    __cantripReferenceTrace(7368);
+authUsageByCredentialHomeKey.set(additionalAccount.id, 100);
+    __cantripReferenceTrace(7369);
+await firstDatabase.repository.recordModelProviderAccountUsage({
       accountId: additionalAccount.id,
       ownerId: LOCAL_USER_ID,
       planType: "plus",
@@ -7374,8 +8076,10 @@ describe("local server foundation", () => {
       resetsAt: null,
       usedPercent: 100,
     });
-    const beforeHandoff = await readChatMessages(pooledChat.id);
-    const switchedTurn = await firstApp.inject({
+    __cantripReferenceTrace(7377);
+const beforeHandoff = await readChatMessages(pooledChat.id);
+    __cantripReferenceTrace(7378);
+const switchedTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${pooledChat.id}/turns`,
       payload: await protectChatTurn({
@@ -7389,17 +8093,24 @@ describe("local server foundation", () => {
         modelId: routedModel.id,
       }),
     });
-    expect(switchedTurn.statusCode).toBe(202);
-    await vi.waitFor(() =>
+    __cantripReferenceTrace(7392);
+expect(switchedTurn.statusCode).toBe(202);
+    __cantripReferenceTrace(7393);
+await vi.waitFor(() =>
       expect(turnProviderAccountIds.at(-1)).toBe(
         chatGptProvider.accounts[0]!.id,
       ),
     );
-    expect(turnCredentialHomeKeys.at(-1)).toBe(chatGptProvider.id);
-    expect(turnThreadIds.at(-1)).toBe(pooledThreadId);
-    expect(poolHandoff.count()).toBe(1);
-    expect(turnPrompts.at(-1)).toBe("Move past the exhausted account.");
-    await vi.waitFor(async () => {
+    __cantripReferenceTrace(7398);
+expect(turnCredentialHomeKeys.at(-1)).toBe(chatGptProvider.id);
+    __cantripReferenceTrace(7399);
+expect(turnThreadIds.at(-1)).toBe(pooledThreadId);
+    __cantripReferenceTrace(7400);
+expect(poolHandoff.count()).toBe(1);
+    __cantripReferenceTrace(7401);
+expect(turnPrompts.at(-1)).toBe("Move past the exhausted account.");
+    __cantripReferenceTrace(7402);
+await vi.waitFor(async () => {
       expect(
         (
           await firstDatabase.repository.getChatExecutionContext(
@@ -7409,13 +8120,17 @@ describe("local server foundation", () => {
         )?.status,
       ).toBe("idle");
     });
-    const afterHandoff = await readChatMessages(pooledChat.id);
-    expect(afterHandoff.slice(0, beforeHandoff.length)).toEqual(beforeHandoff);
+    __cantripReferenceTrace(7412);
+const afterHandoff = await readChatMessages(pooledChat.id);
+    __cantripReferenceTrace(7413);
+expect(afterHandoff.slice(0, beforeHandoff.length)).toEqual(beforeHandoff);
     // The controlled worker emits a command and file-change activity as well
     // as the user/assistant pair. Verify every new row without duplicating the
     // history preserved by the account transfer.
-    expect(afterHandoff).toHaveLength(beforeHandoff.length + 4);
-    expect(afterHandoff.slice(beforeHandoff.length)).toMatchObject([
+    __cantripReferenceTrace(7417);
+expect(afterHandoff).toHaveLength(beforeHandoff.length + 4);
+    __cantripReferenceTrace(7418);
+expect(afterHandoff.slice(beforeHandoff.length)).toMatchObject([
       {
         role: "user",
         content: [{ type: "text", text: "Move past the exhausted account." }],
@@ -7447,10 +8162,13 @@ describe("local server foundation", () => {
         content: [{ type: "text", text: "The local agent replied." }],
       },
     ]);
-    advanceAccountHandoff = undefined;
-    authUsageByCredentialHomeKey.clear();
+    __cantripReferenceTrace(7450);
+advanceAccountHandoff = undefined;
+    __cantripReferenceTrace(7451);
+authUsageByCredentialHomeKey.clear();
 
-    const grokModel = modelProfileSummarySchema.parse(
+    __cantripReferenceTrace(7453);
+const grokModel = modelProfileSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -7468,8 +8186,10 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    await selectNewChatModel(grokModel.id);
-    const grokChat = chatWireSummarySchema.parse(
+    __cantripReferenceTrace(7471);
+await selectNewChatModel(grokModel.id);
+    __cantripReferenceTrace(7472);
+const grokChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -7478,7 +8198,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    const grokTurn = await firstApp.inject({
+    __cantripReferenceTrace(7481);
+const grokTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${grokChat.id}/turns`,
       payload: await protectChatTurn({
@@ -7492,13 +8213,18 @@ describe("local server foundation", () => {
         modelId: grokModel.id,
       }),
     });
-    expect(grokTurn.statusCode).toBe(202);
-    await vi.waitFor(() =>
+    __cantripReferenceTrace(7495);
+expect(grokTurn.statusCode).toBe(202);
+    __cantripReferenceTrace(7496);
+await vi.waitFor(() =>
       expect(turnProviderIds.at(-1)).toBe(grokProvider.id),
     );
-    expect(turnProviderAccountIds.at(-1)).toBe(grokProvider.accounts[0]!.id);
-    expect(turnCredentialHomeKeys.at(-1)).toBe(grokProvider.id);
-    await vi.waitFor(async () => {
+    __cantripReferenceTrace(7499);
+expect(turnProviderAccountIds.at(-1)).toBe(grokProvider.accounts[0]!.id);
+    __cantripReferenceTrace(7500);
+expect(turnCredentialHomeKeys.at(-1)).toBe(grokProvider.id);
+    __cantripReferenceTrace(7501);
+await vi.waitFor(async () => {
       expect(
         (
           await firstDatabase.repository.getChatExecutionContext(
@@ -7509,8 +8235,10 @@ describe("local server foundation", () => {
       ).toBe("idle");
     });
 
-    exhaustedProviderIds.add(chatGptProvider.id);
-    for (const accountId of [primaryChatGptAccount.id, additionalAccount.id]) {
+    __cantripReferenceTrace(7512);
+exhaustedProviderIds.add(chatGptProvider.id);
+    __cantripReferenceTrace(7513);
+for (const accountId of [primaryChatGptAccount.id, additionalAccount.id]) {
       await firstDatabase.repository.recordModelProviderAccountUsage({
         accountId,
         ownerId: LOCAL_USER_ID,
@@ -7520,8 +8248,10 @@ describe("local server foundation", () => {
         usedPercent: 100,
       });
     }
-    await selectNewChatModel(routedModel.id);
-    const routedChat = chatWireSummarySchema.parse(
+    __cantripReferenceTrace(7523);
+await selectNewChatModel(routedModel.id);
+    __cantripReferenceTrace(7524);
+const routedChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -7530,7 +8260,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    const routedTurn = await firstApp.inject({
+    __cantripReferenceTrace(7533);
+const routedTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${routedChat.id}/turns`,
       payload: await protectChatTurn({
@@ -7544,8 +8275,10 @@ describe("local server foundation", () => {
         modelId: routedModel.id,
       }),
     });
-    expect(routedTurn.statusCode).toBe(202);
-    expect(
+    __cantripReferenceTrace(7547);
+expect(routedTurn.statusCode).toBe(202);
+    __cantripReferenceTrace(7548);
+expect(
       chatMessageOpaqueSummarySchema.parse(routedTurn.json().message),
     ).toMatchObject({
       modelId: routedModel.id,
@@ -7553,11 +8286,15 @@ describe("local server foundation", () => {
       providerId: provider.id,
       providerModelName: "gpt-fallback",
     });
-    await vi.waitFor(() => expect(turnProviderIds.at(-1)).toBe(provider.id));
-    expect(turnRouteIds.at(-1)).toBe(routedModel.routes[1]?.id);
+    __cantripReferenceTrace(7556);
+await vi.waitFor(() => expect(turnProviderIds.at(-1)).toBe(provider.id));
+    __cantripReferenceTrace(7557);
+expect(turnRouteIds.at(-1)).toBe(routedModel.routes[1]?.id);
 
-    await selectNewChatModel(selectedModel.id);
-    const planChat = chatWireSummarySchema.parse(
+    __cantripReferenceTrace(7559);
+await selectNewChatModel(selectedModel.id);
+    __cantripReferenceTrace(7560);
+const planChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -7566,12 +8303,14 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    await firstApp.inject({
+    __cantripReferenceTrace(7569);
+await firstApp.inject({
       method: "PATCH",
       url: `/api/chats/${planChat.id}/model`,
       payload: { modelId: selectedModel.id },
     });
-    const planTurn = await firstApp.inject({
+    __cantripReferenceTrace(7574);
+const planTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${planChat.id}/turns`,
       payload: await protectChatTurn({
@@ -7585,12 +8324,16 @@ describe("local server foundation", () => {
         modelId: selectedModel.id,
       }),
     });
-    expect(planTurn.statusCode).toBe(202);
-    expect(
+    __cantripReferenceTrace(7588);
+expect(planTurn.statusCode).toBe(202);
+    __cantripReferenceTrace(7589);
+expect(
       chatMessageOpaqueSummarySchema.parse(planTurn.json().message).mode,
     ).toBe("plan");
-    await vi.waitFor(() => expect(turnPlanModes.at(-1)).toBe("plan"));
-    const readPlanState = async () => {
+    __cantripReferenceTrace(7592);
+await vi.waitFor(() => expect(turnPlanModes.at(-1)).toBe("plan"));
+    __cantripReferenceTrace(7593);
+const readPlanState = async () => {
       const response = await firstApp.inject({
         method: "GET",
         url: `/api/chats/${planChat.id}/plan`,
@@ -7607,17 +8350,21 @@ describe("local server foundation", () => {
         })),
       });
     };
-    const pendingPlan = await vi.waitFor(async () => {
+    __cantripReferenceTrace(7610);
+const pendingPlan = await vi.waitFor(async () => {
       const state = await readPlanState();
       expect(state.question?.id).toBe("plan-question-1");
       return state;
     });
-    expect(pendingPlan.steps).toMatchObject([
+    __cantripReferenceTrace(7615);
+expect(pendingPlan.steps).toMatchObject([
       { status: "completed" },
       { status: "inProgress" },
     ]);
-    expect((await readPlanState()).question?.id).toBe("plan-question-1");
-    expect(
+    __cantripReferenceTrace(7619);
+expect((await readPlanState()).question?.id).toBe("plan-question-1");
+    __cantripReferenceTrace(7620);
+expect(
       chatWireListSchema
         .parse(
           (
@@ -7629,13 +8376,16 @@ describe("local server foundation", () => {
         )
         .find(({ id }) => id === planChat.id)?.hasPendingPlanQuestion,
     ).toBe(true);
-    const planRequest =
+    __cantripReferenceTrace(7632);
+const planRequest =
       await firstDatabase.repository.getAgentInteractionRequestByKey(
         LOCAL_USER_ID,
         "plan-question-1",
       );
-    expect(planRequest).toMatchObject({ status: "pending" });
-    const planAnswer = await protectAgentInteractionResponse({
+    __cantripReferenceTrace(7637);
+expect(planRequest).toMatchObject({ status: "pending" });
+    __cantripReferenceTrace(7638);
+const planAnswer = await protectAgentInteractionResponse({
       requestKey: "plan-question-1",
       service: chatEncryptionService,
       response: {
@@ -7643,13 +8393,16 @@ describe("local server foundation", () => {
         answers: { topology: { answers: ["Four nodes"] } },
       },
     });
-    const planAnswerResponse = await firstApp.inject({
+    __cantripReferenceTrace(7646);
+const planAnswerResponse = await firstApp.inject({
       method: "POST",
       url: `/api/agent-requests/${planRequest!.id}/respond`,
       payload: planAnswer,
     });
-    expect(planAnswerResponse.statusCode, planAnswerResponse.body).toBe(200);
-    expect(
+    __cantripReferenceTrace(7651);
+expect(planAnswerResponse.statusCode, planAnswerResponse.body).toBe(200);
+    __cantripReferenceTrace(7652);
+expect(
       await firstDatabase.repository.getAgentInteractionRequestByKey(
         LOCAL_USER_ID,
         "plan-question-1",
@@ -7658,11 +8411,13 @@ describe("local server foundation", () => {
       status: "resolved",
       protectedResponse: planAnswer.protectedResponse,
     });
-    expect(deliveredAgentInteractionResponses.at(-1)).toEqual({
+    __cantripReferenceTrace(7661);
+expect(deliveredAgentInteractionResponses.at(-1)).toEqual({
       kind: "userInput",
       answers: { topology: { answers: ["Four nodes"] } },
     });
-    await vi.waitFor(async () => {
+    __cantripReferenceTrace(7665);
+await vi.waitFor(async () => {
       const current = chatWireListSchema
         .parse(
           (
@@ -7679,7 +8434,8 @@ describe("local server foundation", () => {
         hasPendingPlanQuestion: false,
       });
     });
-    const defaultTurn = await firstApp.inject({
+    __cantripReferenceTrace(7682);
+const defaultTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${planChat.id}/turns`,
       payload: await protectChatTurn({
@@ -7693,14 +8449,19 @@ describe("local server foundation", () => {
         modelId: selectedModel.id,
       }),
     });
-    expect(defaultTurn.statusCode).toBe(202);
-    expect(
+    __cantripReferenceTrace(7696);
+expect(defaultTurn.statusCode).toBe(202);
+    __cantripReferenceTrace(7697);
+expect(
       chatMessageOpaqueSummarySchema.parse(defaultTurn.json().message).mode,
     ).toBe("default");
-    await vi.waitFor(() => expect(turnPlanModes.at(-1)).toBe("default"));
-    expect((await readPlanState()).mode).toBe("default");
+    __cantripReferenceTrace(7700);
+await vi.waitFor(() => expect(turnPlanModes.at(-1)).toBe("default"));
+    __cantripReferenceTrace(7701);
+expect((await readPlanState()).mode).toBe("default");
 
-    const goalChat = chatWireSummarySchema.parse(
+    __cantripReferenceTrace(7703);
+const goalChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -7709,12 +8470,14 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    await firstApp.inject({
+    __cantripReferenceTrace(7712);
+await firstApp.inject({
       method: "PATCH",
       url: `/api/chats/${goalChat.id}/model`,
       payload: { modelId: selectedModel.id },
     });
-    expect(
+    __cantripReferenceTrace(7717);
+expect(
       chatGoalResponseSchema.parse(
         (
           await firstApp.inject({
@@ -7726,20 +8489,24 @@ describe("local server foundation", () => {
     ).toBeNull();
     // Goal creation is a distinct API operation; the encrypted turn's mode
     // classifies its message but does not create native autonomy.
-    const createGoalResponse = await firstApp.inject({
+    __cantripReferenceTrace(7729);
+const createGoalResponse = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${goalChat.id}/goal`,
       payload: { objective: "Finish the long-running goal" },
     });
-    expect(createGoalResponse.statusCode, createGoalResponse.body).toBe(202);
-    expect(
+    __cantripReferenceTrace(7734);
+expect(createGoalResponse.statusCode, createGoalResponse.body).toBe(202);
+    __cantripReferenceTrace(7735);
+expect(
       chatGoalResponseSchema.parse(createGoalResponse.json()).goal,
     ).toMatchObject({
       objective: "Finish the long-running goal",
       status: "active",
       tokenBudget: null,
     });
-    const goalTurn = await firstApp.inject({
+    __cantripReferenceTrace(7742);
+const goalTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${goalChat.id}/turns`,
       payload: await protectChatTurn({
@@ -7753,11 +8520,14 @@ describe("local server foundation", () => {
         modelId: selectedModel.id,
       }),
     });
-    expect(goalTurn.statusCode).toBe(202);
-    expect(
+    __cantripReferenceTrace(7756);
+expect(goalTurn.statusCode).toBe(202);
+    __cantripReferenceTrace(7757);
+expect(
       chatMessageOpaqueSummarySchema.parse(goalTurn.json().message).mode,
     ).toBe("goal");
-    const createdGoal = await vi.waitFor(async () => {
+    __cantripReferenceTrace(7760);
+const createdGoal = await vi.waitFor(async () => {
       const goal = chatGoalResponseSchema.parse(
         (
           await firstApp.inject({
@@ -7769,15 +8539,18 @@ describe("local server foundation", () => {
       expect(goal).not.toBeNull();
       return goal;
     });
-    expect(createdGoal).toMatchObject({
+    __cantripReferenceTrace(7772);
+expect(createdGoal).toMatchObject({
       objective: "Finish the long-running goal",
       status: "active",
       tokenBudget: null,
     });
-    await vi.waitFor(() =>
+    __cantripReferenceTrace(7777);
+await vi.waitFor(() =>
       expect(turnPrompts).toContain("Finish the long-running goal"),
     );
-    await vi.waitFor(async () => {
+    __cantripReferenceTrace(7780);
+await vi.waitFor(async () => {
       const goalMessages = await readChatMessages(goalChat.id);
       expect(goalMessages).toContainEqual(
         expect.objectContaining({
@@ -7792,7 +8565,8 @@ describe("local server foundation", () => {
         }),
       );
     });
-    await vi.waitFor(async () => {
+    __cantripReferenceTrace(7795);
+await vi.waitFor(async () => {
       const current = chatWireListSchema
         .parse(
           (
@@ -7805,7 +8579,8 @@ describe("local server foundation", () => {
         .find(({ id }) => id === goalChat.id);
       expect(current?.status).toBe("idle");
     });
-    expect(
+    __cantripReferenceTrace(7808);
+expect(
       chatGoalResponseSchema.parse(
         (
           await firstApp.inject({
@@ -7816,8 +8591,10 @@ describe("local server foundation", () => {
         ).json(),
       ).goal?.status,
     ).toBe("paused");
-    const turnsBeforeGoalResume = turnRequests;
-    expect(
+    __cantripReferenceTrace(7819);
+const turnsBeforeGoalResume = turnRequests;
+    __cantripReferenceTrace(7820);
+expect(
       chatGoalResponseSchema.parse(
         (
           await firstApp.inject({
@@ -7830,21 +8607,27 @@ describe("local server foundation", () => {
     ).toBe("active");
     // Managed native runtimes own Goal continuation. The server must route the
     // resume to that session, not start a competing synthetic chat turn.
-    expect(goalUpdateCommands.slice(-2).map(({ status }) => status)).toEqual([
+    __cantripReferenceTrace(7833);
+expect(goalUpdateCommands.slice(-2).map(({ status }) => status)).toEqual([
       "paused",
       "active",
     ]);
-    expect(goalUpdateCommands.at(-1)).toMatchObject({
+    __cantripReferenceTrace(7837);
+expect(goalUpdateCommands.at(-1)).toMatchObject({
       chatId: goalChat.id,
       status: "active",
       session: expect.any(Object),
     });
-    expect(turnRequests).toBe(turnsBeforeGoalResume);
-    expect(turnPolicyContexts).toHaveLength(turnRequests);
-    expect(
+    __cantripReferenceTrace(7842);
+expect(turnRequests).toBe(turnsBeforeGoalResume);
+    __cantripReferenceTrace(7843);
+expect(turnPolicyContexts).toHaveLength(turnRequests);
+    __cantripReferenceTrace(7844);
+expect(
       turnPolicyContexts.every((context) => context.policies.length === 0),
     ).toBe(true);
-    expect(
+    __cantripReferenceTrace(7847);
+expect(
       (
         await firstApp.inject({
           method: "DELETE",
@@ -7852,7 +8635,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     ).toEqual({ cleared: true });
-    expect(
+    __cantripReferenceTrace(7855);
+expect(
       chatGoalResponseSchema.parse(
         (
           await firstApp.inject({
@@ -7863,8 +8647,10 @@ describe("local server foundation", () => {
       ).goal,
     ).toBeNull();
 
-    deliveredAgentInteractionResponses.length = 0;
-    const bridgedApprovalChat = chatWireSummarySchema.parse(
+    __cantripReferenceTrace(7866);
+deliveredAgentInteractionResponses.length = 0;
+    __cantripReferenceTrace(7867);
+const bridgedApprovalChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -7873,9 +8659,12 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    const approvalLiveEvents: AppLiveServerMessage[] = [];
-    let approvalLiveClient: WebSocket | null = null;
-    const approvalLiveSocket = await firstApp.injectWS(
+    __cantripReferenceTrace(7876);
+const approvalLiveEvents: AppLiveServerMessage[] = [];
+    __cantripReferenceTrace(7877);
+let approvalLiveClient: WebSocket | null = null;
+    __cantripReferenceTrace(7878);
+const approvalLiveSocket = await firstApp.injectWS(
       "/api/live",
       { headers: { origin: config.appOrigins[0] } },
       {
@@ -7889,10 +8678,12 @@ describe("local server foundation", () => {
         },
       },
     );
-    if (!approvalLiveClient) {
+    __cantripReferenceTrace(7892);
+if (!approvalLiveClient) {
       throw new Error("Approval live socket did not initialize.");
     }
-    approvalLiveClient.send(
+    __cantripReferenceTrace(7895);
+approvalLiveClient.send(
       JSON.stringify({
         type: "initialize",
         protocolVersion: 1,
@@ -7900,28 +8691,33 @@ describe("local server foundation", () => {
         resume: null,
       }),
     );
-    await vi.waitFor(() =>
+    __cantripReferenceTrace(7903);
+await vi.waitFor(() =>
       expect(approvalLiveEvents.at(-1)).toMatchObject({ type: "ready" }),
     );
-    approvalLiveClient.send(
+    __cantripReferenceTrace(7906);
+approvalLiveClient.send(
       JSON.stringify({
         type: "subscribe",
         requestId: "approval-chat",
         scopes: [{ kind: "chat", chatId: bridgedApprovalChat.id }],
       }),
     );
-    await vi.waitFor(() =>
+    __cantripReferenceTrace(7913);
+await vi.waitFor(() =>
       expect(approvalLiveEvents.at(-1)).toMatchObject({
         type: "subscribed",
         requestId: "approval-chat",
       }),
     );
-    await firstApp.inject({
+    __cantripReferenceTrace(7919);
+await firstApp.inject({
       method: "PATCH",
       url: `/api/chats/${bridgedApprovalChat.id}/model`,
       payload: { modelId: selectedModel.id },
     });
-    expect(
+    __cantripReferenceTrace(7924);
+expect(
       (
         await firstApp.inject({
           method: "POST",
@@ -7939,7 +8735,8 @@ describe("local server foundation", () => {
         })
       ).statusCode,
     ).toBe(202);
-    const bridgedApproval = await vi.waitFor(async () => {
+    __cantripReferenceTrace(7942);
+const bridgedApproval = await vi.waitFor(async () => {
       const pending = agentInteractionRequestWireListSchema.parse(
         (
           await firstApp.inject({
@@ -7951,7 +8748,8 @@ describe("local server foundation", () => {
       expect(pending).toHaveLength(1);
       return pending[0]!;
     });
-    expect(
+    __cantripReferenceTrace(7954);
+expect(
       (
         await firstDatabase.repository.getChatExecutionContext(
           LOCAL_USER_ID,
@@ -7959,8 +8757,10 @@ describe("local server foundation", () => {
         )
       )?.status,
     ).toBe("waiting-for-approval");
-    expect(deliveredAgentInteractionResponses).toEqual([]);
-    await vi.waitFor(() =>
+    __cantripReferenceTrace(7962);
+expect(deliveredAgentInteractionResponses).toEqual([]);
+    __cantripReferenceTrace(7963);
+await vi.waitFor(() =>
       expect(
         approvalLiveEvents.filter(
           (event) =>
@@ -7968,7 +8768,8 @@ describe("local server foundation", () => {
         ),
       ).toHaveLength(1),
     );
-    expect(
+    __cantripReferenceTrace(7971);
+expect(
       agentInteractionRequestWireSchema.parse(
         (
           await firstApp.inject({
@@ -7988,7 +8789,8 @@ describe("local server foundation", () => {
         ).json(),
       ).status,
     ).toBe("resolved");
-    expect(deliveredAgentInteractionResponses).toEqual([
+    __cantripReferenceTrace(7991);
+expect(deliveredAgentInteractionResponses).toEqual([
       {
         kind: "commandExecution",
         decision: "decline",
@@ -7996,7 +8798,8 @@ describe("local server foundation", () => {
         networkPolicyAmendment: null,
       },
     ]);
-    await vi.waitFor(async () => {
+    __cantripReferenceTrace(7999);
+await vi.waitFor(async () => {
       expect(
         (
           await firstDatabase.repository.getChatExecutionContext(
@@ -8006,7 +8809,8 @@ describe("local server foundation", () => {
         )?.status,
       ).toBe("idle");
     });
-    await vi.waitFor(() =>
+    __cantripReferenceTrace(8009);
+await vi.waitFor(() =>
       expect(
         approvalLiveEvents.filter(
           (event) =>
@@ -8014,9 +8818,11 @@ describe("local server foundation", () => {
         ).length,
       ).toBeGreaterThanOrEqual(2),
     );
-    approvalLiveSocket.terminate();
+    __cantripReferenceTrace(8017);
+approvalLiveSocket.terminate();
 
-    await firstDatabase.repository.recordWorker(LOCAL_USER_ID, {
+    __cantripReferenceTrace(8019);
+await firstDatabase.repository.recordWorker(LOCAL_USER_ID, {
       workerId: "test-worker-secondary",
       name: "Secondary Worker",
       platform: "linux",
@@ -8031,12 +8837,14 @@ describe("local server foundation", () => {
       },
       startedAt: "2026-08-07T12:00:00.000Z",
     });
-    const secondaryPath = path.join(
+    __cantripReferenceTrace(8034);
+const secondaryPath = path.join(
       dataDirectory,
       "secondary-repositories",
       "Cantrip",
     );
-    const completedSecondary =
+    __cantripReferenceTrace(8039);
+const completedSecondary =
       await firstDatabase.repository.completeGithubProjectSetup(
         LOCAL_USER_ID,
         project.id,
@@ -8049,8 +8857,10 @@ describe("local server foundation", () => {
           warning: null,
         },
       );
-    expect(completedSecondary?.replicas).toHaveLength(2);
-    await firstDatabase.repository.reconcileProjectWorktrees(
+    __cantripReferenceTrace(8052);
+expect(completedSecondary?.replicas).toHaveLength(2);
+    __cantripReferenceTrace(8053);
+await firstDatabase.repository.reconcileProjectWorktrees(
       LOCAL_USER_ID,
       project.id,
       "test-worker-secondary",
@@ -8077,14 +8887,20 @@ describe("local server foundation", () => {
         ],
       },
     );
-    const replicatedProjects = projectWireListSchema.parse(
+    __cantripReferenceTrace(8080);
+const replicatedProjects = projectWireListSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/projects" })).json(),
     );
-    expect(replicatedProjects).toHaveLength(1);
-    const replicatedProject = replicatedProjects[0]!;
-    expect(replicatedProject.source?.workerId).toBe("test-worker");
-    expect(replicatedProject.replicas).toHaveLength(2);
-    const replicas = projectReplicaListSchema.parse(
+    __cantripReferenceTrace(8083);
+expect(replicatedProjects).toHaveLength(1);
+    __cantripReferenceTrace(8084);
+const replicatedProject = replicatedProjects[0]!;
+    __cantripReferenceTrace(8085);
+expect(replicatedProject.source?.workerId).toBe("test-worker");
+    __cantripReferenceTrace(8086);
+expect(replicatedProject.replicas).toHaveLength(2);
+    __cantripReferenceTrace(8087);
+const replicas = projectReplicaListSchema.parse(
       (
         await firstApp.inject({
           method: "GET",
@@ -8092,11 +8908,13 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(replicas.map(({ workerId }) => workerId)).toEqual([
+    __cantripReferenceTrace(8095);
+expect(replicas.map(({ workerId }) => workerId)).toEqual([
       "test-worker",
       "test-worker-secondary",
     ]);
-    expect(
+    __cantripReferenceTrace(8099);
+expect(
       workerManagementListSchema
         .parse(
           (
@@ -8113,7 +8931,8 @@ describe("local server foundation", () => {
         projectReplicaId: replicas[1]!.id,
       }),
     ]);
-    expect(
+    __cantripReferenceTrace(8116);
+expect(
       projectReplicaSummarySchema.parse(
         (
           await firstApp.inject({
@@ -8133,7 +8952,8 @@ describe("local server foundation", () => {
       worktreeCount: 1,
     });
 
-    const layoutBeforeRestart = projectTabLayoutWireSummarySchema.parse(
+    __cantripReferenceTrace(8136);
+const layoutBeforeRestart = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "GET",
@@ -8141,32 +8961,44 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    await firstApp.close();
+    __cantripReferenceTrace(8144);
+await firstApp.close();
 
-    const secondDatabase = await connectDatabase(config);
-    const secondApp = await buildApp({
+    __cantripReferenceTrace(8146);
+const secondDatabase = await connectDatabase(config);
+    __cantripReferenceTrace(8147);
+const secondApp = await buildApp({
       config,
       database: secondDatabase,
       logger: false,
       workerBridge,
     });
 
-    const projects = projectWireListSchema.parse(
+    __cantripReferenceTrace(8154);
+const projects = projectWireListSchema.parse(
       (await secondApp.inject({ method: "GET", url: "/api/projects" })).json(),
     );
-    const workers = workerListSchema.parse(
+    __cantripReferenceTrace(8157);
+const workers = workerListSchema.parse(
       (await secondApp.inject({ method: "GET", url: "/api/workers" })).json(),
     );
-    const restoredSettings = settingsBundleWireSchema.parse(
+    __cantripReferenceTrace(8160);
+const restoredSettings = settingsBundleWireSchema.parse(
       (await secondApp.inject({ method: "GET", url: "/api/settings" })).json(),
     );
-    const messages = await readChatMessages(chat.id, secondApp);
-    const restoredRichMessages = await readChatMessages(richChat.id, secondApp);
+    __cantripReferenceTrace(8163);
+const messages = await readChatMessages(chat.id, secondApp);
+    __cantripReferenceTrace(8164);
+const restoredRichMessages = await readChatMessages(richChat.id, secondApp);
 
-    expect(projects).toHaveLength(1);
-    expect(workers).toHaveLength(2);
-    expect(workers[0]?.codexRuntime).toEqual(unprobedCodexRuntimeReport);
-    const restoredTabLayout = projectTabLayoutWireSummarySchema.parse(
+    __cantripReferenceTrace(8166);
+expect(projects).toHaveLength(1);
+    __cantripReferenceTrace(8167);
+expect(workers).toHaveLength(2);
+    __cantripReferenceTrace(8168);
+expect(workers[0]?.codexRuntime).toEqual(unprobedCodexRuntimeReport);
+    __cantripReferenceTrace(8169);
+const restoredTabLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await secondApp.inject({
           method: "GET",
@@ -8174,8 +9006,10 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(restoredTabLayout).toEqual(layoutBeforeRestart);
-    expect(messages.slice(0, 4)).toMatchObject([
+    __cantripReferenceTrace(8177);
+expect(restoredTabLayout).toEqual(layoutBeforeRestart);
+    __cantripReferenceTrace(8178);
+expect(messages.slice(0, 4)).toMatchObject([
       firstMessage,
       {
         role: "assistant",
@@ -8206,8 +9040,10 @@ describe("local server foundation", () => {
       },
       { role: "assistant", content: [{ text: "The local agent replied." }] },
     ]);
-    expect(restoredRichMessages).toHaveLength(7);
-    expect(restoredRichMessages[2]?.content[0]).toMatchObject({
+    __cantripReferenceTrace(8209);
+expect(restoredRichMessages).toHaveLength(7);
+    __cantripReferenceTrace(8210);
+expect(restoredRichMessages[2]?.content[0]).toMatchObject({
       type: "activity",
       activity: {
         type: "reasoning",
@@ -8217,7 +9053,8 @@ describe("local server foundation", () => {
         },
       },
     });
-    expect(restoredSettings.preferences).toEqual({
+    __cantripReferenceTrace(8220);
+expect(restoredSettings.preferences).toEqual({
       ...initialSettings.preferences,
       theme: "dark",
       highContrast: true,
@@ -8260,7 +9097,8 @@ describe("local server foundation", () => {
         "project-2": ["group-2"],
       },
     });
-    expect(
+    __cantripReferenceTrace(8263);
+expect(
       explorerWireListSchema.parse(
         (
           await secondApp.inject({
@@ -8277,7 +9115,8 @@ describe("local server foundation", () => {
         fileMode: "edit",
       },
     ]);
-    expect(
+    __cantripReferenceTrace(8280);
+expect(
       browserWireListSchema.parse(
         (
           await secondApp.inject({
@@ -8294,13 +9133,15 @@ describe("local server foundation", () => {
         stateRevision: 2,
       },
     ]);
-    expect(
+    __cantripReferenceTrace(8297);
+expect(
       await secondApp.inject({
         method: "DELETE",
         url: `/api/browsers/${browser.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
-    const layoutAfterBrowserDelete = projectTabLayoutWireSummarySchema.parse(
+    __cantripReferenceTrace(8303);
+const layoutAfterBrowserDelete = projectTabLayoutWireSummarySchema.parse(
       (
         await secondApp.inject({
           method: "GET",
@@ -8308,18 +9149,21 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(
+    __cantripReferenceTrace(8311);
+expect(
       layoutAfterBrowserDelete.panes.flatMap(({ members }) =>
         members.map(({ tabKey }) => tabKey),
       ),
     ).not.toContain(`browser:${browser.id}`);
-    expect(
+    __cantripReferenceTrace(8316);
+expect(
       await secondApp.inject({
         method: "DELETE",
         url: `/api/explorers/${explorer.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
-    const layoutAfterSurfaceDeletes = projectTabLayoutWireSummarySchema.parse(
+    __cantripReferenceTrace(8322);
+const layoutAfterSurfaceDeletes = projectTabLayoutWireSummarySchema.parse(
       (
         await secondApp.inject({
           method: "GET",
@@ -8327,7 +9171,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(
+    __cantripReferenceTrace(8330);
+expect(
       layoutAfterSurfaceDeletes.panes.find(({ members }) =>
         members.some(({ tabKey }) => tabKey === `view:${groupedIssuesView.id}`),
       ),
@@ -8336,7 +9181,8 @@ describe("local server foundation", () => {
       titleProtection: null,
       members: [{ tabKey: `view:${groupedIssuesView.id}` }],
     });
-    for (const region of ["center", "right", "bottom"] as const) {
+    __cantripReferenceTrace(8339);
+for (const region of ["center", "right", "bottom"] as const) {
       const panes = layoutAfterSurfaceDeletes.panes.filter(
         (pane) => pane.region === region,
       );
@@ -8345,14 +9191,18 @@ describe("local server foundation", () => {
       );
     }
 
-    const unlinkResponse = await secondApp.inject({
+    __cantripReferenceTrace(8348);
+const unlinkResponse = await secondApp.inject({
       method: "DELETE",
       url: `/api/projects/${project.id}`,
       payload: { deleteLocalFiles: false },
     });
-    expect(unlinkResponse.statusCode).toBe(204);
-    expect(deletedProjectPaths).toEqual([]);
-    expect(
+    __cantripReferenceTrace(8353);
+expect(unlinkResponse.statusCode).toBe(204);
+    __cantripReferenceTrace(8354);
+expect(deletedProjectPaths).toEqual([]);
+    __cantripReferenceTrace(8355);
+expect(
       projectWireListSchema.parse(
         (
           await secondApp.inject({ method: "GET", url: "/api/projects" })
@@ -8360,7 +9210,8 @@ describe("local server foundation", () => {
       ),
     ).toEqual([]);
 
-    const queuedRelinked = projectWireSummarySchema.parse(
+    __cantripReferenceTrace(8363);
+const queuedRelinked = projectWireSummarySchema.parse(
       (
         await secondApp.inject({
           method: "POST",
@@ -8373,7 +9224,8 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    const relinked = await vi.waitFor(async () => {
+    __cantripReferenceTrace(8376);
+const relinked = await vi.waitFor(async () => {
       const current = projectWireListSchema
         .parse(
           (
@@ -8384,7 +9236,8 @@ describe("local server foundation", () => {
       expect(current?.setupStatus, JSON.stringify(current)).toBe("ready");
       return current!;
     });
-    await secondDatabase.repository.completeGithubProjectSetup(
+    __cantripReferenceTrace(8387);
+await secondDatabase.repository.completeGithubProjectSetup(
       LOCAL_USER_ID,
       relinked.id,
       "test-worker-secondary",
@@ -8396,15 +9249,20 @@ describe("local server foundation", () => {
         warning: null,
       },
     );
-    expect(
+    __cantripReferenceTrace(8399);
+expect(
       await secondApp.inject({
         method: "DELETE",
         url: `/api/projects/${relinked.id}`,
         payload: { deleteLocalFiles: true },
       }),
     ).toMatchObject({ statusCode: 204 });
-    expect(deletedProjectPaths).toEqual([relinked.source!.path, secondaryPath]);
+    __cantripReferenceTrace(8406);
+expect(deletedProjectPaths).toEqual([relinked.source!.path, secondaryPath]);
 
-    await secondApp.close();
-  }, 15_000);
+    __cantripReferenceTrace(8408);
+await secondApp.close();
+
+__cantripReferenceTrace(-1);
+}, 15_000);
 });
