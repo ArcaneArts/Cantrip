@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { modelProviderKinds } from "./provider-definitions.js";
 import {
   DEFAULT_MAX_CONCURRENT_INFERENCE,
   providerInferenceLimitSchema,
@@ -13,12 +14,7 @@ import {
   providerCredentialPublicMetadataSchema,
 } from "./protected-secrets.js";
 
-export const modelProviderKindSchema = z.enum([
-  "chatgpt",
-  "grok",
-  "ollama",
-  "openai-compatible",
-]);
+export const modelProviderKindSchema = z.enum(modelProviderKinds);
 
 export const ZAI_CODING_PLAN_BASE_URL = "https://api.z.ai/api/v1";
 
@@ -282,8 +278,8 @@ export function normalizeResponsesBaseUrl(value: string): string {
   url.search = "";
   url.hash = "";
   url.pathname = url.pathname
-    .replace(/\/(?:chat\/completions|chat|responses)\/?$/i, "")
-    .replace(/\/+$/, "");
+    .replace(/\/+$/, "")
+    .replace(/\/(?:chat\/completions|chat|responses)$/i, "");
   if (url.hostname.toLowerCase() === "openrouter.ai" && url.pathname === "/") {
     url.pathname = "/api/v1";
   }

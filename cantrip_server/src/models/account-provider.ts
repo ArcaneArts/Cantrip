@@ -1,15 +1,10 @@
-import type { ModelProviderKind } from "@cantrip/protocol";
+import {
+  isAccountProviderKind,
+  type AccountProviderKind,
+  type ModelProviderKind,
+} from "@cantrip/protocol";
 
-export type AccountProviderKind = Extract<
-  ModelProviderKind,
-  "chatgpt" | "grok"
->;
-
-export function isAccountProviderKind(
-  kind: ModelProviderKind | string,
-): kind is AccountProviderKind {
-  return kind === "chatgpt" || kind === "grok";
-}
+export { isAccountProviderKind, type AccountProviderKind };
 
 export function canRefreshProviderOnWorker(
   kind: ModelProviderKind | string,
