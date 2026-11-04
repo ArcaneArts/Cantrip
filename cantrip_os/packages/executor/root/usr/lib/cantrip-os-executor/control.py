@@ -16,7 +16,7 @@ import uuid
 sys.path.insert(0, "/usr/lib/cantrip-os-workspaces")
 from service import Store, atomic_json, request as workspace_request
 
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 CONFIG = "/etc/cantrip-os/executor.json"
 HERE = Path(__file__).parent
 
@@ -266,10 +266,16 @@ def main():
         command.add_argument("workspace")
         if name == "connect":
             command.add_argument("--expect", required=True, type=json.loads)
+    commands.add_parser("desktop-context").add_argument("uid", type=int)
     commands.add_parser("service").add_argument("action", choices=("start", "stop", "restart"))
     args = parser.parse_args()
     if os.geteuid() != 0:
         parser.error("Use sudo for local executor administration")
+    if args.command == "desktop-context":
+        from gui import desktop_context
+        workspaces = workspace_request(Store("/etc/cantrip-os/workspaces.json"), "list")
+        print(json.dumps(desktop_context(workspaces, args.uid)))
+        return
     store = Store(args.config)
     store.state.chmod(0o700)
     if args.command == "daemon":

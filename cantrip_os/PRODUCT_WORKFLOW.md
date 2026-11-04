@@ -1,11 +1,12 @@
 # CantripOS project attachment
 
-This checkpoint adds the client workflow for the executor, source provisioning,
-captured agent placement, file/editor/Explorer operations, and interactive Linux
-terminals, and Run configurations with per-configuration destinations. Delegated project tools,
-attachment/artifact delivery, safe Run definition deletion, and final distribution
-acceptance remain in subsequent integration work. This checkpoint is not complete Phase 3
-acceptance.
+The client supports executor attachment, source provisioning, captured agent
+placement, file/editor/Explorer operations, interactive Linux terminals, Run
+configurations with per-configuration destinations and safe deletion, attachments
+and returned artifact links. Executor 0.9.0 adds explicit GUI launches on the
+assigned desktop. Final distribution acceptance remains in progress. Host-only
+Run/worktree/task-creation MCP adapters remain unavailable in Linux sessions;
+use the source-aware product workflows described below.
 
 ## Attach and select
 
@@ -194,7 +195,21 @@ is shared with Host, so affected Host and Linux Runs are both stopped. Separate
 checkouts remain separate even when their configuration UUIDs match. Unconfirmed
 cleanup keeps the definition and captured handles; inspect the outcome and retry
 explicitly. This requires executor 0.7.0 for Linux. Attachment and returned file links require
-executor 0.8.0. GUI launch context and fresh Docker/ISO acceptance remain in progress.
+executor 0.8.0. Fresh Docker/ISO acceptance remains in progress.
+
+## Explicit GUI commands
+
+With executor 0.9.0, open the assigned workspace desktop from the workspace
+selector, then run `cantrip-desktop pcmanfm .` or `cantrip-desktop xterm` in its
+Linux terminal or agent shell. The command uses that account's assigned display
+and the selected shell's current directory. Inherited personal-console display,
+Xauthority, Wayland and D-Bus settings are replaced; the app receives a private
+D-Bus session. No desktop is started implicitly. If the selected desktop is
+stopped, the GUI app reports its normal display error without trying another
+workspace or Host. Native process cancellation still owns the launched tree.
+Ordinary shells receive no DISPLAY and survive independently when a desktop is
+closed. For explicit root administration, choose the account, for example
+`sudo -u ctw-work cantrip-desktop pcmanfm .`.
 
 ## Run API reference
 
