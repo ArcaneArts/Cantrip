@@ -104,8 +104,21 @@ The native OS lease outlives Rust task cancellation and runtime teardown. PID
 reuse, wrapper exit, and process-name searches do not participate in proof.
 CantripOS inference still runs on the owning worker; only its tools run in the guest.
 
-The remaining milestones must complete durable pending-operation/order recovery, control
-traffic admission under long inference waits, provider deletion/route-change and
+Both server command buses reserve a separate, bounded control lane. Stop, pause,
+interaction replies, native logical settlement, queue preparation/change notifications,
+automation resume, settings reads, goal reads/clears, inference configuration, and
+worker lifecycle controls do not compete
+with long-lived inference requests for ordinary transport slots. Native steering,
+new turns, helpers, compaction, and queued execution remain ordinary commands.
+The control lane allows at most eight additional requests per owner and worker
+(or their configured command-concurrency limit, if lower). It has independent
+rate counters using the existing configured rates. All traffic still shares the
+existing relay bandwidth quota and authorization. Request statistics count both
+lanes; neither server grants provider tickets. This preserves control headroom
+without removing transport resource bounds or creating a second prompt queue.
+
+The remaining milestones must complete durable pending-operation/order recovery, ordinary
+transport backpressure recovery, provider deletion/route-change and
 archival cancellation, app feedback, bounded operation history, and the exhaustive
 inference-path/lifecycle audit. This intermediate implementation is not the
 completed feature; source integration is not evidence of exercised runtime behavior.
