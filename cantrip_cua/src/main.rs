@@ -12,6 +12,10 @@ fn main() {
     {
         [] => run_default(),
         ["--backend", "fake"] => run(FakeBackend, std::io::stdin(), std::io::stdout()),
+        #[cfg(target_os = "linux")]
+        ["--x11-display", display, "--desktop-generation", generation] => {
+            cantrip_cua::linux::run(display, generation)
+        }
         ["--cursor-sprite"] => {
             use cantrip_interaction::cursor::{CursorAppearance, CursorState};
             use std::io::Read;
@@ -49,7 +53,7 @@ fn main() {
         }
         _ => {
             eprintln!(
-                "Usage: cantrip-cua [--backend fake | --cursor-sprite | --version | --installation-lock <path>]"
+                "Usage: cantrip-cua [--backend fake | --x11-display :N --desktop-generation <generation> | --cursor-sprite | --version | --installation-lock <path>]"
             );
             std::process::exit(2);
         }
