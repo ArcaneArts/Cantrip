@@ -51,6 +51,8 @@ export interface ModelRuntime {
     accountId: string | null;
     credentialHomeKey: string | null;
     weeklyUsageReservePercent: number;
+    maxConcurrentInference: number;
+    inferenceConfigRevision: number;
     credits?: ProviderCreditsSnapshot | null;
   };
 }
@@ -442,6 +444,8 @@ export class ModelRepository {
         accountId: null,
         credentialHomeKey: null,
         weeklyUsageReservePercent: row.provider.weeklyUsageReservePercent,
+        maxConcurrentInference: row.provider.maxConcurrentInference,
+        inferenceConfigRevision: row.provider.inferenceConfigRevision,
       },
     }));
   }

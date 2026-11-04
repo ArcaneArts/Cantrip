@@ -1,5 +1,9 @@
 import { z } from "zod";
 import {
+  providerInferenceLimitSchema,
+  providerInferenceRevisionSchema,
+} from "./inference-admission.js";
+import {
   attachmentChunkOpaqueSchema,
   chatAttachmentOpaqueSummarySchema,
   chatAttachmentSummarySchema,
@@ -51,6 +55,9 @@ export const workerRuntimeProviderSchema = z.object({
   name: z.string().min(1),
   kind: modelProviderKindSchema,
   baseUrl: z.url(),
+  // Accept older runtime envelopes; admission resolves omissions to revision 0 / limit 8.
+  maxConcurrentInference: providerInferenceLimitSchema.optional(),
+  inferenceConfigRevision: providerInferenceRevisionSchema.optional(),
   protectedApiKey: protectedSecretEnvelopeSchema.nullable().default(null),
   accountId: z.string().min(1).nullable().default(null),
   credentialHomeKey: z.string().min(1).max(500).nullable().default(null),

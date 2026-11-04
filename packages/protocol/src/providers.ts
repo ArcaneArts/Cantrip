@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  DEFAULT_MAX_CONCURRENT_INFERENCE,
+  providerInferenceLimitSchema,
+  providerInferenceRevisionSchema,
+} from "./inference-admission.js";
 
 import { encryptionKeyBytesSchema } from "./encryption.js";
 import {
@@ -519,6 +524,8 @@ export const modelProviderCreateSchema = z.object({
   baseUrl: z.url(),
   apiKey: z.string().trim().min(1).max(10_000).nullable().optional(),
   weeklyUsageReservePercent: z.number().int().min(0).max(100).optional(),
+  // Optional on mutation inputs: legacy updates must preserve the stored limit.
+  maxConcurrentInference: providerInferenceLimitSchema.optional(),
 });
 
 export const modelProviderUpdateSchema = modelProviderCreateSchema;
@@ -557,6 +564,10 @@ export const modelProviderSummarySchema = modelProviderCreateSchema
     id: z.string().min(1),
     hasApiKey: z.boolean(),
     weeklyUsageReservePercent: z.number().int().min(0).max(100).default(3),
+    maxConcurrentInference: providerInferenceLimitSchema.default(
+      DEFAULT_MAX_CONCURRENT_INFERENCE,
+    ),
+    inferenceConfigRevision: providerInferenceRevisionSchema.default(0),
     accounts: modelProviderAccountListSchema.default([]),
     tokenUsage: tokenUsageTotalsSchema.default({
       inputTokens: 0,
