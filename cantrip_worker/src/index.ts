@@ -1,4 +1,7 @@
-import { osNativeMcpServers } from "./os-executor/native-mcp.js";
+import {
+  osNativeMcpServers,
+  osNativeMcpOperations,
+} from "./os-executor/native-mcp.js";
 import { OsRunExecution } from "./os-executor/run-execution.js";
 import { handleOsRunCommand } from "./os-executor/run-commands.js";
 import { ProjectGoalDelivery } from "./project-goal-delivery.js";
@@ -172,6 +175,7 @@ import {
   cuaMcpHostInvocation,
   managedCuaMcpServer,
   managedCantripMcpServer,
+  managedCantripMcpHttpServer,
   mergeManagedMcpServers,
 } from "./mcp/managed.js";
 import {
@@ -1251,22 +1255,26 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     profile: CantripMcpProfile = "ide",
     computerUseEnabled = false,
   ): Promise<McpServerConfiguration[]> => {
-    if (
-      attachment &&
-      osAgentPlacements.resolve({
-        ...nativeNamespaceScope(),
-        chatId: attachment.chatId,
-      })
-    ) {
-      return osNativeMcpServers(
-        await openMcpServers({
-          servers: configured,
-          service: workerEncryption,
-        }),
-      );
-    }
+    const osPlacement = attachment
+      ? osAgentPlacements.resolve({
+          ...nativeNamespaceScope(),
+          chatId: attachment.chatId,
+        })
+      : undefined;
+    const openedServers = await openMcpServers({
+      servers: configured,
+      service: workerEncryption,
+    });
+    const userServers = osPlacement
+      ? osNativeMcpServers(openedServers)
+      : openedServers;
     let managedCodeGraph: McpServerConfiguration | null = null;
-    if (profile === "ide" && codegraphProjects && codegraphInvocation) {
+    if (
+      !osPlacement &&
+      profile === "ide" &&
+      codegraphProjects &&
+      codegraphInvocation
+    ) {
       try {
         let canonicalRoot = await codegraphProjects.prepareForAgent(cwd);
         if (!canonicalRoot && attachment?.contextKind === "project") {
@@ -1319,7 +1327,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       ? await mcpBroker.serverCompatibility()
       : null;
     const serverOperations = new Set(serverCompatibility?.operations ?? []);
-    const cantripAllowedOperations = effectiveAttachment
+    const compatibleOperations = effectiveAttachment
       ? (effectiveAttachment.contextKind === "standalone"
           ? CANTRIP_MCP_STANDALONE_OPERATIONS
           : cantripMcpOperationsForPermissionProfile(
@@ -1330,10 +1338,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             operation === "tool.help" || serverOperations.has(operation),
         )
       : [];
+    const cantripAllowedOperations = osPlacement
+      ? osNativeMcpOperations(compatibleOperations)
+      : compatibleOperations;
     let protectedLegacyRoot: string | null = null;
     if (
       effectiveAttachment &&
       effectiveAttachment.contextKind === "project" &&
+      !osPlacement &&
       serverCompatibility?.bindingProtocolVersion === 1
     ) {
       const protectedPath = (
@@ -1347,7 +1359,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     const cantripAttachment = effectiveAttachment
       ? (() => {
           const commonClaims = {
-            computerUse: computerUseEnabled,
+            computerUse: !osPlacement && computerUseEnabled,
             ownerId: workerEncryption.ownerId(),
             chatId: effectiveAttachment.chatId,
             workerId: effectiveAttachment.workerId,
@@ -1383,13 +1395,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         })()
       : null;
     const managedCantrip = cantripAttachment
-      ? managedCantripMcpServer(
-          mcpHost,
-          cantripAttachment.connectionPath,
-          cantripMcpToolNamesForOperations(cantripAllowedOperations),
-          profile,
-          cantripAttachment.connection.bindingId,
-        )
+      ? osPlacement
+        ? managedCantripMcpHttpServer(
+            cantripAttachment.connection,
+            cantripMcpToolNamesForOperations(cantripAllowedOperations),
+          )
+        : managedCantripMcpServer(
+            mcpHost,
+            cantripAttachment.connectionPath,
+            cantripMcpToolNamesForOperations(cantripAllowedOperations),
+            profile,
+            cantripAttachment.connection.bindingId,
+          )
       : null;
     if (managedCantrip) {
       workerLogger.event("debug", "Cantrip agent MCP injected", {
@@ -1402,20 +1419,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         worktreePath: cwd,
       });
     }
-    return mergeManagedMcpServers(
-      await openMcpServers({ servers: configured, service: workerEncryption }),
-      [
-        managedCodeGraph,
-        managedCantrip,
-        computerUseEnabled && cantripAttachment
-          ? managedCuaMcpServer(
-              cuaMcpHostInvocation(),
-              cantripAttachment.connectionPath,
-              cantripAttachment.connection.bindingId,
-            )
-          : null,
-      ],
-    );
+    return mergeManagedMcpServers(userServers, [
+      managedCodeGraph,
+      managedCantrip,
+      !osPlacement && computerUseEnabled && cantripAttachment
+        ? managedCuaMcpServer(
+            cuaMcpHostInvocation(),
+            cantripAttachment.connectionPath,
+            cantripAttachment.connection.bindingId,
+          )
+        : null,
+    ]);
   };
   const automationScheduler = new ProjectAutomationScheduler({
     serverUrl: config.serverUrl,

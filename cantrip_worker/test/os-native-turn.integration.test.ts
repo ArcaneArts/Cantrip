@@ -1,3 +1,5 @@
+import { CantripMcpBroker } from "../src/mcp/broker.js";
+import { managedCantripMcpHttpServer } from "../src/mcp/managed.js";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
@@ -109,6 +111,10 @@ describe.skipIf(!enabled)("native Cantrip agent Linux tools", () => {
       dependencyOverlays: [],
     };
     const cancelMode = process.env.CANTRIP_OS_TEST_CANCEL === "1";
+    const mcpMode = process.env.CANTRIP_OS_TEST_MCP === "1";
+    const chatId = randomUUID();
+    let broker: CantripMcpBroker | undefined;
+    let mcpCalls = 0;
     const childCode =
       "import os,subprocess,time,json,pathlib;leaf=subprocess.Popen(['sleep','300']);p=pathlib.Path('cancel-child.json');p.write_text(json.dumps({'child':os.getpid(),'leaf':leaf.pid}));p.chmod(0o644);time.sleep(300)";
     const parentCode = `import os,sys,subprocess,time,json,pathlib
@@ -188,6 +194,21 @@ time.sleep(300)`;
                     "patch"]: patch,
                   }),
                 }),
+          };
+        } else if (step === 4 && mcpMode) {
+          const tool = offered.find((tool) =>
+            tool.name.endsWith("context_get"),
+          );
+          if (!tool)
+            throw new Error(
+              "Worker Cantrip MCP is missing from the remote native tool inventory.",
+            );
+          item = {
+            type: "function_call",
+            call_id: "worker-mcp-call",
+            name: tool.name,
+            ...(tool.namespace ? { namespace: tool.namespace } : {}),
+            arguments: "{}",
           };
         } else
           item = {
@@ -291,6 +312,73 @@ time.sleep(300)`;
         null,
         environment,
       );
+      if (mcpMode) {
+        broker = new CantripMcpBroker(
+          {
+            dataDirectory: directory,
+            serverUrl: "https://example.invalid",
+            token: "fixture-worker-secret",
+            workerId,
+          },
+          {
+            execute: async (binding, request) => {
+              expect(request).toEqual({
+                operation: "context.get",
+                arguments: {},
+              });
+              expect(binding.worktreeId).toBe(scope.worktreeId);
+              expect(binding.chatId).toBe(chatId);
+              mcpCalls++;
+              return {
+                summary: "Worker-authorized Linux context.",
+                target: null,
+                worktreeId: scope.worktreeId,
+                continuationScheduled: false,
+                mutated: false,
+                data: {
+                  worker: {
+                    id: workerId,
+                    name: "Fixture worker",
+                    online: true,
+                  },
+                  context: {
+                    chatId,
+                    executionLaneId: "fixture-lane",
+                    projectId: scope.projectId,
+                    workerId,
+                    worktreeId: scope.worktreeId,
+                    rootKind: "folder-root",
+                    terminalId: null,
+                    permissionProfileId: ":yolo",
+                    worktreeMode: "pinned",
+                  },
+                  binding: {
+                    status: "ready",
+                    mutationReady: true,
+                    staleClaims: [],
+                    recoveryInstruction: null,
+                    expiresAt: "2099-01-01T00:00:00.000Z",
+                  },
+                },
+              };
+            },
+          },
+        );
+        await broker.start();
+      }
+      const mcp = broker?.createBinding({
+        ownerId,
+        contextKind: "project",
+        projectId: scope.projectId,
+        chatId,
+        executionLaneId: "fixture-lane",
+        workerId,
+        worktreeId: scope.worktreeId,
+        rootKind: "folder-root",
+        scratchRootId: null,
+        permissionProfileId: ":yolo",
+        allowedOperations: ["context.get"],
+      });
       const options: RunAgentTurnOptions = {
         cwd: scope.guestPath,
         threadId: null,
@@ -302,7 +390,7 @@ time.sleep(300)`;
           baseUrl: `http://127.0.0.1:${(provider.address() as { port: number }).port}/v1`,
           apiKey: "synthetic-key",
         },
-        chatId: randomUUID(),
+        chatId,
         clientMessageId: randomUUID(),
         captureProtectedDiagnostics: false,
         executionProfile: "ide",
@@ -316,7 +404,9 @@ time.sleep(300)`;
           "Read and search input.txt, patch its seed line, create written.txt, then execute Python to produce artifact.txt in this Linux source.",
         rootKind: "folder-root",
         skillNames: [],
-        mcpServers: [],
+        mcpServers: mcp
+          ? [managedCantripMcpHttpServer(mcp.connection, ["context_get"])]
+          : [],
         subagentDefaults: null,
         subagentProtocolVersion: undefined,
         worktreeMode: "pinned",
@@ -472,7 +562,8 @@ time.sleep(300)`;
       );
       expect(providerError).toBeUndefined();
       expect(result.status).toBe("completed");
-      expect(requests).toHaveLength(4);
+      expect(requests).toHaveLength(mcpMode ? 5 : 4);
+      expect(mcpCalls).toBe(mcpMode ? 1 : 0);
       expect(authenticatedRequests.every(Boolean)).toBe(true);
       expect(await read("input.txt")).toBe("patched in Linux\n");
       expect(await read("written.txt")).toBe("native patch write\n");
@@ -487,12 +578,19 @@ time.sleep(300)`;
       await writeFile(
         path.join(directory, "native-turn-proof.json"),
         JSON.stringify(
-          { scope, result, activities, requestCount: requests.length },
+          {
+            scope,
+            result,
+            activities,
+            requestCount: requests.length,
+            workerMcpCalls: mcpCalls,
+          },
           null,
           2,
         ),
       );
     } finally {
+      await broker?.close();
       runtime?.close();
       await connection?.close();
       provider.closeAllConnections();

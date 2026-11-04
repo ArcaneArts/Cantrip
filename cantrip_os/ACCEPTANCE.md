@@ -1189,3 +1189,34 @@ Packages and evidence are retained under ignored artifacts/packages/ and
 artifacts/phase3-run-retirement/. This supersedes the earlier disabled-deletion
 checkpoint. Broader delegated project/artifact tools, GUI launch context, and
 refreshed distribution acceptance remain outstanding; Phase 3 is still active.
+
+## Worker-owned Linux MCP checkpoint (2026-11-04)
+
+Linux native sessions now receive Cantrip MCP over an authenticated worker-local
+HTTP endpoint. This reuses the existing broker's per-chat credential, active lane,
+permission checks, operation limits, revocation, and expiry. The native app-server
+connects from the worker; no broker credential, executable, or provider key is
+installed in the guest. Tool discovery reflects the binding's allowed operations.
+CodeGraph and Host computer use remain excluded. Host-only Run/worktree handlers
+and Task creation are not advertised until their explicit source adapters exist.
+
+Actual pinned native turns passed against ARM64 Docker (2.62 seconds of test time)
+and the installed AMD64 VM (16.41 seconds). A deterministic provider exercised real
+native shell/read/search, patch/write, and artifact creation in the selected Linux
+source, followed by one Cantrip context tool through the new worker HTTP endpoint.
+The test checked exact chat/worktree identity and actual guest artifact UID/cwd.
+This validates the native tool loop with a fixture provider, not a new real-model
+acceptance claim. No executor package change was needed.
+
+Thirty-one focused broker/session/HTTP, managed configuration, tool catalog, and
+Linux MCP tests passed. The HTTP test
+uses a real MCP SDK client and checks wrong credentials, inactive/active lanes,
+deactivation and expiry without replaying an operation. Worker type checking
+retains the six recorded CUA/MCP/provider-log baseline errors with no new errors.
+The broader existing stdio broker test retains its Task-create idempotence
+annotation mismatch (the Task handler annotation is unchanged by this revision).
+Required pnpm check retains the recorded agentOperations audit mismatch.
+
+Evidence is retained under ignored artifacts/phase3-agent-tools/. Source-aware
+Run/worktree/delegation adapters, attachment and artifact delivery, GUI context,
+and final distribution acceptance remain in progress.

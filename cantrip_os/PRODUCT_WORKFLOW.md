@@ -106,12 +106,17 @@ that the delegated lifecycle is unavailable. It does not run the command on the
 host. Native Finder/Explorer reveal is likewise unavailable for OS file views;
 open the workspace's desktop to browse the guest folder.
 
-At this checkpoint native Linux tools and configured network MCP servers are
-available to OS agents. The pinned native environment cannot start worker-local
-stdio MCP processes. Cantrip/CodeGraph/host computer-use MCP injection is omitted
-for these sessions; an enabled user stdio MCP configuration reports an explicit
-error rather than running locally or being copied into Linux. Delegated Cantrip
-project tools remain part of the following integration work.
+OS agents use native Linux tools, configured network MCP servers, and the
+worker's authenticated Cantrip MCP over loopback. The native app-server and MCP
+broker stay on the owning worker; broker credentials and model keys are not
+copied into Linux. The broker checks its credential and current execution lane
+for each tool call, retaining existing permissions, revocation and expiry.
+Only tools supported by the connected Server and this placement are advertised.
+Host-only Run/worktree handlers and delegated Task creation remain unavailable
+until explicit source adapters are installed. Exact Explorer/terminal targets
+remain explicitly selected resources. Host computer use and CodeGraph injection
+are omitted; an enabled user stdio MCP configuration reports an explicit error
+rather than running locally or being copied into Linux.
 
 ## Linux-owned Git worktrees
 

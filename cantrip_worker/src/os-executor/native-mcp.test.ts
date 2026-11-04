@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import type { McpServerConfiguration } from "@cantrip/protocol";
-import { osNativeMcpServers } from "./native-mcp.js";
+import { osNativeMcpServers, osNativeMcpOperations } from "./native-mcp.js";
 const local = (name: string, enabled = true): McpServerConfiguration => ({
   name,
   enabled,
@@ -35,4 +35,26 @@ it("never injects reserved Host integrations into the remote Linux session", () 
       local("codegraph"),
     ]),
   ).toEqual([]);
+});
+
+it("does not expose handlers which still select Host to a captured Linux agent", () => {
+  expect(
+    osNativeMcpOperations([
+      "context.get",
+      "policy.read",
+      "explorer.read",
+      "terminal.send",
+      "worktree.create",
+      "worktree.status",
+      "run-configuration.start",
+      "task.create",
+      "task.status",
+    ]),
+  ).toEqual([
+    "context.get",
+    "policy.read",
+    "explorer.read",
+    "terminal.send",
+    "task.status",
+  ]);
 });

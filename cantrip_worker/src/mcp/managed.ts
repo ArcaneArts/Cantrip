@@ -7,6 +7,7 @@ import {
   MANAGED_CUA_MCP_NAME,
   isManagedMcpName,
   type McpServerConfiguration,
+  type CantripMcpConnectionDocument,
 } from "@cantrip/protocol";
 
 import type { CantripMcpProfile } from "./profile.js";
@@ -109,5 +110,26 @@ export function managedCuaMcpServer(
       ? { CANTRIP_MCP_CONNECTION_GENERATION: connectionGeneration }
       : {},
     managedToolNames: ["js", "js_reset"],
+  };
+}
+
+/** Native app-server and this authenticated loopback endpoint both live on the
+ * owning worker. No broker credential or worker executable enters the guest. */
+export function managedCantripMcpHttpServer(
+  connection: CantripMcpConnectionDocument,
+  managedToolNames: readonly (typeof CANTRIP_MCP_TOOL_NAMES)[number][],
+): McpServerConfiguration & { managedToolNames: string[] } {
+  return {
+    name: MANAGED_CANTRIP_MCP_NAME,
+    enabled: true,
+    transport: "http",
+    url: new URL(
+      `/v1/mcp/${connection.bindingId}`,
+      connection.endpoint,
+    ).toString(),
+    bearerTokenEnvironmentVariable: null,
+    headers: { Authorization: `Bearer ${connection.credential}` },
+    environmentHeaders: {},
+    managedToolNames: [...managedToolNames],
   };
 }
