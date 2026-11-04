@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+if [ "$1" = configure ]; then
+    deb-systemd-helper enable cantrip-os-remote.service >/dev/null
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        deb-systemd-invoke start cantrip-os-remote.service
+    elif [ -f /run/cantrip-os-remote/upgrade-restart ]; then
+        rm /run/cantrip-os-remote/upgrade-restart
+        cantrip-remote service start
+    fi
+fi

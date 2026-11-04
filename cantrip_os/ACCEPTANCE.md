@@ -1506,3 +1506,71 @@ This checkpoint is a native backend, not completion of Phase 4. Optional package
 lifecycle, clipboard APIs, captured real-agent integration, integrated streaming/
 takeover, SSH/SFTP/VNC/TCP access, and refreshed distribution acceptance remain
 required. The personal OS and default Host helper selection are unchanged.
+
+## Phase 4: optional native desktop package (2026-11-04)
+
+`cantrip-os-remote` 0.1.0 packages the Linux helper, root-only control service,
+protected stdio carrier, lifecycle hooks and installed-system unit. The helper
+runs as the selected workspace account. The existing Worker retains its CUA
+service and credentials; this package does not install a Worker or agent loop.
+Its default retained state is inside the existing workspace data volume.
+
+Actual lifecycle tests passed in native ARM64 Docker and the installed AMD64
+VM (2 emulated CPUs, 4 GiB). Tests exercised:
+
+- Real PNG capture; actual held-button release after clean EOF, carrier SIGKILL
+  and remote-manager SIGKILL; continued independence of the second display.
+- Helper UID, home, assigned display and restricted inherited environment.
+- Desktop stop closing an idle CUA carrier while an independently launched
+  shell process stayed alive; reopening advanced the desktop generation.
+- Rejection of incorrect owner, Worker, instance, workspace, executor-manager,
+  desktop and remote-service identities without opening a replacement.
+- Actual executor-service retirement closing the carrier and releasing held input
+  while the other workspace desktop remained available.
+- Disable/remove/reinstall, running upgrade, purge/reinstall, retained workspace
+  document and enable preference, root-only control and preserved executor-state
+  permissions. Unsupported preferences were preserved; a running service could
+  still be stopped after that preference became unsupported.
+
+The installed running-upgrade test waits for the actual control endpoint;
+systemd process startup alone does not imply that socket is ready.
+
+The idle-carrier test first failed: stopping X left a helper waiting for another
+request. Lifecycle observation now pins the actual executor/workspace service
+peers using pidfds and reads the authoritative workspace generation/desired state.
+It retires the old carrier without depending on the availability of either
+administrative request queue. The passing tests include that correction.
+
+The normal Worker `CantripCuaService` passed an actual packaged integration test
+through Docker and strict host-verified SSH to the installed VM. It checked real
+capture and protocol-valid click/key/text dispatch receipts. Disposable fixture
+scopes explicitly authorized their display; this is not yet canonical real-agent
+admission. Native application text bytes were tested in the earlier checkpoint.
+
+A freshly built ARM64 image, `cantrip-os-phase4-package-image:dev`, includes all
+three optional packages and passed the lifecycle harness plus the Worker test.
+It ran with a 4 GiB limit and only the existing personal/workspace/executor named
+volumes. Image identity:
+`sha256:f5c7cebc78cc1933b00ecdba1ec7e3762eeb691ad4a736aa32a7cc3f793673da`.
+The new ordinary-OS image with `CANTRIP_OS_WORKSPACES=0` booted with all three
+integration packages absent, an actual X desktop/browser endpoint, Python and nano.
+An initial test port was already allocated; the disposable image test used its
+own ports 16140/16141/15912 instead of changing the existing listener.
+
+Built package SHA-256 values:
+
+| Package architecture | Bytes   | SHA-256                                                            |
+| -------------------- | ------- | ------------------------------------------------------------------ |
+| ARM64                | 1313100 | `0bf180ce93f96e54c97a6f5f252db78c28536045b2e7ba8c957981e1819fd98e` |
+| AMD64                | 1506516 | `7220d622e044a7fc6fdb4f63f08657326402baaab097e47e46cf9d64a47b8b09` |
+
+Five focused Worker suites passed (75 tests, 24 platform skips); seven OS/host
+Node tests passed. Linux Clippy with all targets and warnings denied, Rust format,
+Worker TypeScript, Python/shell syntax, scoped formatting and diff checks passed. Required local
+`pnpm check` remains stopped by unchanged decomposition budgets in `build-app.ts`
+(1503/1500) and `chat-turn-runtime.ts` (2103/1999 after rebase).
+
+Docker/ISO inclusion and source watching are wired. A refreshed ISO containing
+this package has not yet been built or installed. Phase 4 remains in progress:
+real-agent routing, clipboard APIs, integrated streaming/takeover, managed
+SSH/SFTP/VNC/TCP and final distribution acceptance are still required.

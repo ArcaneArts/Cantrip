@@ -24,11 +24,17 @@ in Project Settings → CantripOS. Captured Linux agents, files/editor/Explorer,
 terminals, the combined Run list, attachments and returned artifact links now use
 these bindings. `cantrip-desktop` launches GUI apps on the assigned workspace.
 The public Docker/ISO scripts include the optional executor by default. Set
-`CANTRIP_OS_EXECUTOR=0` to omit only execution support, or
-`CANTRIP_OS_WORKSPACES=0` to build the ordinary OS without either integration
-package. An explicit executor selection overrides that default. Host-only MCP
+`CANTRIP_OS_EXECUTOR=0` to omit execution and its dependent remote support, or
+`CANTRIP_OS_WORKSPACES=0` to build the ordinary OS without integration packages.
+Explicit package selections override those defaults. Host-only MCP
 Run/worktree/task-creation adapters remain unavailable in Linux sessions; use the
 source-aware product workflows. Final distribution acceptance is recorded below.
+
+Phase 4 adds the optional [native desktop package](packages/remote/README.md),
+including its protected CUA carrier. Docker/ISO builds include it with the
+executor edition by default; `CANTRIP_OS_REMOTE=0` omits it independently.
+Agent routing, integrated viewing/takeover and managed service access are still
+in progress. Native and package evidence is recorded in acceptance.
 
 Phase 3 execution and distribution acceptance is recorded. See [acceptance results](ACCEPTANCE.md)
 for the actual tested builds and platform limits. Iterate in Docker first; build
@@ -106,7 +112,8 @@ node cantrip_os/scripts/dev.mjs
 ```
 
 It builds once, then polls the content of manifests, overlays, image recipes,
-scripts, viewer assets, optional packages, and `.dockerignore`. Changes are debounced and builds
+scripts, viewer assets, optional packages, the native CUA/interaction sources,
+and `.dockerignore`. Changes are debounced and builds
 are serialized; edits arriving during a build queue another build. Manual
 lifecycle commands share the instance lock even across Git worktrees. Actual
 build failures leave the running container untouched; fix the source and the

@@ -249,7 +249,7 @@ impl CaptureBackend for X11Backend {
         position: Point,
         cancel: &Cancellation,
     ) -> Result<(Target, InputReceipt)> {
-        self.perform(
+        let (current, mut receipt) = self.perform(
             session,
             target,
             &InputCommand::PreparedPress {
@@ -260,7 +260,10 @@ impl CaptureBackend for X11Backend {
             position,
             cancel,
             &mut |_| {},
-        )
+        )?;
+        receipt.method = "coordinate";
+        receipt.window_delivery = None;
+        Ok((current, receipt))
     }
     fn global_click(
         &mut self,
@@ -275,5 +278,28 @@ impl CaptureBackend for X11Backend {
 
 pub fn run(display: &str, generation: &str) -> std::io::Result<()> {
     let backend = X11Backend::connect(display, generation).map_err(std::io::Error::other)?;
+    crate::runtime::run(backend, std::io::stdin(), std::io::stdout())
+}
+
+pub fn run_ready(display: &str, generation: &str, ready_fd: i32) -> std::io::Result<()> {
+    use std::{io::Write, os::fd::FromRawFd};
+    if ready_fd <= 2 {
+        return Err(std::io::Error::other("Invalid readiness descriptor"));
+    }
+    use std::os::unix::fs::FileTypeExt;
+    if !std::fs::metadata(format!("/proc/self/fd/{ready_fd}"))?
+        .file_type()
+        .is_fifo()
+    {
+        return Err(std::io::Error::other(
+            "Readiness descriptor must be an inherited pipe",
+        ));
+    }
+    let backend = X11Backend::connect(display, generation).map_err(std::io::Error::other)?;
+    // The package supervisor creates and exclusively passes this writable pipe.
+    // Ownership ends here; no process environment or native protocol bytes leak.
+    let mut ready = unsafe { std::fs::File::from_raw_fd(ready_fd) };
+    ready.write_all(b"1")?;
+    drop(ready);
     crate::runtime::run(backend, std::io::stdin(), std::io::stdout())
 }

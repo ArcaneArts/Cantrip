@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+if [ "$1" = purge ]; then
+    deb-systemd-helper purge cantrip-os-remote.service >/dev/null
+fi
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload
+fi
+# Persistent enable preference and diagnostics are deliberately retained.

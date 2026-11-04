@@ -492,24 +492,28 @@ export class CantripCuaService {
             : null;
       if (extra && "input" in extra) {
         const method =
-          operation === "input.perform" && "command" in fields
-            ? ["focus", "window-input", "media"].includes(
-                (fields.command as CuaInputCommand).kind,
-              )
-              ? (fields.command as CuaInputCommand).kind === "media"
-                ? "system-media"
-                : ((fields.command as CuaInputCommand).kind as
-                    "focus" | "window-input")
-              : (`background-${(fields.command as Exclude<CuaInputCommand, { kind: "focus" | "window-input" | "media" }>).kind}` as const)
-            : operation === "input.press"
-              ? "accessibility"
-              : "delivery" in fields && fields.delivery === "background"
-                ? "background-coordinate"
-                : "delivery" in fields && fields.delivery === "process"
-                  ? "process-coordinate"
-                  : "globalInput" in fields && fields.globalInput === true
-                    ? "coordinate"
-                    : "accessibility";
+          operation === "input.click" &&
+          record.runtime.capabilities?.backend === "linux-x11" &&
+          !("delivery" in fields)
+            ? "coordinate"
+            : operation === "input.perform" && "command" in fields
+              ? ["focus", "window-input", "media"].includes(
+                  (fields.command as CuaInputCommand).kind,
+                )
+                ? (fields.command as CuaInputCommand).kind === "media"
+                  ? "system-media"
+                  : ((fields.command as CuaInputCommand).kind as
+                      "focus" | "window-input")
+                : (`background-${(fields.command as Exclude<CuaInputCommand, { kind: "focus" | "window-input" | "media" }>).kind}` as const)
+              : operation === "input.press"
+                ? "accessibility"
+                : "delivery" in fields && fields.delivery === "background"
+                  ? "background-coordinate"
+                  : "delivery" in fields && fields.delivery === "process"
+                    ? "process-coordinate"
+                    : "globalInput" in fields && fields.globalInput === true
+                      ? "coordinate"
+                      : "accessibility";
         const command =
           operation === "input.perform" && "command" in fields
             ? (fields.command as CuaInputCommand)

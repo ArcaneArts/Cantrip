@@ -1,0 +1,10 @@
+Package: cantrip-os-remote
+Version: 0.1.0
+Architecture: @ARCH@
+Maintainer: Cantrip <support@cantrip.dev>
+Section: admin
+Priority: optional
+Depends: cantrip-os-executor (>= 0.9.0), cantrip-os-workspaces (>= 0.3.0), python3, init-system-helpers, libc6, libgcc-s1
+Description: Optional native desktop access for CantripOS
+ Workspace-bound Linux computer use over the owning Worker's protected carrier.
+ The external Worker retains orchestration and provider credentials.
