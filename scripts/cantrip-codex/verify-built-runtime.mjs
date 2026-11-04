@@ -19,6 +19,7 @@ const execute = promisify(execFile);
 const protocolChecks = {
   "ClientRequest.ts": [
     '"turn/pause"',
+    '"turn/suspension"',
     '"thread/settings/update"',
     '"turn/settings/update"',
     '"thread/settings/read"',
