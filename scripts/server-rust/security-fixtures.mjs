@@ -1,4 +1,5 @@
 import { threadSyncWireFixtures } from "./chat-thread-sync-fixtures.mjs";
+import { cantripOsWireFixtures } from "./cantrip-os-wire-fixtures.mjs";
 import { projectSurfaceWireFixtures } from "./project-surface-wire-fixtures.mjs";
 import * as p from "../../packages/protocol/dist/index.js";
 import { workerIngressFixtures } from "./worker-wire-fixtures.mjs";
@@ -278,6 +279,7 @@ export const projectWire = {
 const nativeEventSamples = nativeEventWireFixtures();
 
 export const securityFixtures = {
+  ...cantripOsWireFixtures(),
   nativeBehaviorAttributionSchema: [
     { version: 1, turnIds: [], captures: [], conflictingTurnKeys: [] },
     {

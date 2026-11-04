@@ -2,6 +2,7 @@
 //! by the development exporter/oracle; requests execute these Rust operations.
 mod agent_interactions;
 mod browsers;
+mod cantrip_os;
 pub(crate) mod coercion;
 mod intersections;
 mod js_date;

@@ -1,3 +1,4 @@
+import { requireWorkerLocalPath } from "./worker-local-source-path.js";
 import type {
   EncryptedTerminalCreate,
   EncryptedTerminalServiceConfiguration,
@@ -286,6 +287,7 @@ export class TerminalRepository {
       .where(
         and(
           eq(schema.projectWorktrees.workerId, workerId),
+          eq(schema.projectWorktrees.locationKind, "worker-local"),
           eq(schema.terminals.serviceEnabled, true),
         ),
       );
@@ -296,7 +298,7 @@ export class TerminalRepository {
       return {
         terminalId: terminal.id,
         serverId,
-        worktreePath: worktree.absolutePath,
+        worktreePath: requireWorkerLocalPath(worktree.absolutePath),
         stateProtection: terminal.protectedState,
       };
     });
@@ -440,7 +442,7 @@ export class TerminalRepository {
           rootKind: row.worktree.rootKind,
           workerId: row.terminal.activeWorkerId,
           worktreeId: row.worktree.id,
-          worktreePath: row.worktree.absolutePath,
+          worktreePath: requireWorkerLocalPath(row.worktree.absolutePath),
           linkedChatId: row.terminal.linkedChatId,
           runConfigurationId: row.terminal.runConfigurationId,
           runConfigurationRuntimeId: row.terminal.runConfigurationRuntimeId,

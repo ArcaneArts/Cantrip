@@ -1,4 +1,12 @@
 export { projectAlerts, chatGoalObservations } from "./schema-alerts.js";
+export {
+  projectSourceIdentities,
+  cantripOsInstances,
+  cantripOsWorkspaces,
+  cantripOsProjectSources,
+  cantripOsSourceBindings,
+} from "./schema-cantrip-os.js";
+import { projectSourceIdentities } from "./schema-cantrip-os.js";
 import type { CuaEffectConfiguration } from "@cantrip/protocol/computer-use-effects";
 export {
   conversationUsageClients,
@@ -2522,7 +2530,9 @@ export const projectDockPresentationPreferences = pgTable(
 export const projectSources = pgTable(
   "project_sources",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .references(() => projectSourceIdentities.id, { onDelete: "cascade" }),
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
@@ -2583,7 +2593,7 @@ export const projectWorktrees = pgTable(
     id: text("id").primaryKey(),
     projectSourceId: text("project_source_id")
       .notNull()
-      .references(() => projectSources.id, { onDelete: "cascade" }),
+      .references(() => projectSourceIdentities.id, { onDelete: "cascade" }),
     workerId: text("worker_id")
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
@@ -2592,7 +2602,12 @@ export const projectWorktrees = pgTable(
       .notNull()
       .default("git-worktree"),
     name: text("name").notNull(),
-    absolutePath: text("absolute_path").notNull(),
+    locationKind: text("location_kind")
+      .$type<"worker-local" | "cantrip-os">()
+      .notNull()
+      .default("worker-local"),
+    absolutePath: text("absolute_path"),
+    guestPath: text("guest_path"),
     displayPath: text("display_path").notNull(),
     isPrimary: boolean("is_primary").notNull().default(false),
     isDefault: boolean("is_default").notNull().default(false),
@@ -2614,6 +2629,22 @@ export const projectWorktrees = pgTable(
       .defaultNow(),
   },
   (table) => [
+    foreignKey({
+      name: "project_worktrees_source_location_fk",
+      columns: [table.projectSourceId, table.locationKind],
+      foreignColumns: [
+        projectSourceIdentities.id,
+        projectSourceIdentities.locationKind,
+      ],
+    }).onDelete("cascade"),
+    check(
+      "project_worktrees_location_shape_check",
+      sql`(${table.locationKind} = 'worker-local' AND ${table.absolutePath} IS NOT NULL AND ${table.guestPath} IS NULL) OR (${table.locationKind} = 'cantrip-os' AND ${table.absolutePath} IS NULL AND ${table.guestPath} IS NOT NULL AND left(${table.guestPath}, 1) = '/')`,
+    ),
+    uniqueIndex("project_worktrees_source_guest_path_unique").on(
+      table.projectSourceId,
+      table.guestPath,
+    ),
     uniqueIndex("project_worktrees_source_path_unique").on(
       table.projectSourceId,
       table.absolutePath,
@@ -2714,7 +2745,7 @@ export const projectGithubConversionJobs = pgTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     projectSourceId: text("project_source_id")
       .notNull()
-      .references(() => projectSources.id, { onDelete: "cascade" }),
+      .references(() => projectSourceIdentities.id, { onDelete: "cascade" }),
     workerId: text("worker_id")
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),

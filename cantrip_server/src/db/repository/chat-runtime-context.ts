@@ -1,3 +1,4 @@
+import { requireWorkerLocalPath } from "./worker-local-source-path.js";
 import { randomUUID } from "node:crypto";
 import { lockNativeCommandChat } from "./native-command-lock.js";
 import { assertNativeRuntimeWritable } from "./native-runtime-handoff-guard.js";
@@ -117,7 +118,7 @@ export class ChatRuntimeContextRepository {
         row.settings?.computerUseCantripAppAllowed === true,
       computerUseAuthorityGeneration: row.chat.computerUseAuthorityGeneration,
       managedInputRevision: row.chat.managedInputRevision,
-      cwd: row.worktree.absolutePath,
+      cwd: requireWorkerLocalPath(row.worktree.absolutePath),
       experience: row.chat.experience as ChatWireSummary["experience"],
       defaultPermissionProfileId:
         (row.settings?.defaultPermissionProfileId as

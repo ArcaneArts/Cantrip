@@ -396,3 +396,35 @@ Server-authorized project bindings, both source modes, real agent placement,
 editor/terminal/Run routing, and refreshed execution-enabled ISO media remain
 required by the full phase-3 goal. The VM above used the existing installed
 edition plus the current package; a new ISO is part of the distribution cycle.
+
+## Phase 3 source identity checkpoint
+
+This internal checkpoint adds canonical placement persistence; it does not claim
+that Docker mounts, checkout provisioning, agent routing, or client selection are
+available yet. The executor package remains optional and unchanged.
+
+- The actual Drizzle migration path passes alongside the worktree and placement
+  API suites: 65 tests. Direct/link replica jobs and executor suites add 8 tests.
+- Source tests preserve legacy inserts, IDs, path repairs and delete cascades;
+  reject cross-owner/worker/profile bindings and guest paths in local fields;
+  preserve distinct Linux source IDs; reject stale attachment/runtime receipts;
+  invalidate moved linked roots; and retain captured paths without host fallback.
+- The Rust server applies the same migration through native PGlite and a real
+  PostgreSQL child process, then reopens both databases successfully. Its 2,571
+  source validation cases agree with the actual TypeScript protocol, and the
+  generated contract manifest agrees with current source.
+- Worker worktree/runtime/path suites pass 95 tests; GitHub/direct/link placement
+  adds 31. Client worktree/history/settings/popout suites pass 56 tests and
+  placement/encryption adds 12. The client production build passes.
+- A real ARM64 guest filesystem write with literal `#`, `%`, `?`, `%2F`, spaces
+  and Japanese characters was independently read by Linux Python. The URI codec
+  does not apply the worker host's filesystem path conventions.
+
+The full protocol run has the same four source-test failures as clean Primary
+(duplicated in compiled test output): two CUA default expectations, context tool
+ordering, and seven previously unreviewed public exports. The new twelve exports
+are explicitly accounted for without accepting that unrelated baseline drift.
+Server typechecking retains the two existing Task-operation errors reproduced
+on Primary. `pnpm check` stops at the existing agent-operation boundary digest
+mismatch. A broad legacy Rust wire sweep was interrupted; only the focused
+source cases, manifest and database checks above are claimed as complete.

@@ -586,6 +586,18 @@ export const contractRoots = [
   "cantripMcpTaskListInputSchema",
   "cantripMcpTaskStatusInputSchema",
   "cantripMcpTaskWaitInputSchema",
+  "cantripOsGuestPathSchema",
+  "projectSourceLocationSchema",
+  "cantripOsTransportSchema",
+  "cantripOsDependencyOverlaySchema",
+  "cantripOsDependencyOverlaysSchema",
+  "cantripOsAttachSchema",
+  "cantripOsWorkspaceObservationSchema",
+  "cantripOsInstanceSummarySchema",
+  "cantripOsWorkspaceSummarySchema",
+  "cantripOsProjectSourceSummarySchema",
+  "cantripOsProjectWorktreeSummarySchema",
+  "cantripOsSourceBindingSummarySchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -616,6 +628,12 @@ export function sourceContractSchema(name) {
 }
 
 const refinements = new Map([
+  [protocol.cantripOsGuestPathSchema, "cantrip-os-guest-path"],
+  [
+    protocol.cantripOsDependencyOverlaySchema.shape.path,
+    "cantrip-os-overlay-path",
+  ],
+  [protocol.cantripOsDependencyOverlaysSchema, "cantrip-os-unique-overlays"],
   [protocol.chatGoalUpdateSchema, "chat-goal-update"],
   [protocol.projectGoalObservationSchema, "project-goal-observation"],
   [protocol.cantripMcpBindingSchema, "mcp-binding-dates"],

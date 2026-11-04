@@ -7,6 +7,7 @@ import {
   type OsExecutorBinding,
   type OsExecutorTransport,
 } from "../src/os-executor/connection.js";
+import { guestFileUri as uri } from "../src/os-executor/paths.js";
 
 // Opt-in: a real disposable OS with the package enabled and exec-a/exec-b
 // workspace accounts created. A transport file may select a test VM via SSH.
@@ -20,7 +21,6 @@ type ReadResult = {
   exited: boolean;
   exitCode: number | null;
 };
-const uri = (path: string) => new URL(`file://${path}`).href;
 
 async function initialize(
   connection: OsExecutorConnection,
@@ -139,6 +139,26 @@ PY`,
           { path, sandbox: null },
         );
         expect(Buffer.from(data.dataBase64, "base64").toString()).toBe(value);
+        const filename = "cantrip # % ? literal%2F 日本語.txt";
+        await connection.request("fs/writeFile", {
+          path: uri(connection.binding.home + "/Documents/" + filename),
+          dataBase64: Buffer.from(value).toString("base64"),
+          sandbox: null,
+        });
+        const literal = await output(
+          connection,
+          await start(
+            connection,
+            `python3 - <<'PY'
+from pathlib import Path
+p=Path('Documents') / ${JSON.stringify(filename)}
+print(p.read_text())
+print(p.name)
+PY`,
+          ),
+        );
+        expect(literal.exitCode).toBe(0);
+        expect(literal.text.trim().split("\n")).toEqual([value, filename]);
         const processId = await start(
           connection,
           'id -u; pwd; sudo -n id -u; test -z "${DISPLAY:-}"',

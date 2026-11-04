@@ -1,3 +1,4 @@
+import { requireWorkerLocalPath } from "./repository/worker-local-source-path.js";
 import { createHash, randomUUID } from "node:crypto";
 
 import {
@@ -719,7 +720,7 @@ export class ChatImportJobRepository {
       if (worktree) {
         target.worktrees.push({
           worktreeId: worktree.id,
-          path: worktree.absolutePath,
+          path: requireWorkerLocalPath(worktree.absolutePath),
           isPrimary: worktree.isPrimary,
         });
       }

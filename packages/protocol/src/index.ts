@@ -2,6 +2,7 @@ export * from "./native-settings-state.js";
 export * from "./conversations.js";
 export * from "./file-documents.js";
 export * from "./workspace-ownership.js";
+export * from "./cantrip-os.js";
 export * from "./workspace-pane-views.js";
 export * from "./workspace-legacy-file-import.js";
 export * from "./workspace-command.js";

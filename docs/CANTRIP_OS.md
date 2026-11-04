@@ -63,7 +63,7 @@ and source ownership, still delivered through optional packages. Checkout mounts
 worker placement, agent tools, and Linux CUA integration are not implemented by
 the workspace package.
 
-Phase 3 is being implemented in five sequential delivery cycles: optional
+Phase 3 is being implemented in sequential delivery cycles: optional
 executor package/worker attachment; source bindings and provisioning; native
 agent execution; terminals/editor/Run and target selection; then full acceptance
 and refreshed media. The package foundation lives under
@@ -75,7 +75,20 @@ The first execution cycle has passed native ARM64 Docker and installed AMD64 VM
 package, filesystem/process, lifecycle, and reboot acceptance. The base package
 manifest now includes htop, nano, and Python 3 in both editions. The next cycle
 implements explicit source bindings, linked Docker worktrees, and Linux-owned
-checkout/worktree provisioning.
+checkout/worktree provisioning. Source ownership is split into two reviewable
+milestones: canonical identities/placement first, then actual materialization and
+worker commands. The identity milestone does not enable project selection or
+claim end-to-end execution.
+
+The canonical model keeps `project_sources.absolute_path` worker-local. A shared
+source identity preserves worktree IDs and leases, while Linux-owned source
+details use `guest_path` in separate rows. Linked bindings retain the original
+source/worktree and capture its exact worker path; they do not create replicas
+or fake workers. Bindings capture an OS workspace and immutable configuration
+generation. A successful provisioning receipt records the attachment and runtime
+generations that verified the files. A restart, path change, reattachment, retired
+binding, or unavailable worker invalidates execution until the intended placement
+is verified again. Guest unavailability never authorizes host execution.
 
 ## Product intent
 

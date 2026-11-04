@@ -1,3 +1,4 @@
+import { requireWorkerLocalPath } from "./worker-local-source-path.js";
 import type {
   CodeTabWireSummary,
   EncryptedCodeTabCreate,
@@ -173,7 +174,7 @@ export class CodeSurfaceRepository {
     return row
       ? {
           codeTab: toCodeTabWireSummary(row.codeTab),
-          cwd: row.worktree.absolutePath,
+          cwd: requireWorkerLocalPath(row.worktree.absolutePath),
           workerId: row.codeTab.activeWorkerId,
           worktreeId: row.worktree.id,
           worktreeName: row.worktree.name,
