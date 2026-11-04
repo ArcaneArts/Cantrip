@@ -377,3 +377,10 @@ test(
     assert.ok(result.elapsedMs < 15_000);
   },
 );
+
+test("installation smoke never grants simulated target access to a native backend", async () => {
+  await assert.rejects(
+    smokeCantripCua("/must-not-launch", { backend: "native" }),
+    /explicit fake backend/,
+  );
+});
