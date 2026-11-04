@@ -1,3 +1,7 @@
+import {
+  recoveryIdentity,
+  type InferenceRecoveryIdentity,
+} from "../inference-journal.js";
 import type {
   InferenceLease,
   InferenceRuntime,
@@ -54,6 +58,8 @@ interface Request {
   threadId?: string | null;
   expectedTurnId?: string;
   signal?: AbortSignal;
+  recoveryKey?: string | null;
+  recovery?: InferenceRecoveryIdentity | null;
 }
 
 /**
@@ -84,6 +90,8 @@ export class CodexInferenceAdmission {
       input.projectId ?? null,
       input.threadId ?? null,
       input.expectedTurnId ?? null,
+      input.recoveryKey ?? null,
+      recoveryIdentity(input.recovery),
     ]);
     const previous = this.requests.get(input.operationId);
     if (previous) {
@@ -113,6 +121,8 @@ export class CodexInferenceAdmission {
       chatId: input.chatId,
       projectId: input.projectId,
       signal: input.signal,
+      recoveryKey: input.recoveryKey,
+      recovery: input.recovery,
     });
     const operation: Operation = {
       operationId: input.operationId,
@@ -333,6 +343,8 @@ export class CodexInferenceAdmission {
       projectId: scope?.projectId,
       threadId: input.threadId,
       expectedTurnId: input.turnId,
+      recoveryKey: `native-turn:${input.threadId}:${input.turnId}`,
+      recovery: { threadId: input.threadId, turnId: input.turnId },
       signal: input.signal,
     });
     execution.dispatched();

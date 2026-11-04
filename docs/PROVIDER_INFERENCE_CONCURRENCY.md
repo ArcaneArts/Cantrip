@@ -117,6 +117,40 @@ existing relay bandwidth quota and authorization. Request statistics count both
 lanes; neither server grants provider tickets. This preserves control headroom
 without removing transport resource bounds or creating a second prompt queue.
 
+Native patch `0050` extends the same worker lifetime keeper with a versioned
+admission journal. The exclusive keeper is its only writer, so a retired Node
+generation cannot race journal updates from a replacement generation. The journal
+stores provider/worker/runtime and canonical command/message identities, FIFO
+ordinals, durable grant evidence, and settlement metadata. It stores no prompts,
+titles, credentials, or encrypted prompt copies.
+
+An enqueue is durable before it can compete for a grant. The worker installs its
+capacity reservation synchronously, then requires the journal's durable grant
+acknowledgement before resolving the execution lease. An asynchronous write at the
+queue head cannot let newer work bypass it. Cancellation before the acknowledgement
+removes the waiter/reservation and prevents its late acknowledgement from starting
+work. Explicit resumes persist a new ordinal at the tail. Never-granted records
+are distinguishable from potentially executed work; a granted record is not proof
+of actual execution or safe replay.
+
+Metadata mutations from one burst are batched (at most 32, with bounded encoded
+frames) into one atomic, flushed snapshot write. Each mutation receives its own
+result, and every granted lease still waits for durable acknowledgement. Writes
+occur at admission transitions rather than streamed tokens. The native ownership
+watcher filters identifiable journal/temp-file mutations to avoid waking every
+runtime for metadata writes.
+Conclusive completion/failure history retains the latest 512 records. Unstarted,
+cancelled, and runtime-exit records remain for canonical reconciliation; losing an
+observer is not evidence that its accepted prompt was cancelled. Shutdown drains
+metadata delivery before releasing keeper ownership. Prior-generation snapshots
+are available to worker recovery without creating another prompt-delivery queue.
+
+This journal is the evidence layer for recovery. Canonical reconciliation,
+redelivery of eligible pending work, the restored-order barrier, and acknowledgement
+of old pending journal records remain to be integrated. Merely loading ordinals
+is not yet complete FIFO recovery across a restart. In-memory runtime/controller
+tombstones also still need the final bounded-lifecycle audit.
+
 The remaining milestones must complete durable pending-operation/order recovery, ordinary
 transport backpressure recovery, provider deletion/route-change and
 archival cancellation, app feedback, bounded operation history, and the exhaustive

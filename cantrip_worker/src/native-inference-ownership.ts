@@ -1,7 +1,9 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
+import type { InferenceJournalCommand } from "./inference-journal.js";
 import type { Socket } from "node:net";
+import { StringDecoder } from "node:string_decoder";
 
 /** Backed by locks held by actual native processes, never launcher PIDs. */
 export interface NativeInferenceOwnership {
@@ -10,6 +12,7 @@ export interface NativeInferenceOwnership {
   prepare(runtimeGeneration: string): Promise<NodeJS.ProcessEnv>;
   retire(runtimeGeneration: string): Promise<void>;
   close(): Promise<void>;
+  journal(command: InferenceJournalCommand): Promise<unknown>;
 }
 
 /** One keeper per server/owner/worker scope, shared by all its native runtimes. */
@@ -20,6 +23,14 @@ export class LocalNativeInferenceOwnership implements NativeInferenceOwnership {
   private closed = false;
   private owner: Promise<void> | null = null;
   private keeper: ChildProcessWithoutNullStreams | null = null;
+  private readonly journalRequests = new Map<
+    string,
+    {
+      resolve(value: unknown): void;
+      reject(error: Error): void;
+      deadline: ReturnType<typeof setTimeout>;
+    }
+  >();
 
   constructor(
     private readonly binary: string,
@@ -78,6 +89,74 @@ export class LocalNativeInferenceOwnership implements NativeInferenceOwnership {
     }
   }
 
+  async journal(command: InferenceJournalCommand): Promise<unknown> {
+    this.owner ??= this.claim();
+    await this.owner;
+    const child = this.keeper;
+    if (!child || !this.owned || this.closed)
+      throw new Error("Native inference journal has no live owner.");
+    const requestId = randomUUID();
+    return new Promise((resolve, reject) => {
+      const deadline = setTimeout(() => {
+        this.journalRequests.delete(requestId);
+        // The keeper may finish a write after the observation deadline. A
+        // caller must not dispatch inference without the matching durable ack.
+        reject(
+          new Error("Native inference journal acknowledgement timed out."),
+        );
+      }, 30_000);
+      deadline.unref();
+      this.journalRequests.set(requestId, { resolve, reject, deadline });
+      child.stdin.write(
+        JSON.stringify({ requestId, command }) + "\n",
+        (error) => {
+          if (!error) return;
+          const pending = this.journalRequests.get(requestId);
+          if (!pending) return;
+          this.journalRequests.delete(requestId);
+          clearTimeout(pending.deadline);
+          pending.reject(error);
+        },
+      );
+    });
+  }
+
+  private observeJournal(child: ChildProcessWithoutNullStreams): void {
+    let buffer = "";
+    const decoder = new StringDecoder("utf8");
+    child.stdout.on("data", (chunk: Buffer) => {
+      buffer += decoder.write(chunk);
+      if (buffer.length > 16 * 1_024 * 1_024) {
+        // Malformed internal IPC revokes this keeper, never a native lease.
+        child.kill("SIGKILL");
+        return;
+      }
+      for (;;) {
+        const newline = buffer.indexOf("\n");
+        if (newline < 0) break;
+        const line = buffer.slice(0, newline);
+        buffer = buffer.slice(newline + 1);
+        let response: { requestId?: unknown; ok?: unknown; result?: unknown };
+        try {
+          response = JSON.parse(line) as typeof response;
+        } catch {
+          child.kill("SIGKILL");
+          return;
+        }
+        if (typeof response.requestId !== "string") continue; // initial claim ack
+        const pending = this.journalRequests.get(response.requestId);
+        if (!pending) continue;
+        this.journalRequests.delete(response.requestId);
+        clearTimeout(pending.deadline);
+        if (response.ok === true) pending.resolve(response.result);
+        else
+          pending.reject(
+            new Error("Native inference journal operation failed."),
+          );
+      }
+    });
+  }
+
   async close(): Promise<void> {
     this.closed = true;
     this.owned = false;
@@ -114,6 +193,7 @@ export class LocalNativeInferenceOwnership implements NativeInferenceOwnership {
   private async claim(): Promise<void> {
     const child = this.launch([]);
     this.keeper = child;
+    this.observeJournal(child);
     // Parent exit closes stdin even when abrupt. Unref the keeper's handles so
     // its lifetime pipe cannot keep an otherwise stopped Node worker alive.
     child.unref();
@@ -122,6 +202,11 @@ export class LocalNativeInferenceOwnership implements NativeInferenceOwnership {
     let ready = false;
     child.once("close", () => {
       this.owned = false;
+      for (const pending of this.journalRequests.values()) {
+        clearTimeout(pending.deadline);
+        pending.reject(new Error("Native inference journal owner exited."));
+      }
+      this.journalRequests.clear();
       if (this.keeper === child) this.keeper = null;
       if (!ready) return;
       for (const listener of this.lostListeners) {

@@ -1051,6 +1051,13 @@ export class ManagedNativeCommandSession {
               await this.options.runtime.prepareAdmittedNativeExecution({
                 ...publication.options,
                 operationGeneration: grant.receipt.operationGeneration,
+                recoveryKey: `native-command:${grant.receipt.operationId}`,
+                recovery: {
+                  commandId: grant.receipt.operationId,
+                  commandGeneration: grant.receipt.operationGeneration,
+                  threadId: session.threadId,
+                  turnId: operation.expectedTurnId,
+                },
                 threadId: session.threadId!,
                 expectedTurnId: operation.expectedTurnId,
                 inferenceSignal: inferenceSignal
