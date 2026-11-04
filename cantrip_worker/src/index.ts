@@ -1707,6 +1707,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           : globalCodexSkillRoots,
         namespace || nativeEnvironment ? configurationHome : null,
         nativeEnvironment,
+        inferenceAdmissionForWorker(),
       );
       runtime.setGoalObserver((threadId, goal) => {
         if (runtime && handoffStaging.held(runtime, threadId)) return;
@@ -3204,6 +3205,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         providerAccessTokens,
         undefined,
         globalCodexSkillRoots,
+        null,
+        null,
+        inferenceAdmissionForWorker(),
       );
       codexCatalogRuntimes.set(credentialHomeKey, runtime);
     }
