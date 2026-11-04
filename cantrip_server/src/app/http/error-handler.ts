@@ -7,6 +7,7 @@ import {
 } from "../../auth/service.js";
 import { ProjectCapabilityUnavailableError } from "../../projects/capabilities.js";
 import { RelayLimitError } from "../../security/abuse-limits.js";
+import { CantripOsPlacementError } from "../../db/repository/cantrip-os-error.js";
 
 export function installApplicationErrorHandler(
   app: FastifyInstance,
@@ -39,6 +40,9 @@ export function installApplicationErrorHandler(
     }
     if (error instanceof ProjectCapabilityUnavailableError) {
       return reply.code(error.statusCode).send(error.response());
+    }
+    if (error instanceof CantripOsPlacementError) {
+      return reply.code(409).send({ error: error.message });
     }
     const statusCode =
       error &&
