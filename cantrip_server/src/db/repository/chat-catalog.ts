@@ -1,3 +1,4 @@
+import { CantripOsChatRepository } from "./cantrip-os-chats.js";
 import { randomUUID } from "node:crypto";
 
 import type {
@@ -389,19 +390,34 @@ export class ChatCatalogRepository {
             worktreeId: input.worktreeId,
           } as const)
         : undefined);
-    const { placement } =
-      await this.collaborators.resolveProjectExecutionPlacement(
-        ownerId,
-        projectId,
-        "chat",
-        target,
-        isWorkerConnected,
-      );
-    const selected = await this.collaborators.getProjectWorktreeContext(
-      ownerId,
-      projectId,
-      placement.worktreeId!,
-    );
+    const osBindingId =
+      "cantripOsBindingId" in input ? input.cantripOsBindingId : undefined;
+    if (experience !== "agent" && osBindingId)
+      throw new Error("OS placement is currently available for agent chats.");
+    const osPlacement = osBindingId
+      ? await new CantripOsChatRepository(this.database).select(
+          ownerId,
+          projectId,
+          osBindingId,
+        )
+      : null;
+    const selected =
+      osPlacement ??
+      (await (async () => {
+        const { placement } =
+          await this.collaborators.resolveProjectExecutionPlacement(
+            ownerId,
+            projectId,
+            "chat",
+            target,
+            isWorkerConnected,
+          );
+        return this.collaborators.getProjectWorktreeContext(
+          ownerId,
+          projectId,
+          placement.worktreeId!,
+        );
+      })());
     if (!selected) return null;
     const worktreeId = selected.worktree.id;
     const workerId = selected.workerId;
@@ -467,6 +483,11 @@ export class ChatCatalogRepository {
           .insert(schema.conversationCreationRequests)
           .values({ chatId, request: input as EncryptedChatCreate });
       }
+      if (osPlacement)
+        await new CantripOsChatRepository(transaction).capture(
+          chat.id,
+          osPlacement.source,
+        );
       const runtimeSessionId = randomUUID();
       await transaction.insert(schema.chatRuntimeSessions).values({
         id: runtimeSessionId,

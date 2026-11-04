@@ -47,11 +47,16 @@ pub fn permission_profile(context: &Value) -> Value {
     json!({"selectedId":selected_id,"effectiveId":effective,"defaultId":default,"usesDefault":uses_default,"forcedByWorktreePolicy":forced})
 }
 pub fn session_context(context: &Value) -> Option<Value> {
-    (context["experience"]=="agent" && context["contextKind"]=="project").then(||json!({
-        "chatId":context["chatId"],"computerUseEnabled":context["computerUseEnabled"]==true,
-        "contextKind":"project","projectId":context["projectId"],"worktreeId":context["worktreeId"],"rootKind":context["rootKind"],"scratchRootId":Value::Null
-    }))
+    if context["experience"] != "agent" || context["contextKind"] != "project" {
+        return None;
+    }
+    let mut session = json!({"chatId":context["chatId"],"computerUseEnabled":context["computerUseEnabled"]==true,"contextKind":"project","projectId":context["projectId"],"worktreeId":context["worktreeId"],"rootKind":context["rootKind"],"scratchRootId":Value::Null});
+    if let Some(os) = context.get("osExecution") {
+        session["osExecution"] = os.clone();
+    }
+    Some(session)
 }
+
 fn text(value: &Value, key: &str) -> Result<String> {
     Ok(value[key]
         .as_js_string()

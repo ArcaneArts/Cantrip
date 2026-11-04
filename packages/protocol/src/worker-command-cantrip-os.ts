@@ -49,6 +49,27 @@ export const cantripOsSourceDispatchScopeSchema = z.discriminatedUnion("mode", [
     .strict(),
 ]);
 
+/** Execution is admitted on the existing authenticated worker connection. The
+ * worker supplies that connection's verified logical Server identity. */
+export const cantripOsExecutionScopeSchema = z.discriminatedUnion("mode", [
+  sourceScope
+    .omit({ serverId: true })
+    .extend({ mode: z.literal("linked"), linkedWorkerPath: z.string().min(1) })
+    .strict(),
+  sourceScope
+    .omit({ serverId: true })
+    .extend({ mode: z.literal("linux-owned"), linkedWorkerPath: z.null() })
+    .strict(),
+]);
+export const cantripOsExecutionSchema = z
+  .object({
+    kind: z.literal("cantrip-os"),
+    scope: cantripOsExecutionScopeSchema,
+    transport: cantripOsTransportSchema,
+  })
+  .strict();
+export type CantripOsExecution = z.infer<typeof cantripOsExecutionSchema>;
+
 export const cantripOsProvisionIntentSchema = z.discriminatedUnion("mode", [
   z
     .object({

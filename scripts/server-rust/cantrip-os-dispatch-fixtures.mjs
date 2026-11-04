@@ -102,7 +102,14 @@ export function osDispatchFixtures() {
     mode: "linked",
     linkedWorkerPath: "ctrr:private",
   };
+  const { serverId: _server, ...executionScope } = osSourceScope;
+  const { serverId: _linkedServer, ...linkedExecutionScope } = linked;
   return {
+    cantripOsExecutionScopeSchema: [executionScope, linkedExecutionScope],
+    cantripOsExecutionSchema: [
+      { kind: "cantrip-os", scope: executionScope, transport },
+      { kind: "cantrip-os", scope: linkedExecutionScope, transport },
+    ],
     cantripOsDispatchScopeSchema: [osScope],
     cantripOsSourceDispatchScopeSchema: [osSourceScope, linked],
     cantripOsProvisionIntentSchema: [

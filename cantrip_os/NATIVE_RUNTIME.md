@@ -3,8 +3,10 @@
 This checkpoint connects the pinned native app-server to a captured CantripOS
 source through its existing environment provider. The app-server and provider
 credentials stay on the owning worker; native shell, filesystem, search, and patch
-tools use the guest executor. This adapter is not yet the client target picker or
-the Server's chat-placement workflow.
+tools use the guest executor. Both Server implementations now capture placement
+when creating a new agent chat, and the worker selects this adapter for that
+captured chat. The client target picker and remaining product surfaces are still
+being implemented.
 
 `OsNativeEnvironment` captures the source/instance/workspace identities and
 attachment, runtime, and binding generations. Each placement needs its own private
@@ -17,7 +19,8 @@ path semantics.
 `CodexAppServer` passes this environment explicitly when starting/resuming threads
 and starting turns. Permission profiles remain native permission profiles. OS
 turns do not use the worker's automatic whole-turn retry loop, and do not obtain
-host computer-use authority. Linux-owned Git snapshots use the guest; linked Git
+host computer-use authority. Native host-browser/computer-use features are also
+disabled in these processes. Linux-owned Git snapshots use the guest; linked Git
 inspection remains on its original worker. A failed final observation is reported
 as unknown and does not select a host directory.
 
@@ -27,6 +30,42 @@ observed in that turn. This preserves independent executor sessions and commands
 from other turns. The packaged executor's process-tree cleanup handles sudo and
 children that start another process group. Transport failure during cancellation
 is an error; it is not a confirmed stop.
+
+## Server-owned chat placement
+
+After [provisioning and verifying a source binding](DISPATCH.md), the existing
+`POST /api/projects/:projectId/chats` encrypted creation request accepts
+`cantripOsBindingId`. It selects that exact binding's worktree; do not also supply
+`worktreeId` or `target`. The ordinary protected chat title and other creation
+fields still apply. `worktreeMode: "pinned"` is appropriate for this checkpoint.
+This option currently belongs to new agent chats, rather than Task creation.
+
+The Server saves binding, attachment, and runtime generations in the same
+transaction as the chat, native runtime session, and initial execution lane.
+It derives guest UID/home/path and transport from canonical source records.
+The worker supplies its connection's verified logical Server identity. No client
+chooses a guest UID or inserts a Linux path into `project_sources.absolute_path`.
+
+Chat context and lane admission resolve this captured placement, preserving the
+existing worktree and logical branch leases. Managed session preparation and
+turn dispatch carry the explicit OS execution descriptor. OS turns also require
+the `cantrip-os` wire execution profile, which older workers reject. Strict
+managed-session descriptors likewise reject unsupported OS preparation rather
+than allowing an old worker to discard a new placement field. The worker's private
+`os-agent-placements` journal retains the capture after worker restart. Commands
+that omit a repeated descriptor still resolve the same saved placement; a
+conflicting descriptor is rejected. Runtime homes are separate from ordinary
+host homes, and remain stable across provider API-key rotation.
+
+An existing chat is not retargeted through this creation path. A changed OS
+runtime invalidates its captured placement. Refresh and verify the retained source
+before creating another OS-bound chat; automatic re-admission of existing chats
+across OS replacement is not provided by this checkpoint. Both Server and worker
+whole-turn failover paths refuse to replay an OS turn after an uncertain result.
+
+The client picker, plain Linux terminals, editor/Explorer, setup/Run routing,
+attachment materialization, and served artifact downloads remain subsequent
+product work. Component tests below do not claim that complete workflow.
 
 ## Reproduce the component tests
 

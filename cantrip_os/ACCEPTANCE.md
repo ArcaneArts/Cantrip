@@ -570,3 +570,39 @@ worker typechecking still reports only the same five CUA/MCP baseline errors.
 This is a runtime component checkpoint. Server chat selection, product terminals,
 editor/Explorer/Run routing, attachments/artifact delivery, live-provider acceptance,
 and refreshed bootable media remain outstanding. See [the runtime guide](NATIVE_RUNTIME.md).
+
+## Phase 3: captured chat placement checkpoint
+
+New encrypted agent-chat creation accepts a verified OS binding. Both Server
+implementations capture its generations before native preparation, preserve the
+worktree/lane identities, and derive the explicit guest execution descriptor.
+Managed preparation and turn dispatch select private OS native runtime homes.
+The worker retains immutable placement provenance across its restart; ordinary
+host runtime homes remain separate. Server and worker whole-turn retry paths do
+not replay OS turns after uncertain results.
+
+TypeScript database tests cover Linux-owned and linked chat contexts, unchanged
+host source paths, existing lane identity, foreign ownership rejection, immutable
+captures, runtime generation invalidation, and normal project deletion. Native
+Server chat creation/context/lane tests pass in native PGlite and PostgreSQL.
+Native wire parity covers the new execution descriptors and OS chat constraints.
+Worker tests cover persisted placement resolution and rejection of another
+owner or a changed placement. The real Docker native tool loop remains passing.
+
+This is canonical chat/runtime wiring, not complete product acceptance. These
+checks do not claim a deployed full worker connection, live-provider turn,
+client target picker, or terminal/editor/Run/attachment workflow. New OS bindings
+are available for agent chats; existing chat retargeting and automatic re-admission
+after OS replacement are not implemented. Package and ISO sources are unchanged
+in this checkpoint. The final phase still needs the full workflow and fresh media.
+
+Compatibility verification passed against the actual preceding worker schema:
+it rejects the `cantrip-os` execution profile. New protocol/native parity covers
+the profile/placement pair and rejects missing or conflicting descriptors. The
+actual native `config/read` response confirms that computer-use and host-browser
+features are disabled for the OS runtime, while the Docker tool loop still passes.
+Focused regression checks passed 54 Server tests (one optional native test skipped)
+and 133 worker tests. Full checking still stops at the same agentOperations digest;
+public export compatibility retains the same seven unrelated exports (2,184 actual
+versus 2,177 reviewed), and typechecking reports only the prior five worker and two
+Server errors.

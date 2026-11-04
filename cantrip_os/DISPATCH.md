@@ -2,8 +2,9 @@
 
 This is the Phase 3 source-admission checkpoint. Both Server implementations
 provide the same administrative HTTP routes and worker commands. The interactive
-attachment picker, real agent runtime, terminal/editor routing, and Run integration
-are subsequent checkpoints; these APIs alone do not complete Phase 3.
+attachment picker, terminal/editor routing, and Run integration remain subsequent
+checkpoints. The [native runtime and chat placement](NATIVE_RUNTIME.md) build on
+these APIs; these components alone do not complete Phase 3.
 
 The existing worker owns the Docker/SSH carrier, encryption keys, source mounting,
 and native executor sessions. The Server owns the OS attachment, workspace/source

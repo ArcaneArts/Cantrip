@@ -4,6 +4,8 @@ import path from "node:path";
 import { z } from "zod";
 import {
   nativeRuntimeHandoffStateSchema,
+  cantripOsExecutionSchema,
+  type CantripOsExecution,
   type NativeRuntimeHandoffState,
 } from "@cantrip/protocol";
 import {
@@ -41,15 +43,41 @@ const digest = (value: unknown) =>
 export function managedRuntimeTarget(value: unknown): {
   threadId?: string;
   chatId?: string;
+  osExecution?: CantripOsExecution;
 } {
   if (!value || typeof value !== "object") return {};
   const command = value as {
     threadId?: unknown;
     chatId?: unknown;
-    session?: { chatId?: unknown };
+    osExecution?: unknown;
+    session?: {
+      chatId?: unknown;
+      osExecution?: unknown;
+      contextKind?: unknown;
+      projectId?: unknown;
+      worktreeId?: unknown;
+      rootKind?: unknown;
+    };
   };
   const chatId = command.chatId ?? command.session?.chatId;
+  const osExecution = command.osExecution ?? command.session?.osExecution;
+  const os = osExecution
+    ? cantripOsExecutionSchema.parse(osExecution)
+    : undefined;
+  if (
+    os &&
+    command.session &&
+    (command.session.contextKind !== "project" ||
+      command.session.projectId !== os.scope.projectId ||
+      command.session.worktreeId !== os.scope.worktreeId ||
+      command.session.rootKind !==
+        (os.scope.sourceKind === "git" ? "git-worktree" : "folder-root"))
+  )
+    throw new Error(
+      "The managed session differs from its captured OS project/worktree.",
+    );
   return {
+    ...(os ? { osExecution: os } : {}),
     ...(typeof command.threadId === "string"
       ? { threadId: command.threadId }
       : {}),

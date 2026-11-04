@@ -22,6 +22,17 @@ const chatPlacementCreateSchema = z
   .object(chatPlacementCreateFields)
   .strict()
   .superRefine((input, context) => {
+    if (
+      Reflect.get(input, "cantripOsBindingId") &&
+      (input.worktreeId || input.target)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "An OS binding already selects its exact worktree; do not also supply another target.",
+        path: ["cantripOsBindingId"],
+      });
+    }
     if (input.worktreeId && input.target) {
       context.addIssue({
         code: "custom",
@@ -40,6 +51,7 @@ const chatPlacementCreateSchema = z
 
 export const chatCreateSchema = chatPlacementCreateSchema
   .safeExtend({
+    cantripOsBindingId: z.uuid().optional(),
     attachToTabLayout: z.boolean().optional(),
     title: z.string().trim().min(1).max(200).default("New agent"),
     githubAgentContext: githubAgentWorkflowContextSchema.optional(),
@@ -48,6 +60,7 @@ export const chatCreateSchema = chatPlacementCreateSchema
 
 export const encryptedChatCreateSchema = chatPlacementCreateSchema
   .safeExtend({
+    cantripOsBindingId: z.uuid().optional(),
     attachToTabLayout: z.boolean().optional(),
     id: z.string().uuid(),
     titleProtection: privateDisplayLabelOpaqueSchema,

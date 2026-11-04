@@ -18,8 +18,9 @@ guest paths separate from worker-local paths and rejects stale generations.
 The [source backend](SOURCES.md) now materializes linked Docker worktrees and
 Linux-owned checkouts/worktrees, including explicit Linux dependency overlays.
 The [authorized dispatch APIs](DISPATCH.md) and [native runtime adapter](NATIVE_RUNTIME.md)
-are available as internal checkpoints. Server chat placement and the client
-attachment/selection workflow are still being implemented.
+are available as internal checkpoints, including captured placement for new agent
+chats. The client attachment/selection workflow and remaining product surfaces
+are still being implemented.
 Its current package/transport cycle is opt-in with `CANTRIP_OS_EXECUTOR=1`;
 Cantrip project selection and full agent placement are subsequent cycles.
 

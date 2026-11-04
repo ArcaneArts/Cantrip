@@ -289,7 +289,34 @@ pub(super) fn refine(
             false
         }
         "chat-turn" => {
-            let project = value["executionProfile"] == "ide"
+            if (value["executionProfile"] == "cantrip-os") != value.get("osExecution").is_some() {
+                issue!(
+                    &[json!("executionProfile")],
+                    "OS execution requires its explicit execution profile and captured placement together."
+                );
+            }
+            if let Some(os) = value.get("osExecution") {
+                let scope = &os["scope"];
+                if value["contextKind"] != "project"
+                    || value["worktreeId"] != scope["worktreeId"]
+                    || value["policyProjectId"] != scope["projectId"]
+                    || value["cwd"] != scope["guestPath"]
+                    || value.get("computerUseAuthority").is_some()
+                    || value["rootKind"]
+                        != if scope["sourceKind"] == "git" {
+                            "git-worktree"
+                        } else {
+                            "folder-root"
+                        }
+                {
+                    issue!(
+                        &[json!("osExecution")],
+                        "OS turns must use their exact captured project, worktree, guest cwd, and Linux capabilities."
+                    );
+                }
+            }
+            let project = (value["executionProfile"] == "ide"
+                || value["executionProfile"] == "cantrip-os")
                 && value["contextKind"] == "project"
                 && !value["worktreeId"].is_null()
                 && value["scratchRootId"].is_null()
@@ -317,7 +344,7 @@ pub(super) fn refine(
                     "Chat turn execution profile does not match its execution root and capabilities."
                 );
             }
-            if value["executionProfile"] == "ide"
+            if value["executionProfile"] != "standalone-chat"
                 && (!value["standalonePolicies"]["policies"]
                     .as_array()
                     .ok_or(ValidationError::Operation)?

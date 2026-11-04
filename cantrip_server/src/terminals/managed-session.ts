@@ -54,6 +54,7 @@ export function managedConsoleSessionContext(
   return {
     ...common,
     contextKind: "project",
+    ...(context.osExecution ? { osExecution: context.osExecution } : {}),
     projectId: context.projectId,
     worktreeId: context.worktreeId,
     rootKind: context.rootKind,

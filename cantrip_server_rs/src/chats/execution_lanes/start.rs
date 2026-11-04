@@ -262,7 +262,16 @@ async fn start(
         )
         .await?;
     }
-    Ok(Some(context(&row, &runtime, &lane, chat, standalone, &at)?))
+    let mut result = context(&row, &runtime, &lane, chat, standalone, &at)?;
+    if !standalone {
+        let raw: serde_json::Value = serde_json::from_str(&root.stringify())?;
+        if let Some(placement) = crate::cantrip_os::chats::resolve(ex, owner, chat, &raw).await? {
+            for (key, value) in placement.as_object().unwrap() {
+                result[key.as_str()] = Value::from_serialize(value);
+            }
+        }
+    }
+    Ok(Some(result))
 }
 pub async fn start_in_transaction(
     tx: &Transaction<'_>,

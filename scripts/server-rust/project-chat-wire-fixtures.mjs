@@ -21,6 +21,13 @@ export function projectChatWireFixtures(timestamp) {
     ],
     encryptedChatCreateSchema: [
       create,
+      { ...create, cantripOsBindingId: id, worktreeMode: "pinned" },
+      { ...create, cantripOsBindingId: id, worktreeId: id },
+      {
+        ...create,
+        cantripOsBindingId: id,
+        target: { kind: "worktree", projectId: "project", worktreeId: id },
+      },
       { ...create, attachToTabLayout: false },
       { ...create, worktreeMode: "pinned", paneId: "pane" },
       {

@@ -823,11 +823,15 @@ export function createChatTurnRuntime({
               execution.workerId,
               {
                 type: "chat.turn",
+                ...(execution.osExecution
+                  ? { osExecution: execution.osExecution }
+                  : {}),
                 nativeCommandReceipt,
                 protectedNativeInput: options.protectedNativeInput,
                 nativeClientUserMessageId: options.nativeClientUserMessageId,
                 queuedPromptId: options.queuedPromptId,
                 computerUseAuthority:
+                  !execution.osExecution &&
                   execution.computerUseEnabled === true
                     ? {
                         ...computerUsePreviewAuthority({
@@ -841,7 +845,9 @@ export function createChatTurnRuntime({
                 executionProfile:
                   execution.contextKind === "standalone"
                     ? "standalone-chat"
-                    : "ide",
+                    : execution.osExecution
+                      ? "cantrip-os"
+                      : "ide",
                 contextKind: execution.contextKind,
                 chatId: execution.chatId,
                 clientMessageId: userMessage.id,
@@ -1811,6 +1817,7 @@ export function createChatTurnRuntime({
                   ? "cancelled"
                   : "failed";
             const canRetry =
+              !execution.osExecution &&
               !workerInterrupted &&
               canAutomaticallySwitchProviderAccount(runtime) &&
               (!nativeCommandReceipt ||
