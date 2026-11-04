@@ -6109,57 +6109,77 @@ export class CodexAppServer implements CodexRuntime {
           managedInventory?.models ?? [],
         )
       : null;
-    const child = this.launchCodex(
-      this.codexBinary,
-      [
-        "app-server",
-        "-c",
-        'cli_auth_credentials_store="file"',
-        ...(this.nativeEnvironment
-          ? [
-              "features.computer_use=false",
-              "features.browser_use=false",
-              "features.browser_use_external=false",
-              "features.in_app_browser=false",
-            ].flatMap((setting) => ["-c", setting])
-          : []),
-        ...(this.methodAvailable("thread/goal/get")
-          ? ["-c", "features.goals=true"]
-          : []),
-        ...providerConfiguration.arguments.flatMap((argument) => [
-          "-c",
-          argument,
-        ]),
-        ...(modelCatalogPath
-          ? ["-c", `model_catalog_json=${JSON.stringify(modelCatalogPath)}`]
-          : []),
-        // Keep effort off the process configuration so one route runtime owns
-        // its threads across composer changes. Thread and turn requests carry
-        // the selected effort explicitly.
-        ...(model ? ["-c", `model=${JSON.stringify(model.name)}`] : []),
-        "--listen",
-        "ws://127.0.0.1:0",
-      ],
-      {
-        env: {
-          ...process.env,
-          CODEX_HOME: this.codexHome,
-          CANTRIP_CODEX_USER_CONFIG_FILE: this.configurationHome
-            ? path.join(this.configurationHome, "config.toml")
-            : undefined,
-          ...providerConfiguration.environment,
-        },
-      },
-    );
-    this.#child = child;
     const inference = this.inferenceAdmission
       ? new CodexInferenceAdmission(this.inferenceAdmission)
       : null;
+    let inferenceEnvironment: NodeJS.ProcessEnv;
+    try {
+      inferenceEnvironment = (await inference?.prepareNativeLaunch()) ?? {};
+    } catch (error) {
+      void inference?.processExited();
+      throw error;
+    }
+    let child: ReturnType<CodexProcessLauncher>;
+    try {
+      child = this.launchCodex(
+        this.codexBinary,
+        [
+          "app-server",
+          "-c",
+          'cli_auth_credentials_store="file"',
+          ...(this.nativeEnvironment
+            ? [
+                "features.computer_use=false",
+                "features.browser_use=false",
+                "features.browser_use_external=false",
+                "features.in_app_browser=false",
+              ].flatMap((setting) => ["-c", setting])
+            : []),
+          ...(this.methodAvailable("thread/goal/get")
+            ? ["-c", "features.goals=true"]
+            : []),
+          ...providerConfiguration.arguments.flatMap((argument) => [
+            "-c",
+            argument,
+          ]),
+          ...(modelCatalogPath
+            ? ["-c", `model_catalog_json=${JSON.stringify(modelCatalogPath)}`]
+            : []),
+          // Keep effort off the process configuration so one route runtime owns
+          // its threads across composer changes. Thread and turn requests carry
+          // the selected effort explicitly.
+          ...(model ? ["-c", `model=${JSON.stringify(model.name)}`] : []),
+          "--listen",
+          "ws://127.0.0.1:0",
+        ],
+        {
+          env: {
+            ...process.env,
+            CODEX_HOME: this.codexHome,
+            CANTRIP_CODEX_USER_CONFIG_FILE: this.configurationHome
+              ? path.join(this.configurationHome, "config.toml")
+              : undefined,
+            ...providerConfiguration.environment,
+            ...inferenceEnvironment,
+          },
+        },
+      );
+    } catch (error) {
+      void inference?.processExited();
+      throw error;
+    }
+    this.#child = child;
     this.#inference = inference;
-    // This hook must survive replacement of #child after WebSocket loss.
-    child.once("exit", () => {
-      inference?.processExited();
-      if (this.#inference === inference) this.#inference = null;
+    // A launcher exit only begins reconciliation. The captured real native
+    // process must release its OS lease before capacity can be reclaimed.
+    const reconcileExit = () => {
+      void inference?.processExited().then(() => {
+        if (this.#inference === inference) this.#inference = null;
+      });
+    };
+    child.once("exit", reconcileExit);
+    child.once("error", () => {
+      if (child.pid === undefined) reconcileExit();
     });
     this.#runtimeStartedAtMs = startedAtMs;
     const processRuntimeId = this.#runtimeId;

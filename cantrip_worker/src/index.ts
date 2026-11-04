@@ -316,6 +316,7 @@ import { TunnelWorkerLinkAdapter } from "./tunnel-worker-link-adapter.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
 import { RemoteSurfaceWorkerLinkAdapter } from "./remote-surface-worker-link-adapter.js";
 import { WorkerObservationHub } from "./worker-observation-worker-link-adapter.js";
+import { LocalNativeInferenceOwnership } from "./native-inference-ownership.js";
 import { WorkerInferenceAdmission } from "./inference-admission.js";
 import { withInferenceCommand } from "./inference-command.js";
 import {
@@ -1585,6 +1586,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             event: "inference.status.observer-failed",
             error: workerLogError(error),
           }),
+        new LocalNativeInferenceOwnership(
+          config.codexBinary,
+          config.dataDirectory,
+          { ...scope, workerGeneration: workerProcessGeneration },
+          (error) =>
+            workerLogger.rateLimited(
+              `inference-ownership:${key}`,
+              "warn",
+              "Native inference ownership recovery is pending",
+              {
+                event: "inference.runtime.recovery-pending",
+                workerGeneration: workerProcessGeneration,
+                error: workerLogError(error),
+              },
+            ),
+        ),
       );
       inferenceAdmissions.set(key, admission);
     }
@@ -7203,6 +7220,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     for (const runtime of codexCatalogRuntimes.values()) {
       runtime.close();
     }
+    // start() can restart in the same Node process. Close its lifetime pipes and
+    // prove native settlement before a new worker generation claims this scope.
+    await Promise.all(
+      [...inferenceAdmissions.values()].map((admission) => admission.close()),
+    );
     workerLogStreams.close();
     workerLogger.flushRepeated();
     workerLogger.event("info", "Cantrip Worker stopped", {

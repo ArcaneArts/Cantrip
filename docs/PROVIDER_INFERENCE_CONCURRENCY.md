@@ -77,12 +77,34 @@ ignore stale per-provider configuration revisions. A capacity-only edit preserve
 native sessions and does not force a catalog refresh. Increasing capacity drains
 FIFO waiters; reducing capacity leaves current holders running.
 
-The process guard no longer treats taskkill's completion as proof that its captured
-subprocess exited. This is only one failure-path correction: wrapper termination,
-surviving native processes, and remote launcher settlement still need the durable
-runtime reconciliation milestone.
+Native patch `0049` adds worker/native lifetime ownership. A private native
+keeper holds an OS lock for the server/owner/worker scope while the Node worker's
+lifetime pipe is open. This is independent of browser and server connections.
+Every managed app-server consumes a one-use launch intent and holds its own OS
+file lease for the entire native process lifetime. Filesystem ownership changes
+wake a native watcher; revocation terminates the actual native process. Read/access
+events are ignored so the watcher cannot wake itself by checking its ownership.
 
-The remaining milestones must complete durable restart/reconnect recovery, control
+A launcher exit fences that exact runtime and waits to obtain its native lease
+before releasing remaining tickets. Killing a taskkill helper, losing a socket,
+or expiring a reconciliation deadline is not native death evidence. Failed
+reconciliation retains capacity and retries, with bounded diagnostics. New worker
+generations take exclusive scope ownership, revoke previous intents, and wait for
+all surviving native leases before preparing their first runtime. Late launches
+cannot consume retired intents. Prepared intents, active identities, and their
+locks are removed after confirmed settlement; no prompts or provider credentials
+are stored in this registry.
+
+Graceful shutdown also closes the keeper explicitly: worker `start()` can restart
+inside the same Node process, so relying only on process exit would leave the old
+generation's lifetime pipe open. Abrupt Node exit closes that pipe through the OS.
+A surviving keeper fences and drains its native runtimes before giving up scope
+ownership; if the keeper itself dies, the replacement performs that reconciliation.
+The native OS lease outlives Rust task cancellation and runtime teardown. PID
+reuse, wrapper exit, and process-name searches do not participate in proof.
+CantripOS inference still runs on the owning worker; only its tools run in the guest.
+
+The remaining milestones must complete durable pending-operation/order recovery, control
 traffic admission under long inference waits, provider deletion/route-change and
 archival cancellation, app feedback, bounded operation history, and the exhaustive
 inference-path/lifecycle audit. This intermediate implementation is not the
