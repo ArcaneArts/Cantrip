@@ -321,6 +321,53 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
             .status(),
         409
     );
+    // Canonical history remains owned/readable when the captured OS epoch is stale.
+    let chat = id();
+    database.query("INSERT INTO chats(id,owner_id,project_id,protected_label,active_worker_id,active_worktree_id,experience,worktree_mode) VALUES($1,$2,$3,'{}',$4,$5,'agent','pinned')", &[&chat,&owner,&project,&worker,&binding["worktreeId"].as_str().unwrap()]).await?;
+    database.query("INSERT INTO cantrip_os_chat_placements(chat_id,binding_id,binding_generation,attachment_generation,runtime_generation) VALUES($1,$2,$3,$4,$5)", &[&chat,&binding["id"].as_str().unwrap(),&binding["bindingGeneration"].as_str().unwrap(),&attached["instance"]["attachmentGeneration"].as_str().unwrap(),&attached["instance"]["runtimeGeneration"].as_str().unwrap()]).await?;
+    database
+        .query(
+            "UPDATE cantrip_os_instances SET runtime_generation=$1 WHERE id=$2",
+            &[&id(), &instance],
+        )
+        .await?;
+    let chats = cantrip_server::chats::Repository::new(database.clone());
+    assert!(chats.execution_context(&owner, &chat).await.is_err());
+    for suffix in ["messages", "queue"] {
+        let response = client
+            .get(format!("{base}/api/chats/{chat}/{suffix}"))
+            .send()
+            .await?;
+        let status = response.status();
+        let body = response.json().await?;
+        assert_eq!(status, 200, "{suffix}: {body}");
+        assert!(
+            body[if suffix == "messages" {
+                "messages"
+            } else {
+                "items"
+            }]
+            .as_array()
+            .unwrap()
+            .is_empty()
+        );
+    }
+    let live = cantrip_server::live::repository::LiveRepository::new(database.clone())?;
+    assert!(
+        live.authorize(
+            &owner,
+            &cantrip_server::wire::Value::from_serialize(&json!({"kind":"chat","chatId":chat}))
+        )
+        .await?
+    );
+    assert!(
+        !live
+            .authorize(
+                "other",
+                &cantrip_server::wire::Value::from_serialize(&json!({"kind":"chat","chatId":chat}))
+            )
+            .await?
+    );
     service.workers.close();
     responder.await??;
     drop(client);

@@ -12,6 +12,12 @@ use anyhow::{Context, Result};
 use serde_json::Value;
 use std::sync::Arc;
 
+pub struct InstanceObservation<'a> {
+    pub status: &'a str,
+    pub runtime: Option<&'a str>,
+    pub error: Option<&'a str>,
+}
+
 pub struct Repository {
     pub database: Arc<Database>,
 }

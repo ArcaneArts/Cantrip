@@ -31,11 +31,7 @@ impl LiveRepository {
             Some("chat") => match scope["chatId"].as_js_string() {
                 // SQL text conversion replaces unpaired UTF-16 units; project
                 // identity comparison above retains exact in-memory units.
-                Some(id) => Ok(self
-                    .chats
-                    .execution_context(owner, &id.lossy())
-                    .await?
-                    .is_some()),
+                Some(id) => Ok(self.chats.live_routing(owner, &id.lossy()).await?.is_some()),
                 None => Ok(false),
             },
             _ => Ok(false),

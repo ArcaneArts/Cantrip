@@ -90,6 +90,8 @@ export async function openOwnedFile({
         (candidate) =>
           candidate.id === worktreeId && candidate.projectId === projectId,
       );
+      if (!cantripOsBindingId && !worktree)
+        throw new Error("The selected worktree was not found.");
       const owningWorkerId = cantripOsBindingId ? workerId : worktree?.workerId;
       if (!owningWorkerId)
         throw new Error(

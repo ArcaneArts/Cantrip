@@ -1,4 +1,4 @@
-use super::{Repository, checked, text};
+use super::{InstanceObservation, Repository, checked, text};
 use crate::auth::service::AuthService;
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
@@ -159,9 +159,13 @@ impl Coordinator {
                     owner,
                     text(&admitted, "id")?,
                     text(&admitted, "attachmentGeneration")?,
-                    "unknown",
-                    None,
-                    Some("Attachment delivery is uncertain; refresh the OS before continuing."),
+                    InstanceObservation {
+                        status: "unknown",
+                        runtime: None,
+                        error: Some(
+                            "Attachment delivery is uncertain; refresh the OS before continuing.",
+                        ),
+                    },
                     None,
                 )
                 .await?;
@@ -177,7 +181,7 @@ impl Coordinator {
             for workspace in actual["workspaces"].as_array().context("OS workspace observation")? {
                 self.repository.record_workspace(owner,id,text(i,"attachmentGeneration")?,workspace).await?;
             }
-            let instance=self.repository.observe_current(owner,id,text(i,"attachmentGeneration")?,"connected",Some(text(&actual,"runtimeGeneration")?),None,i["runtimeGeneration"].as_str()).await?;
+            let instance=self.repository.observe_current(owner,id,text(i,"attachmentGeneration")?,InstanceObservation { status: "connected", runtime: Some(text(&actual,"runtimeGeneration")?), error: None },i["runtimeGeneration"].as_str()).await?;
             Ok(json!({"instance":instance,"workspaces":self.repository.workspaces(owner,id).await?}))
         }.await;
         if result.is_err() {
@@ -186,9 +190,13 @@ impl Coordinator {
                     owner,
                     id,
                     text(i, "attachmentGeneration")?,
-                    "unknown",
-                    None,
-                    Some("The executor could not be observed. No host fallback was attempted."),
+                    InstanceObservation {
+                        status: "unknown",
+                        runtime: None,
+                        error: Some(
+                            "The executor could not be observed. No host fallback was attempted.",
+                        ),
+                    },
                     i["runtimeGeneration"].as_str(),
                 )
                 .await?;

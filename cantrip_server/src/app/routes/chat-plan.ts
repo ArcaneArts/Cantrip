@@ -1,3 +1,4 @@
+import { CantripOsPlacementError } from "../../db/repository/cantrip-os.js";
 import {
   chatPlanUpdateSchema,
   encryptedChatPlanWireStateSchema,
@@ -54,10 +55,23 @@ export function installChatPlanRoutes(
   app.get<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/plan",
     async (request, reply) => {
-      const context = await repository.getChatExecutionContext(
-        applicationOwnerId(),
-        request.params.chatId,
-      );
+      let context;
+      try {
+        context = await repository.getChatExecutionContext(
+          applicationOwnerId(),
+          request.params.chatId,
+        );
+      } catch (error) {
+        if (!(error instanceof CantripOsPlacementError)) throw error;
+        // Stored history remains readable without admitting work on a stale OS.
+        const state = await repository.getChatPlanWireState(
+          applicationOwnerId(),
+          request.params.chatId,
+        );
+        return state
+          ? reply.send(encryptedChatPlanWireStateSchema.parse(state))
+          : reply.code(404).send({ error: "Chat source not found." });
+      }
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
       }

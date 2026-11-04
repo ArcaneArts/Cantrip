@@ -594,9 +594,11 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
                 "owner",
                 instance_id,
                 generation,
-                "connected",
-                scope["runtimeGeneration"].as_str(),
-                None,
+                cantrip_server::cantrip_os::InstanceObservation {
+                    status: "connected",
+                    runtime: scope["runtimeGeneration"].as_str(),
+                    error: None
+                },
                 scope["runtimeGeneration"].as_str()
             )
             .await

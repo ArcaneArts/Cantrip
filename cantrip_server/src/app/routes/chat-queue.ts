@@ -48,6 +48,7 @@ export interface ChatQueueRouteDependencies {
     | "managedQueue"
     | "createEncryptedQueuedPrompt"
     | "getChatExecutionContext"
+    | "getChatLiveRouting"
     | "getEncryptedMessageByIdempotencyKey"
     | "getEncryptedQueuedPrompt"
     | "listEncryptedQueuedPrompts"
@@ -108,15 +109,15 @@ export function installChatQueueRoutes(
   app.get<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/queue",
     async (request, reply) => {
-      const context = await repository.getChatExecutionContext(
+      const context = await repository.getChatLiveRouting(
         applicationOwnerId(),
         request.params.chatId,
       );
-      if (context && managedConsoleSessionContext(context)) {
+      if (context?.experience === "agent" && context.projectId !== null) {
         const { revision, items, pendingImports, claims } =
           await repository.managedQueue.snapshot(
             applicationOwnerId(),
-            context.chatId,
+            request.params.chatId,
           );
         return reply.send({ revision, items, pendingImports, claims });
       }

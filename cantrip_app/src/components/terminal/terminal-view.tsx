@@ -137,7 +137,7 @@ export function TerminalView({
   const pendingInputRef = useRef(pendingInput);
   const [connectionKey, setConnectionKey] = useState(0);
   const [state, setState] = useState<
-    "connecting" | "reconnecting" | "ready" | "exited"
+    "connecting" | "reconnecting" | "ready" | "exited" | "disconnected"
   >("connecting");
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [executionOutcome, setExecutionOutcome] = useState<
@@ -263,6 +263,12 @@ export function TerminalView({
         reconnectTimer
       )
         return;
+      if (terminal.cantripOsBindingId) {
+        // A failed attachment cannot establish that the captured Linux process
+        // exited. Keep its target and require an explicit reconnect.
+        setState("disconnected");
+        return;
+      }
       const delay = Math.min(500 * 2 ** reconnectAttemptRef.current, 5_000);
       reconnectAttemptRef.current += 1;
       setState("reconnecting");
@@ -1045,9 +1051,24 @@ export function TerminalView({
                   ? `${error} Retrying…`
                   : "Starting terminal…"
             }
-            visible={!hasLoaded}
+            visible={!hasLoaded && state !== "disconnected"}
           />
-          {hasLoaded && state === "exited" ? (
+          {state === "disconnected" ? (
+            <div
+              className="absolute inset-x-4 top-3 rounded-md bg-muted/90 px-3 py-2 text-xs text-muted-foreground"
+              role="status"
+            >
+              {error ?? "The Linux terminal is unavailable."} Its captured
+              target has been retained. Command outcome is unknown.{" "}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => setConnectionKey((value) => value + 1)}
+              >
+                Reconnect to Linux
+              </button>
+            </div>
+          ) : hasLoaded && state === "exited" ? (
             <div
               className="pointer-events-none absolute right-4 top-3 rounded-md bg-muted/90 px-2 py-1 text-xs text-muted-foreground"
               role="status"

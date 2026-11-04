@@ -1,4 +1,4 @@
-use super::{Repository, checked, decode, summary, text, uuid};
+use super::{InstanceObservation, Repository, checked, decode, summary, text, uuid};
 use anyhow::{Context, Result, ensure};
 use postgres_types::Json;
 use serde_json::{Value, json};
@@ -44,11 +44,14 @@ impl Repository {
         owner: &str,
         id: &str,
         generation: &str,
-        status: &str,
-        runtime: Option<&str>,
-        error: Option<&str>,
+        observation: InstanceObservation<'_>,
         expected_runtime: Option<&str>,
     ) -> Result<Value> {
+        let InstanceObservation {
+            status,
+            runtime,
+            error,
+        } = observation;
         let rows=self.rows("UPDATE cantrip_os_instances SET status=$4,runtime_generation=$5,last_error=$6,last_observed_at=now(),updated_at=now() WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3 AND runtime_generation IS NOT DISTINCT FROM $7 RETURNING to_jsonb(cantrip_os_instances)::text", &[&owner,&id,&generation,&status,&runtime,&error,&expected_runtime]).await?;
         summary(
             rows.first()
