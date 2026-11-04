@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import { setTimeout as retryDelay } from "node:timers/promises";
 import {
   WorkerInferenceJournal,
@@ -18,6 +19,7 @@ import {
   type InferenceOperationStatus,
   type InferencePoolStatus,
   type InferenceTicketState,
+  type InferenceTiming,
   type ProviderInferenceConfiguration,
   type WorkerInferenceStatus,
 } from "@cantrip/protocol";
@@ -87,6 +89,8 @@ interface Ticket {
   pool: Pool;
   input: InferenceRequest;
   state: InferenceTicketState;
+  stateSince: number;
+  timing: InferenceTiming;
   controller: AbortController;
   enqueuedAt: number;
   grantedAt: number | null;
@@ -101,6 +105,47 @@ interface Ticket {
   admitted?: () => void;
   journalKey: string | null;
   durableQueueReady: boolean;
+}
+
+export interface InferenceDiagnostic {
+  action:
+    | "queued"
+    | "granted"
+    | "running"
+    | "cancel-requested"
+    | "suspended"
+    | "resumed"
+    | "released"
+    | "recovery-requeued"
+    | "recovery-retired"
+    | "recovery-unresolved";
+  workerId: string;
+  workerGeneration: string;
+  runtimeGeneration: string;
+  operationId: string;
+  providerId: string;
+  state: InferenceTicketState;
+  timing?: InferenceTiming;
+  outcome?: InferenceSettlement;
+  previousWorkerGeneration?: string;
+}
+
+function timingField(
+  state: InferenceTicketState,
+): keyof InferenceTiming | null {
+  switch (state) {
+    case "waiting":
+      return "queueWaitMs";
+    case "granted":
+      return "reservedMs";
+    case "running":
+    case "cancelling":
+      return "executionMs";
+    case "suspended":
+      return "suspendedMs";
+    case "released":
+      return null;
+  }
 }
 
 interface RestoredWaiter {
@@ -149,6 +194,9 @@ export class WorkerInferenceAdmission {
       record: InferenceJournalRecord,
       signal: AbortSignal,
     ) => Promise<NativeInferenceRecoveryResult>,
+    private readonly onDiagnostic: (
+      event: InferenceDiagnostic,
+    ) => void = () => {},
   ) {
     this.journal = nativeOwnership
       ? new WorkerInferenceJournal(scope.workerGeneration, (command) =>
@@ -366,6 +414,8 @@ export class WorkerInferenceAdmission {
         recovery: input.recovery ? { ...input.recovery } : null,
       },
       state: "waiting",
+      stateSince: performance.now(),
+      timing: { queueWaitMs: 0, reservedMs: 0, executionMs: 0, suspendedMs: 0 },
       controller: new AbortController(),
       enqueuedAt: Date.now(),
       grantedAt: null,
@@ -396,6 +446,7 @@ export class WorkerInferenceAdmission {
     };
     runtime.records.set(input.operationId, ticket);
     pool.queue.push(ticket);
+    this.diagnose(ticket, "queued");
     if (this.journal && ticket.journalKey) {
       void this.journal
         .enqueue(ticket.journalKey, {
@@ -450,9 +501,10 @@ export class WorkerInferenceAdmission {
       (this.nativeOwnership && !this.nativeOwnership.available)
     )
       throw new Error("The inference grant is no longer available.");
-    ticket.state = "running";
+    this.transition(ticket, "running");
     ticket.startedAt = Date.now();
     ticket.observe?.(ticket.state);
+    this.diagnose(ticket, "running");
     this.changed();
   }
 
@@ -461,10 +513,11 @@ export class WorkerInferenceAdmission {
     reason = new Error("Inference operation cancelled."),
   ): void {
     if (ticket.state === "released" || ticket.state === "cancelling") return;
+    this.diagnose(ticket, "cancel-requested");
     const running = ticket.state === "running";
     if (running) {
       // Reserve capacity until the execution owner confirms it has stopped.
-      ticket.state = "cancelling";
+      this.transition(ticket, "cancelling");
       ticket.observe?.(ticket.state);
       this.changed();
       ticket.controller.abort(reason);
@@ -488,7 +541,8 @@ export class WorkerInferenceAdmission {
       throw new Error(
         "Only a running inference can enter a native suspension boundary.",
       );
-    ticket.state = "suspended";
+    this.transition(ticket, "suspended");
+    this.diagnose(ticket, "suspended");
     ticket.observe?.(ticket.state);
     ticket.pool.active.delete(ticket);
     this.drain(ticket.pool);
@@ -513,12 +567,13 @@ export class WorkerInferenceAdmission {
         if (ticket.resuming === resuming) ticket.resuming = undefined;
       })
       .catch(() => {});
-    ticket.state = "waiting";
+    this.transition(ticket, "waiting");
     ticket.sequence = ++this.sequence;
     ticket.restoredOrder = null;
     ticket.enqueuedAt = Date.now();
     ticket.durableQueueReady = !this.journal;
     ticket.pool.queue.push(ticket);
+    this.diagnose(ticket, "resumed");
     if (this.journal && ticket.journalKey)
       void this.journal
         .requeue(ticket.journalKey)
@@ -553,7 +608,8 @@ export class WorkerInferenceAdmission {
   }
 
   private release(ticket: Ticket, outcome: InferenceSettlement): void {
-    ticket.state = "released";
+    this.transition(ticket, "released");
+    this.diagnose(ticket, "released", outcome);
     if (this.journal && ticket.journalKey)
       void this.journal
         .release(ticket.journalKey, outcome)
@@ -593,9 +649,10 @@ export class WorkerInferenceAdmission {
       if (!ticket.durableQueueReady) break;
       pool.queue.splice(pool.queue.indexOf(ticket), 1);
       if (ticket.state !== "waiting") continue;
-      ticket.state = "granted";
+      this.transition(ticket, "granted");
       ticket.grantedAt = Date.now();
       pool.active.add(ticket);
+      this.diagnose(ticket, "granted");
       ticket.observe?.(ticket.state);
       if (this.journal && ticket.journalKey)
         void this.journal
@@ -686,7 +743,72 @@ export class WorkerInferenceAdmission {
       enqueuedAt: ticket.enqueuedAt,
       grantedAt: ticket.grantedAt,
       startedAt: ticket.startedAt,
+      timing: this.timing(ticket),
     };
+  }
+
+  /** Charge exactly the previous state, using a monotonic clock rather than wall time. */
+  private transition(ticket: Ticket, state: InferenceTicketState): void {
+    const now = performance.now();
+    const field = timingField(ticket.state);
+    if (field) ticket.timing[field] += Math.max(0, now - ticket.stateSince);
+    ticket.stateSince = now;
+    ticket.state = state;
+  }
+
+  private timing(ticket: Ticket): InferenceTiming {
+    const timing = { ...ticket.timing };
+    const field = timingField(ticket.state);
+    if (field)
+      timing[field] += Math.max(0, performance.now() - ticket.stateSince);
+    for (const field of Object.keys(timing) as Array<keyof InferenceTiming>)
+      timing[field] = Math.min(
+        Number.MAX_SAFE_INTEGER,
+        Math.floor(timing[field]),
+      );
+    return timing;
+  }
+
+  private diagnose(
+    ticket: Ticket,
+    action: InferenceDiagnostic["action"],
+    outcome?: InferenceSettlement,
+  ): void {
+    this.diagnostic({
+      action,
+      workerId: this.scope.workerId,
+      workerGeneration: this.scope.workerGeneration,
+      runtimeGeneration: ticket.runtime.generation,
+      operationId: ticket.input.operationId,
+      providerId: ticket.input.providerId,
+      state: ticket.state,
+      timing: this.timing(ticket),
+      ...(outcome ? { outcome } : {}),
+    });
+  }
+
+  private diagnostic(event: InferenceDiagnostic): void {
+    try {
+      this.onDiagnostic(event);
+    } catch {
+      /* Diagnostics cannot retain capacity. */
+    }
+  }
+
+  private diagnoseRecovery(
+    record: InferenceJournalRecord,
+    action: InferenceDiagnostic["action"],
+  ): void {
+    this.diagnostic({
+      action,
+      workerId: this.scope.workerId,
+      workerGeneration: this.scope.workerGeneration,
+      previousWorkerGeneration: record.workerGeneration,
+      runtimeGeneration: record.identity.runtimeGeneration,
+      operationId: record.identity.operationId,
+      providerId: record.identity.providerId,
+      state: record.state,
+    });
   }
 
   private queueEntries(pool: Pool) {
@@ -801,6 +923,7 @@ export class WorkerInferenceAdmission {
                 if (claimed?.state !== "waiting") {
                   await this.journal!.forget(record);
                   this.removeRestoration(record.key);
+                  this.diagnoseRecovery(record, "recovery-retired");
                 }
               } else if (result.disposition === "requeued") {
                 if (!this.pools.has(record.identity.providerId))
@@ -823,11 +946,14 @@ export class WorkerInferenceAdmission {
                   if (record.order < waiter.record.order)
                     waiter.record = record;
                   this.restored.set(record.key, waiter);
+                  this.diagnoseRecovery(record, "recovery-requeued");
                 }
               } else {
                 // Uncertain input is not eligible for whole-prompt replay. Keep
                 // its evidence for canonical runtime reconciliation, not a slot.
                 this.removeRestoration(record.key);
+                if (this.recoveryPending.has(record.key))
+                  this.diagnoseRecovery(record, "recovery-unresolved");
               }
               this.recoveryPending.delete(record.key);
               this.adoptRestorations();
