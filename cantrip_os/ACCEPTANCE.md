@@ -428,3 +428,71 @@ Server typechecking retains the two existing Task-operation errors reproduced
 on Primary. `pnpm check` stops at the existing agent-operation boundary digest
 mismatch. A broad legacy Rust wire sweep was interrupted; only the focused
 source cases, manifest and database checks above are claimed as complete.
+
+## Phase 3 materialization backend checkpoint
+
+Verified on 2026-11-03 with executor package 0.2.0, native ARM64 Docker Desktop
+on macOS, and the installed Debian AMD64 test VM. This is an internal worker
+backend checkpoint. Authorized product dispatch, client target selection, native
+agent placement, editor/terminal/Run integration, and refreshed ISO acceptance
+remain subsequent work; the complete Phase 3 workflow is not available yet.
+
+- Linked real host Git worktrees at stable guest roots. Host and guest edits
+  changed the same files. The external `.git` pointer, host UID, executable bit,
+  and symlink survived. Guest-native Git could not access the unmounted external
+  metadata; host Git remained valid. Ignored files stayed visible.
+- Explicit `node_modules` and `.venv` volumes began empty and accepted Linux
+  writes without changing the host-platform dependency files. Host `fs.watch`
+  observed a guest write, and guest inotify observed a host write. Literal
+  filenames containing spaces, `#`, `%`, `?`, `%2F`, and Japanese text worked.
+- Provisioned exact-revision Git bundle clones, Linux worktrees, actual Git
+  commits, and non-Git folders in Docker and the VM. Read-only inspection of
+  existing repositories/folders preserved their identity. Commands used the
+  workspace UID, had passwordless sudo, and ran without `DISPLAY`. A 360 KB
+  Unicode output fixture drained completely. Repeating a reserved source
+  operation dispatched no further Git commands.
+- Cancelled a real sudo-owned Python process, its child in a separate session,
+  and that child's sleep process. All three were gone in Docker and the VM;
+  a separate native job remained running. Ordinary child commands had effective
+  capabilities zero. Package-owned `CAP_KILL` and reviewed patch `0046` provide
+  this lifecycle behavior without changing ordinary command identity.
+- Rebuilt the current Docker image with 0.2.0 and exercised the normal
+  `os.mjs rebuild` path. Four linked mounts and their explicit dependency volumes
+  remained attached. A separate retention check compared ten persistent source
+  directories, Git heads, UIDs, dependency bytes, ports, and the 4 GiB limit
+  through image replacement. The instance identity remained stable and stale
+  executor descriptors were rejected. Mount-only replacement also retained an
+  installed `hello` package; deliberate image rebuilds apply source defaults.
+- Disable/remove/purge/reinstall/upgrade and unsupported-state tests passed in
+  both editions while retaining identity/data and an independent desktop.
+  Reopened a checkout and committed worktree created with 0.1.0 after the VM's
+  0.2.0 upgrade/removal/reinstallation; their original heads, branch, UID, and
+  repository fingerprint remained intact.
+- Used Codex's in-app browser to open the linked README in the selected desktop
+  and observe its guest-written contents. Screenshot:
+  `artifacts/phase3-sources/linked-worktree-desktop.jpg`.
+
+Both final package helpers passed with the versioned build contexts and reused
+the native compiler layers. The rebuilt archives matched the tested archives:
+
+| Package                               | SHA-256                                                            |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| `cantrip-os-executor_0.2.0_arm64.deb` | `286fcc6480dc56b766e6777ab68175221602246d8e9fa7fe4aa7162c4273045a` |
+| `cantrip-os-executor_0.2.0_amd64.deb` | `cb6c495e22a05824337926089507d4ecac79599ac83362aa618727a52dc5154b` |
+
+Focused checks passed: seven host HTTP/lifecycle/mount tests, 98 worker
+process/path/worktree/runtime regressions, 65 server migration/worktree/placement
+checks, 56 app project/worktree checks, production-deployed workspace module
+imports, and a standalone Rust regression using the exact Linux cleanup module.
+Real source/cancellation and native executor suites passed separately in each OS
+edition. Both native builds verified 9,191 pinned source files and 45 patches.
+Python, shell, Node syntax and scoped formatting checks passed.
+
+`pnpm check` still stops at the previously recorded agent-operations boundary
+digest mismatch. Worker typechecking still reports the same five CUA/MCP errors
+from the preceding checkpoint; no new errors came from these changes. Broader
+CI is not claimed green. Native Linux-host bind permissions were documented,
+but the linked-host acceptance above was performed on macOS Docker Desktop.
+
+Reproduce with [the source backend guide](SOURCES.md). Detailed receipts and
+screenshots are generated under the ignored `artifacts/phase3-sources/` directory.

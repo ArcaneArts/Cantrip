@@ -4,6 +4,13 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { withInstanceLock } from "./lock.mjs";
+import { randomUUID } from "node:crypto";
+import {
+  LocalDocker,
+  recreateWithSources,
+  finalizeRecreation,
+  sourceMountsLabel,
+} from "../host/index.mjs";
 
 export const root = fileURLToPath(new URL("../", import.meta.url));
 export const container = process.env.CANTRIP_OS_NAME ?? "cantrip-os";
@@ -146,7 +153,7 @@ export async function up(options = {}) {
   console.log(`
 CantripOS browser: ${browserPort ? `http://127.0.0.1:${browserPort}/` : "not published"}
 Workspaces: ${desktopsPort ? `http://127.0.0.1:${desktopsPort}/ (optional package; enable it if disabled)` : "not published"}
-VNC: ${nativePort ? `127.0.0.1:${nativePort} (no password; host loopback only)` : "not published; rebuild to enable it"}
+VNC: ${nativePort ? `127.0.0.1:${nativePort} (no password; host loopback only)` : "not published"}
 Shell: docker exec -it ${container} bash
 SSH: not enabled in the foundation image.
 `);
@@ -157,7 +164,28 @@ export async function rebuild({ signal } = {}) {
     async () => {
       await build({ signal });
       signal?.throwIfAborted();
-      if (await inspect())
+      const previous = await inspect();
+      const savedMounts = previous?.Config.Labels?.[sourceMountsLabel];
+      if (savedMounts) {
+        const state = JSON.parse(savedMounts);
+        const engine = await LocalDocker.current();
+        const replacement = await recreateWithSources(engine, {
+          container,
+          expectedContainerId: previous.Id,
+          instanceId: state.instanceId,
+          bindings: state.bindings,
+          operationId: randomUUID(),
+          image,
+          signal,
+          journalPath: resolve(
+            root,
+            ".state",
+            container,
+            `rebuild-${randomUUID()}.json`,
+          ),
+        });
+        await finalizeRecreation(engine, replacement.journalPath, { signal });
+      } else if (previous)
         await run("docker", ["rm", "-f", container], { signal });
       signal?.throwIfAborted();
       await up({ signal });

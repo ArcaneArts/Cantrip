@@ -3,6 +3,7 @@ packages:
   - cantrip_site
   - cantrip_server
   - cantrip_worker
+  - cantrip_os/host
   - packages/*
 
 allowBuilds:

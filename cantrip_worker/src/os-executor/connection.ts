@@ -37,6 +37,14 @@ export function executorCommand(
   transport: OsExecutorTransport,
   args: string[],
 ): { command: string; args: string[] } {
+  return programCommand(transport, args, "cantrip-executor");
+}
+
+function programCommand(
+  transport: OsExecutorTransport,
+  args: string[],
+  program: "cantrip-executor" | "cantrip-workspaces",
+): { command: string; args: string[] } {
   if (transport.kind === "docker")
     return {
       command: "docker",
@@ -47,7 +55,7 @@ export function executorCommand(
         "0",
         "--",
         transport.container,
-        "cantrip-executor",
+        `/usr/bin/${program}`,
         ...args,
       ],
     };
@@ -69,9 +77,7 @@ export function executorCommand(
       String(transport.port),
       "--",
       `${transport.user}@${transport.host}`,
-      ["sudo", "-n", "--", "/usr/bin/cantrip-executor", ...args]
-        .map(quote)
-        .join(" "),
+      ["sudo", "-n", "--", `/usr/bin/${program}`, ...args].map(quote).join(" "),
     ],
   };
 }
@@ -80,7 +86,22 @@ export async function executorControl<T>(
   transport: OsExecutorTransport,
   args: string[],
 ): Promise<T> {
-  const spec = executorCommand(transport, args);
+  return control<T>(transport, args, "cantrip-executor");
+}
+
+export async function workspaceControl<T>(
+  transport: OsExecutorTransport,
+  args: string[],
+): Promise<T> {
+  return control<T>(transport, args, "cantrip-workspaces");
+}
+
+async function control<T>(
+  transport: OsExecutorTransport,
+  args: string[],
+  program: "cantrip-executor" | "cantrip-workspaces",
+): Promise<T> {
+  const spec = programCommand(transport, args, program);
   return new Promise((resolve, reject) => {
     const child = spawn(spec.command, spec.args, {
       stdio: ["pipe", "pipe", "pipe"],

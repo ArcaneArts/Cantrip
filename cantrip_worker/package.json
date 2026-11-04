@@ -16,6 +16,7 @@
   "dependencies": {
     "@cantrip/crypto": "workspace:*",
     "@cantrip/logging": "workspace:*",
+    "@cantrip/os-host": "workspace:*",
     "@cantrip/protocol": "workspace:*",
     "@cantrip/version": "workspace:*",
     "@modelcontextprotocol/sdk": "1.29.0",
