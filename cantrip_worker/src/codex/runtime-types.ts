@@ -32,6 +32,7 @@ import type { RuntimeProvider } from "./external-chatgpt-auth.js";
 import type { MeasuredAgentUsage } from "@cantrip/protocol/agent-usage";
 import type { NativeThreadSettings } from "./native-thread-settings.js";
 import type { ManagedHistoryImport } from "./managed-history-transfer.js";
+import type { CodexInferenceExecution } from "./inference-admission.js";
 
 export type CodexProcessLauncher = (
   binary: string,
@@ -362,6 +363,11 @@ export interface RunAgentTurnRetry {
 }
 
 export interface RunAgentTurnOptions {
+  /** First-message metadata is serial with this turn, never a concurrent borrower. */
+  initialLabel?: {
+    providerId: string;
+    run(inference?: CodexInferenceExecution): Promise<void>;
+  };
   /** Shared managed preparation owns configuration; this input inherits the native
    * thread selection instead of replaying a possibly stale GUI bootstrap model. */
   inheritThreadSettings?: boolean;

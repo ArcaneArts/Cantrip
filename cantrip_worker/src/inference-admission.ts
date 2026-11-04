@@ -25,6 +25,10 @@ export interface InferenceLease {
   /** Cancellation asks the owner to stop; it does not free running capacity. */
   readonly signal: AbortSignal;
   start(): void;
+  /** Native execution established that it cannot infer until it resumes. */
+  suspend(): void;
+  /** Rejoin at the tail before any resumed inference. */
+  resume(): Promise<void>;
   /** Call only after confirmed execution settlement, never on observation timeout. */
   settle(outcome: InferenceSettlement): void;
 }
@@ -69,6 +73,7 @@ interface Ticket {
   stopListening(): void;
   handle: InferenceTicket;
   lease: InferenceLease;
+  resuming?: Promise<void>;
 }
 
 /**
@@ -170,12 +175,17 @@ export class WorkerInferenceAdmission {
   snapshot(): WorkerInferenceStatus {
     const pools: InferencePoolStatus[] = [];
     for (const pool of this.pools.values()) {
+      const suspended = [...this.runtimes].flatMap((runtime) =>
+        [...runtime.records.values()].filter(
+          (ticket) => ticket.pool === pool && ticket.state === "suspended",
+        ),
+      );
       pools.push({
         ...pool.configuration,
         activeCount: pool.active.size,
         queuedCount: pool.queue.length,
-        operations: [...pool.active, ...pool.queue].map((ticket) =>
-          this.status(ticket),
+        operations: [...pool.active, ...pool.queue, ...suspended].map(
+          (ticket) => this.status(ticket),
         ),
       });
     }
@@ -237,6 +247,8 @@ export class WorkerInferenceAdmission {
           return ticket.controller.signal;
         },
         start: () => this.start(ticket),
+        suspend: () => this.suspend(ticket),
+        resume: () => this.resume(ticket),
         settle: (outcome) => this.settle(ticket, outcome),
       },
     };
@@ -287,6 +299,44 @@ export class WorkerInferenceAdmission {
     this.release(ticket);
     ticket.reject(reason);
     ticket.controller.abort(reason);
+  }
+
+  private suspend(ticket: Ticket): void {
+    if (ticket.state === "suspended") return;
+    if (ticket.state !== "running" && ticket.state !== "cancelling")
+      throw new Error(
+        "Only a running inference can enter a native suspension boundary.",
+      );
+    ticket.state = "suspended";
+    ticket.pool.active.delete(ticket);
+    this.drain(ticket.pool);
+    this.changed();
+  }
+
+  private resume(ticket: Ticket): Promise<void> {
+    if (ticket.resuming) return ticket.resuming;
+    if (ticket.state === "running") return Promise.resolve();
+    if (ticket.state !== "suspended" || ticket.controller.signal.aborted)
+      return Promise.reject(
+        new Error("The suspended inference is no longer available."),
+      );
+    const ready = new Promise<InferenceLease>((resolve, reject) => {
+      ticket.resolve = resolve;
+      ticket.reject = reject;
+    });
+    const resuming = ready.then(() => this.start(ticket));
+    ticket.resuming = resuming;
+    void resuming
+      .finally(() => {
+        if (ticket.resuming === resuming) ticket.resuming = undefined;
+      })
+      .catch(() => {});
+    ticket.state = "waiting";
+    ticket.enqueuedAt = Date.now();
+    ticket.pool.queue.push(ticket);
+    this.drain(ticket.pool);
+    this.changed();
+    return resuming;
   }
 
   private settle(ticket: Ticket, outcome: InferenceSettlement): void {

@@ -1,0 +1,972 @@
+diff --git a/codex-rs/app-server/src/request_processors/managed_execution.rs b/codex-rs/app-server/src/request_processors/managed_execution.rs
+--- a/codex-rs/app-server/src/request_processors/managed_execution.rs
++++ b/codex-rs/app-server/src/request_processors/managed_execution.rs
+@@ -193,6 +193,33 @@
+         request_id: &ConnectionRequestId,
+         params: ManagedExecutionResolveParams,
+     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
++        // Inference waits may belong to a child that is not exposed as a
++        // separately managed root. Resolve only a request created by Core on
++        // this exact connection-owned gate, never by selecting a UI thread.
++        let inference_gate = {
++            let gates = self
++                .outgoing
++                .managed_execution_gates
++                .lock()
++                .unwrap_or_else(std::sync::PoisonError::into_inner);
++            gates
++                .get(&params.runner_generation)
++                .and_then(|(owner, gate)| {
++                    (*owner == request_id.connection_id).then(|| gate.clone())
++                })
++        };
++        if let Some(gate) = inference_gate {
++            let thread_id = codex_protocol::ThreadId::from_string(&params.thread_id)
++                .map_err(|_| invalid_params("invalid inference thread id"))?;
++            if let Some(result) =
++                gate.resolve_inference(thread_id, &params.attempt_id, params.allow)
++            {
++                result.map_err(invalid_params)?;
++                return Ok(Some(
++                    ManagedExecutionResolveResponse { accepted: true }.into(),
++                ));
++            }
++        }
+         let (thread_id, thread) = self.load_thread(&params.thread_id).await?;
+         let gate = thread
+             .managed_execution_gate()
+diff --git a/codex-rs/core/src/compact.rs b/codex-rs/core/src/compact.rs
+--- a/codex-rs/core/src/compact.rs
++++ b/codex-rs/core/src/compact.rs
+@@ -830,6 +830,13 @@
+     prompt: &Prompt,
+     phase: CompactionPhase,
+ ) -> CodexResult<CompactionResponse> {
++    let _inference_sampling = match turn_context
++        .extension_data
++        .get::<crate::managed_inference::ManagedInferenceTurn>()
++    {
++        Some(inference) => Some(inference.sampling().await?),
++        None => None,
++    };
+     let mut includes_reasoning = turn_context.model_info().use_responses_lite;
+     let mut stream = client_session
+         .stream(
+diff --git a/codex-rs/core/src/compact_remote_v2.rs b/codex-rs/core/src/compact_remote_v2.rs
+--- a/codex-rs/core/src/compact_remote_v2.rs
++++ b/codex-rs/core/src/compact_remote_v2.rs
+@@ -295,6 +295,20 @@
+         CompactionRequestTransport::Background(turn_state, auth_owner_generation) => {
+             let settings = &step_context.settings;
+             let cancellation = crate::session::async_compaction::shutdown_cancellation(sess).await;
++            // Speculative compaction can overlap its parent; it owns independent capacity.
++            let _inference_lifetime = if let Some(gate) = sess.managed_inference_gate().await {
++                Some(
++                    crate::managed_inference::ManagedInferenceTurn::begin(
++                        gate,
++                        sess.thread_id,
++                        format!("background-compaction:{}", uuid::Uuid::new_v4()),
++                        cancellation.clone(),
++                    )
++                    .await?,
++                )
++            } else {
++                None
++            };
+             let effort = sess
+                 .reasoning_effort_for_request(settings, RequestEffortUsage::Compaction)
+                 .await;
+@@ -320,6 +334,13 @@
+             .await;
+         }
+         CompactionRequestTransport::Foreground(client_session) => client_session,
++    };
++    let _inference_sampling = match turn_context
++        .extension_data
++        .get::<crate::managed_inference::ManagedInferenceTurn>()
++    {
++        Some(inference) => Some(inference.sampling().await?),
++        None => None,
+     };
+     let settings = &turn_context.initial_settings;
+     let max_retries = turn_context
+diff --git a/codex-rs/core/src/lib.rs b/codex-rs/core/src/lib.rs
+--- a/codex-rs/core/src/lib.rs
++++ b/codex-rs/core/src/lib.rs
+@@ -40,6 +40,7 @@
+ mod compact_retained_tool_outputs;
+ mod compact_token_budget;
+ pub mod managed_execution;
++pub mod managed_inference;
+ mod thread_startup_metadata;
+ pub use codex_network_proxy::EnvironmentNetworkPolicy;
+ pub use codex_network_proxy::NetworkDomainPermission;
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+--- a/codex-rs/core/src/managed_execution.rs
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -43,6 +43,7 @@
+     startup_bindings: usize,
+     thread_binding_committed: bool,
+     attempts: HashMap<String, Attempt>,
++    inference_requests: HashMap<String, (ThreadId, String, oneshot::Sender<bool>)>,
+ }
+ pub struct ManagedExecutionGate {
+     pub runner_generation: String,
+@@ -124,6 +125,86 @@
+             events,
+         })
+     }
++    /// Private inference control uses the same connection-owned channel as
++    /// autonomous admission, but does not authorize or submit any user input.
++    pub async fn request_inference(
++        self: &Arc<Self>,
++        thread_id: ThreadId,
++        turn_id: &str,
++        phase: &str,
++    ) -> Result<(), String> {
++        let attempt_id = uuid::Uuid::new_v4().to_string();
++        let (reply, receive) = oneshot::channel();
++        {
++            let mut state = self
++                .state
++                .lock()
++                .unwrap_or_else(std::sync::PoisonError::into_inner);
++            if state.closed {
++                return Err("inference owner is disconnected or invalidated".into());
++            }
++            state
++                .inference_requests
++                .insert(attempt_id.clone(), (thread_id, turn_id.to_owned(), reply));
++        }
++        let _pending = PendingInference {
++            gate: Arc::clone(self),
++            attempt_id: attempt_id.clone(),
++            thread_id,
++            turn_id: turn_id.to_owned(),
++        };
++        self.events.send(ManagedExecutionEvent::Requested {
++            thread_id, runner_generation: self.runner_generation.clone(),
++            attempt_id, turn_id: turn_id.to_owned(), trigger: "inference".into(),
++            input: serde_json::json!({"phase":phase,"rootThreadId":self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner).thread_id.map(|id|id.to_string())}), goal_epoch: None,
++        }).map_err(|_| "inference owner disconnected")?;
++        if receive.await.unwrap_or(false) {
++            Ok(())
++        } else {
++            Err("inference admission denied or cancelled".into())
++        }
++    }
++
++    pub fn resolve_inference(
++        &self,
++        thread_id: ThreadId,
++        attempt_id: &str,
++        allow: bool,
++    ) -> Option<Result<(), String>> {
++        let mut state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        let (expected, _, _) = state.inference_requests.get(attempt_id)?;
++        if *expected != thread_id {
++            return Some(Err("foreign inference request".into()));
++        }
++        let (_, _, reply) = state.inference_requests.remove(attempt_id).unwrap();
++        Some(
++            reply
++                .send(allow)
++                .map_err(|_| "inference request was cancelled".into()),
++        )
++    }
++
++    pub fn notify_inference(
++        &self,
++        thread_id: ThreadId,
++        turn_id: &str,
++        phase: &str,
++        cancelled_request: Option<&str>,
++    ) {
++        let _ = self.events.send(ManagedExecutionEvent::Requested {
++            thread_id,
++            runner_generation: self.runner_generation.clone(),
++            attempt_id: uuid::Uuid::new_v4().to_string(),
++            turn_id: turn_id.to_owned(),
++            trigger: "inference".into(),
++            input: serde_json::json!({"phase":phase,"requestId":cancelled_request}),
++            goal_epoch: None,
++        });
++    }
++
+     pub fn is_closed(&self) -> bool {
+         self.state
+             .lock()
+@@ -343,27 +424,61 @@
+         }
+     }
+     pub fn invalidate(&self) {
+-        let attempts = {
++        let (attempts, inference_requests) = {
+             let mut state = self
+                 .state
+                 .lock()
+                 .unwrap_or_else(std::sync::PoisonError::into_inner);
+             state.closed = true;
+-            // A consumed ticket has already committed an admitted start in Core's ordered loop.
+-            // Its actual turn terminal owns completion; Stop separately interrupts that turn.
++            let inference_requests = std::mem::take(&mut state.inference_requests);
++            // Consumed root admissions settle through their actual turn outcome.
+             let pending: Vec<_> = state
+                 .attempts
+                 .iter()
+                 .filter(|(_, a)| !a.consumed)
+                 .map(|(id, _)| id.clone())
+                 .collect();
+-            pending
++            let attempts = pending
+                 .into_iter()
+                 .filter_map(|id| state.attempts.remove(&id).map(|a| (id, a)))
+-                .collect::<Vec<_>>()
++                .collect::<Vec<_>>();
++            (attempts, inference_requests)
+         };
++        // Cancellation and gate closure are committed under the same lock, so
++        // no new waiter can be inserted between draining and invalidation.
++        for (attempt_id, (thread_id, turn_id, reply)) in inference_requests {
++            let _ = reply.send(false);
++            self.notify_inference(thread_id, &turn_id, "cancel", Some(&attempt_id));
++        }
+         for (id, attempt) in attempts {
+             self.declined(id, attempt, "managed runner invalidated");
++        }
++    }
++}
++
++struct PendingInference {
++    gate: Arc<ManagedExecutionGate>,
++    attempt_id: String,
++    thread_id: ThreadId,
++    turn_id: String,
++}
++impl Drop for PendingInference {
++    fn drop(&mut self) {
++        let pending = self
++            .gate
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .inference_requests
++            .remove(&self.attempt_id)
++            .is_some();
++        if pending {
++            self.gate.notify_inference(
++                self.thread_id,
++                &self.turn_id,
++                "cancel",
++                Some(&self.attempt_id),
++            );
+         }
+     }
+ }
+diff --git a/codex-rs/core/src/managed_inference.rs b/codex-rs/core/src/managed_inference.rs
+new file mode 100644
+--- /dev/null
++++ b/codex-rs/core/src/managed_inference.rs
+@@ -0,0 +1,174 @@
++//! Worker-owned inference tickets. Core supplies actual execution boundaries;
++//! it never chooses provider capacity or stores a second input queue.
++use crate::managed_execution::ManagedExecutionGate;
++use codex_protocol::ThreadId;
++use codex_protocol::error::{CodexErr, Result as CodexResult};
++use std::sync::{
++    Arc,
++    atomic::{AtomicBool, AtomicUsize, Ordering},
++};
++use tokio::sync::Mutex;
++use tokio_util::sync::CancellationToken;
++
++pub(crate) struct ManagedInferenceTurn {
++    gate: Arc<ManagedExecutionGate>,
++    thread_id: ThreadId,
++    turn_id: String,
++    cancellation: CancellationToken,
++    held: Mutex<bool>,
++    sampling: AtomicUsize,
++    waits: AtomicUsize,
++    finished: AtomicBool,
++}
++
++pub(crate) struct InferenceLifetime(pub Arc<ManagedInferenceTurn>);
++impl Drop for InferenceLifetime {
++    fn drop(&mut self) {
++        if !self.0.finished.swap(true, Ordering::SeqCst) {
++            self.0
++                .gate
++                .notify_inference(self.0.thread_id, &self.0.turn_id, "finish", None);
++        }
++    }
++}
++
++pub(crate) struct SamplingActivity(Arc<ManagedInferenceTurn>);
++impl Drop for SamplingActivity {
++    fn drop(&mut self) {
++        self.0.sampling.fetch_sub(1, Ordering::SeqCst);
++        self.0.maybe_suspend();
++    }
++}
++
++pub(crate) struct InferenceWait(Arc<ManagedInferenceTurn>);
++impl Drop for InferenceWait {
++    fn drop(&mut self) {
++        self.0.waits.fetch_sub(1, Ordering::SeqCst);
++    }
++}
++
++impl ManagedInferenceTurn {
++    pub(crate) async fn begin(
++        gate: Arc<ManagedExecutionGate>,
++        thread_id: ThreadId,
++        turn_id: String,
++        cancellation: CancellationToken,
++    ) -> CodexResult<InferenceLifetime> {
++        let turn = Arc::new(Self {
++            gate,
++            thread_id,
++            turn_id,
++            cancellation,
++            held: Mutex::new(false),
++            sampling: AtomicUsize::new(0),
++            waits: AtomicUsize::new(0),
++            finished: AtomicBool::new(false),
++        });
++        // Own cleanup before awaiting the grant: cancellation can win after
++        // the worker grants but before Core receives that exact reply.
++        let lifetime = InferenceLifetime(turn);
++        lifetime.0.phase("begin").await?;
++        *lifetime.0.held.lock().await = true;
++        Ok(lifetime)
++    }
++
++    async fn phase(&self, phase: &str) -> CodexResult<()> {
++        tokio::select! {
++            result = self.gate.request_inference(self.thread_id, &self.turn_id, phase) =>
++                result.map_err(|_| CodexErr::TurnAborted),
++            _ = self.cancellation.cancelled() => Err(CodexErr::TurnAborted),
++        }
++    }
++
++    pub(crate) async fn resume(&self) -> CodexResult<()> {
++        let mut held = self.held.lock().await;
++        if self.finished.load(Ordering::SeqCst) || self.cancellation.is_cancelled() {
++            return Err(CodexErr::TurnAborted);
++        }
++        if !*held {
++            self.phase("resume").await?;
++            *held = true;
++        }
++        Ok(())
++    }
++
++    pub(crate) async fn suspend(&self) -> CodexResult<()> {
++        let mut held = self.held.lock().await;
++        if self.finished.load(Ordering::SeqCst) {
++            return Ok(());
++        }
++        // Tool output can overlap a model stream. Only the last actual sampling
++        // activity may expose a suspension boundary to the worker.
++        if *held && self.sampling.load(Ordering::SeqCst) == 0 {
++            self.phase("suspend").await?;
++            *held = false;
++        }
++        Ok(())
++    }
++
++    pub(crate) async fn sampling(self: &Arc<Self>) -> CodexResult<SamplingActivity> {
++        let mut held = self.held.lock().await;
++        if self.finished.load(Ordering::SeqCst) || self.cancellation.is_cancelled() {
++            return Err(CodexErr::TurnAborted);
++        }
++        if !*held {
++            self.phase("resume").await?;
++            *held = true;
++        }
++        self.sampling.fetch_add(1, Ordering::SeqCst);
++        Ok(SamplingActivity(Arc::clone(self)))
++    }
++
++    pub(crate) fn waiting(self: &Arc<Self>) -> InferenceWait {
++        self.waits.fetch_add(1, Ordering::SeqCst);
++        self.maybe_suspend();
++        InferenceWait(Arc::clone(self))
++    }
++
++    fn maybe_suspend(self: &Arc<Self>) {
++        if self.waits.load(Ordering::SeqCst) == 0
++            || self.sampling.load(Ordering::SeqCst) != 0
++            || self.finished.load(Ordering::SeqCst)
++        {
++            return;
++        }
++        let turn = Arc::clone(self);
++        tokio::spawn(async move {
++            if turn.waits.load(Ordering::SeqCst) != 0 && turn.suspend().await.is_err() {
++                // Losing admission cannot leave Core free to make another model
++                // request. Its normal cancellation path settles the current turn.
++                turn.cancellation.cancel();
++            }
++        });
++    }
++}
++
++pub(crate) fn is_dependency_wait(name: &str) -> bool {
++    matches!(
++        name.rsplit("__").next().unwrap_or(name),
++        "wait" | "wait_agent" | "wait_threads" | "task_wait" | "request_user_input"
++    )
++}
++
++/// Capacity for an independently concurrent internal request. The final owner
++/// must retain this through transport cancellation/draining, not just early output.
++pub struct IndependentInference {
++    _lifetime: InferenceLifetime,
++}
++
++/// Core supplies identity and lifetime; the worker remains the admission authority.
++pub async fn begin_independent(
++    gate: Arc<ManagedExecutionGate>,
++    thread_id: ThreadId,
++    operation: String,
++) -> CodexResult<IndependentInference> {
++    Ok(IndependentInference {
++        _lifetime: ManagedInferenceTurn::begin(
++            gate,
++            thread_id,
++            operation,
++            CancellationToken::new(),
++        )
++        .await?,
++    })
++}
+diff --git a/codex-rs/core/src/mcp_tool_call.rs b/codex-rs/core/src/mcp_tool_call.rs
+--- a/codex-rs/core/src/mcp_tool_call.rs
++++ b/codex-rs/core/src/mcp_tool_call.rs
+@@ -147,6 +147,17 @@
+     let turn_context = &step_context.turn;
+     let server = tool_info.server_name.clone();
+     let tool_name = tool_info.tool.name.to_string();
++    // Includes calls made inside code-mode functions.exec: the actual MCP tool
++    // invocation, rather than its outer wrapper, owns the wait lifetime.
++    let _inference_wait = crate::managed_inference::is_dependency_wait(&tool_name)
++        .then(|| {
++            turn_context
++                .extension_data
++                .get::<crate::managed_inference::ManagedInferenceTurn>()
++                .map(|inference| inference.waiting())
++        })
++        .flatten();
++
+     // Parse the `arguments` as JSON. An empty string is OK, but invalid JSON
+     // is not.
+     let arguments_value = if arguments.trim().is_empty() {
+diff --git a/codex-rs/core/src/session/async_compaction.rs b/codex-rs/core/src/session/async_compaction.rs
+--- a/codex-rs/core/src/session/async_compaction.rs
++++ b/codex-rs/core/src/session/async_compaction.rs
+@@ -193,6 +193,12 @@
+         }
+         result
+     };
++    // A parent awaiting queued speculative inference must yield its own slot.
++    let _inference_wait = step_context
++        .turn
++        .extension_data
++        .get::<crate::managed_inference::ManagedInferenceTurn>()
++        .map(|inference| inference.waiting());
+     // Release session state while the request finishes and charges its usage.
+     result.await.ok()
+ }
+diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
+--- a/codex-rs/core/src/session/mod.rs
++++ b/codex-rs/core/src/session/mod.rs
+@@ -2394,6 +2394,21 @@
+         )
+     }
+ 
++    pub(crate) async fn managed_inference_gate(
++        &self,
++    ) -> Option<Arc<crate::managed_execution::ManagedExecutionGate>> {
++        // Child agents inherit the connection-owned inference channel while
++        // remaining ineligible for autonomous root-input admission.
++        self.state
++            .lock()
++            .await
++            .session_configuration
++            .original_config_do_not_use
++            .managed_thread_configuration
++            .as_ref()
++            .and_then(|managed| managed.execution_gate.clone())
++    }
++
+     pub(crate) async fn managed_execution_gate(
+         &self,
+     ) -> Option<Arc<crate::managed_execution::ManagedExecutionGate>> {
+@@ -3391,6 +3406,10 @@
+             available_decisions: Some(available_decisions),
+             parsed_cmd,
+         });
++        let _inference_wait = turn_context
++            .extension_data
++            .get::<crate::managed_inference::ManagedInferenceTurn>()
++            .map(|inference| inference.waiting());
+         let _user_wait = self.start_user_wait_timing(turn_context, user_wait_owner.as_deref());
+         self.send_event(turn_context, event).await;
+         rx_approve.await.unwrap_or(ReviewDecision::Abort)
+@@ -3435,6 +3454,10 @@
+             reason,
+             grant_root,
+         });
++        let _inference_wait = turn_context
++            .extension_data
++            .get::<crate::managed_inference::ManagedInferenceTurn>()
++            .map(|inference| inference.waiting());
+         let _user_wait = self.start_user_wait_timing(turn_context, user_wait_owner.as_deref());
+         self.send_event(turn_context, event).await;
+         rx_approve.await.unwrap_or(ReviewDecision::Abort)
+@@ -3593,6 +3616,10 @@
+             permissions: requested_permissions,
+             cwd: Some(cwd.clone().into()),
+         });
++        let _inference_wait = turn_context
++            .extension_data
++            .get::<crate::managed_inference::ManagedInferenceTurn>()
++            .map(|inference| inference.waiting());
+         let _user_wait = self.start_user_wait_timing(turn_context, user_wait_owner.as_deref());
+         self.send_event(turn_context.as_ref(), event).await;
+         tokio::select! {
+@@ -3649,6 +3676,10 @@
+         turn_context
+             .turn_metadata_state
+             .mark_user_input_requested_during_turn();
++        let _inference_wait = turn_context
++            .extension_data
++            .get::<crate::managed_inference::ManagedInferenceTurn>()
++            .map(|inference| inference.waiting());
+         let _user_wait = self.start_user_wait_timing(turn_context, user_wait_owner.as_deref());
+         self.send_event(turn_context, event).await;
+         rx_response.await.ok()
+diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
+--- a/codex-rs/core/src/session/turn.rs
++++ b/codex-rs/core/src/session/turn.rs
+@@ -160,30 +160,42 @@
+ 
+ async fn wait_for_turn_resume(
+     sess: &Session,
++    turn_context: &TurnContext,
+     turn_pause_state: &mut tokio::sync::watch::Receiver<bool>,
+     cancellation_token: &CancellationToken,
+ ) -> CodexResult<()> {
+-    if *turn_pause_state.borrow() {
+-        sess.flush_rollout().await?;
+-        sess.set_turn_pause_boundary_reached(true);
+-    }
+-    let result = loop {
++    loop {
++        if *turn_pause_state.borrow() {
++            if let Some(inference) = turn_context
++                .extension_data
++                .get::<crate::managed_inference::ManagedInferenceTurn>()
++            {
++                inference.suspend().await?;
++            }
++            sess.flush_rollout().await?;
++            sess.set_turn_pause_boundary_reached(true);
++        }
++        while *turn_pause_state.borrow() {
++            tokio::select! {
++                changed = turn_pause_state.changed() => {
++                    if changed.is_err() { return Err(CodexErr::TurnAborted); }
++                }
++                _ = cancellation_token.cancelled() => return Err(CodexErr::TurnAborted),
++            }
++        }
++        if let Some(inference) = turn_context
++            .extension_data
++            .get::<crate::managed_inference::ManagedInferenceTurn>()
++        {
++            inference.resume().await?;
++        }
++        // Pause can be applied again while FIFO resumption waits for capacity.
++        // Return only after rechecking the actual watch state following the grant.
+         if !*turn_pause_state.borrow() {
+-            break Ok(());
+-        }
+-        tokio::select! {
+-            changed = turn_pause_state.changed() => {
+-                if changed.is_err() {
+-                    break Err(CodexErr::TurnAborted);
+-                }
+-            }
+-            _ = cancellation_token.cancelled() => {
+-                break Err(CodexErr::TurnAborted);
+-            }
+-        }
+-    };
+-    sess.set_turn_pause_boundary_reached(false);
+-    result
++            sess.set_turn_pause_boundary_reached(false);
++            return Ok(());
++        }
++    }
+ }
+ 
+ /// Takes initial turn input and runs a loop where, at each sampling request,
+@@ -208,6 +220,21 @@
+     prewarmed_client_session: Option<ModelClientSession>,
+     cancellation_token: CancellationToken,
+ ) -> CodexResult<Option<String>> {
++    let _inference_lifetime = if let Some(gate) = sess.managed_inference_gate().await {
++        let lifetime = crate::managed_inference::ManagedInferenceTurn::begin(
++            gate,
++            sess.thread_id,
++            turn_context.sub_id.clone(),
++            cancellation_token.clone(),
++        )
++        .await?;
++        turn_context
++            .extension_data
++            .insert_arc(Arc::clone(&lifetime.0));
++        Some(lifetime)
++    } else {
++        None
++    };
+     let auto_compaction_enabled = sess
+         .services
+         .thread_extension_data
+@@ -501,7 +528,13 @@
+     let mut guardian_budget_compacted = false;
+     let mut turn_pause_state = sess.subscribe_turn_pause_state();
+     loop {
+-        wait_for_turn_resume(sess.as_ref(), &mut turn_pause_state, &cancellation_token).await?;
++        wait_for_turn_resume(
++            sess.as_ref(),
++            &turn_context,
++            &mut turn_pause_state,
++            &cancellation_token,
++        )
++        .await?;
+         // Note that pending_input would be something like a message the user
+         // submitted through the UI while the model was running. Though the UI
+         // may support this, the model might not.
+@@ -2716,6 +2749,13 @@
+     draining_for_mailbox: &mut bool,
+ ) -> CodexResult<SamplingRequestResult> {
+     let turn_context = Arc::clone(&step_context.turn);
++    let mut inference_sampling = match turn_context
++        .extension_data
++        .get::<crate::managed_inference::ManagedInferenceTurn>()
++    {
++        Some(inference) => Some(inference.sampling().await?),
++        None => None,
++    };
+     feedback_tags!(
+         model = step_context.settings.model_info.slug.clone(),
+         approval_policy = turn_context.approval_policy(),
+@@ -3066,6 +3106,12 @@
+                     | ResponseItem::Other => false,
+                 };
+ 
++                let dependency_wait = match &item {
++                    ResponseItem::FunctionCall { name, .. } => {
++                        crate::managed_inference::is_dependency_wait(name)
++                    }
++                    _ => false,
++                };
+                 let output_result =
+                     match handle_output_item_done(&mut ctx, item, previously_streamed_item)
+                         .instrument(handle_responses)
+@@ -3075,7 +3121,18 @@
+                         Err(err) => break Err(err),
+                     };
+                 if let Some(tool_future) = output_result.tool_future {
+-                    in_flight.push_back(tool_future);
++                    let wait = dependency_wait
++                        .then(|| {
++                            turn_context
++                                .extension_data
++                                .get::<crate::managed_inference::ManagedInferenceTurn>()
++                                .map(|inference| inference.waiting())
++                        })
++                        .flatten();
++                    in_flight.push_back(Box::pin(async move {
++                        let _wait = wait;
++                        tool_future.await
++                    }));
+                 }
+                 if let Some(agent_message) = output_result.last_agent_message {
+                     last_agent_message = Some(agent_message);
+@@ -3462,6 +3519,8 @@
+             }
+         }
+     };
++    drop(stream);
++    drop(inference_sampling.take());
+     drop(sampling_span);
+     drop(sampling_timing_guard);
+     if let Some(finish_post_request) = finish_post_request {
+diff --git a/codex-rs/core/src/tasks/compact.rs b/codex-rs/core/src/tasks/compact.rs
+--- a/codex-rs/core/src/tasks/compact.rs
++++ b/codex-rs/core/src/tasks/compact.rs
+@@ -33,6 +33,19 @@
+         _input: Vec<TurnInput>,
+         cancellation_token: CancellationToken,
+     ) -> SessionTaskResult {
++        let _inference_lifetime = if let Some(gate) = session.managed_inference_gate().await {
++            let lifetime = crate::managed_inference::ManagedInferenceTurn::begin(
++                gate,
++                session.thread_id,
++                ctx.sub_id.clone(),
++                cancellation_token.clone(),
++            )
++            .await?;
++            ctx.extension_data.insert_arc(Arc::clone(&lifetime.0));
++            Some(lifetime)
++        } else {
++            None
++        };
+         let _profile_guard = ctx.turn_timing_state.begin_compaction();
+         let _compaction_span = tracing::trace_span!(
+             "codex.compaction",
+diff --git a/codex-rs/core/src/tools/approvals.rs b/codex-rs/core/src/tools/approvals.rs
+--- a/codex-rs/core/src/tools/approvals.rs
++++ b/codex-rs/core/src/tools/approvals.rs
+@@ -615,6 +615,14 @@
+         action: ApprovalAction,
+         ctx: &ApprovalContext,
+     ) -> Option<ReviewDecision> {
++        // Actual review can await independently admitted Guardian inference.
++        // Yield only after the parent's model stream is no longer active.
++        let _inference_wait = ctx
++            .review_context
++            .turn()
++            .extension_data
++            .get::<crate::managed_inference::ManagedInferenceTurn>()
++            .map(|inference| inference.waiting());
+         let mut context = ctx.review_context.clone();
+         if let ApprovalAction::McpToolCall {
+             approval_policy,
+diff --git a/codex-rs/core/src/tools/code_mode/wait_handler.rs b/codex-rs/core/src/tools/code_mode/wait_handler.rs
+--- a/codex-rs/core/src/tools/code_mode/wait_handler.rs
++++ b/codex-rs/core/src/tools/code_mode/wait_handler.rs
+@@ -98,6 +98,10 @@
+             ..
+         } = invocation;
+ 
++        let _inference_wait = turn
++            .extension_data
++            .get::<crate::managed_inference::ManagedInferenceTurn>()
++            .map(|inference| inference.waiting());
+         let mut telemetry = CodeModeToolCallGuard::new(
+             &session,
+             turn.sub_id.clone(),
+diff --git a/codex-rs/core/src/tools/handlers/multi_agents/wait.rs b/codex-rs/core/src/tools/handlers/multi_agents/wait.rs
+--- a/codex-rs/core/src/tools/handlers/multi_agents/wait.rs
++++ b/codex-rs/core/src/tools/handlers/multi_agents/wait.rs
+@@ -66,6 +66,11 @@
+         } = invocation;
+         let arguments = function_arguments(payload)?;
+         let args: WaitArgs = parse_arguments(&arguments)?;
++        let _inference_wait = turn
++            .extension_data
++            .get::<crate::managed_inference::ManagedInferenceTurn>()
++            .map(|inference| inference.waiting());
++
+         let receiver_thread_ids = parse_agent_id_targets(args.targets)?;
+         let local_agent_control = session
+             .services
+diff --git a/codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs b/codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs
+--- a/codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs
++++ b/codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs
+@@ -50,6 +50,11 @@
+         } = invocation;
+         let arguments = function_arguments(payload)?;
+         let args: WaitArgs = parse_arguments(&arguments)?;
++        let _inference_wait = turn
++            .extension_data
++            .get::<crate::managed_inference::ManagedInferenceTurn>()
++            .map(|inference| inference.waiting());
++
+         let min_timeout_ms = turn.config.multi_agent_v2.min_wait_timeout_ms;
+         let max_timeout_ms = turn.config.multi_agent_v2.max_wait_timeout_ms;
+         let default_timeout_ms = turn.config.multi_agent_v2.default_wait_timeout_ms;
+diff --git a/codex-rs/ext/guardian-v2/src/async_scorer/sampler/execution.rs b/codex-rs/ext/guardian-v2/src/async_scorer/sampler/execution.rs
+--- a/codex-rs/ext/guardian-v2/src/async_scorer/sampler/execution.rs
++++ b/codex-rs/ext/guardian-v2/src/async_scorer/sampler/execution.rs
+@@ -182,6 +182,21 @@
+         completion: &mut RetainedCompletion,
+         telemetry: &mut SamplingTelemetry,
+     ) -> Result<String, LunaSamplerError> {
++        let inference = if let Some(gate) = &self.config.inference_gate {
++            let thread_id = codex_protocol::ThreadId::from_string(&self.config.thread_id)
++                .map_err(|error| LunaSamplerError::Provider(std::io::Error::other(error).into()))?;
++            Some(Arc::new(
++                codex_core::managed_inference::begin_independent(
++                    Arc::clone(gate),
++                    thread_id,
++                    format!("guardian:{}", self.turn_id),
++                )
++                .await
++                .map_err(LunaSamplerError::Provider)?,
++            ))
++        } else {
++            None
++        };
+         let auth_changes = self
+             .config
+             .provider
+@@ -298,10 +313,10 @@
+                 client_metadata.insert("parent_response_id".to_owned(), parent_response_id.clone());
+             }
+             self.request.client_metadata = Some(client_metadata);
+-            let stream = match tokio::select! {
++            let mut response = match tokio::select! {
+                 biased;
+                 _ = &mut owner_changed => return Err(account_changed_error()),
+-                stream = lease.stream_request(&self.request) => stream,
++                response = PendingResponse::open(lease, self.request.clone(), self.config.metrics.clone(), inference.clone()) => response,
+             } {
+                 Ok(stream) => stream,
+                 Err(error) => {
+@@ -316,7 +331,6 @@
+                 }
+             };
+ 
+-            let mut response = PendingResponse::new(stream, lease, self.config.metrics.clone());
+             let mut output = String::new();
+             while let Some(event) = tokio::select! {
+                 biased;
+diff --git a/codex-rs/ext/guardian-v2/src/async_scorer/sampler/response.rs b/codex-rs/ext/guardian-v2/src/async_scorer/sampler/response.rs
+--- a/codex-rs/ext/guardian-v2/src/async_scorer/sampler/response.rs
++++ b/codex-rs/ext/guardian-v2/src/async_scorer/sampler/response.rs
+@@ -20,6 +20,7 @@
+ pub(super) struct PendingResponse {
+     response: Option<(ResponseStream, ConnectionLease)>,
+     metrics: Option<Arc<dyn ExtensionMetrics>>,
++    inference: Option<Arc<codex_core::managed_inference::IndependentInference>>,
+ }
+ 
+ impl PendingResponse {
+@@ -31,7 +32,30 @@
+         Self {
+             response: Some((stream, lease)),
+             metrics,
++            inference: None,
+         }
++    }
++
++    /// The dispatch task owns capacity even if its observing caller is cancelled
++    /// while the transport is accepting the request. An abandoned reply drains.
++    pub(super) async fn open(
++        lease: ConnectionLease,
++        request: codex_api::ResponsesApiRequest,
++        metrics: Option<Arc<dyn ExtensionMetrics>>,
++        inference: Option<Arc<codex_core::managed_inference::IndependentInference>>,
++    ) -> Result<Self, ApiError> {
++        let (send, receive) = tokio::sync::oneshot::channel();
++        tokio::spawn(async move {
++            let response = lease.stream_request(&request).await.map(|stream| {
++                let mut response = Self::new(stream, lease, metrics);
++                response.inference = inference;
++                response
++            });
++            let _ = send.send(response);
++        });
++        receive
++            .await
++            .map_err(|_| ApiError::Stream("Guardian inference dispatch ended".into()))?
+     }
+ 
+     pub(super) async fn next(&mut self) -> Option<Result<ResponseEvent, ApiError>> {
+@@ -51,20 +75,24 @@
+         let Some((mut stream, lease)) = self.response.take() else {
+             return;
+         };
+-        let Some(interrupt) = stream.interrupt.take() else {
+-            // HTTP cancellation has no response-interrupt handshake.
++        let inference = self.inference.take();
++        let interrupt = stream.interrupt.take();
++        if interrupt.is_none() && inference.is_none() {
+             return;
+-        };
++        }
+         let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+             return;
+         };
+-        // Signal before cleanup is scheduled so the transport can skip undispatched work.
+-        // Completion may already be queued even if the interrupt receiver has closed.
+-        let _ = interrupt.send(ResponseInterrupt::Cancel {
+-            deadline: tokio::time::Instant::now() + Duration::from_secs(/*secs*/ 1),
+-        });
++        if let Some(interrupt) = interrupt {
++            // Signal before cleanup is scheduled; retain the worker ticket until
++            // the transport finishes cancellation or reports a terminal error.
++            let _ = interrupt.send(ResponseInterrupt::Cancel {
++                deadline: tokio::time::Instant::now() + Duration::from_secs(/*secs*/ 1),
++            });
++        }
+         let metrics = self.metrics.clone();
+         runtime.spawn(async move {
++            let _inference = inference;
+             while let Some(Ok(event)) = stream.rx_event.recv().await {
+                 if let ResponseEvent::Completed { token_usage, .. } = event {
+                     record_token_usage(metrics.as_deref(), token_usage.as_ref());
+diff --git a/codex-rs/ext/guardian-v2/src/async_scorer/sampler.rs b/codex-rs/ext/guardian-v2/src/async_scorer/sampler.rs
+--- a/codex-rs/ext/guardian-v2/src/async_scorer/sampler.rs
++++ b/codex-rs/ext/guardian-v2/src/async_scorer/sampler.rs
+@@ -45,6 +45,8 @@
+ 
+ /// Host-owned provider, authentication, and attribution for one Luna connection.
+ pub struct LunaSamplerConfig {
++    /// Connection-owned worker admission, inherited from the actual parent thread.
++    pub inference_gate: Option<Arc<codex_core::managed_execution::ManagedExecutionGate>>,
+     /// Provider and credentials selected for the owning thread.
+     pub provider: SharedModelProvider,
+     /// Provider and feature policy shared with ordinary model requests.
+diff --git a/codex-rs/ext/guardian-v2/src/async_scorer/sampler_tests.rs b/codex-rs/ext/guardian-v2/src/async_scorer/sampler_tests.rs
+--- a/codex-rs/ext/guardian-v2/src/async_scorer/sampler_tests.rs
++++ b/codex-rs/ext/guardian-v2/src/async_scorer/sampler_tests.rs
+@@ -240,6 +240,7 @@
+ 
+ pub(in crate::async_scorer) fn sampler_config(base_url: String) -> LunaSamplerConfig {
+     LunaSamplerConfig {
++        inference_gate: None,
+         api_key_cyber_access_programs: ApiKeyCyberAccessPrograms::Disabled,
+         workspace_routing: codex_model_provider::WorkspaceRoutingContext::new(
+             "https://chatgpt.com/backend-api".into(),
+@@ -655,6 +656,7 @@
+     );
+ 
+     let sampler = connect_sampler(LunaSamplerConfig {
++        inference_gate: None,
+         api_key_cyber_access_programs: ApiKeyCyberAccessPrograms::Disabled,
+         workspace_routing: codex_model_provider::WorkspaceRoutingContext::new(
+             "https://chatgpt.com/backend-api".into(),
+@@ -835,6 +837,7 @@
+         ))),
+     );
+     let sampler = connect_sampler(LunaSamplerConfig {
++        inference_gate: None,
+         api_key_cyber_access_programs: ApiKeyCyberAccessPrograms::Disabled,
+         workspace_routing: codex_model_provider::WorkspaceRoutingContext::new(
+             "https://chatgpt.com/backend-api".into(),
+diff --git a/codex-rs/ext/guardian-v2/src/async_scorer/startup.rs b/codex-rs/ext/guardian-v2/src/async_scorer/startup.rs
+--- a/codex-rs/ext/guardian-v2/src/async_scorer/startup.rs
++++ b/codex-rs/ext/guardian-v2/src/async_scorer/startup.rs
+@@ -103,6 +103,11 @@
+             });
+     let luna_compaction_hash = luna_model.and_then(|model| model.comp_hash);
+     LunaSamplerConfig {
++        inference_gate: input
++            .config
++            .managed_thread_configuration
++            .as_ref()
++            .and_then(|profile| profile.execution_gate.clone()),
+         api_key_cyber_access_programs: ApiKeyCyberAccessPrograms::from_config(input.config),
+         workspace_routing: input
+             .thread_store

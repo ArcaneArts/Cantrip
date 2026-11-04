@@ -11,6 +11,9 @@ interface Operation {
   threadId: string | null;
   turnId: string | null;
   dispatched: boolean;
+  leaseStarted: boolean;
+  preparing: boolean;
+  preparationEnded?: () => void;
   observedStart: boolean;
   settled: boolean;
   ticket: InferenceTicket;
@@ -26,6 +29,17 @@ export interface CodexInferenceExecution {
   rejected(): void;
   /** Preparation failed before this owner forwarded any model request. */
   notDispatched(): void;
+  /** A single serial preparation request shares this ticket with its response turn. */
+  prepare<T>(
+    providerId: string,
+    action: (scope: InferencePreparationScope) => Promise<T>,
+  ): Promise<T>;
+}
+
+export interface InferencePreparationScope {
+  beforeSend(): void;
+  replied(): void;
+  notSent(): void;
 }
 
 interface Request {
@@ -51,6 +65,7 @@ export class CodexInferenceAdmission {
   private readonly runtime: InferenceRuntime;
   private readonly operations = new Set<Operation>();
   private readonly completed = new Set<string>();
+  private readonly nativeEntries = new Map<string, Promise<void>>();
   private readonly requests = new Map<
     string,
     { identity: string; result: Promise<CodexInferenceExecution> }
@@ -104,6 +119,8 @@ export class CodexInferenceAdmission {
       threadId: input.threadId ?? null,
       turnId: input.expectedTurnId ?? null,
       dispatched: false,
+      leaseStarted: false,
+      preparing: false,
       observedStart: false,
       settled: false,
       ticket,
@@ -129,11 +146,13 @@ export class CodexInferenceAdmission {
       },
       bindTurn: (turnId) => this.bindTurn(operation, turnId),
       dispatched: () => {
-        if (operation.dispatched || operation.settled)
+        if (operation.dispatched || operation.settled || operation.preparing)
           throw new Error(
             "The inference operation was already dispatched or settled.",
           );
-        operation.lease!.start();
+        operation.lease!.signal.throwIfAborted();
+        if (!operation.leaseStarted) operation.lease!.start();
+        operation.leaseStarted = true;
         operation.dispatched = true;
       },
       rejected: () => {
@@ -141,7 +160,57 @@ export class CodexInferenceAdmission {
         if (!operation.observedStart) this.settle(operation, "failed");
       },
       notDispatched: () => {
-        if (!operation.dispatched) this.settle(operation, "never-started");
+        if (!operation.dispatched && !operation.preparing)
+          this.settle(
+            operation,
+            operation.leaseStarted ? "completed" : "never-started",
+          );
+      },
+      prepare: async (providerId, action) => {
+        if (
+          providerId !== input.provider.id ||
+          operation.preparing ||
+          operation.dispatched ||
+          operation.settled
+        )
+          throw new Error(
+            "Inference preparation does not own this provider turn.",
+          );
+        operation.lease!.signal.throwIfAborted();
+        operation.preparing = true;
+        let sent = false;
+        let finished!: () => void;
+        const settlement = new Promise<void>((resolve) => {
+          finished = resolve;
+        });
+        operation.preparationEnded = finished;
+        try {
+          return await action({
+            beforeSend: () => {
+              if (sent || operation.settled)
+                throw new Error(
+                  "Inference preparation was already sent or settled.",
+                );
+              operation.lease!.signal.throwIfAborted();
+              if (!operation.leaseStarted) operation.lease!.start();
+              operation.leaseStarted = true;
+              sent = true;
+            },
+            replied: finished,
+            notSent: finished,
+          });
+        } finally {
+          // The RPC's observation deadline can expire while native inference is
+          // still running. The response must not overlap it under this ticket.
+          if (sent) await settlement;
+          operation.preparationEnded = undefined;
+          operation.preparing = false;
+          if (this.exited || operation.settled)
+            throw new Error(
+              "The preparation's native inference process exited.",
+            );
+          operation.lease!.signal.throwIfAborted();
+        }
       },
     };
   }
@@ -157,8 +226,11 @@ export class CodexInferenceAdmission {
       )
         continue;
       operation.ticket.cancel();
-      operation.settled = true;
-      this.operations.delete(operation);
+      if (!operation.preparing)
+        this.settle(
+          operation,
+          operation.leaseStarted ? "completed" : "never-started",
+        );
       cancelled = true;
     }
     return cancelled;
@@ -170,8 +242,11 @@ export class CodexInferenceAdmission {
       operation.ticket.cancel(
         new Error("Native transport disconnected before inference dispatch."),
       );
-      operation.settled = true;
-      this.operations.delete(operation);
+      if (!operation.preparing)
+        this.settle(
+          operation,
+          operation.leaseStarted ? "completed" : "never-started",
+        );
     }
   }
 
@@ -180,10 +255,123 @@ export class CodexInferenceAdmission {
     if (this.exited) return;
     this.exited = true;
     this.runtime.exited();
-    for (const operation of this.operations) operation.settled = true;
+    for (const operation of this.operations) {
+      operation.settled = true;
+      operation.preparationEnded?.();
+    }
     this.operations.clear();
     this.completed.clear();
+    this.nativeEntries.clear();
     this.requests.clear();
+  }
+
+  /** Native Core may use an existing root ticket or admit an independent child. */
+  async enterNative(input: {
+    threadId: string;
+    turnId: string;
+    provider: Request["provider"];
+    signal: AbortSignal;
+    rootThreadId?: string | null;
+  }): Promise<void> {
+    const key = JSON.stringify([input.threadId, input.turnId]);
+    if (this.completed.has(key))
+      throw new Error("Native inference already settled.");
+    let entering = this.nativeEntries.get(key);
+    if (!entering) {
+      entering = this.admitNative(input);
+      this.nativeEntries.set(key, entering);
+    }
+    await entering;
+    const operation = this.findNative(input.threadId, input.turnId);
+    if (!operation?.lease || operation.ticket.status().state !== "running")
+      throw new Error("Native inference has no running grant.");
+  }
+
+  private async admitNative(input: {
+    threadId: string;
+    turnId: string;
+    provider: Request["provider"];
+    signal: AbortSignal;
+    rootThreadId?: string | null;
+  }): Promise<void> {
+    if (this.findNative(input.threadId, input.turnId)) return;
+    // Core's private begin can overtake the ordinary turn/started observer.
+    // Its exact native turn identity binds the unique dispatched root without
+    // acquiring a second ticket and deadlocking a provider with limit one.
+    const roots = [...this.operations].filter(
+      (operation) =>
+        operation.threadId === input.threadId &&
+        operation.dispatched &&
+        !operation.turnId &&
+        !operation.settled,
+    );
+    if (roots.length === 1) {
+      roots[0]!.observedStart = true;
+      this.bindTurn(roots[0]!, input.turnId);
+      return;
+    }
+    if (roots.length > 1)
+      throw new Error("Native inference has ambiguous dispatched owners.");
+    const root = input.rootThreadId
+      ? [...this.operations].find(
+          (operation) => operation.threadId === input.rootThreadId,
+        )
+      : undefined;
+    const scope = root?.ticket.status();
+    const execution = await this.acquire({
+      operationId: `native-inference:${input.threadId}:${input.turnId}`,
+      provider: input.provider,
+      chatId: scope?.chatId,
+      projectId: scope?.projectId,
+      threadId: input.threadId,
+      expectedTurnId: input.turnId,
+      signal: input.signal,
+    });
+    execution.dispatched();
+  }
+
+  /** Called only after Core establishes that no inference can run before resume. */
+  suspendNative(threadId: string, turnId: string): void {
+    const operation = this.findNative(threadId, turnId);
+    if (!operation?.lease)
+      throw new Error("Native suspension has no inference owner.");
+    operation.lease.suspend();
+  }
+
+  async resumeNative(threadId: string, turnId: string): Promise<void> {
+    const operation = this.findNative(threadId, turnId);
+    if (!operation?.lease)
+      throw new Error("Native resumption has no inference owner.");
+    await operation.lease.resume();
+  }
+
+  finishNative(threadId: string, turnId: string): void {
+    this.rememberCompleted(threadId, turnId);
+    const operation = this.findNative(threadId, turnId);
+    if (operation) this.settle(operation, "completed");
+  }
+
+  cancelNativeWait(threadId: string, turnId: string): void {
+    const operation = this.findNative(threadId, turnId);
+    if (
+      !operation ||
+      !["waiting", "granted", "suspended"].includes(
+        operation.ticket.status().state,
+      )
+    )
+      return;
+    operation.ticket.cancel();
+    operation.settled = true;
+    this.operations.delete(operation);
+  }
+
+  private findNative(threadId: string, turnId: string): Operation | undefined {
+    return [...this.operations].find(
+      (operation) =>
+        operation.threadId === threadId &&
+        operation.turnId === turnId &&
+        !operation.settled,
+    );
   }
 
   observe(method: string | undefined, params: unknown): void {
@@ -220,11 +408,16 @@ export class CodexInferenceAdmission {
       )
     )
       return;
+    this.rememberCompleted(threadId, turnId);
+    for (const operation of this.operations) this.reconcile(operation);
+  }
+
+  private rememberCompleted(threadId: string, turnId: string): void {
     const key = JSON.stringify([threadId, turnId]);
+    this.nativeEntries.delete(key);
     this.completed.add(key);
     if (this.completed.size > 512)
       this.completed.delete(this.completed.values().next().value!);
-    for (const operation of this.operations) this.reconcile(operation);
   }
 
   private bindTurn(operation: Operation, turnId: string): void {
@@ -251,7 +444,11 @@ export class CodexInferenceAdmission {
   ): void {
     if (operation.settled) return;
     operation.settled = true;
-    operation.lease?.settle(outcome);
+    if (operation.lease) operation.lease.settle(outcome);
+    else
+      operation.ticket.cancel(
+        new Error("Native execution settled before admission."),
+      );
     this.operations.delete(operation);
   }
 }

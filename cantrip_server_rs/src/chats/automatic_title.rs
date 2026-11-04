@@ -169,15 +169,14 @@ impl MessageTitles {
             Ok(())
         })
     }
-    async fn generate_claimed(
+    async fn prepare_claimed(
         &self,
         owner: &str,
         chat: &str,
         input: &Value,
         route_context: Option<&Value>,
-        reconcile: bool,
         claim: &mut Option<String>,
-    ) -> Result<Option<Value>> {
+    ) -> Result<Option<(Value, Value)>> {
         let Some(context) = self.chats.execution_context(owner, chat).await? else {
             return Ok(None);
         };
@@ -250,7 +249,65 @@ impl MessageTitles {
         let mut model = runtime["model"].clone();
         model["reasoningEffort"] =
             lowest_effort(catalog.get("supportedReasoningEfforts"), fallback);
-        let reply=self.commands.request(context["workerId"].as_str().context("Label worker")?,json!({"type":"label.generate","chatId":chat,"labelKind":if is_task {"task"}else if context["contextKind"]=="standalone" {"chat"}else{"agent"},"input":input,"model":model,"provider":runtime["provider"]}),Some(Duration::from_secs(30)),None).await?;
+        let command = json!({"type":"label.generate","operationId":claim.as_deref(),"chatId":chat,"labelKind":if is_task {"task"}else if context["contextKind"]=="standalone" {"chat"}else{"agent"},"input":input,"model":model,"provider":runtime["provider"]});
+        Ok(Some((context, command)))
+    }
+    /// Claims only opaque metadata. Inference is sequenced by the turn's worker.
+    pub async fn prepare_initial(
+        &self,
+        owner: &str,
+        chat: &str,
+        message: &Value,
+        route_context: &Value,
+    ) -> Option<Value> {
+        let mut claim = None;
+        let result = self
+            .prepare_claimed(
+                owner,
+                chat,
+                &json!({"kind":"message","message":message}),
+                Some(route_context),
+                &mut claim,
+            )
+            .await;
+        match result {
+            Ok(Some((_, command))) => Some(command),
+            _ => {
+                if let Some(claim) = claim {
+                    let _ = self
+                        .chats
+                        .finish_automatic_title(owner, chat, &claim, None, false)
+                        .await;
+                }
+                None
+            }
+        }
+    }
+    async fn generate_claimed(
+        &self,
+        owner: &str,
+        chat: &str,
+        input: &Value,
+        route_context: Option<&Value>,
+        reconcile: bool,
+        claim: &mut Option<String>,
+    ) -> Result<Option<Value>> {
+        let Some((context, command)) = self
+            .prepare_claimed(owner, chat, input, route_context, claim)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let is_task = input["kind"] == "task";
+        let reply = self
+            .commands
+            .request(
+                context["workerId"].as_str().context("Label worker")?,
+                command,
+                Some(Duration::from_secs(30)),
+                None,
+            )
+            .await?;
         let reply = crate::settings::parse_response("generateLabelResultSchema", reply.as_ref())?;
         let still_enabled = enabled(
             &Value::from_serialize(&self.settings.get_user_settings(owner).await?),
@@ -296,4 +353,47 @@ impl MessageTitles {
     pub async fn drained(&self) {
         self.operations.drained().await;
     }
+}
+
+/// Best-effort completion is outside turn activity and quota accounting.
+pub async fn finish_prepared(
+    database: Arc<Database>,
+    live: &Live,
+    owner: &str,
+    job: &Value,
+    result: Option<&Value>,
+) -> Result<()> {
+    let chat = job["chatId"].as_str().context("Initial label chat")?;
+    let claim = job["operationId"].as_str().context("Initial label claim")?;
+    let result = result
+        .filter(|v| !v.is_null())
+        .map(|v| crate::settings::parse_response("generateLabelResultSchema", v))
+        .transpose()?;
+    let settings = SettingsRepository::new(database.clone());
+    let still_enabled = enabled(
+        &Value::from_serialize(&settings.get_user_settings(owner).await?),
+        job["labelKind"] == "task",
+    );
+    let updated = Repository::new(database)
+        .finish_automatic_title(
+            owner,
+            chat,
+            claim,
+            if still_enabled {
+                result.as_ref().map(|v| &v["titleProtection"])
+            } else {
+                None
+            },
+            result.as_ref().is_some_and(|v| v["emptyInput"] == true),
+        )
+        .await?;
+    if let Some(updated) = updated
+        && still_enabled
+        && result
+            .as_ref()
+            .is_some_and(|v| truthy(v.get("titleProtection")))
+    {
+        live.publish_summary(owner, &json!(chat), &updated["projectId"]);
+    }
+    Ok(())
 }

@@ -415,3 +415,21 @@ not proof that an already-running turn changed its pinned model/settings.
 
 Canonical desired/pending/effective settings publication remains an integration
 requirement. Validation and remaining work are recorded in `docs/CODEX_AUDIT.md`.
+
+## Worker inference admission
+
+Reviewed patch `0048` uses the existing connection-owned managed execution channel
+for private inference admission, suspension, resumption, and terminal receipts. It
+does not create another prompt queue or grant capacity in Core. The worker owns
+provider limits and FIFO order; Core supplies actual sampling and wait boundaries.
+
+Root turns can reuse their worker reservation, while child turns, speculative
+compaction, manual compaction, and Guardian classification account for independent
+execution. Parent dependency/approval waits yield only after parent sampling stops;
+resumption reacquires before further inference. A Guardian reservation follows its
+transport through cancellation/draining, including when its observer disappears.
+
+The source patch was formatted and applied to an owned copy of its pre-patch source.
+No native build, tests, benchmarks, or computer-use validation were run under the
+current goal's restriction. Normal future packaging fingerprints the ordered patch
+set; this change does not manufacture a prebuilt binary or update upstream hashes.

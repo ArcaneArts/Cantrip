@@ -3320,6 +3320,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               model: command.model,
               provider: provider(),
             }).runLabelInference({
+              operationId: command.operationId,
+              chatId: command.chatId,
               model: command.model,
               provider: provider(),
               instructions,
@@ -5208,6 +5210,64 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           }
           return activity;
         };
+        const labelJob = command.initialLabel;
+        if (labelJob && labelJob.chatId !== command.chatId)
+          throw new Error("Initial label belongs to another chat.");
+        let initialLabelPromise: Promise<void> | null = null;
+        const initialLabel: Parameters<
+          typeof runtime.runTurn
+        >[0]["initialLabel"] = labelJob
+          ? {
+              providerId: labelJob.provider.id,
+              run: (inference) =>
+                (initialLabelPromise ??= (async () => {
+                  let result: Awaited<
+                    ReturnType<typeof generatePrivateLabel>
+                  > | null = null;
+                  try {
+                    result = await generatePrivateLabel(
+                      labelJob,
+                      workerEncryption,
+                      async (instructions, input) => {
+                        if (labelJob.provider.id === provider().id)
+                          return runtime.runInitialLabelInference({
+                            model: labelJob.model,
+                            providerId: provider().id,
+                            instructions,
+                            input,
+                            inference,
+                          });
+                        const labelingProvider = await openRuntimeProvider({
+                          provider: labelJob.provider,
+                          service: workerEncryption,
+                        });
+                        return runtimeFor({
+                          model: labelJob.model,
+                          provider: labelingProvider,
+                        }).runLabelInference({
+                          operationId: labelJob.operationId,
+                          chatId: command.chatId,
+                          model: labelJob.model,
+                          provider: labelingProvider,
+                          instructions,
+                          input,
+                          signal: preparationSignal,
+                        });
+                      },
+                    );
+                  } catch {
+                    // A private metadata failure must not fail the user's response.
+                    // Native settlement is awaited by the inference owner before here.
+                  }
+                  emit({
+                    type: "agent.automatic-label",
+                    chatId: command.chatId,
+                    claimId: labelJob.operationId,
+                    result,
+                  });
+                })()),
+            }
+          : undefined;
         const runTurn = async (
           prompt: string,
           resultMode: AgentTurnResultMode,
@@ -5288,6 +5348,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           }
           try {
             const turnOptions: Parameters<typeof runtime.runTurn>[0] = {
+              initialLabel,
               preparationSignal: preparationSignal
                 ? AbortSignal.any([preparationSignal, guiBridgeSignal])
                 : undefined,

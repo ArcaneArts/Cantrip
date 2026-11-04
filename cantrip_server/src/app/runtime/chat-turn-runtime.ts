@@ -4,7 +4,8 @@ import {
 } from "./chat-turn-configuration.js";
 import { finishManagedGui } from "./finish-managed-gui.js";
 import {
-  generateAutomaticTitle,
+  prepareAutomaticTitle,
+  finishPreparedAutomaticTitle,
   labelingRoutes,
 } from "../../chats/automatic-labeling.js";
 import { canAutomaticallySwitchProviderAccount } from "../../models/chatgpt-account-routing.js";
@@ -513,19 +514,52 @@ export function createChatTurnRuntime({
       "load-worker-attribution",
       () => repository.getWorker(ownerId, execution.workerId),
     );
-    if (encryptedChatMessages && (options.messageRole ?? "user") === "user") {
-      void generateAutomaticTitle({
-        repository,
-        bridge,
-        ownerId,
-        chatId: execution.chatId,
-        input: { kind: "message", message: encryptedChatMessages.userMessage },
-        availableModelRuntimes: labelingRoutes((configuration) =>
-          routePairsForConfiguration(execution, configuration),
-        ),
-        publishChatSummary,
-      });
-    }
+    const initialLabel =
+      encryptedChatMessages && (options.messageRole ?? "user") === "user"
+        ? await prepareAutomaticTitle({
+            repository,
+            bridge,
+            ownerId,
+            chatId: execution.chatId,
+            input: {
+              kind: "message",
+              message: encryptedChatMessages.userMessage,
+            },
+            availableModelRuntimes: labelingRoutes((configuration) =>
+              routePairsForConfiguration(execution, configuration),
+            ),
+            publishChatSummary,
+          })
+        : null;
+    let initialLabelSent = false;
+    let initialLabelFinished = false;
+    let initialLabelFinish = Promise.resolve();
+    const finishInitialLabel = (
+      result: Parameters<typeof finishPreparedAutomaticTitle>[2],
+    ) => {
+      initialLabelFinish = initialLabelFinish
+        .then(async () => {
+          if (!initialLabel || initialLabelFinished) return;
+          await finishPreparedAutomaticTitle(
+            {
+              repository,
+              ownerId,
+              chatId: execution.chatId,
+              publishChatSummary,
+            },
+            initialLabel,
+            result,
+          );
+          initialLabelFinished = true;
+        })
+        .catch(() => {
+          app.log.debug(
+            { event: "labeling.unavailable", chatId: execution.chatId },
+            "Automatic title unavailable",
+          );
+        });
+      return initialLabelFinish;
+    };
     let resolveTaskWorkerDispatch: (() => void) | null = null;
     let rejectTaskWorkerDispatch: ((error: unknown) => void) | null = null;
     let taskWorkerDispatchSettled = false;
@@ -819,10 +853,15 @@ export function createChatTurnRuntime({
               },
               "Agent turn route dispatched",
             );
+            const attemptInitialLabel = initialLabelSent
+              ? undefined
+              : (initialLabel ?? undefined);
+            initialLabelSent = true;
             const rawResultPromise = bridge.request(
               execution.workerId,
               {
                 type: "chat.turn",
+                initialLabel: attemptInitialLabel,
                 ...(execution.osExecution
                   ? { osExecution: execution.osExecution }
                   : {}),
@@ -946,6 +985,15 @@ export function createChatTurnRuntime({
                 timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
                 onEvent: (event) =>
                   runAsOwner(ownerId, async () => {
+                    if (event.type === "agent.automatic-label") {
+                      if (
+                        initialLabel &&
+                        event.chatId === execution.chatId &&
+                        event.claimId === initialLabel.operationId
+                      )
+                        await finishInitialLabel(event.result);
+                      return;
+                    }
                     if (
                       (event.type === "computer-use.approval.request" ||
                         event.type === "computer-use.approval.terminal") &&
@@ -1948,6 +1996,7 @@ export function createChatTurnRuntime({
           finishExecution,
         });
       } finally {
+        await finishInitialLabel(null);
         if (!taskWorkerDispatchSettled && options.taskDispatchLease) {
           markTaskWorkerDispatchFailed(
             new Error("Scheduled Task bootstrap ended before worker dispatch."),

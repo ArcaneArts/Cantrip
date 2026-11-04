@@ -1,5 +1,6 @@
 import { nativeTurnModelAttributionSchema } from "./native-turn-model-attribution.js";
 import { z } from "zod";
+import { generateLabelResultSchema } from "./labeling.js";
 import {
   agentInteractionResolutionCreateSchema,
   encryptedAgentInteractionResolutionCreateSchema,
@@ -233,6 +234,14 @@ export const inferenceProgressUpdateSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const workerEventSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("agent.automatic-label"),
+      chatId: z.string().min(1),
+      claimId: z.string().uuid(),
+      result: generateLabelResultSchema.nullable(),
+    })
+    .strict(),
   cuaApprovalRequestEventSchema,
   cuaApprovalTerminalSchema,
   computerUseChunkEventSchema,

@@ -47,6 +47,13 @@ impl EventSink {
             .cloned()
             .unwrap_or_else(|| json!("Review the attached files and respond to the user."));
         let mut command = json!({"type":"chat.turn","executionProfile":if e["contextKind"]=="standalone" {"standalone-chat"}else if e.get("osExecution").is_some(){"cantrip-os"}else{"ide"},"contextKind":e["contextKind"],"chatId":e["chatId"],"clientMessageId":t.user_message["id"],"cwd":e["cwd"],"executionLaneId":e["executionLaneId"],"worktreeId":e["worktreeId"],"scratchRootId":e["scratchRootId"],"rootKind":e["rootKind"],"threadId":thread,"isPrimary":e["isPrimary"],"worktreeMode":e["worktreeMode"],"worktreePolicy":e["worktreePolicy"],"policyProjectId":e["projectId"],"policies":t.effective_policies,"standalonePolicies":t.standalone_policies,"model":runtime["model"],"provider":runtime["provider"],"permissionProfileId":managed_console::permission_profile(e)["effectiveId"],"planMode":t.turn_plan_mode,"mcpServers":t.mcp_servers,"automationPaused":e["automationPaused"]});
+        if let Some(job) = t.options.get("initialLabel") {
+            let mut state = self.turn_state.lock().unwrap();
+            if !state.initial_label_sent {
+                command["initialLabel"] = job.clone();
+                state.initial_label_sent = true;
+            }
+        }
         if let Some(os) = e.get("osExecution") {
             command["osExecution"] = os.clone();
         }
