@@ -1,12 +1,6 @@
-name: Managed web runtimes
+name: Release managed web runtimes
 
 on:
-  pull_request:
-    paths:
-      - "managed_runtimes/**"
-      - "scripts/managed-runtimes/**"
-      - ".github/workflows/managed-web-runtimes.yml"
-      - "package.json"
   workflow_dispatch:
     inputs:
       publish:
