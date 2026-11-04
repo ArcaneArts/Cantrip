@@ -5,8 +5,8 @@ source through its existing environment provider. The app-server and provider
 credentials stay on the owning worker; native shell, filesystem, search, and patch
 tools use the guest executor. Both Server implementations now capture placement
 when creating a new agent chat, and the worker selects this adapter for that
-captured chat. The client target picker and remaining product surfaces are still
-being implemented.
+captured chat. The [client attachment/selection workflow](PRODUCT_WORKFLOW.md)
+is available; the remaining product surfaces are still being implemented.
 
 `OsNativeEnvironment` captures the source/instance/workspace identities and
 attachment, runtime, and binding generations. Each placement needs its own private
@@ -63,7 +63,7 @@ before creating another OS-bound chat; automatic re-admission of existing chats
 across OS replacement is not provided by this checkpoint. Both Server and worker
 whole-turn failover paths refuse to replay an OS turn after an uncertain result.
 
-The client picker, plain Linux terminals, editor/Explorer, setup/Run routing,
+Plain Linux terminals, editor/Explorer, setup/Run routing,
 attachment materialization, and served artifact downloads remain subsequent
 product work. Component tests below do not claim that complete workflow.
 

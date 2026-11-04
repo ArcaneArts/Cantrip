@@ -3,7 +3,10 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { encodeBase64Url } from "@cantrip/crypto";
-import type { WorkerCommand } from "@cantrip/protocol";
+import {
+  cantripOsDependencyOverlaysSchema,
+  type WorkerCommand,
+} from "@cantrip/protocol";
 import { REPOSITORY_METADATA_FIELDS } from "@cantrip/protocol/repository-operation";
 
 const routingTokenPattern = /^ctrr_[A-Za-z0-9_-]{43}$/u;
@@ -108,7 +111,7 @@ export class WorkerRoutingRegistry {
     const protectedResult =
       type === "worktree.observation.configure"
         ? this.#protectObservationConfiguration(result)
-        : this.#protectValue(result);
+        : this.#protectValue(result, undefined, type.startsWith("cantrip-os."));
     await this.#persist();
     return protectedResult;
   }
@@ -163,18 +166,22 @@ export class WorkerRoutingRegistry {
     >;
   }
 
-  #protectValue(value: unknown, field?: string): unknown {
+  #protectValue(value: unknown, field?: string, osResult = false): unknown {
+    // Overlay directories are admitted configuration already held by the Server.
+    // Preserve them for receipt equality; repository path metadata stays opaque.
+    if (osResult && field === "dependencyOverlays")
+      return cantripOsDependencyOverlaysSchema.parse(value);
     if (typeof value === "string" && field && privateResultFields.has(field)) {
       return this.#token(field, value);
     }
     if (Array.isArray(value)) {
-      return value.map((item) => this.#protectValue(item, field));
+      return value.map((item) => this.#protectValue(item, field, osResult));
     }
     if (!isRecord(value)) return value;
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [
         key,
-        this.#protectValue(item, key),
+        this.#protectValue(item, key, osResult),
       ]),
     );
   }

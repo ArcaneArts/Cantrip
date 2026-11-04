@@ -78,14 +78,18 @@ is delivered in reviewable milestones: canonical identities/placement, actual
 materialization backends, then authorized product dispatch. The
 [materialization backend](../cantrip_os/SOURCES.md) implements linked Docker
 worktrees, Linux-owned checkout/worktree provisioning, and dependency overlays.
-It does not yet enable client target selection or claim end-to-end agent execution.
+The [client workflow](../cantrip_os/PRODUCT_WORKFLOW.md) now attaches an OS,
+provisions a source, and creates an explicitly bound Linux agent. Complete
+product execution acceptance remains subsequent work.
 
 The [native runtime adapter](../cantrip_os/NATIVE_RUNTIME.md) now exercises the
 pinned app-server against Docker and an installed VM, including native patching,
 permissions, and process-tree cancellation. Its deterministic model fixture is
 component acceptance. Both Server implementations now capture a binding for a
 new agent chat before native preparation and select a private worker-side runtime.
-The client picker and remaining product surface routing are the next delivery steps.
+Project Settings → CantripOS now provides attachment and source selection.
+Terminals, file/editor/Explorer, setup/Run, attachments, and artifacts are the
+remaining product routing block.
 
 The canonical model keeps `project_sources.absolute_path` worker-local. A shared
 source identity preserves worktree IDs and leases, while Linux-owned source

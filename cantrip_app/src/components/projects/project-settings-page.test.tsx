@@ -77,6 +77,7 @@ describe("project settings", () => {
       "general",
       "archive",
       "automations",
+      "cantrip-os",
       "tunnels",
       "policies",
       "skills",

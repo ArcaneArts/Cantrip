@@ -606,3 +606,40 @@ and 133 worker tests. Full checking still stops at the same agentOperations dige
 public export compatibility retains the same seven unrelated exports (2,184 actual
 versus 2,177 reviewed), and typechecking reports only the prior five worker and two
 Server errors.
+
+## Phase 3: client attachment and source selection checkpoint
+
+Verified 2026-11-04 in Codex's in-app browser against a disposable TypeScript
+Server/PGlite, real worker WebSocket connection, and new ARM64 Docker container
+`cantrip-os-product-test` with executor 0.2.0. No personal browser was used.
+
+- Created an encrypted non-Git project through the actual client, attached the
+  actual Docker instance, and created `work` (UID 20000) and `work-two` (UID 20001).
+- Provisioned a Linux-owned empty folder in `work`, then opened its new pinned
+  agent chat through **New Linux agent**. This checkpoint used no configured
+  model, so chat creation is not an executed provider turn.
+- Linked the exact original Primary folder into `work-two` with an explicit
+  `node_modules` overlay. Docker recreated once, preserving its identity and
+  earlier workspace/source. The real flow exposed an overlay receipt regression:
+  repository metadata protection was turning admitted relative directory names
+  into routing tokens. The worker now validates/preserves this configuration in
+  OS receipts while continuing to obscure repository metadata.
+- Restarted the real worker with the fix and used **Observe outcome** on the
+  existing saved admission. The linked source became ready; the Docker container
+  ID stayed unchanged, proving no second mount/recreation. Verified the retained
+  Linux folder in the new generation and opened a `work-two` bound agent chat.
+- Both source cards show the workspace identity and Linux dependency directories.
+  Captured screenshot and redacted source summaries are in ignored
+  `artifacts/phase3-client/`.
+
+The production app build passed. Focused client encryption/API/settings tests:
+49 passed in five files. Worker routing/placement tests: three passed. The app
+TypeScript build passed; worker type checking reports the same five existing
+CUA/MCP errors. Required `pnpm check` reached the same pre-existing boundary-audit
+agentOperations digest mismatch (`691b613…` expected, `c01cedeb…` candidate).
+
+The Linux-owned chat's existing file sidebar reported an unavailable worktree;
+its product filesystem routing remains the next block. Linked source sidebar
+currently observes the original worker files. Plain Linux terminals, setup/Run,
+attachments, artifact downloads, and a real product-dispatched model turn are
+not claimed by this checkpoint. Fresh ISO distribution acceptance also remains.

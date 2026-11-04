@@ -289,3 +289,42 @@ describe("WorkerRoutingRegistry", () => {
     });
   });
 });
+
+it("preserves admitted OS overlay configuration while keeping repository metadata opaque", async () => {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "cantrip-os-routing-overlays-"),
+  );
+  temporaryDirectories.push(directory);
+  const registry = new WorkerRoutingRegistry(directory);
+  const receipt = {
+    source: {
+      dependencyOverlays: [{ path: "node_modules" }, { path: ".venv" }],
+      branch: "private-branch",
+      path: "private/file",
+    },
+  };
+  for (const type of [
+    "cantrip-os.source.provision",
+    "cantrip-os.source.inspect",
+    "cantrip-os.operation.inspect",
+  ]) {
+    const protectedResult = (await registry.protectResult(
+      type,
+      receipt,
+    )) as typeof receipt;
+    expect(protectedResult.source.dependencyOverlays).toEqual(
+      receipt.source.dependencyOverlays,
+    );
+    expect(protectedResult.source.branch).toMatch(/^ctrr_/);
+    expect(protectedResult.source.path).toMatch(/^ctrr_/);
+  }
+  await expect(
+    registry.protectResult("cantrip-os.source.inspect", {
+      dependencyOverlays: [{ path: "../outside" }],
+    }),
+  ).rejects.toThrow();
+  const regular = (await registry.protectResult("worktree.status", {
+    dependencyOverlays: [{ path: "private/file" }],
+  })) as { dependencyOverlays: { path: string }[] };
+  expect(regular.dependencyOverlays[0]!.path).toMatch(/^ctrr_/);
+});
