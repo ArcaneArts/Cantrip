@@ -3,8 +3,8 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "641b7273e519bab9beabc68f42e8cbb1288df91a0762fd084affa9425714ec61",
-    "baselineCommit": "2031c9884e272f3ecb0b43324a352b239d7ada13",
+    "sha256": "d7a35831b2d02967b47243c761e56fe770552fdaf056bb9b3e28379bd5b91034",
+    "baselineCommit": "64b2e4961869e1d94bc3598b9a28ec19e438668f",
     "counts": {
       "routes": 536,
       "workerCommands": 295,
@@ -12,7 +12,7 @@
       "repositoryMethods": 366,
       "liveResources": 47
     },
-    "workingTreeNote": "Current Source inventory integrated through main2031c9884:536routes/295worker commands/115declared tables/366repository methods/47Live resources. Separate accounting covers122physical tables. All251preceding migrations retain their bytes and own0251 follows for252total entries. Local validation only; complete product/platform/replacement acceptance remains unfinished.",
+    "workingTreeNote": "Current Source inventory through64b2e4961:536routes/295worker commands/115declared tables/366repository methods/47Live resources;122physical tables and252migrations. Incoming2516 moves one existing retry route from line263 to277; all classifications, keys and counts remain unchanged. Local validation only; full product/platform/replacement acceptance remains unfinished.",
     "migrationBackedTableCount": 122
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
@@ -5144,6 +5144,34 @@
         ],
         "remaining": [
           "Current-head supported-platform and complete packaged/standalone acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/agent-operations",
+        "implementation": "cantrip_server_rs/src/http/agent_alerts.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/agent-task-http-compatibility.mjs",
+          "scripts/server-rust/agent-task-audit-publication-compatibility.mjs"
+        ],
+        "remaining": [
+          "Seven native operations are advertised; remaining Source MCP domains and full context.get parity are unfinished.",
+          "Current native and supported-platform product/packaging acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/internal/agent-operations/capabilities",
+        "implementation": "cantrip_server_rs/src/http/agent_alerts.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/agent-task-http-compatibility.mjs",
+          "scripts/server-rust/agent-task-audit-publication-compatibility.mjs"
+        ],
+        "remaining": [
+          "Seven native operations are advertised; remaining Source MCP domains and full context.get parity are unfinished.",
+          "Current native and supported-platform product/packaging acceptance."
         ]
       }
     ]
@@ -12263,6 +12291,34 @@
         },
         "scope": "Current local macOS inference-status integration: snapshots, identity fences, malformed replies and ordered Live revision rejection pass all three storage modes and all three auth modes. Earlier endpoint catalogs/native execution, complete mutation/incoming, artifact and platform evidence retain their tested revisions. Actions development validation is retired under user policy2494. Final product/platform/package/deployment/default-cutover acceptance remains unfinished."
       }
+    },
+    "agentTaskMcp": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/http/agent_tasks.rs",
+        "cantrip_server_rs/src/http/agent_operations.rs",
+        "cantrip_server_rs/src/http/agent_alerts.rs",
+        "cantrip_server_rs/src/agent_alerts.rs",
+        "cantrip_server_rs/src/tasks/query_error.rs",
+        "cantrip_server_rs/src/wire/mcp.rs"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/mcp_operation_contracts.rs",
+        "scripts/server-rust/task-read-query-manifest.mjs",
+        "scripts/server-rust/agent-task-http-compatibility.mjs",
+        "scripts/server-rust/agent-task-retry-history-compatibility.mjs",
+        "scripts/server-rust/agent-task-postcommit-compatibility.mjs",
+        "scripts/server-rust/agent-task-audit-publication-compatibility.mjs",
+        "scripts/server-rust/agent-task-audit-failure-compatibility.mjs",
+        "scripts/server-rust/actual-agent-task-client.mjs"
+      ],
+      "scope": "Native MCP Task admission directly enqueues durable dispatch, retains caller model and retry history, preserves ordered/deduplicated status reads, exact Source query/validation failures, read/mutation binding rules and awaited best-effort worker-owned audits. Actual Source HTTP compatible binding schema accepts legacy fields and filters future grants before strict canonical validation. All 603 previous ordered schema graphs and previous validation logic remain unchanged; two new roots pass 2432 exact Source comparisons. No public protocol or worker runtime changes.",
+      "localEvidence": "All3stores x3auth modes pass24paired HTTP response/audit/failure cases per peer (216paired cases/432calls), with21matching audit rows per peer/profile. All3stores x3auth modes retain MCP retry history and opaque/configuration/revision/operation identities through36actual server restarts; public starts reset retry history. PostgreSQL passes18 audit publication barriers and12 committed Task/replay audit-failure cases across3auth modes, observing both App Live invalidations and one committed cycle before releasing the failing audit trigger. Another18calls prove absence of the extra post-commit retry-reset transaction that caused3real before-fix backend interruptions to return500. Local protocol tests1054, Source focused tests44, three typechecks, strict Clippy and Rustfmt pass. Full-worker reference run fails Source chat preparation because the available native executable rejects the ownership --scope option, followed by the existing worker shutdown assertion. No Rust Task/native execution result is claimed. Six additional real PostgreSQL cases abort the caller while its audit INSERT is actually blocked, then verify the audit commits after release. A local52patch native candidate executes all7MCP Task tool flows on Source and Rust through the unchanged full worker; the browser decrypts the completed child answer. Both processes then fail the existing worker stopped-log assertion at full-worker.mjs:172, before restart. A separate strict execution-subset proof retains successful tool behavior without calling the failed processes green.",
+      "remaining": [
+        "Other MCP domain operations and complete context.get parity.",
+        "Current pinned native artifact and complete Task native execution/restart acceptance; the available reference artifact fails actual Source preparation. Whole-product and supported-platform packaging acceptance.",
+        "Multi-instance coordination, remaining execution/recovery failures and full replacement acceptance."
+      ]
     }
   },
   "remainingAcceptance": [

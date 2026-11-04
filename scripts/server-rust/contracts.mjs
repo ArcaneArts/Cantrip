@@ -522,6 +522,8 @@ export const contractRoots = [
   "cantripMcpAlertRaiseInputSchema",
   "cantripMcpAlertResolveInputSchema",
   "workerCantripMcpOperationCallSchema",
+  "compatibleWorkerCantripMcpOperationCallSchema",
+  "cantripAgentOperationNameSchema",
   "workerCantripMcpCapabilitiesQuerySchema",
   "cantripAgentOperationResultSchema",
   "projectGoalSnapshotSchema",
@@ -1092,6 +1094,11 @@ registerChecks(protocol.nativeCommandEventSchema.shape.event._zod.def.in, [
   "native-command-event",
 ]);
 const transforms = new Map([
+  [
+    protocol.compatibleWorkerCantripMcpOperationCallSchema._zod.def.in._zod.def
+      .out,
+    "mcp-compatible-call",
+  ],
   [
     automations.projectAutomationWeeklyScheduleSchema.shape.weekdays._zod.def
       .out,

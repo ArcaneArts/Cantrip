@@ -1,15 +1,11 @@
 //! Project-scoped agent Task admission uses the normal durable Task scheduler.
-use super::{
-    agent_alerts::failure,
-    settings::{output, parse},
-};
+use super::agent_operations::{OperationError, parse};
 use crate::{
     auth::service::AuthService,
     chats, tasks,
     wire::{Value, value::json},
 };
 use anyhow::{Context, Result};
-use axum::response::Response;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
@@ -25,12 +21,12 @@ async fn status(
     missing: Vec<Value>,
     next: Value,
     mutated: bool,
-) -> Result<Response> {
+) -> Result<Value> {
     let chats = chats::Repository::new(service.repository.database.clone())
         .list_project(owner, text(&context["projectId"])?)
         .await?;
     let descriptors = tasks.iter().map(|task| {
-        let chat = chats.iter().find(|chat| chat["id"] == task["chatId"]).context("Task chat is unavailable")?;
+        let chat = chats.iter().find(|chat| chat["id"] == task["chatId"]).ok_or_else(|| OperationError::new(404,"not-found","Task chat is unavailable."))?;
         let retrying = matches!(task["automaticRetry"]["status"].as_str(), Some("scheduled" | "retrying"));
         let active = matches!(task["dispatch"]["state"].as_str(), Some("queued" | "claimed" | "running" | "paused"));
         Ok(json!({
@@ -41,18 +37,14 @@ async fn status(
             "completedAt":task["completedAt"], "updatedAt":task["updatedAt"]
         }))
     }).collect::<Result<Vec<Value>>>()?;
-    let data = crate::settings::parse_response(
+    let data = parse(
         "agentTaskStatusWireSchema",
-        Some(&json!({"tasks":descriptors,"missingTaskIds":missing,"nextCursor":next})),
+        &json!({"tasks":descriptors,"missingTaskIds":missing,"nextCursor":next}),
     )?;
-    output(
-        200,
-        "cantripAgentOperationResultSchema",
-        &json!({
-            "summary":if mutated {"Task queued for direct execution with the caller's model; goal mode is off."} else {"Read project Task statuses."},
-            "data":data,"mutated":mutated,"target":Value::Null,"worktreeId":context["worktreeId"],"continuationScheduled":false
-        }),
-    )
+    Ok(json!({
+        "summary":if mutated {"Task queued for direct execution with the caller's model; goal mode is off.".to_owned()} else {format!("Read {} project Task statuses.",tasks.len())},
+        "data":data,"mutated":mutated,"target":Value::Null,"worktreeId":context["worktreeId"],"continuationScheduled":false
+    }))
 }
 
 pub(super) async fn execute(
@@ -61,21 +53,16 @@ pub(super) async fn execute(
     context: &Value,
     operation: &str,
     arguments: &Value,
-) -> Result<Response> {
+) -> Result<Value> {
     if context["contextKind"] != "project" {
-        return Ok(failure(
-            403,
-            "invalid",
-            "Task tools require a project Chat.",
-        ));
+        return Err(
+            OperationError::new(403, "invalid", "Task tools require a project chat.").into(),
+        );
     }
     let repository = tasks::Repository::new(service.repository.database.clone());
     let project = text(&context["projectId"])?;
     if operation == "task.create" {
-        let input = match parse("agentTaskCreateWireSchema", Some(arguments))? {
-            Ok(input) => input,
-            Err(response) => return Ok(response),
-        };
+        let input = parse("agentTaskCreateWireSchema", arguments)?;
         let operation_id = text(&input["operationId"])?;
         let hex = format!(
             "{:x}",
@@ -93,11 +80,12 @@ pub(super) async fn execute(
             &hex[20..32]
         );
         if input["task"]["chatId"] != id.as_str() {
-            return Ok(failure(
+            return Err(OperationError::new(
                 403,
                 "invalid",
                 "Task identity does not match the caller and operation.",
-            ));
+            )
+            .into());
         }
         let mut configuration = context["modelConfiguration"].clone();
         if context["experience"] == "task"
@@ -125,12 +113,13 @@ pub(super) async fn execute(
                 .flatten()
                 .map_or(Value::Null, |id| json!(id));
         }
-        if configuration["modelId"].is_null() {
-            return Ok(failure(
+        if !crate::wire::coercion::truthy(configuration.get("modelId")) {
+            return Err(OperationError::new(
                 409,
                 "conflict",
-                "The calling Chat has no selected model.",
-            ));
+                "The calling chat has no selected model.",
+            )
+            .into());
         }
         let mut current = repository
             .list(owner, project)
@@ -148,7 +137,11 @@ pub(super) async fn execute(
                 .await
             {
                 Ok(Some(created)) => current = Some(created["task"].clone()),
-                Ok(None) => return Ok(failure(404, "not-found", "Project source not found.")),
+                Ok(None) => {
+                    return Err(
+                        OperationError::new(404, "not-found", "Project source not found.").into(),
+                    );
+                }
                 Err(cause) => {
                     current = repository
                         .list(owner, project)
@@ -163,18 +156,10 @@ pub(super) async fn execute(
         }
         let mut task = current.context("Created Task")?;
         if task["state"] == "draft" && task["dispatch"].is_null() {
-            task = service
-                .execution
-                .queue
-                .queue(
-                    owner,
-                    &id,
-                    &json!({"operationId":operation_id,"rowVersion":task["rowVersion"]}),
-                    "direct",
-                    false,
-                )
-                .await?
-                .context("Queued Task")?;
+            crate::task_dispatch::Repository::new(service.repository.database.clone())
+                .enqueue(owner, &id, operation_id, "direct", &task["rowVersion"])
+                .await?;
+            task = repository.get(owner, &id).await?.context("Queued Task")?;
         }
         service
             .chat_mutations
@@ -182,6 +167,7 @@ pub(super) async fn execute(
         service
             .chat_mutations
             .publish_invalidation(owner, &id, "task", None);
+        service.execution.scheduler.queue_tick();
         return status(
             service,
             owner,
@@ -195,10 +181,7 @@ pub(super) async fn execute(
     }
     let tasks = repository.list(owner, project).await?;
     if operation == "task.list" {
-        let input = match parse("cantripMcpTaskListInputSchema", Some(arguments))? {
-            Ok(input) => input,
-            Err(response) => return Ok(response),
-        };
+        let input = parse("cantripMcpTaskListInputSchema", arguments)?;
         let cursor = input["cursor"].as_u64().context("Task cursor")? as usize;
         let limit = input["limit"].as_u64().context("Task limit")? as usize;
         let selected = tasks
@@ -214,14 +197,17 @@ pub(super) async fn execute(
         };
         return status(service, owner, context, selected, vec![], next, false).await;
     }
-    let input = match parse("cantripMcpTaskStatusInputSchema", Some(arguments))? {
-        Ok(input) => input,
-        Err(response) => return Ok(response),
-    };
-    let ids = input["taskIds"].as_array().context("Task IDs")?;
-    let selected = tasks
-        .into_iter()
-        .filter(|task| ids.contains(&task["chatId"]))
+    let input = parse("cantripMcpTaskStatusInputSchema", arguments)?;
+    let mut ids = Vec::new();
+    for id in input["taskIds"].as_array().context("Task IDs")? {
+        if !ids.contains(id) {
+            ids.push(id.clone());
+        }
+    }
+    let selected = ids
+        .iter()
+        .flat_map(|id| tasks.iter().filter(move |task| &task["chatId"] == id))
+        .cloned()
         .collect::<Vec<_>>();
     let missing = ids
         .iter()

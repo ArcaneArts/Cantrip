@@ -6,6 +6,7 @@ pub mod failure_kind;
 mod finish;
 mod operations;
 pub mod policy;
+mod query_error;
 mod reads;
 pub mod relay;
 pub mod retries;
