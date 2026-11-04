@@ -92,6 +92,8 @@ export interface WorkerConnectionTimingOptions {
   connectionGeneration?: string;
   handleWorkerLinkFrame?: WorkerLinkFrameHandler;
   keepaliveTimeoutMs?: number;
+  /** Synchronously stop new execution admission; retire existing ownership asynchronously. */
+  onAuthenticationRejected?: () => void;
   observeEvent?: (command: WorkerCommand, event: WorkerEvent) => void;
   reconnectDelayMs?: number;
   transportDisconnectGraceMs?: number;
@@ -293,7 +295,7 @@ export class WorkerConnection {
   }
 
   start(): void {
-    this.#authenticationRejected = false;
+    if (this.#closed || this.#authenticationRejected) return;
     this.#disconnectStartedAtMs ??= Date.now();
     workerLogger.event("info", "Worker command channel starting", {
       event: "worker.connection.starting",
@@ -330,7 +332,7 @@ export class WorkerConnection {
   }
 
   private connect(): void {
-    if (this.#closed) {
+    if (this.#closed || this.#authenticationRejected) {
       return;
     }
     const url = new URL(this.config.serverUrl);
@@ -361,14 +363,30 @@ export class WorkerConnection {
     this.clearSocketNegotiation();
     this.#socket = socket;
     this.#socketReadiness = "negotiating";
+    let unexpectedResponse = false;
     socket.once("open", () => this.handleSocketOpen(socket));
     socket.on("message", (data, isBinary) => {
       if (this.#socket === socket) void this.onMessage(socket, data, isBinary);
     });
-    socket.once("error", (error) => this.handleSocketError(socket, error));
-    socket.once("close", (code, reason) =>
-      this.handleSocketClose(socket, code, reason.toString()),
-    );
+    socket.once("error", (error) => {
+      if (!unexpectedResponse) this.handleSocketError(socket, error);
+    });
+    socket.once("unexpected-response", (_request, response) => {
+      unexpectedResponse = true;
+      const status = response.statusCode;
+      if (status === 401 || status === 403)
+        this.rejectAuthentication(socket, { httpStatus: status });
+      else
+        this.handleSocketError(
+          socket,
+          new Error(`Unexpected server response: ${status}`),
+        );
+      // Handling this event suppresses ws's default handshake abort. Complete
+      // the socket lifecycle for every non-upgrade response, including retries.
+      response.resume();
+      socket.terminate();
+    });
+    socket.once("close", (code) => this.handleSocketClose(socket, code));
   }
 
   private handleSocketOpen(socket: WebSocket): void {
@@ -391,6 +409,7 @@ export class WorkerConnection {
   private handleSocketError(socket: WebSocket, error: Error): void {
     if (
       this.#closed ||
+      this.#authenticationRejected ||
       this.#socket !== socket ||
       error.message === this.#lastConnectionError
     )
@@ -418,38 +437,15 @@ export class WorkerConnection {
     );
   }
 
-  private handleSocketClose(
-    socket: WebSocket,
-    code: number,
-    reason: string,
-  ): void {
+  private handleSocketClose(socket: WebSocket, code: number): void {
     const wasCurrent = this.#socket === socket;
+    if (wasCurrent && code === 1008)
+      this.rejectAuthentication(socket, { closeCode: code });
     if (wasCurrent) {
       this.#disconnectStartedAtMs ??= Date.now();
       this.clearKeepalive();
       this.clearSocketNegotiation();
       this.#socket = null;
-    }
-    if (wasCurrent && code === 1008) {
-      this.#authenticationRejected = true;
-      this.finalizeTransportDisconnect("authentication-rejected");
-      const message = reason || "worker authentication rejected";
-      if (message !== this.#lastConnectionError) {
-        this.#lastConnectionError = message;
-        workerLogger.event(
-          "warn",
-          "Command channel authentication rejected; update or re-enroll this worker, then restart it",
-          {
-            event: "worker.connection.authentication-rejected",
-            subsystem: "worker-connection",
-            operation: "authenticate",
-            reasonCode: "authentication-rejected",
-            status: "rejected",
-            workerId: this.config.workerId,
-            closeCode: code,
-          },
-        );
-      }
     }
     if (wasCurrent && !this.#closed && !this.#authenticationRejected) {
       this.scheduleTransportDisconnect();
@@ -471,6 +467,51 @@ export class WorkerConnection {
       this.#reconnectTimer = setTimeout(() => this.connect(), reconnectDelayMs);
       this.#reconnectTimer.unref();
     }
+  }
+
+  private rejectAuthentication(
+    socket: WebSocket,
+    evidence: { closeCode?: number; httpStatus?: number },
+  ): void {
+    if (this.#closed || this.#authenticationRejected || this.#socket !== socket)
+      return;
+    this.#authenticationRejected = true;
+    if (this.#reconnectTimer) {
+      clearTimeout(this.#reconnectTimer);
+      this.#reconnectTimer = null;
+    }
+    // A prior reconnect-grace expiry may already have disconnected transport
+    // resources. Authority retirement still has to run exactly once here.
+    try {
+      this.timing.onAuthenticationRejected?.();
+    } catch (error) {
+      workerLogger.event(
+        "warn",
+        "Worker authority retirement could not start",
+        {
+          event: "worker.connection.authority-retirement-failed",
+          subsystem: "worker-connection",
+          operation: "retire-authority",
+          status: "degraded",
+          workerId: this.config.workerId,
+          error: workerLogError(error),
+        },
+      );
+    }
+    this.finalizeTransportDisconnect("authentication-rejected");
+    workerLogger.event(
+      "warn",
+      "Command channel authentication rejected; update or re-enroll this worker, then restart it",
+      {
+        event: "worker.connection.authentication-rejected",
+        subsystem: "worker-connection",
+        operation: "authenticate",
+        reasonCode: "authentication-rejected",
+        status: "rejected",
+        workerId: this.config.workerId,
+        ...evidence,
+      },
+    );
   }
 
   private markTransportConnected(): void {

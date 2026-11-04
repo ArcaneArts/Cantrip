@@ -107,6 +107,7 @@ export class WorkerInferenceAdmission {
   private revision = 0;
   private notificationPending = false;
   private closing = false;
+  private closure: Promise<void> | null = null;
   private readonly journal: WorkerInferenceJournal | null;
 
   constructor(
@@ -128,12 +129,16 @@ export class WorkerInferenceAdmission {
     });
   }
 
-  async close(): Promise<void> {
+  close(): Promise<void> {
+    if (this.closure) return this.closure;
     this.closing = true;
-    const retired = [...this.runtimes].map((runtime) => this.retire(runtime));
-    await Promise.all(retired);
-    await this.journal?.flush();
-    await this.nativeOwnership?.close();
+    this.closure = (async () => {
+      const retired = [...this.runtimes].map((runtime) => this.retire(runtime));
+      await Promise.all(retired);
+      await this.journal?.flush();
+      await this.nativeOwnership?.close();
+    })();
+    return this.closure;
   }
 
   /** Previous-generation metadata, for canonical receipt reconciliation. This

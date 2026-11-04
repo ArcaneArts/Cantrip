@@ -104,6 +104,17 @@ The native OS lease outlives Rust task cancellation and runtime teardown. PID
 reuse, wrapper exit, and process-name searches do not participate in proof.
 CantripOS inference still runs on the owning worker; only its tools run in the guest.
 
+An explicit rejection of the current worker connection (WebSocket policy close
+`1008`, or HTTP `401`/`403` during its upgrade) stops new inference admission and
+retires every inference scope belonging to that worker generation. This also runs
+when a preceding reconnect-grace expiry already disconnected transport resources.
+Runtime retirement still waits for native lease settlement before closing the
+keeper, allowing a replacement worker to take ownership without oversubscribing
+surviving execution. Concurrent shutdown shares the same retirement completion.
+Re-enrollment requires a worker restart before admitting inference again. Ordinary
+network loss, upgrade server errors, credential-rotation close `1012`, and stale
+socket callbacks do not retire inference authority.
+
 Both server command buses reserve a separate, bounded control lane. Stop, pause,
 interaction replies, native logical settlement, queue preparation/change notifications,
 automation resume, settings reads, goal reads/clears, inference configuration, and
