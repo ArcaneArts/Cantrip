@@ -540,3 +540,33 @@ pre-existing exports; the new OS exports/commands are explicitly reviewed.
 This remains an internal source-control checkpoint. Real agent execution,
 terminal/editor/Explorer/Run integration, the attachment picker, and refreshed
 bootable media remain outstanding. See [the dispatch guide](DISPATCH.md).
+
+## Phase 3: native environment adapter checkpoint
+
+The real pinned app-server now runs against a captured guest environment through
+its native environment provider. Docker and installed-VM turn fixtures passed
+shell/read/search, native patch/write, and Python artifact creation, verifying the
+workspace UID, guest cwd, actual file bytes, and an absent provider API key in the
+guest. Authenticated model requests originate on the worker. The model endpoint
+in these tests is deterministic Responses scaffolding, not a live provider.
+
+Native workspace permissions passed in Docker. Read-only execution read the seed
+and refused patch/write without changing it. Cancellation passed in both Docker
+and the installed VM: the root sudo job, detached child, and leaf were gone before
+executor shutdown, while an independent native process remained alive. An actual
+VM failure exposed native interruption retaining resumable command sessions; the
+worker now explicitly terminates command IDs observed in that interrupted turn.
+
+The environment test also covers actual Git provisioning, guest file snapshots
+with a literal Unicode/special-character filename, rejection of stale runtime
+identity, immutable runtime-home placement, and an unavailable local environment.
+The host native binary is version 0.166.0 at the repository's upstream pin; its
+build predates the last Linux-only cleanup patch. Both guest executor packages
+are the current 0.2.0 builds from the preceding checkpoint.
+
+The 82 existing app-server tests passed alongside the focused native tests.
+`pnpm check` still stops at the recorded agent-operations boundary digest mismatch;
+worker typechecking still reports only the same five CUA/MCP baseline errors.
+This is a runtime component checkpoint. Server chat selection, product terminals,
+editor/Explorer/Run routing, attachments/artifact delivery, live-provider acceptance,
+and refreshed bootable media remain outstanding. See [the runtime guide](NATIVE_RUNTIME.md).

@@ -39,6 +39,18 @@ export type CodexProcessLauncher = (
   options: ProcessEnvOptions,
 ) => ChildProcessWithoutNullStreams;
 
+export interface CodexNativeEnvironment {
+  readonly selection: {
+    environmentId: string;
+    cwd: string;
+    runtimeWorkspaceRoots: string[];
+  };
+  readonly instructions: string;
+  prepare(codexHome: string): Promise<void>;
+  hasGitMetadata(cwd: string): Promise<boolean>;
+  snapshot(cwd: string): Promise<WorkspaceSnapshot>;
+}
+
 export interface RpcError {
   code: number;
   message: string;

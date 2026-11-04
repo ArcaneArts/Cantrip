@@ -80,6 +80,12 @@ materialization backends, then authorized product dispatch. The
 worktrees, Linux-owned checkout/worktree provisioning, and dependency overlays.
 It does not yet enable client target selection or claim end-to-end agent execution.
 
+The [native runtime adapter](../cantrip_os/NATIVE_RUNTIME.md) now exercises the
+pinned app-server against Docker and an installed VM, including native patching,
+permissions, and process-tree cancellation. Its deterministic model fixture is
+component acceptance; Server chat selection and product surface routing remain
+the next delivery steps.
+
 The canonical model keeps `project_sources.absolute_path` worker-local. A shared
 source identity preserves worktree IDs and leases, while Linux-owned source
 details use `guest_path` in separate rows. Linked bindings retain the original

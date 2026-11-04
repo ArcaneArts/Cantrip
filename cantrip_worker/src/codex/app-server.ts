@@ -44,6 +44,7 @@ import type {
   CodexExternalThreadChange,
   CodexExternalThreadChangeKind,
   CodexProcessLauncher,
+  CodexNativeEnvironment,
   CodexSkill,
   CompactAgentThreadOptions,
   GoalRuntimeOptions,
@@ -841,8 +842,9 @@ export function codexWorktreeTurnPolicy(
     permissionProfileActive?: boolean;
     policyContext?: RunAgentTurnOptions["policyContext"];
   },
+  guestCwd = false,
 ) {
-  const cwd = path.resolve(options.cwd);
+  const cwd = guestCwd ? options.cwd : path.resolve(options.cwd);
   if (options.executionProfile === "standalone-chat") {
     return {
       additionalContext: {
@@ -1027,6 +1029,7 @@ export function codexAgentOperationTurnPolicy(
     "cwd" | "mutationMode" | "networkAccess" | "permissionProfileId"
   >,
   permissionProfilesSupported: boolean,
+  guestCwd = false,
 ) {
   const permissionProfileActive = Boolean(
     options.permissionProfileId && permissionProfilesSupported,
@@ -1047,7 +1050,7 @@ export function codexAgentOperationTurnPolicy(
   return {
     sandboxPolicy: {
       type: "workspaceWrite" as const,
-      writableRoots: [path.resolve(options.cwd)],
+      writableRoots: [guestCwd ? options.cwd : path.resolve(options.cwd)],
       networkAccess,
       excludeTmpdirEnvVar: false,
       excludeSlashTmp: false,
@@ -1771,7 +1774,34 @@ export class CodexAppServer implements CodexRuntime {
     private readonly launchCodex: CodexProcessLauncher = launchCodexProcess,
     private readonly globalSkillRoots: readonly string[] = [],
     private readonly configurationHome: string | null = null,
+    private readonly nativeEnvironment: CodexNativeEnvironment | null = null,
   ) {}
+
+  private workspaceContext(cwd: string) {
+    if (!this.nativeEnvironment) return codexWorkspaceContext(cwd);
+    const selection = this.nativeEnvironment.selection;
+    if (cwd !== selection.cwd)
+      throw new Error(
+        "Native execution does not match its captured Linux cwd.",
+      );
+    return {
+      cwd: selection.cwd,
+      runtimeWorkspaceRoots: [...selection.runtimeWorkspaceRoots],
+      environments: [selection],
+    };
+  }
+
+  private snapshotWorkspace(cwd: string) {
+    return this.nativeEnvironment
+      ? this.nativeEnvironment.snapshot(cwd)
+      : workspaceSnapshot(cwd);
+  }
+
+  private hasWorkspaceGitMetadata(cwd: string) {
+    return this.nativeEnvironment
+      ? this.nativeEnvironment.hasGitMetadata(cwd)
+      : workspaceHasGitMetadata(cwd);
+  }
 
   private effectiveSkillRoots(): string[] {
     return mergeCodexSkillRoots(this.globalSkillRoots, this.#skillRoots);
@@ -2430,6 +2460,9 @@ export class CodexAppServer implements CodexRuntime {
       } catch (error) {
         preparation?.controller.signal.throwIfAborted();
         options.preparationSignal?.throwIfAborted();
+        // A captured remote environment must never replay an entire agent input
+        // after uncertain delivery. The Server admits any subsequent attempt.
+        if (this.nativeEnvironment) throw error;
         const renew = async (
           reason: RunAgentTurnRetry["reason"],
           nextThreadId: string | null,
@@ -2684,7 +2717,7 @@ export class CodexAppServer implements CodexRuntime {
     options: PrepareAdmittedNativeExecutionOptions,
   ): Promise<AdmittedNativeExecution> {
     const epoch = this.#preparationEpoch;
-    const baseline = await workspaceSnapshot(options.cwd);
+    const baseline = await this.snapshotWorkspace(options.cwd);
     this.assertPreparationEpoch(epoch);
     if (this.hasActiveThread(options.threadId)) {
       throw new Error(
@@ -2772,7 +2805,7 @@ export class CodexAppServer implements CodexRuntime {
       options.subagentDefaults,
       options.executionProfile,
     );
-    const baseline = await workspaceSnapshot(options.cwd);
+    const baseline = await this.snapshotWorkspace(options.cwd);
     const threadId = await this.loadThread(
       options,
       !options.inheritThreadSettings,
@@ -2809,10 +2842,13 @@ export class CodexAppServer implements CodexRuntime {
         "Plan Mode is unavailable in the installed Codex runtime.",
       );
     }
-    const turnPolicy = codexWorktreeTurnPolicy({
-      ...options,
-      permissionProfileActive: this.permissionProfilesSupported(),
-    });
+    const turnPolicy = codexWorktreeTurnPolicy(
+      {
+        ...options,
+        permissionProfileActive: this.permissionProfilesSupported(),
+      },
+      Boolean(this.nativeEnvironment),
+    );
 
     options.preparationSignal?.throwIfAborted();
     if (this.hasActiveThread(threadId)) {
@@ -2846,8 +2882,19 @@ export class CodexAppServer implements CodexRuntime {
     try {
       const params = {
         threadId,
-        ...codexWorkspaceContext(options.cwd),
+        ...this.workspaceContext(options.cwd),
         ...turnPolicy,
+        ...(this.nativeEnvironment
+          ? {
+              additionalContext: {
+                ...turnPolicy.additionalContext,
+                "cantrip.os-placement": {
+                  kind: "application",
+                  value: this.nativeEnvironment.instructions,
+                },
+              },
+            }
+          : {}),
         clientUserMessageId:
           options.nativeClientUserMessageId ??
           `cantrip:${options.clientMessageId}`,
@@ -2925,7 +2972,7 @@ export class CodexAppServer implements CodexRuntime {
         activeTurn,
         assembledInstructionContextActivity({
           active: activeTurn,
-          hasGitMetadata: await workspaceHasGitMetadata(options.cwd),
+          hasGitMetadata: await this.hasWorkspaceGitMetadata(options.cwd),
           options,
           runtimeVersion:
             (
@@ -2965,6 +3012,7 @@ export class CodexAppServer implements CodexRuntime {
     const turnPolicy = codexAgentOperationTurnPolicy(
       options,
       this.permissionProfilesSupported(),
+      Boolean(this.nativeEnvironment),
     );
     const availableSkills = options.skillNames.length
       ? await this.listSkills(options)
@@ -2982,7 +3030,7 @@ export class CodexAppServer implements CodexRuntime {
         `Agent operation skills are unavailable: ${missingSkills.join(", ")}.`,
       );
     }
-    const baseline = await workspaceSnapshot(options.cwd);
+    const baseline = await this.snapshotWorkspace(options.cwd);
     const threadId = await this.loadAgentOperationThread(options);
     if (this.hasActiveThread(threadId)) {
       throw new Error(`Codex thread ${threadId} already has an active turn.`);
@@ -3043,7 +3091,7 @@ export class CodexAppServer implements CodexRuntime {
     try {
       response = (await this.request("turn/start", {
         threadId,
-        ...codexWorkspaceContext(options.cwd),
+        ...this.workspaceContext(options.cwd),
         ...turnPolicy,
         approvalPolicy: "never",
         clientUserMessageId: `cantrip:operation:${options.operationId}`,
@@ -4697,6 +4745,9 @@ export class CodexAppServer implements CodexRuntime {
       });
       return { interrupted: true };
     }
+    const osCommandItems = this.nativeEnvironment
+      ? new Set(active[1].commandTelemetry.keys())
+      : null;
     const previousRequest = active[1].interruptionRequestedAtMs;
     active[1].interruptionRequestedAtMs = Date.now();
     const execution = this.#executions.rootExecutionsByActive.get(active[1]);
@@ -4713,6 +4764,12 @@ export class CodexAppServer implements CodexRuntime {
           return this.request("turn/interrupt", params);
         },
       });
+      // Native interruption ends model sampling but deliberately retains resumable
+      // exec sessions. Stop only commands observed in this interrupted OS turn;
+      // independent terminals and other turns keep their own process ownership.
+      if (osCommandItems) {
+        await this.terminateOsTurnCommands(active[1].threadId, osCommandItems);
+      }
     } catch (error) {
       active[1].interruptionRequestedAtMs = previousRequest;
       throw error;
@@ -4727,6 +4784,47 @@ export class CodexAppServer implements CodexRuntime {
       turnId: active[0],
     });
     return { interrupted: true };
+  }
+
+  private async terminateOsTurnCommands(
+    threadId: string,
+    itemIds: Set<string>,
+  ) {
+    const processes: Array<{ itemId: string; processId: string }> = [];
+    let cursor: string | null = null;
+    const cursors = new Set<string>();
+    do {
+      const page = (await this.request("thread/backgroundTerminals/list", {
+        threadId,
+        cursor,
+        limit: 100,
+      })) as {
+        data: Array<{ itemId: string; processId: string }>;
+        nextCursor: string | null;
+      };
+      processes.push(
+        ...page.data.filter((process) => itemIds.has(process.itemId)),
+      );
+      cursor = page.nextCursor;
+      if (cursor && cursors.has(cursor))
+        throw new Error(
+          "Native process pagination repeated during cancellation; its outcome is unknown.",
+        );
+      if (cursor) cursors.add(cursor);
+    } while (cursor);
+    for (const process of processes) {
+      const result = (await this.request(
+        "thread/backgroundTerminals/terminate",
+        {
+          threadId,
+          processId: process.processId,
+        },
+      )) as { terminated: boolean };
+      if (!result.terminated)
+        throw new Error(
+          "The OS command could not be confirmed stopped; inspect its native session.",
+        );
+    }
   }
 
   async steerThread(
@@ -5308,7 +5406,7 @@ export class CodexAppServer implements CodexRuntime {
           options.managedConfiguration && options.mcpServers !== undefined
             ? managedThreadConfiguration(
                 options,
-                await workspaceHasGitMetadata(options.cwd),
+                await this.hasWorkspaceGitMetadata(options.cwd),
                 true,
               )
             : undefined;
@@ -5362,7 +5460,7 @@ export class CodexAppServer implements CodexRuntime {
     ) {
       this.#managedConfigApplications.delete(options.threadId);
     }
-    const hasGitMetadata = await workspaceHasGitMetadata(options.cwd);
+    const hasGitMetadata = await this.hasWorkspaceGitMetadata(options.cwd);
     assertCurrent();
     let threadId = options.threadId;
     if (
@@ -5419,7 +5517,7 @@ export class CodexAppServer implements CodexRuntime {
           model: options.model.name,
           ...codexReasoningEffortParams(options.model),
           modelProvider,
-          ...codexWorkspaceContext(options.cwd),
+          ...this.workspaceContext(options.cwd),
           ...(inheritManagedSecurity
             ? {}
             : codexChatThreadSecurityParams(
@@ -5482,7 +5580,7 @@ export class CodexAppServer implements CodexRuntime {
         model: options.model.name,
         ...codexReasoningEffortParams(options.model),
         modelProvider,
-        ...codexWorkspaceContext(options.cwd),
+        ...this.workspaceContext(options.cwd),
         ...codexChatThreadSecurityParams(
           options.permissionProfileId,
           this.permissionProfilesSupported(),
@@ -5536,7 +5634,7 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<void> {
     // Omitted material is observational, not an instruction to disable tools.
     if (options.mcpServers === undefined) return;
-    const hasGitMetadata = await workspaceHasGitMetadata(options.cwd);
+    const hasGitMetadata = await this.hasWorkspaceGitMetadata(options.cwd);
     assertCurrent();
     const config = managedThreadConfiguration(
       options,
@@ -5600,7 +5698,7 @@ export class CodexAppServer implements CodexRuntime {
       model: options.model.name,
       ...codexReasoningEffortParams(options.model),
       modelProvider,
-      ...codexWorkspaceContext(options.cwd),
+      ...this.workspaceContext(options.cwd),
       approvalPolicy: "never",
       ...this.agentOperationThreadPermissionParams(options),
       developerInstructions: options.developerInstructions,
@@ -5640,6 +5738,7 @@ export class CodexAppServer implements CodexRuntime {
     threadId: string;
     turnId: string;
   }): CodexComputerUseExecution | null {
+    if (this.nativeEnvironment) return null;
     return this.#executions.resolveComputerUseExecution(input);
   }
 
@@ -5796,6 +5895,7 @@ export class CodexAppServer implements CodexRuntime {
     const startedAtMs = Date.now();
     this.#appServerSessionId = randomUUID();
     await mkdir(this.codexHome, { recursive: true });
+    await this.nativeEnvironment?.prepare(this.codexHome);
     const [runtimeProvider, managedInventory] = await Promise.all([
       this.resolveProvider ? this.resolveProvider(provider) : provider,
       this.loadManagedModelInventory(provider),
@@ -7420,7 +7520,9 @@ export class CodexAppServer implements CodexRuntime {
         active,
         "The Codex turn completed before the interaction was answered.",
       );
-      const changes = await workspaceChanges(active);
+      const changes = await workspaceChanges(active, (cwd) =>
+        this.snapshotWorkspace(cwd),
+      );
       if (!isCurrent()) return;
       active.diffChanges = changes;
       emitFileActivity(
@@ -7475,7 +7577,7 @@ export class CodexAppServer implements CodexRuntime {
           )
         ) {
           publishGoalCheckpoint(active, turnId);
-          const baseline = await workspaceSnapshot(active.cwd);
+          const baseline = await this.snapshotWorkspace(active.cwd);
           if (!isCurrent()) return;
           active.baseline = baseline;
           resetGoalSegment(active);
@@ -7704,9 +7806,27 @@ export class CodexAppServer implements CodexRuntime {
         active.timeout = null;
       }
       this.#interactions.clearInteractionsForTurn(active, error.message);
-      const changes = await workspaceChanges(active);
+      try {
+        active.diffChanges = await workspaceChanges(active, (cwd) =>
+          this.snapshotWorkspace(cwd),
+        );
+      } catch (observationError) {
+        if (!this.nativeEnvironment) throw observationError;
+        workerLogger.event(
+          "warn",
+          "Failed OS turn files could not be reconciled",
+          {
+            event: "codex.os.observation-unknown",
+            subsystem: "codex",
+            operation: "observe-failed-turn",
+            status: "unknown",
+            threadId: active.threadId,
+            turnId,
+            error: workerLogError(observationError),
+          },
+        );
+      }
       if (!isCurrent()) return;
-      active.diffChanges = changes;
       emitFileActivity(
         active,
         turnId,
