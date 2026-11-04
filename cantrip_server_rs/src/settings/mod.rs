@@ -10,6 +10,7 @@ mod catalog_hash;
 pub mod catalog_runtime;
 pub mod chatgpt;
 pub mod credential_migrations;
+pub(crate) mod endpoint_providers;
 pub mod enrichment;
 pub mod grok;
 pub mod lifecycle;

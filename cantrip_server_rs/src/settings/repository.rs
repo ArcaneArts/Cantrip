@@ -264,6 +264,9 @@ pub(super) fn catalog_entry(model: &Value) -> Result<Value> {
         ],
     );
     output["matchConfidence"] = percentage(&model["match_confidence_basis_points"], 10_000.0);
+    if let Some(loaded) = model["raw_metadata"]["loaded"].as_bool() {
+        output["loaded"] = Value::Bool(loaded);
+    }
     dates(
         &mut output,
         model,

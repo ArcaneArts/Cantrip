@@ -1,5 +1,6 @@
 import {
   isAccountProviderKind,
+  isWorkerEndpointProviderKind,
   type AccountProviderKind,
   type ModelProviderKind,
 } from "@cantrip/protocol";
@@ -17,7 +18,7 @@ export function canRefreshProviderOnWorker(
     | null
     | undefined,
 ): boolean {
-  if (kind === "ollama") return true;
+  if (isWorkerEndpointProviderKind(kind)) return true;
   return (
     isAccountProviderKind(kind) &&
     Boolean(

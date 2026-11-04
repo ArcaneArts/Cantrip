@@ -59,7 +59,7 @@ function availability(
 }
 
 describe("model route availability", () => {
-  it("keeps Ollama inventories isolated by worker", () => {
+  it("does not gate endpoint inference on stale or missing worker inventories", () => {
     const entries = [
       availability("worker:a", "a"),
       availability("worker:b", "b", "unavailable"),
@@ -69,10 +69,10 @@ describe("model route availability", () => {
     ).toBe(true);
     expect(
       evaluateModelRouteAvailability(runtime("ollama"), entries, "b").available,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       evaluateModelRouteAvailability(runtime("ollama"), entries, "c").available,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("uses the public OpenRouter inventory when an API key is protected", () => {

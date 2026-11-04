@@ -331,6 +331,7 @@ export const providerModelCatalogEntrySchema = z.object({
   quantization: z.string().max(100).nullable(),
   digest: z.string().max(500).nullable(),
   metadataSource: providerModelMetadataSourceSchema,
+  loaded: z.boolean().nullable().optional(),
   matchConfidence: z.number().min(0).max(1).nullable(),
   hidden: z.boolean(),
   isDefault: z.boolean(),

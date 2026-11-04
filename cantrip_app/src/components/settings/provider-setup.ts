@@ -2,6 +2,7 @@ import {
   isZaiCodingPlanBaseUrl,
   providerDefinitions,
   providerSetupDefinition,
+  nativeEndpointProviderKinds,
   ZAI_CODING_PLAN_BASE_URL,
   type ModelProviderKind,
   type ModelProviderSummary,
@@ -12,6 +13,7 @@ export type ProviderSetupKind =
 
 export const providerSetupOptions = [
   providerSetupDefinition("ollama"),
+  ...nativeEndpointProviderKinds.map(providerSetupDefinition),
   {
     id: "openrouter",
     label: "OpenRouter",

@@ -1,4 +1,8 @@
 import {
+  isWorkerEndpointProviderKind,
+  providerDefinitions,
+} from "@cantrip/protocol";
+import {
   effectiveCuaEffects,
   cuaEffectWorkerStatusSchema,
 } from "@cantrip/protocol/computer-use-effects";
@@ -182,7 +186,10 @@ export function installSettingsRouteRuntime(
     await zaiCatalogService.reconcileOwnerProviders(ownerId);
     const settings = await repository.getSettings(ownerId);
     for (const provider of settings.providers) {
-      if (provider.kind !== "ollama" && !isAccountProviderKind(provider.kind)) {
+      if (
+        !isWorkerEndpointProviderKind(provider.kind) &&
+        !isAccountProviderKind(provider.kind)
+      ) {
         continue;
       }
       void loadProviderCatalog(ownerId, provider.id, undefined, false).catch(
@@ -736,7 +743,7 @@ export function installSettingsRouteRuntime(
           undefined,
           false,
         );
-      } else if (provider.kind === "ollama") {
+      } else if (isWorkerEndpointProviderKind(provider.kind)) {
         void loadProviderCatalog(
           applicationOwnerId(),
           provider.id,
@@ -830,6 +837,7 @@ export function installSettingsRouteRuntime(
         );
         const nativeConfigurationChanged =
           !current ||
+          current.kind !== input.data.kind ||
           current.baseUrl !== normalizeResponsesBaseUrl(input.data.baseUrl) ||
           input.data.protectedApiKey !== undefined;
         if (nativeConfigurationChanged)
@@ -863,7 +871,11 @@ export function installSettingsRouteRuntime(
           isZaiCodingPlanProvider(provider)
         ) {
           await loadProviderCatalog(ownerId, provider.id, undefined, true);
-        } else if (nativeConfigurationChanged && provider?.kind === "ollama") {
+        } else if (
+          nativeConfigurationChanged &&
+          provider &&
+          isWorkerEndpointProviderKind(provider.kind)
+        ) {
           void loadProviderCatalog(ownerId, provider.id, undefined, true).catch(
             () => undefined,
           );
@@ -893,7 +905,10 @@ export function installSettingsRouteRuntime(
     if (isZaiCodingPlanProvider(provider)) {
       return zaiCatalogService.getProviderCatalog(ownerId, providerId);
     }
-    if (provider.kind !== "ollama" && !isAccountProviderKind(provider.kind)) {
+    if (
+      !isWorkerEndpointProviderKind(provider.kind) &&
+      !isAccountProviderKind(provider.kind)
+    ) {
       const catalog = await providerCatalogService.getProviderCatalog(
         ownerId,
         providerId,
@@ -920,7 +935,7 @@ export function installSettingsRouteRuntime(
     if (!selectedWorkerId) {
       const label = isAccountProviderKind(provider.kind)
         ? accountProviderLabel(provider.kind)
-        : "Ollama";
+        : providerDefinitions[provider.kind].label;
       throw new Error(`No worker is available for ${label} discovery.`);
     }
     if (provider.kind === "chatgpt") {
@@ -1157,10 +1172,9 @@ export function installSettingsRouteRuntime(
     if (!provider) {
       return reply.code(404).send({ error: "Provider not found." });
     }
-    if (!isZaiCodingPlanProvider(provider)) {
+    if (isAccountProviderKind(provider.kind)) {
       return reply.code(409).send({
-        error:
-          "Connection testing is currently available for Z.ai Coding Plan providers.",
+        error: "Use the account's sign-in status to check this provider.",
       });
     }
 
@@ -1175,7 +1189,7 @@ export function installSettingsRouteRuntime(
           ok: false,
           stage: "model-availability",
           message:
-            "No enabled Z.ai model route is available. Refresh the bundled catalog and try again.",
+            "No enabled model route is available. Add a model ID or refresh the catalog and try again.",
           workerId: null,
           modelName: null,
           durationMs: Date.now() - startedAtMs,
@@ -1229,7 +1243,7 @@ export function installSettingsRouteRuntime(
         providerConnectionTestResultSchema.parse({
           ok: true,
           stage: "completed",
-          message: `Connected to Z.ai through bundled Codex using ${runtime.model.name}.`,
+          message: `Connected to ${isZaiCodingPlanProvider(provider) ? "Z.ai" : providerDefinitions[provider.kind].label} through bundled Codex using ${runtime.model.name}.`,
           workerId,
           modelName: runtime.model.name,
           durationMs: Date.now() - startedAtMs,
@@ -1242,7 +1256,13 @@ export function installSettingsRouteRuntime(
         providerConnectionTestResultSchema.parse({
           ok: false,
           stage,
-          message: providerConnectionFailureMessage(stage, detail),
+          message: providerConnectionFailureMessage(
+            stage,
+            detail,
+            isZaiCodingPlanProvider(provider)
+              ? undefined
+              : providerDefinitions[provider.kind].label,
+          ),
           workerId,
           modelName: runtime.model.name,
           durationMs: Date.now() - startedAtMs,

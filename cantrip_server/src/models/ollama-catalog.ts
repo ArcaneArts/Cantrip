@@ -1,11 +1,14 @@
 import {
   ollamaModelInventorySchema,
+  endpointModelInventorySchema,
+  isWorkerEndpointProviderKind,
+  providerDefinitions,
+  type EndpointModelInventoryItem,
   type OllamaModelInventoryItem,
   type ProviderModelCatalogResult,
 } from "@cantrip/protocol";
 
 import type {
-  ModelProviderCatalogRuntime,
   ProviderModelCatalogWrite,
   ServerRepository,
 } from "../db/repository.js";
@@ -85,8 +88,16 @@ export function normalizeOllamaModel(
   };
 }
 
-function isOllamaProvider(provider: ModelProviderCatalogRuntime): boolean {
-  return provider.kind === "ollama";
+export function normalizeEndpointCatalogModel({
+  loaded,
+  ...model
+}: EndpointModelInventoryItem): ProviderModelCatalogWrite {
+  return {
+    ...model,
+    canonicalModelId: null,
+    matchConfidenceBasisPoints: null,
+    rawMetadata: { loaded },
+  };
 }
 
 export class OllamaCatalogService {
@@ -110,8 +121,8 @@ export class OllamaCatalogService {
     ]);
     if (!provider) return null;
     if (!worker) throw new Error("Worker not found.");
-    if (!isOllamaProvider(provider)) {
-      throw new Error("Provider is not an Ollama provider.");
+    if (!isWorkerEndpointProviderKind(provider.kind)) {
+      throw new Error("Provider does not use worker endpoint discovery.");
     }
     const scopeKey = ollamaWorkerScope(workerId);
     const existing = await this.#repository.getProviderModelCatalog(
@@ -154,23 +165,34 @@ export class OllamaCatalogService {
       refreshStartedAt: new Date(),
     });
     try {
-      const inventory = ollamaModelInventorySchema.parse(
-        await this.#bridge.request(
-          workerId,
-          {
-            type: "model.ollama.catalog",
-            provider: {
-              ...provider,
-              kind: "ollama",
-              name: "Ollama",
-              accountId: null,
-              credentialHomeKey: null,
-            },
-          },
-          { ownerId, timeoutMs: DISCOVERY_TIMEOUT_MS },
-        ),
-      );
-      const models = inventory.models.map(normalizeOllamaModel);
+      const runtimeProvider = {
+        ...provider,
+        name: providerDefinitions[provider.kind].label,
+        accountId: null,
+        credentialHomeKey: null,
+      };
+      const command =
+        provider.kind === "ollama"
+          ? {
+              type: "model.ollama.catalog" as const,
+              provider: { ...runtimeProvider, kind: "ollama" as const },
+            }
+          : {
+              type: "model.endpoint.catalog" as const,
+              provider: { ...runtimeProvider, kind: provider.kind },
+            };
+      const result = await this.#bridge.request(workerId, command, {
+        ownerId,
+        timeoutMs: DISCOVERY_TIMEOUT_MS,
+      });
+      const models =
+        provider.kind === "ollama"
+          ? ollamaModelInventorySchema
+              .parse(result)
+              .models.map(normalizeOllamaModel)
+          : endpointModelInventorySchema
+              .parse(result)
+              .models.map(normalizeEndpointCatalogModel);
       await this.#repository.reconcileProviderModelCatalog(
         ownerId,
         providerId,
@@ -197,7 +219,10 @@ export class OllamaCatalogService {
         scopeKey,
         workerId,
         status: existing?.models.length ? "stale" : "failed",
-        errorCode: "ollama-catalog-refresh-failed",
+        errorCode:
+          provider.kind === "ollama"
+            ? "ollama-catalog-refresh-failed"
+            : "endpoint-catalog-refresh-failed",
       });
       if (existing && existing.models.length > 0) {
         return this.#repository.getProviderModelCatalog(

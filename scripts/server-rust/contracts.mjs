@@ -119,6 +119,7 @@ export const contractRoots = [
   "appDestinationSchema",
   "cuaEffectWorkerStatusSchema",
   "ollamaModelInventorySchema",
+  "endpointModelInventorySchema",
   "providerQuotaSnapshotSchema",
   "providerRateLimitResetConsumeRequestSchema",
   "providerRateLimitResetConsumeResultSchema",
@@ -1321,6 +1322,22 @@ if (
   );
   await mkdir(fileURLToPath(new URL(".", destination)), { recursive: true });
   const manifest = buildContractManifest();
+  await writeFile(
+    new URL(
+      "../../cantrip_server_rs/contracts/endpoint-providers.json",
+      import.meta.url,
+    ),
+    await format(
+      JSON.stringify(
+        Object.fromEntries(
+          Object.entries(protocol.providerDefinitions).filter(([kind]) =>
+            protocol.isWorkerEndpointProviderKind(kind),
+          ),
+        ),
+      ),
+      { parser: "json" },
+    ),
+  );
   const filename = fileURLToPath(destination);
   await writeFile(
     destination,

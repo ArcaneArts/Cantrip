@@ -25,6 +25,7 @@ pub enum Family {
     ChatGpt,
     Grok,
     Ollama,
+    Endpoint,
 }
 #[derive(Clone)]
 pub struct CatalogRequest {
@@ -64,7 +65,10 @@ impl CatalogBackend for Services {
         let public = self.public.clone();
         let grok = self.grok.clone();
         async move {
-            let worker_text = if matches!(family, Family::Ollama | Family::ChatGpt | Family::Grok) {
+            let worker_text = if matches!(
+                family,
+                Family::Ollama | Family::Endpoint | Family::ChatGpt | Family::Grok
+            ) {
                 request
                     .worker
                     .as_ref()
@@ -85,7 +89,7 @@ impl CatalogBackend for Services {
                         .get_provider_catalog(&request.owner, &request.provider, request.force)
                         .await
                 }
-                Family::Ollama => {
+                Family::Ollama | Family::Endpoint => {
                     repository
                         .get_ollama_provider_catalog_for_key(
                             &request.owner,
@@ -315,6 +319,7 @@ impl CatalogRuntime {
             Some("chatgpt") => Family::ChatGpt,
             Some("grok") => Family::Grok,
             Some("ollama") => Family::Ollama,
+            Some(kind) if super::endpoint_providers::worker_endpoint_kind(kind) => Family::Endpoint,
             _ => Family::Public,
         };
         if matches!(family, Family::Public) {
@@ -347,6 +352,9 @@ impl CatalogRuntime {
             let label = match family {
                 Family::ChatGpt => "ChatGPT",
                 Family::Grok => "Grok",
+                Family::Endpoint => {
+                    super::endpoint_providers::label(provider["kind"].as_str().unwrap_or_default())
+                }
                 _ => "Ollama",
             };
             anyhow::bail!("No worker is available for {label} discovery.")

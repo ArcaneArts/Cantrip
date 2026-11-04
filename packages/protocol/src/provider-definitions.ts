@@ -1,8 +1,17 @@
 /** Shared setup policy. Provider kinds identify a backend; IDs identify instances. */
+export const nativeEndpointProviderKinds = [
+  "lm-studio",
+  "llama-cpp",
+  "vllm",
+  "unsloth",
+  "litellm",
+] as const;
+
 export const modelProviderKinds = [
   "chatgpt",
   "grok",
   "ollama",
+  ...nativeEndpointProviderKinds,
   "openai-compatible",
 ] as const;
 
@@ -38,6 +47,41 @@ export const providerDefinitions = {
     defaultBaseUrl: "http://127.0.0.1:11434/v1",
     multipleInstances: true,
   },
+  "lm-studio": {
+    label: "LM Studio",
+    setupLabel: "LM Studio / llmster",
+    defaultName: "LM Studio",
+    defaultBaseUrl: "http://127.0.0.1:1234/v1",
+    multipleInstances: true,
+  },
+  "llama-cpp": {
+    label: "llama.cpp",
+    setupLabel: "llama.cpp",
+    defaultName: "llama.cpp",
+    defaultBaseUrl: "http://127.0.0.1:8080/v1",
+    multipleInstances: true,
+  },
+  vllm: {
+    label: "vLLM",
+    setupLabel: "vLLM",
+    defaultName: "vLLM",
+    defaultBaseUrl: "http://127.0.0.1:8000/v1",
+    multipleInstances: true,
+  },
+  unsloth: {
+    label: "Unsloth",
+    setupLabel: "Unsloth",
+    defaultName: "Unsloth",
+    defaultBaseUrl: "http://127.0.0.1:8888/v1",
+    multipleInstances: true,
+  },
+  litellm: {
+    label: "LiteLLM",
+    setupLabel: "LiteLLM",
+    defaultName: "LiteLLM",
+    defaultBaseUrl: "http://127.0.0.1:4000/v1",
+    multipleInstances: true,
+  },
   "openai-compatible": {
     label: "OpenAI compatible",
     setupLabel: "Custom OpenAI compatible",
@@ -54,6 +98,16 @@ export function isAccountProviderKind(
   kind: string,
 ): kind is AccountProviderKind {
   return kind === "chatgpt" || kind === "grok";
+}
+
+/** Catalogs for these backends are observed from a selected worker. */
+export function isWorkerEndpointProviderKind(
+  kind: string,
+): kind is "ollama" | (typeof nativeEndpointProviderKinds)[number] {
+  return (
+    kind === "ollama" ||
+    nativeEndpointProviderKinds.some((candidate) => candidate === kind)
+  );
 }
 
 export function providerSetupDefinition(

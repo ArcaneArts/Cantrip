@@ -1,7 +1,11 @@
-import type { WorkerCommand } from "@cantrip/protocol";
+import {
+  nativeEndpointProviderKinds,
+  type WorkerCommand,
+} from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import { codexProviderConfiguration } from "../src/codex/provider-config.js";
+import { codexRuntimeId } from "../src/codex/app-server.js";
 
 type TurnProvider = Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
 
@@ -22,6 +26,66 @@ function provider(
 }
 
 describe("Codex provider configuration", () => {
+  it.each(nativeEndpointProviderKinds)(
+    "uses a private Responses configuration for each %s instance",
+    (kind) => {
+      const a = codexProviderConfiguration(
+        provider(kind, {
+          id: "instance-a",
+          baseUrl: "http://[::1]:9000/proxy/v1/responses///",
+          apiKey: "first-key",
+        }),
+      );
+      const b = codexProviderConfiguration(
+        provider(kind, {
+          id: "instance-b",
+          baseUrl: "http://gpu.lan:9001/custom/v1",
+          apiKey: "second-key",
+        }),
+      );
+      expect(a.arguments).toContain(
+        'model_providers.cantrip_runtime.base_url="http://[::1]:9000/proxy/v1"',
+      );
+      expect(b.arguments).toContain(
+        'model_providers.cantrip_runtime.base_url="http://gpu.lan:9001/custom/v1"',
+      );
+      expect(a.arguments).toContain(
+        'model_providers.cantrip_runtime.wire_api="responses"',
+      );
+      expect(a.arguments.join(" ")).not.toContain("first-key");
+      expect(a.environment).toEqual({ CANTRIP_PROVIDER_API_KEY: "first-key" });
+      expect(b.environment).toEqual({ CANTRIP_PROVIDER_API_KEY: "second-key" });
+      expect(codexProviderConfiguration(provider(kind)).environment).toEqual(
+        {},
+      );
+    },
+  );
+
+  it.each(nativeEndpointProviderKinds)(
+    "separates %s runtime generations when an instance or its connection changes",
+    (kind) => {
+      const model = {
+        id: "model",
+        routeId: "route",
+        name: "same-model",
+        reasoningEffort: null,
+      };
+      const original = provider(kind, { id: "first", apiKey: "first-key" });
+      const generation = codexRuntimeId(model, original);
+      for (const change of [
+        { id: "second" },
+        { baseUrl: "http://another-gpu.lan/v1" },
+        { apiKey: "second-key" },
+      ]) {
+        expect(codexRuntimeId(model, { ...original, ...change })).not.toBe(
+          generation,
+        );
+      }
+      expect(
+        codexRuntimeId({ ...model, name: "another-model" }, original),
+      ).toBe(generation);
+    },
+  );
   it("disables Fast mode for every Cantrip-managed runtime", () => {
     for (const kind of [
       "chatgpt",

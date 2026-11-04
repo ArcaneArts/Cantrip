@@ -169,6 +169,9 @@ export function toProviderModelCatalogEntry(
     digest: model.digest,
     metadataSource:
       model.metadataSource as ProviderModelCatalogEntry["metadataSource"],
+    ...(typeof model.rawMetadata.loaded === "boolean"
+      ? { loaded: model.rawMetadata.loaded }
+      : {}),
     matchConfidence:
       model.matchConfidenceBasisPoints === null
         ? null

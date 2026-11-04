@@ -4,6 +4,10 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { expect, it } from "vitest";
+import {
+  nativeEndpointProviderKinds,
+  type ModelProviderKind,
+} from "@cantrip/protocol";
 
 import { LOCAL_USER_ID, ServerRepository } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
@@ -33,12 +37,15 @@ it("persists repeatable endpoint instances with isolated credentials and model r
       "ollama",
       "openai-compatible",
       "openai-compatible",
+      ...nativeEndpointProviderKinds.flatMap((kind) => [kind, kind]),
     ].entries()) {
       const input = {
-        kind: kind as "ollama" | "openai-compatible",
+        kind: kind as ModelProviderKind,
         name: `Endpoint ${index}`,
         baseUrl: `http://gpu-${index}.lan:8000/proxy/v1`,
-        protectedApiKey: protectedSecretEnvelopeFixture(String(index)),
+        protectedApiKey: protectedSecretEnvelopeFixture(
+          String.fromCharCode(65 + index),
+        ),
         maxConcurrentInference: index + 1,
       };
       const provider = await repository.createModelProvider(
@@ -58,7 +65,7 @@ it("persists repeatable endpoint instances with isolated credentials and model r
       expect(profile).not.toBeNull();
       instances.push({ provider, profile: profile!, input });
     }
-    expect(new Set(instances.map(({ provider }) => provider.id)).size).toBe(5);
+    expect(new Set(instances.map(({ provider }) => provider.id)).size).toBe(15);
 
     for (const { provider, profile, input } of instances) {
       expect(
@@ -82,27 +89,37 @@ it("persists repeatable endpoint instances with isolated credentials and model r
       ).toBeNull();
     }
 
-    const changed = instances[0]!;
-    await repository.updateModelProvider(LOCAL_USER_ID, changed.provider.id, {
-      ...changed.input,
-      name: "Renamed endpoint",
-      baseUrl: "http://[::1]:9000/new/v1/responses/",
-      protectedApiKey: protectedSecretEnvelopeFixture("R"),
-    });
-    expect(
-      await repository.getModelRuntime(LOCAL_USER_ID, changed.profile.id),
-    ).toMatchObject({
-      provider: {
-        id: changed.provider.id,
-        baseUrl: "http://[::1]:9000/new/v1",
-      },
-    });
-    await repository.deleteModelProfile(LOCAL_USER_ID, changed.profile.id);
-    await repository.deleteModelProvider(LOCAL_USER_ID, changed.provider.id);
-    expect(
-      await repository.getModelProvider(LOCAL_USER_ID, changed.provider.id),
-    ).toBeNull();
-    for (const { provider, profile, input } of instances.slice(1)) {
+    // Edit and delete one of every endpoint kind while retaining its sibling.
+    const changedInstances = instances.filter(
+      ({ input }, index) =>
+        !instances
+          .slice(0, index)
+          .some(({ input: earlier }) => earlier.kind === input.kind),
+    );
+    for (const changed of changedInstances) {
+      await repository.updateModelProvider(LOCAL_USER_ID, changed.provider.id, {
+        ...changed.input,
+        name: "Renamed endpoint",
+        baseUrl: "http://[::1]:9000/new/v1/responses/",
+        protectedApiKey: protectedSecretEnvelopeFixture("R"),
+      });
+      expect(
+        await repository.getModelRuntime(LOCAL_USER_ID, changed.profile.id),
+      ).toMatchObject({
+        provider: {
+          id: changed.provider.id,
+          baseUrl: "http://[::1]:9000/new/v1",
+        },
+      });
+      await repository.deleteModelProfile(LOCAL_USER_ID, changed.profile.id);
+      await repository.deleteModelProvider(LOCAL_USER_ID, changed.provider.id);
+      expect(
+        await repository.getModelProvider(LOCAL_USER_ID, changed.provider.id),
+      ).toBeNull();
+    }
+    for (const { provider, profile, input } of instances.filter(
+      (instance) => !changedInstances.includes(instance),
+    )) {
       expect(
         await repository.getModelRuntime(LOCAL_USER_ID, profile.id),
       ).toMatchObject({
