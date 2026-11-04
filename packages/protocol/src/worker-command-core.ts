@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { providerInferenceConfigurationSchema } from "./inference-admission.js";
 import {
   directCapabilityPrepareCommandSchema,
   directCapabilityRenewCommandSchema,
@@ -46,6 +47,12 @@ import {
 } from "./workspace-repository-discovery.js";
 
 export const workerCoreCommandSchemas = [
+  z
+    .object({
+      type: z.literal("inference.configure"),
+      configurations: z.array(providerInferenceConfigurationSchema).max(10_000),
+    })
+    .strict(),
   directCapabilityPrepareCommandSchema,
   directCapabilityRevokeCommandSchema,
   directCapabilityRenewCommandSchema,

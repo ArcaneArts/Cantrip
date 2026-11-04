@@ -1,5 +1,6 @@
 pub mod bridge;
 pub mod command_bus;
+mod command_deadline;
 pub mod credentials;
 mod frames;
 pub mod limits;

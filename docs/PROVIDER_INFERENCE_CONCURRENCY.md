@@ -63,9 +63,28 @@ only after all parent sampling streams have stopped. Resumption rejoins FIFO bef
 another model request. Ordinary tool round trips retain their reservation. Native
 pause checks its current watch state again after a queued resume grant.
 
-The remaining milestones must complete durable restart/reconnect recovery, queue
-versus execution deadlines (including the server's standalone label deadline), live
-settings propagation, app feedback, bounded operation history, and the exhaustive
+Worker requests now report a private, monotonic admission timing phase. Both
+server implementations exclude provider-queue and confirmed suspension time from
+command deadlines, including the standalone 30-second labeling request. Preparation
+and execution retain separate cumulative bounded budgets; repeated events do not
+reset those budgets. The Node server's inter-instance relay carries the same clock
+control events internally, without exposing them as chat activity. Native label
+execution retains its own 27-second observation/25-second native cancellation bounds.
+
+Provider limit edits are delivered directly to linked workers and synchronized on
+authenticated reconnect. Workers acknowledge the actual scoped pool snapshot and
+ignore stale per-provider configuration revisions. A capacity-only edit preserves
+native sessions and does not force a catalog refresh. Increasing capacity drains
+FIFO waiters; reducing capacity leaves current holders running.
+
+The process guard no longer treats taskkill's completion as proof that its captured
+subprocess exited. This is only one failure-path correction: wrapper termination,
+surviving native processes, and remote launcher settlement still need the durable
+runtime reconciliation milestone.
+
+The remaining milestones must complete durable restart/reconnect recovery, control
+traffic admission under long inference waits, provider deletion/route-change and
+archival cancellation, app feedback, bounded operation history, and the exhaustive
 inference-path/lifecycle audit. This intermediate implementation is not the
 completed feature; source integration is not evidence of exercised runtime behavior.
 

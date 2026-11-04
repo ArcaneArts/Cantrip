@@ -22,6 +22,7 @@ import { registerWorkerContracts } from "./worker-contracts.mjs";
 import { registerWorkerCommandContracts } from "./worker-command-contracts.mjs";
 
 export const contractRoots = [
+  "workerInferenceStatusSchema",
   "chatAttachmentOpaqueSummarySchema",
   "accountRegistrationSchema",
   "authLoginSchema",

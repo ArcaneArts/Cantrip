@@ -316,6 +316,7 @@ import { RemoteSurfaceManager } from "./remote-surface-manager.js";
 import { RemoteSurfaceWorkerLinkAdapter } from "./remote-surface-worker-link-adapter.js";
 import { WorkerObservationHub } from "./worker-observation-worker-link-adapter.js";
 import { WorkerInferenceAdmission } from "./inference-admission.js";
+import { withInferenceCommand } from "./inference-command.js";
 import {
   runWorkerRuntimeLoop,
   scheduleWorkerRuntimeRestart,
@@ -3283,6 +3284,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       return runtimeProvider;
     };
     switch (command.type) {
+      case "inference.configure": {
+        const admission = inferenceAdmissionForWorker();
+        for (const configuration of command.configurations)
+          admission.configure(configuration);
+        return admission.snapshot();
+      }
       case "cantrip-os.run-runtime.start":
       case "cantrip-os.run-runtime.restart":
       case "cantrip-os.run-runtime.stop":
@@ -6776,7 +6783,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         const resolved = await routingRegistry.resolveCommand(command);
         return await routingRegistry.protectResult(
           command.type,
-          await handleCommand(resolved, emit),
+          await withInferenceCommand(emit, () => handleCommand(resolved, emit)),
         );
       } catch (error) {
         throw routingRegistry.protectError(command.type, error);

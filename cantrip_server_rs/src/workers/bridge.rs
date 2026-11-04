@@ -6,6 +6,7 @@ mod link_frames;
 mod tunnel_frames;
 pub type TunnelFrameHandler = super::frames::Handler<crate::tunnels::frame::Frame>;
 pub type TunnelFrameSubscription = super::frames::Subscription<crate::tunnels::frame::Frame>;
+use super::command_deadline::CommandDeadline;
 use super::notifications::Notifications;
 pub use super::notifications::{
     NotificationHandler, NotificationSubscription, OwnedNotificationHandler,
@@ -149,6 +150,8 @@ struct Pending {
     delivery: mpsc::UnboundedSender<Delivery>,
     completion: Mutex<Option<oneshot::Sender<Outcome>>>,
     timer: Mutex<Option<AbortHandle>>,
+    deadline: Mutex<CommandDeadline>,
+    deadline_changed: watch::Sender<()>,
 }
 #[derive(Clone, Debug)]
 pub enum BridgeNotice {
@@ -527,6 +530,16 @@ impl WorkerBridge {
             return;
         }
         if let Some(pending) = state.pending.get(id).filter(|p| p.worker == worker) {
+            if event["type"] == "inference.command-state" {
+                if let (Some(sequence), Some(phase)) =
+                    (event["sequence"].as_u64(), event["state"].as_str())
+                {
+                    if pending.deadline.lock().unwrap().observe(sequence, phase) {
+                        pending.deadline_changed.send_replace(());
+                    }
+                }
+                return;
+            }
             let _ = pending.delivery.send(Delivery::Event(event));
         }
     }
@@ -572,6 +585,8 @@ impl WorkerBridge {
                 delivery: events,
                 completion: Mutex::new(Some(tx)),
                 timer: Mutex::new(None),
+                deadline: Mutex::new(CommandDeadline::new(timeout)),
+                deadline_changed: watch::channel(()).0,
             });
             {
                 let mut state = self.state.lock().unwrap();
@@ -580,28 +595,42 @@ impl WorkerBridge {
                         "Worker {worker} is offline."
                     )));
                 };
-                if let Some(timeout) = timeout {
+                if timeout.is_some() {
                     let bridge = Arc::downgrade(self);
                     let key = id.clone();
                     let target = pending.clone();
+                    let mut changed = pending.deadline_changed.subscribe();
                     let task = tokio::spawn(async move {
-                        tokio::time::sleep(timeout).await;
-                        if let Some(bridge) = bridge.upgrade() {
-                            let mut state = bridge.state.lock().unwrap();
-                            if state
-                                .pending
-                                .get(&key)
-                                .is_some_and(|p| Arc::ptr_eq(p, &target))
-                            {
-                                state.pending.remove(&key);
-                                bridge.finish(
-                                    &target,
-                                    Err(CommandError::command(
-                                        format!("Worker command {} timed out.", target.command),
-                                        "worker-command-timeout",
-                                        &key,
-                                    )),
-                                );
+                        loop {
+                            changed.borrow_and_update();
+                            let remaining = target.deadline.lock().unwrap().remaining();
+                            match remaining {
+                                None => {
+                                    if changed.changed().await.is_err() {
+                                        return;
+                                    }
+                                }
+                                Some(remaining) => {
+                                    tokio::select! {
+                                        biased;
+                                        update = changed.changed() => { if update.is_err() { return; } }
+                                        _ = tokio::time::sleep(remaining) => {
+                                            let Some(bridge) = bridge.upgrade() else { return; };
+                                            let mut state = bridge.state.lock().unwrap();
+                                            // Recheck the actual clock under the same state lock
+                                            // used by incoming phase updates. A stale timer cannot
+                                            // expire work that has entered a queue in the meantime.
+                                            if !target.deadline.lock().unwrap().remaining().is_some_and(|left| left.is_zero()) { continue; }
+                                            if state.pending.get(&key).is_some_and(|p| Arc::ptr_eq(p, &target)) {
+                                                state.pending.remove(&key);
+                                                bridge.finish(&target, Err(CommandError::command(
+                                                    format!("Worker command {} timed out.", target.command),
+                                                    "worker-command-timeout", &key)));
+                                            }
+                                            return;
+                                        }
+                                    }
+                                }
                             }
                         }
                     });

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { observeInferenceCommand } from "./inference-command.js";
 import {
   providerInferenceConfigurationSchema,
   type InferenceOperationStatus,
@@ -74,6 +75,7 @@ interface Ticket {
   handle: InferenceTicket;
   lease: InferenceLease;
   resuming?: Promise<void>;
+  observe?: (state: InferenceTicketState) => void;
 }
 
 /**
@@ -236,6 +238,7 @@ export class WorkerInferenceAdmission {
       resolve,
       reject,
       stopListening: () => {},
+      observe: observeInferenceCommand(),
       handle: {
         ready,
         status: () => this.status(ticket),
@@ -266,6 +269,7 @@ export class WorkerInferenceAdmission {
       if (signal.aborted) cancel();
     }
     this.drain(pool);
+    ticket.observe?.(ticket.state);
     this.changed();
     return ticket.handle;
   }
@@ -280,6 +284,7 @@ export class WorkerInferenceAdmission {
       throw new Error("The inference grant is no longer available.");
     ticket.state = "running";
     ticket.startedAt = Date.now();
+    ticket.observe?.(ticket.state);
     this.changed();
   }
 
@@ -292,6 +297,7 @@ export class WorkerInferenceAdmission {
     if (running) {
       // Reserve capacity until the execution owner confirms it has stopped.
       ticket.state = "cancelling";
+      ticket.observe?.(ticket.state);
       this.changed();
       ticket.controller.abort(reason);
       return;
@@ -308,6 +314,7 @@ export class WorkerInferenceAdmission {
         "Only a running inference can enter a native suspension boundary.",
       );
     ticket.state = "suspended";
+    ticket.observe?.(ticket.state);
     ticket.pool.active.delete(ticket);
     this.drain(ticket.pool);
     this.changed();
@@ -334,6 +341,7 @@ export class WorkerInferenceAdmission {
     ticket.state = "waiting";
     ticket.enqueuedAt = Date.now();
     ticket.pool.queue.push(ticket);
+    ticket.observe?.(ticket.state);
     this.drain(ticket.pool);
     this.changed();
     return resuming;
@@ -355,6 +363,8 @@ export class WorkerInferenceAdmission {
 
   private release(ticket: Ticket): void {
     ticket.state = "released";
+    ticket.observe?.(ticket.state);
+    ticket.observe = undefined;
     ticket.stopListening();
     ticket.pool.active.delete(ticket);
     const index = ticket.pool.queue.indexOf(ticket);
@@ -375,6 +385,7 @@ export class WorkerInferenceAdmission {
       ticket.state = "granted";
       ticket.grantedAt = Date.now();
       pool.active.add(ticket);
+      ticket.observe?.(ticket.state);
       ticket.resolve(ticket.lease);
     }
   }

@@ -570,6 +570,10 @@ export abstract class IdentityModelRepositoryFacade {
     return this.providerCatalog.updateModelProvider(ownerId, providerId, input);
   }
 
+  async listProviderInferenceConfigurations(ownerId: string) {
+    return this.providerCatalog.listProviderInferenceConfigurations(ownerId);
+  }
+
   async getModelProviderCatalogRuntime(
     ownerId: string,
     providerId: string,

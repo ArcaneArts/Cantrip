@@ -125,6 +125,8 @@ impl SettingsRepository {
         }
         let name = text(input, "name")?.lossy();
         let base = normalize_responses_base_url(&text(input, "baseUrl")?.lossy())?;
+        let native_configuration_changed =
+            current["baseUrl"] != base || input.get("protectedApiKey").is_some();
         let mut values = json!({"name":name,"kind":kind,"base_url":base});
         let mut sets = vec![
             "name=v.name",
@@ -150,19 +152,24 @@ impl SettingsRepository {
         let Some(row) = rows.first() else {
             return Ok(None);
         };
-        let routes = self
-            .database
-            .query(
-                "SELECT id FROM model_routes WHERE provider_id=$1",
-                &[&provider],
-            )
-            .await?;
-        for route in routes {
-            let route = route.get::<String>(0)?;
-            let at = now();
-            let reference = super::query_error::provider_detach(&route, at);
-            super::query_error::context(self.database.query("UPDATE chat_runtime_sessions SET codex_thread_id=NULL,status='detached',updated_at=$2 WHERE model_route_id=$1", &[&route,&at]).await, &reference.0, &reference.1)?;
+        if native_configuration_changed {
+            let routes = self
+                .database
+                .query(
+                    "SELECT id FROM model_routes WHERE provider_id=$1",
+                    &[&provider],
+                )
+                .await?;
+            for route in routes {
+                let route = route.get::<String>(0)?;
+                let at = now();
+                let reference = super::query_error::provider_detach(&route, at);
+                super::query_error::context(self.database.query("UPDATE chat_runtime_sessions SET codex_thread_id=NULL,status='detached',updated_at=$2 WHERE model_route_id=$1", &[&route,&at]).await, &reference.0, &reference.1)?;
+            }
         }
         Ok(Some(provider_summary(row, vec![], None, None)?))
+    }
+    pub async fn provider_inference_configurations(&self, owner: &str) -> Result<Vec<Value>> {
+        self.json_rows("SELECT jsonb_build_object('providerId',id,'maxConcurrentInference',max_concurrent_inference,'inferenceConfigRevision',inference_config_revision) FROM model_providers WHERE owner_id=$1", &[&owner]).await
     }
 }

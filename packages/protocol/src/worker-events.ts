@@ -236,6 +236,13 @@ export const inferenceProgressUpdateSchema = z.discriminatedUnion("kind", [
 export const workerEventSchema = z.discriminatedUnion("type", [
   z
     .object({
+      type: z.literal("inference.command-state"),
+      sequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+      state: z.enum(["waiting", "preparing", "running"]),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("agent.automatic-label"),
       chatId: z.string().min(1),
       claimId: z.string().uuid(),

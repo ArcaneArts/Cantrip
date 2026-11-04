@@ -1,6 +1,6 @@
 //! Global provider mutations retain the complete admitted operation, including
 //! account cleanup and catalog work, when the HTTP caller disconnects.
-use super::{AccountService, sign_out_input};
+use super::{AccountService, LifecycleLog, sign_out_input};
 use crate::{settings::catalog_runtime::CatalogRequest, wire::Value};
 use anyhow::{Context, Result};
 use futures::future::BoxFuture;
@@ -83,15 +83,44 @@ impl AccountService {
     ) -> BoxFuture<'static, Result<Option<Json>>> {
         let (owner, provider) = (owner.to_owned(), provider.to_owned());
         self.launch(move |service| async move {
-            service
-                .catalogs
-                .hydrator
-                .invalidate(&provider.clone().into());
+            let current = service
+                .repository
+                .get_model_provider(&owner, &provider)
+                .await?;
+            let base = super::super::providers::normalize_responses_base_url(
+                input["baseUrl"].as_str().context("provider base URL")?,
+            )?;
+            let native_configuration_changed = current
+                .as_ref()
+                .is_none_or(|current| current["baseUrl"] != base)
+                || input.get("protectedApiKey").is_some();
+            if native_configuration_changed {
+                service
+                    .catalogs
+                    .hydrator
+                    .invalidate(&provider.clone().into());
+            }
+
             let updated = service
                 .repository
                 .update_model_provider(&owner, &provider, &input)
                 .await?;
-            if let Some(updated) = &updated {
+            if updated.is_some() && input.get("maxConcurrentInference").is_some() {
+                let workers = crate::workers::repository::WorkerRepository {
+                    database: service.repository.database.clone(),
+                }
+                .list_workers(&owner)
+                .await?;
+                let deliveries = workers
+                    .iter()
+                    .filter_map(|worker| worker["id"].as_str())
+                    .map(|worker| service.synchronize_inference(&owner, worker));
+                // Delivery failures remain visible and owned by their sync jobs.
+                let _ = futures::future::join_all(deliveries).await;
+            }
+            if let Some(updated) = &updated
+                && native_configuration_changed
+            {
                 let request = catalog(&owner, &provider, true);
                 if crate::settings::zai::is_coding_plan_provider(updated) {
                     service.catalogs.load(request).await?;
@@ -100,6 +129,35 @@ impl AccountService {
                 }
             }
             Ok(updated)
+        })
+    }
+
+    pub fn synchronize_inference(
+        self: &Arc<Self>,
+        owner: &str,
+        worker: &str,
+    ) -> BoxFuture<'static, Result<()>> {
+        let (owner, worker) = (owner.to_owned(), worker.to_owned());
+        self.launch(move |service| async move {
+            let result = async {
+                let configurations = service.repository.provider_inference_configurations(&owner).await?;
+                let command = Value::from_serialize(&serde_json::json!({
+                    "type": "inference.configure", "configurations": configurations,
+                }));
+                let reply = service.commands.request(
+                    &worker, command, Some(std::time::Duration::from_secs(30)), None,
+                ).await?;
+                let status = crate::settings::parse_response("workerInferenceStatusSchema", reply.as_ref())?;
+                anyhow::ensure!(
+                    status["workerId"] == worker && status["ownerId"] == owner,
+                    "Inference configuration acknowledgement belongs to another worker scope."
+                );
+                Ok(())
+            }.await;
+            if result.is_err() {
+                LifecycleLog::emit("warn", crate::wire::value::json!({"event":"inference.configuration.delivery-pending", "workerId":worker}), "Provider inference configuration delivery remains pending");
+            }
+            result
         })
     }
 

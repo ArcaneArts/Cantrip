@@ -43,21 +43,46 @@ const child = spawn(command, args, {
 
 let stopping = false;
 let forceTimer;
+let stopFailureReported = false;
+
+const reportStopFailure = () => {
+  if (stopFailureReported) return;
+  stopFailureReported = true;
+  process.stderr.write("Cantrip process guard is still waiting for subprocess termination.\n");
+};
 
 const forceStop = () => {
   if (process.platform === "win32") {
     if (child.pid) {
-      spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+      const killer = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
         stdio: "ignore",
         windowsHide: true,
-      }).once("exit", () => process.exit(1));
+      });
+      let finished = false;
+      const retry = () => {
+        if (finished) return;
+        finished = true;
+        reportStopFailure();
+        forceTimer = setTimeout(forceStop, 2_000);
+      };
+      killer.once("error", retry);
+      killer.once("exit", (code) => {
+        // The taskkill helper exiting is not proof that our subprocess exited.
+        // Only the captured child's exit handler may retire this guard.
+        if (code !== 0) retry();
+      });
       return;
     }
   } else {
     try {
       process.kill(-process.pid, "SIGKILL");
       return;
-    } catch {}
+    } catch {
+      try { child.kill("SIGKILL"); } catch {}
+      reportStopFailure();
+      forceTimer = setTimeout(forceStop, 2_000);
+      return;
+    }
   }
   process.exit(1);
 };
@@ -70,7 +95,7 @@ const stopTree = (signal = "SIGTERM") => {
       spawn("taskkill", ["/PID", String(child.pid), "/T"], {
         stdio: "ignore",
         windowsHide: true,
-      });
+      }).once("error", reportStopFailure);
     }
   } else {
     try {
@@ -86,13 +111,14 @@ process.on("SIGINT", () => stopTree("SIGINT"));
 process.on("SIGTERM", () => stopTree("SIGTERM"));
 process.on("SIGHUP", () => stopTree("SIGHUP"));
 
-child.once("error", (error) => {
-  process.stderr.write(
-    "Cantrip process guard could not launch the subprocess: " +
-      error.message +
-      "\\n",
-  );
-  process.exit(1);
+child.on("error", (error) => {
+  // A failed launch has no child. A later signal error does not establish death.
+  if (!child.pid) {
+    process.stderr.write("Cantrip process guard could not launch the subprocess: " + error.message + "\n");
+    process.exit(1);
+  }
+  reportStopFailure();
+  stopTree();
 });
 child.once("exit", (code, signal) => {
   if (forceTimer) clearTimeout(forceTimer);
