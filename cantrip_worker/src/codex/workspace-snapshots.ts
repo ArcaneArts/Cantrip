@@ -38,6 +38,7 @@ export async function workspaceSnapshotFromPorcelainRecords(
   cwd: string,
   records: readonly string[],
   readMetadata: WorkspaceSnapshotMetadataReader = lstat,
+  joinPath: (root: string, name: string) => string = path.join,
 ): Promise<WorkspaceSnapshot> {
   const entries: Array<{ filePath: string; status: string }> = [];
   for (let index = 0; index < records.length; index += 1) {
@@ -60,7 +61,7 @@ export async function workspaceSnapshotFromPorcelainRecords(
       let fingerprint = "missing";
       if (status !== " D") {
         try {
-          const file = await readMetadata(path.join(cwd, filePath));
+          const file = await readMetadata(joinPath(cwd, filePath));
           fingerprint = `${file.size}:${file.mtimeMs}:${file.mode}`;
         } catch {
           // Deleted or concurrently removed files have no filesystem fingerprint.
@@ -92,9 +93,10 @@ export async function workspaceSnapshot(
 
 export async function workspaceChanges(
   active: ActiveTurn,
+  snapshot: (cwd: string) => Promise<WorkspaceSnapshot> = workspaceSnapshot,
 ): Promise<ActiveTurn["diffChanges"]> {
   const observedAtMs = Date.now();
-  const after = await workspaceSnapshot(active.cwd);
+  const after = await snapshot(active.cwd);
   const paths = new Set([...active.baseline.keys(), ...after.keys()]);
   const changes = new Map(
     active.diffChanges.map((change) => [change.path, change]),

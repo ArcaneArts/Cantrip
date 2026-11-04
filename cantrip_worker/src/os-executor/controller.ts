@@ -165,6 +165,16 @@ export class CantripOsController {
     }
   }
 
+  /** Capture a capability for this exact owned placement. Runtime consumers
+   * retain its generation; they cannot silently reopen a replacement guest. */
+  async captureExecutionBinding(
+    transport: OsExecutorTransport,
+    scope: CantripOsSourceDispatchScope,
+  ): Promise<OsExecutorBinding> {
+    await this.assertScope(transport, scope);
+    return this.open(transport, scope);
+  }
+
   private result(record: OsOperationRecord) {
     // Private scope/argv/transport/session records never leave the worker.
     return cantripOsOperationResultSchema.parse({
