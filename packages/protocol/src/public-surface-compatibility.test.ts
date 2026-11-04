@@ -517,6 +517,18 @@ const agentChatExports = [
 ].sort();
 
 const cantripOsExports = [
+  "cantripOsDispatchScopeSchema",
+  "cantripOsSourceDispatchScopeSchema",
+  "cantripOsProvisionIntentSchema",
+  "cantripOsProvisionRequestContentSchema",
+  "cantripOsObservedInstanceSchema",
+  "cantripOsSourceReceiptSchema",
+  "cantripOsOperationResultSchema",
+  "workerCantripOsCommandSchemas",
+  "cantripOsInspectSchema",
+  "cantripOsWorkspaceCreateSchema",
+  "cantripOsBindingCreateSchema",
+  "cantripOsProvisionSchema",
   "cantripOsAttachSchema",
   "cantripOsDependencyOverlaySchema",
   "cantripOsDependencyOverlaysSchema",
@@ -670,7 +682,18 @@ describe("protocol public surface compatibility", () => {
       (option) => option.shape.type.value,
     );
 
-    expect(commandTypes).toHaveLength(278);
+    expect(commandTypes).toHaveLength(285);
+    expect(
+      commandTypes.filter((type) => type.startsWith("cantrip-os.")),
+    ).toEqual([
+      "cantrip-os.inspect",
+      "cantrip-os.attach",
+      "cantrip-os.workspaces.list",
+      "cantrip-os.workspaces.create",
+      "cantrip-os.source.provision",
+      "cantrip-os.source.inspect",
+      "cantrip-os.operation.inspect",
+    ]);
     expect(
       commandTypes.filter((type) => type === "file-document.operation"),
     ).toHaveLength(1);
@@ -692,6 +715,7 @@ describe("protocol public surface compatibility", () => {
     const baselineCommands = commandTypes.filter(
       (type) =>
         !managedWorkerCommands.includes(type) &&
+        !type.startsWith("cantrip-os.") &&
         type !== "chat.files.references" &&
         type !== "label.generate" &&
         type !== "file-document.operation" &&

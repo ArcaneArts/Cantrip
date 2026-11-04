@@ -1,3 +1,4 @@
+import { installCantripOsRoutes } from "./routes/cantrip-os.js";
 import { createAgentTaskOperations } from "../agent-tools/task-operations.js";
 import { createProjectGoalReconciler } from "./runtime/project-goal-observations.js";
 import { installProjectGoalObservationRoutes } from "./routes/project-alert-goals.js";
@@ -957,6 +958,13 @@ export async function buildApp({
     refreshWorkerScopedCatalogs,
     workerCatalogRefreshTimer,
   } = settingsRouteRuntime;
+
+  installCantripOsRoutes(app, {
+    applicationOwnerId,
+    serverId,
+    repository,
+    bridge,
+  });
 
   installProjectRoutes(app, {
     prepareManagedChat: managedChatPreparation.request,

@@ -3,6 +3,7 @@ export * from "./conversations.js";
 export * from "./file-documents.js";
 export * from "./workspace-ownership.js";
 export * from "./cantrip-os.js";
+export * from "./worker-command-cantrip-os.js";
 export * from "./workspace-pane-views.js";
 export * from "./workspace-legacy-file-import.js";
 export * from "./workspace-command.js";
@@ -52,3 +53,5 @@ export * from "./project-alerts.js";
 
 export * from "./project-alert-agent-tools.js";
 export * from "./project-alert-goals.js";
+
+export * from "./cantrip-os-management.js";

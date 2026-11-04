@@ -261,3 +261,6 @@ before removing them manually.
 
 If pnpm reports that Node is too old, select an installed supported Node version
 (e.g. `nvm use 24`) and rerun. No application/server/worker build is needed.
+
+Server-owned attachment and protected source provisioning are described in the
+[dispatch guide](DISPATCH.md). Agent and product routing remain in progress.

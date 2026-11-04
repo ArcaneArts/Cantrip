@@ -1,6 +1,12 @@
+import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import {
   cantripOsAttachSchema,
+  cantripOsSourceDispatchScopeSchema,
+  cantripOsSourceReceiptSchema,
+  type CantripOsSourceDispatchScope,
+  type CantripOsSourceReceipt,
+  type cantripOsProvisionSchema,
   cantripOsDependencyOverlaysSchema,
   cantripOsInstanceSummarySchema,
   cantripOsProjectSourceSummarySchema,
@@ -170,6 +176,7 @@ export class CantripOsRepository {
       runtimeGeneration: string | null;
       lastError: string | null;
     },
+    expectedRuntimeGeneration?: string | null,
   ) {
     const [row] = await this.database
       .update(schema.cantripOsInstances)
@@ -182,6 +189,14 @@ export class CantripOsRepository {
         and(
           eq(schema.cantripOsInstances.id, instanceId),
           eq(schema.cantripOsInstances.ownerId, ownerId),
+          expectedRuntimeGeneration === undefined
+            ? undefined
+            : expectedRuntimeGeneration === null
+              ? isNull(schema.cantripOsInstances.runtimeGeneration)
+              : eq(
+                  schema.cantripOsInstances.runtimeGeneration,
+                  expectedRuntimeGeneration,
+                ),
           eq(
             schema.cantripOsInstances.attachmentGeneration,
             expectedAttachmentGeneration,
@@ -280,6 +295,35 @@ export class CantripOsRepository {
     return rows.map((row) => workspace(row.workspace, row.workerId));
   }
 
+  async linkableWorktree(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+  ) {
+    const [row] = await this.database
+      .select({ id: schema.projectWorktrees.id })
+      .from(schema.projectWorktrees)
+      .innerJoin(
+        schema.projectSourceIdentities,
+        eq(
+          schema.projectSourceIdentities.id,
+          schema.projectWorktrees.projectSourceId,
+        ),
+      )
+      .innerJoin(
+        schema.projects,
+        eq(schema.projects.id, schema.projectSourceIdentities.projectId),
+      )
+      .where(
+        and(
+          eq(schema.projects.ownerId, ownerId),
+          eq(schema.projects.id, projectId),
+          eq(schema.projectWorktrees.id, worktreeId),
+        ),
+      );
+    return row ?? null;
+  }
+
   async createLinkedBinding(
     ownerId: string,
     input: {
@@ -323,6 +367,14 @@ export class CantripOsRepository {
           eq(
             schema.cantripOsInstances.id,
             schema.cantripOsWorkspaces.instanceId,
+          ),
+        )
+        .innerJoin(
+          schema.workers,
+          and(
+            eq(schema.workers.id, schema.cantripOsInstances.workerId),
+            eq(schema.workers.ownerId, ownerId),
+            isNull(schema.workers.unlinkedAt),
           ),
         )
         .where(
@@ -382,6 +434,7 @@ export class CantripOsRepository {
         .select({
           workspace: schema.cantripOsWorkspaces,
           instance: schema.cantripOsInstances,
+          gitCapability: schema.projects.gitCapability,
         })
         .from(schema.cantripOsWorkspaces)
         .innerJoin(
@@ -398,6 +451,14 @@ export class CantripOsRepository {
             eq(schema.projects.ownerId, schema.cantripOsInstances.ownerId),
           ),
         )
+        .innerJoin(
+          schema.workers,
+          and(
+            eq(schema.workers.id, schema.cantripOsInstances.workerId),
+            eq(schema.workers.ownerId, ownerId),
+            isNull(schema.workers.unlinkedAt),
+          ),
+        )
         .where(
           and(
             eq(schema.cantripOsWorkspaces.id, input.workspaceId),
@@ -406,6 +467,10 @@ export class CantripOsRepository {
         )
         .for("update");
       if (!target) return fail("Project and OS workspace must share an owner.");
+      if ((input.sourceKind === "git") !== target.gitCapability)
+        return fail(
+          "Linux source kind must preserve the project Git capability.",
+        );
       const sourceId = randomUUID(),
         worktreeId = randomUUID(),
         bindingId = randomUUID();
@@ -603,6 +668,22 @@ export class CantripOsRepository {
                   workspaceId: row.workspace.id,
                   guestPath: row.binding.guestPath,
                 },
+          sourceKind:
+            (row.binding.mode === "linked"
+              ? row.localSource?.sourceKind
+              : row.linuxSource?.sourceKind) ??
+            fail("Source details are unavailable."),
+          sourceMatches:
+            row.worktree.projectSourceId === row.binding.projectSourceId &&
+            row.worktree.workerId === row.binding.workerId &&
+            (row.binding.mode === "linked"
+              ? row.localSource !== null &&
+                row.localSource.removedAt === null &&
+                row.binding.linkedWorkerPath === row.worktree.absolutePath &&
+                row.instance.transport.kind === "docker"
+              : row.linuxSource !== null &&
+                row.linuxSource.removedAt === null &&
+                row.binding.guestPath === row.worktree.guestPath),
           worktreeState: row.worktree.lifecycleState,
           available:
             row.binding.state === "ready" &&
@@ -660,6 +741,7 @@ export class CantripOsRepository {
     outcome: {
       state: "ready" | "failed" | "unknown";
       lastError: string | null;
+      sourceReceipt?: CantripOsSourceReceipt;
     },
   ) {
     return this.database.transaction(async (tx) => {
@@ -667,6 +749,7 @@ export class CantripOsRepository {
         .select({
           binding: schema.cantripOsSourceBindings,
           instance: schema.cantripOsInstances,
+          workspace: schema.cantripOsWorkspaces,
         })
         .from(schema.cantripOsSourceBindings)
         .innerJoin(
@@ -704,7 +787,7 @@ export class CantripOsRepository {
       const [row] = await tx
         .update(schema.cantripOsSourceBindings)
         .set({
-          ...outcome,
+          state: outcome.state,
           lastError: outcome.lastError?.slice(0, 4000) ?? null,
           provisionedAttachmentGeneration:
             outcome.state === "ready" ? expected.attachmentGeneration : null,
@@ -714,12 +797,171 @@ export class CantripOsRepository {
         })
         .where(eq(schema.cantripOsSourceBindings.id, id))
         .returning();
-      if (outcome.state === "ready" && current.binding.mode === "linux-owned")
+      const receipt = outcome.sourceReceipt
+        ? cantripOsSourceReceiptSchema.parse(outcome.sourceReceipt)
+        : null;
+      if (
+        receipt &&
+        (receipt.bindingId !== id ||
+          receipt.runtimeGeneration !== expected.runtimeGeneration ||
+          receipt.workspaceId !== current.binding.workspaceId ||
+          receipt.guestPath !== current.binding.guestPath ||
+          receipt.mode !== current.binding.mode ||
+          receipt.uid !== current.workspace.uid ||
+          receipt.homeGuestPath !== current.workspace.homeGuestPath ||
+          receipt.guestWorkspaceId !== current.workspace.guestWorkspaceId ||
+          !isDeepStrictEqual(
+            receipt.dependencyOverlays,
+            current.binding.dependencyOverlays,
+          ))
+      )
+        return fail(
+          "Source observation does not match the admitted placement.",
+        );
+      if (outcome.state === "ready" && current.binding.mode === "linux-owned") {
+        const [source] = await tx
+          .select()
+          .from(schema.cantripOsProjectSources)
+          .where(
+            eq(
+              schema.cantripOsProjectSources.id,
+              current.binding.projectSourceId,
+            ),
+          )
+          .for("update");
+        if (!source || source.removedAt)
+          return fail(
+            "Linux source was removed before its observation arrived.",
+          );
+        if (
+          receipt &&
+          ((source.repositoryFingerprint !== null &&
+            source.repositoryFingerprint !== receipt.repositoryFingerprint) ||
+            (source.sourceKind === "git" &&
+              (!receipt.repositoryFingerprint ||
+                !receipt.head ||
+                !receipt.gitCommonGuestPath)))
+        )
+          return fail(
+            "Linux Git observation belongs to a different common directory or is incomplete.",
+          );
+        if (receipt)
+          await tx
+            .update(schema.cantripOsProjectSources)
+            .set({
+              repositoryFingerprint: receipt.repositoryFingerprint,
+              updatedAt: new Date(),
+            })
+            .where(
+              eq(
+                schema.cantripOsProjectSources.id,
+                current.binding.projectSourceId,
+              ),
+            );
         await tx
           .update(schema.projectWorktrees)
-          .set({ lifecycleState: "ready", updatedAt: new Date() })
+          .set({
+            lifecycleState: "ready",
+            ...(receipt
+              ? {
+                  head: receipt.head,
+                  branch: receipt.branch,
+                  detached: receipt.detached,
+                }
+              : {}),
+            updatedAt: new Date(),
+          })
           .where(eq(schema.projectWorktrees.id, current.binding.worktreeId));
+      }
       return binding(row!, current.instance.id);
+    });
+  }
+
+  async provisionAdmission(ownerId: string, bindingId: string) {
+    const context = await this.bindingContext(ownerId, bindingId);
+    if (!context) return null;
+    const [row] = await this.database
+      .select()
+      .from(schema.cantripOsProvisionAdmissions)
+      .where(eq(schema.cantripOsProvisionAdmissions.bindingId, bindingId));
+    return row ?? null;
+  }
+
+  async admitProvision(
+    ownerId: string,
+    scope: CantripOsSourceDispatchScope,
+    input: ReturnType<typeof cantripOsProvisionSchema.parse>,
+  ) {
+    cantripOsSourceDispatchScopeSchema.parse(scope);
+    return this.database.transaction(async (tx) => {
+      const [current] = await tx
+        .select({
+          binding: schema.cantripOsSourceBindings,
+          instance: schema.cantripOsInstances,
+        })
+        .from(schema.cantripOsSourceBindings)
+        .innerJoin(
+          schema.cantripOsWorkspaces,
+          eq(
+            schema.cantripOsWorkspaces.id,
+            schema.cantripOsSourceBindings.workspaceId,
+          ),
+        )
+        .innerJoin(
+          schema.cantripOsInstances,
+          eq(
+            schema.cantripOsInstances.id,
+            schema.cantripOsWorkspaces.instanceId,
+          ),
+        )
+        .where(
+          and(
+            eq(schema.cantripOsSourceBindings.id, scope.bindingId),
+            eq(schema.cantripOsSourceBindings.ownerId, ownerId),
+            isNull(schema.cantripOsSourceBindings.retiredAt),
+          ),
+        )
+        .for("update");
+      if (
+        !current ||
+        current.binding.bindingGeneration !== input.bindingGeneration ||
+        scope.bindingGeneration !== input.bindingGeneration
+      )
+        return fail("Source binding changed before provisioning admission.");
+      const [old] = await tx
+        .select()
+        .from(schema.cantripOsProvisionAdmissions)
+        .where(
+          eq(schema.cantripOsProvisionAdmissions.bindingId, scope.bindingId),
+        );
+      if (old) {
+        if (
+          old.operationId !== input.operationId ||
+          !isDeepStrictEqual(old.protectedRequest, input.protectedRequest)
+        )
+          return fail(
+            "This binding already has a provisioning admission; inspect its existing operation.",
+          );
+        return { admission: old, created: false };
+      }
+      if (
+        current.instance.status !== "connected" ||
+        current.instance.attachmentGeneration !== scope.attachmentGeneration ||
+        current.instance.runtimeGeneration !== scope.runtimeGeneration ||
+        current.binding.workerId !== scope.workerId ||
+        scope.ownerId !== ownerId
+      )
+        return fail("OS placement changed before provisioning admission.");
+      const [admission] = await tx
+        .insert(schema.cantripOsProvisionAdmissions)
+        .values({
+          operationId: input.operationId,
+          bindingId: scope.bindingId,
+          scope,
+          protectedRequest: input.protectedRequest,
+        })
+        .returning();
+      return { admission: admission!, created: true };
     });
   }
 }

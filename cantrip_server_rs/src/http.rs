@@ -19,6 +19,7 @@ mod audit;
 mod body;
 mod browser_discovery;
 mod browsers;
+mod cantrip_os;
 mod chat_catalogs;
 mod chat_configuration;
 mod chat_customizations;
@@ -211,6 +212,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(workspace_layouts::routes())
         .merge(repository_operations::routes())
         .merge(worktrees::routes())
+        .merge(cantrip_os::routes())
         .merge(run_configurations::routes())
         .merge(run_definitions::routes())
         .merge(run_secrets::routes())
