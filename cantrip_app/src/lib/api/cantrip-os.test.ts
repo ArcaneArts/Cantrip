@@ -39,6 +39,7 @@ import {
   recoverCantripOsBinding,
   createCantripOsWorkspace,
   getCantripOsInstances,
+  executeCantripOsRunDefinition,
 } from "./cantrip-os";
 const operation = {
   operationId: "00000000-0000-4000-8000-000000000005",
@@ -145,4 +146,48 @@ it("preserves an explicit workspace operation identity", async () => {
 it("validates actual server data rather than accepting a partial instance", async () => {
   mocks.request.mockResolvedValue([{ id: "incomplete" }]);
   await expect(getCantripOsInstances()).rejects.toThrow();
+});
+it("captures the Linux Run source and preserves the operation identity without transport replay", async () => {
+  const id = "00000000-0000-4000-8000-000000000010";
+  const source = {
+    ...binding,
+    id,
+    projectId: id,
+    projectSourceId: id,
+    provisionedRuntimeGeneration: id,
+  };
+  const request = {
+    type: "project.run-configuration-definitions.capabilities" as const,
+    projectId: id,
+    operationId: id,
+  };
+  mocks.request.mockRejectedValueOnce(new TypeError("reply lost"));
+  await expect(executeCantripOsRunDefinition(source, request)).rejects.toThrow(
+    "reply lost",
+  );
+  mocks.request.mockResolvedValue({
+    source: {
+      bindingId: id,
+      worktreeId: id,
+      projectSourceId: id,
+      runtimeGeneration: id,
+      guestPath: "/home/linux/primary",
+    },
+    result: {
+      operation: "capabilities",
+      projectId: id,
+      operationId: id,
+      capabilities: [],
+    },
+  });
+  await executeCantripOsRunDefinition(source, request);
+  expect(mocks.request.mock.calls[0]).toEqual(mocks.request.mock.calls[1]);
+  expect(mocks.request.mock.calls[0]![2]).toEqual({
+    expectedIdentity: identity,
+    allowCsrfRecovery: false,
+  });
+  expect(JSON.parse(mocks.request.mock.calls[0]![1].body)).toEqual({
+    runtimeGeneration: id,
+    request,
+  });
 });

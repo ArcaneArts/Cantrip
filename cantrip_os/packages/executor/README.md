@@ -28,14 +28,14 @@ to `0` in this first cycle while product placement is being implemented.
 Workspace support remains enabled by default. Including the executor requires
 the workspace package; apt enforces that dependency.
 
-Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.4.0_<arch>.deb`.
+Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.5.0_<arch>.deb`.
 It contains the source/patch fingerprint manifest, binary hashes, licenses, and
 sandbox helper. Docker and ISO recipes install the same package.
 
 Inside Linux, after copying the package there:
 
 ```sh
-sudo apt install ./cantrip-os-executor_0.4.0_arm64.deb  # amd64 for the VM edition
+sudo apt install ./cantrip-os-executor_0.5.0_arm64.deb  # amd64 for the VM edition
 sudo cantrip-executor enable
 sudo cantrip-executor status
 sudo cantrip-executor attach OWNER_ID WORKER_ID
@@ -126,3 +126,11 @@ its existing PTY resize implementation as `process/resize`, scoped to the
 initialized native session's process handle. The worker keeps durable process
 admissions before starting Bash and resumes known handles without replaying
 input. This package does not install the worker or a terminal scheduler.
+
+Version 0.5.0 adds `run-definitions.mjs`, a finite native child for the existing
+Run definition repository, static provider/path discovery, and Linux tool
+validation. It uses the actual guest account and a Debian executable search
+path. The owning Worker retains admissions and observes known native processes
+after uncertain delivery. No Worker environment, broker token, provider account,
+or model credential is sent into this helper. Run process lifecycle integration
+is a separate milestone.

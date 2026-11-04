@@ -99,6 +99,11 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
             let command = &request["command"];
             let observed = |attached: bool, profiles: &Vec<Value>| json!({"guestInstanceId":guest,"runtimeGeneration":generation,"attachment":if attached {json!({"ownerId":actual_owner,"workerId":target})}else{Value::Null},"workspaces":profiles});
             let result = match command["type"].as_str().context("OS fixture command")? {
+                "cantrip-os.run-definition" => {
+                    assert!(command.get("sourcePath").is_none());
+                    assert!(command["request"].get("sourcePath").is_none());
+                    json!({"operation":"capabilities","operationId":command["request"]["operationId"],"projectId":command["request"]["projectId"],"capabilities":[]})
+                }
                 "cantrip-os.inspect" => observed(attached, &profiles),
                 "cantrip-os.attach" => {
                     attached = true;
@@ -234,6 +239,16 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
             .status(),
         200
     );
+    let response = client.post(format!("{path}/run-definitions"))
+        .json(&json!({"runtimeGeneration":attached["instance"]["runtimeGeneration"],"request":{
+            "type":"project.run-configuration-definitions.capabilities","operationId":id(),"projectId":project
+        }})).send().await?;
+    let status = response.status();
+    let run: Value = response.json().await?;
+    assert_eq!(status, 200, "{run}");
+    assert_eq!(run["source"]["bindingId"], binding["id"]);
+    assert_eq!(run["source"]["worktreeId"], binding["worktreeId"]);
+    assert_eq!(run["result"]["operation"], "capabilities");
     assert_eq!(
         client
             .post(format!("{base}/api/cantrip-os/inspect"))

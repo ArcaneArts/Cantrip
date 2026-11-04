@@ -136,3 +136,26 @@ Linked checkouts retain Git ownership on their original worker. Create their
 host worktrees through the existing worker workflow and link each exact
 worktree explicitly. This Linux-owned creation form does not rewrite host Git
 metadata. Run and broader Git product integration remain subsequent work.
+
+## Linux Run definition API checkpoint
+
+Executor 0.5.0 supports definition files and provider discovery through
+`POST /api/projects/:projectId/cantrip-os/bindings/:bindingId/run-definitions`.
+The body contains `runtimeGeneration` and a shared Run definition `request`
+with its operation UUID and project UUID. The request uses the existing
+`project.run-configuration-definitions.*` discriminator and omits `sourcePath`.
+The Server resolves Primary in this binding's source and workspace; choosing a
+secondary worktree does not move definition files into it or select the host.
+The response identifies the resolved Primary and contains the ordinary Run
+definition result. Worker/native schemas reject older unsupported command paths.
+
+Retain the operation UUID and identical request after a lost mutation response.
+The Worker observes its saved result or known native process and never starts a
+replacement mutation for that admission. A changed runtime or missing Primary
+binding reports an error. Provider validation checks files and executables in
+Linux. Definitions remain revisioned files under `.cantrip/run-configurations`.
+
+This is an API/package checkpoint. The header source picker and delegated Run
+process lifecycle follow next; the existing header still controls host Runs.
+Linux definition deletion is not admitted by this checkpoint: it must join
+that lifecycle so active Runs stop before their definition and tabs are removed.

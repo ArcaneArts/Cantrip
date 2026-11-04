@@ -322,6 +322,7 @@ import { WorktreeManager } from "./worktrees.js";
 import { CantripOsController } from "./os-executor/controller.js";
 import { OsTerminalLauncher } from "./os-executor/terminal-launcher.js";
 import { OsFileOperations } from "./os-executor/files.js";
+import { OsRunDefinitionOperations } from "./os-executor/run-definitions.js";
 import { OsNativeEnvironment } from "./os-executor/native-environment.js";
 import { OsAgentPlacements } from "./os-executor/agent-placements.js";
 import type { CantripOsExecution } from "@cantrip/protocol";
@@ -962,6 +963,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerEncryption,
   );
   const osFiles = new OsFileOperations(
+    config.dataDirectory,
+    cantripOs,
+    workerEncryption,
+  );
+  const osRunDefinitions = new OsRunDefinitionOperations(
     config.dataDirectory,
     cantripOs,
     workerEncryption,
@@ -3219,6 +3225,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       return runtimeProvider;
     };
     switch (command.type) {
+      case "cantrip-os.run-definition":
+        return osRunDefinitions.execute(command);
       case "cantrip-os.inspect":
       case "cantrip-os.attach":
       case "cantrip-os.workspaces.list":

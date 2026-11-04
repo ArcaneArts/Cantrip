@@ -170,6 +170,34 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
         )
         .await?;
     assert_eq!(branches[0].get::<String>(0)?, "ctrr:protected-branch");
+    let primary = repository
+        .run_primary(
+            "owner",
+            "project",
+            worktree["id"].as_str().unwrap(),
+            instance["runtimeGeneration"].as_str().unwrap(),
+        )
+        .await?;
+    assert_eq!(primary["scope"]["bindingId"], binding["id"]);
+    assert_eq!(primary["scope"]["worktreeId"], binding["worktreeId"]);
+    assert_eq!(primary["scope"]["guestPath"], binding["guestPath"]);
+    assert!(
+        repository
+            .run_primary(
+                "other",
+                "project",
+                worktree["id"].as_str().unwrap(),
+                instance["runtimeGeneration"].as_str().unwrap()
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        repository
+            .run_primary("owner", "project", worktree["id"].as_str().unwrap(), &id())
+            .await
+            .is_err()
+    );
     database
         .execute("INSERT INTO user_settings(user_id,computer_use_enabled) VALUES('owner',true)")
         .await?;

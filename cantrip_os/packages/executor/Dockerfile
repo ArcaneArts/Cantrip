@@ -14,7 +14,9 @@ COPY cantrip_os/packages/executor/file-helper/ cantrip_os/packages/executor/file
 RUN CANTRIP_OS_ESBUILD_MODULE=/build/node_modules/esbuild/lib/main.js \
     CANTRIP_OS_HELPER_NODE_PATH=/build/node_modules \
     node cantrip_os/packages/executor/file-helper/build.mjs /out/file-operations.mjs \
-    && cp /build/node_modules/zod/LICENSE /out/file-helper-zod-LICENSE
+    && cp /build/node_modules/zod/LICENSE /out/file-helper-zod-LICENSE \
+    && cp /build/node_modules/dotenv/LICENSE /out/run-helper-dotenv-LICENSE \
+    && cp /build/node_modules/smol-toml/LICENSE /out/run-helper-smol-toml-LICENSE
 
 # Build only the pinned executor and its sandbox helper, using the same source
 # verification and reviewed patch preparation as the worker runtime.
@@ -42,8 +44,9 @@ COPY --from=compiler /executor/ /
 FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4 AS package
 COPY --from=compiler /executor/ /runtime/
 COPY cantrip_os/packages/executor/ /package/
-COPY --from=file-helper /out/file-operations.mjs /package/root/usr/lib/cantrip-os-executor/file-operations.mjs
+COPY --from=file-helper /out/file-operations.mjs /out/run-definitions.mjs /package/root/usr/lib/cantrip-os-executor/
 COPY --from=file-helper /out/file-helper-zod-LICENSE /package/root/usr/share/doc/cantrip-os-executor/file-helper-zod-LICENSE
+COPY --from=file-helper /out/run-helper-dotenv-LICENSE /out/run-helper-smol-toml-LICENSE /package/root/usr/share/doc/cantrip-os-executor/
 RUN /package/build.sh /runtime /out
 
 FROM scratch AS deb

@@ -1,4 +1,5 @@
 import {
+  cantripOsRunDefinitionApiSchema,
   cantripOsAttachSchema,
   cantripOsBindingCreateSchema,
   cantripOsInspectSchema,
@@ -65,6 +66,17 @@ export function installCantripOsRoutes(
   app.get<Params>(
     "/api/cantrip-os",
     route(() => repository.cantripOs.list(owner())),
+  );
+  app.post<Params>(
+    "/api/projects/:projectId/cantrip-os/bindings/:bindingId/run-definitions",
+    parsed(cantripOsRunDefinitionApiSchema, (request, input) =>
+      coordinator.runDefinition(
+        owner(),
+        request.params.projectId!,
+        request.params.bindingId!,
+        input,
+      ),
+    ),
   );
   app.post<Params>(
     "/api/cantrip-os/inspect",

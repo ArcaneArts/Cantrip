@@ -24,6 +24,41 @@ fn core_scope(scope: &Value) -> Value {
     Value::Object(result)
 }
 impl Coordinator {
+    pub async fn run_definition(
+        &self,
+        owner: &str,
+        project: &str,
+        binding: &str,
+        input: &Value,
+    ) -> Result<Value> {
+        ensure!(
+            input["request"]["projectId"] == project,
+            "The Run definition belongs to another project."
+        );
+        let execution = self
+            .repository
+            .run_primary(owner, project, binding, text(input, "runtimeGeneration")?)
+            .await?;
+        let action = text(&input["request"], "type")?
+            .strip_prefix("project.run-configuration-definitions.")
+            .context("Invalid Linux definition action")?;
+        let result = self.request(text(&execution["scope"], "workerId")?,
+            json!({"type":"cantrip-os.run-definition", "execution":execution, "request":input["request"]}),
+            crate::run_configurations::definitions::response_schema(action)).await?;
+        ensure!(
+            result["projectId"] == project
+                && result["operationId"] == input["request"]["operationId"],
+            "The Linux Run definition response was misrouted."
+        );
+        let scope = &execution["scope"];
+        checked(
+            "cantripOsRunDefinitionResponseSchema",
+            json!({"source":{
+            "bindingId":scope["bindingId"], "worktreeId":scope["worktreeId"], "projectSourceId":scope["projectSourceId"],
+            "guestPath":scope["guestPath"], "runtimeGeneration":scope["runtimeGeneration"]
+        }, "result":result}),
+        )
+    }
     pub fn new(service: Arc<AuthService>) -> Self {
         Self {
             repository: Repository::new(service.repository.database.clone()),

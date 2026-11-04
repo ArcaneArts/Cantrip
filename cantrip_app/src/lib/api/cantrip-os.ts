@@ -1,5 +1,8 @@
 import { z } from "zod";
 import {
+  cantripOsRunDefinitionApiSchema,
+  cantripOsRunDefinitionResponseSchema,
+  type CantripOsRunDefinitionRequest,
   cantripOsAttachSchema,
   cantripOsBindingCreateSchema,
   cantripOsInspectSchema,
@@ -29,6 +32,34 @@ const refreshed = z.object({
   instance: cantripOsInstanceSummarySchema,
   workspaces: z.array(cantripOsWorkspaceSummarySchema),
 });
+
+/** Select this source's Primary explicitly; the Server resolves the binding.
+ * Retain request.operationId when observing an uncertain mutation. */
+export async function executeCantripOsRunDefinition(
+  binding: CantripOsSourceBindingSummary,
+  request: CantripOsRunDefinitionRequest,
+) {
+  const input = cantripOsRunDefinitionApiSchema.parse({
+    runtimeGeneration: binding.provisionedRuntimeGeneration,
+    request,
+  });
+  const result = await mutate(
+    `${project(binding.projectId)}/${route(binding.id)}/run-definitions`,
+    input,
+    cantripOsRunDefinitionResponseSchema,
+  );
+  if (
+    request.projectId !== binding.projectId ||
+    result.result.projectId !== binding.projectId ||
+    result.result.operationId !== request.operationId ||
+    `project.run-configuration-definitions.${result.result.operation}` !==
+      request.type ||
+    result.source.projectSourceId !== binding.projectSourceId ||
+    result.source.runtimeGeneration !== input.runtimeGeneration
+  )
+    throw new Error("The Linux Run definition response was misrouted.");
+  return result;
+}
 
 /** Mutations are bound to one authenticated lifetime and never replayed for
  * connection or CSRF recovery. Provision admissions are recovered by identity. */

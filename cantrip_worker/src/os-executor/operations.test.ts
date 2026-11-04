@@ -16,6 +16,53 @@ const scope = () => ({
 });
 
 describe("OS operation provenance", () => {
+  it("persists an observed completion without admitting another mutation", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-os-observed-"),
+    );
+    const actual = scope(),
+      operationId = randomUUID();
+    let mutations = 0;
+    const store = new OsOperationStore(directory);
+    try {
+      const unknown = await store.execute(
+        actual,
+        operationId,
+        "definition.write",
+        {},
+        async () => {
+          mutations++;
+          throw Object.assign(new Error("delivery lost"), {
+            delivery: "unknown",
+          });
+        },
+      );
+      expect(unknown.state).toBe("unknown");
+      await store.recordObservedCompletion(unknown, { created: true });
+      const observed = await new OsOperationStore(directory).execute(
+        actual,
+        operationId,
+        "definition.write",
+        {},
+        async () => {
+          mutations++;
+        },
+      );
+      expect(observed).toMatchObject({
+        state: "ready",
+        receipt: { created: true },
+      });
+      expect(mutations).toBe(1);
+      await expect(
+        store.recordObservedCompletion(
+          { ...unknown, admissionFingerprint: "changed" },
+          {},
+        ),
+      ).rejects.toThrow(/identity changed/);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
   it("observes completed, interrupted and changed admissions without replaying their mutations", async () => {
     const directory = await mkdtemp(
       path.join(tmpdir(), "cantrip-os-operations-"),

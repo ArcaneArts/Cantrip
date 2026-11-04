@@ -517,6 +517,11 @@ const agentChatExports = [
 ].sort();
 
 const cantripOsExports = [
+  "cantripOsRunDefinitionRequestSchema",
+  "cantripOsRunDefinitionWorkerCommandSchema",
+  "cantripOsRunDefinitionApiSchema",
+  "cantripOsRunDefinitionResponseSchema",
+  "cantripOsRunPrimarySchema",
   "cantripOsDispatchScopeSchema",
   "cantripOsSourceDispatchScopeSchema",
   "cantripOsExecutionSchema",
@@ -684,7 +689,7 @@ describe("protocol public surface compatibility", () => {
       (option) => option.shape.type.value,
     );
 
-    expect(commandTypes).toHaveLength(285);
+    expect(commandTypes).toHaveLength(286);
     expect(
       commandTypes.filter((type) => type.startsWith("cantrip-os.")),
     ).toEqual([
@@ -695,6 +700,7 @@ describe("protocol public surface compatibility", () => {
       "cantrip-os.source.provision",
       "cantrip-os.source.inspect",
       "cantrip-os.operation.inspect",
+      "cantrip-os.run-definition",
     ]);
     expect(
       commandTypes.filter((type) => type === "file-document.operation"),

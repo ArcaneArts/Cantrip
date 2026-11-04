@@ -3,6 +3,7 @@ pub mod chats;
 mod control;
 pub mod coordinator;
 pub mod files;
+mod run;
 mod sources;
 mod worktrees;
 use crate::database::{Database, Parameters, Row};

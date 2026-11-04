@@ -40,6 +40,23 @@ export const osOpaque = {
 const transport = { kind: "docker", container: "cantrip-os" };
 export const osCommands = [
   {
+    type: "cantrip-os.run-definition",
+    execution: {
+      kind: "cantrip-os",
+      scope: Object.fromEntries(
+        Object.entries({ ...osSourceScope, projectId: id }).filter(
+          ([key]) => key !== "serverId",
+        ),
+      ),
+      transport,
+    },
+    request: {
+      type: "project.run-configuration-definitions.list",
+      operationId: id,
+      projectId: id,
+    },
+  },
+  {
     type: "cantrip-os.inspect",
     ownerId: "owner",
     workerId: "worker",
@@ -105,6 +122,49 @@ export function osDispatchFixtures() {
   const { serverId: _server, ...executionScope } = osSourceScope;
   const { serverId: _linkedServer, ...linkedExecutionScope } = linked;
   return {
+    cantripOsRunDefinitionRequestSchema: [
+      {
+        type: "project.run-configuration-definitions.list",
+        operationId: id,
+        projectId: id,
+      },
+    ],
+    cantripOsRunDefinitionApiSchema: [
+      {
+        runtimeGeneration: id,
+        request: {
+          type: "project.run-configuration-definitions.list",
+          operationId: id,
+          projectId: id,
+        },
+      },
+    ],
+    cantripOsRunPrimarySchema: [
+      {
+        bindingId: id,
+        worktreeId: id,
+        projectSourceId: id,
+        runtimeGeneration: id,
+        guestPath: "/home/example/primary",
+      },
+    ],
+    cantripOsRunDefinitionResponseSchema: [
+      {
+        source: {
+          bindingId: id,
+          worktreeId: id,
+          projectSourceId: id,
+          runtimeGeneration: id,
+          guestPath: "/home/example/primary",
+        },
+        result: {
+          operation: "capabilities",
+          operationId: id,
+          projectId: id,
+          capabilities: [],
+        },
+      },
+    ],
     cantripOsExecutionScopeSchema: [executionScope, linkedExecutionScope],
     cantripOsExecutionSchema: [
       { kind: "cantrip-os", scope: executionScope, transport },

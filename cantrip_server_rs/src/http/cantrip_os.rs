@@ -40,7 +40,9 @@ async fn execute(
             serde_json::json!(repository.bindings(&owner, param("projectId")?).await?)
         }
     } else {
-        let schema = if route.ends_with("/inspect") {
+        let schema = if route.ends_with("/run-definitions") {
+            Some("cantripOsRunDefinitionApiSchema")
+        } else if route.ends_with("/inspect") {
             Some("cantripOsInspectSchema")
         } else if route.ends_with("/attach") {
             Some("cantripOsAttachSchema")
@@ -65,7 +67,11 @@ async fn execute(
         } else {
             serde_json::Value::Null
         };
-        if route.ends_with("/inspect") {
+        if route.ends_with("/run-definitions") {
+            coordinator
+                .run_definition(&owner, param("projectId")?, param("bindingId")?, &input)
+                .await?
+        } else if route.ends_with("/inspect") {
             coordinator.inspect(&owner, &input).await?
         } else if route.ends_with("/attach") {
             coordinator.attach(&owner, &input).await?
@@ -123,6 +129,10 @@ async fn handle(
 }
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
+        .route(
+            "/api/projects/{projectId}/cantrip-os/bindings/{bindingId}/run-definitions",
+            post(handle),
+        )
         .route("/api/cantrip-os", get(handle))
         .route("/api/cantrip-os/inspect", post(handle))
         .route("/api/cantrip-os/attach", post(handle))

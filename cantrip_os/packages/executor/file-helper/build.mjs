@@ -5,11 +5,7 @@ const root = path.resolve(directory, "../../../..");
 const { build } = await import(
   process.env.CANTRIP_OS_ESBUILD_MODULE ?? "esbuild"
 );
-await build({
-  entryPoints: [path.join(directory, "main.ts")],
-  outfile:
-    process.argv[2] ??
-    path.join(root, "cantrip_os/.build/file-helper/file-operations.mjs"),
+const options = {
   bundle: true,
   format: "esm",
   platform: "node",
@@ -41,4 +37,20 @@ await build({
       },
     },
   ],
+};
+const output =
+  process.argv[2] ??
+  path.join(root, "cantrip_os/.build/file-helper/file-operations.mjs");
+await build({
+  ...options,
+  entryPoints: [path.join(directory, "main.ts")],
+  outfile: output,
+});
+await build({
+  ...options,
+  banner: {
+    js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
+  },
+  entryPoints: [path.join(directory, "run-definitions.ts")],
+  outfile: path.join(path.dirname(output), "run-definitions.mjs"),
 });
