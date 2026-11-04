@@ -444,3 +444,16 @@ one snapshot write. Redelivery after an unobserved acknowledgement returns the
 same replacement. Potentially executed input cannot use this adoption path.
 This is metadata ownership, not another native prompt queue. No new runtime
 binary was built or executed under the active goal's validation restriction.
+
+Patch `0053` records receipt of the worker's native grant in the regular/restored/
+manual-compaction turn's extension store. Cancellation before that receipt is
+retired from goal accounting instead of entering empty-response retry evaluation.
+Existing empty-response history, token accounting, and native goal elapsed time
+keep their meaning. This marker observes admission; the worker remains the only
+capacity owner. Separate execution/queue-time integration still requires the
+canonical timing handoff, including the outer wait before a first `turn/start`.
+
+This source patch was reviewed and formatted only. No native build, tests,
+benchmarks, helper execution or computer-use validation ran. It adds no public
+RPC or generated protocol shape and does not modify upstream snapshot hashes or
+manufacture a prebuilt runtime.
