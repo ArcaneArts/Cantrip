@@ -8,6 +8,7 @@ import {
 import { and, asc, eq, isNull } from "drizzle-orm";
 import * as schema from "../schema.js";
 import type { RepositoryDatabase } from "./database.js";
+import { requireWorkerLocalPath } from "./worker-local-source-path.js";
 
 export class FileDocumentConflictError extends Error {}
 
@@ -179,6 +180,8 @@ export class FileDocumentRepository {
       )
       .where(eq(schema.fileDocuments.id, id));
     const row = rows[0];
-    return row ? { ...summary(row.document), root: row.root } : null;
+    return row
+      ? { ...summary(row.document), root: requireWorkerLocalPath(row.root) }
+      : null;
   }
 }

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { requireWorkerLocalPath } from "./worker-local-source-path.js";
 
 import type {
   GitManagedOperationContext,
@@ -184,7 +185,13 @@ export class WorktreeStateRepository {
         ),
       )
       .orderBy(asc(schema.projectWorktrees.createdAt))
-      .limit(Math.min(128, Math.max(1, limit)));
+      .limit(Math.min(128, Math.max(1, limit)))
+      .then((rows) =>
+        rows.map((row) => ({
+          ...row,
+          worktreePath: requireWorkerLocalPath(row.worktreePath),
+        })),
+      );
   }
 
   async listWorkerExecutionRootContexts(
@@ -221,7 +228,13 @@ export class WorktreeStateRepository {
         ),
       )
       .orderBy(asc(schema.projectWorktrees.createdAt))
-      .limit(Math.min(128, Math.max(1, limit)));
+      .limit(Math.min(128, Math.max(1, limit)))
+      .then((rows) =>
+        rows.map((row) => ({
+          ...row,
+          worktreePath: requireWorkerLocalPath(row.worktreePath),
+        })),
+      );
   }
 
   async getProjectWorktreeObservationContext(
@@ -262,7 +275,12 @@ export class WorktreeStateRepository {
         ),
       )
       .limit(1);
-    return rows[0] ?? null;
+    return rows[0]
+      ? {
+          ...rows[0],
+          worktreePath: requireWorkerLocalPath(rows[0].worktreePath),
+        }
+      : null;
   }
 
   async reconcileWorkerProjectObservationPaths(
@@ -354,7 +372,10 @@ export class WorktreeStateRepository {
           .where(
             and(
               eq(schema.projectWorktrees.id, row.worktreeId),
-              eq(schema.projectWorktrees.absolutePath, row.worktreePath),
+              eq(
+                schema.projectWorktrees.absolutePath,
+                requireWorkerLocalPath(row.worktreePath),
+              ),
             ),
           )
           .returning({ id: schema.projectWorktrees.id });

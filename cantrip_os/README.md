@@ -12,6 +12,11 @@ the default is `1`. Persistent workspace accounts/desktops are available through
 the package CLI and the local browser workspace selector.
 
 Phase 3 adds an optional [native execution package](packages/executor/README.md).
+The source identity foundation adds server-owned OS attachments, workspace
+observations, Linux-owned source records and linked execution bindings. It keeps
+guest paths separate from worker-local paths and rejects stale generations.
+This foundation is internal: linked mount/provisioning commands and the client
+attachment/selection workflow are still being implemented.
 Its current package/transport cycle is opt-in with `CANTRIP_OS_EXECUTOR=1`;
 Cantrip project selection and full agent placement are subsequent cycles.
 

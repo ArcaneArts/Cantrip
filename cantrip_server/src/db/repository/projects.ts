@@ -19,6 +19,7 @@ import {
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import * as schema from "../schema.js";
+import { requireWorkerLocalPath } from "./worker-local-source-path.js";
 import {
   firstOrThrow,
   toISOString,
@@ -251,7 +252,7 @@ export function toProjectWorktreeSummary(
     rootKind: worktree.rootKind,
     workerId: worktree.workerId,
     name: worktree.name,
-    path: worktree.absolutePath,
+    path: requireWorkerLocalPath(worktree.absolutePath),
     displayPath: worktree.displayPath,
     isPrimary: worktree.isPrimary,
     isDefault: worktree.isDefault,
@@ -1047,7 +1048,9 @@ export class ProjectRepository {
     const selected = isWorkerAvailable
       ? (rows.find(({ workerId }) => isWorkerAvailable(workerId)) ?? rows[0])
       : rows[0];
-    return selected ?? null;
+    return selected
+      ? { ...selected, cwd: requireWorkerLocalPath(selected.cwd) }
+      : null;
   }
 
   async getProjectWorktreeContext(

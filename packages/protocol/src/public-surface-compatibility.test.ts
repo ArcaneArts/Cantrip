@@ -516,6 +516,21 @@ const agentChatExports = [
   "uniqueChatCommunicationMessages",
 ].sort();
 
+const cantripOsExports = [
+  "cantripOsAttachSchema",
+  "cantripOsDependencyOverlaySchema",
+  "cantripOsDependencyOverlaysSchema",
+  "cantripOsGuestPathSchema",
+  "cantripOsInstanceSummarySchema",
+  "cantripOsProjectSourceSummarySchema",
+  "cantripOsProjectWorktreeSummarySchema",
+  "cantripOsSourceBindingSummarySchema",
+  "cantripOsTransportSchema",
+  "cantripOsWorkspaceObservationSchema",
+  "cantripOsWorkspaceSummarySchema",
+  "projectSourceLocationSchema",
+].sort();
+
 describe("protocol public surface compatibility", () => {
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
     const exportNames = Object.keys(protocol).sort();
@@ -548,7 +563,8 @@ describe("protocol public surface compatibility", () => {
           !labelingExports.includes(name) &&
           !gitChangeSummaryExports.includes(name) &&
           !agentChatExports.includes(name) &&
-          !alertExports.includes(name),
+          !alertExports.includes(name) &&
+          !cantripOsExports.includes(name),
       ),
     ].sort();
 
@@ -560,7 +576,10 @@ describe("protocol public surface compatibility", () => {
         retiredWorkspaceProfileExports.includes(name),
       ),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2151);
+    expect(exportNames).toHaveLength(2151 + cantripOsExports.length);
+    expect(
+      exportNames.filter((name) => cantripOsExports.includes(name)),
+    ).toEqual(cantripOsExports);
     expect(exportNames.filter((name) => alertExports.includes(name))).toEqual(
       alertExports,
     );

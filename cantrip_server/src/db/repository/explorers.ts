@@ -1,3 +1,4 @@
+import { requireWorkerLocalPath } from "./worker-local-source-path.js";
 import type {
   EncryptedExplorerCreate,
   EncryptedExplorerPin,
@@ -204,7 +205,7 @@ export class ExplorerRepository {
       ? {
           explorerId: row.explorer.id,
           projectId: row.explorer.projectId,
-          root: row.worktree.absolutePath,
+          root: requireWorkerLocalPath(row.worktree.absolutePath),
           workerId: row.explorer.activeWorkerId,
           worktreeId: row.worktree.id,
         }

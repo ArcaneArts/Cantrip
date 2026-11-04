@@ -1,3 +1,4 @@
+import { requireWorkerLocalPath } from "./worker-local-source-path.js";
 import { assertNativeRuntimeWritable } from "./native-runtime-handoff-guard.js";
 import { randomUUID } from "node:crypto";
 
@@ -631,7 +632,7 @@ export class ChatExecutionLaneRepository {
           computerUseAuthorityGeneration:
             row.chat.computerUseAuthorityGeneration,
           chatId,
-          cwd: row.worktree.absolutePath,
+          cwd: requireWorkerLocalPath(row.worktree.absolutePath),
           experience: row.chat.experience as ChatWireSummary["experience"],
           defaultPermissionProfileId:
             (row.settings?.defaultPermissionProfileId as
