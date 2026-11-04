@@ -1,3 +1,5 @@
+import { guestFileUri } from "../src/os-executor/paths.js";
+import { runGuestProcess } from "../src/os-executor/process.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,6 +14,8 @@ import { CantripOsController } from "../src/os-executor/controller.js";
 import { OsFileOperations } from "../src/os-executor/files.js";
 import {
   executorControl,
+  OsExecutorConnection,
+  type OsExecutorBinding,
   type OsExecutorTransport,
 } from "../src/os-executor/connection.js";
 
@@ -189,6 +193,108 @@ describe.skipIf(!enabled)("packaged Linux product files", () => {
         expect(
           (await files.execute(execution, request, context())).outcome.ok,
         ).toBe(true);
+      const references = await files.execute(
+        execution,
+        {
+          type: "chat.files.references",
+          references: [name, "data.bin", "missing.txt", "/etc/passwd"],
+        },
+        { ...context(), surfaceKind: "chat-files", surfaceId: "chat-proof" },
+      );
+      expect(references.outcome).toMatchObject({
+        ok: true,
+        result: {
+          type: "chat.files.references",
+          value: {
+            root: scope.guestPath,
+            entries: [
+              {
+                reference: name,
+                path: `${scope.guestPath}/${name}`,
+                kind: "file",
+              },
+              { reference: "data.bin", kind: "file" },
+              { reference: "missing.txt", kind: null },
+              { reference: "/etc/passwd", kind: null },
+            ],
+          },
+        },
+      });
+      const chatId = randomUUID(),
+        local = path.join(directory, "uploaded-input.txt"),
+        uploaded = Buffer.from("uploaded 日本語\n");
+      await writeFile(local, uploaded);
+      const attachment = {
+        id: randomUUID(),
+        chatId,
+        fileName: "input 日本語.txt",
+        mimeType: "text/plain",
+        sizeBytes: uploaded.length,
+        kind: "text" as const,
+        source: "file" as const,
+        status: "ready" as const,
+        previewText: null,
+        createdAt: new Date().toISOString(),
+        path: local,
+      };
+      const [materialized] = await files.materialize(execution, chatId, [
+        attachment,
+      ]);
+      expect(materialized.guestPath).toContain(
+        `${scope.homeGuestPath}/.local/share/cantrip-os-executor/attachments/${chatId}/`,
+      );
+      expect(materialized.guestPath).not.toContain(directory);
+      const native = new OsExecutorConnection(
+        transport,
+        await executorControl<OsExecutorBinding>(transport, [
+          "open",
+          guestWorkspaceId,
+        ]),
+      );
+      try {
+        await native.request("initialize", {
+          clientName: "attachment-bytes-acceptance",
+          resumeSessionId: null,
+        });
+        native.notify("initialized");
+        const copied = await native.request<{ dataBase64: string }>(
+          "fs/readFile",
+          { path: guestFileUri(materialized.guestPath), sandbox: null },
+        );
+        expect(Buffer.from(copied.dataBase64, "base64")).toEqual(uploaded);
+        await files.dispose();
+        files = new OsFileOperations(directory, controller, authority);
+        expect(
+          await files.materialize(execution, chatId, [attachment]),
+        ).toEqual([materialized]);
+        const [otherChat] = await files.materialize(execution, randomUUID(), [
+          attachment,
+        ]);
+        expect(otherChat.guestPath).not.toBe(materialized.guestPath);
+        await runGuestProcess(
+          native,
+          ["chmod", "u+w", materialized.guestPath],
+          scope.guestPath,
+        );
+        await native.request("fs/writeFile", {
+          path: guestFileUri(materialized.guestPath),
+          dataBase64: Buffer.from("tampered").toString("base64"),
+          sandbox: null,
+        });
+        await expect(
+          files.materialize(execution, chatId, [attachment]),
+        ).rejects.toThrow(/attachment changed/);
+        const retained = await native.request<{ dataBase64: string }>(
+          "fs/readFile",
+          { path: guestFileUri(materialized.guestPath), sandbox: null },
+        );
+        expect(Buffer.from(retained.dataBase64, "base64").toString()).toBe(
+          "tampered",
+        );
+      } finally {
+        await native.close();
+      }
+
       // Persist a real Worker admission without delivering it. Restart recovery
       // must observe a missing guest receipt, never execute the original create.
       const unknownContext = context(),
@@ -253,5 +359,5 @@ describe.skipIf(!enabled)("packaged Linux product files", () => {
       await files.dispose();
       await executorControl(transport, ["close", guestWorkspaceId]);
     }
-  }, 180_000);
+  }, 360_000);
 });

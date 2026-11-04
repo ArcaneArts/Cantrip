@@ -93,8 +93,12 @@ operations use those targets. A real local-provider agent has written and run
 code through the full product; its recorded checkpoint distinguishes provider
 limitations from the deterministic native patch fixture. Header Run selection,
 Linux definition editing/setup, captured output/Stop, and Run file/editor routing
-are now available. Safe definition retirement, delegated project tools,
-attachments/artifacts, and fresh distribution acceptance remain.
+are now available in one combined Host/CantripOS configuration list. Source-scoped
+definition retirement is implemented. Worker-owned network MCP, Linux attachment
+materialization, and captured chat file references are connected; their acceptance
+records distinguish native fixtures from real-model product tests. Broader
+source-aware delegated tools, GUI launch context, and fresh distribution acceptance
+remain.
 
 The canonical model keeps `project_sources.absolute_path` worker-local. A shared
 source identity preserves worktree IDs and leases, while Linux-owned source
@@ -708,7 +712,9 @@ retains immutable definition/target captures. Both Server implementations admit
 Linux-owned worktrees through their canonical OS source rather than a Host-only
 source join. Public requests contain owned binding epochs or a captured runtime
 ID; guest paths, accounts, and transports are resolved on the Server. The combined
-configuration list and definition retirement are connected. Broader delegated
-project/Git/artifact tools and final distribution remain in progress.
+configuration list, definition retirement, attachments and returned file links
+are connected. GUI launch context and final distribution remain in progress.
+Host-only MCP Run/worktree/task-creation adapters remain unavailable in Linux
+sessions; use the source-aware product workflows.
 See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 [recorded evidence](../cantrip_os/ACCEPTANCE.md#product-file-checkpoint-2026-11-04).

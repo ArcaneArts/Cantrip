@@ -2990,6 +2990,7 @@ export class CodexAppServer implements CodexRuntime {
                     options.model,
                     options.provider,
                     options.inheritThreadSettings,
+                    options.chatId,
                   )
                 : []),
             ]
@@ -3000,6 +3001,7 @@ export class CodexAppServer implements CodexRuntime {
                 options.model,
                 options.provider,
                 options.inheritThreadSettings,
+                options.chatId,
               )),
               ...options.skillNames.flatMap((name) => {
                 const skill = selectedSkills.get(name);
@@ -4980,6 +4982,7 @@ export class CodexAppServer implements CodexRuntime {
                   model,
                   provider,
                   inheritThreadSettings,
+                  chatId,
                 )
               : []),
           ]
@@ -4989,6 +4992,7 @@ export class CodexAppServer implements CodexRuntime {
             model,
             provider,
             inheritThreadSettings,
+            chatId,
           ),
       expectedTurnId: active[0],
     };
@@ -5065,13 +5069,37 @@ export class CodexAppServer implements CodexRuntime {
     model?: RunAgentTurnOptions["model"],
     provider?: RunAgentTurnOptions["provider"],
     inheritThreadSettings = false,
+    chatId?: string | null,
   ): Promise<Array<Record<string, unknown>>> {
     const imageSupport =
       inheritThreadSettings ||
       (model && provider && attachments.some(({ kind }) => kind === "image")
         ? await this.modelSupportsImages(model, provider)
         : false);
-    const text = attachmentPromptText(prompt, attachments, imageSupport);
+    const accessible =
+      this.nativeEnvironment && attachments.length
+        ? await (async () => {
+            if (!chatId || !this.nativeEnvironment?.materializeAttachments)
+              throw new Error(
+                "Linux attachments require their exact chat placement.",
+              );
+            return (
+              await this.nativeEnvironment.materializeAttachments(
+                chatId,
+                attachments,
+              )
+            ).map(({ guestPath, ...metadata }) => ({
+              ...metadata,
+              path: guestPath,
+            }));
+          })()
+        : attachments;
+    const text = attachmentPromptText(
+      prompt,
+      accessible,
+      imageSupport,
+      this.nativeEnvironment ? "Linux workspace" : "worker",
+    );
     return [
       { type: "text", text, text_elements: [] },
       ...(imageSupport

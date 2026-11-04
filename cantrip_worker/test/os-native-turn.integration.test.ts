@@ -1,3 +1,4 @@
+import { OsFileOperations } from "../src/os-executor/files.js";
 import { CantripMcpBroker } from "../src/mcp/broker.js";
 import { managedCantripMcpHttpServer } from "../src/mcp/managed.js";
 import { randomUUID } from "node:crypto";
@@ -113,6 +114,14 @@ describe.skipIf(!enabled)("native Cantrip agent Linux tools", () => {
     const cancelMode = process.env.CANTRIP_OS_TEST_CANCEL === "1";
     const mcpMode = process.env.CANTRIP_OS_TEST_MCP === "1";
     const chatId = randomUUID();
+    const attachmentMode = process.env.CANTRIP_OS_TEST_ATTACHMENTS === "1";
+    const osFiles = new OsFileOperations(directory, controller, {
+      ownerId: () => ownerId,
+      serverIdentity: () => core.serverId,
+    });
+    const uploaded = Buffer.from("attachment from worker 日本語\n");
+    const uploadedPath = path.join(directory, "uploaded-input.txt");
+    if (attachmentMode) await writeFile(uploadedPath, uploaded);
     let broker: CantripMcpBroker | undefined;
     let mcpCalls = 0;
     const childCode =
@@ -160,13 +169,29 @@ time.sleep(300)`;
             step === 1
               ? 'python3 -c \'import os,json;print(json.dumps({"uid":os.getuid(),"cwd":os.getcwd()}))\';cat input.txt;rg seed input.txt'
               : 'python3 -c \'import os,json,pathlib;assert pathlib.Path("input.txt").read_text()=="patched in Linux\\n";assert pathlib.Path("written.txt").read_text()=="native patch write\\n";pathlib.Path("artifact.txt").write_text(json.dumps({"uid":os.getuid(),"cwd":os.getcwd(),"result":"guest artifact","has_provider_key":bool(os.getenv("CANTRIP_PROVIDER_API_KEY"))}))\'';
+          let effectiveCommand = cancelMode ? cancelCommand : command;
+          if (step === 1 && attachmentMode) {
+            const rendered = JSON.stringify(body);
+            if (rendered.includes(uploadedPath))
+              throw new Error(
+                "Worker attachment path leaked into the Linux prompt.",
+              );
+            const match = rendered.match(
+              /(\/var\/lib\/cantrip-os-workspaces\/homes\/[^\s"\\]+\/attachments\/[^"\\]+input.txt)/,
+            );
+            if (!match)
+              throw new Error(
+                "Materialized Linux attachment reference is missing.",
+              );
+            effectiveCommand += `; cat '${match[1]}' > uploaded-copy.txt`;
+          }
           item = {
             type: "function_call",
             call_id: `call-${step}`,
             name: tool.name,
             ...(tool.namespace ? { namespace: tool.namespace } : {}),
             arguments: JSON.stringify({
-              cmd: cancelMode ? cancelCommand : command,
+              cmd: effectiveCommand,
               max_output_tokens: 2000,
               yield_time_ms: cancelMode ? 10000 : 1000,
             }),
@@ -273,7 +298,12 @@ time.sleep(300)`;
         sandbox: null,
       });
       const home = path.join(directory, "native-home"),
-        environment = new OsNativeEnvironment(scope, transport, controller);
+        environment = new OsNativeEnvironment(
+          scope,
+          transport,
+          controller,
+          osFiles,
+        );
       await environment.prepare(home);
       await writeFile(
         path.join(home, "config.toml"),
@@ -404,6 +434,23 @@ time.sleep(300)`;
           "Read and search input.txt, patch its seed line, create written.txt, then execute Python to produce artifact.txt in this Linux source.",
         rootKind: "folder-root",
         skillNames: [],
+        attachments: attachmentMode
+          ? [
+              {
+                id: randomUUID(),
+                chatId,
+                fileName: "input.txt",
+                mimeType: "text/plain",
+                sizeBytes: uploaded.length,
+                kind: "text",
+                source: "file",
+                status: "ready",
+                previewText: null,
+                createdAt: new Date().toISOString(),
+                path: uploadedPath,
+              },
+            ]
+          : [],
         mcpServers: mcp
           ? [managedCantripMcpHttpServer(mcp.connection, ["context_get"])]
           : [],
@@ -564,6 +611,8 @@ time.sleep(300)`;
       expect(result.status).toBe("completed");
       expect(requests).toHaveLength(mcpMode ? 5 : 4);
       expect(mcpCalls).toBe(mcpMode ? 1 : 0);
+      if (attachmentMode)
+        expect(await read("uploaded-copy.txt")).toBe(uploaded.toString());
       expect(authenticatedRequests.every(Boolean)).toBe(true);
       expect(await read("input.txt")).toBe("patched in Linux\n");
       expect(await read("written.txt")).toBe("native patch write\n");
@@ -591,6 +640,7 @@ time.sleep(300)`;
       );
     } finally {
       await broker?.close();
+      await osFiles.dispose();
       runtime?.close();
       await connection?.close();
       provider.closeAllConnections();

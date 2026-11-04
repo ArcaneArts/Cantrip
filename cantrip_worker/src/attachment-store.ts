@@ -12,8 +12,16 @@ import path from "node:path";
 
 import { workerLogger } from "./logger.js";
 
-export const MAX_ATTACHMENT_BYTES = 25 * 1_024 * 1_024;
-export const MAX_ATTACHMENT_CHUNK_BYTES = 256 * 1_024;
+import {
+  safeAttachmentFileName,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENT_CHUNK_BYTES,
+} from "./attachment-paths.js";
+export {
+  safeAttachmentFileName,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENT_CHUNK_BYTES,
+} from "./attachment-paths.js";
 
 interface PendingUpload {
   ended: boolean;
@@ -42,18 +50,6 @@ function safeSegment(value: string, label: string): string {
     throw new Error(`${label} is invalid.`);
   }
   return value;
-}
-
-export function safeAttachmentFileName(value: string): string {
-  const base = path.basename(value.replaceAll("\\", "/")).normalize("NFKC");
-  const sanitized = base
-    .replace(/[\u0000-\u001f\u007f]/gu, "")
-    .replace(/[^\p{L}\p{N}._()\[\] -]/gu, "_")
-    .replace(/\s+/gu, " ")
-    .trim()
-    .replace(/^\.+/u, "")
-    .slice(0, 180);
-  return sanitized || "attachment";
 }
 
 export class AttachmentStore {

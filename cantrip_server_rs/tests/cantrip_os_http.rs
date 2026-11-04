@@ -102,6 +102,17 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
             let command = &request["command"];
             let observed = |attached: bool, profiles: &Vec<Value>| json!({"guestInstanceId":guest,"runtimeGeneration":generation,"attachment":if attached {json!({"ownerId":actual_owner,"workerId":target})}else{Value::Null},"workspaces":profiles});
             let result = match command["type"].as_str().context("OS fixture command")? {
+                "chat.files.references" => {
+                    assert_eq!(command["root"]["kind"], "cantrip-os");
+                    assert!(
+                        command["root"]["scope"]["guestPath"]
+                            .as_str()
+                            .unwrap()
+                            .starts_with('/')
+                    );
+                    json!({"operationId":command["operationId"],"sequence":command["sequence"],"protectedResponse":{"formatVersion":1,"keyRevision":1,"envelope":{"version":1,"algorithm":"AES-256-GCM","keyRevision":1,"nonce":"AAAAAAAAAAAAAAAA","ciphertext":"AAAAAAAAAAAAAAAAAAAAAA"}}})
+                }
+
                 "cantrip-os.run-definition" => {
                     assert!(command.get("sourcePath").is_none());
                     assert!(command["request"].get("sourcePath").is_none());
@@ -331,6 +342,12 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     let chat = id();
     database.query("INSERT INTO chats(id,owner_id,project_id,protected_label,active_worker_id,active_worktree_id,experience,worktree_mode) VALUES($1,$2,$3,'{}',$4,$5,'agent','pinned')", &[&chat,&owner,&project,&worker,&binding["worktreeId"].as_str().unwrap()]).await?;
     database.query("INSERT INTO cantrip_os_chat_placements(chat_id,binding_id,binding_generation,attachment_generation,runtime_generation) VALUES($1,$2,$3,$4,$5)", &[&chat,&binding["id"].as_str().unwrap(),&binding["bindingGeneration"].as_str().unwrap(),&attached["instance"]["attachmentGeneration"].as_str().unwrap(),&attached["instance"]["runtimeGeneration"].as_str().unwrap()]).await?;
+    let refs = client.post(format!("{base}/api/chats/{chat}/file-references"))
+        .json(&json!({"operationId":id(),"sequence":0,"protectedRequest":{"formatVersion":1,"keyRevision":1,"envelope":{"version":1,"algorithm":"AES-256-GCM","keyRevision":1,"nonce":"AAAAAAAAAAAAAAAA","ciphertext":"AAAAAAAAAAAAAAAAAAAAAA"}}}))
+        .send().await?;
+    let refs_status = refs.status();
+    let refs_body = refs.json().await?;
+    assert_eq!(refs_status, 200, "{refs_body}");
     database
         .query(
             "UPDATE cantrip_os_instances SET runtime_generation=$1 WHERE id=$2",

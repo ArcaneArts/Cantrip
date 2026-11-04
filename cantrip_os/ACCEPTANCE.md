@@ -1220,3 +1220,68 @@ Required pnpm check retains the recorded agentOperations audit mismatch.
 Evidence is retained under ignored artifacts/phase3-agent-tools/. Source-aware
 Run/worktree/delegation adapters, attachment and artifact delivery, GUI context,
 and final distribution acceptance remain in progress.
+
+## Linux attachment and artifact routing checkpoint (2026-11-04)
+
+Executor 0.8.0 adds content-addressed attachment copies outside the selected
+checkout and source-scoped chat file references. Normal turns, steering and
+queued native input present Linux paths to the agent. Native image/audio input
+continues through the worker's established path. Both Server implementations
+forward explicit Linux file roots, and source changes cannot fall back to a Host
+file read. The helper shares filename rules with the worker without importing
+worker logging, orchestration, or credentials.
+
+Actual packaged product-files and native-turn fixtures passed in ARM64 Docker.
+The native fixture read an uploaded Unicode input from its Linux path, executed
+real read/search, patch/write and Python artifact operations, and called the
+worker context MCP once. On the installed AMD64 VM, the native turn passed in the
+parallel run; the larger filesystem test hit its initial 180-second budget. Its
+standalone rerun with a 360-second budget passed in 100.42 seconds. The package
+code was unchanged between those VM runs. Tests verified actual copied bytes,
+separate chat destinations, retained copies across worker-helper recreation, and
+rejection of a modified copy without overwriting it. File references report only
+files within the captured source, including Unicode and binary files.
+
+Local checks: seven attachment/native runtime tests, seven Server route tests,
+37 app file-reference/opening tests, Native HTTP source routing, and two Native
+contracts passed. Worker types retain six recorded baseline errors with no new
+errors. All 527 Worker command alternatives validated before rebasing. After
+rebasing onto current Main, the focused Docker tests passed again (nine tests,
+including the native attachment/MCP turn), and seven Node route tests passed.
+The broader alternative registry now also encounters Main's newly introduced
+initial-label fields, which lack baseline fixtures; the new Linux root fixtures
+remain valid. Native contracts/HTTP tests passed before rebase. The rebased
+Native build is blocked by Main's `automatic_title.rs:370` passing `&Value` to a
+function now requiring `Option<&Value>`. This change does not modify that code.
+Required pnpm check retains the recorded agentOperations audit digest mismatch.
+
+Packages: artifacts/packages/cantrip-os-executor_0.8.0_<arch>.deb. SHA-256:
+
+- ARM64: 600d05192a7795c543d49f07fc750eb5658c0abf378d163d5222319c71eaf951
+- AMD64: 4675542d754179687cc8238e0b77b59ab80cc5f931cf8654d968ed4407eeb6d7
+
+A real product-dispatched local Qwen turn uploaded the 46-byte Unicode fixture,
+read and searched its guest copy, and called the worker context MCP once. The
+provider emitted incompatible payloads for the native freeform patch tool; after
+an explicitly confirmed Stop, a new turn used the native shell's intercepted
+`apply_patch` heredoc to create the six-line Python program in Linux. It executed
+that program against the uploaded guest path and independently verified the
+251-byte result, workspace UID 20000, exact Primary checkout and input checksum.
+The worker connection was interrupted during this turn. The final response was
+recovered from native history after reconnect without rerunning the edits. The
+returned Markdown file link and Explorer both opened the same Linux document in
+Cantrip's editor. Neither the script nor artifact appeared in the Host fixture.
+The artifact SHA-256 is
+fccdf8b0a423fb8900b983ea44a6fcb5d3968529c49d73d925a76513dd12d401.
+
+This establishes real-model attachment-to-artifact delivery; it does not claim
+the Ollama freeform tool mismatch is fixed. The fixture-provider native tool loop
+separately covers direct patch calls on compatible payloads. An earlier queued
+correction received a truthful Start failure after the Stop fence and was not
+replayed. Temporary app diagnostics were removed before the final browser test.
+
+Fixture logs, native receipts, verified artifact bytes and browser screenshots
+are kept under ignored artifacts/phase3-chat-artifacts/. GUI context and refreshed
+media remain in progress. Host-only Run/worktree/task-creation MCP adapters remain
+explicitly unavailable in Linux sessions; the corresponding supported product
+workflows retain their captured placements.

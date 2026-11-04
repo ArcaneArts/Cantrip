@@ -1654,6 +1654,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           { ...os.scope, serverId: workerEncryption.serverIdentity() },
           os.transport,
           cantripOs,
+          osFiles,
         )
       : null;
     const placementRuntimeId = nativeEnvironment
@@ -1852,7 +1853,20 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     content: Parameters<typeof openWorkerAttachments>[0],
   ): Promise<NativeQueueUserInput[]> => {
     const opened = await openWorkerAttachments(content, workerEncryption);
-    return Promise.all(
+    const local = opened.map((attachment) => ({
+      ...attachment,
+      path: attachments.resolve(chatId, attachment.id, attachment.fileName),
+    }));
+    const placement = osAgentPlacements.resolve({
+      ...nativeNamespaceScope(),
+      chatId,
+    });
+    const accessible = placement
+      ? (await osFiles.materialize(placement, chatId, local)).map(
+          ({ guestPath, ...metadata }) => ({ ...metadata, path: guestPath }),
+        )
+      : local;
+    const input = await Promise.all(
       opened.map(async (attachment): Promise<NativeQueueUserInput> => {
         const filePath = attachments.resolve(
           chatId,
@@ -1874,13 +1888,30 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           type: "text",
           text: attachmentPromptText(
             "",
-            [{ ...attachment, path: filePath }],
+            [accessible.find((item) => item.id === attachment.id)!],
             true,
+            placement ? "Linux workspace" : "worker",
           ),
           text_elements: [],
         };
       }),
     );
+    const media = placement
+      ? accessible.filter(
+          (attachment) =>
+            attachment.kind === "image" || attachment.kind === "audio",
+        )
+      : [];
+    return media.length
+      ? [
+          ...input,
+          {
+            type: "text" as const,
+            text: attachmentPromptText("", media, true, "Linux workspace"),
+            text_elements: [],
+          },
+        ]
+      : input;
   };
   const queueInputCodec = (
     chatId: string,
@@ -3666,6 +3697,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "chat.scratch.reconcile":
         return chatScratch.reconcile(command.roots);
       case "chat.files.references": {
+        const root = command.root;
         const context = {
           serverId: command.serverId,
           surfaceKind: "chat-files" as const,
@@ -3688,7 +3720,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             result: {
               type: "chat.files.references",
               value: chatFileReferencesResultContentSchema.parse(
-                await chatFileReferences(command.root, request.references),
+                typeof root === "string"
+                  ? await chatFileReferences(root, request.references)
+                  : await (async () => {
+                      const result = await osFiles.execute(
+                        root,
+                        request,
+                        context,
+                      );
+                      if (!result.outcome.ok)
+                        throw new Error(result.outcome.error);
+                      if (
+                        result.outcome.result.type !== "chat.files.references"
+                      )
+                        throw new Error("Misrouted Linux file references.");
+                      return result.outcome.result.value;
+                    })(),
               ),
             },
           };

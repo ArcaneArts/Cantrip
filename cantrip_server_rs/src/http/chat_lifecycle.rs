@@ -112,7 +112,12 @@ async fn worker_operation(
         }
         json!({"type":"chat.scratch.files.operation","rootId":context["scratchRootId"],"chatId":context["chatId"],"serverId":service.server_id,"root":context["cwd"],"intent":input["intent"],"operationId":input["operationId"],"sequence":input["sequence"],"protectedRequest":input["protectedRequest"]})
     } else {
-        let mut command = json!({"type":"chat.files.references","chatId":context["chatId"],"serverId":service.server_id,"root":context["cwd"]});
+        let root = if context["osExecution"].is_null() {
+            &context["cwd"]
+        } else {
+            &context["osExecution"]
+        };
+        let mut command = json!({"type":"chat.files.references","chatId":context["chatId"],"serverId":service.server_id,"root":root});
         for (key, value) in input.as_object().context("File reference request")? {
             command[key.as_str().context("File reference field")?] = value.clone();
         }
