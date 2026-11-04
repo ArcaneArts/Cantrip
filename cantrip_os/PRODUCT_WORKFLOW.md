@@ -163,5 +163,11 @@ definition Primary and execution target. Reconciliation after Worker memory loss
 stops recorded native handles without repeating their launch or input; an
 unconfirmed stop remains an error rather than an idle result. This internal
 Worker capability is not yet a client Run action.
+Server persistence now gives Host and Linux Runs separate identities, even for
+the same linked worktree and configuration. A Linux identity captures its
+definition Primary, target, workspace, and binding/attachment/runtime generations.
+Replacing the OS generation creates another runtime and terminal; existing
+records retain their original capture. The public Run endpoints and selection
+controls have not yet been connected to these records.
 Linux definition deletion is not admitted by this checkpoint: it must join
 that lifecycle so active Runs stop before their definition and tabs are removed.

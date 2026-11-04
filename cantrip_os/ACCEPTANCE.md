@@ -951,3 +951,37 @@ this is not a claim that the entire Native contract suite is green.
 This checkpoint supplies the Worker lifecycle, not the Server Run API or header
 source picker. Canonical captured runtime records and product routing remain
 the next block. Evidence is under ignored `artifacts/phase3-run-lifecycle/`.
+
+## Server Run placement checkpoint (2026-11-04)
+
+Migration `0248` adds a separate execution identity and immutable Linux placement
+capture to Run runtimes. Existing records default to Host execution. The owning
+Server validates new Linux admissions against canonical Primary/target bindings
+inside the admission transaction. Linux-owned worktrees use this path without
+requiring a Worker-local source row.
+
+- Node/PGlite tests verified distinct runtime and terminal IDs for Host and Linux
+  Runs using the same linked worktree/configuration. Default Host lookups and
+  reconciliation identities excluded Linux records; explicit scoped queries
+  returned the intended record. A Linux stop targeted its own generation while
+  the Host runtime stayed active.
+- Replaying an admission retained its identity; changed captured roots were
+  rejected. A replaced OS generation invalidated old admissions, retained old
+  captures, and created a fresh runtime/terminal after the binding became ready.
+  A Linux-owned source admitted a Run without a Host source row and rejected a
+  Host admission for that worktree.
+- Native Server tests exercised secondary Linux worktree admissions, scoped
+  lookups, replay, stop, ownership checks, and capture immutability in both PGlite
+  and real PostgreSQL. Direct SQL attempts to change a stored capture or
+  execution identity failed. Native epoch keys matched the actual Node helper.
+
+Focused Node runtime/chat/source migration checks passed (13 tests). Native
+PGlite/PostgreSQL repository checks passed (two tests). Server type checking
+retained its two existing Task errors. The required repository check retained
+the same `agentOperations` audit mismatch. This cycle changes Server metadata;
+executor packages remain 0.6.0, as tested in the preceding lifecycle checkpoint.
+
+Public Run API dispatch, reconciliation/retirement routing, the header source
+picker, and complete distribution acceptance remain pending. No product action
+is represented as complete by these database tests. Logs are retained under
+ignored `artifacts/phase3-run-placement/`.

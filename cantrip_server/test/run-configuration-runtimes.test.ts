@@ -3,7 +3,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
+import {
+  unprobedCodexRuntimeReport,
+  cantripOsSourceReceiptSchema,
+  type CantripOsSourceBindingSummary,
+} from "@cantrip/protocol";
+import { osRunExecutionKey } from "../src/db/repository/cantrip-os-run-capture.js";
 import {
   runConfigurationRuntimeWorkerObservationSchema,
   type RunConfigurationRuntime,
@@ -527,6 +532,293 @@ describe("Run configuration runtime persistence", () => {
     ).resolves.toBeNull();
   });
 
+  it("keeps linked Host/Linux Runs separate and preserves captured epochs across replacement", async () => {
+    const repository = database.repository,
+      os = repository.cantripOs;
+    const instance = await os.attach(LOCAL_USER_ID, {
+      workerId,
+      guestInstanceId: randomUUID(),
+      name: "Run placement",
+      transport: { kind: "docker", container: "run-placement-fixture" },
+      expectedAttachmentGeneration: null,
+    });
+    let runtimeGeneration = randomUUID();
+    await os.observe(
+      LOCAL_USER_ID,
+      instance.id,
+      instance.attachmentGeneration,
+      { status: "connected", runtimeGeneration, lastError: null },
+    );
+    const workspace = await os.recordWorkspace(
+      LOCAL_USER_ID,
+      instance.id,
+      instance.attachmentGeneration,
+      {
+        guestWorkspaceId: "run-fixture",
+        uid: 20000,
+        gid: 20000,
+        homeGuestPath: "/home/run-fixture",
+      },
+    );
+    const binding = await os.createLinkedBinding(LOCAL_USER_ID, {
+      workspaceId: workspace.id,
+      worktreeId,
+      dependencyOverlays: [{ path: "node_modules" }],
+    });
+    const ready = async (binding: CantripOsSourceBindingSummary) =>
+      os.recordBindingOutcome(
+        LOCAL_USER_ID,
+        binding.id,
+        {
+          bindingGeneration: binding.bindingGeneration,
+          attachmentGeneration: instance.attachmentGeneration,
+          runtimeGeneration,
+        },
+        {
+          state: "ready",
+          lastError: null,
+          sourceReceipt: cantripOsSourceReceiptSchema.parse({
+            bindingId: binding.id,
+            workspaceId: workspace.id,
+            guestWorkspaceId: workspace.guestWorkspaceId,
+            mode: binding.mode,
+            guestPath: binding.guestPath,
+            runtimeGeneration,
+            uid: workspace.uid,
+            homeGuestPath: workspace.homeGuestPath,
+            head: binding.mode === "linux-owned" ? "a".repeat(40) : null,
+            branch: null,
+            detached: binding.mode === "linux-owned",
+            repositoryFingerprint:
+              binding.mode === "linux-owned"
+                ? "run-fixture-common-directory"
+                : null,
+            gitCommonGuestPath:
+              binding.mode === "linux-owned"
+                ? `${binding.guestPath}/.git`
+                : null,
+            recreated: false,
+            interruptedGuestWorkspaces: [],
+            dependencyOverlays: binding.dependencyOverlays,
+            cleanupWarnings: [],
+          }),
+        },
+      );
+    await ready(binding);
+    const primary = await os.runPrimary(
+      LOCAL_USER_ID,
+      projectId,
+      binding.id,
+      runtimeGeneration,
+    );
+    const roots = { definitions: primary, target: primary },
+      executionKey = osRunExecutionKey(roots);
+    const configurationId = randomUUID();
+    const host = await repository.requestRunConfigurationRuntimeOperation(
+      LOCAL_USER_ID,
+      startRequest(configurationId),
+    );
+    const request = { ...startRequest(configurationId), osExecution: roots };
+    const linux = await repository.requestRunConfigurationRuntimeOperation(
+      LOCAL_USER_ID,
+      request,
+    );
+    expect(linux.runtime!.id).not.toBe(host.runtime!.id);
+    expect(linux.runtime!.terminalId).not.toBe(host.runtime!.terminalId);
+    expect(
+      await repository.getRunConfigurationRuntime(
+        LOCAL_USER_ID,
+        projectId,
+        configurationId,
+        worktreeId,
+      ),
+    ).toMatchObject({ id: host.runtime!.id });
+    expect(
+      await repository.getRunConfigurationRuntime(
+        LOCAL_USER_ID,
+        projectId,
+        configurationId,
+        worktreeId,
+        executionKey,
+      ),
+    ).toMatchObject({ id: linux.runtime!.id });
+    expect(
+      await repository.getRunConfigurationRuntimeOperationResult(
+        LOCAL_USER_ID,
+        request.operationId,
+      ),
+    ).toBeNull();
+    expect(
+      (await repository.getRunConfigurationRuntimeOperationResult(
+        LOCAL_USER_ID,
+        request.operationId,
+        executionKey,
+      ))!.runtime!.id,
+    ).toBe(linux.runtime!.id);
+    expect(
+      (
+        await repository.requestRunConfigurationRuntimeOperation(
+          LOCAL_USER_ID,
+          request,
+        )
+      ).replayed,
+    ).toBe(true);
+    expect(
+      (
+        await repository.listRunConfigurationRuntimes(
+          LOCAL_USER_ID,
+          projectId,
+          { configurationId },
+        )
+      ).map((run) => run.id),
+    ).toEqual([host.runtime!.id]);
+    expect(
+      (
+        await repository.listRunConfigurationRuntimes(
+          LOCAL_USER_ID,
+          projectId,
+          { configurationId, executionKey: null },
+        )
+      )
+        .map((run) => run.id)
+        .sort(),
+    ).toEqual([host.runtime!.id, linux.runtime!.id].sort());
+    expect(
+      (
+        await repository.listActiveRunConfigurationRuntimeIdentitiesForWorker(
+          LOCAL_USER_ID,
+          workerId,
+        )
+      ).some((run) => run.runtimeId === linux.runtime!.id),
+    ).toBe(false);
+    expect(
+      (
+        await repository.listActiveRunConfigurationRuntimeIdentitiesForWorker(
+          LOCAL_USER_ID,
+          workerId,
+          "cantrip-os",
+        )
+      ).map((run) => run.runtimeId),
+    ).toContain(linux.runtime!.id);
+    const changed = {
+      ...roots,
+      target: {
+        ...primary,
+        scope: { ...primary.scope, guestPath: "/different-root" },
+      },
+    };
+    await expect(
+      repository.requestRunConfigurationRuntimeOperation(LOCAL_USER_ID, {
+        ...request,
+        osExecution: changed,
+      }),
+    ).rejects.toThrow("placement capture changed");
+    const captured = await repository.getRunConfigurationRuntimeCapture(
+      LOCAL_USER_ID,
+      linux.runtime!.id,
+    );
+    expect(captured).toMatchObject({ executionKey, osExecution: roots });
+    expect(
+      await repository.getRunConfigurationRuntimeCapture(
+        "another-owner",
+        linux.runtime!.id,
+      ),
+    ).toBeNull();
+    const stopping = await repository.requestRunConfigurationRuntimeOperation(
+      LOCAL_USER_ID,
+      {
+        ...request,
+        operation: "stop",
+        operationId: randomUUID(),
+        definitionRevision: null,
+        codexEnvironmentRevision: null,
+      },
+    );
+    expect(stopping.runtime).toMatchObject({
+      id: linux.runtime!.id,
+      state: "stopping",
+      generation: 1,
+    });
+    await repository.applyRunConfigurationRuntimeObservation(
+      LOCAL_USER_ID,
+      workerId,
+      observation(stopping.runtime!, "idle"),
+    );
+    expect(
+      await repository.getRunConfigurationRuntime(
+        LOCAL_USER_ID,
+        projectId,
+        configurationId,
+        worktreeId,
+      ),
+    ).toMatchObject({ id: host.runtime!.id, state: "starting" });
+    // A Linux-owned source has no Worker-local project_sources row.
+    const owned = await os.createLinuxSource(LOCAL_USER_ID, {
+      projectId,
+      workspaceId: workspace.id,
+      sourceKind: "git",
+    });
+    await ready(owned.binding);
+    const ownedPrimary = await os.runPrimary(
+      LOCAL_USER_ID,
+      projectId,
+      owned.binding.id,
+      runtimeGeneration,
+    );
+    const ownedRun = await repository.requestRunConfigurationRuntimeOperation(
+      LOCAL_USER_ID,
+      {
+        ...startRequest(randomUUID()),
+        worktreeId: owned.binding.worktreeId,
+        osExecution: { definitions: ownedPrimary, target: ownedPrimary },
+      },
+    );
+    expect(ownedRun.runtime!.worktreeId).toBe(owned.binding.worktreeId);
+    await expect(
+      repository.requestRunConfigurationRuntimeOperation(LOCAL_USER_ID, {
+        ...startRequest(randomUUID()),
+        worktreeId: owned.binding.worktreeId,
+      }),
+    ).rejects.toThrow("not available on that worker");
+    runtimeGeneration = randomUUID();
+    await os.observe(
+      LOCAL_USER_ID,
+      instance.id,
+      instance.attachmentGeneration,
+      { status: "connected", runtimeGeneration, lastError: null },
+    );
+    await expect(
+      repository.requestRunConfigurationRuntimeOperation(LOCAL_USER_ID, {
+        ...request,
+        operationId: randomUUID(),
+      }),
+    ).rejects.toThrow();
+    expect(
+      (await repository.getRunConfigurationRuntimeCapture(
+        LOCAL_USER_ID,
+        linux.runtime!.id,
+      ))!.osExecution,
+    ).toEqual(roots);
+    await ready(binding);
+    const currentPrimary = await os.runPrimary(
+      LOCAL_USER_ID,
+      projectId,
+      binding.id,
+      runtimeGeneration,
+    );
+    const next = await repository.requestRunConfigurationRuntimeOperation(
+      LOCAL_USER_ID,
+      {
+        ...request,
+        operationId: randomUUID(),
+        osExecution: { definitions: currentPrimary, target: currentPrimary },
+      },
+    );
+    expect(next.runtime!.id).not.toBe(linux.runtime!.id);
+    expect(next.runtime!.terminalId).not.toBe(linux.runtime!.terminalId);
+    expect(next.runtime!.generation).toBe(1);
+  });
+
   it("persists only bounded runtime and operation metadata", () => {
     expect(
       Object.keys(getTableColumns(runConfigurationRuntimes)).sort(),
@@ -536,8 +828,10 @@ describe("Run configuration runtime persistence", () => {
         "ownerId",
         "projectId",
         "configurationId",
+        "executionKey",
         "worktreeId",
         "workerId",
+        "osExecution",
         "terminalId",
         "definitionRevision",
         "codexEnvironmentRevision",
@@ -561,6 +855,7 @@ describe("Run configuration runtime persistence", () => {
         "ownerId",
         "projectId",
         "configurationId",
+        "executionKey",
         "worktreeId",
         "runtimeId",
         "workerId",

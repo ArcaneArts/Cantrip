@@ -1,4 +1,4 @@
-use super::{Repository, raw, summary, text};
+use super::{Repository, execution, raw, summary, text};
 use crate::{
     database::Transaction,
     project_layout,
@@ -47,6 +47,7 @@ async fn replay(tx: &Transaction<'_>, owner: &str, input: &Value, row: &Value) -
         ("configurationId", "configuration_id"),
         ("worktreeId", "worktree_id"),
         ("workerId", "worker_id"),
+        ("executionKey", "execution_key"),
         ("operation", "operation"),
         ("definitionRevision", "definition_revision"),
         ("codexEnvironmentRevision", "codex_environment_revision"),
@@ -57,7 +58,17 @@ async fn replay(tx: &Transaction<'_>, owner: &str, input: &Value, row: &Value) -
         );
     }
     let runtime = if let Some(id) = row["runtime_id"].as_str() {
-        tx.query("SELECT to_jsonb(r)::text FROM run_configuration_runtimes r WHERE id=$1 AND owner_id=$2 LIMIT 1", &[&id,&owner]).await?.first().map(|row|summary(&raw(row.get(0)?)?)).transpose()?.unwrap_or(Value::Null)
+        let rows=tx.query("SELECT to_jsonb(r)::text FROM run_configuration_runtimes r WHERE id=$1 AND owner_id=$2 LIMIT 1", &[&id,&owner]).await?;
+        if let Some(row) = rows.first() {
+            let row = raw(row.get(0)?)?;
+            ensure!(
+                row["os_execution"] == input["osExecution"],
+                "The Run configuration placement capture changed."
+            );
+            summary(&row)?
+        } else {
+            Value::Null
+        }
     } else {
         Value::Null
     };
@@ -74,11 +85,20 @@ async fn find_operation(tx: &Transaction<'_>, id: &str) -> Result<Option<Value>>
     .transpose()
 }
 async fn find_runtime(tx: &Transaction<'_>, input: &Value) -> Result<Option<Value>> {
-    tx.query("SELECT to_jsonb(r)::text FROM run_configuration_runtimes r WHERE project_id=$1 AND configuration_id=$2 AND worktree_id=$3 LIMIT 1 FOR UPDATE", &[&text(input,"projectId")?,&text(input,"configurationId")?,&text(input,"worktreeId")?]).await?.first().map(|row|raw(row.get(0)?)).transpose()
+    tx.query("SELECT to_jsonb(r)::text FROM run_configuration_runtimes r WHERE project_id=$1 AND configuration_id=$2 AND worktree_id=$3 AND execution_key=$4 LIMIT 1 FOR UPDATE", &[&text(input,"projectId")?,&text(input,"configurationId")?,&text(input,"worktreeId")?,&text(input,"executionKey")?]).await?.first().map(|row|raw(row.get(0)?)).transpose()
 }
 impl Repository {
     pub async fn operation_result(&self, owner: &str, id: &str) -> Result<Option<Value>> {
-        let rows = self.database.query("SELECT to_jsonb(o)::text FROM run_configuration_runtime_operations o WHERE id=$1 AND owner_id=$2 LIMIT 1", &[&id,&owner]).await?;
+        self.operation_result_in_execution(owner, id, "worker")
+            .await
+    }
+    pub async fn operation_result_in_execution(
+        &self,
+        owner: &str,
+        id: &str,
+        execution_key: &str,
+    ) -> Result<Option<Value>> {
+        let rows = self.database.query("SELECT to_jsonb(o)::text FROM run_configuration_runtime_operations o WHERE id=$1 AND owner_id=$2 AND execution_key=$3 LIMIT 1", &[&id,&owner,&execution_key]).await?;
         let Some(row) = rows.first() else {
             return Ok(None);
         };
@@ -98,7 +118,10 @@ impl Repository {
     pub async fn request_operation(&self, owner: &str, input: &Value) -> Result<Value> {
         let position =
             project_layout::next_position(&self.database, text(input, "projectId")?).await?;
-        let (owner, input) = (owner.to_owned(), input.clone());
+        let (owner, mut input) = (owner.to_owned(), input.clone());
+        let roots = execution::roots(&input)?;
+        input["executionKey"] = Value::String(execution::key(&roots)?.into());
+        input["osExecution"] = roots;
         self.database
             .transaction(|tx| Box::pin(admit(tx, owner, input, position)))
             .await
@@ -115,7 +138,18 @@ async fn admit(tx: &Transaction<'_>, owner: String, input: Value, position: i64)
     let worker = text(&input, "workerId")?;
     let configuration = text(&input, "configurationId")?;
     let requested = text(&input, "operation")?;
-    let placements=tx.query("SELECT w.worker_id FROM project_worktrees w INNER JOIN project_sources s ON s.id=w.project_source_id INNER JOIN projects p ON p.id=s.project_id AND p.owner_id=$1 WHERE p.id=$2 AND w.id=$3 AND w.worker_id=$4 AND w.lifecycle_state='ready' AND s.removed_at IS NULL LIMIT 1", &[&owner,&project,&worktree,&worker]).await?;
+    let execution_key = text(&input, "executionKey")?;
+    let os_execution = if input["osExecution"].is_null() {
+        None
+    } else {
+        Some(postgres_types::Json(input["osExecution"].clone()))
+    };
+    execution::capture(tx, &owner, &input, &input["osExecution"]).await?;
+    let placements = if input["osExecution"].is_null() {
+        tx.query("SELECT w.worker_id FROM project_worktrees w INNER JOIN project_sources s ON s.id=w.project_source_id INNER JOIN projects p ON p.id=s.project_id AND p.owner_id=$1 WHERE p.id=$2 AND w.id=$3 AND w.worker_id=$4 AND w.lifecycle_state='ready' AND s.removed_at IS NULL LIMIT 1", &[&owner,&project,&worktree,&worker]).await?
+    } else {
+        tx.query("SELECT worker_id FROM project_worktrees WHERE id=$1 AND worker_id=$2 AND project_source_id=$3 AND lifecycle_state='ready' LIMIT 1",&[&worktree,&worker,&text(&input["osExecution"]["target"]["scope"],"projectSourceId")?]).await?
+    };
     ensure!(
         !placements.is_empty(),
         "The Run configuration target worktree is not available on that worker."
@@ -125,11 +159,17 @@ async fn admit(tx: &Transaction<'_>, owner: String, input: Value, position: i64)
     let codex = input["codexEnvironmentRevision"].as_str();
     if current.is_none() && requested == "start" {
         let runtime_id = uuid::Uuid::new_v4().to_string();
-        tx.query("INSERT INTO run_configuration_runtimes (id,owner_id,project_id,configuration_id,worktree_id,worker_id,definition_revision,codex_environment_revision,generation,requested_operation_id,state) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,0,$9,'idle') ON CONFLICT (project_id,configuration_id,worktree_id) DO NOTHING", &[&runtime_id,&owner,&project,&configuration,&worktree,&worker,&definition,&codex,&id]).await?;
+        tx.query("INSERT INTO run_configuration_runtimes (id,owner_id,project_id,configuration_id,worktree_id,worker_id,definition_revision,codex_environment_revision,generation,requested_operation_id,state,execution_key,os_execution) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,0,$9,'idle',$10,$11) ON CONFLICT (project_id,configuration_id,worktree_id,execution_key) DO NOTHING", &[&runtime_id,&owner,&project,&configuration,&worktree,&worker,&definition,&codex,&id,&execution_key,&os_execution]).await?;
         current = find_runtime(tx, &input).await?;
     }
     if let Some(row) = find_operation(tx, id).await? {
         return replay(tx, &owner, &input, &row).await;
+    }
+    if let Some(row) = current.as_ref() {
+        ensure!(
+            row["os_execution"] == input["osExecution"],
+            "The Run configuration placement capture changed."
+        );
     }
     let mut generation = current
         .as_ref()
@@ -213,7 +253,7 @@ async fn admit(tx: &Transaction<'_>, owner: String, input: Value, position: i64)
         current = Some(raw(bound.get(0)?)?);
     }
     let runtime_id = current.as_ref().and_then(|row| row["id"].as_str());
-    let receipts=tx.query("INSERT INTO run_configuration_runtime_operations (id,owner_id,project_id,configuration_id,worktree_id,runtime_id,worker_id,operation,outcome,generation,definition_revision,codex_environment_revision) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (id) DO NOTHING RETURNING to_jsonb(run_configuration_runtime_operations)::text", &[&id,&owner,&project,&configuration,&worktree,&runtime_id,&worker,&requested,&outcome,&generation,&definition,&codex]).await?;
+    let receipts=tx.query("INSERT INTO run_configuration_runtime_operations (id,owner_id,project_id,configuration_id,worktree_id,runtime_id,worker_id,operation,outcome,generation,definition_revision,codex_environment_revision,execution_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (id) DO NOTHING RETURNING to_jsonb(run_configuration_runtime_operations)::text", &[&id,&owner,&project,&configuration,&worktree,&runtime_id,&worker,&requested,&outcome,&generation,&definition,&codex,&execution_key]).await?;
     let Some(receipt) = receipts.first() else {
         let raced = find_operation(tx, id)
             .await?
