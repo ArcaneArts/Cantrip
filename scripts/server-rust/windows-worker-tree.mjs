@@ -31,20 +31,32 @@ ConvertTo-Json -InputObject $records -Compress
   return JSON.parse(stdout);
 }
 
+export function ownedWindowsWorkerProcesses(all, pid) {
+  const root = all.find((process) => process.id === pid);
+  if (!root?.created)
+    throw new Error("Could not identify the owned worker tree.");
+  const owned = new Map([[pid, root]]);
+  for (;;) {
+    const size = owned.size;
+    for (const process of all) {
+      const parent = owned.get(process.parent);
+      if (!parent || owned.has(process.id)) continue;
+      if (!process.created)
+        throw new Error("Could not identify the owned worker tree.");
+      // Windows retains parent IDs after exit and later reuses those IDs.
+      // A process born before this parent belongs to an earlier lifetime.
+      if (BigInt(process.created) >= BigInt(parent.created))
+        owned.set(process.id, process);
+    }
+    if (size === owned.size) break;
+  }
+  return all.filter((process) => owned.has(process.id));
+}
+
 export async function terminateWindowsWorkerTree(pid, deadline) {
   let owned, snapshotError;
   try {
-    const all = await processes();
-    const ids = new Set([pid]);
-    for (;;) {
-      const size = ids.size;
-      for (const process of all)
-        if (ids.has(process.parent)) ids.add(process.id);
-      if (size === ids.size) break;
-    }
-    owned = all.filter((process) => ids.has(process.id));
-    if (!owned.some((p) => p.id === pid) || owned.some((p) => !p.created))
-      snapshotError = new Error("Could not identify the owned worker tree.");
+    owned = ownedWindowsWorkerProcesses(await processes(), pid);
   } catch (error) {
     snapshotError = error;
   }
@@ -72,7 +84,12 @@ export async function terminateWindowsWorkerTree(pid, deadline) {
           )
         : [];
       if (remaining.length === 0)
-        return { commandExitCode, observedProcesses: owned.length, remaining };
+        return {
+          commandExitCode,
+          observedProcesses: owned.length,
+          observedTree: owned,
+          remaining,
+        };
       if (Date.now() >= deadline)
         throw new Error(
           `Worker descendants remain after taskkill: ${JSON.stringify(remaining)}`,

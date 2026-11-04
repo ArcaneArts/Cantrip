@@ -2288,18 +2288,40 @@ jobs:
         with:
           node-version: 24.22.1
           cache: pnpm
+      - name: Record the actual Windows integration host
+        run: >-
+          node -e "const fs=require('node:fs'); const os=require('node:os'); fs.mkdirSync('.qa/rust-server/settings-integration-qa-windows',{recursive:true}); fs.writeFileSync('.qa/rust-server/settings-integration-qa-windows/runtime.json',JSON.stringify({platform:process.platform,node:process.version,cpus:os.availableParallelism(),tmpdir:os.tmpdir(),freeMemory:os.freemem()},null,2))"
+      - name: Check process lifetime ownership and terminate a real three-generation tree
+        run: |
+          node --test scripts/server-rust/windows-worker-tree.test.mjs *> '.qa/rust-server/settings-integration-qa-windows/windows-tree.log'
+          $qaIntegrationExit = $LASTEXITCODE
+          Get-Content '.qa/rust-server/settings-integration-qa-windows/windows-tree.log'
+          exit $qaIntegrationExit
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter '@cantrip/app^...' -r build
-      - name: Record the actual reference host
-        run: >-
-          node -e "const fs = require('node:fs'); const os = require('node:os'); fs.mkdirSync('.qa/rust-server/source-reference-cpu', { recursive: true }); fs.writeFileSync('.qa/rust-server/source-reference-cpu/runtime.json', JSON.stringify({ platform: process.platform, arch: process.arch, node: process.version, cpus: os.availableParallelism(), load: os.loadavg(), freeMemory: os.freemem(), totalMemory: os.totalmem() }, null, 2))"
-      - name: Profile the unchanged reference scenarios inside their workers
-        run: pnpm --filter @cantrip/server exec vitest run --config ../scripts/server-rust/source-reference-profile.config.mjs --maxWorkers=2 test/local-foundation.test.ts test/managed-chat-account-failover.test.ts
-      - name: Measure cold Source startup and experimental migration batching
-        if: always()
-        run: node scripts/server-rust/source-reference-startup-benchmark.mjs matrix .qa/rust-server/source-reference-cpu/
+      - name: Compare the regenerated workspace capture against actual Source
+        if: ${{ !cancelled() }}
+        run: |
+          node --import tsx scripts/server-rust/workspace-query-manifest.mjs --check *> '.qa/rust-server/settings-integration-qa-windows/workspace-capture.log'
+          $qaIntegrationExit = $LASTEXITCODE
+          Get-Content '.qa/rust-server/settings-integration-qa-windows/workspace-capture.log'
+          exit $qaIntegrationExit
+      - name: Retain all original editor retirement and file ownership checks
+        if: ${{ !cancelled() }}
+        run: |
+          pnpm --filter @cantrip/server exec vitest run test/server-shutdown-handlers.test.ts test/native-editor-retirement-migration.test.ts test/native-code-file-context.test.ts test/explorer-file-binding.test.ts test/logger-archive.test.ts --maxWorkers=2 --reporter=default --reporter=json --outputFile=../.qa/rust-server/settings-integration-qa-windows/editor-results.json *> '.qa/rust-server/settings-integration-qa-windows/editor-run.log'
+          $qaIntegrationExit = $LASTEXITCODE
+          Get-Content '.qa/rust-server/settings-integration-qa-windows/editor-run.log'
+          exit $qaIntegrationExit
+      - name: Run unchanged Source foundation with its original deadlines
+        if: ${{ !cancelled() }}
+        run: |
+          pnpm --filter @cantrip/server exec vitest run --maxWorkers=2 test/local-foundation.test.ts test/managed-chat-account-failover.test.ts --reporter=default --reporter=json --outputFile=../.qa/rust-server/settings-integration-qa-windows/foundation-results.json *> '.qa/rust-server/settings-integration-qa-windows/foundation-run.log'
+          $qaIntegrationExit = $LASTEXITCODE
+          Get-Content '.qa/rust-server/settings-integration-qa-windows/foundation-run.log' -Tail 25
+          exit $qaIntegrationExit
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: source-reference-worker-diagnostic-windows
-          path: .qa/rust-server/source-reference-cpu/
+          name: settings-integration-qa-windows
+          path: .qa/rust-server/settings-integration-qa-windows/

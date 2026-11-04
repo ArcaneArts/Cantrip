@@ -55,6 +55,8 @@
       "updatedAt"
     ],
     "chats": [
+      "cantripOsBindingId",
+      "cantripOsRuntimeGeneration",
       "id",
       "ownerId",
       "contextKind",
@@ -113,6 +115,10 @@
       "updatedAt"
     ],
     "explorers": [
+      "cantripOsBindingId",
+      "osBindingGeneration",
+      "osAttachmentGeneration",
+      "osRuntimeGeneration",
       "id",
       "projectId",
       "protectedLabel",
@@ -888,7 +894,7 @@
       ]
     },
     "migration_explorers": {
-      "source": "select \"id\", \"project_id\", \"protected_label\", \"protected_state\", \"position\", \"active_worker_id\", \"worktree_id\", \"file_mode\", \"created_at\", \"updated_at\" from \"explorers\" where (\"explorers\".\"id\" = $1 and \"explorers\".\"project_id\" = $2) for share",
+      "source": "select \"cantrip_os_binding_id\", \"os_binding_generation\", \"os_attachment_generation\", \"os_runtime_generation\", \"id\", \"project_id\", \"protected_label\", \"protected_state\", \"position\", \"active_worker_id\", \"worktree_id\", \"file_mode\", \"created_at\", \"updated_at\" from \"explorers\" where (\"explorers\".\"id\" = $1 and \"explorers\".\"project_id\" = $2) for share",
       "bindings": [
         {
           "key": "resource",
