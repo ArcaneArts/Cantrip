@@ -18,6 +18,7 @@ desktop() {
     test "$(pgrep -u ctw-exec-b -x icewm)" = "$wm"
 }
 status running true
+getcap /usr/lib/cantrip-os-executor/runtime/codex-exec-server | python3 -c 'import sys; assert sys.stdin.read().strip().endswith(" cap_kill=ep")'
 identity=$(cantrip-executor status | python3 -c 'import json,sys; print(json.load(sys.stdin)["instance_id"])')
 cantrip-workspaces open exec-b
 wm=$(pgrep -u ctw-exec-b -x icewm)
@@ -32,6 +33,7 @@ desktop
 test "$(cat /var/lib/cantrip-os-workspaces/homes/exec-a/Documents/executor-retained.txt)" = retained-executor-data
 apt-get install -y /tmp/executor.deb
 status stopped false
+getcap /usr/lib/cantrip-os-executor/runtime/codex-exec-server | python3 -c 'import sys; assert sys.stdin.read().strip().endswith(" cap_kill=ep")'
 cantrip-executor enable
 status running true
 test "$(cantrip-executor status | python3 -c 'import json,sys; print(json.load(sys.stdin)["instance_id"])')" = "$identity"

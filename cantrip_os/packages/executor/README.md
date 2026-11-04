@@ -27,14 +27,14 @@ to `0` in this first cycle while product placement is being implemented.
 Workspace support remains enabled by default. Including the executor requires
 the workspace package; apt enforces that dependency.
 
-Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.1.0_<arch>.deb`.
+Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.2.0_<arch>.deb`.
 It contains the source/patch fingerprint manifest, binary hashes, licenses, and
 sandbox helper. Docker and ISO recipes install the same package.
 
 Inside Linux, after copying the package there:
 
 ```sh
-sudo apt install ./cantrip-os-executor_0.1.0_arm64.deb  # amd64 for the VM edition
+sudo apt install ./cantrip-os-executor_0.2.0_arm64.deb  # amd64 for the VM edition
 sudo cantrip-executor enable
 sudo cantrip-executor status
 sudo cantrip-executor attach OWNER_ID WORKER_ID
@@ -78,6 +78,12 @@ independent of desktops. Stopping a desktop leaves
 these commands running. Stopping the executor manager terminates its native
 servers and descendants, including detached children. A restart creates a new
 generation; old process handles are not replayed on a replacement server.
+
+Version 0.2.0 sets `CAP_KILL` on the native executor and enables reviewed Linux
+process-tree cleanup for individual command cancellation. It can signal sudo
+descendants and children which change session/process group while preserving
+independent native jobs. Ordinary commands retain their UID and do not inherit
+the capability. See the [source backend guide](../../SOURCES.md).
 
 Configuration: `/etc/cantrip-os/executor.json`. Persistent identity, attachment,
 enable preference and logs live under `/var/lib/cantrip-os-executor`, mounted

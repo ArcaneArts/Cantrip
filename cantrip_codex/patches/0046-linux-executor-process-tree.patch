@@ -1,0 +1,222 @@
+diff --git a/codex-rs/utils/pty/src/lib.rs b/codex-rs/utils/pty/src/lib.rs
+index 8b0070f..a0c2942 100644
+--- a/codex-rs/utils/pty/src/lib.rs
++++ b/codex-rs/utils/pty/src/lib.rs
+@@ -8,6 +8,8 @@ pub use child_command::ProcessMode;
+ pub use child_command::SpawnFallback;
+ #[cfg(target_os = "linux")]
+ mod linux_fds;
++#[cfg(target_os = "linux")]
++mod linux_process_tree;
+ pub mod pipe;
+ mod process;
+ pub mod process_group;
+diff --git a/codex-rs/utils/pty/src/linux_process_tree.rs b/codex-rs/utils/pty/src/linux_process_tree.rs
+new file mode 100644
+index 0000000..c80787a
+--- /dev/null
++++ b/codex-rs/utils/pty/src/linux_process_tree.rs
+@@ -0,0 +1,181 @@
++//! Opt-in CantripOS cleanup for sudo and setsid descendants of a native job.
++use std::collections::HashMap;
++use std::collections::HashSet;
++use std::fs;
++use std::io;
++use std::os::fd::AsRawFd;
++use std::os::fd::FromRawFd;
++use std::os::fd::OwnedFd;
++use std::time::Duration;
++use std::time::Instant;
++
++struct Process {
++    parent: u32,
++    group: u32,
++    started: u64,
++}
++
++struct Captured {
++    fd: OwnedFd,
++    started: u64,
++}
++
++fn process(pid: u32) -> Option<Process> {
++    let stat = fs::read(format!("/proc/{pid}/stat")).ok()?;
++    let end = stat.windows(2).rposition(|pair| pair == b") ")?;
++    let fields = std::str::from_utf8(&stat[end + 2..]).ok()?;
++    let fields: Vec<_> = fields.split_whitespace().collect();
++    Some(Process {
++        parent: fields.get(1)?.parse().ok()?,
++        group: fields.get(2)?.parse().ok()?,
++        started: fields.get(19)?.parse().ok()?,
++    })
++}
++
++fn signal(fd: &OwnedFd, value: i32) -> io::Result<()> {
++    let result = unsafe { libc::syscall(libc::SYS_pidfd_send_signal, fd.as_raw_fd(), value, 0, 0) };
++    if result < 0 {
++        let error = io::Error::last_os_error();
++        if error.raw_os_error() != Some(libc::ESRCH) {
++            return Err(error);
++        }
++    }
++    Ok(())
++}
++
++/// Freeze a live job tree, including children that changed process groups,
++/// then kill the captured identities. pidfds prevent a recycled PID from
++/// receiving a signal. This is job cancellation, not a tenant boundary.
++pub(crate) fn kill(group: u32) -> io::Result<()> {
++    if group == 0 || group > i32::MAX as u32 || group == unsafe { libc::getpgrp() } as u32 {
++        return Err(io::Error::new(
++            io::ErrorKind::InvalidInput,
++            "invalid job process group",
++        ));
++    }
++    let mut captured = HashMap::<u32, Captured>::new();
++    let mut failure = None;
++    let deadline = Instant::now() + Duration::from_millis(500);
++    loop {
++        let entries = match fs::read_dir("/proc") {
++            Ok(entries) => entries,
++            Err(error) => {
++                failure.get_or_insert(error);
++                break;
++            }
++        };
++        let processes: HashMap<_, _> = entries
++            .flatten()
++            .filter_map(|entry| {
++                let pid = entry.file_name().to_str()?.parse::<u32>().ok()?;
++                Some((pid, process(pid)?))
++            })
++            .collect();
++        let mut selected: HashSet<u32> = processes
++            .iter()
++            .filter_map(|(&pid, entry)| {
++                (entry.group == group
++                    || captured
++                        .get(&pid)
++                        .is_some_and(|p| p.started == entry.started))
++                .then_some(pid)
++            })
++            .collect();
++        loop {
++            let before = selected.len();
++            for (&pid, entry) in &processes {
++                if selected.contains(&entry.parent) {
++                    selected.insert(pid);
++                }
++            }
++            if selected.len() == before {
++                break;
++            }
++        }
++        let before = captured.len();
++        for pid in selected {
++            if captured.contains_key(&pid) {
++                continue;
++            }
++            let raw = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
++            if raw < 0 {
++                let error = io::Error::last_os_error();
++                if error.raw_os_error() != Some(libc::ESRCH) {
++                    failure.get_or_insert(error);
++                }
++                continue;
++            }
++            let fd = unsafe { OwnedFd::from_raw_fd(raw as i32) };
++            if process(pid).is_none_or(|entry| entry.started != processes[&pid].started) {
++                continue;
++            }
++            if let Err(error) = signal(&fd, libc::SIGSTOP) {
++                failure.get_or_insert(error);
++            }
++            captured.insert(
++                pid,
++                Captured {
++                    fd,
++                    started: processes[&pid].started,
++                },
++            );
++        }
++        if before == captured.len() {
++            break;
++        }
++        if Instant::now() >= deadline {
++            failure.get_or_insert_with(|| {
++                io::Error::new(io::ErrorKind::TimedOut, "job tree did not stop spawning")
++            });
++            break;
++        }
++    }
++    // Never leave a partially captured tree frozen, including on an error.
++    for captured in captured.values() {
++        if let Err(error) = signal(&captured.fd, libc::SIGKILL) {
++            let _ = signal(&captured.fd, libc::SIGCONT);
++            failure.get_or_insert(error);
++        }
++    }
++    failure.map_or(Ok(()), Err)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use std::os::unix::process::CommandExt;
++    use std::process::Command;
++
++    #[test]
++    fn cancellation_kills_setsid_child_and_preserves_other_job() {
++        let dir = tempfile::tempdir().unwrap();
++        let marker = dir.path().join("child");
++        let mut unrelated = Command::new("sleep").arg("60").spawn().unwrap();
++        let mut parent = Command::new("python3").args(["-c",
++            "import subprocess,sys;p=subprocess.Popen(['sleep','60'],start_new_session=True);open(sys.argv[1],'w').write(str(p.pid));p.wait()"])
++            .arg(&marker).process_group(0).spawn().unwrap();
++        let deadline = Instant::now() + Duration::from_secs(5);
++        while !marker.exists() && Instant::now() < deadline {
++            std::thread::sleep(Duration::from_millis(10));
++        }
++        let child = fs::read_to_string(marker).unwrap().parse::<u32>().unwrap();
++        let result = kill(parent.id());
++        let parent_status = parent.wait().unwrap();
++        let unrelated_running = unrelated.try_wait().unwrap().is_none();
++        unrelated.kill().unwrap();
++        unrelated.wait().unwrap();
++        result.unwrap();
++        assert!(!parent_status.success());
++        assert!(unrelated_running);
++        let deadline = Instant::now() + Duration::from_secs(5);
++        while Instant::now() < deadline {
++            let stat = fs::read_to_string(format!("/proc/{child}/stat"));
++            if stat.as_ref().is_err() || stat.unwrap().rsplit_once(") ").unwrap().1.starts_with('Z')
++            {
++                return;
++            }
++            std::thread::sleep(Duration::from_millis(10));
++        }
++        panic!("detached child survived cancellation");
++    }
++}
+diff --git a/codex-rs/utils/pty/src/process_group.rs b/codex-rs/utils/pty/src/process_group.rs
+index f9e3f43..20f760f 100644
+--- a/codex-rs/utils/pty/src/process_group.rs
++++ b/codex-rs/utils/pty/src/process_group.rs
+@@ -267,6 +267,17 @@ pub fn interrupt_process_group(_process_group_id: u32) -> io::Result<()> {
+ #[cfg(all(unix, not(target_os = "macos")))]
+ /// Kill a specific process group ID (best-effort).
+ pub fn kill_process_group(process_group_id: u32) -> io::Result<()> {
++    #[cfg(target_os = "linux")]
++    if std::env::var_os("CANTRIP_EXECUTOR_PROCESS_TREE").as_deref()
++        == Some(std::ffi::OsStr::new("1"))
++    {
++        // The optional CantripOS executor retains CAP_KILL; ordinary child
++        // commands still execute as the workspace account without that cap.
++        // Capture detached descendants before killing their original parents.
++        let tree = crate::linux_process_tree::kill(process_group_id);
++        let group = signal_process_group_id(process_group_id as libc::pid_t, libc::SIGKILL);
++        return tree.and(group.map(|_| ()));
++    }
+     signal_process_group_id(process_group_id as libc::pid_t, libc::SIGKILL).map(|_| ())
+ }
+ 

@@ -73,12 +73,12 @@ the real client/agent and both source modes described below.
 
 The first execution cycle has passed native ARM64 Docker and installed AMD64 VM
 package, filesystem/process, lifecycle, and reboot acceptance. The base package
-manifest now includes htop, nano, and Python 3 in both editions. The next cycle
-implements explicit source bindings, linked Docker worktrees, and Linux-owned
-checkout/worktree provisioning. Source ownership is split into two reviewable
-milestones: canonical identities/placement first, then actual materialization and
-worker commands. The identity milestone does not enable project selection or
-claim end-to-end execution.
+manifest now includes htop, nano, and Python 3 in both editions. Source ownership
+is delivered in reviewable milestones: canonical identities/placement, actual
+materialization backends, then authorized product dispatch. The
+[materialization backend](../cantrip_os/SOURCES.md) implements linked Docker
+worktrees, Linux-owned checkout/worktree provisioning, and dependency overlays.
+It does not yet enable client target selection or claim end-to-end agent execution.
 
 The canonical model keeps `project_sources.absolute_path` worker-local. A shared
 source identity preserves worktree IDs and leases, while Linux-owned source

@@ -8,7 +8,14 @@ export async function prepareExecutor(architecture, options = {}) {
   if (!["arm64", "amd64"].includes(architecture))
     throw new Error("Select arm64 or amd64");
   const output = resolve(root, "artifacts/packages");
-  const context = resolve(root, ".build/executor-packages", architecture);
+  // A versioned context cannot accidentally feed two versions of the same
+  // package to apt/live-build after an executor upgrade.
+  const context = resolve(
+    root,
+    ".build/executor-packages",
+    "0.2.0",
+    architecture,
+  );
   await mkdir(output, { recursive: true });
   await mkdir(context, { recursive: true });
   await run(
@@ -27,7 +34,7 @@ export async function prepareExecutor(architecture, options = {}) {
     ],
     options,
   );
-  const name = `cantrip-os-executor_0.1.0_${architecture}.deb`;
+  const name = `cantrip-os-executor_0.2.0_${architecture}.deb`;
   await cp(resolve(output, name), resolve(context, name));
   console.log(`Executor package: ${output}/${name}`);
   return context;

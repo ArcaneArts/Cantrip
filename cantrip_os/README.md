@@ -15,8 +15,10 @@ Phase 3 adds an optional [native execution package](packages/executor/README.md)
 The source identity foundation adds server-owned OS attachments, workspace
 observations, Linux-owned source records and linked execution bindings. It keeps
 guest paths separate from worker-local paths and rejects stale generations.
-This foundation is internal: linked mount/provisioning commands and the client
-attachment/selection workflow are still being implemented.
+The [source backend](SOURCES.md) now materializes linked Docker worktrees and
+Linux-owned checkouts/worktrees, including explicit Linux dependency overlays.
+This foundation is internal: authorized product dispatch, native agent placement,
+and the client attachment/selection workflow are still being implemented.
 Its current package/transport cycle is opt-in with `CANTRIP_OS_EXECUTOR=1`;
 Cantrip project selection and full agent placement are subsequent cycles.
 
@@ -79,7 +81,9 @@ node cantrip_os/scripts/os.mjs reset    # Explicitly DELETE personal home AND wo
 `CANTRIP_OS_VNC_PORT` (default `5900`) selects native VNC;
 `CANTRIP_OS_WORKSPACE_PORT` (default `6081`) selects the workspace selector.
 `CANTRIP_OS_MEMORY=4g` sets a 4 GiB container limit without extra swap. Ports are assigned when
-creating the container; `pnpm os` rebuilds/recreates it with the chosen values.
+creating the container; an ordinary foundation rebuild uses the chosen values.
+Instances with linked source mounts retain their ports/resource settings when
+rebuilding so their declared container configuration remains intact.
 The default named volumes are `cantrip-os-home` and `cantrip-os-workspaces`. Rebuild retains personal home and package workspace data,
 including Documents, Downloads, and Chromium profiles. Reset deletes it.
 Each container keeps a stable instance hostname. Startup clears only Chromium's

@@ -4,6 +4,10 @@ if [ "$1" = configure ]; then
     # Reproducible package timestamps must not retain stale same-size bytecode
     # from a preceding package version. This cleans code cache, never user data.
     py3clean /usr/lib/cantrip-os-executor
+    # Cancellation must signal sudo descendants too. The capability belongs to
+    # the native executor only; ordinary exec'd commands retain their user UID
+    # and do not inherit it. The desktop stays independent of this package.
+    setcap cap_kill=ep /usr/lib/cantrip-os-executor/runtime/codex-exec-server
     deb-systemd-helper enable cantrip-os-executor.service >/dev/null
     if [ -d /run/systemd/system ]; then
         systemctl daemon-reload

@@ -255,6 +255,8 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@types/node@26.1.2)(jsdom@26.1.0(supports-color@10.2.2))(vite@8.2.0(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.9)(yaml@2.9.0))
 
+  cantrip_os/host: {}
+
   cantrip_server:
     dependencies:
       "@cantrip/logging":
@@ -337,6 +339,9 @@ importers:
       "@cantrip/logging":
         specifier: workspace:*
         version: link:../packages/logging
+      "@cantrip/os-host":
+        specifier: workspace:*
+        version: link:../cantrip_os/host
       "@cantrip/protocol":
         specifier: workspace:*
         version: link:../packages/protocol

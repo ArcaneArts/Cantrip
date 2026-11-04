@@ -40,6 +40,7 @@ with (Path(runtime) / (record["id"] + ".lock")).open("a") as lock:
     env.update(HOME=record["home"], USER=record["user"], LOGNAME=record["user"],
                PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
                CODEX_HOME=record["home"] + "/.local/state/cantrip-executor")
+    env["CANTRIP_EXECUTOR_PROCESS_TREE"] = "1"
     digest = hashlib.sha256(data["token"].encode()).hexdigest()
     try:
         subprocess.run(["runuser", "-u", record["user"], "--", "mkdir", "-p", env["CODEX_HOME"]],
