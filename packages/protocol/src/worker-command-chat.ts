@@ -8,6 +8,7 @@ import { queuedPromptOpaqueContentSchema } from "./communication-content.js";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
 import { nativeCommandReceiptSchema } from "./native-commands.js";
 import { z } from "zod";
+import { initialLabelCommandSchema } from "./labeling.js";
 import {
   managedSessionContextSchema,
   managedSessionSubagentDefaultsSchema,
@@ -135,6 +136,7 @@ export const workerChatCommandSchemas = [
   z
     .object({
       type: z.literal("chat.turn"),
+      initialLabel: initialLabelCommandSchema.optional(),
       osExecution: cantripOsExecutionSchema.optional(),
       nativeCommandReceipt: nativeCommandReceiptSchema.optional(),
       protectedNativeInput: encryptedPayloadEnvelopeSchema.optional(),

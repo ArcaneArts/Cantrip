@@ -24,7 +24,10 @@ export {
   childThreadMetadataFromNotification,
 } from "./execution-ownership.js";
 import { COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS } from "./runtime-limits.js";
-import { CodexRpcRequests } from "./rpc-requests.js";
+import {
+  CodexRpcRequests,
+  type NativeRpcSettlementObserver,
+} from "./rpc-requests.js";
 import { parseCodexRpcMessage, CodexNativeRpcError } from "./rpc-protocol.js";
 import {
   launchCodexProcess,
@@ -1745,6 +1748,15 @@ export class CodexAppServer implements CodexRuntime {
   #appServerSessionId = randomUUID();
   #nativeTransportGeneration: string | null = null;
   #inference: CodexInferenceAdmission | null = null;
+  readonly #nativeInferenceWaits = new Map<
+    string,
+    {
+      controller: AbortController;
+      threadId: string;
+      turnId: string;
+      runnerGeneration: string;
+    }
+  >();
   #child: ChildProcessWithoutNullStreams | null = null;
   readonly #authRecovery = new CodexAuthRecovery({
     providerAccessTokens: () => this.providerAccessTokens,
@@ -2830,6 +2842,11 @@ export class CodexAppServer implements CodexRuntime {
   private async runTurnAttempt(
     options: RunAgentTurnOptions,
   ): Promise<AgentTurnResult> {
+    if (
+      options.initialLabel &&
+      options.initialLabel.providerId !== options.provider.id
+    )
+      await options.initialLabel.run();
     await this.ensureStarted(
       options.model,
       options.provider,
@@ -2846,6 +2863,8 @@ export class CodexAppServer implements CodexRuntime {
       signal: options.preparationSignal,
     });
     try {
+      if (options.initialLabel?.providerId === options.provider.id)
+        await options.initialLabel.run(inference);
       return await this.executeInferenceTurn(options, inference);
     } finally {
       // After forwarding, only a native terminal receipt or actual process exit
@@ -3078,6 +3097,22 @@ export class CodexAppServer implements CodexRuntime {
     options: RunAgentOperationOptions,
   ): Promise<AgentOperationResult> {
     await this.ensureStarted(options.model, options.provider);
+    const inference = await this.#inference?.acquire({
+      operationId: `operation:${options.operationId}`,
+      provider: options.provider,
+    });
+    try {
+      return await this.executeAgentOperation(options, inference);
+    } finally {
+      inference?.notDispatched();
+    }
+  }
+
+  private async executeAgentOperation(
+    options: RunAgentOperationOptions,
+    inference?: CodexInferenceExecution,
+  ): Promise<AgentOperationResult> {
+    await this.ensureStarted(options.model, options.provider);
     const turnPolicy = codexAgentOperationTurnPolicy(
       options,
       this.permissionProfilesSupported(),
@@ -3101,6 +3136,7 @@ export class CodexAppServer implements CodexRuntime {
     }
     const baseline = await this.snapshotWorkspace(options.cwd);
     const threadId = await this.loadAgentOperationThread(options);
+    inference?.bindThread(threadId);
     if (this.hasActiveThread(threadId)) {
       throw new Error(`Codex thread ${threadId} already has an active turn.`);
     }
@@ -3158,6 +3194,7 @@ export class CodexAppServer implements CodexRuntime {
     this.registerRootExecution(activeTurn);
     let response: TurnStartResponse;
     try {
+      inference?.dispatched();
       response = (await this.request("turn/start", {
         threadId,
         ...this.workspaceContext(options.cwd),
@@ -3180,10 +3217,16 @@ export class CodexAppServer implements CodexRuntime {
           : {}),
       })) as TurnStartResponse;
     } catch (error) {
+      if (
+        error instanceof CodexNativeRpcError &&
+        error.requestMethod === "turn/start"
+      )
+        inference?.rejected();
       this.releaseActiveTurn(activeTurn);
       throw error;
     }
     this.bindTurnStartResponse(response.turn.id, activeTurn);
+    inference?.bindTurn(response.turn.id);
     workerLogger.event("info", "Codex agent operation started", {
       event: "codex.turn.lifecycle",
       subsystem: "codex",
@@ -5041,25 +5084,63 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   async runLabelInference(options: {
+    operationId?: string;
+    chatId?: string;
     model: RunAgentTurnOptions["model"];
     provider: RunAgentTurnOptions["provider"];
     instructions: string;
     input: string;
+    signal?: AbortSignal;
   }): Promise<string> {
     await this.ensureStarted(options.model, options.provider);
-    const result = (await this.request(
-      "cantrip/inference",
-      {
-        model: options.model.name,
-        reasoningEffort: options.model.reasoningEffort,
-        instructions: options.instructions,
-        input: options.input,
-      },
-      27_000,
-    )) as { text?: unknown };
-    if (typeof result.text !== "string")
-      throw new Error("Invalid labeling response.");
-    return result.text;
+    const inference = await this.#inference?.acquire({
+      operationId: `label:${options.operationId ?? randomUUID()}`,
+      provider: options.provider,
+      chatId: options.chatId,
+      signal: options.signal,
+    });
+    try {
+      return await this.runInitialLabelInference({
+        ...options,
+        providerId: options.provider.id,
+        inference,
+      });
+    } finally {
+      inference?.notDispatched();
+    }
+  }
+
+  /** Uses the already-selected response process; changing its model runtime here
+   * would replace the process that owns the compound turn's ticket. */
+  async runInitialLabelInference(options: {
+    model: RunAgentTurnOptions["model"];
+    providerId: string;
+    instructions: string;
+    input: string;
+    inference?: CodexInferenceExecution;
+  }): Promise<string> {
+    const invoke = async (
+      scope?: import("./inference-admission.js").InferencePreparationScope,
+    ) => {
+      scope?.beforeSend();
+      const result = (await this.request(
+        "cantrip/inference",
+        {
+          model: options.model.name,
+          reasoningEffort: options.model.reasoningEffort,
+          instructions: options.instructions,
+          input: options.input,
+        },
+        27_000,
+        scope,
+      )) as { text?: unknown };
+      if (typeof result.text !== "string")
+        throw new Error("Invalid labeling response.");
+      return result.text;
+    };
+    return options.inference
+      ? options.inference.prepare(options.providerId, invoke)
+      : invoke();
   }
 
   private async modelSupportsImages(
@@ -5773,6 +5854,16 @@ export class CodexAppServer implements CodexRuntime {
       ...this.agentOperationThreadPermissionParams(options),
       developerInstructions: options.developerInstructions,
       config: mcpConfig,
+      managedConfig: {
+        mcpServers: mcpConfig.mcp_servers,
+        developerInstructions: options.developerInstructions,
+        multiAgentEnabled: true,
+        subagentModel: null,
+        subagentReasoningEffort: null,
+        executionGate: {
+          runnerGeneration: `helper:${options.operationId}:${randomUUID()}`,
+        },
+      },
     })) as ThreadResponse;
     const threadId = started.thread.id;
     workerLogger.event("info", "Codex agent operation thread started", {
@@ -6289,15 +6380,17 @@ export class CodexAppServer implements CodexRuntime {
     method: string,
     params: unknown,
     timeoutMs = CODEX_RPC_TIMEOUT_MS,
+    settlement?: NativeRpcSettlementObserver,
   ): Promise<unknown> {
     if (this.compatibility.methods[method] === "unavailable") {
+      settlement?.notSent();
       return Promise.reject(
         new Error(
           `Codex app-server method ${method} is unavailable in ${this.compatibility.version?.raw ?? "the installed runtime"}.`,
         ),
       );
     }
-    return this.#rpcRequests.request(method, params, timeoutMs);
+    return this.#rpcRequests.request(method, params, timeoutMs, settlement);
   }
 
   private methodAvailable(method: string): boolean {
@@ -6309,6 +6402,104 @@ export class CodexAppServer implements CodexRuntime {
       throw new Error("Codex app-server is not writable.");
     }
     this.#socket.send(JSON.stringify(message));
+  }
+
+  private async handleNativeInferenceControl(raw: unknown): Promise<void> {
+    const base = z
+      .object({
+        threadId: z.string().min(1),
+        turnId: z.string().min(1),
+        runnerGeneration: z.string().min(1),
+        attemptId: z.string().min(1),
+      })
+      .parse(raw);
+    const transport = this.transportGeneration;
+    const inference = this.#inference;
+    if (!transport || !inference)
+      throw new Error("Native inference owner disconnected.");
+    const deny = () =>
+      this.resolveManagedExecution(
+        {
+          ...base,
+          operationGeneration: null,
+          allow: false,
+        },
+        transport,
+      );
+    const payload = z
+      .object({
+        input: z.object({
+          phase: z.enum(["begin", "suspend", "resume", "finish", "cancel"]),
+          requestId: z.string().nullable().optional(),
+          rootThreadId: z.string().nullable().optional(),
+        }),
+      })
+      .safeParse(raw);
+    if (!payload.success) {
+      await deny();
+      return;
+    }
+    const { phase, requestId, rootThreadId } = payload.data.input;
+    if (phase === "cancel") {
+      const pending = requestId
+        ? this.#nativeInferenceWaits.get(requestId)
+        : undefined;
+      if (
+        pending &&
+        pending.threadId === base.threadId &&
+        pending.turnId === base.turnId &&
+        pending.runnerGeneration === base.runnerGeneration
+      ) {
+        pending.controller.abort();
+        inference.cancelNativeWait(base.threadId, base.turnId);
+      }
+      return;
+    }
+    if (phase === "finish") {
+      for (const pending of this.#nativeInferenceWaits.values())
+        if (
+          pending.threadId === base.threadId &&
+          pending.turnId === base.turnId
+        )
+          pending.controller.abort();
+      inference.finishNative(base.threadId, base.turnId);
+      return;
+    }
+    if (this.#nativeInferenceWaits.has(base.attemptId)) return;
+    const pending = { ...base, controller: new AbortController() };
+    this.#nativeInferenceWaits.set(base.attemptId, pending);
+    try {
+      if (phase === "begin") {
+        const provider = this.#managedModelInventoryProvider;
+        if (!provider)
+          throw new Error("Native inference has no configured provider.");
+        await inference.enterNative({
+          ...base,
+          rootThreadId,
+          provider,
+          signal: pending.controller.signal,
+        });
+      } else if (phase === "suspend")
+        inference.suspendNative(base.threadId, base.turnId);
+      else await inference.resumeNative(base.threadId, base.turnId);
+      pending.controller.signal.throwIfAborted();
+      await this.resolveManagedExecution(
+        {
+          ...base,
+          operationGeneration: `inference:${base.attemptId}`,
+          allow: true,
+        },
+        transport,
+      );
+    } catch (error) {
+      // An uncertain resolver reply is not proof that Core did not resume.
+      // Retain running capacity until Core's exact finish or process exit.
+      await deny().catch(() => {});
+      throw error;
+    } finally {
+      if (this.#nativeInferenceWaits.get(base.attemptId) === pending)
+        this.#nativeInferenceWaits.delete(base.attemptId);
+    }
   }
 
   private handleSocketMessage(data: RawData): void {
@@ -6345,6 +6536,19 @@ export class CodexAppServer implements CodexRuntime {
       return;
     }
 
+    if (
+      message.method === "thread/managedExecution/requested" &&
+      objectRecord(message.params)?.trigger === "inference"
+    ) {
+      void this.handleNativeInferenceControl(message.params).catch(() => {
+        workerLogger.event("warn", "Native inference admission failed", {
+          event: "inference.native-control.failed",
+          subsystem: "codex",
+          runtimeId: this.#runtimeId,
+        });
+      });
+      return;
+    }
     const diagnosticPayload = this.#rpcRequests.diagnosticPayload(message);
     this.#inference?.observe(message.method, message.params);
     const diagnosticId = this.recordDiagnostic({
@@ -8048,6 +8252,9 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private handleExit(error: Error): void {
+    for (const pending of this.#nativeInferenceWaits.values())
+      pending.controller.abort();
+    this.#nativeInferenceWaits.clear();
     this.#inference?.observationLost();
     this.clearManagedExecutionGateHandlers();
     this.#nativeTransportGeneration = null;

@@ -10,6 +10,93 @@ import type { ModelRuntime, ServerRepository } from "../db/repository.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
 import { serverLogger } from "../logger.js";
 
+type TitleOptions = Parameters<typeof generateAutomaticTitle>[0];
+export type PreparedAutomaticTitle = Extract<
+  WorkerCommand,
+  { type: "label.generate" }
+> & { operationId: string };
+
+/** Claim metadata now, but let the worker sequence its inference with the turn. */
+export async function prepareAutomaticTitle(
+  options: TitleOptions,
+): Promise<PreparedAutomaticTitle | null> {
+  const { repository, ownerId, chatId } = options;
+  let claimId: string | null = null;
+  try {
+    const context = await repository.getChatExecutionContext(ownerId, chatId);
+    if (!context) return null;
+    const kind: LabelKind =
+      options.input.kind === "task"
+        ? "task"
+        : context.contextKind === "standalone"
+          ? "chat"
+          : "agent";
+    if (kind !== "task" && context.experience === "task") return null;
+    const settings = await repository.getUserSettings(ownerId);
+    const modelId = settings.labelingModelId ?? settings.defaultModelId;
+    if (!modelId || !automaticNamingEnabled(settings, kind)) return null;
+    const claim = await repository.chatState.claimAutomaticTitle(
+      ownerId,
+      chatId,
+      options.input.kind === "message" ? options.input.message.id : undefined,
+    );
+    if (!claim) return null;
+    claimId = claim.claimId;
+    const [runtime] = await options.availableModelRuntimes(context, modelId);
+    if (!runtime) throw new Error("No labeling route.");
+    const effort = lowestLabelingEffort(
+      runtime.model.catalog?.supportedReasoningEfforts.map(
+        ({ effort }) => effort,
+      ),
+      (settings.labelingModelId === null
+        ? settings.defaultReasoningEffort
+        : null) ??
+        runtime.model.catalog?.defaultReasoningEffort ??
+        null,
+    );
+    return {
+      type: "label.generate",
+      operationId: claimId,
+      chatId,
+      labelKind: kind,
+      input: options.input,
+      model: { ...runtime.model, reasoningEffort: effort },
+      provider: runtime.provider,
+    };
+  } catch {
+    if (claimId)
+      await repository.chatState
+        .finishAutomaticTitle(ownerId, chatId, claimId, null)
+        .catch(() => {});
+    return null;
+  }
+}
+
+export async function finishPreparedAutomaticTitle(
+  options: Pick<
+    TitleOptions,
+    "repository" | "ownerId" | "chatId" | "publishChatSummary"
+  >,
+  job: PreparedAutomaticTitle,
+  result: ReturnType<typeof generateLabelResultSchema.parse> | null,
+): Promise<void> {
+  if (job.chatId !== options.chatId)
+    throw new Error("Automatic title belongs to another chat.");
+  const enabled = automaticNamingEnabled(
+    await options.repository.getUserSettings(options.ownerId),
+    job.labelKind,
+  );
+  const updated = await options.repository.chatState.finishAutomaticTitle(
+    options.ownerId,
+    options.chatId,
+    job.operationId,
+    enabled ? (result?.titleProtection ?? null) : null,
+    result?.emptyInput ?? false,
+  );
+  if (updated && enabled && result?.titleProtection)
+    options.publishChatSummary(options.chatId, updated.projectId);
+}
+
 export function automaticNamingEnabled(
   settings: Pick<
     UserSettings,
@@ -115,6 +202,7 @@ export async function generateAutomaticTitle(options: {
         context.workerId,
         {
           type: "label.generate",
+          operationId: claimId,
           chatId,
           labelKind: kind,
           input: options.input,

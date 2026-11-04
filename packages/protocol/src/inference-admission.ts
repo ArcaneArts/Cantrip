@@ -27,6 +27,7 @@ export const inferenceTicketStateSchema = z.enum([
   "granted",
   "running",
   "cancelling",
+  "suspended",
   "released",
 ]);
 

@@ -15,11 +15,24 @@ interface RpcRequestPorts {
   ): string;
 }
 
+export interface NativeRpcSettlementObserver {
+  /** A matching native reply proves the request finished, including late replies. */
+  replied(): void;
+  /** The synchronous transport send failed before it accepted the frame. */
+  notSent(): void;
+}
+
 export class CodexRpcRequests {
   readonly #pending = new Map<number, PendingRpcRequest>();
   // Retain timed-out IDs until their response arrives so late private labels
   // cannot fall through into the unmatched-response diagnostic buffer.
   readonly #privateInferenceRequests = new Set<number>();
+  // Unlike promise waiters, these survive a request-observation timeout. A
+  // timeout cannot establish that the native inference stopped executing.
+  readonly #settlementObservers = new Map<
+    number,
+    NativeRpcSettlementObserver
+  >();
   #nextId = 1;
 
   constructor(private readonly ports: RpcRequestPorts) {}
@@ -32,10 +45,12 @@ export class CodexRpcRequests {
     method: string,
     params: unknown,
     timeoutMs: number,
+    settlement?: NativeRpcSettlementObserver,
   ): Promise<unknown> {
     const id = this.#nextId;
     this.#nextId += 1;
     if (method === "cantrip/inference") this.#privateInferenceRequests.add(id);
+    if (settlement) this.#settlementObservers.set(id, settlement);
     return new Promise((resolve, reject) => {
       const startedAtMs = Date.now();
       const timeout = setTimeout(() => {
@@ -62,7 +77,19 @@ export class CodexRpcRequests {
         startedAtMs,
         timeout,
       });
-      this.ports.send({ id, method, params });
+      try {
+        this.ports.send({ id, method, params });
+      } catch (error) {
+        this.#pending.delete(id);
+        this.#privateInferenceRequests.delete(id);
+        this.#settlementObservers.delete(id);
+        clearTimeout(timeout);
+        try {
+          settlement?.notSent();
+        } finally {
+          reject(error);
+        }
+      }
     });
   }
 
@@ -82,6 +109,24 @@ export class CodexRpcRequests {
     if (message.id === undefined || message.method) return false;
 
     const id = Number(message.id);
+    const settlement = this.#settlementObservers.get(id);
+    this.#settlementObservers.delete(id);
+    try {
+      settlement?.replied();
+    } catch {
+      // Publication/observer failure must not prevent the native reply from
+      // settling the original RPC. Do not log private response contents.
+      this.ports.recordDiagnostic(
+        {
+          at: new Date().toISOString(),
+          direction: "from-runtime",
+          kind: "message",
+          method: null,
+          payload: { id, settlementObserverFailed: true },
+        },
+        "Native inference settlement observer failed",
+      );
+    }
     const pending = this.#pending.get(id);
     if (!pending) {
       this.ports.recordDiagnostic(
@@ -150,5 +195,8 @@ export class CodexRpcRequests {
     }
     this.#pending.clear();
     this.#privateInferenceRequests.clear();
+    // Transport loss is not settlement. Captured native process ownership
+    // retains its tickets until the actual exit hook confirms termination.
+    this.#settlementObservers.clear();
   }
 }

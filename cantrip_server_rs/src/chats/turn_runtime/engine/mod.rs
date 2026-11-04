@@ -154,10 +154,13 @@ impl Runtime {
             options.clone(),
         );
         self.operations.run(async move {
-            let turn=Arc::new(this.dependencies.bootstrap.prepare(&owner,&context,&input,&options).await?);
-            if let Some(encrypted)=&turn.encrypted_chat && options.get("messageRole").filter(|v|!v.is_null()).is_none_or(|v|v=="user") {
-                drop(this.dependencies.titles.generate_with_context(&owner,&events::text(&turn.execution["chatId"])?,&encrypted["userMessage"],Some(&turn.execution)));
+            let mut prepared = this.dependencies.bootstrap.prepare(&owner,&context,&input,&options).await?;
+            if let Some(encrypted)=&prepared.encrypted_chat && options.get("messageRole").filter(|v|!v.is_null()).is_none_or(|v|v=="user") {
+                if let Some(job) = this.dependencies.titles.prepare_initial(&owner, &events::text(&prepared.execution["chatId"])?, &encrypted["userMessage"], &prepared.execution).await {
+                    prepared.options["initialLabel"] = job;
+                }
             }
+            let turn = Arc::new(prepared);
             let scheduled=truthy(turn.options.get("taskDispatchLease"));
             let (started,dispatched)=oneshot::channel();
             let (runtime,background)=(this.clone(),turn.clone());
@@ -187,6 +190,16 @@ impl Runtime {
         let result = self
             .run_routes(turn.clone(), &hooks, state.clone(), &mut started)
             .await;
+        if let Some(job) = turn.options.get("initialLabel") {
+            let _ = crate::chats::automatic_title::finish_prepared(
+                self.dependencies.events.database.clone(),
+                &self.dependencies.events.live,
+                &turn.owner,
+                job,
+                None,
+            )
+            .await;
+        }
         if let Err(error) = result {
             let error = Arc::new(error);
             if let Some(started) = started.take() {

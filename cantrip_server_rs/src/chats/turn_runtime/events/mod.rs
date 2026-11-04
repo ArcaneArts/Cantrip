@@ -51,6 +51,7 @@ impl Finals {
 }
 #[derive(Default)]
 pub struct TurnState {
+    pub initial_label_sent: bool,
     pub any_activity: bool,
     pub observation_sequence: u64,
     pub changed_paths: IndexSet<JsString>,
@@ -185,6 +186,22 @@ impl EventSink {
         })
     }
     pub async fn on_event(self: &Arc<Self>, event: &Value) -> Result<()> {
+        if event["type"] == "agent.automatic-label" {
+            if let Some(job) = self.turn.options.get("initialLabel")
+                && event["chatId"] == self.turn.execution["chatId"]
+                && event["claimId"] == job["operationId"]
+            {
+                let _ = crate::chats::automatic_title::finish_prepared(
+                    self.dependencies.database.clone(),
+                    &self.dependencies.live,
+                    &self.turn.owner,
+                    job,
+                    event.get("result"),
+                )
+                .await;
+            }
+            return Ok(());
+        }
         let mut state = self.state.lock().await;
         if self.computer_use(event).await? {
             return Ok(());

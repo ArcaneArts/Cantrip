@@ -43,10 +43,31 @@ unforwarded work but retains dispatched holders until actual process exit. The
 captured process-exit hook remains valid after socket or child-handle replacement.
 Explicit Stop can cancel a queued chat before it has a native turn ID.
 
-The remaining milestones must cover auxiliary inference and suspended waits,
-durable recovery and live settings propagation, app feedback, and the final
-inference-path audit. Parallel child inference and helper operations are not yet
-covered. This intermediate implementation is not the completed feature.
+Auxiliary agent operations and standalone stateless labels now use the same
+worker admission service. Both servers prepare an opaque first-message label job
+inside the existing turn command. A same-provider job uses one serial reservation
+for labeling and the response; a different labeling provider settles and releases
+before response admission. Correlated native label replies remain observable after
+the RPC deadline, so a timed-out observation cannot start overlapping inference
+under one ticket. Metadata failure retains the fallback title.
+
+Native patch `0048` extends the existing connection-owned managed execution channel
+with private inference boundaries. Actual root/child turn identities, manual
+compaction, speculative background compaction, and Guardian classification participate.
+Independently concurrent native operations acquire separate tickets. Guardian
+transport cancellation/draining retains its reservation through actual settlement.
+Hidden helper threads receive the same connection-owned channel.
+
+Known dependency and user/approval waits can suspend their parent's reservation
+only after all parent sampling streams have stopped. Resumption rejoins FIFO before
+another model request. Ordinary tool round trips retain their reservation. Native
+pause checks its current watch state again after a queued resume grant.
+
+The remaining milestones must complete durable restart/reconnect recovery, queue
+versus execution deadlines (including the server's standalone label deadline), live
+settings propagation, app feedback, bounded operation history, and the exhaustive
+inference-path/lifecycle audit. This intermediate implementation is not the
+completed feature; source integration is not evidence of exercised runtime behavior.
 
 Local review is restricted to source inspection, formatting, and diff checks by
 the goal's explicit no-testing instruction. Runtime behavior remains unexecuted.
