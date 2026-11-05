@@ -988,9 +988,18 @@ export class TaskRepository {
     ownerId: string,
     chatId: string,
     operationId: string,
+    guard?: TaskOperationLeaseFence,
   ): Promise<TaskOperationContext | null> {
     if (!(await this.get(ownerId, chatId))) return null;
     return this.database.transaction(async (transaction) => {
+      if (guard)
+        await assertTaskOperationDispatchFence(
+          transaction,
+          ownerId,
+          chatId,
+          operationId,
+          guard,
+        );
       const roundRows = await transaction
         .select()
         .from(schema.taskPlanningRounds)
@@ -1093,8 +1102,10 @@ export class TaskRepository {
           classification.stableStateBeforeFailure !== "review" ||
           classification.activeOperationKind !== null ||
           classification.planningRound !== round.ordinal ||
-          classification.lastError?.code !== "task-goal-start-failed" ||
-          classification.lastError.operationKind !== "finalize" ||
+          !/^task-goal-start-(failed|timeout|capacity|rate-limit|connection|needs-input|configuration|usage-limit|budget-limit)$/u.test(
+            classification.lastError?.code ?? "",
+          ) ||
+          classification.lastError?.operationKind !== "finalize" ||
           classification.planAuthorship !==
             expected.classification.planAuthorship ||
           classification.hasPlan !== expected.classification.hasPlan ||

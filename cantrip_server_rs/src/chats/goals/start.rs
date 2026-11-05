@@ -249,6 +249,11 @@ impl Service {
             operation.to_owned(),
         );
         self.operations.run(async move {
+            let launch_guard = if let Some(lease) = &options.dispatch_lease {
+                Some(this.tasks.goal_launch_guard(&owner, &chat, lease).await?)
+            } else {
+                None
+            };
             let context = this
                 .tasks
                 .get_operation_context(&owner, &chat, &json!({"operationId":operation}))
@@ -278,25 +283,32 @@ impl Service {
                 .await?;
             let completed = Arc::new(Mutex::new(None));
             let complete: Before = Arc::new({
-                let (this, owner, chat, operation, completed) = (
+                let (this, owner, chat, operation, completed, guard) = (
                     this.clone(),
                     owner.clone(),
                     chat.clone(),
                     operation.clone(),
                     completed.clone(),
+                    launch_guard.clone(),
                 );
                 move |_| {
-                    let (this, owner, chat, operation, completed) = (
+                    let (this, owner, chat, operation, completed, guard) = (
                         this.clone(),
                         owner.clone(),
                         chat.clone(),
                         operation.clone(),
                         completed.clone(),
+                        guard.clone(),
                     );
                     async move {
                         let value = this
                             .tasks
-                            .complete_finalization_operation(&owner, &chat, &operation)
+                            .complete_finalization_operation_guarded(
+                                &owner,
+                                &chat,
+                                &operation,
+                                guard.as_ref(),
+                            )
                             .await?
                             .context("Task finalization was not found.")?;
                         *completed.lock().unwrap() = Some(value);
@@ -345,14 +357,25 @@ impl Service {
         operation: &str,
         error: Arc<anyhow::Error>,
     ) -> BoxFuture<'static, Result<()>> {
+        self.fail_launch_guarded(owner, chat, operation, error, None)
+    }
+    pub fn fail_launch_guarded(
+        self: &Arc<Self>,
+        owner: &str,
+        chat: &str,
+        operation: &str,
+        error: Arc<anyhow::Error>,
+        guard: Option<&Value>,
+    ) -> BoxFuture<'static, Result<()>> {
         let (this, owner, chat, operation) = (
             self.clone(),
             owner.to_owned(),
             chat.to_owned(),
             operation.to_owned(),
         );
+        let guard = guard.cloned();
         self.operations.run(async move{
-            this.tasks.fail_operation(&owner,&chat,&operation,crate::operations::shared_failure::downcast_ref::<LaunchError>(&error).map(|e|&e.failure_task)).await?;
+            this.tasks.fail_operation_guarded(&owner,&chat,&operation,crate::operations::shared_failure::downcast_ref::<LaunchError>(&error).map(|e|&e.failure_task),guard.as_ref()).await?;
             this.log("warn","Task Goal startup failed; the finalized plan is retained for retry",json!({"event":"task.goal.start-failed","subsystem":"task-scheduler","operation":"start-goal","status":"failed","reasonCode":"task-goal-start-failed","chatId":chat,"operationId":operation}));this.publish(&owner,&chat,"task",None);Ok(())
         })
     }

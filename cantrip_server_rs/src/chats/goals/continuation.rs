@@ -69,6 +69,7 @@ impl Service {
                 .await?
         };
         self.retain_one(&lease).await?;
+        let guard = self.tasks.goal_launch_guard(owner, &chat, &lease).await?;
         let result: Result<bool> = async {
             let mut protected_input = input.clone();
             protected_input["mode"] = json!("goal");
@@ -90,15 +91,16 @@ impl Service {
                 )
                 .await?;
             let before: Before = Arc::new({
-                let (this, owner, chat, dispatch) = (
+                let (this, owner, chat, dispatch, guard) = (
                     self.clone(),
                     owner.to_owned(),
                     chat.clone(),
                     dispatch.clone(),
+                    guard.clone(),
                 );
                 move |result| {
-                    let (this, owner, chat, dispatch) =
-                        (this.clone(), owner.clone(), chat.clone(), dispatch.clone());
+                    let (this, owner, chat, dispatch, guard) =
+                        (this.clone(), owner.clone(), chat.clone(), dispatch.clone(), guard.clone());
                     async move {
                         let latest = this
                             .tasks
@@ -111,10 +113,11 @@ impl Service {
                             })
                             .context("The Task changed during Goal continuation. Please retry.")?;
                         this.tasks
-                            .sync_implementation_state(
+                            .sync_implementation_state_guarded(
                                 &owner,
                                 &chat,
                                 &json!({"rowVersion":latest["rowVersion"],"task":result["task"]}),
+                                Some(&guard),
                             )
                             .await?;
                         this.publish(&owner, &chat, "task", None);
@@ -157,24 +160,46 @@ impl Service {
         }
         .await;
         if let Err(error) = result {
-            self.release(&lease["cycleId"]);
+            if crate::operations::shared_failure::downcast_ref::<task_dispatch::Conflict>(&error)
+                .is_some()
+            {
+                return Ok(true);
+            }
             if let Some(failure) =
                 crate::operations::shared_failure::downcast_ref::<LaunchError>(&error)
             {
-                self.tasks
-                    .sync_implementation_state(
+                let synchronized = self
+                    .tasks
+                    .sync_implementation_state_guarded(
                         owner,
                         &chat,
                         &json!({"rowVersion":task["rowVersion"],"task":failure.failure_task}),
+                        Some(&guard),
                     )
-                    .await?;
+                    .await;
+                if let Err(failure) = synchronized {
+                    if crate::operations::shared_failure::downcast_ref::<task_dispatch::Conflict>(
+                        &failure,
+                    )
+                    .is_some()
+                    {
+                        return Ok(true);
+                    }
+                    return Err(failure);
+                }
                 self.publish(owner, &chat, "task", None);
             }
-            if let Err(failure) = self.dispatch.settle(&lease, "failed", &Value::Null).await
-                && !failure.is::<task_dispatch::Conflict>()
+            if let Err(failure) = self
+                .tasks
+                .settle_goal_launch_failure(owner, &chat, &guard)
+                .await
             {
+                if failure.is::<task_dispatch::Conflict>() {
+                    return Ok(true);
+                }
                 return Err(failure);
             }
+            self.release_lease(&lease);
             (self.dependencies.queue_tick)();
             return Err(error);
         }

@@ -67,7 +67,7 @@ export function createProjectTaskPauseRuntime({
             true,
           );
           publishChatSummary(context.chatId, projectId);
-          releaseTaskGoalLease(cycle.id);
+          releaseTaskGoalLease(cycle.id, lease);
           try {
             await repository.taskDispatch.pauseUnstarted(lease, {
               threadId: cycle.codexThreadId ?? context.threadId,
@@ -94,7 +94,7 @@ export function createProjectTaskPauseRuntime({
         if (!receipt.paused)
           throw new Error("The worker did not acknowledge the Task pause.");
         if (lease && cycle) {
-          releaseTaskGoalLease(cycle.id);
+          releaseTaskGoalLease(cycle.id, lease);
           try {
             await repository.taskDispatch.pause(lease, {
               threadId:

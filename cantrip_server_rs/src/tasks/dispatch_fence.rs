@@ -56,6 +56,43 @@ pub(super) async fn assert(
     if !current || !valid {
         return Err(crate::task_dispatch::Conflict::stale().into());
     }
+    if leased && let Some(launch) = expected.get("goalLaunch") {
+        let current = cycle["goal_input"]
+            .get("receipt")
+            .and_then(|r| r.get("operationId"))
+            .cloned()
+            .unwrap_or(Value::Null);
+        if current != launch["inputOperationId"] {
+            return Err(crate::task_dispatch::Conflict::stale().into());
+        }
+        tx.query("WITH p AS MATERIALIZED (SELECT projects.id FROM projects JOIN chats ON chats.project_id=projects.id WHERE projects.owner_id=$1 AND chats.id=$2 FOR UPDATE OF projects) SELECT chats.id FROM p JOIN chats ON chats.project_id=p.id WHERE chats.id=$2 FOR UPDATE OF chats",&[&owner,&chat]).await?;
+        let placement=one(Executor::Transaction(tx),"SELECT jsonb_build_object('chat',to_jsonb(c),'project',to_jsonb(p))::text FROM chats c JOIN projects p ON p.id=c.project_id AND p.owner_id=$1 WHERE c.id=$2 LIMIT 1 FOR UPDATE OF c,p",&[&owner,&chat]).await?;
+        let round=one(Executor::Transaction(tx),"SELECT to_jsonb(r)::text FROM task_planning_rounds r WHERE r.chat_id=$1 AND r.id=$2 LIMIT 1 FOR UPDATE",&[&chat,&operation]).await?;
+        let task = one(
+            Executor::Transaction(tx),
+            "SELECT to_jsonb(t)::text FROM tasks t WHERE t.chat_id=$1 LIMIT 1 FOR UPDATE",
+            &[&chat],
+        )
+        .await?;
+        let valid = placement
+            .as_ref()
+            .zip(round.as_ref())
+            .zip(task.as_ref())
+            .is_some_and(|((p, r), t)| {
+                p["chat"]["archived_at"].is_null()
+                    && p["chat"]["automation_paused"] != true
+                    && p["project"]["task_scheduling_paused"] != true
+                    && p["chat"]["placement_revision"] == launch["placementRevision"]
+                    && r["kind"] == "finalize"
+                    && t["plan_goal_enabled"] == true
+                    && t["state"] != "complete"
+                    && t["planning_round"] == r["ordinal"]
+                    && (t["active_operation_id"].is_null() || t["active_operation_id"] == operation)
+            });
+        if !valid {
+            return Err(crate::task_dispatch::Conflict::stale().into());
+        }
+    }
     if leased && let Some(attempt) = expected.get("goalInferenceInputOperationId") {
         let input = &cycle["goal_input"];
         if input.is_null()

@@ -135,7 +135,7 @@ impl Service {
             self.chats.set_automation_paused(owner, &chat, true).await?;
             self.live
                 .publish_summary(owner, &context["chatId"], &json!(project));
-            self.goals.release(&cycle["id"]);
+            self.goals.release_lease(lease);
             if let Err(error) = self.dispatch.pause(
                 lease,
                 &json!({"threadId":cycle.get("codexThreadId").filter(|v|!v.is_null()).unwrap_or(&context["threadId"]),"turnId":cycle["turnId"]}),
@@ -159,7 +159,7 @@ impl Service {
             "The worker did not acknowledge the Task pause."
         );
         if let Some(lease) = &lease {
-            self.goals.release(&cycle["id"]);
+            self.goals.release_lease(lease);
             let thread = receipt["active"]
                 .get("threadId")
                 .filter(|v| !v.is_null())

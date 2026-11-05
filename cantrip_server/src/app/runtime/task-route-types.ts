@@ -116,6 +116,7 @@ export interface TaskRouteRuntimeDependencies {
     chatId: string,
     operationId: string,
     error: unknown,
+    guard?: import("../../db/task-operation-fence.js").TaskOperationLeaseFence,
   ) => Promise<void>;
   launchPreparedTaskGoal: (
     chatId: string,
@@ -148,7 +149,10 @@ export interface TaskRouteRuntimeDependencies {
   ) => Promise<
     Omit<TaskGoalWorkerResult, "task"> & { task: TaskOpaqueSummary }
   >;
-  releaseTaskGoalLease: (cycleId: string) => void;
+  releaseTaskGoalLease: (
+    cycleId: string,
+    expected?: import("@cantrip/protocol").TaskDispatchFence,
+  ) => void;
   reconcileTaskGoalDispatch: (
     task: TaskOpaqueSummary,
     state: TaskOpaqueSummary["state"],

@@ -32,7 +32,7 @@ impl Service {
             entry.timer.abort();
         }
     }
-    pub(super) fn release_lease(&self, lease: &Value) {
+    pub fn release_lease(&self, lease: &Value) {
         let Some(cycle) = lease["cycleId"].as_js_string() else {
             return;
         };
@@ -56,7 +56,7 @@ impl Service {
             .context("Task Goal lease cycle")?
             .clone();
         {
-            let mut state = self.leases.lock().unwrap();
+            let state = self.leases.lock().unwrap();
             anyhow::ensure!(!state.closing, "{CLOSING}");
             if state.retained.get(&cycle).is_some_and(|r| {
                 r.lease["fencingToken"] == lease["fencingToken"]
@@ -64,13 +64,22 @@ impl Service {
             }) {
                 return Ok(());
             }
-            if let Some(prior) = state.retained.remove(&cycle) {
-                prior.timer.abort();
-            }
         }
         self.dispatch.heartbeat(lease, &Value::Null).await?;
         let mut state = self.leases.lock().unwrap();
         anyhow::ensure!(!state.closing, "{CLOSING}");
+        if let Some(current) = state.retained.get(&cycle) {
+            let old = current.lease["fencingToken"]
+                .as_i64()
+                .context("Retained Goal fence")?;
+            let new = lease["fencingToken"].as_i64().context("Task Goal fence")?;
+            if old > new || (old == new && current.lease["leaseOwner"] != lease["leaseOwner"]) {
+                return Err(task_dispatch::Conflict::stale().into());
+            }
+            if old == new {
+                return Ok(());
+            }
+        }
         let service = Arc::downgrade(self);
         let timer_lease = lease.clone();
         let timer = tokio::spawn(async move {
@@ -141,7 +150,6 @@ impl Service {
         {
             return self.retain_one(&lease).await;
         }
-        self.release(&lease["cycleId"]);
         let settled: Result<()> = async {
             self.dispatch.heartbeat(&lease, &Value::Null).await?;
             self.dispatch
@@ -163,6 +171,7 @@ impl Service {
         {
             return Err(error);
         }
+        self.release_lease(&lease);
         self.publish(owner, &text(&source["chatId"])?, "task", None);
         (self.dependencies.queue_tick)();
         Ok(())

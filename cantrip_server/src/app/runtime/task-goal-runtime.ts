@@ -330,6 +330,13 @@ export function createTaskGoalRuntime({
     options: Parameters<typeof startEncryptedTaskGoal>[4] = {},
   ) {
     const ownerId = applicationOwnerId();
+    const launchGuard = options.taskDispatchLease
+      ? await repository.tasks.inferenceInputs.goals.launchGuard(
+          ownerId,
+          chatId,
+          options.taskDispatchLease,
+        )
+      : undefined;
     const taskOperation = await repository.tasks.getOperationContext(
       ownerId,
       chatId,
@@ -368,6 +375,7 @@ export function createTaskGoalRuntime({
         ownerId,
         chatId,
         operationId,
+        launchGuard,
       );
       if (!completed) throw new Error("Task finalization was not found.");
       publishChatInvalidation(chatId, "task");
@@ -400,12 +408,14 @@ export function createTaskGoalRuntime({
     chatId: string,
     operationId: string,
     error: unknown,
+    guard?: TaskOperationLeaseFence,
   ): Promise<void> {
     await repository.tasks.failOperation(
       applicationOwnerId(),
       chatId,
       operationId,
       error instanceof TaskGoalLaunchError ? error.failureTask : undefined,
+      guard,
     );
     app.log.warn(
       {
@@ -670,12 +680,29 @@ export function createTaskGoalRuntime({
     ) {
       return;
     }
-    releaseTaskGoalLease(lease.cycleId);
     await repository.taskDispatch.heartbeat(lease);
     if (closing)
       throw new Error(
         "The server is shutting down; Task recovery will continue after restart.",
       );
+    const current = retainedTaskGoalLeases.get(lease.cycleId);
+    if (current) {
+      if (
+        current.lease.fencingToken > lease.fencingToken ||
+        (current.lease.fencingToken === lease.fencingToken &&
+          current.lease.leaseOwner !== lease.leaseOwner)
+      )
+        throw new TaskDispatchConflictError(
+          "Task Goal retention was replaced.",
+          "stale-lease",
+        );
+      if (
+        current.lease.fencingToken === lease.fencingToken &&
+        current.lease.leaseOwner === lease.leaseOwner
+      )
+        return;
+      releaseTaskGoalLease(lease.cycleId, current.lease);
+    }
     const timer = setInterval(
       () => {
         void repository.taskDispatch.heartbeat(lease).catch((error) => {
@@ -724,7 +751,6 @@ export function createTaskGoalRuntime({
       await retainTaskGoalLease(lease);
       return;
     }
-    releaseTaskGoalLease(lease.cycleId);
     try {
       await repository.taskDispatch.heartbeat(lease);
       await repository.taskDispatch.settle(
@@ -734,6 +760,7 @@ export function createTaskGoalRuntime({
     } catch (error) {
       if (!(error instanceof TaskDispatchConflictError)) throw error;
     }
+    releaseTaskGoalLease(lease.cycleId, lease);
     publishChatInvalidation(source.chatId, "task");
     queueTaskScheduleTick();
   };
@@ -1202,6 +1229,11 @@ export function createTaskGoalRuntime({
         { allowSettled: true },
       ));
     await retainTaskGoalLease(lease);
+    const guard = await repository.tasks.inferenceInputs.goals.launchGuard(
+      owner,
+      context.chatId,
+      lease,
+    );
     try {
       const protectedMessage = await protectChatInput(
         bridge,
@@ -1250,6 +1282,7 @@ export function createTaskGoalRuntime({
               owner,
               context.chatId,
               { rowVersion: latest.rowVersion, task: result.task },
+              guard,
             );
             publishChatInvalidation(context.chatId, "task");
           },
@@ -1257,17 +1290,30 @@ export function createTaskGoalRuntime({
       );
       return true;
     } catch (error) {
-      releaseTaskGoalLease(lease.cycleId);
-      if (error instanceof TaskGoalLaunchError) {
-        await repository.tasks.syncImplementationState(owner, context.chatId, {
-          rowVersion: task.rowVersion,
-          task: error.failureTask,
-        });
-        publishChatInvalidation(context.chatId, "task");
+      if (error instanceof TaskDispatchConflictError) return true;
+      try {
+        if (error instanceof TaskGoalLaunchError) {
+          await repository.tasks.syncImplementationState(
+            owner,
+            context.chatId,
+            {
+              rowVersion: task.rowVersion,
+              task: error.failureTask,
+            },
+            guard,
+          );
+          publishChatInvalidation(context.chatId, "task");
+        }
+        await repository.tasks.inferenceInputs.goals.settleLaunchFailure(
+          owner,
+          context.chatId,
+          guard,
+        );
+      } catch (failure) {
+        if (failure instanceof TaskDispatchConflictError) return true;
+        throw failure;
       }
-      await repository.taskDispatch.settle(lease, "failed").catch((failure) => {
-        if (!(failure instanceof TaskDispatchConflictError)) throw failure;
-      });
+      releaseTaskGoalLease(lease.cycleId, lease);
       queueTaskScheduleTick();
       throw error;
     }

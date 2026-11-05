@@ -13,6 +13,10 @@ export type TaskOperationLeaseFence = {
   inferenceInputOperationId?: string | null;
   /** Explicit Task Goal input, separate from the finalizer's round receipt. */
   goalInferenceInputOperationId?: string;
+  /** Goal setup captures its placement and prior input (null means none yet).
+   * A newly prepared input owns its own terminal handling and cannot be failed
+   * by that older launcher. Deferred prior inputs remain valid setup anchors. */
+  goalLaunch?: { inputOperationId: string | null; placementRevision: number };
 };
 export type TaskOperationDispatchFence =
   | TaskOperationLeaseFence
@@ -99,6 +103,61 @@ export async function assertTaskOperationDispatchFence(
         cycle.leaseExpiresAt !== null &&
         cycle.leaseExpiresAt.getTime() > Date.now();
     if (!sameOwner || !valid) fail();
+    if (expected.goalLaunch) {
+      if (
+        (cycle.goalInput?.receipt.operationId ?? null) !==
+        expected.goalLaunch.inputOperationId
+      )
+        fail();
+      await transaction.execute(projectChatExecutionLock(ownerId, chatId));
+      const [placement] = await transaction
+        .select({ chat: schema.chats, project: schema.projects })
+        .from(schema.chats)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.chats.id, chatId))
+        .for("update")
+        .limit(1);
+      const [round] = await transaction
+        .select()
+        .from(schema.taskPlanningRounds)
+        .where(
+          and(
+            eq(schema.taskPlanningRounds.id, operationId),
+            eq(schema.taskPlanningRounds.chatId, chatId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const [task] = await transaction
+        .select()
+        .from(schema.tasks)
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      if (
+        !placement ||
+        placement.chat.archivedAt ||
+        placement.chat.automationPaused ||
+        placement.project.taskSchedulingPaused ||
+        placement.chat.placementRevision !==
+          expected.goalLaunch.placementRevision ||
+        !round ||
+        round.kind !== "finalize" ||
+        !task ||
+        !task.planGoalEnabled ||
+        task.state === "complete" ||
+        task.planningRound !== round.ordinal ||
+        (task.activeOperationId !== null &&
+          task.activeOperationId !== operationId)
+      )
+        fail();
+    }
     if (expected.goalInferenceInputOperationId !== undefined) {
       const input = cycle.goalInput;
       if (

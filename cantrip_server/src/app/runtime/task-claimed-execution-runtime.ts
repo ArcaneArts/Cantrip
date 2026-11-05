@@ -227,6 +227,12 @@ export function createTaskClaimedExecutionRuntime(
         if (!task) throw new Error("The claimed Task no longer exists.");
 
         const launchClaimedGoal = async (operationId: string) => {
+          const guard =
+            await repository.tasks.inferenceInputs.goals.launchGuard(
+              ownerId,
+              context.chatId,
+              claim.lease,
+            );
           try {
             await retainTaskGoalLease(claim.lease);
             const goalTurnOptions = scheduledTaskGoalTurnOptions(claim.lease);
@@ -236,28 +242,36 @@ export function createTaskClaimedExecutionRuntime(
               runtimes: [runtime],
             });
           } catch (error) {
-            releaseTaskGoalLease(claim.lease.cycleId);
+            if (error instanceof TaskDispatchConflictError) return;
+            let persistenceError: unknown;
             try {
-              await failTaskGoalLaunch(context.chatId, operationId, error);
-            } finally {
-              try {
-                await repository.taskDispatch.heartbeat(claim.lease);
-                await repository.taskDispatch.settle(claim.lease, "failed");
-              } catch (dispatchError) {
-                if (!(dispatchError instanceof TaskDispatchConflictError)) {
-                  throw dispatchError;
-                }
-              }
-              publishChatInvalidation(context.chatId, "task", null, context);
-              await repository.taskRetries.noteFailure(
+              await failTaskGoalLaunch(
+                context.chatId,
+                operationId,
+                error,
+                guard,
+              );
+            } catch (failure) {
+              if (failure instanceof TaskDispatchConflictError) return;
+              persistenceError = failure;
+            }
+            try {
+              await repository.taskRetries.settleDispatchFailure(
                 ownerId,
                 context.chatId,
-                `goal-launch:${claim.cycle.id}:${claim.lease.fencingToken}`,
+                claim.lease,
                 classifyTaskFailure(error),
+                undefined,
+                guard,
               );
-              publishChatInvalidation(context.chatId, "task", null, context);
-              queueTaskScheduleTick();
+            } catch (failure) {
+              if (failure instanceof TaskDispatchConflictError) return;
+              throw failure;
             }
+            releaseTaskGoalLease(claim.lease.cycleId, claim.lease);
+            publishChatInvalidation(context.chatId, "task", null, context);
+            queueTaskScheduleTick();
+            if (persistenceError) throw persistenceError;
           }
         };
         if (prior?.relayResult) {
