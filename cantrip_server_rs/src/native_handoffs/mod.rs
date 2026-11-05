@@ -1,5 +1,6 @@
 //! Durable provider transfers share the canonical Chat lock with admission,
 //! queue claims and settings. The owning worker performs native file operations.
+mod autonomous_source;
 mod commit;
 mod configuration;
 mod guards;

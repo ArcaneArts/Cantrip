@@ -2077,3 +2077,59 @@ All 30 native durable Goal regression cases and all 44 Goal extension Rust tests
 pass against that source. These regressions do not establish the combined
 pre-start capacity-wait and cold-resumption budget scenario. Optimized builds,
 other platforms and whole-worker recovery acceptance remain unverified.
+
+## Provider transfers for queued managed Goal continuations
+
+A managed native Goal continuation can change provider while its accepted
+command is still waiting for worker capacity, before Core receives permission
+to create the turn. The existing provider/account handoff UI and durable
+handoff reservation now support this boundary as well as GUI inputs. This is
+not a transfer of a partially executed turn.
+
+The worker records the actual observed native runner, attempt, expected turn
+and Goal epoch on its accepted command. Both servers derive the candidate from
+that canonical identity; the UI cannot supply an autonomous attempt. The
+candidate must own the sole active lane, have no native turn/output evidence,
+and have no outstanding canonical queue claim. Older commands without this
+observed identity remain ineligible for this transition.
+
+The worker synchronously seals the exact unforwarded inference source. It then
+invalidates that actual native runner on the matching transport and waits for
+the native acknowledgement before persisting the handoff's withdrawal record.
+An uncertain invalidation retries the same native gate. It does not create a
+replacement turn or treat quiet output as settlement. Dispatch that wins first
+causes withdrawal to refuse and leaves the started operation running.
+
+Canonical deferral uses the journal's exact released, never-started operation,
+command generation and expected native turn. Pure autonomous commands have no
+GUI logical root or client message ID, so this path does not require fabricated
+GUI recovery metadata or transport-end timestamps. Transport closure alone is
+never a no-start proof. Contradictory native turn/output evidence still refuses
+deferral. A Stop that won the race keeps its cancellation while its unused
+physical attempt is closed.
+
+Until canonical acknowledgement, the local source retains its publication and
+claim ownership. Deliberate withdrawal bypasses ordinary failed-turn
+publication and cannot overwrite the handoff's durable deferral. The original
+native pending start is denied, without consuming Goal turns or replaying tools
+or input. The imported Goal schedules a fresh cycle through normal FIFO
+admission after publication; neither the old provider's slot nor a future
+destination slot is retained across the handoff.
+
+Cancelling a withdrawn transfer may rearm only the runner invalidated by that
+transfer. Explicit Stop, Pause, resource removal or a newer rebind cannot be
+undone by its completion wake. The cancellation path also reads the canonical
+queue's paused/stopped state before rearming. Ordinary wakes remain unable to
+reopen explicitly invalidated runners.
+
+This milestone covers claimless managed native Goal continuations. A first
+cycle retaining an `awaitingGoal` queue claim needs its own parent-affinity
+transition; Task-created private Goal inference channels also remain separate.
+Already-forwarded, suspended and partially executed turns do not gain provider
+transfer through this no-input boundary. The full lifecycle audit remains open.
+
+Validation is source review, direct formatting, mechanical source-based protocol
+export (631 roots, 10,588 nodes; unchanged Run export of 11 roots, 453 nodes) and
+`git diff --check`. No tests, builds, typechecks, benchmarks, native/helper
+execution, patch application, hosted validation or computer-use testing were
+run. End-to-end behavior and supported-platform operation remain unverified.

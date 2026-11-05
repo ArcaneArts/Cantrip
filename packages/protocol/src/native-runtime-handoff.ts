@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { modelProviderAccountWireSummarySchema } from "./providers.js";
 import { inferenceJournalRecordSchema } from "./inference-recovery.js";
+import { nativeAutonomousAttemptSchema } from "./native-commands.js";
 import {
   nativeSettingsBindingSchema,
   protectedNativeSettingsSnapshotSchema,
@@ -12,6 +13,8 @@ export const nativeRuntimeHandoffQueuedSourceSchema = z
     operationId: id,
     operationGeneration: id,
     withdrawn: z.boolean(),
+    // Derived from the canonical accepted command, never from the UI request.
+    autonomousAttempt: nativeAutonomousAttemptSchema.optional(),
     // Standalone inputs retain per-message model choices. Only this exact
     // transferred revision inherits the explicitly selected provider route.
     retargetedPrompt: z

@@ -22,6 +22,8 @@ export class ManagedExecutionRunner {
   private invalidated = false;
   private revoked = false;
   private pendingBind: { previous: string; next: string } | null = null;
+  private providerTransfer: { operationId: string; generation: string } | null =
+    null;
   private mutations: Promise<void> = Promise.resolve();
 
   constructor(
@@ -81,6 +83,7 @@ export class ManagedExecutionRunner {
   /** Revokes this actual runner registration; a queue wake cannot reopen it. */
   revoke(): void {
     this.revoked = true;
+    this.providerTransfer = null;
     this.controller.abort(new Error("The managed resource was removed."));
   }
 
@@ -88,6 +91,91 @@ export class ManagedExecutionRunner {
     const pending = this.mutations.then(operation);
     this.mutations = pending.catch(() => {});
     return pending;
+  }
+
+  /** Seal the actual native pre-start gate after its exact inference source was
+   * withdrawn. An uncertain acknowledgement retries this same invalidation. */
+  invalidateForProviderTransfer(
+    operationId: string,
+    runnerGeneration: string,
+    threadId: string,
+    transport: string,
+  ): Promise<void> {
+    return this.mutate(async () => {
+      this.prepared(threadId);
+      if (
+        this.transport !== transport ||
+        this.generation !== runnerGeneration ||
+        this.pendingBind ||
+        (this.providerTransfer &&
+          this.providerTransfer.operationId !== operationId)
+      )
+        throw new Error(
+          "The provider transfer belongs to another native runner.",
+        );
+      // An explicit Stop/Pause must keep its stronger invalidation. Do not
+      // abort a live source here: it still owns the canonical ACK barrier.
+      if (!this.controller.signal.aborted)
+        this.providerTransfer = { operationId, generation: runnerGeneration };
+      this.invalidated = true;
+      await this.runtime.invalidateManagedExecution(
+        { threadId, runnerGeneration },
+        transport,
+      );
+    });
+  }
+
+  /** Only cancellation of this transfer may rearm its source. A later explicit
+   * Stop/Pause/rebind clears that ownership and cannot be undone by a wake. */
+  resumeAfterProviderTransfer(
+    operationId: string,
+    threadId: string,
+    transport: string,
+  ): Promise<void> {
+    return this.mutate(async () => {
+      const transfer = this.providerTransfer;
+      if (!transfer || transfer.operationId !== operationId || this.revoked)
+        return;
+      this.prepared(threadId);
+      if (
+        this.transport !== transport ||
+        !this.invalidated ||
+        (this.pendingBind
+          ? this.pendingBind.previous !== transfer.generation
+          : this.generation !== transfer.generation ||
+            this.controller.signal.aborted)
+      )
+        return;
+      await this.rebind(threadId, transport);
+      this.providerTransfer = null;
+    });
+  }
+
+  private async rebind(threadId: string, transport: string): Promise<void> {
+    const { previous, next } = this.pendingBind ?? {
+      previous: this.generation,
+      next: randomUUID(),
+    };
+    this.pendingBind = { previous, next };
+    this.generation = next;
+    this.controller = new AbortController();
+    this.register();
+    try {
+      await this.runtime.bindManagedExecution(
+        {
+          threadId,
+          runnerGeneration: next,
+          expectedRunnerGeneration: previous,
+        },
+        transport,
+      );
+      this.invalidated = false;
+      this.pendingBind = null;
+    } catch (error) {
+      // Reconcile this exact idempotent bind after an uncertain response.
+      this.controller.abort(error);
+      throw error;
+    }
   }
 
   /** Never queues behind model execution or the native queue/start request. */
@@ -116,6 +204,7 @@ export class ManagedExecutionRunner {
           "The native command belongs to a replaced runner transport.",
         );
       if (method === "turn/interrupt" || cancelGoalAttempt) {
+        this.providerTransfer = null;
         this.controller.abort(
           new Error("The managed runner was explicitly stopped."),
         );
@@ -136,31 +225,8 @@ export class ManagedExecutionRunner {
           transport,
         );
       } else if (this.invalidated && resumeAutonomy) {
-        const { previous, next } = this.pendingBind ?? {
-          previous: this.generation,
-          next: randomUUID(),
-        };
-        this.pendingBind = { previous, next };
-        this.generation = next;
-        this.controller = new AbortController();
-        this.register();
-        try {
-          await this.runtime.bindManagedExecution(
-            {
-              threadId,
-              runnerGeneration: next,
-              expectedRunnerGeneration: previous,
-            },
-            transport,
-          );
-          this.invalidated = false;
-          this.pendingBind = null;
-        } catch (error) {
-          // A later explicit command may reconcile this exact idempotent bind;
-          // never invent a replacement generation after an uncertain response.
-          this.controller.abort(error);
-          throw error;
-        }
+        this.providerTransfer = null;
+        await this.rebind(threadId, transport);
       }
     });
   }

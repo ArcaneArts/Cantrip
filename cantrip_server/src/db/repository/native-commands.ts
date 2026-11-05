@@ -521,6 +521,18 @@ export class NativeCommandRepository {
           input.method !== "thread/goal/set"
         )
           throw new NativeCommandError("invalid-goal-status");
+        const attempt = input.intent.autonomousAttempt;
+        if (
+          attempt &&
+          (input.origin !== "autonomous" ||
+            input.method !== "turn/start" ||
+            input.intent.expectedTurnId !== attempt.turnId ||
+            input.operationId !==
+              `native:${attempt.runnerGeneration}:${attempt.attemptId}` ||
+            input.session.connectionId !==
+              `autonomous:${attempt.runnerGeneration}`)
+        )
+          throw new NativeCommandError("invalid-autonomous-attempt");
         if (input.goalQueueHandoff) {
           const handoff = input.goalQueueHandoff;
           if (input.origin !== "autonomous" || input.method !== "turn/start")

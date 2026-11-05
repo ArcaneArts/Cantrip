@@ -12,6 +12,19 @@ import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
 
 const id = z.string().min(1).max(255);
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
+/** Identity of an actual worker-observed native Goal admission, not a prompt. */
+export const nativeAutonomousAttemptSchema = z
+  .object({
+    runnerGeneration: id,
+    attemptId: id,
+    turnId: id,
+    trigger: z.literal("goal"),
+    goalEpoch: id.optional(),
+  })
+  .strict();
+export type NativeAutonomousAttempt = z.infer<
+  typeof nativeAutonomousAttemptSchema
+>;
 export const nativeCommandSessionSchema = z
   .object({
     chatId: id,
@@ -38,6 +51,7 @@ export const nativeCommandIntentSchema = z
     goalStatus: z.enum(["active", "paused"]).optional(),
     settingKeys: z.array(z.string().min(1).max(120)).max(64).default([]),
     expectedTurnId: id.nullable().default(null),
+    autonomousAttempt: nativeAutonomousAttemptSchema.optional(),
     permissionProfileId: id.optional(),
     permissionTransition: permissionTransitionSchema.optional(),
     configTarget: z.literal("account-defaults").optional(),
