@@ -60,6 +60,7 @@ pub async fn update(
                 unavailable: true,
                 request_id: None,
                 encoding_error: None,
+                inference: None,
             }
             .into());
         }

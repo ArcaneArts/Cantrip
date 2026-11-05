@@ -77,7 +77,7 @@ impl CommandDelegate for ControlledWorker {
                 }
                 Ok(())
             }.await;
-            result.map(|_|Some(Value::Null)).map_err(|e|WorkerError{message:e.to_string().into(),code:None,unavailable:false,request_id:None,encoding_error:None})
+            result.map(|_|Some(Value::Null)).map_err(|e|WorkerError{message:e.to_string().into(),code:None,unavailable:false,request_id:None,encoding_error:None,inference:None})
         }.boxed()
     }
 }

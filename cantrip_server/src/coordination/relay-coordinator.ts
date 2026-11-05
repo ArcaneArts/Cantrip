@@ -69,6 +69,7 @@ export type RelayCoordinationPayload =
       result?: unknown;
       error?: string;
       errorCode?: string;
+      inference?: import("@cantrip/protocol").InferenceFailureEvidence;
     })
   | (CoordinationPayloadBase & {
       kind: "worker-frame";

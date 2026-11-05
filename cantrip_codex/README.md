@@ -578,3 +578,19 @@ turn context and boundary snapshot required by native checkpoint capture.
 Product pause adoption, Goal/resource continuation and complete worker restart
 acceptance remain separate required work. See
 [durable turn suspension](../docs/DURABLE_TURN_SUSPENSION.md).
+
+Patch `0062` records failure-before-output at the actual admitted model-stream
+boundary, after response interceptors and before Core can consume output or run
+tools. It ignores transport/model metadata, treats completion and every output
+event conservatively as output, and keeps that evidence monotonic across all
+sequential requests in the physical scope. Stream errors, early close and request
+setup failure record failure. WebSocket prewarming is excluded.
+
+The existing private `finish` notification carries the result only after owned
+response transports settle. It is matched to the exact native scope and runtime,
+not inferred from missing UI activity or a response timeout. This changes no
+public native RPC or precomputed schema archive. The evidence describes this
+local model scope; it does not promise exactly-once provider execution or
+authorize replay of a restored checkpoint's original prompt. Only source review,
+direct formatting, mechanical patch/contract generation and diff checks were
+performed for this patch; no native execution, tests or builds were run.

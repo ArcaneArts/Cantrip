@@ -62,6 +62,7 @@ impl CommandDelegate for Worker {
                 unavailable: false,
                 request_id: None,
                 encoding_error: None,
+                inference: None,
             };
             let reply = reply.ok_or_else(|| error("Unexpected worker request".into()))?;
             if let Some(sql) = reply["sql"].as_str() {

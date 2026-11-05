@@ -1,0 +1,276 @@
+diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
+index fc1ac7e..4683d21 100644
+--- a/codex-rs/core/src/client.rs
++++ b/codex-rs/core/src/client.rs
+@@ -2084,6 +2084,7 @@ impl ResponsesHttpExecutor<'_> {
+                         Arc::clone(&self.client.state.provider),
+                         interceptors,
+                         /*last_response_tx*/ None,
++                        self.inference.clone(),
+                     ));
+                 }
+                 Err(ApiError::Transport(unauthorized_transport))
+@@ -2433,6 +2434,7 @@ impl ModelClientSession {
+                 Arc::clone(&self.client.state.provider),
+                 interceptors,
+                 Some(last_response_tx),
++                if warmup { None } else { self.inference.clone() },
+             );
+             self.websocket_session.last_response_rx = Some(last_response_rx);
+             return Ok(WebsocketStreamOutcome::Stream(stream));
+@@ -2559,51 +2561,61 @@ impl ModelClientSession {
+         responses_metadata: &CodexResponsesMetadata,
+         inference_trace: &InferenceTraceContext,
+     ) -> Result<ResponseStream> {
+-        let wire_api = self.client.state.provider.info().wire_api;
+-        match wire_api {
+-            WireApi::Responses => {
+-                if self.client.responses_websocket_enabled() {
+-                    let request_trace = current_span_w3c_trace_context();
+-                    match self
+-                        .stream_responses_websocket(
++        let inference = self.inference.clone();
++        let result = async {
++            let wire_api = self.client.state.provider.info().wire_api;
++            match wire_api {
++                WireApi::Responses => {
++                    if self.client.responses_websocket_enabled() {
++                        let request_trace = current_span_w3c_trace_context();
++                        match self
++                            .stream_responses_websocket(
++                                prompt,
++                                model_info,
++                                session_telemetry,
++                                effort.clone(),
++                                summary,
++                                service_tier.clone(),
++                                responses_metadata,
++                                /*warmup*/ false,
++                                request_trace,
++                                inference_trace,
++                            )
++                            .await?
++                        {
++                            WebsocketStreamOutcome::Stream(stream) => return Ok(stream),
++                            WebsocketStreamOutcome::FallbackToHttp => {
++                                self.try_switch_fallback_transport(session_telemetry, model_info);
++                            }
++                        }
++                    }
++
++                    ResponsesHttpExecutor::new(&self.client)
++                        .with_inference(self.inference.clone())
++                        .stream_responses_http(
++                            &self.turn_state,
++                            /*expected_auth_owner*/ None,
++                            self.client.event_sender.as_ref(),
+                             prompt,
+                             model_info,
+                             session_telemetry,
+-                            effort.clone(),
++                            effort,
+                             summary,
+-                            service_tier.clone(),
++                            service_tier,
+                             responses_metadata,
+-                            /*warmup*/ false,
+-                            request_trace,
+                             inference_trace,
+                         )
+-                        .await?
+-                    {
+-                        WebsocketStreamOutcome::Stream(stream) => return Ok(stream),
+-                        WebsocketStreamOutcome::FallbackToHttp => {
+-                            self.try_switch_fallback_transport(session_telemetry, model_info);
+-                        }
+-                    }
++                        .await
+                 }
+-
+-                ResponsesHttpExecutor::new(&self.client)
+-                    .with_inference(self.inference.clone())
+-                    .stream_responses_http(
+-                        &self.turn_state,
+-                        /*expected_auth_owner*/ None,
+-                        self.client.event_sender.as_ref(),
+-                        prompt,
+-                        model_info,
+-                        session_telemetry,
+-                        effort,
+-                        summary,
+-                        service_tier,
+-                        responses_metadata,
+-                        inference_trace,
+-                    )
+-                    .await
+             }
+         }
++        .await;
++        if result.is_err()
++            && let Some(owner) = inference
++        {
++            owner.model_failed();
++        }
++        result
+     }
+ 
+     /// Permanently disables WebSockets for this Codex session and resets WebSocket state.
+@@ -2684,6 +2696,37 @@ fn add_responses_lite_header(headers: &mut ApiHeaderMap, use_responses_lite: boo
+ const RESPONSE_STREAM_CHANNEL_CAPACITY: usize = 1600;
+ const STREAM_DROPPED_REASON: &str = "response stream dropped before provider terminal event";
+ 
++// The observation outlives the provider stream, not its UI consumer. Closing
++// before a completed/output event is a failed/cancelled stream, including EOF.
++struct InferenceStreamObservation(Option<Arc<crate::managed_inference::ManagedInferenceTurn>>);
++impl InferenceStreamObservation {
++    fn observe(&self, event: &std::result::Result<ResponseEvent, ApiError>) {
++        if let Some(owner) = &self.0 {
++            match event {
++                Err(_) => owner.model_failed(),
++                Ok(
++                    ResponseEvent::Created { .. }
++                    | ResponseEvent::SafetyBuffering(_)
++                    | ResponseEvent::ServerModel(_)
++                    | ResponseEvent::ModelVerifications(_)
++                    | ResponseEvent::TurnModerationMetadata(_)
++                    | ResponseEvent::ServerReasoningIncluded(_)
++                    | ResponseEvent::RateLimits(_)
++                    | ResponseEvent::ModelsEtag(_),
++                ) => {}
++                Ok(_) => owner.model_output(),
++            }
++        }
++    }
++}
++impl Drop for InferenceStreamObservation {
++    fn drop(&mut self) {
++        if let Some(owner) = &self.0 {
++            owner.model_failed();
++        }
++    }
++}
++
+ fn map_response_stream(
+     mut api_stream: codex_api::ResponseStream,
+     session_telemetry: SessionTelemetry,
+@@ -2691,13 +2734,20 @@ fn map_response_stream(
+     provider: SharedModelProvider,
+     interceptors: Vec<Box<dyn codex_extension_api::ModelResponseInterceptor>>,
+     last_response_tx: Option<oneshot::Sender<LastResponse>>,
++    inference: Option<Arc<crate::managed_inference::ManagedInferenceTurn>>,
+ ) -> ResponseStream {
+     let routing_affinity = api_stream.routing_affinity.take();
+     let upstream_request_id = api_stream.upstream_request_id.take();
+     let interrupt = api_stream.interrupt.take();
++    // Observe the model boundary after extension interceptors, before output
++    // can reach Core/tool execution. Keep this monotonic across every request
++    // in the same inference scope, including retries and later model rounds.
++    let observation = InferenceStreamObservation(inference);
++    let api_stream = crate::model_request::intercept_stream(Box::pin(api_stream), interceptors)
++        .inspect(move |event| observation.observe(event));
+     let mut stream = map_response_events(
+         upstream_request_id,
+-        crate::model_request::intercept_stream(Box::pin(api_stream), interceptors),
++        api_stream,
+         session_telemetry,
+         inference_trace_attempt,
+         provider,
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+index e566ce9..2ecdec8 100644
+--- a/codex-rs/core/src/managed_execution.rs
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -225,14 +225,20 @@ impl ManagedExecutionGate {
+         scope_id: &str,
+         phase: &str,
+         cancelled_request: Option<&str>,
++        model_failed_before_output: Option<bool>,
+     ) {
++        let mut input =
++            serde_json::json!({"phase":phase,"scopeId":scope_id,"requestId":cancelled_request});
++        if let Some(value) = model_failed_before_output {
++            input["modelFailedBeforeOutput"] = serde_json::json!(value);
++        }
+         let _ = self.events.send(ManagedExecutionEvent::Requested {
+             thread_id,
+             runner_generation: self.runner_generation.clone(),
+             attempt_id: uuid::Uuid::new_v4().to_string(),
+             turn_id: turn_id.to_owned(),
+             trigger: "inference".into(),
+-            input: serde_json::json!({"phase":phase,"scopeId":scope_id,"requestId":cancelled_request}),
++            input,
+             goal_epoch: None,
+         });
+     }
+@@ -480,7 +486,14 @@ impl ManagedExecutionGate {
+         // no new waiter can be inserted between draining and invalidation.
+         for (attempt_id, (thread_id, turn_id, scope_id, reply)) in inference_requests {
+             let _ = reply.send(false);
+-            self.notify_inference(thread_id, &turn_id, &scope_id, "cancel", Some(&attempt_id));
++            self.notify_inference(
++                thread_id,
++                &turn_id,
++                &scope_id,
++                "cancel",
++                Some(&attempt_id),
++                None,
++            );
+         }
+         for (id, attempt) in attempts {
+             self.declined(id, attempt, "managed runner invalidated");
+@@ -512,6 +525,7 @@ impl Drop for PendingInference {
+                 &self.scope_id,
+                 "cancel",
+                 Some(&self.attempt_id),
++                None,
+             );
+         }
+     }
+diff --git a/codex-rs/core/src/managed_inference.rs b/codex-rs/core/src/managed_inference.rs
+index 1586cd8..a097325 100644
+--- a/codex-rs/core/src/managed_inference.rs
++++ b/codex-rs/core/src/managed_inference.rs
+@@ -21,6 +21,8 @@ pub(crate) struct ManagedInferenceTurn {
+     sampling: AtomicUsize,
+     waits: AtomicUsize,
+     finished: AtomicBool,
++    model_output: AtomicBool,
++    model_failed: AtomicBool,
+     transports: StdMutex<TransportState>,
+     transport_changed: Notify,
+ }
+@@ -174,6 +176,8 @@ impl ManagedInferenceTurn {
+             sampling: AtomicUsize::new(0),
+             waits: AtomicUsize::new(0),
+             finished: AtomicBool::new(false),
++            model_output: AtomicBool::new(false),
++            model_failed: AtomicBool::new(false),
+             transports: StdMutex::new(TransportState::default()),
+             transport_changed: Notify::new(),
+         })
+@@ -326,10 +330,26 @@ impl ManagedInferenceTurn {
+                 &self.scope_id,
+                 "finish",
+                 None,
++                Some(
++                    self.model_failed.load(Ordering::SeqCst)
++                        && !self.model_output.load(Ordering::SeqCst),
++                ),
+             );
+         }
+     }
+ 
++    /// Recorded at the actual model stream boundary before output reaches
++    /// Core/tools. Metadata and missing UI events cannot establish this proof.
++    pub(crate) fn model_output(&self) {
++        if !self.model_output.load(Ordering::Relaxed) {
++            self.model_output.store(true, Ordering::SeqCst);
++        }
++    }
++
++    pub(crate) fn model_failed(&self) {
++        self.model_failed.store(true, Ordering::SeqCst);
++    }
++
+     fn maybe_suspend(self: &Arc<Self>) {
+         if self.waits.load(Ordering::SeqCst) == 0
+             || self.sampling.load(Ordering::SeqCst) != 0

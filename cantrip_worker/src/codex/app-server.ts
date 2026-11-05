@@ -3,6 +3,12 @@ import {
   providerUsesChatCompletions,
   isWorkerEndpointProviderKind,
 } from "@cantrip/protocol";
+import {
+  recordInferenceFailure,
+  inferenceFailure,
+  clearInferenceFailure,
+  sourceInferenceFailure,
+} from "../inference-failure.js";
 import { startChatCompletionsAdapter } from "./chat-completions-adapter.js";
 import { withoutInferenceCommand } from "../inference-command.js";
 import { CodexAuthRecovery } from "./auth-recovery.js";
@@ -2456,6 +2462,7 @@ export class CodexAppServer implements CodexRuntime {
     let nativeAttempt = 0;
     let compactionStateRetried = false;
     let capacityRetryAttempt = 0;
+    let allAttemptsProven = true;
     for (;;) {
       options.preparationSignal?.throwIfAborted();
       nativeAttempt += 1;
@@ -2474,6 +2481,7 @@ export class CodexAppServer implements CodexRuntime {
               threadId: attemptedThreadId ?? null,
             }
           : null;
+      let preparingFirstAttempt = preparation !== null;
       try {
         if (preparation) {
           this.#pendingCapacityRetries.set(options.chatId, preparation);
@@ -2496,14 +2504,27 @@ export class CodexAppServer implements CodexRuntime {
           Object.assign(attemptOptions, prepared, {
             threadId: attemptedThreadId,
           });
+          preparingFirstAttempt = false;
         }
         return await this.runTurnAttempt(attemptOptions);
-      } catch (error) {
+      } catch (caught) {
+        const error = sourceInferenceFailure(caught);
+        let propagated = caught;
         preparation?.controller.signal.throwIfAborted();
         options.preparationSignal?.throwIfAborted();
         // A captured remote environment must never replay an entire agent input
         // after uncertain delivery. The Server admits any subsequent attempt.
-        if (this.nativeEnvironment) throw error;
+        if (this.nativeEnvironment) throw propagated;
+        if (preparingFirstAttempt)
+          propagated =
+            this.recordUndispatchedFailure(error, attemptOptions) ?? caught;
+        allAttemptsProven &&= Boolean(inferenceFailure(propagated));
+        if (!allAttemptsProven) {
+          // A later empty attempt cannot justify replaying an earlier attempt
+          // whose effects are uncertain, even when the UI saw no activity.
+          clearInferenceFailure(propagated);
+          throw propagated;
+        }
         const renew = async (
           reason: RunAgentTurnRetry["reason"],
           nextThreadId: string | null,
@@ -2533,7 +2554,7 @@ export class CodexAppServer implements CodexRuntime {
               updated.operationGeneration ===
                 attemptOptions.operationGeneration)
           )
-            throw error;
+            throw propagated;
           currentOptions = { ...currentOptions, ...updated };
           attemptedThreadId =
             updated?.threadId === undefined ? nextThreadId : updated.threadId;
@@ -2547,7 +2568,7 @@ export class CodexAppServer implements CodexRuntime {
             attemptOptions.operationGeneration &&
             !currentOptions.onBeforeRetry
           )
-            throw error;
+            throw propagated;
           compactionStateRetried = true;
           const staleThreadId = attemptedThreadId;
           const controller = preparation?.controller ?? new AbortController();
@@ -2575,13 +2596,13 @@ export class CodexAppServer implements CodexRuntime {
           );
           continue;
         }
-        if (!isServerOverloadedError(error)) throw error;
+        if (!isServerOverloadedError(error)) throw propagated;
         // Until the caller supplies fresh continuation admission, surface the
         // actual native failure rather than reusing a prior managed grant.
         if (attemptOptions.operationGeneration && !currentOptions.onBeforeRetry)
-          throw error;
+          throw propagated;
         const delayMs = cantripCapacityRetryDelayMs(capacityRetryAttempt + 1);
-        if (delayMs === null) throw error;
+        if (delayMs === null) throw propagated;
         capacityRetryAttempt += 1;
         const nextAttemptAtMs = Date.now() + delayMs;
         const retry = {
@@ -2876,37 +2897,87 @@ export class CodexAppServer implements CodexRuntime {
       options.initialLabel.providerId !== options.provider.id
     )
       await options.initialLabel.run();
-    await this.ensureStarted(
-      options.model,
-      options.provider,
-      options.subagentDefaults,
-      options.executionProfile,
-    );
-    const inference = await this.#inference?.acquire({
-      operationId:
-        options.operationGeneration ??
-        `turn:${options.clientMessageId}:${randomUUID()}`,
-      purpose: "turn",
-      recoveryKey: `chat:${options.chatId}:message:${options.clientMessageId}`,
-      recovery: options.inferenceRecovery?.() ?? {
-        messageId: options.clientMessageId,
-        threadId: options.threadId,
-      },
-      provider: options.provider,
-      chatId: options.chatId,
-      threadId: options.threadId,
-      signal: options.preparationSignal,
-    });
+    let inference: CodexInferenceExecution | undefined;
+    let failure: unknown;
+    let executionEntered = false;
     try {
+      await this.ensureStarted(
+        options.model,
+        options.provider,
+        options.subagentDefaults,
+        options.executionProfile,
+      );
+      inference = await this.#inference?.acquire({
+        operationId:
+          options.operationGeneration ??
+          `turn:${options.clientMessageId}:${randomUUID()}`,
+        purpose: "turn",
+        recoveryKey: `chat:${options.chatId}:message:${options.clientMessageId}`,
+        recovery: options.inferenceRecovery?.() ?? {
+          messageId: options.clientMessageId,
+          threadId: options.threadId,
+        },
+        provider: options.provider,
+        chatId: options.chatId,
+        threadId: options.threadId,
+        signal: options.preparationSignal,
+      });
+
       if (options.initialLabel?.providerId === options.provider.id)
         await options.initialLabel.run(inference);
+      executionEntered = true;
       return await this.executeInferenceTurn(options, inference);
+    } catch (error) {
+      failure = error;
+      throw error;
     } finally {
       // After forwarding, only a native terminal receipt or actual process exit
       // may release capacity. A rejected observer promise is not that evidence.
       inference?.notDispatched();
       await inference?.settled();
+      const evidence = inference?.failureEvidence();
+      if (failure && evidence) {
+        throw recordInferenceFailure(failure, {
+          ...evidence,
+          chatId: options.chatId,
+          messageId: options.clientMessageId,
+        });
+      } else if (
+        failure &&
+        !inference &&
+        !executionEntered &&
+        !options.preparationSignal?.aborted &&
+        !this.#pausedChats.has(options.chatId)
+      ) {
+        throw this.recordUndispatchedFailure(failure, options) ?? failure;
+      }
     }
+  }
+
+  /** Called only at a program boundary preceding forwarding this user's input.
+   * This proves no input dispatch; it does not assert that a process is dead. */
+  private recordUndispatchedFailure(
+    error: unknown,
+    options: RunAgentTurnOptions,
+  ): Error | undefined {
+    if (
+      options.preparationSignal?.aborted ||
+      this.#pausedChats.has(options.chatId)
+    )
+      return;
+    return recordInferenceFailure(error, {
+      operationId:
+        options.operationGeneration ??
+        `preparation:${options.clientMessageId}:${randomUUID()}`,
+      runtimeGeneration: this.#inference?.generation ?? null,
+      chatId: options.chatId,
+      messageId: options.clientMessageId,
+      providerId: options.provider.id,
+      disposition: "input-not-dispatched",
+      threadId: options.threadId ?? null,
+      turnId: null,
+      nativeScopeId: null,
+    });
   }
 
   private async executeInferenceTurn(
@@ -6602,6 +6673,7 @@ export class CodexAppServer implements CodexRuntime {
           scopeId: z.string().uuid(),
           requestId: z.string().nullable().optional(),
           rootThreadId: z.string().nullable().optional(),
+          modelFailedBeforeOutput: z.boolean().optional(),
         }),
       })
       .safeParse(raw);
@@ -6635,7 +6707,12 @@ export class CodexAppServer implements CodexRuntime {
           pending.runnerGeneration === base.runnerGeneration
         )
           pending.controller.abort();
-      inference.finishNative(base.threadId, base.turnId, scopeId);
+      inference.finishNative(
+        base.threadId,
+        base.turnId,
+        scopeId,
+        payload.data.input.modelFailedBeforeOutput === true,
+      );
       return;
     }
     if (this.#nativeInferenceWaits.has(base.attemptId)) return;

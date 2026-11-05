@@ -1,4 +1,7 @@
-import type { InferenceOperationStatus } from "@cantrip/protocol";
+import type {
+  InferenceOperationStatus,
+  InferenceFailureEvidence,
+} from "@cantrip/protocol";
 import {
   recoveryIdentity,
   type InferenceRecoveryIdentity,
@@ -22,6 +25,8 @@ interface Operation {
   observedStart: boolean;
   nativeBoundary: boolean;
   nativeScopeId: string | null;
+  rejectedInput: boolean;
+  nativeFailureBeforeOutput: boolean;
   settled: boolean;
   ticket: InferenceTicket;
   lease: InferenceLease | null;
@@ -32,6 +37,7 @@ interface Operation {
 export interface CodexInferenceExecution {
   /** Confirmed release, including native response teardown or process fencing. */
   settled(): Promise<void>;
+  failureEvidence(): InferenceFailureEvidence | null;
   bindThread(threadId: string): void;
   bindTurn(turnId: string): void;
   /** Immediately before forwarding the exact native request. */
@@ -108,6 +114,10 @@ export class CodexInferenceAdmission {
     this.runtime = admission.createRuntime();
   }
 
+  get generation(): string {
+    return this.runtime.generation;
+  }
+
   acquire(input: Request): Promise<CodexInferenceExecution> {
     const identity = JSON.stringify([
       input.provider.id,
@@ -167,6 +177,8 @@ export class CodexInferenceAdmission {
       observedStart: false,
       nativeBoundary: Boolean(input.nativeScopeId),
       nativeScopeId: input.nativeScopeId ?? null,
+      rejectedInput: false,
+      nativeFailureBeforeOutput: false,
       settled: false,
       ticket,
       lease: null,
@@ -187,6 +199,49 @@ export class CodexInferenceAdmission {
     }
     return {
       settled: () => operation.settlement,
+      failureEvidence: () => {
+        if (
+          !operation.settled ||
+          operation.preparing ||
+          operation.lease?.signal.aborted ||
+          !operation.chatId ||
+          !input.recovery?.messageId
+        )
+          return null;
+        const identity = {
+          operationId: operation.operationId,
+          providerId: input.provider.id,
+          runtimeGeneration: this.runtime.generation,
+          chatId: operation.chatId,
+          messageId: input.recovery.messageId,
+        };
+        if (
+          !operation.dispatched ||
+          (operation.rejectedInput && !operation.nativeBoundary)
+        )
+          return {
+            ...identity,
+            disposition: "input-not-dispatched",
+            threadId: operation.threadId,
+            turnId: operation.turnId,
+            nativeScopeId: null,
+          };
+        if (
+          operation.nativeBoundary &&
+          operation.nativeFailureBeforeOutput &&
+          operation.threadId &&
+          operation.turnId &&
+          operation.nativeScopeId
+        )
+          return {
+            ...identity,
+            disposition: "model-failed-before-output",
+            threadId: operation.threadId,
+            turnId: operation.turnId,
+            nativeScopeId: operation.nativeScopeId,
+          };
+        return null;
+      },
       bindThread: (threadId) => {
         if (operation.threadId && operation.threadId !== threadId)
           throw new Error(
@@ -214,7 +269,10 @@ export class CodexInferenceAdmission {
       },
       rejected: () => {
         // Contradictory receipts cannot override an observed running native turn.
-        if (!operation.observedStart) this.settle(operation, "failed");
+        if (!operation.observedStart && !operation.nativeBoundary) {
+          operation.rejectedInput = true;
+          this.settle(operation, "failed");
+        }
       },
       notDispatched: () => {
         if (!operation.dispatched && !operation.preparing)
@@ -434,10 +492,18 @@ export class CodexInferenceAdmission {
     await operation.lease.resume();
   }
 
-  finishNative(threadId: string, turnId: string, scopeId: string): void {
+  finishNative(
+    threadId: string,
+    turnId: string,
+    scopeId: string,
+    modelFailedBeforeOutput = false,
+  ): void {
     this.rememberCompleted(threadId, turnId, scopeId);
     const operation = this.findNative(threadId, turnId, scopeId);
-    if (operation) this.settle(operation, "completed");
+    if (operation) {
+      operation.nativeFailureBeforeOutput = modelFailedBeforeOutput;
+      this.settle(operation, "completed");
+    }
   }
 
   cancelNativeWait(threadId: string, turnId: string, scopeId: string): void {

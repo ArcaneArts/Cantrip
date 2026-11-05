@@ -93,6 +93,7 @@ fn event_error(error: anyhow::Error) -> CommandError {
         unavailable: unavailable(&error),
         request_id: None,
         encoding_error: None,
+        inference: None,
     }
 }
 fn copy_error(error: Arc<anyhow::Error>) -> anyhow::Error {

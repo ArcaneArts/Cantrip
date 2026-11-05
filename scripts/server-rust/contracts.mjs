@@ -23,6 +23,7 @@ import { registerWorkerCommandContracts } from "./worker-command-contracts.mjs";
 
 export const contractRoots = [
   "workerInferenceStatusSchema",
+  "inferenceFailureEvidenceSchema",
   "nativeInferenceRecoverySchema",
   "nativeInferenceRecoveryResultSchema",
   "taskInferenceInputReceiptSchema",

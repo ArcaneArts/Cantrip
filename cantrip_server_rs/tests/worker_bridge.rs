@@ -212,6 +212,7 @@ async fn callback_failure_and_missing_result_preserve_javascript_semantics() {
                 unavailable: false,
                 request_id: None,
                 encoding_error: None,
+                inference: None,
             })
         })
     });

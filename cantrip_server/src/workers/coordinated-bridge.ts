@@ -9,6 +9,7 @@ import {
   workerCommandSchema,
   workerEventSchema,
   workerNotificationSchema,
+  inferenceFailureEvidenceSchema,
   type RemoteSurfaceFrameHeader,
   type TunnelDataPlaneFrameHeader,
   type WorkerCommand,
@@ -789,6 +790,9 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         } else {
           this.#failedRequests += 1;
           const errorCode = stableWorkerFailureCode(message.errorCode);
+          const inference = inferenceFailureEvidenceSchema.safeParse(
+            message.inference,
+          );
           serverLogger.event("warn", "Remote worker command failed", {
             event: "coordination.command.failed",
             subsystem: "relay-coordination",
@@ -811,6 +815,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
                     operation: pending.commandType,
                     requestId: message.requestId,
                     workerId: pending.workerId,
+                    inference: inference.success ? inference.data : undefined,
                   },
                 ),
           );
@@ -1027,6 +1032,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
           : error instanceof WorkerCommandError
             ? (error.code ?? undefined)
             : undefined,
+        error instanceof WorkerCommandError ? error.inference : undefined,
       );
     } finally {
       this.#incomingRequests -= 1;
@@ -1042,6 +1048,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     result?: unknown,
     error?: string,
     errorCode?: string,
+    inference?: import("@cantrip/protocol").InferenceFailureEvidence,
   ): Promise<void> {
     await this.#coordinator.publish(
       {
@@ -1052,6 +1059,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         result,
         error,
         errorCode,
+        inference,
       },
       request.timeoutMs ?? MAX_REMOTE_COMMAND_LIFETIME_MS,
     );

@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { inferenceFailure } from "./inference-failure.js";
 
 import {
   agentTurnResultSchema,
@@ -1323,6 +1324,9 @@ export class WorkerConnection {
         error: {
           ...(errorCode ? { code: errorCode } : {}),
           message,
+          ...(inferenceFailure(error)
+            ? { inference: inferenceFailure(error) }
+            : {}),
         },
       });
       if (request.command.type === "chat.turn") {
