@@ -154,12 +154,17 @@ through the shared MCP error adapter.
 
 The current integration repairs actual Rust compile failures in nested native
 JSON construction and preserves weak session references by iterating the existing
-Codex runtime registry. Ordinary worker admissions retain the absent options
-argument; autonomous Goal admission still requests its explicit continuation
-option, now asserted by the existing test. All 1,114 protocol tests, 46 focused
+Codex runtime registry. Worker admissions retain integrated Main's options shape; autonomous Goal
+admission still requests its explicit continuation option, asserted by the
+existing test. All 1,114 protocol tests, 46 focused
 worker tests and 46 Task-authority/suspension database tests pass. Server, worker
 and app typechecks pass. These checks do not establish successful full native
 Task/Goal execution.
+
+Integration with worker-only Pause changes in `4af03a674` preserves the qualified
+server/protocol/transport inputs. All 62 focused worker session, handoff, client
+and suspension tests pass after retaining Main's admission options and assertions.
+This does not establish actual native Pause or Task/Goal product acceptance.
 
 The frozen broad Node server run exits with 122 failed, 1,571 passed and 133
 skipped tests; many failures are migration/setup timeouts. The frozen worker run

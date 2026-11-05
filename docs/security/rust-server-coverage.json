@@ -12716,7 +12716,10 @@
           "customRefinementsExecuted": 100,
           "actualRawJsonPreserved": true,
           "allPassedLocally": true
-        }
+        },
+        "latestIntegratedMain": "4af03a674",
+        "incomingPauseScope": "Worker-only native suspension changes leave all qualified server, protocol and controlled worker transport inputs unchanged. Current Main admission options and strengthened assertions are retained.",
+        "workerPauseIntegrationTests": 62
       }
     }
   },
