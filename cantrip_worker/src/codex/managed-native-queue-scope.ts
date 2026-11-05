@@ -4,14 +4,22 @@ import type { ManagedNativeGatewayIdentity } from "./managed-native-gateway.js";
 export class ManagedNativeQueueScope {
   readonly identity: ManagedNativeGatewayIdentity;
   private revision = 0;
+  private revoked = false;
   constructor(identity: ManagedNativeGatewayIdentity) {
     this.identity = { ...identity };
   }
   capture(): () => boolean {
     const revision = this.revision;
-    return () => this.revision === revision;
+    return () => !this.revoked && this.revision === revision;
+  }
+  revoke(): void {
+    this.revoked = true;
+  }
+  assertActive(): void {
+    if (this.revoked) throw new Error("The managed resource was removed.");
   }
   refresh(next: ManagedNativeGatewayIdentity): boolean {
+    this.assertActive();
     for (const field of Object.keys(
       this.identity,
     ) as (keyof ManagedNativeGatewayIdentity)[]) {

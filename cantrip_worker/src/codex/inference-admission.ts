@@ -14,6 +14,7 @@ import type {
   InferenceTicket,
   WorkerInferenceAdmission,
 } from "../inference-admission.js";
+import { trackInferenceCommandOperation } from "../inference-command.js";
 
 interface Operation {
   operationId: string;
@@ -30,6 +31,8 @@ interface Operation {
   rejectedInput: boolean;
   nativeFailureBeforeOutput: boolean;
   settled: boolean;
+  revoked?: boolean;
+  revocationNotified?: boolean;
   ticket: InferenceTicket;
   lease: InferenceLease | null;
   settlement: Promise<void>;
@@ -108,6 +111,12 @@ interface NativeRequest {
   independent?: boolean;
 }
 
+export interface RevokedInferenceExecution {
+  threadId: string;
+  turnId: string;
+  settled: Promise<void>;
+}
+
 /**
  * Correlates worker tickets with actual native turns independently of UI turn
  * tracking. Local publication failure or WebSocket loss is not native settlement.
@@ -133,7 +142,12 @@ export class CodexInferenceAdmission {
   private exited = false;
   private retirement: Promise<void> | null = null;
 
-  constructor(private readonly admission: WorkerInferenceAdmission) {
+  constructor(
+    private readonly admission: WorkerInferenceAdmission,
+    private readonly onRevokedExecution: (
+      execution: RevokedInferenceExecution,
+    ) => void = () => {},
+  ) {
     this.runtime = admission.createRuntime();
   }
 
@@ -205,6 +219,7 @@ export class CodexInferenceAdmission {
         );
       return previous.result;
     }
+    trackInferenceCommandOperation(input.operationId);
     const result = this.acquireOperation(input);
     if (input.lifetime)
       this.lifetimeRequests.set(input.lifetime, { identity, result });
@@ -319,6 +334,7 @@ export class CodexInferenceAdmission {
             "Inference admission cannot change its native thread.",
           );
         operation.threadId = threadId;
+        this.notifyRevocation(operation);
         this.reconcile(operation);
       },
       bindTurn: (turnId) => this.bindTurn(operation, turnId),
@@ -331,6 +347,7 @@ export class CodexInferenceAdmission {
         if (!operation.leaseStarted) operation.lease!.start();
         operation.leaseStarted = true;
         operation.dispatched = true;
+        this.notifyRevocation(operation);
         // A restored execution can reuse a logical turn ID. UI completion
         // cached before this dispatch belongs to the preceding execution.
         if (operation.threadId && operation.turnId)
@@ -420,6 +437,50 @@ export class CodexInferenceAdmission {
       cancelled = true;
     }
     return cancelled;
+  }
+
+  /** Resource removal seals every actual owner, including suspended/resuming
+   * work. Cancellation requests never establish physical settlement. */
+  revoke(
+    chatIds: ReadonlySet<string>,
+    operationIds: ReadonlySet<string>,
+  ): void {
+    for (const operation of this.operations) {
+      if (
+        operation.settled ||
+        !(
+          (operation.chatId && chatIds.has(operation.chatId)) ||
+          operationIds.has(operation.operationId)
+        )
+      )
+        continue;
+      operation.revoked = true;
+      operation.ticket.cancel(new Error("The inference resource was removed."));
+      if (!operation.dispatched && !operation.preparing)
+        this.settle(
+          operation,
+          operation.leaseStarted ? "completed" : "never-started",
+        );
+      else this.notifyRevocation(operation);
+    }
+  }
+
+  private notifyRevocation(operation: Operation): void {
+    if (
+      !operation.revoked ||
+      operation.revocationNotified ||
+      operation.settled ||
+      !operation.threadId ||
+      !operation.turnId ||
+      !operation.dispatched
+    )
+      return;
+    operation.revocationNotified = true;
+    this.onRevokedExecution({
+      threadId: operation.threadId,
+      turnId: operation.turnId,
+      settled: operation.settlement,
+    });
   }
 
   observationLost(): void {
@@ -820,6 +881,7 @@ export class CodexInferenceAdmission {
         "Inference admission received a different native turn identity.",
       );
     operation.turnId = turnId;
+    this.notifyRevocation(operation);
     this.reconcile(operation);
   }
 

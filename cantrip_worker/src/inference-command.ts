@@ -4,10 +4,48 @@ import type {
   InferenceCommandTiming,
   InferenceTicketState,
   WorkerEvent,
+  WorkerCommand,
 } from "@cantrip/protocol";
 
 type Phase = "waiting" | "preparing" | "running";
 const commands = new AsyncLocalStorage<InferenceCommand>();
+const activeCommands = new Set<InferenceCommand>();
+
+export interface InferenceResourceOwner {
+  serverId: string;
+  ownerId: string;
+  workerId: string;
+  chatId: string | null;
+  projectId: string | null;
+}
+
+export type InferenceResourceTarget = Extract<
+  WorkerCommand,
+  { type: "inference.revoke" }
+>["target"];
+
+/** Resource IDs come from the authenticated command, before asynchronous routing. */
+export function inferenceCommandResource(
+  command: WorkerCommand,
+): Pick<InferenceResourceOwner, "chatId" | "projectId"> {
+  const session = "session" in command ? command.session : undefined;
+  return {
+    chatId:
+      "chatId" in command && typeof command.chatId === "string"
+        ? command.chatId
+        : session && typeof session.chatId === "string"
+          ? session.chatId
+          : null,
+    projectId:
+      "projectId" in command && typeof command.projectId === "string"
+        ? command.projectId
+        : session &&
+            "projectId" in session &&
+            typeof session.projectId === "string"
+          ? session.projectId
+          : null,
+  };
+}
 
 /** One exclusive clock for a command, or for one provider within that command. */
 class InferencePhaseClock {
@@ -86,24 +124,42 @@ class InferenceCommand {
   private observed = false;
   private inferenceAttempt = 0n;
   private readonly sources = new Set<ClaimedInferenceSource>();
+  private readonly operations = new Set<string>();
+  private readonly cancellation = new AbortController();
+  readonly signal: AbortSignal;
 
   constructor(
     private readonly emit: (event: WorkerEvent) => void,
     private readonly admissionAck: boolean,
     private readonly operationIdentity?: string,
-    private readonly operationSignal?: AbortSignal,
-  ) {}
+    operationSignal?: AbortSignal,
+    readonly resource?: InferenceResourceOwner,
+  ) {
+    this.signal = operationSignal
+      ? AbortSignal.any([operationSignal, this.cancellation.signal])
+      : this.cancellation.signal;
+  }
+
+  track(operationId: string): void {
+    if (this.closed) return;
+    this.signal.throwIfAborted();
+    this.operations.add(operationId);
+  }
+
+  revoke(): string[] {
+    this.cancellation.abort(new Error("The owning resource was removed."));
+    for (const source of this.sources) source.close();
+    return [...this.operations];
+  }
 
   claimSource(signal?: AbortSignal): ClaimedInferenceSource | undefined {
     if (!this.operationIdentity) return undefined;
     if (this.closed)
       throw new Error("The owning worker inference command has ended.");
-    this.operationSignal?.throwIfAborted();
+    this.signal.throwIfAborted();
     const source = new ClaimedInferenceSource(
       `worker-command:${this.operationIdentity}:inference:${++this.inferenceAttempt}`,
-      this.operationSignal && signal
-        ? AbortSignal.any([this.operationSignal, signal])
-        : (this.operationSignal ?? signal),
+      signal ? AbortSignal.any([this.signal, signal]) : this.signal,
     );
     this.sources.add(source);
     void source.source.released.then(() => this.sources.delete(source));
@@ -162,6 +218,7 @@ class InferenceCommand {
     this.closed = true;
     for (const source of this.sources) source.close();
     this.sources.clear();
+    this.operations.clear();
     this.clock.clear();
     for (const clock of this.providers.values()) clock.clear();
     this.providers.clear();
@@ -184,6 +241,43 @@ export function claimInferenceCommandSource(signal?: AbortSignal) {
   return commands.getStore()?.claimSource(signal);
 }
 
+export function inferenceCommandSignal(): AbortSignal | undefined {
+  return commands.getStore()?.signal;
+}
+
+/** Records actual admission calls, including legacy helper identities. It does
+ * not grant execution authority or preserve a history of completed UUIDs. */
+export function trackInferenceCommandOperation(operationId: string): void {
+  commands.getStore()?.track(operationId);
+}
+
+export function revokeInferenceCommands(
+  scope: Pick<InferenceResourceOwner, "serverId" | "ownerId" | "workerId">,
+  target: InferenceResourceTarget,
+): Set<string> {
+  const operations = new Set<string>();
+  const chatIds = new Set(
+    target.kind === "chat" ? [target.chatId] : target.chatIds,
+  );
+  for (const command of activeCommands) {
+    const owner = command.resource;
+    if (
+      !owner ||
+      owner.serverId !== scope.serverId ||
+      owner.ownerId !== scope.ownerId ||
+      owner.workerId !== scope.workerId
+    )
+      continue;
+    if (
+      !(owner.chatId && chatIds.has(owner.chatId)) &&
+      !(target.kind === "project" && owner.projectId === target.projectId)
+    )
+      continue;
+    for (const operationId of command.revoke()) operations.add(operationId);
+  }
+  return operations;
+}
+
 /** Socket callbacks can inherit the context that created the socket. Native
  * independent operations must not attach to that unrelated old command. */
 export function withoutInferenceCommand<T>(action: () => T): T {
@@ -196,16 +290,20 @@ export async function withInferenceCommand<T>(
   admissionAck = false,
   operationIdentity?: string,
   operationSignal?: AbortSignal,
+  resource?: InferenceResourceOwner,
 ): Promise<T> {
   const command = new InferenceCommand(
     emit,
     admissionAck,
     operationIdentity,
     operationSignal,
+    resource,
   );
+  activeCommands.add(command);
   try {
     return await commands.run(command, action);
   } finally {
+    activeCommands.delete(command);
     command.close();
   }
 }

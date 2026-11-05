@@ -322,7 +322,12 @@ import { RemoteSurfaceWorkerLinkAdapter } from "./remote-surface-worker-link-ada
 import { WorkerObservationHub } from "./worker-observation-worker-link-adapter.js";
 import { LocalNativeInferenceOwnership } from "./native-inference-ownership.js";
 import { WorkerInferenceAdmission } from "./inference-admission.js";
-import { withInferenceCommand } from "./inference-command.js";
+import {
+  withInferenceCommand,
+  inferenceCommandResource,
+  inferenceCommandSignal,
+  revokeInferenceCommands,
+} from "./inference-command.js";
 import {
   runWorkerRuntimeLoop,
   scheduleWorkerRuntimeRestart,
@@ -2856,6 +2861,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       openPrompt: codec.openPrompt,
     });
     const assertQueueCurrent = () => {
+      queueScope.assertActive();
       if (
         runtime.transportGeneration !== generation ||
         managedGuiBridgeLifetime.signal.aborted
@@ -3442,6 +3448,56 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     switch (command.type) {
       case "inference.status":
         return inferenceAdmissionForWorker().snapshot();
+      case "inference.revoke": {
+        const admission = inferenceAdmissionForWorker();
+        const operationIds = revokeInferenceCommands(
+          nativeNamespaceScope(),
+          command.target,
+        );
+        const chatIds = new Set(
+          command.target.kind === "chat"
+            ? [command.target.chatId]
+            : command.target.chatIds,
+        );
+        for (const runtime of codexRuntimes.values()) {
+          if (!runtime.ownsInferenceAdmission(admission)) continue;
+          for (const entry of managedCommandSessions.get(runtime)?.values() ??
+            []) {
+            if (
+              !chatIds.has(entry.chatId) &&
+              !(
+                command.target.kind === "project" &&
+                entry.queueScope.identity.projectId === command.target.projectId
+              )
+            )
+              continue;
+            chatIds.add(entry.chatId);
+            entry.adapter.revoke();
+            entry.queueScope.revoke();
+            managedExecutionRunners.get(runtime)?.get(entry.chatId)?.revoke();
+            if (entry.gateway)
+              void entry.gateway
+                .then(async (gateway) => {
+                  managedNativeGateways.delete(gateway);
+                  await gateway.close();
+                })
+                .catch(() => {});
+          }
+        }
+        for (const chatId of chatIds) {
+          managedGuiPreparations.cancelChat(chatId);
+          computerUseAgents.cancelChat(chatId);
+          computerUsePreviews.cancelChat(chatId);
+          computerUseApprovals.revokeChat(chatId);
+          osComputerUseServices.cancelChat(chatId, null);
+        }
+        for (const runtime of codexRuntimes.values())
+          runtime.revokeInference(admission, chatIds, operationIds);
+        admission.wakeRecovery();
+        // This ACK means local ownership is sealed and interruption is retained.
+        // It is not evidence that a physical execution's ticket can be freed.
+        return { revoked: true };
+      }
       case "inference.configure": {
         const admission = inferenceAdmissionForWorker();
         admission.wakeRecovery();
@@ -5156,12 +5212,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           },
         });
       case "chat.turn": {
-        const preparationSignal = command.nativeCommandReceipt
+        const commandSignal = inferenceCommandSignal();
+        const guiPreparationSignal = command.nativeCommandReceipt
           ? managedGuiPreparations.signal(
               command.chatId,
               command.nativeCommandReceipt,
             )
           : undefined;
+        const preparationSignal =
+          commandSignal && guiPreparationSignal
+            ? AbortSignal.any([commandSignal, guiPreparationSignal])
+            : (commandSignal ?? guiPreparationSignal);
         preparationSignal?.throwIfAborted();
         const standalone = command.executionProfile === "standalone-chat";
         const executionProfile = standalone
@@ -7077,15 +7138,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     config,
     async (command, emit, context) => {
       try {
-        const resolved = await routingRegistry.resolveCommand(command);
         return await routingRegistry.protectResult(
           command.type,
           await withInferenceCommand(
             emit,
-            () => handleCommand(resolved, emit),
+            async () => {
+              const signal = inferenceCommandSignal();
+              signal?.throwIfAborted();
+              const resolved = await routingRegistry.resolveCommand(command);
+              signal?.throwIfAborted();
+              return handleCommand(resolved, emit);
+            },
             context.inferenceAdmissionAck === true,
             context.inferenceOperationIdentity,
             context.inferenceOperationSignal,
+            { ...nativeNamespaceScope(), ...inferenceCommandResource(command) },
           ),
         );
       } catch (error) {

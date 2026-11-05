@@ -1709,3 +1709,34 @@ This patch was authored and source-reviewed without applying or executing the
 native patch stack. Direct formatting of the new clock source, mechanical patch
 authoring and `git diff --check` were performed. No tests, builds, typechecks,
 benchmarks, native/helper execution, hosted checks or computer-use validation ran.
+
+## Resource-removal control boundary
+
+The private `inference.revoke` worker command targets a chat or a project and its
+canonical chat IDs. It carries no provider credentials or model route. Both server
+command buses reserve control-lane capacity for it, so cleanup need not wait
+behind provider admission.
+
+The worker scopes cleanup to its authenticated server, owner and worker. It seals
+actual active command sources before asynchronous routing, managed adapters,
+queue capabilities and autonomous runners. Queue-only requests are cancelled;
+confirmed suspended or resuming native scopes are also denied further admission.
+Standalone helpers are correlated using the operation IDs they actually admitted.
+This retains active ownership metadata only, rather than deleted-resource UUID
+history or a second prompt queue.
+
+Running work keeps its ticket. Cleanup sends `turn/interrupt` directly to its
+known native thread and turn without requesting a new server command against a
+possibly deleted resource. A start whose turn ID arrives later receives the same
+cleanup through its existing binding. Failed interruption requests retry with
+backoff while that exact physical execution and native process remain owned.
+Actual settlement or process fencing remains the release authority. Stateless
+title preparation still drains its existing bounded native request before release.
+A revocation acknowledgement means local owners are sealed and cancellation is
+retained; it does not mean physical settlement has already occurred.
+
+This worker boundary is a delivery prerequisite. Durable server-side delivery
+from Task/project deletion, including offline workers and helpers dispatched
+after resource deletion, remains the next integration milestone. Formatting,
+mechanical protocol export and source review were performed; no tests, builds,
+typechecks, benchmarks, native/helper validation or computer-use checks ran.
