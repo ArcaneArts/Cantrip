@@ -42,6 +42,7 @@ mod process_environment;
 mod project_share;
 mod synthetic_build;
 mod tunnel_forward;
+mod tunnel_ssh;
 
 use process_environment::configure_desktop_child;
 use project_share::ProjectShareMounts;
@@ -1090,6 +1091,7 @@ pub fn run() {
             project_share::reveal_project_share,
             tunnel_forward::start_tunnel_forward,
             tunnel_forward::prepare_worker_link_tunnel_forward,
+            tunnel_forward::configure_tunnel_ssh_forward,
             tunnel_forward::rotate_worker_link_tunnel_bridge_claim,
             tunnel_forward::update_worker_link_tunnel_forward_route,
             tunnel_forward::refresh_worker_link_tunnel_forward,
@@ -1097,6 +1099,7 @@ pub fn run() {
             tunnel_forward::confirm_tunnel_forward_direct_retired,
             tunnel_forward::refresh_tunnel_forward_relay,
             tunnel_forward::stop_tunnel_forward,
+            tunnel_forward::stop_worker_link_tunnel_forward,
             tunnel_forward::list_tunnel_forwards,
         ])
         .setup(|app| {

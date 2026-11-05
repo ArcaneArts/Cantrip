@@ -1,30 +1,22 @@
-import { readFile } from "node:fs/promises";
+import { productTestContext } from "./os-product-test-support";
 import { randomUUID } from "node:crypto";
-import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 import {
   clearSensitiveBytes,
   decryptEndpointContentPayload,
   deriveComponentKey,
-  openAnonymousRecoveryArtifact,
 } from "@cantrip/crypto";
 import {
   decodeTunnelDataPlaneFrame,
   encodeTunnelDataPlaneFrame,
   tunnelAttachmentCreateResultSchema,
   tunnelWireListSchema,
-  workerLinkSessionSchema,
   workerLinkTunnelGrantSchema,
   workerLinkLeaseSchema,
   type TunnelDataPlaneFrameHeader,
   type TunnelWireSummary,
 } from "@cantrip/protocol";
 import { tunnelContentRecordSchema } from "@cantrip/protocol/tunnel-content";
-import { WorkerLinkManager } from "./worker-link";
-import {
-  openWorkerLinkRelayCarrier,
-  type WorkerLinkWebSocketLike,
-} from "./worker-link-carriers";
 import {
   openTunnelWorkerLink,
   type TunnelWorkerLinkConnection,
@@ -32,109 +24,23 @@ import {
 
 const origin = process.env.CANTRIP_OS_PRODUCT_TEST_ORIGIN;
 const recoveryPath = process.env.CANTRIP_OS_PRODUCT_TEST_RECOVERY;
-const WebSocket = createRequire(
-  new URL("../../../cantrip_worker/package.json", import.meta.url),
-)("ws");
 
 /** Opt-in private QA profile only. No account key, ciphertext or credential is logged. */
 describe.skipIf(!origin || !recoveryPath)(
   "actual Cantrip product OS tunnel",
   () => {
     it("uses the saved encrypted route and WorkerLink grant to reach Linux rather than the matching Host port", async () => {
-      const recovery = JSON.parse(await readFile(recoveryPath!, "utf8"));
-      const master = await openAnonymousRecoveryArtifact(recovery);
-      let manager: WorkerLinkManager | undefined;
-      const browserOrigin = "http://127.0.0.1:5179";
-      const api = async (
-        path: string,
-        body?: unknown,
-        method = body === undefined ? "GET" : "POST",
-      ) => {
-        const response = await fetch(`${origin}${path}`, {
-          method,
-          headers: {
-            Origin: browserOrigin,
-            ...(body === undefined
-              ? {}
-              : { "Content-Type": "application/json" }),
-          },
-          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        });
-        if (!response.ok)
-          throw new Error(
-            `Product API ${method} ${path} returned ${response.status}: ${await response.text()}`,
-          );
-        return response.status === 204 ? null : response.json();
-      };
+      const context = await productTestContext(origin!, recoveryPath!);
+      const { master, recovery, api, manager } = context;
       try {
-        const identity = {
-          accountId: null,
-          connectionId: null,
-          generation: 1,
-          incarnationId: randomUUID(),
-          serverId: recovery.serverId as string,
-          serverUrl: origin!,
-          userId: recovery.ownerId as string,
-        };
-        manager = new WorkerLinkManager({
-          createId: randomUUID,
-          now: Date.now,
-          getIdentity: () => identity,
-          createSession: async (workerId, clientInstanceId) =>
-            workerLinkSessionSchema.parse(
-              await api(`/api/workers/${workerId}/worker-link/sessions`, {
-                clientInstanceId,
-              }),
-            ),
-          deleteSession: async (sessionId) => {
-            await api(`/api/worker-links/${sessionId}`, undefined, "DELETE");
-          },
-          renewSession: async (sessionId) =>
-            workerLinkSessionSchema.parse(
-              await api(`/api/worker-links/${sessionId}/renew`, {}),
-            ),
-          setRoute: async (sessionId, preferredRoute) =>
-            workerLinkSessionSchema.parse(
-              await api(`/api/worker-links/${sessionId}/route`, {
-                preferredRoute,
-              }),
-            ),
-          recordTelemetry: async (sessionId, routeGeneration, samples) => {
-            await api(`/api/worker-links/${sessionId}/telemetry`, {
-              routeGeneration,
-              samples,
-            });
-          },
-          localSupported: () => false,
-          openLocal: async () => {
-            throw new Error(
-              "This headless client has no native local carrier.",
-            );
-          },
-          openPeer: async () => {
-            throw new Error("This headless client has no WebRTC peer carrier.");
-          },
-          openRelay: (session, _identity, clientInstanceId) =>
-            openWorkerLinkRelayCarrier({
-              session,
-              serverUrl: origin!,
-              browserOrigin,
-              clientInstanceId,
-              createWebSocket: (url) =>
-                new WebSocket(url, {
-                  origin: browserOrigin,
-                }) as unknown as WorkerLinkWebSocketLike,
-            }),
-          subscribeEnvironment: () => () => {},
-          subscribeIdentity: () => () => {},
-        });
         const tunnels = tunnelWireListSchema.parse(await api("/api/tunnels"));
         const guests = tunnels.filter(
           (tunnel) =>
             tunnel.destination.kind === "worker-adapter" &&
             tunnel.destination.adapter === "cantrip-os" &&
-            (!process.env.CANTRIP_OS_PRODUCT_TEST_TUNNEL_ID ||
-              tunnel.id === process.env.CANTRIP_OS_PRODUCT_TEST_TUNNEL_ID),
+            (process.env.CANTRIP_OS_PRODUCT_TEST_TUNNEL_ID
+              ? tunnel.id === process.env.CANTRIP_OS_PRODUCT_TEST_TUNNEL_ID
+              : tunnel.protocolHint === "http"),
         );
         expect(guests).toHaveLength(1);
         const guest = guests[0]!;
@@ -359,8 +265,7 @@ describe.skipIf(!origin || !recoveryPath)(
         expect(linux).toContain("CantripOS managed TCP product proof");
         expect(linux).not.toContain("HOST SHADOW");
       } finally {
-        await manager?.close();
-        clearSensitiveBytes(master);
+        await context.close();
       }
     }, 90_000);
   },

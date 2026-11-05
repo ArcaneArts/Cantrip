@@ -17,3 +17,20 @@ export const cantripOsTcpDestinationSchema = z.strictObject({
 });
 
 export type CantripOsTunnelSource = z.infer<typeof cantripOsTunnelSourceSchema>;
+
+// Public-key material only. The guest also decodes and validates the SSH blob.
+export const cantripOsSshPublicKeySchema = z
+  .string()
+  .regex(/^ssh-ed25519 [A-Za-z0-9+/]{68}$/u);
+export const cantripOsSshDestinationSchema = z.strictObject({
+  kind: z.literal("worker-os-ssh"),
+  workerId: z.string().trim().min(1).max(200),
+  source: cantripOsTunnelSourceSchema,
+  publicKey: cantripOsSshPublicKeySchema,
+});
+
+export const tunnelSshConnectionInfoSchema = z.strictObject({
+  user: z.string().regex(/^[a-z_][a-z0-9_-]{0,63}$/u),
+  hostAlias: z.string().regex(/^cantrip-os-[0-9a-f-]{36}$/u),
+  hostKey: cantripOsSshPublicKeySchema,
+});

@@ -99,7 +99,8 @@ export async function createTunnel(input: TunnelUserCreate) {
         projectId: parsed.projectId,
         protocolHint: parsed.protocolHint,
         destination: tunnelPublicDestinationEndpoint(parsed.destination, id),
-        ...(parsed.destination.kind === "worker-os-tcp"
+        ...(parsed.destination.kind === "worker-os-tcp" ||
+        parsed.destination.kind === "worker-os-ssh"
           ? { osSource: parsed.destination.source }
           : {}),
         protectedRecord,
@@ -128,7 +129,8 @@ export async function updateTunnel(tunnelId: string, input: TunnelUserUpdate) {
   const destination = parsed.destination ?? current.destination;
   if (
     destination.kind !== "worker-tcp" &&
-    destination.kind !== "worker-os-tcp"
+    destination.kind !== "worker-os-tcp" &&
+    destination.kind !== "worker-os-ssh"
   ) {
     throw new Error("User tunnels require a worker TCP destination.");
   }
@@ -167,7 +169,8 @@ export async function updateTunnel(tunnelId: string, input: TunnelUserUpdate) {
                   ...tunnelPublicDestinationEndpoint(destination, tunnelId),
                 },
               }),
-          ...(destination.kind === "worker-os-tcp"
+          ...(destination.kind === "worker-os-tcp" ||
+          destination.kind === "worker-os-ssh"
             ? { osSource: destination.source }
             : {}),
           protectedRecord,

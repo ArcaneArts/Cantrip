@@ -144,6 +144,7 @@ export function installWorkerLinkTunnelAttachmentGrantRoute(
         });
         grantId = grant.binding.grantId;
         let serviceIdentity = authorization.osServiceIdentity;
+        let ssh: import("@cantrip/protocol").WorkerLinkTunnelGrant["ssh"];
         if (osExecution) {
           const prepared = tunnelOsPrepareResultSchema.parse(
             await bridge.request!(
@@ -173,6 +174,7 @@ export function installWorkerLinkTunnelAttachmentGrantRoute(
               "The OS tunnel attachment was retired during preparation.",
             );
           serviceIdentity = prepared.identity;
+          ssh = prepared.ssh;
         }
         const current = await repository.getDesktopTunnelAttachment(
           principal.user.id,
@@ -254,6 +256,7 @@ export function installWorkerLinkTunnelAttachmentGrantRoute(
           workerLinkTunnelGrantSchema.parse({
             grant,
             route,
+            ...(ssh ? { ssh } : {}),
           }),
         );
       } catch (error) {

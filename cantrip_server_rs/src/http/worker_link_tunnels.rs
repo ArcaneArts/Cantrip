@@ -54,6 +54,7 @@ pub(super) async fn execute(
         let grant=service.worker_links.local.issue_grant(grant_input).await?;
         grant_id=Some(grant["binding"]["grantId"].as_str().context("Tunnel grant identity")?.to_owned());
         let mut service_identity=auth["osServiceIdentity"].clone();
+        let mut ssh=Value::Null;
         if let Some(execution)=&os_execution {
             let prepared=service.workers.commands.request(worker,json!({"type":"surface.tunnel.os-prepare","serverId":session["identity"]["serverId"],"projectId":auth["projectId"],"tunnelId":auth["tunnelId"],"attachmentId":auth["attachmentId"],"grantId":grant["binding"]["grantId"],"expiresAt":grant["binding"]["lease"]["absoluteExpiresAt"],"expectedIdentity":auth["osServiceIdentity"],"protectedRecord":auth["protectedRecord"],"osExecution":execution}),Some(Duration::from_secs(30)),None).await?;
             let prepared=crate::settings::parse_response("tunnelOsPrepareResultSchema",prepared.as_ref())?;
@@ -61,6 +62,7 @@ pub(super) async fn execute(
                 return Err(crate::tunnels::ManagementError("The OS tunnel attachment was retired during preparation.").into());
             }
             service_identity=prepared["identity"].clone();
+            ssh=prepared["ssh"].clone();
         }
         let current=repository.attachment(owner,attachment).await?;
         let source_changed=if let Some(current)=&current {guest && (current["osServiceIdentity"]!=service_identity || repository.os_attachment_execution(current).await?!=os_execution)}else{guest};
@@ -77,7 +79,9 @@ pub(super) async fn execute(
         let target=json!({"kind":"protected-tunnel","targetKind":target_kind,"recordId":auth["tunnelId"],"protectedRecord":auth["protectedRecord"]});
         let route=json!({"tunnelId":auth["tunnelId"],"attachmentId":auth["attachmentId"],"sourceEndpointId":format!("worker-link-client:{}",grant_id.as_deref().unwrap()),"destinationEndpointId":format!("worker-link-worker:{worker}"),"target":target});
         crate::tunnels::publish(&service.live,&json!({"attachmentId":auth["attachmentId"],"ownerId":auth["ownerId"],"projectId":auth["projectId"],"tunnelId":auth["tunnelId"]}));
-        output(201,"workerLinkTunnelGrantSchema",&json!({"grant":grant,"route":route}))
+        let mut result=json!({"grant":grant,"route":route});
+        if !ssh.is_null(){result["ssh"]=ssh;}
+        output(201,"workerLinkTunnelGrantSchema",&result)
     }.await;
     // Dropping this lease releases all early-return paths as the Source finally.
     let response = match result {

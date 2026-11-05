@@ -1,3 +1,9 @@
+import { TunnelTcpFields, tunnelInputClass as inputClass } from "./tunnel-tcp";
+import {
+  TunnelSshDetails,
+  TunnelSshFields,
+  publicKeyWithoutComment,
+} from "./tunnel-ssh";
 import type {
   ProjectSummary,
   TunnelProtocolHint,
@@ -54,19 +60,9 @@ import { cn } from "@/lib/utils";
 import { SettingsSearchField } from "./settings-controls";
 import { getCantripOsRunSources } from "@/lib/api/cantrip-os";
 
-const protocols: Array<{ label: string; value: TunnelProtocolHint }> = [
-  { value: "tcp", label: "TCP" },
-  { value: "http", label: "HTTP" },
-  { value: "https", label: "HTTPS" },
-  { value: "http-websocket", label: "HTTP + WebSocket" },
-  { value: "https-websocket", label: "HTTPS + WebSocket" },
-  { value: "webdav", label: "WebDAV" },
-];
-
-const inputClass =
-  "h-9 w-full rounded-md border bg-background px-3 text-sm outline-none ring-ring focus:ring-2";
-
 interface TunnelDraft {
+  service: "tcp" | "ssh";
+  publicKey: string;
   osSource: TunnelSummary["osSource"] | null;
   description: string;
   host: "127.0.0.1" | "localhost" | "::1";
@@ -80,6 +76,8 @@ interface TunnelDraft {
 function emptyDraft(projectId: string | null): TunnelDraft {
   return {
     osSource: null,
+    service: "tcp",
+    publicKey: "",
     description: "",
     host: "127.0.0.1",
     name: "",
@@ -93,13 +91,20 @@ function emptyDraft(projectId: string | null): TunnelDraft {
 function draftFor(tunnel: TunnelSummary): TunnelDraft {
   if (
     tunnel.destination.kind !== "worker-tcp" &&
-    tunnel.destination.kind !== "worker-os-tcp"
+    tunnel.destination.kind !== "worker-os-tcp" &&
+    tunnel.destination.kind !== "worker-os-ssh"
   ) {
     return emptyDraft(tunnel.projectId);
   }
   return {
+    service: tunnel.destination.kind === "worker-os-ssh" ? "ssh" : "tcp",
+    publicKey:
+      tunnel.destination.kind === "worker-os-ssh"
+        ? tunnel.destination.publicKey
+        : "",
     osSource:
-      tunnel.destination.kind === "worker-os-tcp"
+      tunnel.destination.kind === "worker-os-tcp" ||
+      tunnel.destination.kind === "worker-os-ssh"
         ? tunnel.destination.source
         : null,
     description: tunnel.description ?? "",
@@ -108,7 +113,10 @@ function draftFor(tunnel: TunnelSummary): TunnelDraft {
         ? tunnel.destination.host
         : "127.0.0.1",
     name: tunnel.name,
-    port: String(tunnel.destination.port),
+    port:
+      tunnel.destination.kind === "worker-os-ssh"
+        ? ""
+        : String(tunnel.destination.port),
     projectId: tunnel.projectId ?? "",
     protocolHint: tunnel.protocolHint,
     workerId: tunnel.destination.workerId,
@@ -116,6 +124,8 @@ function draftFor(tunnel: TunnelSummary): TunnelDraft {
 }
 
 function destinationLabel(destination: TunnelSummary["destination"]) {
+  if (destination.kind === "worker-os-ssh")
+    return `CantripOS · SSH / SFTP · ${destination.source.worktreeId.slice(0, 8)}`;
   if (destination.kind === "worker-os-tcp")
     return `CantripOS · :${destination.port} · ${destination.source.worktreeId.slice(0, 8)}`;
   return destination.kind === "worker-tcp"
@@ -290,8 +300,13 @@ function TunnelRows({
                 </span>
               </div>
               <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                <Badge variant="secondary">{tunnel.protocolHint}</Badge>
-                {destination.kind === "worker-os-tcp" ? (
+                <Badge variant="secondary">
+                  {destination.kind === "worker-os-ssh"
+                    ? "SSH / SFTP"
+                    : tunnel.protocolHint}
+                </Badge>
+                {destination.kind === "worker-os-tcp" ||
+                destination.kind === "worker-os-ssh" ? (
                   <Badge variant="outline">CantripOS</Badge>
                 ) : null}
                 <Badge variant="outline">{managementLabel(tunnel)}</Badge>
@@ -316,6 +331,9 @@ function TunnelRows({
                 </p>
               </div>
               <div className="flex items-center justify-end gap-0.5">
+                {local?.ssh ? (
+                  <TunnelSshDetails forward={local} name={tunnel.name} />
+                ) : null}
                 {localUrl ? (
                   <>
                     <Button
@@ -517,27 +535,41 @@ export function TunnelSettings({
   const save = useMutation({
     mutationFn: async () => {
       const port = Number(draft.port);
-      if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+      if (
+        !(draft.osSource && draft.service === "ssh") &&
+        (!Number.isInteger(port) || port < 1 || port > 65_535)
+      ) {
         throw new Error("Enter a destination port between 1 and 65535.");
       }
       const common = {
         name: draft.name.trim(),
         description: draft.description.trim() || null,
         projectId: draft.projectId || null,
-        protocolHint: draft.protocolHint,
-        destination: draft.osSource
-          ? {
-              kind: "worker-os-tcp" as const,
-              workerId: draft.workerId,
-              port,
-              source: draft.osSource,
-            }
-          : {
-              kind: "worker-tcp" as const,
-              workerId: draft.workerId,
-              host: draft.host,
-              port,
-            },
+        protocolHint:
+          draft.osSource && draft.service === "ssh"
+            ? ("tcp" as const)
+            : draft.protocolHint,
+        destination:
+          draft.osSource && draft.service === "ssh"
+            ? {
+                kind: "worker-os-ssh" as const,
+                workerId: draft.workerId,
+                source: draft.osSource,
+                publicKey: publicKeyWithoutComment(draft.publicKey),
+              }
+            : draft.osSource
+              ? {
+                  kind: "worker-os-tcp" as const,
+                  workerId: draft.workerId,
+                  port,
+                  source: draft.osSource,
+                }
+              : {
+                  kind: "worker-tcp" as const,
+                  workerId: draft.workerId,
+                  host: draft.host,
+                  port,
+                },
       };
       return editing
         ? updateTunnel(editing.id, common satisfies TunnelUserUpdate)
@@ -829,8 +861,7 @@ export function TunnelSettings({
                 {editing ? "Edit tunnel" : "New tunnel"}
               </DialogTitle>
               <DialogDescription>
-                Choose a Host service or a CantripOS workspace, then enter its
-                port.
+                Choose a Host service or a CantripOS workspace and its service.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -860,6 +891,7 @@ export function TunnelSettings({
                       ...current,
                       projectId: event.target.value,
                       osSource: null,
+                      service: "tcp",
                     }))
                   }
                 >
@@ -914,6 +946,7 @@ export function TunnelSettings({
                               ...current,
                               workerId: selected.replace(/^host:/, ""),
                               osSource: null,
+                              service: "tcp",
                             },
                       );
                     }}
@@ -954,66 +987,26 @@ export function TunnelSettings({
                   </NativeSelect>
                 )}
               </label>
-              <label className="grid gap-1.5 text-sm">
-                <span className="font-medium">Protocol</span>
-                <NativeSelect
-                  className={inputClass}
-                  value={draft.protocolHint}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      protocolHint: event.target.value as TunnelProtocolHint,
-                    }))
-                  }
-                >
-                  {protocols.map((protocol) => (
-                    <option key={protocol.value} value={protocol.value}>
-                      {protocol.label}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </label>
-              {!draft.osSource ? (
-                <label className="grid gap-1.5 text-sm">
-                  <span className="font-medium">Worker host</span>
-                  <NativeSelect
-                    className={inputClass}
-                    value={draft.host}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        host: event.target.value as TunnelDraft["host"],
-                      }))
-                    }
-                  >
-                    <option value="127.0.0.1">127.0.0.1</option>
-                    <option value="localhost">localhost</option>
-                    <option value="::1">::1</option>
-                  </NativeSelect>
-                </label>
-              ) : (
-                <p className="self-end pb-2 text-xs text-muted-foreground">
-                  Connects to this workspace's Linux loopback address.
-                </p>
-              )}
-              <label className="grid gap-1.5 text-sm">
-                <span className="font-medium">Destination port</span>
-                <input
-                  className={inputClass}
-                  inputMode="numeric"
-                  max={65_535}
-                  min={1}
-                  required
-                  type="number"
-                  value={draft.port}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      port: event.target.value,
-                    }))
+              {draft.osSource ? (
+                <TunnelSshFields
+                  service={draft.service}
+                  publicKey={draft.publicKey}
+                  onChange={(value) =>
+                    setDraft((current) => ({ ...current, ...value }))
                   }
                 />
-              </label>
+              ) : null}
+              {!(draft.osSource && draft.service === "ssh") ? (
+                <>
+                  <TunnelTcpFields
+                    value={draft}
+                    linux={Boolean(draft.osSource)}
+                    onChange={(value) =>
+                      setDraft((current) => ({ ...current, ...value }))
+                    }
+                  />
+                </>
+              ) : null}
               <label className="grid gap-1.5 text-sm sm:col-span-2">
                 <span className="font-medium">Description (optional)</span>
                 <textarea

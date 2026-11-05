@@ -119,3 +119,42 @@ describe("captured OS tunnel destinations", () => {
     );
   });
 });
+
+it("keeps an SSH public key encrypted and excludes private keys and key options", () => {
+  const publicKey =
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcH";
+  const ssh = {
+    kind: "worker-os-ssh" as const,
+    workerId: "worker",
+    source,
+    publicKey,
+  };
+  const input = {
+    name: "Workspace SSH",
+    projectId: "project",
+    protocolHint: "tcp",
+    destination: ssh,
+  };
+  expect(tunnelUserCreateSchema.parse(input).destination).toEqual(ssh);
+  expect(tunnelPublicDestinationEndpoint(ssh, id)).toEqual(wire.destination);
+  expect(
+    JSON.stringify(tunnelPublicDestinationEndpoint(ssh, id)),
+  ).not.toContain(publicKey);
+  for (const key of [
+    "-----BEGIN OPENSSH PRIVATE KEY-----",
+    `command=bad ${publicKey}`,
+    `${publicKey}\n${publicKey}`,
+  ])
+    expect(
+      tunnelUserCreateSchema.safeParse({
+        ...input,
+        destination: { ...ssh, publicKey: key },
+      }).success,
+    ).toBe(false);
+  expect(
+    tunnelUserCreateSchema.safeParse({
+      ...input,
+      destination: { ...ssh, port: 22 },
+    }).success,
+  ).toBe(false);
+});

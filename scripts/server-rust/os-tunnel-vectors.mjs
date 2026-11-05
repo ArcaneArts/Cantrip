@@ -110,4 +110,18 @@ add("tunnelOsPrepareResultSchema", {
   identity: "a".repeat(64),
   transport: "private",
 });
+const ssh = {
+  user: "ctw-work",
+  hostAlias: "cantrip-os-55555555-5555-4555-8555-555555555555",
+  hostKey:
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcH",
+};
+for (const value of [
+  ssh,
+  { ...ssh, user: "root\nother" },
+  { ...ssh, hostAlias: "other-host" },
+  { ...ssh, hostKey: ssh.hostKey + "\nother" },
+  { ...ssh, privateKey: "never" },
+])
+  add("tunnelOsPrepareResultSchema", { identity: "a".repeat(64), ssh: value });
 process.stdout.write(JSON.stringify(cases));

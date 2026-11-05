@@ -144,7 +144,8 @@ function publicEndpointsMatch(
       tunnelPublicDestinationEndpoint(content.destination, wire.id),
     ) === JSON.stringify(wire.destination) &&
     JSON.stringify(
-      content.destination.kind === "worker-os-tcp"
+      content.destination.kind === "worker-os-tcp" ||
+        content.destination.kind === "worker-os-ssh"
         ? content.destination.source
         : undefined,
     ) === JSON.stringify(wire.osSource)
