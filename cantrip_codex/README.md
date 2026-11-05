@@ -506,3 +506,12 @@ so a same-provider title and first response continue sharing one serial ticket
 at limit one. Existing worker/server observation budgets and timeout error
 classification remain. Source review, Rust formatting, mechanical patch
 generation and diff checks ran; no runtime, tests or builds were executed.
+
+Patch `0058` identifies each native inference lifetime with a fresh private scope
+UUID, independently of reusable logical thread/turn IDs. All admission, suspension,
+resumption, cancellation and terminal notifications carry it; positive resolver
+acknowledgements must echo that exact scope. Older mismatched peers deny admission
+rather than silently use an unscoped ticket. The worker can bind a root reservation
+to only one scope, and late old receipts cannot settle its replacement. No public
+schema is changed. Source review, formatting, patch generation and diff checks
+ran; tests, builds and native execution remain unrun.

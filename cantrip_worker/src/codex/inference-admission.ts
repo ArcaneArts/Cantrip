@@ -21,6 +21,7 @@ interface Operation {
   preparationEnded?: () => void;
   observedStart: boolean;
   nativeBoundary: boolean;
+  nativeScopeId: string | null;
   settled: boolean;
   ticket: InferenceTicket;
   lease: InferenceLease | null;
@@ -64,6 +65,7 @@ interface Request {
   projectId?: string | null;
   threadId?: string | null;
   expectedTurnId?: string;
+  nativeScopeId?: string;
   signal?: AbortSignal;
   recoveryKey?: string | null;
   recovery?: InferenceRecoveryIdentity | null;
@@ -72,6 +74,7 @@ interface Request {
 interface NativeRequest {
   threadId: string;
   turnId: string;
+  scopeId: string;
   provider: Request["provider"];
   signal: AbortSignal;
   rootThreadId?: string | null;
@@ -111,6 +114,7 @@ export class CodexInferenceAdmission {
       input.projectId ?? null,
       input.threadId ?? null,
       input.expectedTurnId ?? null,
+      input.nativeScopeId ?? null,
       input.recoveryKey ?? null,
       recoveryIdentity(input.recovery),
     ]);
@@ -159,7 +163,8 @@ export class CodexInferenceAdmission {
       leaseStarted: false,
       preparing: false,
       observedStart: false,
-      nativeBoundary: false,
+      nativeBoundary: Boolean(input.nativeScopeId),
+      nativeScopeId: input.nativeScopeId ?? null,
       settled: false,
       ticket,
       lease: null,
@@ -198,6 +203,12 @@ export class CodexInferenceAdmission {
         if (!operation.leaseStarted) operation.lease!.start();
         operation.leaseStarted = true;
         operation.dispatched = true;
+        // A restored execution can reuse a logical turn ID. UI completion
+        // cached before this dispatch belongs to the preceding execution.
+        if (operation.threadId && operation.turnId)
+          this.completed.delete(
+            JSON.stringify([operation.threadId, operation.turnId]),
+          );
       },
       rejected: () => {
         // Contradictory receipts cannot override an observed running native turn.
@@ -319,7 +330,7 @@ export class CodexInferenceAdmission {
 
   /** Native Core may use an existing root ticket or admit an independent child. */
   async enterNative(input: NativeRequest): Promise<void> {
-    const key = JSON.stringify([input.threadId, input.turnId]);
+    const key = JSON.stringify([input.threadId, input.turnId, input.scopeId]);
     if (this.completed.has(key))
       throw new Error("Native inference already settled.");
     let entering = this.nativeEntries.get(key);
@@ -333,7 +344,11 @@ export class CodexInferenceAdmission {
       this.nativeEntries.set(key, entering);
     }
     await entering.result;
-    const operation = this.findNative(input.threadId, input.turnId);
+    const operation = this.findNative(
+      input.threadId,
+      input.turnId,
+      input.scopeId,
+    );
     if (!operation?.lease || operation.ticket.status().state !== "running")
       throw new Error("Native inference has no running grant.");
     // Core's private finish follows its actual response-task teardown. A UI
@@ -343,7 +358,7 @@ export class CodexInferenceAdmission {
   }
 
   private async admitNative(input: NativeRequest): Promise<void> {
-    if (this.findNative(input.threadId, input.turnId)) {
+    if (this.findNative(input.threadId, input.turnId, input.scopeId)) {
       if (input.independent)
         throw new Error(
           "Independent inference cannot reuse an existing native turn.",
@@ -351,18 +366,22 @@ export class CodexInferenceAdmission {
       return;
     }
     // Core's private begin can overtake the ordinary turn/started observer.
-    // Its exact native turn identity binds the unique dispatched root without
-    // acquiring a second ticket and deadlocking a provider with limit one.
+    // Its physical scope binds the unique dispatched, unbound reservation
+    // without acquiring twice at limit one. A restored execution of the same
+    // logical turn cannot borrow an older scope's still-settling ticket.
     const roots = [...this.operations].filter(
       (operation) =>
         !input.independent &&
         operation.threadId === input.threadId &&
         operation.dispatched &&
-        !operation.turnId &&
+        (!operation.turnId || operation.turnId === input.turnId) &&
+        operation.nativeScopeId === null &&
         !operation.settled,
     );
     if (roots.length === 1) {
       roots[0]!.observedStart = true;
+      roots[0]!.nativeBoundary = true;
+      roots[0]!.nativeScopeId = input.scopeId;
       this.bindTurn(roots[0]!, input.turnId);
       return;
     }
@@ -375,7 +394,7 @@ export class CodexInferenceAdmission {
       : undefined;
     const scope = root?.ticket.status();
     const execution = await this.acquire({
-      operationId: `native-inference:${input.threadId}:${input.turnId}`,
+      operationId: `native-inference:${input.threadId}:${input.turnId}:${input.scopeId}`,
       purpose: input.independent
         ? "helper"
         : input.rootThreadId && input.rootThreadId !== input.threadId
@@ -386,7 +405,8 @@ export class CodexInferenceAdmission {
       projectId: scope?.projectId,
       threadId: input.threadId,
       expectedTurnId: input.turnId,
-      recoveryKey: `native-turn:${input.threadId}:${input.turnId}`,
+      nativeScopeId: input.scopeId,
+      recoveryKey: `native-turn:${input.threadId}:${input.turnId}:${input.scopeId}`,
       recovery: { threadId: input.threadId, turnId: input.turnId },
       signal: input.signal,
     });
@@ -394,28 +414,32 @@ export class CodexInferenceAdmission {
   }
 
   /** Called only after Core establishes that no inference can run before resume. */
-  suspendNative(threadId: string, turnId: string): void {
-    const operation = this.findNative(threadId, turnId);
+  suspendNative(threadId: string, turnId: string, scopeId: string): void {
+    const operation = this.findNative(threadId, turnId, scopeId);
     if (!operation?.lease)
       throw new Error("Native suspension has no inference owner.");
     operation.lease.suspend();
   }
 
-  async resumeNative(threadId: string, turnId: string): Promise<void> {
-    const operation = this.findNative(threadId, turnId);
+  async resumeNative(
+    threadId: string,
+    turnId: string,
+    scopeId: string,
+  ): Promise<void> {
+    const operation = this.findNative(threadId, turnId, scopeId);
     if (!operation?.lease)
       throw new Error("Native resumption has no inference owner.");
     await operation.lease.resume();
   }
 
-  finishNative(threadId: string, turnId: string): void {
-    this.rememberCompleted(threadId, turnId);
-    const operation = this.findNative(threadId, turnId);
+  finishNative(threadId: string, turnId: string, scopeId: string): void {
+    this.rememberCompleted(threadId, turnId, scopeId);
+    const operation = this.findNative(threadId, turnId, scopeId);
     if (operation) this.settle(operation, "completed");
   }
 
-  cancelNativeWait(threadId: string, turnId: string): void {
-    const operation = this.findNative(threadId, turnId);
+  cancelNativeWait(threadId: string, turnId: string, scopeId: string): void {
+    const operation = this.findNative(threadId, turnId, scopeId);
     if (
       !operation ||
       !["waiting", "granted", "suspended"].includes(
@@ -429,11 +453,16 @@ export class CodexInferenceAdmission {
     operation.resolveSettlement();
   }
 
-  private findNative(threadId: string, turnId: string): Operation | undefined {
+  private findNative(
+    threadId: string,
+    turnId: string,
+    scopeId: string,
+  ): Operation | undefined {
     return [...this.operations].find(
       (operation) =>
         operation.threadId === threadId &&
         operation.turnId === turnId &&
+        operation.nativeScopeId === scopeId &&
         !operation.settled,
     );
   }
@@ -476,8 +505,14 @@ export class CodexInferenceAdmission {
     for (const operation of this.operations) this.reconcile(operation);
   }
 
-  private rememberCompleted(threadId: string, turnId: string): void {
-    const key = JSON.stringify([threadId, turnId]);
+  private rememberCompleted(
+    threadId: string,
+    turnId: string,
+    scopeId?: string,
+  ): void {
+    const key = JSON.stringify(
+      scopeId ? [threadId, turnId, scopeId] : [threadId, turnId],
+    );
     this.nativeEntries.delete(key);
     this.completed.add(key);
     if (this.completed.size > 512)
@@ -495,6 +530,7 @@ export class CodexInferenceAdmission {
 
   private reconcile(operation: Operation): void {
     if (
+      operation.dispatched &&
       !operation.nativeBoundary &&
       operation.threadId &&
       operation.turnId &&
