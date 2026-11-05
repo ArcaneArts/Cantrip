@@ -1,0 +1,1260 @@
+diff --git a/codex-rs/code-mode-host/src/grpc/mod.rs b/codex-rs/code-mode-host/src/grpc/mod.rs
+index 3901da3..e9125b6 100644
+--- a/codex-rs/code-mode-host/src/grpc/mod.rs
++++ b/codex-rs/code-mode-host/src/grpc/mod.rs
+@@ -12,6 +12,8 @@ use std::sync::Arc;
+ use std::time::Instant;
+ 
+ use codex_code_mode_protocol::CellId;
++use codex_code_mode_protocol::CodeModeSession;
++use codex_code_mode_protocol::CodeModeSessionState;
+ use codex_code_mode_protocol::WaitRequest;
+ use codex_code_mode_protocol::grpc as proto;
+ use codex_code_mode_protocol::grpc::code_mode_host_server::CodeModeHost;
+@@ -96,6 +98,46 @@ impl GrpcCodeModeHost {
+         Ok(Response::new(proto::CloseSessionResponse {}))
+     }
+ 
++    async fn export_session_state_request(
++        &self,
++        request: proto::ExportSessionStateRequest,
++    ) -> Result<Response<proto::ExportSessionStateResponse>, Status> {
++        let _permit = self.state.control_permit()?;
++        let session = self.state.session(&request.session_id)?;
++        let state = session
++            .runtime
++            .export_state()
++            .await
++            .map_err(Status::failed_precondition)?;
++        let state_json = serde_json::to_vec(&state)
++            .map_err(|_| Status::internal("code-mode stored state could not be encoded"))?;
++        Ok(Response::new(proto::ExportSessionStateResponse {
++            state_json,
++        }))
++    }
++
++    async fn import_session_state_request(
++        &self,
++        request: proto::ImportSessionStateRequest,
++    ) -> Result<Response<proto::ImportSessionStateResponse>, Status> {
++        let _permit = self.state.control_permit()?;
++        let session = self.state.session(&request.session_id)?;
++        if request.state_json.len() > CodeModeSessionState::MAX_BYTES {
++            return Err(Status::invalid_argument(
++                "code-mode stored state exceeds the durable resource limit",
++            ));
++        }
++        let state = serde_json::from_slice(&request.state_json).map_err(|_| {
++            Status::invalid_argument("code-mode stored state is invalid or unsupported")
++        })?;
++        session
++            .runtime
++            .import_state(state)
++            .await
++            .map_err(Status::failed_precondition)?;
++        Ok(Response::new(proto::ImportSessionStateResponse {}))
++    }
++
+     async fn subscribe_request(
+         &self,
+         request: proto::SubscribeToToolCallsRequest,
+@@ -366,6 +408,28 @@ impl CodeModeHost for GrpcCodeModeHost {
+         Box::pin(self.close_session_request(request.into_inner()))
+     }
+ 
++    fn export_session_state<'a, 'async_trait>(
++        &'a self,
++        request: Request<proto::ExportSessionStateRequest>,
++    ) -> GrpcFuture<'async_trait, proto::ExportSessionStateResponse>
++    where
++        'a: 'async_trait,
++        Self: 'async_trait,
++    {
++        Box::pin(self.export_session_state_request(request.into_inner()))
++    }
++
++    fn import_session_state<'a, 'async_trait>(
++        &'a self,
++        request: Request<proto::ImportSessionStateRequest>,
++    ) -> GrpcFuture<'async_trait, proto::ImportSessionStateResponse>
++    where
++        'a: 'async_trait,
++        Self: 'async_trait,
++    {
++        Box::pin(self.import_session_state_request(request.into_inner()))
++    }
++
+     fn subscribe_to_tool_calls<'a, 'async_trait>(
+         &'a self,
+         request: Request<proto::SubscribeToToolCallsRequest>,
+diff --git a/codex-rs/code-mode-host/tests/stored_state.rs b/codex-rs/code-mode-host/tests/stored_state.rs
+new file mode 100644
+index 0000000..b9ee93f
+--- /dev/null
++++ b/codex-rs/code-mode-host/tests/stored_state.rs
+@@ -0,0 +1,362 @@
++//! Real child hosts, fresh gRPC providers, no cell replay during data import.
++use std::process::Stdio;
++use std::sync::Arc;
++use std::sync::atomic::{AtomicUsize, Ordering};
++
++use anyhow::{Context, Result};
++use codex_code_mode::{
++    CellId, CodeModeNestedToolCall, CodeModeSession, CodeModeSessionDelegate,
++    CodeModeSessionProvider, CodeModeToolKind, ExecuteRequest, FunctionCallOutputContentItem,
++    GrpcCodeModeSessionProvider, NotificationFuture, RuntimeResponse, ToolDefinition,
++    ToolInvocationFuture, WaitOutcome, WaitRequest,
++};
++use codex_protocol::ToolName;
++use serde_json::json;
++use tokio::io::{AsyncBufReadExt, BufReader};
++use tokio::process::{Child, Command};
++use tokio::sync::mpsc;
++use tokio_util::sync::CancellationToken;
++
++async fn host() -> Result<(Child, GrpcCodeModeSessionProvider)> {
++    let (child, provider, _) = host_at("grpc://127.0.0.1:0").await?;
++    Ok((child, provider))
++}
++
++async fn host_at(listen: &str) -> Result<(Child, GrpcCodeModeSessionProvider, String)> {
++    let mut child = Command::new(codex_utils_cargo_bin::cargo_bin("codex-code-mode-host")?)
++        .args(["--listen", listen])
++        .stdin(Stdio::null())
++        .stdout(Stdio::piped())
++        .stderr(Stdio::inherit())
++        .kill_on_drop(true)
++        .spawn()?;
++    let endpoint = BufReader::new(child.stdout.take().context("host stdout")?)
++        .lines()
++        .next_line()
++        .await?
++        .context("host ended before publishing endpoint")?;
++    Ok((
++        child,
++        GrpcCodeModeSessionProvider::new(endpoint.clone()),
++        endpoint,
++    ))
++}
++
++struct Delegate {
++    closed: mpsc::UnboundedSender<CellId>,
++    calls: AtomicUsize,
++    tools: mpsc::UnboundedSender<()>,
++    release: tokio::sync::Notify,
++}
++impl CodeModeSessionDelegate for Delegate {
++    fn invoke_tool<'a>(
++        &'a self,
++        _: CodeModeNestedToolCall,
++        cancelled: CancellationToken,
++    ) -> ToolInvocationFuture<'a> {
++        Box::pin(async move {
++            self.calls.fetch_add(1, Ordering::SeqCst);
++            self.tools.send(()).unwrap();
++            tokio::select! {
++                _ = self.release.notified() => Ok(json!({"finished": true})),
++                _ = cancelled.cancelled() => Err("cancelled".into()),
++            }
++        })
++    }
++    fn notify<'a>(
++        &'a self,
++        _: String,
++        _: CellId,
++        _: String,
++        _: CancellationToken,
++    ) -> NotificationFuture<'a> {
++        Box::pin(async { Ok(()) })
++    }
++    fn cell_closed(&self, id: &CellId) {
++        let _ = self.closed.send(id.clone());
++    }
++}
++fn delegate() -> (
++    Arc<Delegate>,
++    mpsc::UnboundedReceiver<CellId>,
++    mpsc::UnboundedReceiver<()>,
++) {
++    let (closed, closed_rx) = mpsc::unbounded_channel();
++    let (tools, tools_rx) = mpsc::unbounded_channel();
++    (
++        Arc::new(Delegate {
++            closed,
++            tools,
++            calls: AtomicUsize::new(0),
++            release: tokio::sync::Notify::new(),
++        }),
++        closed_rx,
++        tools_rx,
++    )
++}
++fn request(source: &str) -> ExecuteRequest {
++    ExecuteRequest {
++        tool_call_id: "state-test".into(),
++        enabled_tools: vec![],
++        source: source.into(),
++        yield_time_ms: Some(60_000),
++        max_output_tokens: Some(1000),
++    }
++}
++async fn run(session: &Arc<dyn CodeModeSession>, source: &str) -> Result<RuntimeResponse> {
++    let (delegate, mut closed, _) = delegate();
++    let response = session
++        .execute(request(source), delegate.clone(), None)
++        .await
++        .map_err(anyhow::Error::msg)?
++        .initial_response()
++        .await
++        .map_err(anyhow::Error::msg)?;
++    closed.recv().await.context("cell closure")?;
++    assert_eq!(delegate.calls.load(Ordering::SeqCst), 0);
++    assert!(
++        matches!(
++            &response,
++            RuntimeResponse::Result {
++                error_text: None,
++                ..
++            }
++        ),
++        "{response:?}"
++    );
++    Ok(response)
++}
++
++#[tokio::test]
++async fn finalized_json_survives_host_kill_and_fresh_provider_without_replay_or_id_alias()
++-> Result<()> {
++    let (mut child, provider) = host().await?;
++    let spare = provider
++        .create_session()
++        .await
++        .map_err(anyhow::Error::msg)?;
++    let session = provider
++        .create_session()
++        .await
++        .map_err(anyhow::Error::msg)?;
++    spare.shutdown().await.map_err(anyhow::Error::msg)?;
++    let first = run(
++        &session,
++        r#"store("answer", {items:[null,true,2.5], text:"héllo", count:1}); text("saved");"#,
++    )
++    .await?;
++    assert!(matches!(first, RuntimeResponse::Result { cell_id, .. } if cell_id.as_str() == "g2:1"));
++    let state = session.export_state().await.map_err(anyhow::Error::msg)?;
++    assert_eq!(state.next_cell_id, 2);
++    assert_eq!(state.cell_id_generation, 2);
++    assert_eq!(
++        state.stored_values["answer"],
++        json!({"items":[null,true,2.5], "text":"héllo", "count":1})
++    );
++    child.kill().await?;
++    assert!(
++        session.export_state().await.is_err(),
++        "a dead host must not become an empty new snapshot"
++    );
++
++    let (mut fresh_child, fresh_provider) = host().await?;
++    let probe = fresh_provider
++        .create_session()
++        .await
++        .map_err(anyhow::Error::msg)?;
++    let empty = run(&probe, r#"text(String(load("answer")));"#).await?;
++    assert!(
++        matches!(empty, RuntimeResponse::Result { content_items, .. } if content_items == vec![FunctionCallOutputContentItem::InputText { text: "undefined".into() }])
++    );
++    probe.shutdown().await.map_err(anyhow::Error::msg)?;
++    let fresh = fresh_provider
++        .create_session()
++        .await
++        .map_err(anyhow::Error::msg)?;
++    let mut invalid = state.clone();
++    invalid.format_version = 99;
++    assert!(fresh.import_state(invalid).await.is_err());
++    fresh
++        .import_state(state.clone())
++        .await
++        .map_err(anyhow::Error::msg)?;
++    fresh
++        .import_state(state.clone())
++        .await
++        .map_err(anyhow::Error::msg)?;
++    assert_eq!(
++        fresh.export_state().await.map_err(anyhow::Error::msg)?,
++        state,
++        "import must not execute any cell"
++    );
++    let read = run(
++        &fresh,
++        r#"text(JSON.stringify(load("answer"))); store("answer", {count:2});"#,
++    )
++    .await?;
++    assert!(
++        matches!(read, RuntimeResponse::Result { cell_id, content_items, .. } if cell_id.as_str() == "g2:2" && content_items == vec![FunctionCallOutputContentItem::InputText { text: serde_json::to_string(&state.stored_values["answer"])? }])
++    );
++    assert!(
++        fresh.import_state(state).await.is_err(),
++        "stale import cannot roll back execution"
++    );
++    let after = fresh.export_state().await.map_err(anyhow::Error::msg)?;
++    assert_eq!(after.next_cell_id, 3);
++    assert_eq!(after.stored_values["answer"], json!({"count":2}));
++    assert!(matches!(
++        fresh
++            .wait(
++                WaitRequest {
++                    cell_id: CellId::new("g2:1".into()),
++                    yield_time_ms: 0,
++                    max_output_tokens: None
++                },
++                None
++            )
++            .await
++            .map_err(anyhow::Error::msg)?,
++        WaitOutcome::MissingCell(_)
++    ));
++    let other = fresh_provider
++        .create_session()
++        .await
++        .map_err(anyhow::Error::msg)?;
++    let other_result = run(&other, "text('new namespace');").await?;
++    assert!(
++        matches!(other_result, RuntimeResponse::Result { cell_id, .. } if cell_id.as_str() == "g3:1")
++    );
++    fresh.shutdown().await.map_err(anyhow::Error::msg)?;
++    other.shutdown().await.map_err(anyhow::Error::msg)?;
++    fresh_child.kill().await?;
++    Ok(())
++}
++
++#[tokio::test]
++async fn active_cells_refuse_capture_without_replaying_or_stopping_their_tools() -> Result<()> {
++    let (mut child, provider) = host().await?;
++    let session = provider
++        .create_session()
++        .await
++        .map_err(anyhow::Error::msg)?;
++    let (delegate, mut closed, mut tools) = delegate();
++    let mut execute = request(r#"await tools.hold({}); store("finished", true); text("done");"#);
++    execute.enabled_tools.push(ToolDefinition {
++        name: "hold".into(),
++        tool_name: ToolName::plain("hold"),
++        description: String::new(),
++        kind: CodeModeToolKind::Function,
++        input_schema: None,
++        input_schema_max_bytes: None,
++        output_schema: None,
++    });
++    let preempt = CancellationToken::new();
++    let started = session
++        .execute(execute, delegate.clone(), Some(preempt.clone()))
++        .await
++        .map_err(anyhow::Error::msg)?;
++    let id = started.cell_id.clone();
++    tools.recv().await.context("tool admission")?;
++    preempt.cancel();
++    assert!(matches!(
++        started
++            .initial_response()
++            .await
++            .map_err(anyhow::Error::msg)?,
++        RuntimeResponse::Yielded { .. }
++    ));
++    let error = session.export_state().await.unwrap_err();
++    assert!(error.contains("cells and unconsumed results"), "{error}");
++    assert_eq!(delegate.calls.load(Ordering::SeqCst), 1);
++    delegate.release.notify_one();
++    let result = session
++        .wait(
++            WaitRequest {
++                cell_id: id,
++                yield_time_ms: 60_000,
++                max_output_tokens: None,
++            },
++            None,
++        )
++        .await
++        .map_err(anyhow::Error::msg)?;
++    assert!(matches!(
++        result,
++        WaitOutcome::LiveCell(RuntimeResponse::Result {
++            error_text: None,
++            ..
++        })
++    ));
++    closed.recv().await.context("closed cell")?;
++    let state = session.export_state().await.map_err(anyhow::Error::msg)?;
++    assert_eq!(state.stored_values["finished"], json!(true));
++    assert_eq!(delegate.calls.load(Ordering::SeqCst), 1);
++    session.shutdown().await.map_err(anyhow::Error::msg)?;
++    child.kill().await?;
++    Ok(())
++}
++
++#[tokio::test]
++async fn explicit_import_recovers_a_lost_host_without_replacing_state_during_export() -> Result<()>
++{
++    let (mut child, provider, endpoint) = host_at("grpc://127.0.0.1:0").await?;
++    let session = provider
++        .create_session()
++        .await
++        .map_err(anyhow::Error::msg)?;
++    run(&session, "store('retained', 7);").await?;
++    let state = session.export_state().await.map_err(anyhow::Error::msg)?;
++    child.kill().await?;
++    let listen = endpoint.replacen("http://", "grpc://", 1);
++    let (mut replacement, _, _) = host_at(&listen).await?;
++    // The dead session ID cannot export empty replacement data. This actual RPC
++    // or its lease closure marks the missing binding; no execution is replayed.
++    assert!(session.export_state().await.is_err());
++    session
++        .import_state(state.clone())
++        .await
++        .map_err(anyhow::Error::msg)?;
++    assert_eq!(
++        session.export_state().await.map_err(anyhow::Error::msg)?,
++        state
++    );
++    let result = run(&session, "text(String(load('retained')));").await?;
++    assert!(
++        matches!(result, RuntimeResponse::Result { cell_id, content_items, .. }
++        if cell_id.as_str() == "2" && content_items == vec![FunctionCallOutputContentItem::InputText { text: "7".into() }])
++    );
++    session.shutdown().await.map_err(anyhow::Error::msg)?;
++    replacement.kill().await?;
++    Ok(())
++}
++
++#[tokio::test]
++async fn imported_generation_cannot_wrap_and_alias_old_cells() -> Result<()> {
++    let (mut child, provider) = host().await?;
++    let session = provider
++        .create_session()
++        .await
++        .map_err(anyhow::Error::msg)?;
++    let mut state = session.export_state().await.map_err(anyhow::Error::msg)?;
++    state.cell_id_generation = u64::MAX - 1;
++    session
++        .import_state(state)
++        .await
++        .map_err(anyhow::Error::msg)?;
++    let error = provider
++        .create_session()
++        .await
++        .err()
++        .context("exhausted generation must fail")?;
++    assert!(
++        error.contains("exhausted its host generation space"),
++        "{error}"
++    );
++    let result = run(&session, "text('same namespace');").await?;
++    assert!(
++        matches!(result, RuntimeResponse::Result { cell_id, .. } if cell_id.as_str() == format!("g{}:1", u64::MAX - 1))
++    );
++    session.shutdown().await.map_err(anyhow::Error::msg)?;
++    child.kill().await?;
++    Ok(())
++}
+diff --git a/codex-rs/code-mode-protocol/src/grpc/codex.code_mode.v1.proto b/codex-rs/code-mode-protocol/src/grpc/codex.code_mode.v1.proto
+index 043b7f8..f7d9049 100644
+--- a/codex-rs/code-mode-protocol/src/grpc/codex.code_mode.v1.proto
++++ b/codex-rs/code-mode-protocol/src/grpc/codex.code_mode.v1.proto
+@@ -19,6 +19,13 @@ service CodeModeHost {
+   rpc OpenSession(OpenSessionRequest) returns (stream SessionEvent);
+   rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
+ 
++  // Finalized JSON data and cell identities only. Export never starts or
++  // replaces a session; active/unconsumed cells fail with FAILED_PRECONDITION.
++  rpc ExportSessionState(ExportSessionStateRequest) returns (ExportSessionStateResponse);
++  // Pristine-session import, idempotent before subsequent execution. No cell
++  // execution, tool dispatch, or JavaScript evaluation occurs during import.
++  rpc ImportSessionState(ImportSessionStateRequest) returns (ImportSessionStateResponse);
++
+   // Each subscription owns an independent stream of matching invocations. An
+   // empty tool_names filter matches every tool. Each invocation is routed to
+   // exactly one matching subscription, even when filters overlap.
+@@ -95,6 +102,14 @@ message CloseSessionRequest {
+ 
+ message CloseSessionResponse {}
+ 
++message ExportSessionStateRequest { string session_id = 1; }
++message ExportSessionStateResponse { bytes state_json = 1; }
++message ImportSessionStateRequest {
++  string session_id = 1;
++  bytes state_json = 2;
++}
++message ImportSessionStateResponse {}
++
+ message SubscribeToToolCallsRequest {
+   string session_id = 1;
+   repeated ToolName tool_names = 2;
+diff --git a/codex-rs/code-mode-protocol/src/lib.rs b/codex-rs/code-mode-protocol/src/lib.rs
+index 0d60218..90d17d5 100644
+--- a/codex-rs/code-mode-protocol/src/lib.rs
++++ b/codex-rs/code-mode-protocol/src/lib.rs
+@@ -52,6 +52,7 @@ pub use session::CodeModeSessionOptions;
+ pub use session::CodeModeSessionProvider;
+ pub use session::CodeModeSessionProviderFuture;
+ pub use session::CodeModeSessionResultFuture;
++pub use session::CodeModeSessionState;
+ pub use session::NoopCodeModeSessionDelegate;
+ pub use session::NotificationFuture;
+ pub use session::StartedCell;
+diff --git a/codex-rs/code-mode-protocol/src/session.rs b/codex-rs/code-mode-protocol/src/session.rs
+index e5e72c5..af0df97 100644
+--- a/codex-rs/code-mode-protocol/src/session.rs
++++ b/codex-rs/code-mode-protocol/src/session.rs
+@@ -1,3 +1,4 @@
++use std::collections::BTreeMap;
+ use std::fmt;
+ use std::future::Future;
+ use std::pin::Pin;
+@@ -174,6 +175,37 @@ impl CodeModeSessionDelegate for NoopCodeModeSessionDelegate {
+     fn cell_closed(&self, _cell_id: &CellId) {}
+ }
+ 
++/// Finalized JSON data only: no source, isolate, callbacks, tools, or authority.
++/// The caller must keep execution held from capture through durable pause.
++#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++pub struct CodeModeSessionState {
++    pub format_version: u32,
++    pub next_cell_id: u64,
++    pub cell_id_generation: u64,
++    pub stored_values: BTreeMap<String, JsonValue>,
++}
++
++impl CodeModeSessionState {
++    pub const MAX_BYTES: usize = 32 * 1024 * 1024;
++
++    pub fn validate(&self) -> Result<(), String> {
++        if self.format_version != 1
++            || self.next_cell_id == 0
++            || self.cell_id_generation == 0
++            || self.cell_id_generation == u64::MAX
++        {
++            return Err("code-mode stored-state version or cell identity is unsupported".into());
++        }
++        let bytes =
++            serde_json::to_vec(self).map_err(|_| "code-mode stored state could not be encoded")?;
++        if bytes.len() > Self::MAX_BYTES {
++            return Err("code-mode stored state exceeds the durable resource limit".into());
++        }
++        Ok(())
++    }
++}
++
+ /// A durable code-mode session owned by one Codex thread.
+ ///
+ /// Cells executed in the same session share stored values. Separate sessions
+@@ -210,6 +242,22 @@ pub trait CodeModeSession: Send + Sync {
+         request: TerminateRequest,
+     ) -> CodeModeSessionResultFuture<'a, WaitOutcome>;
+ 
++    /// Captures a quiescent, already-open session. Must never reconnect to an
++    /// empty replacement host or omit state when the actual host is unavailable.
++    fn export_state(&self) -> CodeModeSessionResultFuture<'_, CodeModeSessionState> {
++        Box::pin(async {
++            Err("this code-mode provider does not support durable stored state; live Resume and Stop remain available".into())
++        })
++    }
++
++    /// Imports data into a pristine session, without executing a cell. Retrying
++    /// the same import before execution is idempotent; replacing used state fails.
++    fn import_state(&self, _state: CodeModeSessionState) -> CodeModeSessionResultFuture<'_, ()> {
++        Box::pin(async {
++            Err("this code-mode provider does not support durable stored-state restoration".into())
++        })
++    }
++
+     fn shutdown<'a>(&'a self) -> CodeModeSessionResultFuture<'a, ()>;
+ }
+ 
+diff --git a/codex-rs/code-mode-runtime/src/service.rs b/codex-rs/code-mode-runtime/src/service.rs
+index 6cd5663..b517fac 100644
+--- a/codex-rs/code-mode-runtime/src/service.rs
++++ b/codex-rs/code-mode-runtime/src/service.rs
+@@ -7,6 +7,7 @@ use codex_code_mode_protocol::CodeModeSession;
+ use codex_code_mode_protocol::CodeModeSessionCellExecutionLimits;
+ use codex_code_mode_protocol::CodeModeSessionDelegate;
+ use codex_code_mode_protocol::CodeModeSessionResultFuture;
++use codex_code_mode_protocol::CodeModeSessionState;
+ use codex_code_mode_protocol::CodeModeToolKind;
+ use codex_code_mode_protocol::DEFAULT_EXEC_YIELD_TIME_MS;
+ use codex_code_mode_protocol::ExecuteRequest;
+@@ -249,6 +250,14 @@ impl CodeModeSession for InProcessCodeModeSession {
+         Box::pin(InProcessCodeModeSession::terminate(self, request))
+     }
+ 
++    fn export_state(&self) -> CodeModeSessionResultFuture<'_, CodeModeSessionState> {
++        Box::pin(self.runtime.export_state())
++    }
++
++    fn import_state(&self, state: CodeModeSessionState) -> CodeModeSessionResultFuture<'_, ()> {
++        Box::pin(self.runtime.import_state(state))
++    }
++
+     fn shutdown<'a>(&'a self) -> CodeModeSessionResultFuture<'a, ()> {
+         Box::pin(InProcessCodeModeSession::shutdown(self))
+     }
+diff --git a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
+index 7b46c37..1ece14b 100644
+--- a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
++++ b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
+@@ -4,9 +4,11 @@ use std::collections::HashMap;
+ use std::future::Future;
+ use std::pin::Pin;
+ use std::sync::Arc;
++use std::sync::atomic::AtomicBool;
+ use std::sync::atomic::AtomicU64;
+ use std::sync::atomic::Ordering;
+ 
++use codex_code_mode_protocol::CodeModeSessionState;
+ use opentelemetry::context::FutureExt;
+ use serde_json::Value as JsonValue;
+ use tokio::sync::Mutex;
+@@ -44,6 +46,7 @@ pub(crate) struct SessionRuntime {
+ }
+ 
+ struct Inner {
++    admission: Mutex<()>,
+     // Cells snapshot the keys while sharing immutable payloads, so later commits cannot
+     // change an existing cell's view and unused values do not need to be copied.
+     stored_values: Mutex<HashMap<String, Arc<JsonValue>>>,
+@@ -52,6 +55,7 @@ struct Inner {
+     shutdown_token: CancellationToken,
+     task_failure_handler: Option<TaskFailureHandler>,
+     next_cell_id: AtomicU64,
++    producer_failed: AtomicBool,
+ }
+ 
+ impl SessionRuntime {
+@@ -64,12 +68,14 @@ impl SessionRuntime {
+     ) -> Self {
+         Self {
+             inner: Arc::new(Inner {
++                admission: Mutex::new(()),
+                 stored_values: Mutex::new(HashMap::new()),
+                 cells: Mutex::new(HashMap::new()),
+                 cell_tasks: TaskTracker::new(),
+                 shutdown_token: CancellationToken::new(),
+                 task_failure_handler,
+                 next_cell_id: AtomicU64::new(1),
++                producer_failed: AtomicBool::new(false),
+             }),
+         }
+     }
+@@ -80,6 +86,7 @@ impl SessionRuntime {
+         initial_observation: impl Into<Observation> + Send,
+         delegate: Arc<D>,
+     ) -> Result<StartedCell, Error> {
++        let _admission = self.inner.admission.lock().await;
+         if self.inner.shutdown_token.is_cancelled() {
+             return Err(Error::ShuttingDown);
+         }
+@@ -150,6 +157,89 @@ impl SessionRuntime {
+         Ok(())
+     }
+ 
++    pub(crate) async fn export_state(&self) -> Result<CodeModeSessionState, String> {
++        let _admission = self.inner.admission.lock().await;
++        self.join_completed_cells().await?;
++        let state = CodeModeSessionState {
++            format_version: 1,
++            next_cell_id: self.inner.next_cell_id.load(Ordering::Relaxed),
++            cell_id_generation: 1,
++            stored_values: self
++                .inner
++                .stored_values
++                .lock()
++                .await
++                .iter()
++                .map(|(key, value)| (key.clone(), value.as_ref().clone()))
++                .collect(),
++        };
++        state.validate()?;
++        Ok(state)
++    }
++
++    pub(crate) async fn import_state(&self, state: CodeModeSessionState) -> Result<(), String> {
++        state.validate()?;
++        if state.cell_id_generation != 1 {
++            return Err("host stored state has an unsupported cell namespace".into());
++        }
++        let _admission = self.inner.admission.lock().await;
++        self.join_completed_cells().await?;
++        let mut stored = self.inner.stored_values.lock().await;
++        let next = self.inner.next_cell_id.load(Ordering::Relaxed);
++        // A lost RPC acknowledgement can be retried, but never reset a session
++        // after another cell has been admitted or changed its stored values.
++        if next == state.next_cell_id
++            && stored.len() == state.stored_values.len()
++            && stored
++                .iter()
++                .all(|(key, value)| state.stored_values.get(key) == Some(value.as_ref()))
++        {
++            return Ok(());
++        }
++        if next != 1 || !stored.is_empty() {
++            return Err("code-mode restoration no longer owns a pristine session".into());
++        }
++        *stored = state
++            .stored_values
++            .into_iter()
++            .map(|(key, value)| (key, Arc::new(value)))
++            .collect();
++        self.inner
++            .next_cell_id
++            .store(state.next_cell_id, Ordering::Relaxed);
++        Ok(())
++    }
++
++    async fn join_completed_cells(&self) -> Result<(), String> {
++        if self.inner.shutdown_token.is_cancelled() {
++            return Err("code mode session is shutting down".into());
++        }
++        if !self.inner.cells.lock().await.is_empty() {
++            return Err("durable pause requires code-mode cells and unconsumed results to finish; use live Resume to wait or terminate them, then retry Pause; Stop remains available".into());
++        }
++        // closed() removes the registry entry before its final delegate callback.
++        // Join actual producers, not just the registry. Reopen even if cancelled.
++        struct Reopen(TaskTracker);
++        impl Drop for Reopen {
++            fn drop(&mut self) {
++                self.0.reopen();
++            }
++        }
++        self.inner.cell_tasks.close();
++        let _reopen = Reopen(self.inner.cell_tasks.clone());
++        self.inner.cell_tasks.wait().await;
++        if self.inner.producer_failed.load(Ordering::Acquire) {
++            return Err(
++                "code-mode completion producer failed; live Resume and Stop remain available"
++                    .into(),
++            );
++        }
++        if self.inner.shutdown_token.is_cancelled() {
++            return Err("code mode session is shutting down".into());
++        }
++        Ok(())
++    }
++
+     fn allocate_cell_id(&self) -> Result<CellId, Error> {
+         self.inner
+             .next_cell_id
+@@ -193,16 +283,18 @@ impl SessionRuntime {
+         .map_err(Error::Runtime)?;
+         cells.insert(cell_id.clone(), handle);
+         let task = self.inner.cell_tasks.spawn(task);
+-        if let Some(task_failure_handler) = self.inner.task_failure_handler.clone() {
+-            let failed_cell_id = cell_id.clone();
+-            let _failure_watcher = self.inner.cell_tasks.spawn(async move {
+-                if let Err(err) = task.await {
++        let inner = Arc::clone(&self.inner);
++        let failed_cell_id = cell_id.clone();
++        let _failure_watcher = self.inner.cell_tasks.spawn(async move {
++            if let Err(err) = task.await {
++                inner.producer_failed.store(true, Ordering::Release);
++                if let Some(task_failure_handler) = &inner.task_failure_handler {
+                     task_failure_handler(format!(
+                         "code-mode cell {failed_cell_id} task failed: {err}"
+                     ));
+                 }
+-            });
+-        }
++            }
++        });
+         drop(cells);
+         Ok(map_actor_event(cell_id, initial_event))
+     }
+diff --git a/codex-rs/code-mode-runtime/src/session_runtime/tests.rs b/codex-rs/code-mode-runtime/src/session_runtime/tests.rs
+index af413b1..218515b 100644
+--- a/codex-rs/code-mode-runtime/src/session_runtime/tests.rs
++++ b/codex-rs/code-mode-runtime/src/session_runtime/tests.rs
+@@ -269,3 +269,133 @@ async fn drop_terminates_cells_when_the_registry_is_locked() {
+         .unwrap();
+     assert!(inner.cell_tasks.is_empty());
+ }
++
++#[tokio::test]
++async fn stored_state_import_is_atomic_and_rejects_replacement_after_execution() {
++    let runtime = SessionRuntime::new();
++    let original = CodeModeSessionState {
++        format_version: 1,
++        next_cell_id: 42,
++        cell_id_generation: 1,
++        stored_values: [(
++            "value".into(),
++            serde_json::json!({"nested": [true, null, 2.5]}),
++        )]
++        .into(),
++    };
++    runtime.import_state(original.clone()).await.unwrap();
++    runtime.import_state(original.clone()).await.unwrap();
++    assert_eq!(runtime.export_state().await.unwrap(), original);
++    let mut changed = original.clone();
++    changed.stored_values.clear();
++    assert!(
++        runtime
++            .import_state(changed)
++            .await
++            .unwrap_err()
++            .contains("pristine")
++    );
++    assert_eq!(runtime.export_state().await.unwrap(), original);
++    let started = runtime
++        .execute(
++            execute_request("text(String(load('value').nested[2]));"),
++            ObserveMode::PendingFrontier,
++            Arc::new(RecordingDelegate),
++        )
++        .await
++        .unwrap();
++    assert_eq!(started.cell_id.as_str(), "42");
++    assert!(matches!(
++        started.initial_event().await.unwrap(),
++        CellEvent::Completed {
++            error_text: None,
++            ..
++        }
++    ));
++    // Shutdown joins the actual producer; inspect its committed counter directly.
++    runtime.shutdown().await.unwrap();
++    assert_eq!(runtime.inner.next_cell_id.load(Ordering::Relaxed), 43);
++    assert!(
++        runtime
++            .import_state(original)
++            .await
++            .unwrap_err()
++            .contains("shutting down")
++    );
++}
++
++#[tokio::test]
++async fn stored_state_validation_does_not_mutate_the_session() {
++    let runtime = SessionRuntime::new();
++    let original = runtime.export_state().await.unwrap();
++    for state in [
++        CodeModeSessionState {
++            format_version: 2,
++            ..original.clone()
++        },
++        CodeModeSessionState {
++            next_cell_id: 0,
++            ..original.clone()
++        },
++        CodeModeSessionState {
++            cell_id_generation: 2,
++            ..original.clone()
++        },
++        CodeModeSessionState {
++            stored_values: [(
++                "large".into(),
++                JsonValue::String("x".repeat(CodeModeSessionState::MAX_BYTES)),
++            )]
++            .into(),
++            ..original.clone()
++        },
++    ] {
++        assert!(runtime.import_state(state).await.is_err());
++        assert_eq!(runtime.export_state().await.unwrap(), original);
++    }
++}
++
++#[tokio::test]
++async fn stored_state_joins_real_producers_and_reopens_after_cancelled_capture() {
++    use futures::FutureExt;
++    let runtime = SessionRuntime::new();
++    let (release, released) = tokio::sync::oneshot::channel::<()>();
++    runtime.inner.cell_tasks.spawn(async {
++        released.await.unwrap();
++    });
++    let mut capture = Box::pin(runtime.export_state());
++    assert!(capture.as_mut().now_or_never().is_none());
++    assert!(runtime.inner.cell_tasks.is_closed());
++    drop(capture);
++    assert!(!runtime.inner.cell_tasks.is_closed());
++    release.send(()).unwrap();
++    assert_eq!(runtime.export_state().await.unwrap().next_cell_id, 1);
++    assert!(!runtime.inner.cell_tasks.is_closed());
++}
++
++#[tokio::test]
++async fn stored_state_never_masks_a_completed_producer_panic() {
++    let (failure_tx, mut failure_rx) = tokio::sync::mpsc::unbounded_channel();
++    let runtime = SessionRuntime::new_with_task_failure_handler(Some(Arc::new(move |failure| {
++        failure_tx.send(failure).unwrap();
++    })));
++    let started = runtime
++        .execute(
++            execute_request("store('v', 7);"),
++            ObserveMode::PendingFrontier,
++            Arc::new(PanickingClosedDelegate),
++        )
++        .await
++        .unwrap();
++    started.initial_event().await.unwrap();
++    failure_rx.recv().await.unwrap();
++    for _ in 0..2 {
++        assert!(
++            runtime
++                .export_state()
++                .await
++                .unwrap_err()
++                .contains("producer failed")
++        );
++    }
++}
+diff --git a/codex-rs/code-mode/src/grpc_session/mod.rs b/codex-rs/code-mode/src/grpc_session/mod.rs
+index 602f2fe..66855e0 100644
+--- a/codex-rs/code-mode/src/grpc_session/mod.rs
++++ b/codex-rs/code-mode/src/grpc_session/mod.rs
+@@ -16,6 +16,7 @@ use codex_code_mode_protocol::CodeModeSessionDelegate;
+ use codex_code_mode_protocol::CodeModeSessionProvider;
+ use codex_code_mode_protocol::CodeModeSessionProviderFuture;
+ use codex_code_mode_protocol::CodeModeSessionResultFuture;
++use codex_code_mode_protocol::CodeModeSessionState;
+ use codex_code_mode_protocol::ExecuteRequest;
+ use codex_code_mode_protocol::StartedCell;
+ use codex_code_mode_protocol::TerminateRequest;
+@@ -314,6 +315,54 @@ impl CodeModeSession for GrpcCodeModeSession {
+         Box::pin(self.inner.terminate(request.cell_id))
+     }
+ 
++    fn export_state(&self) -> CodeModeSessionResultFuture<'_, CodeModeSessionState> {
++        Box::pin(async move {
++            self.inner.require_open()?;
++            let response = deadline::session_request(
++                &self.inner,
++                "stored-state export",
++                Duration::ZERO,
++                self.inner.client().export_session_state(self.inner.request(
++                    grpc::ExportSessionStateRequest {
++                        session_id: self.inner.id.clone(),
++                    },
++                )),
++            )
++            .await?
++            .into_inner();
++            if response.state_json.len() > CodeModeSessionState::MAX_BYTES {
++                return Err("code-mode stored state exceeds the durable resource limit".into());
++            }
++            let state: CodeModeSessionState = serde_json::from_slice(&response.state_json)
++                .map_err(|_| "code-mode host returned invalid or unsupported stored state")?;
++            state.validate()?;
++            self.inner.require_open()?;
++            Ok(state)
++        })
++    }
++
++    fn import_state(&self, state: CodeModeSessionState) -> CodeModeSessionResultFuture<'_, ()> {
++        Box::pin(async move {
++            state.validate()?;
++            self.inner.require_open()?;
++            let state_json = serde_json::to_vec(&state)
++                .map_err(|_| "code-mode stored state could not be encoded")?;
++            deadline::session_request(
++                &self.inner,
++                "stored-state import",
++                Duration::ZERO,
++                self.inner.client().import_session_state(self.inner.request(
++                    grpc::ImportSessionStateRequest {
++                        session_id: self.inner.id.clone(),
++                        state_json,
++                    },
++                )),
++            )
++            .await?;
++            self.inner.require_open()
++        })
++    }
++
+     fn shutdown<'a>(&'a self) -> CodeModeSessionResultFuture<'a, ()> {
+         Box::pin(wait_for_watch(self.inner.request_shutdown()))
+     }
+diff --git a/codex-rs/code-mode/src/grpc_session/reconnect.rs b/codex-rs/code-mode/src/grpc_session/reconnect.rs
+index 1178658..8303fa4 100644
+--- a/codex-rs/code-mode/src/grpc_session/reconnect.rs
++++ b/codex-rs/code-mode/src/grpc_session/reconnect.rs
+@@ -7,6 +7,7 @@ use codex_code_mode_protocol::CodeModeSession;
+ use codex_code_mode_protocol::CodeModeSessionCellExecutionLimits;
+ use codex_code_mode_protocol::CodeModeSessionDelegate;
+ use codex_code_mode_protocol::CodeModeSessionResultFuture;
++use codex_code_mode_protocol::CodeModeSessionState;
+ use codex_code_mode_protocol::ExecuteRequest;
+ use codex_code_mode_protocol::StartedCell;
+ use codex_code_mode_protocol::TerminateRequest;
+@@ -33,6 +34,7 @@ struct ReconnectInner {
+     limits: CodeModeSessionCellExecutionLimits,
+     binding: Mutex<Option<SessionBinding>>,
+     opening_permit: Semaphore,
++    state_admission: tokio::sync::RwLock<()>,
+     shutdown_requested: CancellationToken,
+     shutdown_result: Mutex<Option<ShutdownResultReceiver>>,
+ }
+@@ -54,6 +56,7 @@ impl ReconnectableSession {
+                 limits,
+                 binding: Mutex::new(None),
+                 opening_permit: Semaphore::new(/*permits*/ 1),
++                state_admission: tokio::sync::RwLock::new(()),
+                 shutdown_requested: CancellationToken::new(),
+                 shutdown_result: Mutex::new(None),
+             }),
+@@ -75,6 +78,7 @@ impl CodeModeSession for ReconnectableSession {
+         // Capture before polling so queued calls cannot silently cross a runtime reset.
+         let generation = self.inner.binding().map(|binding| binding.generation);
+         Box::pin(async move {
++            let _admission = self.inner.state_admission.read().await;
+             let binding = self.inner.binding_for_request(generation).await?;
+             let delegate = Arc::new(GenerationDelegate {
+                 delegate,
+@@ -122,6 +126,52 @@ impl CodeModeSession for ReconnectableSession {
+         })
+     }
+ 
++    fn export_state(&self) -> CodeModeSessionResultFuture<'_, CodeModeSessionState> {
++        Box::pin(async move {
++            let _admission = self.inner.state_admission.write().await;
++            // No get_or_open_binding here: loss of the actual host must be an
++            // error, never an apparently successful empty replacement snapshot.
++            let binding = self
++                .inner
++                .binding()
++                .ok_or_else(|| SHUTDOWN_ERROR.to_string())?;
++            let mut state = binding.session.export_state().await?;
++            state.cell_id_generation = binding.generation;
++            state.validate()?;
++            Ok(state)
++        })
++    }
++
++    fn import_state(&self, mut state: CodeModeSessionState) -> CodeModeSessionResultFuture<'_, ()> {
++        Box::pin(async move {
++            state.validate()?;
++            let _admission = self.inner.state_admission.write().await;
++            // Explicit import is a recovery operation. Unlike export it may open
++            // a replacement binding after the actual old lease has been lost.
++            let binding = self.inner.get_or_open_binding().await?;
++            let generation = state.cell_id_generation;
++            state.cell_id_generation = 1;
++            binding.session.import_state(state).await?;
++            let mut current = self
++                .inner
++                .binding
++                .lock()
++                .unwrap_or_else(PoisonError::into_inner);
++            let current = current.as_mut().ok_or_else(|| SHUTDOWN_ERROR.to_string())?;
++            if self.inner.shutdown_requested.is_cancelled()
++                || !Arc::ptr_eq(&current.session, &binding.session)
++            {
++                return Err("code-mode stored-state restoration was superseded".into());
++            }
++            current.generation = generation;
++            self.inner
++                .provider
++                .next_generation
++                .fetch_max(generation + 1, Ordering::Relaxed);
++            Ok(())
++        })
++    }
++
+     fn shutdown<'a>(&'a self) -> CodeModeSessionResultFuture<'a, ()> {
+         Box::pin(wait_for_watch(self.inner.request_shutdown()))
+     }
+@@ -178,7 +228,10 @@ impl ReconnectInner {
+         let generation = self
+             .provider
+             .next_generation
+-            .fetch_add(1, Ordering::Relaxed);
++            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |generation| {
++                generation.checked_add(1)
++            })
++            .map_err(|_| "code-mode session exhausted its host generation space".to_string())?;
+         let session = tokio::select! {
+             biased;
+             _ = self.shutdown_requested.cancelled() => {
+diff --git a/codex-rs/core/src/session/durable_suspension.rs b/codex-rs/core/src/session/durable_suspension.rs
+index 70df939..2131740 100644
+--- a/codex-rs/core/src/session/durable_suspension.rs
++++ b/codex-rs/core/src/session/durable_suspension.rs
+@@ -37,7 +37,7 @@ use std::sync::atomic::AtomicBool;
+ use std::sync::atomic::AtomicU64;
+ use std::sync::atomic::Ordering;
+ 
+-pub(crate) const RUNTIME: &str = concat!(env!("CARGO_PKG_VERSION"), "/cantrip-suspension-v6");
++pub(crate) const RUNTIME: &str = concat!(env!("CARGO_PKG_VERSION"), "/cantrip-suspension-v7");
+ 
+ #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+ #[serde(rename_all = "camelCase", deny_unknown_fields)]
+@@ -847,15 +847,12 @@ impl DurableSuspension {
+             .capture_completed_terminals()
+             .await
+             .map_err(invalid)?;
+-        if session
++        let code_mode = session
+             .services
+             .code_mode_service
+-            .has_active_cells_for_suspension()
+-        {
+-            return Err(invalid(
+-                "durable pause requires yielded code-mode cells to finish; the live turn remains paused",
+-            ));
+-        }
++            .capture_stored_state()
++            .await
++            .map_err(invalid)?;
+         let children = session
+             .services
+             .agent_control
+@@ -920,10 +917,15 @@ impl DurableSuspension {
+             )
+         };
+         let extensions = capture_extensions(session, self, &turn.sub_id, epoch).await?;
+-        let resources =
+-            super::protected_resources::seal(session, &turn.sub_id, &checkpoint_id, terminals)
+-                .await
+-                .map_err(invalid)?;
++        let resources = super::protected_resources::seal(
++            session,
++            &turn.sub_id,
++            &checkpoint_id,
++            terminals,
++            code_mode,
++        )
++        .await
++        .map_err(invalid)?;
+         // Contributors can require their own mutation permits. Never hold this
+         // boundary while acquiring those permits: Goal edits acquire them first.
+         let _inputs = self.inputs.lock().await;
+@@ -1229,6 +1231,34 @@ impl DurableSuspension {
+                 .open(session, &identity.turn_id, &identity.checkpoint_id)
+                 .await
+                 .map_err(invalid)?;
++            // Host startup/import may wait on real IPC. Never hold the active-turn
++            // lock across it: Stop must remain usable while restoration is pending.
++            {
++                let active = session.active_turn.lock().await;
++                let _control = self.control();
++                if self.epoch.load(Ordering::Acquire) != epoch
++                    || self.stopping.load(Ordering::Acquire)
++                    || !self.frozen.load(Ordering::Acquire)
++                    || active
++                        .as_ref()
++                        .and_then(|turn| turn.task.as_ref())
++                        .is_none_or(|task| task.turn_context.sub_id != identity.turn_id)
++                {
++                    return Err(invalid("native resource restoration was superseded"));
++                }
++            }
++            // Attempt the real CodeMode import on every Resume, including live
++            // Resume: the helper can die while the native checkpoint owner lives.
++            // Identical data is idempotent; a lost host can open an empty binding
++            // only here, after fresh worker authorization, then import without replay.
++            if let Some(code_mode) = data.code_mode {
++                session
++                    .services
++                    .code_mode_service
++                    .restore_stored_state(code_mode)
++                    .await
++                    .map_err(invalid)?;
++            }
+             let active = session.active_turn.lock().await;
+             {
+                 let _control = self.control();
+@@ -1244,6 +1274,8 @@ impl DurableSuspension {
+                 }
+             }
+             if imported.as_deref() != Some(identity.checkpoint_id.as_str()) {
++                // Terminal import validates all entries before mutation. Retrying
++                // CodeMode must never reset already-imported terminal buffers.
+                 session
+                     .services
+                     .unified_exec_manager
+@@ -2437,7 +2469,9 @@ pub(crate) async fn run_restored_turn(
+             session.thread_id,
+             context.sub_id.clone(),
+             cancellation_token.clone(),
+-            session.services.thread_extension_data
++            session
++                .services
++                .thread_extension_data
+                 .get_or_init::<codex_extension_api::InferenceQueueClock>(
+                     codex_extension_api::InferenceQueueClock::default,
+                 ),
+diff --git a/codex-rs/core/src/session/protected_resources.rs b/codex-rs/core/src/session/protected_resources.rs
+index 0e60399..d2ad277 100644
+--- a/codex-rs/core/src/session/protected_resources.rs
++++ b/codex-rs/core/src/session/protected_resources.rs
+@@ -29,6 +29,7 @@ struct Envelope {
+ pub(super) struct ResourceData {
+     format_version: u32,
+     pub(super) terminals: Vec<CompletedTerminal>,
++    pub(super) code_mode: Option<codex_code_mode::CodeModeSessionState>,
+ }
+ 
+ impl ProtectedResources {
+@@ -72,7 +73,7 @@ impl ProtectedResources {
+             .await?;
+         let data: ResourceData = serde_json::from_value(value)
+             .map_err(|_| "native resource data is invalid or unsupported")?;
+-        if data.format_version != 1 {
++        if data.format_version != 2 {
+             return Err("native resource data version is unsupported".into());
+         }
+         Ok(data)
+@@ -84,20 +85,22 @@ pub(super) async fn seal(
+     turn_id: &str,
+     checkpoint_id: &str,
+     terminals: Vec<CompletedTerminal>,
++    code_mode: Option<codex_code_mode::CodeModeSessionState>,
+ ) -> Result<Option<ProtectedResources>, String> {
+-    if terminals.is_empty() {
++    if terminals.is_empty() && code_mode.is_none() {
+         return Ok(None);
+     }
+     let data = ResourceData {
+-        format_version: 1,
++        format_version: 2,
+         terminals,
++        code_mode,
+     };
+     let bytes =
+         serde_json::to_vec(&data).map_err(|_| "native resource data could not be encoded")?;
+     if bytes.len() > MAX_RESOURCE_BYTES {
+-        return Err("completed terminal data exceeds the durable resource limit; poll or close completed sessions, then retry durable pause".into());
++        return Err("terminal and code-mode data exceed the durable resource limit; reduce stored values or poll completed sessions, then retry durable pause".into());
+     }
+-    let gate = session.managed_execution_gate().await.ok_or("completed terminal suspension requires worker-backed encryption; live Resume and Stop remain available")?;
++    let gate = session.managed_execution_gate().await.ok_or("native resource suspension requires worker-backed encryption; live Resume and Stop remain available")?;
+     let value = gate
+         .protect_resources(
+             session.thread_id,
+diff --git a/codex-rs/core/src/tools/code_mode/mod.rs b/codex-rs/core/src/tools/code_mode/mod.rs
+index 4340399..d59c2e7 100644
+--- a/codex-rs/core/src/tools/code_mode/mod.rs
++++ b/codex-rs/core/src/tools/code_mode/mod.rs
+@@ -160,8 +160,22 @@ impl CodeModeService {
+         self.session().await?.terminate(cell_id.into()).await
+     }
+ 
+-    pub(crate) fn has_active_cells_for_suspension(&self) -> bool {
+-        !self.dispatch_broker.active_cell_ids().is_empty()
++    pub(crate) async fn capture_stored_state(
++        &self,
++    ) -> Result<Option<codex_code_mode::CodeModeSessionState>, String> {
++        // An unused service must not launch a host just to pause or inspect.
++        let Some(session) = self.session.get() else {
++            return Ok(None);
++        };
++        session.export_state().await.map(Some)
++    }
++
++    pub(crate) async fn restore_stored_state(
++        &self,
++        state: codex_code_mode::CodeModeSessionState,
++    ) -> Result<(), String> {
++        // Only explicit Resume calls this path, after fresh worker authorization.
++        self.session().await?.import_state(state).await
+     }
+ 
+     pub(crate) async fn interrupt_active_cells(&self) {

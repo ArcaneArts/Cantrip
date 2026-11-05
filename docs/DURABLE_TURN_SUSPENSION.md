@@ -529,3 +529,62 @@ passed. An earlier optimized candidate built successfully and exposed the
 Stop/reopen Goal-startup defect; final acceptance of the corrected implementation
 used the development profile. Final optimized product validation and complete
 worker/server/client recovery remain required before feature completion.
+
+### Finalized CodeMode data
+
+Patch `0072` uses native continuation contract
+`0.166.0/cantrip-suspension-v7` and protected resource-data format 2. It retains
+finalized CodeMode JSON values, the next cell counter and the public host
+generation. These share the worker-encrypted resource envelope with terminal
+data and its combined 32 MiB serialized limit. It does not persist JavaScript
+isolates, functions, promises, tools, callback routes or execution authority.
+
+Capture asks the actual already-open CodeMode session for its state, serializes
+cell admission against capture, and joins completion producers. Running cells
+and unconsumed results refuse durable confirmation with instructions to use live
+Resume to wait or terminate them and retry Pause. A failed producer or unavailable
+host produces an actual error; capture never replaces a lost host with an empty
+session. An unused CodeMode service does not start a host during capture.
+
+Attaching remains opaque and inert. Only explicit Resume, after current worker
+authorization, may open a CodeMode host and import JSON without executing a cell.
+Identical import before execution is retryable; a stale import cannot reset a
+used session. Import preserves cell identities and advances the provider's next
+host generation. Every Resume attempts CodeMode restoration, including when the
+checkpoint-owning native process survives but its helper has died. Terminal
+buffers already imported for that checkpoint are retained during retries.
+Stop can acquire turn ownership while host IPC is pending; late restoration is
+checked against the current turn and control generation before admission.
+
+The gRPC host supports this data-only transfer over TCP and its local
+HTTP/2-over-stdio transport. Core selects it with `features.code_mode_host_grpc=true`;
+the default local transport is still legacy framed stdio. Providers that do not implement stored-state transfer,
+including the legacy framed-stdio provider, return explicit unsupported errors
+instead of reporting empty state. Older native checkpoint contracts remain
+inspectable and stoppable but require their matching runtime for Resume.
+
+This is a native resource milestone. Implementing the default framed-stdio state
+transfer is the next dependency; its current explicit refusal is not completion
+of CodeMode recovery. Whole-worker/server recovery, persistent client controls,
+MCP and native child policies, and final optimized product acceptance also remain
+outstanding.
+
+The 73-patch macOS ARM64 development candidate passed all 62 existing native
+acceptance cases and four new CodeMode cases. The gRPC cases cover both native
+history formats, two successive process-tree kills immediately after durable
+acknowledgement, fresh authorization repair, concurrent Resume, preserved JSON
+values, settings and original thread/turn identities, helper-only termination,
+and unique input, history results, TurnStarted and external side effects. The
+default framed-stdio cases verify explicit refusal plus working live Resume and
+Stop. These are native component tests using the real worker resource-protection
+handler and actual native processes, not whole-worker/server product acceptance.
+
+The same final candidate passed 207 Rust unit cases (74 client, 43 protocol and
+90 runtime) and four real child-host cases, including generation-space
+exhaustion without ID reuse. Worker protection checks passed 13 cases. These
+results use the normal development build and verified patch fingerprint
+`2b69b95f11a9bb82f42fb188e6511dd0f55a1c9ea5f0ecc5ecaa5223c7d6c769`.
+The repository check stops at the existing server file budgets; its later stages
+did not run. Worker typecheck still reports seven existing errors in unrelated
+inference-source, chat-ID and logging code. Optimized production and other
+platform validation remain outstanding.
