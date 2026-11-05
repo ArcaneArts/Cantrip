@@ -56,5 +56,26 @@ pub(super) async fn assert(
     if !current || !valid {
         return Err(crate::task_dispatch::Conflict::stale().into());
     }
+    if leased && let Some(attempt) = expected.get("inferenceInputOperationId") {
+        // Receipt prepare/defer uses this same owner/cycle lock. Match inside
+        // the actual round-write transaction, not an earlier heartbeat.
+        let round = one(Executor::Transaction(tx),
+            "SELECT to_jsonb(r)::text FROM task_planning_rounds r WHERE r.id=$1 AND r.chat_id=$2 LIMIT 1",
+            &[&operation, &chat]).await?;
+        let Some(round) = round else {
+            return Err(crate::task_dispatch::Conflict::stale().into());
+        };
+        let input = &round["inference_input"];
+        let matches = if attempt.is_null() {
+            input.is_null()
+        } else {
+            !input.is_null()
+                && input["deferred"] != true
+                && input["receipt"]["operationId"] == *attempt
+        };
+        if !matches {
+            return Err(crate::task_dispatch::Conflict::stale().into());
+        }
+    }
     Ok(())
 }

@@ -840,6 +840,8 @@ export function createChatTurnRuntime({
           if (!options.taskDispatchLease) {
             await recordStartedAttempt();
           }
+          let taskInferenceInput:
+            import("@cantrip/protocol").TaskInferenceInputReceipt | undefined;
           try {
             if (options.taskDispatchLease) {
               app.log.info(
@@ -882,7 +884,7 @@ export function createChatTurnRuntime({
               ? undefined
               : (initialLabel ?? undefined);
             initialLabelSent = true;
-            const taskInferenceInput =
+            taskInferenceInput =
               options.taskDispatchLease && encryptedTaskRelay
                 ? await repository.tasks.inferenceInputs.prepare(ownerId, {
                     chatId: execution.chatId,
@@ -1653,6 +1655,7 @@ export function createChatTurnRuntime({
               execution.workerId,
               execution.chatId,
               userMessage.id,
+              taskInferenceInput?.operationId,
             );
             const result = agentTurnResultSchema.parse(rawResult);
             const completedAt = new Date();
@@ -2057,6 +2060,7 @@ export function createChatTurnRuntime({
               execution.workerId,
               execution.chatId,
               userMessage.id,
+              taskInferenceInput?.operationId,
             );
             routeCooldowns.set(
               runtimeCooldownKey(runtime),

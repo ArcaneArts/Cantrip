@@ -160,6 +160,8 @@ impl EventSink {
                 "chatId":e["chatId"],"clientMessageId":t.user_message["id"],"workerId":e["workerId"],"worktreeId":e["worktreeId"],"executionLaneId":e["executionLaneId"],"executionLaneActivatedAt":e["executionLaneActivatedAt"],"providerId":runtime["provider"]["id"],"modelRouteId":runtime["routeId"],"providerAccountId":runtime["provider"]["accountId"],
                 "dispatch":json!({"cycleId":lease["cycleId"],"operationId":lease["operationId"],"leaseOwner":lease["leaseOwner"],"fencingToken":lease["fencingToken"]})
             })).await?;
+            *self.task_input_operation.lock().unwrap() =
+                Some(command["taskInferenceInput"]["operationId"].clone());
         }
         Ok(command)
     }

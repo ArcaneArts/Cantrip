@@ -912,6 +912,7 @@ export class WorkerConnection {
                 command.nativeCommandReceipt.operationGeneration,
             }
           : undefined,
+        taskInferenceInputOperationId: command.taskInferenceInput?.operationId,
         taskDispatchFence: command.taskDispatchLease
           ? {
               cycleId: command.taskDispatchLease.cycleId,

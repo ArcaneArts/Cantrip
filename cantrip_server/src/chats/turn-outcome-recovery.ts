@@ -64,8 +64,12 @@ export function chatTurnOutcomeRecoveryKey(
   workerId: string,
   chatId: string,
   clientMessageId: string,
+  taskInferenceInputOperationId?: string,
 ): string {
-  return `${workerId}:${chatId}:${clientMessageId}`;
+  const logical = `${workerId}:${chatId}:${clientMessageId}`;
+  return taskInferenceInputOperationId
+    ? `${logical}:task-input:${taskInferenceInputOperationId}`
+    : logical;
 }
 
 export function shouldRecoverChatTurnOutcome(

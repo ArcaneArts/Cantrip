@@ -17,7 +17,7 @@ impl Service {
         let mut ok = reported_ok;
         let mut finalized = None;
         if let Some(operation) = operation {
-            let guard = fence.map(|lease| json!({"kind":"leased","lease":lease}));
+            let guard = fence.map(|lease| json!({"kind":"leased","lease":lease,"inferenceInputOperationId":n["taskInferenceInputOperationId"]}));
             let applied: Result<()> = async {
                 let operation_id = text(&operation["round"]["id"])?;
                 if reported_ok {

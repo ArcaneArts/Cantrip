@@ -141,6 +141,7 @@ export interface ChatTurnRuntimeDependencies
     workerId: string,
     chatId: string,
     clientMessageId: string,
+    taskInferenceInputOperationId?: string,
   ) => void;
   continuePendingWorktreeTransition: (chatId: string) => Promise<boolean>;
   dispatchNextQueuedPrompt: (chatId: string) => Promise<void>;

@@ -263,8 +263,14 @@ export async function buildApp({
     workerId: string,
     chatId: string,
     clientMessageId: string,
+    taskInferenceInputOperationId?: string,
   ): void => {
-    const key = chatTurnOutcomeRecoveryKey(workerId, chatId, clientMessageId);
+    const key = chatTurnOutcomeRecoveryKey(
+      workerId,
+      chatId,
+      clientMessageId,
+      taskInferenceInputOperationId,
+    );
     chatTurnOutcomeRecoveryScheduler.settle(key);
   };
   const {

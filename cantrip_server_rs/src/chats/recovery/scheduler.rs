@@ -28,6 +28,22 @@ pub fn key(worker: &Value, chat: &Value, message: &Value) -> JsString {
         .unwrap()
         .clone()
 }
+/// Physical Task attempts share a logical message, but not recovery ownership.
+pub fn attempt_key(
+    worker: &Value,
+    chat: &Value,
+    message: &Value,
+    task_input: Option<&Value>,
+) -> JsString {
+    let logical = Value::String(key(worker, chat, message));
+    match task_input.filter(|v| !v.is_null()) {
+        Some(attempt) => identifier(&[&logical, &json!(":task-input:"), attempt])
+            .as_js_string()
+            .unwrap()
+            .clone(),
+        None => logical.as_js_string().unwrap().clone(),
+    }
+}
 impl Scheduler {
     pub fn new() -> Arc<Self> {
         Self::with_delays(Duration::from_secs(1), Duration::from_secs(60))

@@ -599,3 +599,37 @@ scope finish, uncertain earlier SDK attempt or cancelled owner cannot authorize
 replay. A real pre-forward preparation rejection can report unforwarded input.
 Neither case grants capacity on the server or releases an unsettled ticket. No
 tests, builds, benchmarks or computer-use validation were run for this increment.
+
+## Task outcome attempt ownership
+
+A scheduled Task's durable `chat.turn.outcome` echoes the opaque operation ID
+from the actual dispatched input receipt. Multiple physical route attempts may
+share a chat, original user message, lane ID and Task dispatch lease, so those
+logical identities alone cannot identify a replacement's outcome. The worker
+adds no prompt or model output to this correlation field.
+
+Both server implementations key Task outcome delay/settlement suppression by
+that exact receipt ID. A normally observed result or safe route failover settles
+only its own recovery key. An earlier attempt cannot cancel a replacement's
+recovery timer or suppress its result during the retention interval. Existing
+non-receipt outcomes retain their logical recovery key.
+
+A timer is only observation coordination. The actual Task complete/fail write
+locks the canonical owner and dispatch cycle, then requires the same current
+receipt and a non-deferred input in that transaction. Receipt replacement/defer
+takes those same ownership locks. An old or revoked outcome therefore cannot
+settle replacement work after the timer expires or after a server restart. A
+matching completed round retains existing idempotent recovery so a crash after
+its round write can still finish message publication and Goal launch. An
+unscoped older-worker outcome is accepted only for a legacy round without
+receipt metadata. Other canonical write paths retain their existing explicit
+dispatch authority.
+
+Source acceptance review covers a delayed predecessor after replacement,
+cancellation of one attempt's timer while another remains pending, a deferred
+receipt, a duplicate outcome after completion, legacy receipt-less rounds, and
+a current matching receipt. This increment neither grants/releases provider
+capacity nor makes ambiguous input replayable. Task Goal/checkpoint ownership
+and pending-input outcome recovery remain separate required work. Source review,
+direct formatting, mechanical protocol export and diff checks were used; tests,
+builds, benchmarks and computer-use validation were not run.

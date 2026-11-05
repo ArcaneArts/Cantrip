@@ -8,6 +8,8 @@ import { TaskDispatchConflictError } from "./task-dispatch.js";
 export type TaskOperationLeaseFence = {
   kind: "leased";
   lease: TaskDispatchFence;
+  /** undefined preserves other writers; null requires a legacy round without a receipt. */
+  inferenceInputOperationId?: string | null;
 };
 export type TaskOperationDispatchFence =
   | TaskOperationLeaseFence
@@ -94,5 +96,31 @@ export async function assertTaskOperationDispatchFence(
         cycle.leaseExpiresAt !== null &&
         cycle.leaseExpiresAt.getTime() > Date.now();
     if (!sameOwner || !valid) fail();
+    if (expected.inferenceInputOperationId !== undefined) {
+      // Receipt replacement/defer holds this same owner/cycle lock. Validate
+      // inside the round write transaction, not in a prior heartbeat/read.
+      const [round] = await transaction
+        .select({
+          input: schema.taskPlanningRounds.inferenceInput,
+        })
+        .from(schema.taskPlanningRounds)
+        .where(
+          and(
+            eq(schema.taskPlanningRounds.id, operationId),
+            eq(schema.taskPlanningRounds.chatId, chatId),
+          ),
+        )
+        .limit(1);
+      if (!round) return fail();
+      const input = round.input;
+      if (expected.inferenceInputOperationId === null) {
+        if (input !== null) fail();
+      } else if (
+        !input ||
+        input.deferred ||
+        input.receipt.operationId !== expected.inferenceInputOperationId
+      )
+        fail();
+    }
   }
 }

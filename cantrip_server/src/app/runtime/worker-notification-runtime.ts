@@ -683,6 +683,7 @@ export function createWorkerNotificationRuntime({
         workerId,
         notification.chatId,
         notification.clientMessageId,
+        notification.taskInferenceInputOperationId,
       );
       const scheduled = chatTurnOutcomeRecoveryScheduler.schedule(key, () => {
         void runAsOwner(ownerId, () =>
