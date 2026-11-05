@@ -88,11 +88,23 @@ for (const purpose of ["turn", "label", "child", "helper"])
     })),
   });
 
-export const inferenceNotifications =
-  inferenceWireFixtures.workerInferenceStatusSchema.map((status) => ({
+export const inferenceNotifications = [
+  ...inferenceWireFixtures.workerInferenceStatusSchema.map((status) => ({
     kind: "notification",
     notification: { type: "inference.status", status },
-  }));
+  })),
+  {
+    kind: "notification",
+    notification: {
+      type: "inference.task-settled",
+      serverId: identity.serverId,
+      ownerId: identity.ownerId,
+      workerId: identity.workerId,
+      workerGeneration: "00000000-0000-4000-8000-000000000002",
+      inputOperationId: "00000000-0000-4000-8000-000000000001",
+    },
+  },
+];
 
 export const inferenceLiveMessages =
   inferenceWireFixtures.workerInferenceStatusSchema.map((status) => ({

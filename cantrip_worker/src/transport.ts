@@ -986,6 +986,7 @@ export class WorkerConnection {
         // result. Shutdown leaves already committed files for the next owner.
         workerLogger.event("warn", "Task outcome persistence was interrupted", {
           event: "task.outcome-persistence-interrupted",
+          subsystem: "worker-command",
           workerId: this.config.workerId,
           error: workerLogError(error),
         });

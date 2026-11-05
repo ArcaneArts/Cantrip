@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { eventually } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
 import { actualTaskRecovery } from "./actual-task-recovery.mjs";
+import { captureTaskRuntimeState } from "./task-runtime-snapshot.mjs";
 
 export async function actualTaskClient({
   page,
@@ -350,6 +351,33 @@ export async function actualTaskClient({
     };
   } catch (error) {
     result.taskFailure = { message: error.message, stack: error.stack };
+    if (fixture.liveSqlFixture) {
+      try {
+        result.taskRuntimeSnapshot = await captureTaskRuntimeState({
+          ownerId: await page.evaluate(() => window.folderIdentity.ownerId),
+          projectId,
+          query: (statements, queries) =>
+            page.evaluate(
+              async ({ statements, queries }) => {
+                const response = await window.folderRequest("/__fixture/sql", {
+                  method: "POST",
+                  body: JSON.stringify({ statements, queries }),
+                  signal: AbortSignal.timeout(15000),
+                });
+                if (response.ok !== true)
+                  throw new Error("Live Task snapshot query failed");
+                return response.values;
+              },
+              { statements, queries },
+            ),
+        });
+      } catch (snapshotError) {
+        result.taskRuntimeSnapshotFailure = {
+          message: snapshotError.message,
+          stack: snapshotError.stack,
+        };
+      }
+    }
     throw error;
   } finally {
     result.taskModel = {

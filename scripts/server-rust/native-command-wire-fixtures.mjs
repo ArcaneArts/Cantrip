@@ -1,3 +1,19 @@
+export const autonomousAttempts = [
+  {
+    runnerGeneration: "runner",
+    attemptId: "attempt",
+    turnId: "turn",
+    trigger: "goal",
+  },
+  {
+    runnerGeneration: "runner",
+    attemptId: "attempt",
+    turnId: "turn",
+    trigger: "goal",
+    goalEpoch: "goal-epoch",
+  },
+];
+
 export function nativeCommandWireFixtures(timestamp) {
   const session = {
     chatId: "chat",
@@ -27,7 +43,8 @@ export function nativeCommandWireFixtures(timestamp) {
     createdAt: timestamp,
     updatedAt: timestamp,
   };
-  return {
+  const fixtures = {
+    nativeAutonomousAttemptSchema: autonomousAttempts,
     nativePermissionTransitionResolveSchema: [
       { workerId: "worker", session, selectedId: null },
       { workerId: "worker", session, selectedId: ":read-only" },
@@ -178,4 +195,21 @@ export function nativeCommandWireFixtures(timestamp) {
       },
     ],
   };
+  fixtures.nativeCommandAdmissionSchema.push(
+    ...fixtures.nativeCommandAdmissionSchema.flatMap((admission) =>
+      autonomousAttempts.map((autonomousAttempt) => ({
+        ...admission,
+        intent: { ...admission.intent, autonomousAttempt },
+      })),
+    ),
+  );
+  fixtures.nativeCommandIntentSchema.push(
+    ...fixtures.nativeCommandIntentSchema.flatMap((intent) =>
+      autonomousAttempts.map((autonomousAttempt) => ({
+        ...intent,
+        autonomousAttempt,
+      })),
+    ),
+  );
+  return fixtures;
 }

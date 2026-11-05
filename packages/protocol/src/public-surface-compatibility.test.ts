@@ -630,9 +630,14 @@ const desktopIoExports = [
 const nativeResourceAndTimingExports = [
   "inferenceCommandTimingSchema",
   "inferenceProviderCommandTimingSchema",
+  "nativeAutonomousAttemptSchema",
   "nativeInferenceResourceAuthorizationResultSchema",
   "nativeInferenceResourceAuthorizationSchema",
   "nativeRuntimeHandoffQueuedSourceSchema",
+  "taskInferenceRouteChangeRequestSchema",
+  "taskInferenceRouteChangeSchema",
+  "taskInferenceRouteSettlementSchema",
+  "taskInferenceRouteViewSchema",
   "tunnelContentOsSource",
   "workerChatTurnOutcomeNotificationSchema",
 ].sort();
@@ -686,7 +691,7 @@ describe("protocol public surface compatibility", () => {
         nativeResourceAndTimingExports.length,
     );
     // Retain every existing 2,151-export assertion and baseline fingerprint;
-    // the seven newly reviewed Task schemas are checked explicitly above.
+    // the reviewed Task schemas are checked explicitly above.
     const exportNames = allExportNames.filter(
       (name) =>
         !agentTaskExports.includes(name) &&
@@ -835,12 +840,17 @@ describe("protocol public surface compatibility", () => {
     expect(
       advertisedCommandTypes.filter((type) => type === "inference.revoke"),
     ).toEqual(["inference.revoke"]);
-    expect(advertisedCommandTypes[7]).toBe("inference.revoke");
+    expect(
+      advertisedCommandTypes.filter((type) => type === "inference.task-revoke"),
+    ).toEqual(["inference.task-revoke"]);
+    expect(advertisedCommandTypes[7]).toBe("inference.task-revoke");
+    expect(advertisedCommandTypes[8]).toBe("inference.revoke");
     const inferenceStatusCommandTypes = advertisedCommandTypes.filter(
       (type) =>
         type !== "surface.desktop.os-prepare" &&
         type !== "surface.tunnel.os-prepare" &&
-        type !== "inference.revoke",
+        type !== "inference.revoke" &&
+        type !== "inference.task-revoke",
     );
     expect(inferenceStatusCommandTypes).toHaveLength(295);
     expect(inferenceStatusCommandTypes[6]).toBe("inference.status");
@@ -853,8 +863,18 @@ describe("protocol public surface compatibility", () => {
     const allEventTypes = workerEventSchema.options.map(
       (option) => option.shape.type.value,
     );
-    const inferenceStatusNotificationTypes =
-      workerNotificationSchema.options.map((option) => option.shape.type.value);
+    const advertisedNotificationTypes = workerNotificationSchema.options.map(
+      (option) => option.shape.type.value,
+    );
+    expect(advertisedNotificationTypes[0]).toBe("inference.task-settled");
+    expect(
+      advertisedNotificationTypes.filter(
+        (type) => type === "inference.task-settled",
+      ),
+    ).toEqual(["inference.task-settled"]);
+    const inferenceStatusNotificationTypes = advertisedNotificationTypes.filter(
+      (type) => type !== "inference.task-settled",
+    );
     expect(inferenceStatusNotificationTypes).toHaveLength(16);
     expect(inferenceStatusNotificationTypes[0]).toBe("inference.status");
     const notificationTypes = inferenceStatusNotificationTypes.filter(

@@ -56,7 +56,7 @@ async function snapshot(
         activeWorkerId: schema.chats.activeWorkerId,
         activeWorktreeId: schema.chats.activeWorktreeId,
         activeWorktreeWorkerId: schema.projectWorktrees.workerId,
-        activeWorktreePath: schema.projectWorktrees.path,
+        activeWorktreePath: schema.projectWorktrees.absolutePath,
         archivedAt: schema.chats.archivedAt,
       },
       project: { taskSchedulingPaused: schema.projects.taskSchedulingPaused },
@@ -72,9 +72,13 @@ async function snapshot(
     )
     .innerJoin(
       schema.projectWorktrees,
+      eq(schema.projectWorktrees.id, schema.chats.activeWorktreeId),
+    )
+    .innerJoin(
+      schema.projectSources,
       and(
-        eq(schema.projectWorktrees.id, schema.chats.activeWorktreeId),
-        eq(schema.projectWorktrees.projectId, schema.projects.id),
+        eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+        eq(schema.projectSources.projectId, schema.projects.id),
       ),
     )
     .innerJoin(schema.tasks, eq(schema.tasks.chatId, schema.chats.id))

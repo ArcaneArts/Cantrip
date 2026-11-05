@@ -675,7 +675,7 @@ export class ManagedNativeCommandSession {
       "operationId" | "operationGeneration"
     >,
     bridgeSignal?: AbortSignal,
-  ): void {
+  ): InferenceOperationSource {
     bridgeSignal?.throwIfAborted();
     this.assertTransport(session);
     const previous = this.active;

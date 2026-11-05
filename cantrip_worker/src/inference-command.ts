@@ -33,7 +33,7 @@ export function inferenceCommandResource(
     chatId:
       "chatId" in command && typeof command.chatId === "string"
         ? command.chatId
-        : session && typeof session.chatId === "string"
+        : session && "chatId" in session && typeof session.chatId === "string"
           ? session.chatId
           : null,
     projectId:

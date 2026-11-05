@@ -125,9 +125,13 @@ export async function recoverGoalInputHistory(
     .select({ id: schema.projectWorktrees.id })
     .from(schema.projectWorktrees)
     .innerJoin(
+      schema.projectSources,
+      eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+    )
+    .innerJoin(
       schema.projects,
       and(
-        eq(schema.projects.id, schema.projectWorktrees.projectId),
+        eq(schema.projects.id, schema.projectSources.projectId),
         eq(schema.projects.ownerId, owner),
       ),
     )

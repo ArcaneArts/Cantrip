@@ -145,6 +145,51 @@
       }
     },
     {
+      "type": "inference.task-revoke",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "inference.task-revoke",
+          "operationId": "00000000-0000-4000-8000-000000000002",
+          "ownerId": "fixture-owner",
+          "source": {
+            "operationId": "00000000-0000-4000-8000-000000000001",
+            "chatId": "fixture-chat",
+            "clientMessageId": "fixture-message",
+            "workerId": "fixture-worker",
+            "worktreeId": "fixture-worktree",
+            "executionLaneId": "fixture-lane",
+            "executionLaneActivatedAt": "2026-11-05T00:00:00.000Z",
+            "providerId": "fixture-provider",
+            "modelRouteId": "fixture-route",
+            "providerAccountId": null,
+            "dispatch": {
+              "cycleId": "00000000-0000-4000-8000-000000000001",
+              "operationId": "fixture-round",
+              "leaseOwner": "fixture-server",
+              "fencingToken": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "inference.revoke",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "inference.revoke",
+          "ownerId": "fixture-owner",
+          "target": {
+            "kind": "chat",
+            "chatId": "fixture-chat"
+          }
+        }
+      }
+    },
+    {
       "type": "inference.configure",
       "input": {
         "kind": "request",
@@ -4088,6 +4133,111 @@
             "protectedApiKey": null,
             "accountId": null,
             "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "surface.tunnel.os-prepare",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "surface.tunnel.os-prepare",
+          "serverId": "fixture-server",
+          "projectId": "project",
+          "tunnelId": "66666666-6666-4666-8666-666666666666",
+          "attachmentId": "66666666-6666-4666-8666-666666666666",
+          "grantId": "66666666-6666-4666-8666-666666666666",
+          "expiresAt": "2030-01-01T00:00:00.000Z",
+          "expectedIdentity": null,
+          "protectedRecord": {
+            "operationId": "66666666-6666-4666-8666-666666666666",
+            "revision": 1,
+            "protectedContent": {
+              "formatVersion": 1,
+              "domain": "tunnel-content",
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "AAAAAAAAAAAAAAAAAAAAAA"
+              }
+            }
+          },
+          "osExecution": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "project",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "surface.desktop.os-prepare",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "surface.desktop.os-prepare",
+          "serverId": "fixture-server",
+          "projectId": "project",
+          "osExecution": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "project",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
           }
         }
       }

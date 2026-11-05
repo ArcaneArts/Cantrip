@@ -1,7 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import {
   workerChatTurnOutcomeNotificationSchema,
-  inferenceNeverStarted,
   taskInferenceInputReceiptSchema,
   type WorkerNotification,
 } from "@cantrip/protocol";
@@ -207,9 +206,13 @@ export async function persistHistoricalRoundOutcome(
       .select({ id: schema.projectWorktrees.id })
       .from(schema.projectWorktrees)
       .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+      )
+      .innerJoin(
         schema.projects,
         and(
-          eq(schema.projects.id, schema.projectWorktrees.projectId),
+          eq(schema.projects.id, schema.projectSources.projectId),
           eq(schema.projects.ownerId, owner),
         ),
       )
@@ -300,7 +303,7 @@ export async function roundOutcomeRetirement(
     const proof = !n.outcome.ok ? n.outcome.inference : undefined;
     const neverForwarded =
       proof !== undefined &&
-      inferenceNeverStarted(proof) &&
+      proof.disposition === "input-not-dispatched" &&
       proof.operationId === r.operationId &&
       proof.providerId === r.providerId &&
       proof.chatId === r.chatId &&

@@ -12545,6 +12545,63 @@
         "Latest native runtime/platform artifacts, mixed/Redis coordination and operation recovery at full product failure boundaries.",
         "Existing-data upgrades and post-write rollback, performance acceptance, packaged desktop/Winterhold rehearsal, default server cutover and production Node server removal."
       ]
+    },
+    "sourceTaskGoalIntegration": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server/src/db/task-goal-inference-inputs.ts",
+        "cantrip_server/src/db/task-goal-input-history.ts",
+        "cantrip_server/src/db/task-goal-observations.ts",
+        "cantrip_server/src/db/task-round-input-history.ts",
+        "cantrip_worker/src/codex/managed-native-command-session.ts",
+        "cantrip_worker/src/inference-command.ts",
+        "cantrip_server_rs/src/task_scheduling/eligibility.rs",
+        "cantrip_server_rs/src/tasks/inference_routes.rs",
+        "cantrip_server_rs/src/workers/resource_revocations.rs",
+        "cantrip_server_rs/src/native_commands/admit/queue.rs",
+        "cantrip_server_rs/src/native_handoffs/autonomous_source.rs"
+      ],
+      "evidence": [
+        "cantrip_server/test/task-input-authority.test.ts",
+        "scripts/server-rust/inference-recovery-wire-fixtures.mjs",
+        "scripts/server-rust/security-fixtures.mjs",
+        "scripts/server-rust/worker-command-fixtures.json",
+        "scripts/server-rust/worker-command-alternatives.json",
+        "scripts/server-rust/task-runtime-snapshot.mjs",
+        "scripts/server-rust/actual-task-client.mjs",
+        "scripts/server-rust/actual-folder-client.mjs",
+        "scripts/server-rust/native-command-wire-fixtures.mjs",
+        "scripts/server-rust/native-handoff-wire-fixtures.mjs",
+        "scripts/server-rust/managed-queue-wire-fixtures.mjs"
+      ],
+      "validatedSubset": "Thirty real-migration database cases retain input-not-dispatched classification, exact receipt/worker/fence guards, original physical-root attribution for encrypted historical output, owner isolation and Goal observation project/path affinity. Actual old-source regressions reproduce four authority/observation failures plus two historical writes attributed to the replacement root. The worker GUI continuation exposes its existing real inference-source return type; session resource lookup narrows WorkerLink/Chat variants and three operational error logs retain their required subsystem. No worker rewrite or protocol change.",
+      "localEvidence": "Frozen qualification against base d9e8ddf11: Server/worker/app typechecks and builds pass locally. Thirteen previously missing fixture roots have valid Source samples. Native wire suite passes619692 comparisons across625base roots, generated base/Run manifest equality and69648 JSON round trips. Separate Task input1692 and Run input2617 oracles pass. Full TypeScript server suite remains60failed/1699passed/58skipped and worker6failed/2745passed/225skipped. Every failing heading is reproduced in the clean d9e8ddf11 baseline; no broad-suite green claim. Broad repository check stops on unchanged Node source budgets1516/1500 and2230/1999. Focused native-runtime tests remain skipped without a current built test binary. Outgoing worker fixtures preserve all295 prior command inputs and1134 prior alternative cases, adding three already-existing command types and current enum values with complete schema coverage metadata. The outgoing streaming oracle passes298 complete requests,86 boundary cases and241091 mutations with100/100 authoritative refinement callbacks executed. All625 other root fixture digests remain unchanged.",
+      "remaining": [
+        "Resolve the separately reproduced full TypeScript suite failures and standard repository checks before full replacement acceptance.",
+        "Qualify current built native runtime with actual worker/client Task and Goal flows, all storage modes, failure/recovery boundaries and supported platforms.",
+        "Complete remaining MCP/domain behavior, mixed/Redis coordination, existing-data upgrades/post-write rollback, performance, desktop/container/Winterhold rehearsal, default cutover and production Node server removal."
+      ],
+      "integrated1579245Qualification": {
+        "base": "1579245e9131dc488c3af5f6737101fb42e5f405",
+        "localChecks": "Server, worker and app typechecks and builds pass. All 1,114 protocol tests and 31 Task database regressions pass. Focused app tests: 56 passed. Focused worker tests: 51 passed, 8 skipped because they require a current native test binary. The broad repository check still fails on unchanged source limits of 1,516/1,500 and 2,230/1,999 lines.",
+        "fixtures": "All 630 roots have valid Source samples (2,074 samples). The refreshed outgoing corpus preserves all 298 prior command inputs and 1,154 prior alternative cases, with 299 command types, 1,189 schema alternatives and 1,156 concrete cases.",
+        "runtimeFixes": "Repairs four actual compiler errors while retaining provider-transfer fencing: JavaScript-string dispatch-map keys, an explicitly typed empty provider array, and the existing response-validation error adapter.",
+        "taskFailureEvidence": "The optional --task-diagnostics mode uses the existing development SQL fixture executable. A Task failure captures eight owner/project-scoped tables from the open database, before worker/model teardown, in one read-only repeatable-read transaction. A secondary snapshot failure preserves the original failure. Actual queries pass a real PGlite test; full browser/server failure capture remains to be exercised.",
+        "wire": "The complete local corpus passes 631,962 comparisons across 629 base roots, both generated-manifest comparisons and 69,648 JSON round trips. The separately streamed outgoing-worker corpus passes all 299 commands, 86 boundary cases and 241,601 mutations; all 100 authoritative refinement callbacks execute."
+      },
+      "currentGoalTransferQualification": {
+        "base": "9a384ee0a0fbcea06dc4228aac1eb1a1cd57b8e4",
+        "fixtures": "All 631 roots have valid Source samples (2,108 samples). Native Goal attempt fixtures cover optional epoch omission/presence, admission and queue envelopes, and queued handoff state/configuration with both withdrawal values.",
+        "wire": "59,894 fresh Source/native value, issue and exact-error comparisons pass across all seven changed schemas and the new nativeAutonomousAttemptSchema. Exact reachable-graph normalization and fixture-array digests preserve the other 623 roots, including outgoing-worker envelopes. The tracked wire interpreter tree is byte-identical across the integration. The earlier 629-root full corpus remains frozen with its original results.",
+        "localChecks": "Server, worker and app builds and typechecks, 1,114 protocol tests and all 31 database regressions pass after integrating the Goal-transfer source. Current strict Rust checks and native product execution remain separately qualified."
+      },
+      "firstGoalClaimQualification": {
+        "base": "50edd969c",
+        "wire": "47713 fresh comparisons pass over all three changed handoff schemas. Goal-claim samples include native-attempt omission/presence and both withdrawal values. Exact graph and fixture comparisons preserve the other 628 roots. All 631 roots retain valid Source samples.",
+        "sourceChecks": "App/server/worker builds and typechecks, 1,114 protocol tests and 31 real database regressions pass after integration. Clippy predicate cleanup preserves admission identity, no-start proof, cancellation, generation and active-binding guards; current strict checks are recorded separately.",
+        "scope": "Schema and compilation coverage is separate from full worker/native Task/Goal execution and platform acceptance."
+      },
+      "strictLocalRustChecks": "Clippy --all-targets with -D warnings passes. All 50 Rust library tests pass, including 8,228 recursive JSON comparisons, Date.parse comparisons across 15 timezone settings and 7,851 Source Run comparisons after independent graph growth. Fresh generated-manifest equality passes for both contract blocks. These results cover the first-cycle Goal-claim integration; full native execution and platform acceptance remain separate."
     }
   },
   "remainingAcceptance": [

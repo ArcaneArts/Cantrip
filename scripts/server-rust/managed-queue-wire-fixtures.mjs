@@ -4,6 +4,9 @@ export function managedQueueWireFixtures(timestamp) {
   const native = nativeCommandWireFixtures(timestamp),
     admission = native.nativeCommandAdmissionSchema[0],
     receipt = native.nativeCommandReceiptSchema[0];
+  const autonomousAdmissions = native.nativeCommandAdmissionSchema.filter(
+    (value) => value.intent.autonomousAttempt,
+  );
   const read = { workerId: "worker", session: admission.session },
     prompt = retainedPrompt();
   const item = {
@@ -73,7 +76,14 @@ export function managedQueueWireFixtures(timestamp) {
       { kind: "start" },
       { kind: "start", id: prompt.id },
     ],
-    managedQueueMutateSchema: [{ admission, expectedRevision: 0, mutation }],
+    managedQueueMutateSchema: [
+      { admission, expectedRevision: 0, mutation },
+      ...autonomousAdmissions.map((admission) => ({
+        admission,
+        expectedRevision: 0,
+        mutation,
+      })),
+    ],
     managedQueueMutationResultSchema: [
       { ...snapshot, receipt },
       { ...snapshot, receipt, acceptedItem: item, claim },
@@ -129,7 +139,10 @@ export function managedQueueWireFixtures(timestamp) {
         ],
       },
     ],
-    managedQueueLookupSchema: [{ admission }],
+    managedQueueLookupSchema: [
+      { admission },
+      ...autonomousAdmissions.map((admission) => ({ admission })),
+    ],
     managedQueueLookupResultSchema: [
       { found: false },
       { found: true, ...snapshot, receipt },
