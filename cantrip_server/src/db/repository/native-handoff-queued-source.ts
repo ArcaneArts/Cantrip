@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
+import { queuedPromptOpaqueContentSchema } from "@cantrip/protocol/communication-content";
 import type {
   InferenceJournalRecord,
   NativeCommandSession,
@@ -17,6 +18,62 @@ const pending = ["accepted", "dispatched", "uncertain"];
 const fail = (): never => {
   throw new NativeCommandError("handoff-native-operation-pending");
 };
+
+/** Retarget only the original, unchanged standalone input. Later messages and
+ * edits keep their own model choices. The encrypted content/AAD is unchanged. */
+export async function retargetStandaloneHandoffInput(
+  tx: RepositoryTransaction,
+  chatId: string,
+  source: NativeRuntimeHandoffQueuedSource,
+  modelId: string,
+): Promise<{ id: string; revision: number } | undefined> {
+  const [item] = await tx
+    .select({
+      prompt: schema.queuedPrompts,
+      revision: schema.managedQueueClaims.promptRevision,
+    })
+    .from(schema.managedQueueClaims)
+    .innerJoin(
+      schema.queuedPrompts,
+      eq(schema.queuedPrompts.id, schema.managedQueueClaims.promptId),
+    )
+    .where(
+      and(
+        eq(schema.managedQueueClaims.chatId, chatId),
+        eq(schema.managedQueueClaims.operationId, source.operationId),
+        eq(
+          schema.managedQueueClaims.operationGeneration,
+          source.operationGeneration,
+        ),
+        eq(schema.managedQueueClaims.status, "deferred"),
+        eq(schema.queuedPrompts.chatId, chatId),
+        eq(schema.queuedPrompts.state, "pending"),
+        eq(
+          schema.queuedPrompts.revision,
+          schema.managedQueueClaims.promptRevision,
+        ),
+      ),
+    )
+    .limit(1);
+  if (!item) return undefined;
+  const { prompt } = item;
+  const revision = prompt.revision + 1;
+  await tx
+    .update(schema.queuedPrompts)
+    .set({
+      modelId,
+      opaqueContent: prompt.opaqueContent
+        ? queuedPromptOpaqueContentSchema.parse({
+            ...prompt.opaqueContent,
+            modelId,
+          })
+        : prompt.opaqueContent,
+      revision,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.queuedPrompts.id, prompt.id));
+  return { id: prompt.id, revision };
+}
 
 /** Capture a candidate under the existing chat lock. Nothing here proves it
  * unstarted: the worker must seal the exact owner before any claim is deferred. */

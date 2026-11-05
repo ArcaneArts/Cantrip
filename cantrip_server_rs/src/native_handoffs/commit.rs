@@ -102,7 +102,17 @@ pub(super) async fn apply(
         &[&next.stringify(), &crate::auth::now(), &chat],
     )
     .await?;
-    update(tx,&row,json!({"phase":"committed","binding":binding,"retiredRuntimeGenerations":retire_runtime(&row,&previous["runtimeGeneration"]),"errorCode":Value::Null})).await
+    let mut patch = json!({"phase":"committed","binding":binding,"retiredRuntimeGenerations":retire_runtime(&row,&previous["runtimeGeneration"]),"errorCode":Value::Null});
+    if row["source"]["contextKind"] == "standalone"
+        && truthy(row.get("queued_source"))
+        && let Some(prompt) =
+            queued_source::retarget(tx, &chat, &row["queued_source"], &target["modelId"]).await?
+    {
+        let mut queued = row["queued_source"].clone();
+        queued["retargetedPrompt"] = prompt;
+        patch["queuedSource"] = queued;
+    }
+    update(tx, &row, patch).await
 }
 pub(super) async fn finish(tx: &Transaction<'_>, row: Value, outcome: &str) -> Result<Value> {
     if row["phase"] == outcome {

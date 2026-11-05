@@ -6,7 +6,7 @@ import type { ServerRepository } from "../db/repository.js";
 import { NativeCommandError } from "../db/repository/native-command-errors.js";
 import { effectivePermissionProfile } from "../chats/execution-helpers.js";
 import {
-  managedConsoleSessionContext,
+  managedTurnSessionContext,
   resolveManagedSessionModelProfile,
   type ManagedConsoleRouting,
 } from "./managed-session.js";
@@ -41,12 +41,14 @@ export async function runtimeHandoffConfiguration(
   );
   if (
     !context ||
-    context.contextKind !== "project" ||
+    context.contextKind !== state.source.contextKind ||
     context.experience !== "agent" ||
     context.workerId !== state.workerId ||
     context.threadId !== state.source.threadId ||
     context.projectId !== state.source.projectId ||
-    context.worktreeId !== state.source.placementId
+    (context.contextKind === "project"
+      ? context.worktreeId
+      : context.scratchRootId) !== state.source.placementId
   )
     throw new NativeCommandError("handoff-source-replaced");
   const routeId =
@@ -99,7 +101,7 @@ export async function runtimeHandoffConfiguration(
     state,
     side,
     configuration: {
-      session: managedConsoleSessionContext(context),
+      session: managedTurnSessionContext(context),
       threadId: state.source.threadId,
       cwd: context.cwd,
       model: root.model,
@@ -111,6 +113,7 @@ export async function runtimeHandoffConfiguration(
         ownerId,
         context.projectId,
         context.workerId,
+        context.contextKind === "standalone" ? "chat" : "ide",
       ),
     },
   });

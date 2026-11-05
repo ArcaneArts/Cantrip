@@ -1,5 +1,47 @@
 use super::*;
 impl Repository {
+    pub async fn queued_standalone_transfer(
+        &self,
+        owner: &str,
+        context: &Value,
+        claim: Option<&Value>,
+        model: &Value,
+    ) -> Result<Option<Value>> {
+        if context["contextKind"] != "standalone" || !truthy(context.get("modelRouteId")) {
+            return Ok(None);
+        }
+        let Some(claim) = claim.filter(|v| truthy(v.get("id"))) else {
+            return Ok(None);
+        };
+        let chat = text(&context["chatId"])?;
+        one(
+            Executor::Database(&self.database),
+            "SELECT jsonb_build_object('reasoningKnown',h.prepared ? 'reasoningEffort',
+                'reasoningEffort',h.prepared->'reasoningEffort')::text
+             FROM native_runtime_handoffs h
+             INNER JOIN model_routes r ON r.id=h.target_model_route_id
+             INNER JOIN managed_queue_claims c ON c.chat_id=h.chat_id
+                AND c.prompt_id=h.queued_source->'retargetedPrompt'->>'id'
+                AND c.prompt_revision::text=h.queued_source->'retargetedPrompt'->>'revision'
+             INNER JOIN native_settings_states s ON s.chat_id=h.chat_id
+                AND s.state->'binding'->>'bindingId'=h.binding->>'bindingId'
+             WHERE h.owner_id=$1 AND h.chat_id=$2 AND h.worker_id=$3 AND h.phase='completed'
+                AND h.target_model_route_id=$4 AND h.target_provider_account_id IS NOT DISTINCT FROM $5::text
+                AND r.model_id=$6 AND h.source->>'contextKind'='standalone'
+                AND h.source->>'threadId'=$7 AND c.id=$8 LIMIT 1",
+            &[
+                &owner,
+                &chat,
+                &text(&context["workerId"])?,
+                &text(&context["modelRouteId"])?,
+                &optional(&context["providerAccountId"])?,
+                &text(model)?,
+                &optional(&context["threadId"])?,
+                &text(&claim["id"])?,
+            ],
+        )
+        .await
+    }
     pub async fn get(&self, owner: &str, chat: &str, operation: &str) -> Result<Option<Value>> {
         let row=one(Executor::Database(&self.database),"SELECT to_jsonb(h)::text FROM native_runtime_handoffs h WHERE owner_id=$1 AND chat_id=$2 AND operation_id=$3",&[&owner,&chat,&operation]).await?;
         let Some(mut row) = row else { return Ok(None) };

@@ -18,12 +18,16 @@ impl Repository {
             .execution_context(owner, &text(&state["chatId"])?)
             .await?;
         let Some(context) = context.filter(|c| {
-            c["contextKind"] == "project"
+            c.get("contextKind") == state["source"].get("contextKind")
                 && c["experience"] == "agent"
                 && c.get("workerId") == state.get("workerId")
                 && c.get("threadId") == state["source"].get("threadId")
                 && c.get("projectId") == state["source"].get("projectId")
-                && c.get("worktreeId") == state["source"].get("placementId")
+                && (if c["contextKind"] == "project" {
+                    c.get("worktreeId")
+                } else {
+                    c.get("scratchRootId")
+                }) == state["source"].get("placementId")
         }) else {
             return reject("handoff-source-replaced");
         };
@@ -77,7 +81,7 @@ impl Repository {
         } else if !account.is_null() {
             return reject("handoff-target-account-mismatch");
         }
-        let launch = console.prepare_launch(owner, &context, &runtime).await?;
+        let launch = console.configuration(owner, &context, &runtime).await?;
         if launch["model"].get("routeId") != Some(route)
             || launch["provider"].get("id") != runtime["provider"].get("id")
             || launch["provider"]

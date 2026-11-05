@@ -9,7 +9,7 @@ import {
   type UserSettingsUpdate,
 } from "@cantrip/protocol";
 import { Check, ChevronRight, Loader2 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ModelCombobox } from "@/components/chat/model-combobox";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,20 @@ function reasoningEffortRank(effort: ReasoningEffort): number {
   return index === -1 ? REASONING_EFFORT_ORDER.length : index;
 }
 
+const configurationFields = [
+  "modelId",
+  "reasoningEffort",
+  "customSubagentModel",
+  "subagentModelId",
+  "subagentReasoningEffort",
+] as const;
+function sameConfiguration(
+  left: ModelConfiguration,
+  right: ModelConfiguration,
+) {
+  return configurationFields.every((field) => left[field] === right[field]);
+}
+
 export interface ModelReasoningPickerProps {
   open?: boolean;
   onOpenChange?(open: boolean): void;
@@ -59,8 +73,13 @@ export interface ModelReasoningPickerProps {
   mode?: "chat" | "settings";
   pending?: boolean;
   readOnly?: boolean;
+  readOnlyReason?: ReactNode;
   reasoningState?: ChatReasoningState;
   selectionStatus?: ReactNode;
+  renderAdditionalSettings?(state: {
+    dirty: boolean;
+    pending: boolean;
+  }): ReactNode;
   loadReasoningState?: (modelId: string) => Promise<ChatReasoningState>;
   subagentCapability?: NativeSubagentRuntimeCapability;
   subagents?: boolean;
@@ -355,8 +374,10 @@ export function ModelReasoningPicker({
   onSave,
   pending = false,
   readOnly = false,
+  readOnlyReason,
   reasoningState,
   selectionStatus,
+  renderAdditionalSettings,
   subagentCapability,
   subagents = true,
 }: ModelReasoningPickerProps) {
@@ -367,6 +388,12 @@ export function ModelReasoningPicker({
     onOpenChange?.(nextOpen);
   };
   const [draft, setDraft] = useState(configuration);
+  const [userEdited, setUserEdited] = useState(false);
+  const previousConfiguration = useRef(configuration);
+  const editDraft: typeof setDraft = (update) => {
+    setUserEdited(true);
+    setDraft(update);
+  };
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const selectedModel = models.find(({ id }) => id === configuration.modelId);
@@ -425,11 +452,17 @@ export function ModelReasoningPicker({
   const subagentsAvailable = subagentCapability?.available ?? true;
 
   useEffect(() => {
+    const changed = !sameConfiguration(
+      previousConfiguration.current,
+      configuration,
+    );
+    previousConfiguration.current = configuration;
     if (!open) {
       setDraft(configuration);
+      setUserEdited(false);
       setSaveError(null);
-    }
-  }, [configuration, open]);
+    } else if (changed && !userEdited) setDraft(configuration);
+  }, [configuration, open, userEdited]);
 
   useEffect(() => {
     if (!rootReasoning.state || rootReasoning.loading) return;
@@ -470,7 +503,10 @@ export function ModelReasoningPicker({
     if (effectivePending) return;
     setOpen(nextOpen);
     setSaveError(null);
-    if (nextOpen) setDraft(configuration);
+    if (nextOpen) {
+      setDraft(configuration);
+      setUserEdited(false);
+    }
   };
 
   const save = async () => {
@@ -573,8 +609,8 @@ export function ModelReasoningPicker({
           {selectionStatus}
           {readOnly ? (
             <p className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
-              This configuration is read-only while the agent turn is active or
-              awaiting input.
+              {readOnlyReason ??
+                "Model and reasoning edits are read-only while the agent turn is active or awaiting input."}
             </p>
           ) : null}
           {subagents && subagentCapability && !subagentsAvailable ? (
@@ -598,7 +634,7 @@ export function ModelReasoningPicker({
               disabled={readOnly || effectivePending}
               models={models}
               onValueChange={(modelId) =>
-                setDraft((current) => ({
+                editDraft((current) => ({
                   ...current,
                   modelId,
                   reasoningEffort: null,
@@ -613,7 +649,7 @@ export function ModelReasoningPicker({
               unavailable={rootReasoning.failed}
               disabled={readOnly || effectivePending}
               onChange={(reasoningEffort) =>
-                setDraft((current) => ({ ...current, reasoningEffort }))
+                editDraft((current) => ({ ...current, reasoningEffort }))
               }
             />
           </section>
@@ -631,7 +667,7 @@ export function ModelReasoningPicker({
                     (!subagentsAvailable && !draft.customSubagentModel)
                   }
                   onChange={(event) =>
-                    setDraft((current) => ({
+                    editDraft((current) => ({
                       ...current,
                       customSubagentModel: event.target.checked,
                     }))
@@ -668,7 +704,7 @@ export function ModelReasoningPicker({
                     models={models}
                     placeholder="Select a subagent model"
                     onValueChange={(subagentModelId) =>
-                      setDraft((current) => ({
+                      editDraft((current) => ({
                         ...current,
                         subagentModelId,
                         subagentReasoningEffort: null,
@@ -685,7 +721,7 @@ export function ModelReasoningPicker({
                       readOnly || effectivePending || !subagentsAvailable
                     }
                     onChange={(subagentReasoningEffort) =>
-                      setDraft((current) => ({
+                      editDraft((current) => ({
                         ...current,
                         subagentReasoningEffort,
                       }))
@@ -707,6 +743,10 @@ export function ModelReasoningPicker({
           ) : null}
         </div>
 
+        {renderAdditionalSettings?.({
+          dirty: userEdited && !sameConfiguration(draft, configuration),
+          pending: effectivePending,
+        })}
         <DialogFooter>
           <Button
             type="button"

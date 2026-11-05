@@ -67,11 +67,25 @@ impl Bootstrap {
                     .await
             })
             .await?;
-        let configuration =
+        let mut configuration =
             turn_configuration::model_configuration(&context, &input, Some(&model_id))?;
+        let queued_transfer = crate::native_handoffs::Repository::new(this.database.clone())
+            .queued_standalone_transfer(
+                &owner,
+                &context,
+                options.get("managedQueueClaim"),
+                &model_id,
+            )
+            .await?;
+        if let Some(transfer) = &queued_transfer
+            && transfer["reasoningKnown"] == true
+        {
+            configuration["turnModelConfiguration"]["reasoningEffort"] =
+                transfer["reasoningEffort"].clone();
+        }
         let bound = if truthy(context.get("threadId"))
             && truthy(context.get("modelRouteId"))
-            && managed_console::session_context(&context).is_some()
+            && (managed_console::session_context(&context).is_some() || queued_transfer.is_some())
         {
             Some(vec![
                 this.routing.bound_managed_runtime(&owner, &context).await?,

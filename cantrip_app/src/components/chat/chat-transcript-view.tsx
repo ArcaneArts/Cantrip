@@ -38,9 +38,9 @@ import { ContextUsageRing } from "@/components/chat/context-usage-ring";
 import { ChatHistoryRail } from "@/components/chat/chat-history-rail";
 import { ChatTurnPromptOverlay } from "@/components/chat/chat-turn-prompt-overlay";
 import { ChatRunStatus } from "@/components/chat/chat-run-status";
-import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
 import { NativeSettingsStatus } from "@/components/chat/native-settings-status";
 import { NativeModelSettingsPicker } from "./native-model-settings-picker";
+import { ChatModelReasoningPicker } from "./chat-model-reasoning-picker";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import { ChatRelocationStatus } from "@/components/chat/chat-relocation-dialog";
 import { PlanPanel } from "@/components/chat/plan-panel";
@@ -1076,7 +1076,11 @@ export function ChatTranscriptView({
                     disabled={relocationActive}
                   />
                 ) : (
-                  <ModelReasoningPicker
+                  <ChatModelReasoningPicker
+                    chatId={chat.id}
+                    workerId={chat.activeWorkerId}
+                    scratchRootId={chat.activeScratchRootId ?? null}
+                    contextKind={capabilities.context}
                     open={settingsPicker === "model"}
                     onOpenChange={(open) =>
                       setSettingsPicker((current) =>
