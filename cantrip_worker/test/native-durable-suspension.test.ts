@@ -26,6 +26,7 @@ import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import { CodexRpcClient } from "../src/codex/rpc-client.js";
 import { verifyBuiltRuntime } from "../../scripts/cantrip-codex/verify-built-runtime.mjs";
+import { killNativeTree } from "./native-process-tree-fixture.js";
 
 const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
 type Json = Record<string, any>;
@@ -41,37 +42,6 @@ function incompatibleCheckpoint(original: Buffer) {
     .update(envelope.recordJson)
     .digest("hex");
   return Buffer.from(JSON.stringify(envelope));
-}
-
-/** Kill the actual isolated native tree, including separately grouped helpers.
- * This does not send graceful shutdown or fabricate a suspended rollout. */
-async function killNativeTree(child: ChildProcessWithoutNullStreams) {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const closed = once(child, "close");
-  if (process.platform === "win32") {
-    await execute("taskkill", ["/PID", String(child.pid), "/T", "/F"]);
-  } else {
-    const { stdout } = await execute("ps", ["-axo", "pid=,ppid="]);
-    const rows = stdout
-      .trim()
-      .split("\n")
-      .map((row) => row.trim().split(/\s+/).map(Number));
-    const owned = new Set<number>([child.pid!]);
-    for (;;) {
-      const before = owned.size;
-      for (const [pid, parent] of rows) if (owned.has(parent!)) owned.add(pid!);
-      if (owned.size === before) break;
-    }
-    // Stop the root first so its supervisors cannot restart known descendants.
-    for (const pid of owned) {
-      try {
-        process.kill(pid, "SIGKILL");
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-      }
-    }
-  }
-  await closed;
 }
 
 function stream(response: ServerResponse, events: Json[]) {
@@ -133,9 +103,14 @@ function tool(request: Json, command: string, id: string) {
 describe.skipIf(!binary)(
   "durable suspension on the real pinned native runtime",
   () => {
-    it.each(["paginated", "legacy"] as const)(
-      "keeps one native turn and completed tool results through forced process-tree termination with %s history",
-      async (historyMode) => {
+    it.each([
+      ["paginated", "forced"],
+      ["legacy", "forced"],
+      ["paginated", "EOF"],
+      ["legacy", "EOF"],
+    ] as const)(
+      "keeps one native turn and completed tool results with %s history after %s termination",
+      async (historyMode, termination) => {
         // Inspect the exact packaged executable and current patch fingerprint.
         await verifyBuiltRuntime(path.dirname(binary!));
         const directory = await mkdtemp(
@@ -143,6 +118,19 @@ describe.skipIf(!binary)(
         );
         const home = path.join(directory, "home"),
           cwd = path.join(directory, "workspace");
+        const sessionEndLog = path.join(home, "session-end-events.jsonl");
+        const sessionEndEvents = async (): Promise<Json[]> => {
+          try {
+            return (await readFile(sessionEndLog, "utf8"))
+              .trim()
+              .split("\n")
+              .filter(Boolean)
+              .map((line) => JSON.parse(line) as Json);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+            throw error;
+          }
+        };
         const requests: { body: Json; response: ServerResponse }[] = [];
         const provider = createServer(async (request, response) => {
           let body = "";
@@ -235,8 +223,45 @@ describe.skipIf(!binary)(
           child = undefined;
           client = undefined;
         };
+        const closeOwnerViaEof = async () => {
+          if (child && child.exitCode === null && child.signalCode === null) {
+            const closed = once(child, "close");
+            child.stdin.end();
+            await closed;
+          }
+          client?.close();
+          child = undefined;
+          client = undefined;
+        };
+        const terminatePausedOwner = async () => {
+          if (termination === "forced") await kill();
+          else await closeOwnerViaEof();
+          expect(await sessionEndEvents()).toEqual([]);
+        };
         try {
           await Promise.all([mkdir(home), mkdir(cwd)]);
+          await writeFile(
+            path.join(cwd, "session_end_hook.cjs"),
+            `const fs = require("node:fs");\nconst input = JSON.parse(fs.readFileSync(0, "utf8"));\nfs.appendFileSync(${JSON.stringify(sessionEndLog)}, JSON.stringify(input) + "\\n");\nprocess.stdout.write("{}");\n`,
+          );
+          await writeFile(
+            path.join(home, "hooks.json"),
+            JSON.stringify({
+              hooks: {
+                SessionEnd: [
+                  {
+                    matcher: "other",
+                    hooks: [
+                      {
+                        type: "command",
+                        command: "node session_end_hook.cjs",
+                      },
+                    ],
+                  },
+                ],
+              },
+            }),
+          );
           provider.listen(0, "127.0.0.1");
           await once(provider, "listening");
           await writeFile(
@@ -259,6 +284,19 @@ describe.skipIf(!binary)(
             ].join("\n"),
           );
           await start();
+          const hookCatalog = await rpc("hooks/list", { cwds: [cwd] });
+          const hooks = hookCatalog.data.flatMap((entry: Json) => entry.hooks);
+          expect(hooks).toHaveLength(1);
+          await rpc("config/value/write", {
+            keyPath: "hooks.state",
+            value: Object.fromEntries(
+              hooks.map((hook: Json) => [
+                hook.key,
+                { trusted_hash: hook.currentHash },
+              ]),
+            ),
+            mergeStrategy: "upsert",
+          });
           const { thread } = await rpc("thread/start", { cwd, historyMode });
           const threadId = thread.id;
           const first = await rpc("turn/start", {
@@ -380,7 +418,7 @@ describe.skipIf(!binary)(
             expect(paused.paused).toBe(true);
             expect(paused.suspension).toMatchObject({ threadId, turnId });
             // No grace delay or history read after durable acknowledgement.
-            if (modes[cycle] === "cold") await kill();
+            if (modes[cycle] === "cold") await terminatePausedOwner();
             checkpointSnapshots.push(await readFile(checkpointFile));
             const counter = await readFile(
               path.join(cwd, "durable-counter.txt"),
@@ -480,6 +518,24 @@ describe.skipIf(!binary)(
                   expect(await readFile(checkpointFile)).toEqual(damage);
                 await new Promise((resolve) => setTimeout(resolve, 200));
                 expect(requests).toHaveLength(cycle + 1);
+                // The explicit hold must survive teardown without a decodable
+                // payload as well. Neither shutdown nor the next attach repairs
+                // missing/corrupt/incompatible data or runs SessionEnd commands.
+                await terminatePausedOwner();
+                await start();
+                await rpc("thread/resume", {
+                  threadId,
+                  expectedSuspension: paused.suspension,
+                });
+                await expect(
+                  rpc("turn/suspension", {
+                    threadId,
+                    operation: { type: "read" },
+                  }),
+                ).rejects.toThrow(reason);
+                if (damage)
+                  expect(await readFile(checkpointFile)).toEqual(damage);
+                expect(requests).toHaveLength(cycle + 1);
               }
               await writeFile(checkpointFile, original);
             } else {
@@ -547,7 +603,7 @@ describe.skipIf(!binary)(
               // Cold retries use a fresh owner; live retries retain their task.
               // Both keep the original confirmed identity and actual contents.
               if (modes[cycle] === "cold") {
-                await kill();
+                await terminatePausedOwner();
                 await start();
                 await rpc("thread/resume", {
                   threadId,
@@ -905,7 +961,12 @@ describe.skipIf(!binary)(
           ).toHaveLength(2);
 
           let starts = 2;
-          for (const stopMode of ["live", "corrupt", "incompatible"] as const) {
+          for (const stopMode of [
+            "live",
+            "cold-legacy",
+            "corrupt",
+            "incompatible",
+          ] as const) {
             const requestIndex = requests.length;
             const counterName = `stopped-${stopMode}.txt`;
             const stopped = await rpc("turn/start", {
@@ -933,7 +994,16 @@ describe.skipIf(!binary)(
             const stopCheckpoint = await stoppingPause;
             expect(stopCheckpoint.suspension.turnId).toBe(stopped.turn.id);
             let damaged: Buffer | undefined;
-            if (stopMode !== "live") {
+            if (stopMode === "cold-legacy") {
+              // Existing GUI/native-TUI Stop uses turn/interrupt. It must also
+              // cancel a cold held turn whose original task no longer exists.
+              await terminatePausedOwner();
+              await start();
+              await rpc("thread/resume", {
+                threadId,
+                expectedSuspension: stopCheckpoint.suspension,
+              });
+            } else if (stopMode !== "live") {
               await kill();
               const original = await readFile(checkpointFile);
               damaged =
@@ -956,12 +1026,18 @@ describe.skipIf(!binary)(
               expect(requests).toHaveLength(requestIndex + 1);
             }
             for (let attempt = 0; attempt < 2; attempt++) {
-              expect(
-                await rpc("turn/suspension", {
+              if (stopMode === "cold-legacy" && attempt === 0)
+                await rpc("turn/interrupt", {
                   threadId,
-                  operation: { type: "discard", turnId: stopped.turn.id },
-                }),
-              ).toMatchObject({ paused: false, suspension: null });
+                  turnId: stopped.turn.id,
+                });
+              else
+                expect(
+                  await rpc("turn/suspension", {
+                    threadId,
+                    operation: { type: "discard", turnId: stopped.turn.id },
+                  }),
+                ).toMatchObject({ paused: false, suspension: null });
               await vi.waitFor(
                 () =>
                   expect(
@@ -1086,7 +1162,7 @@ describe.skipIf(!binary)(
             completed("admission-tool-response"),
           ]);
           const admissionCheckpoint = await admissionPause;
-          await kill();
+          await terminatePausedOwner();
           await start();
           await rpc("thread/resume", {
             threadId,
@@ -1118,11 +1194,11 @@ describe.skipIf(!binary)(
               (value) => ({ value, error: undefined }),
               (error: unknown) => ({ value: undefined, error }),
             );
-          const waitingForGrant = beginRestore();
+          let waitingForGrant = beginRestore();
           await vi.waitFor(() => expect(beginFrames()).toHaveLength(1), {
             timeout: 15000,
           });
-          const firstGrant = beginFrames()[0]!.params;
+          let firstGrant = beginFrames()[0]!.params;
           expect(firstGrant.input.scopeId).toEqual(expect.any(String));
           expect(requests).toHaveLength(admissionRequestIndex + 1);
           expect(
@@ -1135,6 +1211,52 @@ describe.skipIf(!binary)(
                 frame.params.status.type === "active",
             ),
           ).toHaveLength(0);
+          // Teardown while the restored task is waiting for admission must also
+          // retain its continuation. The old process never received a grant.
+          const abandonedGrant = firstGrant;
+          const abandonedRunner = runnerGeneration;
+          await terminatePausedOwner();
+          expect((await waitingForGrant).error).toBeDefined();
+          expect(requests).toHaveLength(admissionRequestIndex + 1);
+          await start();
+          expect(
+            await rpc("turn/suspension", {
+              threadId,
+              operation: { type: "read" },
+            }),
+          ).toMatchObject(admissionCheckpoint);
+          await rpc("thread/resume", {
+            threadId,
+            expectedSuspension: admissionCheckpoint.suspension,
+            managedConfig: managedProfile,
+          });
+          runnerGeneration = "durable-restoration-after-pending-shutdown";
+          await rpc("thread/managedExecution/bind", {
+            threadId,
+            runnerGeneration,
+            expectedRunnerGeneration: null,
+          });
+          expect(
+            (
+              await client!.request("thread/managedExecution/resolve", {
+                threadId,
+                runnerGeneration: abandonedRunner,
+                attemptId: abandonedGrant.attemptId,
+                operationGeneration: `inference:${abandonedGrant.input.scopeId}:${abandonedGrant.attemptId}`,
+                allow: true,
+              })
+            ).error,
+          ).toBeDefined();
+          waitingForGrant = beginRestore();
+          await vi.waitFor(() => expect(beginFrames()).toHaveLength(1), {
+            timeout: 15000,
+          });
+          firstGrant = beginFrames()[0]!.params;
+          expect(firstGrant.attemptId).not.toBe(abandonedGrant.attemptId);
+          expect(firstGrant.input.scopeId).not.toBe(
+            abandonedGrant.input.scopeId,
+          );
+          expect(requests).toHaveLength(admissionRequestIndex + 1);
           expect(
             await rpc("turn/suspension", {
               threadId,
@@ -1221,7 +1343,7 @@ describe.skipIf(!binary)(
             completed("admission-resumed-tool-response"),
           ]);
           admissionCheckpoint.suspension = (await pauseAfterGrant).suspension;
-          await kill();
+          await terminatePausedOwner();
           await start();
           await rpc("thread/resume", {
             threadId,
@@ -1339,6 +1461,56 @@ describe.skipIf(!binary)(
           ).toBe(1);
           await Promise.all(inferenceAcknowledgements);
           expect(inferenceProtocolErrors).toEqual([]);
+          const requestCountBeforeExit = requests.length;
+          // Normal completion and explicit Stop still permit the real SessionEnd
+          // command. Its side effect proves that the skipped hooks were trusted
+          // and runnable, rather than absent or disabled in the fixture.
+          await closeOwnerViaEof();
+          const sessionEnds = await sessionEndEvents();
+          expect(sessionEnds).toHaveLength(1);
+          expect(sessionEnds[0]!.hook_event_name).toBe("SessionEnd");
+          await start();
+          expect(
+            (
+              await rpc("turn/suspension", {
+                threadId,
+                operation: { type: "read" },
+              })
+            ).suspension,
+          ).toBeNull();
+          expect(requests).toHaveLength(requestCountBeforeExit);
+          // A turn that was never suspended still receives the ordinary
+          // interrupted lifecycle on EOF and cannot become a recovery candidate.
+          await rpc("thread/resume", { threadId });
+          const ordinaryShutdown = await rpc("turn/start", {
+            threadId,
+            input: [{ type: "text", text: "ORDINARY_ACTIVE_EOF" }],
+          });
+          await vi.waitFor(
+            () => expect(requests).toHaveLength(requestCountBeforeExit + 1),
+            { timeout: 15000 },
+          );
+          await closeOwnerViaEof();
+          expect(await sessionEndEvents()).toHaveLength(2);
+          await start();
+          const shutdownHistory = await rpc("thread/read", {
+            threadId,
+            includeTurns: true,
+          });
+          expect(
+            shutdownHistory.thread.turns.filter(
+              (turn: Json) => turn.id === ordinaryShutdown.turn.id,
+            ),
+          ).toMatchObject([{ status: "interrupted" }]);
+          expect(
+            (
+              await rpc("turn/suspension", {
+                threadId,
+                operation: { type: "read" },
+              })
+            ).suspension,
+          ).toBeNull();
+          expect(requests).toHaveLength(requestCountBeforeExit + 1);
           completedSuccessfully = true;
         } finally {
           requests.forEach(({ response }) => response.destroy());
