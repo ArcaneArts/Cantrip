@@ -65,6 +65,28 @@ export function nativeHandoffWireFixtures(timestamp) {
       },
     })),
   );
+  queuedStates.push(
+    ...[false, true].map((withdrawn) => ({
+      ...state,
+      phase: "preparing",
+      binding: null,
+      prepared: null,
+      queuedSource: {
+        operationId: "queued-goal-claim",
+        operationGeneration: "queued-generation",
+        withdrawn,
+        goalClaim: {
+          id: "goal-claim",
+          promptId: "goal-prompt",
+          promptRevision: 0,
+          operationId: "goal-setter",
+          operationGeneration: "goal-setter-generation",
+          goalEpoch: "goal-epoch",
+        },
+        ...(withdrawn ? { autonomousAttempt: autonomousAttempts[1] } : {}),
+      },
+    })),
+  );
   const fixtures = {
     nativeRuntimeHandoffRequestSchema: [request],
     nativeRuntimeHandoffPreparedSchema: [

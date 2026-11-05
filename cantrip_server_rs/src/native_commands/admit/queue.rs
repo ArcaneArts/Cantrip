@@ -2,7 +2,7 @@ use super::{Admission, raw_one, reject, text};
 use crate::native_commands::goal_handoff;
 use crate::{
     database::Transaction,
-    wire::{Value, coercion::truthy, value::json},
+    wire::{coercion::truthy, value::json},
 };
 use anyhow::Result;
 impl Admission<'_> {
@@ -12,8 +12,8 @@ impl Admission<'_> {
         if input["intent"].get("goalStatus").is_some() && input["method"] != "thread/goal/set" {
             return reject("invalid-goal-status");
         }
-        if let Some(attempt) = input["intent"].get("autonomousAttempt") {
-            if input["origin"] != "autonomous"
+        if let Some(attempt) = input["intent"].get("autonomousAttempt")
+            && (input["origin"] != "autonomous"
                 || input["method"] != "turn/start"
                 || input["intent"].get("expectedTurnId") != attempt.get("turnId")
                 || (truthy(input.get("goalQueueHandoff"))
@@ -25,10 +25,9 @@ impl Admission<'_> {
                         text(&attempt["attemptId"])?
                     )
                 || input["session"]["connectionId"]
-                    != format!("autonomous:{}", text(&attempt["runnerGeneration"])?)
-            {
-                return reject("invalid-autonomous-attempt");
-            }
+                    != format!("autonomous:{}", text(&attempt["runnerGeneration"])?))
+        {
+            return reject("invalid-autonomous-attempt");
         }
         let mut goal_claim = None;
         if truthy(input.get("goalQueueHandoff")) {

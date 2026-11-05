@@ -64,6 +64,11 @@ outgoing-worker envelope; the wire interpreter source is byte-identical across
 this integration. This preserves the earlier full-corpus evidence without
 claiming another full run for the newer source. Typechecks, builds, protocol
 tests and all 31 database regressions pass after integration.
+The first-cycle Goal-claim addition in `50edd969c` is covered by another 47,713
+comparisons across its three changed handoff schemas. Samples retain pending
+claims with and without a native attempt, both withdrawal values and their
+canonical operation identities. Exact graph and fixture checks preserve the
+other 628 roots. All 631 roots have valid Source samples (2,114 samples).
 
 The full-worker folder harness accepts `--task-diagnostics` to select its
 development SQL fixture executable. On a Task failure it captures eight scoped

@@ -153,16 +153,17 @@ pub(super) async fn confirm(
         && ((root["status"] == "rejected" && root["rejection_code"] == "not-dispatched")
             || (root["status"] == "uncertain"
                 && root["rejection_code"] == "missing-native-receipt"));
-    if (root["status"] != "accepted" && !closed)
-        || (!closed
-            && [
+    if (!closed
+        && (root["status"] != "accepted"
+            || [
                 "logical_completed_at",
                 "execution_completed_at",
                 "terminal_evidence",
             ]
             .iter()
-            .any(|key| truthy(root.get(key))))
-        || (!closed && (!same || activation["active"] != true))
+            .any(|key| truthy(root.get(key)))
+            || !same
+            || activation["active"] != true))
         || (same
             && (activation["logical_cancelled"] == true
                 || activation.get("runtime_generation")
