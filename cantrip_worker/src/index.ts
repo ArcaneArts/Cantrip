@@ -5525,6 +5525,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           }
           try {
             const turnOptions: Parameters<typeof runtime.runTurn>[0] = {
+              taskOwned: encryptedTask,
               initialLabel,
               preparationSignal: preparationSignal
                 ? AbortSignal.any([preparationSignal, guiBridgeSignal])
@@ -6544,6 +6545,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 });
           const result = await runtime.createGoal({
             configureTaskPermissions: encryptedTaskGoal,
+            taskOwned: encryptedTaskGoal,
+            chatId: command.chatId,
             operationId: command.operationId,
             cwd: command.cwd,
             model: command.model,
@@ -6599,6 +6602,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         ).updateGoal({
           configureTaskPermissions:
             Boolean(command.taskContext) && command.status === "active",
+          taskOwned: Boolean(command.taskContext),
+          chatId: command.chatId,
           cwd: command.cwd,
           model: command.model,
           permissionProfileId: command.permissionProfileId,

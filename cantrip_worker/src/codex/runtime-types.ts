@@ -368,6 +368,8 @@ export interface RunAgentTurnRetry {
 }
 
 export interface RunAgentTurnOptions {
+  /** The existing Task lifecycle owns input; native cycles still need provider admission. */
+  taskOwned?: boolean;
   /** First-message metadata is serial with this turn, never a concurrent borrower. */
   initialLabel?: {
     providerId: string;
@@ -626,7 +628,7 @@ export type GoalRuntimeOptions = Pick<
   | "permissionProfileId"
   | "provider"
   | "threadId"
->;
+> & { chatId?: string; taskOwned?: boolean };
 
 export interface NativeReplacementSettings {
   sourceThreadId: string;
@@ -640,7 +642,7 @@ export interface PrepareManagedThreadOptions extends GoalRuntimeOptions {
   replacementSettings?: NativeReplacementSettings;
   signal?: AbortSignal;
   canonicalHistory?: boolean;
-  executionGate?: { runnerGeneration: string };
+  executionGate?: { runnerGeneration: string; inferenceOnly?: boolean };
   executionProfile: RunAgentTurnOptions["executionProfile"];
   subagentDefaults: RuntimeSubagentDefaults | null;
   planMode: PlanMode;

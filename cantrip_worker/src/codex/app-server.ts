@@ -812,8 +812,9 @@ function managedThreadConfiguration(
       "mcpServers" | "executionProfile" | "subagentDefaults"
     >
   > & {
-    executionGate?: { runnerGeneration: string };
+    executionGate?: PrepareManagedThreadOptions["executionGate"];
     canonicalHistory?: boolean;
+    preserveSubagentSettings?: boolean;
   },
   hasGitMetadata: boolean,
   preserveSubagentSettings = false,
@@ -829,7 +830,9 @@ function managedThreadConfiguration(
       options.mcpServers,
     ).developerInstructions,
     multiAgentEnabled: enabled,
-    ...(preserveSubagentSettings ? { preserveSubagentSettings: true } : {}),
+    ...(preserveSubagentSettings || options.preserveSubagentSettings
+      ? { preserveSubagentSettings: true }
+      : {}),
     ...(options.executionGate ? { executionGate: options.executionGate } : {}),
     ...(options.canonicalHistory === undefined
       ? {}
@@ -1698,6 +1701,7 @@ export class CodexAppServer implements CodexRuntime {
     string,
     {
       epoch: number;
+      chatId?: string;
       options: Pick<
         PrepareManagedThreadOptions,
         | "mcpServers"
@@ -2908,7 +2912,7 @@ export class CodexAppServer implements CodexRuntime {
     );
     const baseline = await this.snapshotWorkspace(options.cwd);
     const threadId = await this.loadThread(
-      options,
+      options.taskOwned ? this.taskInferenceOptions(options) : options,
       !options.inheritThreadSettings,
       options.inheritThreadSettings ? "preserve" : "configure",
     );
@@ -4028,7 +4032,9 @@ export class CodexAppServer implements CodexRuntime {
     if (!threadId) {
       await this.ensureStarted(options.model, options.provider);
       threadId = await this.loadThread(
-        options,
+        options.taskOwned || options.configureTaskPermissions
+          ? this.taskInferenceOptions(options, true)
+          : options,
         true,
         options.configureTaskPermissions ? "configure" : "preserve",
       );
@@ -4079,7 +4085,9 @@ export class CodexAppServer implements CodexRuntime {
     if (!threadId) {
       await this.ensureStarted(options.model, options.provider);
       threadId = await this.loadThread(
-        options,
+        options.taskOwned || options.configureTaskPermissions
+          ? this.taskInferenceOptions(options, true)
+          : options,
         false,
         options.configureTaskPermissions ? "configure" : "preserve",
       );
@@ -5425,6 +5433,31 @@ export class CodexAppServer implements CodexRuntime {
     child?.kill("SIGINT");
   }
 
+  /** Task dispatch and encrypted rounds already own input authority. Install
+   * only the shared inference channel, including before an active Goal is set. */
+  private taskInferenceOptions<T extends GoalRuntimeOptions>(
+    options: T,
+    preserveSubagentSettings = false,
+  ) {
+    if (!this.inferenceAdmission) return options;
+    const retained = options.threadId
+      ? this.#managedThreadOverlays.get(options.threadId)
+      : undefined;
+    const current =
+      retained?.epoch === this.#preparationEpoch ? retained : undefined;
+    return {
+      ...options,
+      managedConfiguration: true,
+      preserveSubagentSettings,
+      mcpServers: options.mcpServers ?? current?.options.mcpServers ?? [],
+      // Never downgrade an existing managed input owner to inference-only mode.
+      executionGate: current?.options.executionGate ?? {
+        runnerGeneration: `task-inference:${randomUUID()}`,
+        inferenceOnly: true,
+      },
+    };
+  }
+
   private async loadThread(
     options: Pick<
       RunAgentTurnOptions,
@@ -5440,6 +5473,8 @@ export class CodexAppServer implements CodexRuntime {
       subagentDefaults?: RuntimeSubagentDefaults | null;
       onThreadIdentified?: PrepareManagedThreadOptions["onThreadIdentified"];
       managedConfiguration?: boolean;
+      preserveSubagentSettings?: boolean;
+      chatId?: string;
       adoptImportedProvider?: boolean;
       executionGate?: PrepareManagedThreadOptions["executionGate"];
       canonicalHistory?: PrepareManagedThreadOptions["canonicalHistory"];
@@ -5488,6 +5523,8 @@ export class CodexAppServer implements CodexRuntime {
       subagentDefaults?: RuntimeSubagentDefaults | null;
       onThreadIdentified?: PrepareManagedThreadOptions["onThreadIdentified"];
       managedConfiguration?: boolean;
+      preserveSubagentSettings?: boolean;
+      chatId?: string;
       adoptImportedProvider?: boolean;
       executionGate?: PrepareManagedThreadOptions["executionGate"];
       canonicalHistory?: PrepareManagedThreadOptions["canonicalHistory"];
@@ -5510,6 +5547,7 @@ export class CodexAppServer implements CodexRuntime {
       options = {
         ...options,
         managedConfiguration: true,
+        chatId: options.chatId ?? retained.chatId,
         mcpServers:
           options.mcpServers === undefined
             ? retained.options.mcpServers
@@ -5531,7 +5569,8 @@ export class CodexAppServer implements CodexRuntime {
     const inheritManagedSecurity = Boolean(
       options.resultMode?.kind !== "structured" &&
       options.threadId &&
-      (options.managedConfiguration ||
+      ((options.managedConfiguration &&
+        options.executionGate?.inferenceOnly !== true) ||
         confirmedPermission ||
         this.#managedSecurityOwners.has(options.threadId)),
     );
@@ -5831,6 +5870,8 @@ export class CodexAppServer implements CodexRuntime {
   private async applyManagedThreadConfiguration(
     threadId: string,
     options: Pick<RunAgentTurnOptions, "cwd" | "mcpServers"> & {
+      preserveSubagentSettings?: boolean;
+      chatId?: string;
       executionGate?: PrepareManagedThreadOptions["executionGate"];
       canonicalHistory?: PrepareManagedThreadOptions["canonicalHistory"];
       executionProfile?: RunAgentTurnOptions["executionProfile"];
@@ -5853,8 +5894,11 @@ export class CodexAppServer implements CodexRuntime {
     if (
       previous?.epoch === this.#preparationEpoch &&
       previous.fingerprint === fingerprint
-    )
+    ) {
+      const retained = this.#managedThreadOverlays.get(threadId);
+      if (retained && options.chatId) retained.chatId = options.chatId;
       return;
+    }
     this.#managedConfigApplications.delete(threadId);
     // Start/cold resume apply this overlay before native MCP initialization.
     // The same update path also replaces configuration on a shared live engine.
@@ -5870,9 +5914,13 @@ export class CodexAppServer implements CodexRuntime {
         "Codex did not acknowledge the managed configuration for the requested thread.",
       );
     }
-    this.#managedSecurityOwners.add(threadId);
+    // An inference channel does not take ownership of Task permission selection.
+    if (options.executionGate?.inferenceOnly !== true)
+      this.#managedSecurityOwners.add(threadId);
     this.#managedThreadOverlays.set(threadId, {
       epoch: this.#preparationEpoch,
+      chatId:
+        options.chatId ?? this.#managedThreadOverlays.get(threadId)?.chatId,
       options: structuredClone({
         mcpServers: options.mcpServers,
         executionProfile: options.executionProfile ?? "ide",
@@ -6584,6 +6632,8 @@ export class CodexAppServer implements CodexRuntime {
           ...base,
           scopeId,
           rootThreadId,
+          chatId: this.#managedThreadOverlays.get(rootThreadId ?? base.threadId)
+            ?.chatId,
           independent: phase === "begin-independent",
           provider,
           signal: pending.controller.signal,
