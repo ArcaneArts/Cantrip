@@ -9,6 +9,7 @@ import {
 import type {
   InferenceLease,
   InferenceRuntime,
+  InferenceOperationLifetime,
   InferenceTicket,
   WorkerInferenceAdmission,
 } from "../inference-admission.js";
@@ -60,6 +61,7 @@ export interface InferencePreparationScope {
 }
 
 interface Request {
+  lifetime?: InferenceOperationLifetime;
   purpose?: InferenceOperationStatus["purpose"];
   operationId: string;
   provider: {
@@ -80,7 +82,9 @@ interface Request {
 
 interface NativeEntry {
   independent: boolean;
-  gateAttemptId?: string;
+  confirmed: boolean;
+  gateAttemptId: string;
+  lifetime?: InferenceOperationLifetime;
   result: Promise<void>;
   /** The exact reservation selected before an asynchronous bind can fail. */
   operation?: Operation;
@@ -88,7 +92,9 @@ interface NativeEntry {
 
 interface NativeRequest {
   /** The live Core gate request, distinct from its physical inference scope. */
-  gateAttemptId?: string;
+  gateAttemptId: string;
+  /** Resolves only when the actual connection-owned Core gate is still pending. */
+  confirmOwnership(): Promise<boolean>;
   threadId: string;
   turnId: string;
   scopeId: string;
@@ -115,6 +121,10 @@ export class CodexInferenceAdmission {
     string,
     { identity: string; result: Promise<CodexInferenceExecution> }
   >();
+  private readonly lifetimeRequests = new WeakMap<
+    InferenceOperationLifetime,
+    { identity: string; result: Promise<CodexInferenceExecution> }
+  >();
   private exited = false;
   private retirement: Promise<void> | null = null;
 
@@ -127,7 +137,20 @@ export class CodexInferenceAdmission {
   }
 
   acquire(input: Request): Promise<CodexInferenceExecution> {
+    if (input.operationId.startsWith("native-inference:") && !input.lifetime)
+      return Promise.reject(
+        new Error("Private native inference requires its canonical lifetime."),
+      );
+    if (
+      input.lifetime &&
+      (input.lifetime.runtimeGeneration !== this.generation ||
+        input.lifetime.operationId !== input.operationId)
+    )
+      return Promise.reject(
+        new Error("Inference operation lifetime changed owner."),
+      );
     const identity = JSON.stringify([
+      input.operationId,
       input.provider.id,
       input.provider.inferenceCatalogCreatedRevision ?? null,
       input.purpose ?? "helper",
@@ -139,7 +162,9 @@ export class CodexInferenceAdmission {
       input.recoveryKey ?? null,
       recoveryIdentity(input.recovery),
     ]);
-    const previous = this.requests.get(input.operationId);
+    const previous = input.lifetime
+      ? this.lifetimeRequests.get(input.lifetime)
+      : this.requests.get(input.operationId);
     if (previous) {
       if (previous.identity !== identity)
         return Promise.reject(
@@ -148,7 +173,9 @@ export class CodexInferenceAdmission {
       return previous.result;
     }
     const result = this.acquireOperation(input);
-    this.requests.set(input.operationId, { identity, result });
+    if (input.lifetime)
+      this.lifetimeRequests.set(input.lifetime, { identity, result });
+    else this.requests.set(input.operationId, { identity, result });
     return result;
   }
 
@@ -163,6 +190,7 @@ export class CodexInferenceAdmission {
     });
     const ticket = this.runtime.request({
       operationId: input.operationId,
+      lifetime: input.lifetime,
       purpose: input.purpose,
       providerId: input.provider.id,
       providerCreationRevision: input.provider.inferenceCatalogCreatedRevision,
@@ -392,6 +420,7 @@ export class CodexInferenceAdmission {
       }
       this.operations.clear();
       this.completed.clear();
+      for (const entry of this.nativeEntries.values()) entry.lifetime?.close();
       this.nativeEntries.clear();
       this.requests.clear();
     });
@@ -422,6 +451,7 @@ export class CodexInferenceAdmission {
       });
       const entry: NativeEntry = {
         independent,
+        confirmed: false,
         gateAttemptId: input.gateAttemptId,
         result,
       };
@@ -429,9 +459,7 @@ export class CodexInferenceAdmission {
       this.nativeEntries.set(key, entry);
       // Install correlation before admission starts, without postponing this
       // eligible operation behind newer synchronous arrivals.
-      void this.admitNative(input, (operation) => {
-        entry.operation = operation;
-      }).then(resolve, reject);
+      void this.admitNative(input, entry).then(resolve, reject);
     }
     await entering.result;
     const operation = this.findNative(
@@ -447,9 +475,42 @@ export class CodexInferenceAdmission {
     operation.observedStart = true;
   }
 
+  private async confirmNativeOwnership(
+    input: NativeRequest,
+    entry: NativeEntry,
+  ): Promise<void> {
+    const key = JSON.stringify([input.threadId, input.turnId, input.scopeId]);
+    let confirmed: boolean;
+    try {
+      confirmed = await input.confirmOwnership();
+    } catch (error) {
+      // No private reservation exists yet. Dropping this failed confirmation
+      // cannot free model execution; another attempt must query Core again.
+      // A captured root stays correlated until exact settlement evidence.
+      if (
+        !entry.operation &&
+        !entry.lifetime &&
+        this.nativeEntries.get(key) === entry
+      )
+        this.nativeEntries.delete(key);
+      throw error;
+    }
+    if (!confirmed) {
+      if (this.nativeEntries.get(key) === entry && !entry.lifetime)
+        this.nativeEntries.delete(key);
+      throw new Error(
+        "The actual native inference request is no longer pending.",
+      );
+    }
+    entry.confirmed = true;
+    input.signal.throwIfAborted();
+    if (this.exited)
+      throw new Error("The native inference process has exited.");
+  }
+
   private async admitNative(
     input: NativeRequest,
-    bindOwner: (operation: Operation) => void,
+    entry: NativeEntry,
   ): Promise<void> {
     const binding = {
       threadId: input.threadId,
@@ -466,7 +527,13 @@ export class CodexInferenceAdmission {
         throw new Error(
           "Independent inference cannot reuse an existing native turn.",
         );
-      bindOwner(existing);
+      entry.operation = existing;
+      await this.confirmNativeOwnership(input, entry);
+      input.signal.throwIfAborted();
+      if (existing.settled || this.exited)
+        throw new Error(
+          "Native inference settled during ownership confirmation.",
+        );
       await existing.lease!.bindNative(binding);
       input.signal.throwIfAborted();
       return;
@@ -486,26 +553,49 @@ export class CodexInferenceAdmission {
     );
     if (roots.length === 1) {
       const operation = roots[0]!;
-      bindOwner(operation);
-      operation.observedStart = true;
-      operation.nativeBoundary = true;
-      operation.nativeScopeId = input.scopeId;
-      this.bindTurn(operation, input.turnId);
+      entry.operation = operation;
+      let boundHere = false;
       try {
+        await this.confirmNativeOwnership(input, entry);
+        if (
+          operation.settled ||
+          (operation.nativeScopeId !== null &&
+            operation.nativeScopeId !== input.scopeId)
+        )
+          throw new Error(
+            "Native inference owner changed during confirmation.",
+          );
+        operation.observedStart = true;
+        operation.nativeBoundary = true;
+        operation.nativeScopeId = input.scopeId;
+        boundHere = true;
+        this.bindTurn(operation, input.turnId);
         await operation.lease!.bindNative(binding);
         input.signal.throwIfAborted();
       } catch (error) {
-        // No allow response has been sent. Native inference did not enter this
-        // scope; its actual turn completion can settle the dispatched root.
-        operation.nativeBoundary = false;
-        operation.nativeScopeId = null;
-        this.reconcile(operation);
+        // An older confirmation must not erase a newer physical binding.
+        if (
+          boundHere &&
+          !operation.settled &&
+          operation.nativeScopeId === input.scopeId
+        ) {
+          operation.nativeBoundary = false;
+          operation.nativeScopeId = null;
+          this.reconcile(operation);
+        }
         throw error;
       }
       return;
     }
     if (roots.length > 1)
       throw new Error("Native inference has ambiguous dispatched owners.");
+    await this.confirmNativeOwnership(input, entry);
+    input.signal.throwIfAborted();
+    if (this.exited)
+      throw new Error("The native inference process has exited.");
+    const operationId = `native-inference:${input.threadId}:${input.turnId}:${input.scopeId}:${input.gateAttemptId}`;
+    const lifetime = this.runtime.createOperationLifetime(operationId);
+    entry.lifetime = lifetime;
     const root = input.rootThreadId
       ? [...this.operations].find(
           (operation) => operation.threadId === input.rootThreadId,
@@ -513,7 +603,8 @@ export class CodexInferenceAdmission {
       : undefined;
     const scope = root?.ticket.status();
     const execution = await this.acquire({
-      operationId: `native-inference:${input.threadId}:${input.turnId}:${input.scopeId}`,
+      operationId,
+      lifetime,
       purpose: input.independent
         ? "helper"
         : input.rootThreadId && input.rootThreadId !== input.threadId
@@ -537,7 +628,7 @@ export class CodexInferenceAdmission {
       );
       if (!operation?.lease)
         throw new Error("Native inference lost its binding owner.");
-      bindOwner(operation);
+      entry.operation = operation;
       await operation.lease.bindNative(binding);
       input.signal.throwIfAborted();
     } catch (error) {
@@ -579,9 +670,11 @@ export class CodexInferenceAdmission {
     const key = JSON.stringify([threadId, turnId, scopeId]);
     const entry = this.nativeEntries.get(key);
     if (!entry || entry.gateAttemptId !== gateAttemptId) return;
-    const operation = entry.operation;
+    const operation =
+      entry.operation ?? this.findNative(threadId, turnId, scopeId);
     this.rememberCompleted(threadId, turnId, scopeId);
     if (
+      entry.confirmed &&
       operation &&
       !operation.settled &&
       !operation.preparing &&
@@ -681,6 +774,7 @@ export class CodexInferenceAdmission {
     const key = JSON.stringify(
       scopeId ? [threadId, turnId, scopeId] : [threadId, turnId],
     );
+    this.nativeEntries.get(key)?.lifetime?.close();
     this.nativeEntries.delete(key);
     this.completed.add(key);
     if (this.completed.size > 512)

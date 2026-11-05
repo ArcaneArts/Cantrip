@@ -28,9 +28,27 @@ import {
   type WorkerInferenceStatus,
 } from "@cantrip/protocol";
 
+const operationLifetimeBrand = Symbol("worker-inference-operation-lifetime");
+
+/** Issued only after the caller owns a canonical live operation. Retaining this
+ * handle preserves exact redelivery; closing it never settles model execution. */
+export interface InferenceOperationLifetime {
+  readonly [operationLifetimeBrand]: true;
+  readonly operationId: string;
+  readonly runtimeGeneration: string;
+  close(): void;
+}
+
+interface OperationLifetimeState {
+  operationId: string;
+  closed: boolean;
+  ticket?: Ticket;
+}
+
 export interface InferenceRequest {
   purpose?: InferenceOperationStatus["purpose"];
   operationId: string;
+  lifetime?: InferenceOperationLifetime;
   providerId: string;
   providerCreationRevision?: number;
   chatId?: string | null;
@@ -69,6 +87,8 @@ export interface InferenceRuntime {
   readonly generation: string;
   prepareNativeLaunch(): Promise<NodeJS.ProcessEnv>;
   request(input: InferenceRequest): InferenceTicket;
+  /** Call only with positive canonical live-operation authority. */
+  createOperationLifetime(operationId: string): InferenceOperationLifetime;
   /** Retire only after the associated runtime is confirmed unable to execute. */
   exited(): Promise<void>;
 }
@@ -76,6 +96,7 @@ export interface InferenceRuntime {
 interface Runtime {
   generation: string;
   records: Map<string, Ticket>;
+  lifetimes: WeakMap<InferenceOperationLifetime, OperationLifetimeState>;
   retired: boolean;
   prepared: boolean;
   retiring: Promise<void> | null;
@@ -455,6 +476,7 @@ export class WorkerInferenceAdmission {
     const runtime: Runtime = {
       generation: randomUUID(),
       records: new Map(),
+      lifetimes: new WeakMap(),
       retired: false,
       prepared: !this.nativeOwnership,
       retiring: null,
@@ -475,6 +497,26 @@ export class WorkerInferenceAdmission {
           return environment ?? {};
         },
         request: (input) => this.request(runtime, input),
+        createOperationLifetime: (operationId) => {
+          if (
+            this.closing ||
+            runtime.retiring ||
+            runtime.retired ||
+            !runtime.prepared
+          )
+            throw new Error("The inference runtime is not live.");
+          const state: OperationLifetimeState = { operationId, closed: false };
+          const lifetime: InferenceOperationLifetime = Object.freeze({
+            [operationLifetimeBrand]: true as const,
+            operationId,
+            runtimeGeneration: runtime.generation,
+            close: () => {
+              state.closed = true;
+            },
+          });
+          runtime.lifetimes.set(lifetime, state);
+          return lifetime;
+        },
         exited: () => this.retire(runtime),
       },
     };
@@ -546,9 +588,24 @@ export class WorkerInferenceAdmission {
       throw new Error(
         "Inference admission requires an operation and provider identity.",
       );
-    const previous = runtime.records.get(input.operationId);
+    const lifetime = input.lifetime
+      ? runtime.lifetimes.get(input.lifetime)
+      : undefined;
+    if (
+      input.lifetime &&
+      (!lifetime || lifetime.operationId !== input.operationId)
+    )
+      throw new Error(
+        "Inference operation lifetime belongs to another runtime or operation.",
+      );
+    if (input.operationId.startsWith("native-inference:") && !lifetime)
+      throw new Error(
+        "Private native inference requires its live operation lifetime.",
+      );
+    const previous = lifetime?.ticket ?? runtime.records.get(input.operationId);
     if (previous) {
       if (
+        previous.input.lifetime !== input.lifetime ||
         (previous.input.purpose ?? "helper") !== (input.purpose ?? "helper") ||
         previous.input.providerId !== input.providerId ||
         previous.input.providerCreationRevision !==
@@ -564,6 +621,8 @@ export class WorkerInferenceAdmission {
         );
       return previous.handle;
     }
+    if (lifetime?.closed)
+      throw new Error("The canonical inference operation has closed.");
     // Old envelopes omit configuration. They establish the default only if this
     // provider has not already received a newer authoritative configuration.
     if (!this.pools.has(input.providerId))
@@ -634,6 +693,7 @@ export class WorkerInferenceAdmission {
       },
     };
     runtime.records.set(input.operationId, ticket);
+    if (lifetime) lifetime.ticket = ticket;
     pool.queue.push(ticket);
     this.diagnose(ticket, "queued");
     if (this.journal && ticket.journalKey) {
@@ -860,8 +920,15 @@ export class WorkerInferenceAdmission {
     this.drain(ticket.pool);
     this.prunePool(ticket.pool);
     this.changed();
-    // Keep the settled record for idempotent redelivery for this runtime's
-    // lifetime. Confirmed runtime retirement drops its complete record set.
+    // Canonical lifetime handles retain their exact ticket through a WeakMap,
+    // without a process-lifetime completed registry. Their source cannot issue a
+    // replacement handle for a closed canonical operation. Legacy bare IDs must
+    // stay retained until their source gains equivalent retirement authority.
+    if (
+      ticket.input.lifetime &&
+      ticket.runtime.records.get(ticket.input.operationId) === ticket
+    )
+      ticket.runtime.records.delete(ticket.input.operationId);
   }
 
   private drain(pool: Pool): void {
