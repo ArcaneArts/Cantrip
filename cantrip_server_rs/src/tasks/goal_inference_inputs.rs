@@ -508,7 +508,10 @@ impl Repository {
                     {
                         return stale();
                     }
-                    if phase == "accepted" {
+                    if phase == "accepted" || phase == "claim" {
+                        if phase == "claim" && s["accepted"] == true {
+                            return stale();
+                        }
                         s["accepted"] = json!(true);
                     } else {
                         if s["accepted"] != true {

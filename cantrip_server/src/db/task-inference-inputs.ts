@@ -314,7 +314,7 @@ export class TaskInferenceInputRepository {
     ownerId: string,
     workerId: string,
     receipt: TaskInferenceInputReceipt,
-    phase: "accepted" | "dispatch" = "dispatch",
+    phase: "accepted" | "claim" | "dispatch" = "dispatch",
   ): Promise<{ receipt: TaskInferenceInputReceipt }> {
     if (receipt.kind === "goal")
       return this.goals.dispatch(ownerId, workerId, receipt, phase);
@@ -346,7 +346,11 @@ export class TaskInferenceInputRepository {
         task.state === "paused"
       )
         stale();
-      if (phase === "accepted") {
+      if (phase === "accepted" || phase === "claim") {
+        // A canonical source may be created only by the first actual claim.
+        // Legacy accepted acknowledgements remain idempotent, but cannot be
+        // upgraded to a fresh source after their original worker lost it.
+        if (phase === "claim" && state.accepted) stale();
         await tx
           .update(schema.taskPlanningRounds)
           .set({ inferenceInput: { ...state, accepted: true } })

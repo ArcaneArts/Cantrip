@@ -2784,14 +2784,16 @@ export class CodexAppServer implements CodexRuntime {
     admission: CodexInferenceAdmission | null,
   ): InferenceOperationLifetime | undefined {
     if (!source) return undefined;
+    source.assertCurrent();
+    const transportGeneration = this.transportGeneration;
+    if (transportGeneration) source.bindNativeTransport?.(transportGeneration);
     if (
       !source.nativeTransportGeneration ||
-      source.nativeTransportGeneration !== this.transportGeneration
+      source.nativeTransportGeneration !== transportGeneration
     )
       throw new Error(
         "The canonical inference source belongs to another native transport.",
       );
-    source.assertCurrent();
     return admission?.lifetimeForSource(source);
   }
 

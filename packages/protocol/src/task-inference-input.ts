@@ -28,7 +28,7 @@ export const taskInferenceInputDispatchSchema = z
     serverId: identity,
     workerId: identity,
     workerGeneration: z.uuid(),
-    phase: z.enum(["accepted", "dispatch"]).default("dispatch"),
+    phase: z.enum(["accepted", "claim", "dispatch"]).default("dispatch"),
     receipt: taskInferenceInputReceiptSchema,
   })
   .strict();

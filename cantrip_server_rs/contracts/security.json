@@ -1448,7 +1448,11 @@
       "defaultValue": "dispatch",
       "checks": []
     },
-    { "type": "enum", "values": ["accepted", "dispatch"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["accepted", "claim", "dispatch"],
+      "checks": []
+    },
     { "type": "never", "checks": [] },
     {
       "type": "object",
