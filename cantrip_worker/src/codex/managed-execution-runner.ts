@@ -73,7 +73,8 @@ export class ManagedExecutionRunner {
             AbortSignal.any([signal, controller.signal]),
           );
         },
-        // Keep the old handler for exact native declines after invalidation/rebinding.
+        // The transport retains this callback for exact outstanding declines,
+        // then retires it after an acknowledged replacement and native outcome.
         declined: (event) => this.handler.declined(event),
         failed: (error) => this.handler.failed(error),
       },
