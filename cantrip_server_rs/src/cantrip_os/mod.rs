@@ -161,7 +161,7 @@ impl Repository {
         let rows=self.rows("SELECT to_jsonb(i)::text FROM cantrip_os_instances i JOIN workers w ON w.id=i.worker_id AND w.owner_id=$1 AND w.unlinked_at IS NULL WHERE i.owner_id=$1 AND i.id=$2", &[&owner,&id]).await?;
         let row = rows.first().context("OS attachment not found.")?;
         Ok(
-            serde_json::json!({"instance":summary(row,"instance",None)?,"transport":row["transport"]}),
+            serde_json::json!({"instance":summary(row,"instance",None)?,"transport":row["transport"],"workerProcessGeneration":row["worker_process_generation"]}),
         )
     }
     pub async fn workspaces(&self, owner: &str, id: &str) -> Result<Vec<Value>> {

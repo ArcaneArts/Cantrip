@@ -16,7 +16,7 @@ impl Repository {
             ensure!(previous==input["expectedAttachmentGeneration"],"OS attachment changed; refresh before attaching again.");
             let id=old.first().and_then(|v|v["id"].as_str()).map(str::to_owned).unwrap_or_else(uuid);
             let values=Json(json!({"id":id,"owner":owner,"worker":worker,"guest":input["guestInstanceId"],"generation":uuid(),"transport":input["transport"],"name":input["name"]}));
-            let rows=decode(tx.query("INSERT INTO cantrip_os_instances(id,owner_id,worker_id,guest_instance_id,attachment_generation,transport,name) VALUES($1::jsonb->>'id',$1::jsonb->>'owner',$1::jsonb->>'worker',$1::jsonb->>'guest',$1::jsonb->>'generation',$1::jsonb->'transport',$1::jsonb->>'name') ON CONFLICT(id) DO UPDATE SET attachment_generation=EXCLUDED.attachment_generation,transport=EXCLUDED.transport,name=EXCLUDED.name,status='unknown',runtime_generation=NULL,last_error=NULL,last_observed_at=NULL,updated_at=now() RETURNING to_jsonb(cantrip_os_instances)::text", &[&values]).await?)?;
+            let rows=decode(tx.query("INSERT INTO cantrip_os_instances(id,owner_id,worker_id,guest_instance_id,attachment_generation,transport,name) VALUES($1::jsonb->>'id',$1::jsonb->>'owner',$1::jsonb->>'worker',$1::jsonb->>'guest',$1::jsonb->>'generation',$1::jsonb->'transport',$1::jsonb->>'name') ON CONFLICT(id) DO UPDATE SET attachment_generation=EXCLUDED.attachment_generation,transport=EXCLUDED.transport,name=EXCLUDED.name,status='unknown',runtime_generation=NULL,worker_process_generation=NULL,last_error=NULL,last_observed_at=NULL,updated_at=now() RETURNING to_jsonb(cantrip_os_instances)::text", &[&values]).await?)?;
             summary(&rows[0],"instance",None)
         })).await
     }

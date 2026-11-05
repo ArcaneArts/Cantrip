@@ -24,7 +24,8 @@ export function installCantripOsRoutes(
     serverId: string;
     definitionLifecycle?: CantripOsDefinitionLifecycle;
     repository: Pick<ServerRepository, "cantripOs" | "getWorker">;
-    bridge: Pick<WorkerCommandBus, "request">;
+    bridge: Pick<WorkerCommandBus, "request"> &
+      Partial<Pick<WorkerCommandBus, "connectionIdentity" | "isConnected">>;
   },
 ) {
   const { repository, applicationOwnerId: owner } = dependencies;

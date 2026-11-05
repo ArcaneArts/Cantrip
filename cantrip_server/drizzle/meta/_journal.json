@@ -1877,6 +1877,13 @@
       "when": 1793917085000,
       "tag": "0267_managed_goal_recovery",
       "breakpoints": true
+    },
+    {
+      "idx": 268,
+      "version": "7",
+      "when": 1793918392563,
+      "tag": "0268_cantrip_os_worker_continuity",
+      "breakpoints": true
     }
   ]
 }

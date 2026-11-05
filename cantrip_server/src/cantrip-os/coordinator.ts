@@ -40,7 +40,8 @@ export class CantripOsCoordinator {
       ServerRepository,
       "cantripOs" | "getWorker"
     >,
-    private readonly bridge: Pick<WorkerCommandBus, "request">,
+    private readonly bridge: Pick<WorkerCommandBus, "request"> &
+      Partial<Pick<WorkerCommandBus, "connectionIdentity" | "isConnected">>,
     private readonly serverId: string,
     private readonly definitionLifecycle?: CantripOsDefinitionLifecycle,
   ) {}
@@ -271,6 +272,10 @@ export class CantripOsCoordinator {
       expected,
       repository: this.repository,
       inspect: (input) => this.inspect(ownerId, input),
+      workerIdentity: (workerId) =>
+        this.bridge.isConnected?.(workerId)
+          ? (this.bridge.connectionIdentity?.(workerId) ?? null)
+          : null,
     });
   }
 

@@ -69,6 +69,8 @@ export const cantripOsInstances = pgTable(
       .notNull()
       .default("unknown"),
     runtimeGeneration: text("runtime_generation"),
+    /** Last explicit recovery observation, scoped to this attachment. */
+    workerProcessGeneration: text("worker_process_generation"),
     lastError: text("last_error"),
     lastObservedAt: timestamp("last_observed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })

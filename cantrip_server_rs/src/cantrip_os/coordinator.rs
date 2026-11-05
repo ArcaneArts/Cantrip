@@ -24,6 +24,18 @@ fn core_scope(scope: &Value) -> Value {
     Value::Object(result)
 }
 impl Coordinator {
+    pub(super) fn recovery_worker_identity(
+        &self,
+        owner: &str,
+        worker: &str,
+    ) -> Option<crate::workers::bridge::Continuity> {
+        let bridge = &self.service.workers.bridge;
+        bridge
+            .is_connected(worker)
+            .then(|| bridge.connection_identity(worker))
+            .flatten()
+            .filter(|identity| identity.owner == owner)
+    }
     pub async fn run_definition(
         &self,
         owner: &str,
