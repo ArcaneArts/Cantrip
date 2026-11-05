@@ -55,6 +55,42 @@ function stale(): never {
   );
 }
 
+/** Saving a physical result is not a lease mutation. A recovered control owner
+ * cannot change which input ran, and that input cannot act as the newer owner. */
+function physicalInput(
+  cycle: typeof schema.taskDispatchCycles.$inferSelect | null,
+  receipt: TaskInferenceInputReceipt,
+) {
+  const input = cycle?.goalInput;
+  if (
+    !cycle ||
+    !input ||
+    input.deferred ||
+    receipt.kind !== "goal" ||
+    cycle.id !== receipt.dispatch.cycleId ||
+    cycle.chatId !== receipt.chatId ||
+    cycle.operationId !== receipt.dispatch.operationId ||
+    JSON.stringify(taskInferenceInputReceiptSchema.parse(input.receipt)) !==
+      JSON.stringify(taskInferenceInputReceiptSchema.parse(receipt))
+  )
+    stale();
+  return cycle;
+}
+function originalControl(
+  cycle: typeof schema.taskDispatchCycles.$inferSelect,
+  receipt: TaskInferenceInputReceipt,
+) {
+  return (
+    (cycle.fencingToken === receipt.dispatch.fencingToken &&
+      cycle.leaseOwner === receipt.dispatch.leaseOwner &&
+      ["claimed", "running", "paused", "succeeded", "failed"].includes(
+        cycle.state,
+      )) ||
+    (cycle.state === "expired" &&
+      cycle.fencingToken === receipt.dispatch.fencingToken + 1)
+  );
+}
+
 /** Input ownership metadata on the existing Goal dispatch, never a prompt queue. */
 export class TaskGoalInferenceInputRepository {
   constructor(
@@ -757,14 +793,8 @@ export class TaskGoalInferenceInputRepository {
         receipt.dispatch.leaseOwner !== fence.leaseOwner
       )
         stale();
-      await assertTaskOperationDispatchFence(
-        tx,
-        owner,
-        receipt.chatId,
-        fence.operationId,
-        outcomeGuard(receipt),
-        true,
-      );
+      const physical = physicalInput(cycle, receipt);
+      const ownsControl = originalControl(physical, receipt);
       const context = await this.context(tx, owner, receipt, { settled: true });
       if (!this.messages || !this.lanes)
         throw new Error(
@@ -822,6 +852,7 @@ export class TaskGoalInferenceInputRepository {
           .set({ goalInput: { ...state, terminal } })
           .where(eq(schema.taskDispatchCycles.id, cycle!.id));
       if (
+        ownsControl &&
         !ok &&
         state.accepted &&
         state.allAttemptsEnforced &&
@@ -842,7 +873,7 @@ export class TaskGoalInferenceInputRepository {
           chat: context.chat,
         };
       }
-      if (options.recordOnly)
+      if (options.recordOnly || !ownsControl)
         return {
           receipt,
           terminal,
@@ -919,14 +950,7 @@ export class TaskGoalInferenceInputRepository {
               ))
         )
           return null;
-        const guard = outcomeGuard(state.receipt);
-        await assertTaskOperationDispatchFence(
-          tx,
-          owner,
-          chat,
-          guard.operationId,
-          guard,
-        );
+        const physical = physicalInput(cycle, state.receipt);
         const c = await this.context(tx, owner, state.receipt, {
           settled: true,
         });
@@ -935,12 +959,29 @@ export class TaskGoalInferenceInputRepository {
           c.lane?.codexThreadId !== state.terminal.threadId
         )
           stale();
-        guard.goalProjection = {
+        const projection: TaskGoalProjectionFence = {
+          terminalObservedAt: state.terminal.observedAt,
+          control: {
+            fencingToken: physical.fencingToken,
+            leaseOwner: physical.leaseOwner,
+            state: physical.state,
+          },
           placementRevision: c.chat.placementRevision,
           automationPaused: c.chat.automationPaused,
           taskSchedulingPaused: c.project.taskSchedulingPaused,
           threadId: c.lane?.codexThreadId ?? null,
         };
+        const guard = {
+          ...outcomeGuard(state.receipt),
+          goalProjection: projection,
+        };
+        await assertTaskOperationDispatchFence(
+          tx,
+          owner,
+          chat,
+          guard.operationId,
+          guard,
+        );
         return {
           receipt: state.receipt,
           terminal: state.terminal,
@@ -962,7 +1003,8 @@ export class TaskGoalInferenceInputRepository {
     owner: string,
     receipt: TaskInferenceInputReceipt,
     rowVersion: number,
-    projection?: TaskGoalProjectionFence,
+    projection: TaskGoalProjectionFence,
+    execution?: { threadId: string; status: "running" | "idle" | "failed" },
   ) {
     return this.database.transaction(async (tx) => {
       const guard = outcomeGuard(receipt);
@@ -981,9 +1023,24 @@ export class TaskGoalInferenceInputRepository {
         receipt.dispatch.cycleId,
       );
       const state = cycle?.goalInput;
-      if (!cycle || !state?.terminal || state.deferred) stale();
+      if (
+        !cycle ||
+        !state?.terminal ||
+        state.terminal.projectedAt ||
+        state.deferred
+      )
+        stale();
       const c = await this.context(tx, owner, receipt, { settled: true });
       if (
+        (!execution &&
+          !(
+            state.failedBeforeDispatch &&
+            state.firstDispatchedOperationId === null &&
+            c.task.state === "failed"
+          )) ||
+        (execution &&
+          projection.threadId &&
+          execution.threadId !== projection.threadId) ||
         c.task.rowVersion !== rowVersion ||
         (state.terminal.threadId &&
           c.lane?.codexThreadId !== state.terminal.threadId)
@@ -1004,6 +1061,21 @@ export class TaskGoalInferenceInputRepository {
           receipt.chatId,
           guard,
         );
+      }
+      if (
+        execution?.status !== "running" &&
+        ["complete", "blocked", "failed"].includes(c.task.state)
+      ) {
+        if (!this.lanes)
+          throw new Error("Task Goal projection requires lane ownership.");
+        await this.lanes
+          .inTransaction(tx)
+          .finishChatExecutionLane(
+            receipt.chatId,
+            receipt.executionLaneId,
+            c.task.state === "failed" ? "failed" : "idle",
+            { expectedActivatedAt: receipt.executionLaneActivatedAt },
+          );
       }
       const now = new Date();
       await tx
@@ -1057,18 +1129,8 @@ export class TaskGoalInferenceInputRepository {
           receipt.dispatch.leaseOwner !== lease.leaseOwner
         )
           return null;
-        await assertTaskOperationDispatchFence(
-          tx,
-          owner,
-          chat,
-          lease.operationId,
-          {
-            kind: "leased",
-            lease,
-            goalInferenceInputOperationId: receipt.operationId,
-          },
-          true,
-        );
+        physicalInput(cycle, receipt);
+        await this.context(tx, owner, receipt, { settled: true });
         return receipt;
       })
       .catch((error) => {

@@ -1076,3 +1076,52 @@ physical-input outcomes across control replacement, abandoned-input cancellation
 terminal delivery/restart recovery, and the final timing/bounded-state/entry-point
 audit. These changes fence a server control takeover; they do not claim that
 a native checkpoint alone has been durably reconciled.
+
+### Physical Goal outcomes after control recovery
+
+The retained Goal's control token can advance while the original physical input
+is still finishing. Both servers now distinguish those authorities. Saving the
+same retained input's protected response and terminal marker validates its full
+original receipt against the latest cycle's canonical, nondeferred Goal input,
+plus the existing message, planning, placement and lane checks. It does not
+require that the original input's token still owns Goal control. The receipt is
+not rewritten and cannot claim that the recovered owner performed that input.
+
+An outcome from an older control owner records history/terminal metadata only.
+It cannot update runtime placement, finish lanes or interactions, or defer input
+under the newer control token. Ordinary same-owner completion and positively
+unforwarded pause cancellation retain their existing behavior. The live hook can
+still locate its original retained receipt after control recovery; it does not
+thereby gain permission to launch or replay work.
+
+Pending terminal projection independently captures the actual current control
+state, token and nullable owner. Its guard still binds the original input, exact
+terminal observation, placement revision, pause flags, native thread and Task
+CAS. It checks the current control snapshot both when native Task metadata is
+projected and when retry state/terminal dispatch/marker settlement is committed.
+A second control recovery or a completed projection invalidates the older
+projector. Ordinary heartbeat timestamps are not inference-settlement evidence
+and do not change this identity.
+
+Actual native Goal/execution state continues to control Task projection. An old
+turn error cannot fail a continuing Goal. Fresh terminal Task metadata may close
+only the receipt's exact lane activation after the execution observation reports
+that it is not running. A positively confirmed pre-dispatch startup failure can
+settle without an execution snapshot only when it never forwarded input and the
+Task is already failed. Control timer cleanup uses the captured current owner
+and token, rather than attempting to release a recovered owner's timer using the
+old physical receipt. No server code grants or releases provider tickets.
+
+Source review covered multiple control-token advances, expiry, pause, duplicate
+terminal projectors, replacement/revoked receipts, live-hook lookup, missing
+execution proof and actual native running/terminal state in both servers. Direct
+formatting and `git diff --check` passed. No tests, typechecks, builds, benchmarks,
+native/helper execution, computer-use testing or hosted validation ran; runtime
+behavior remains unverified. No migration, transported contract or additional
+prompt store is introduced.
+
+This covers an unchanged canonical Goal input across control recovery. Outcomes
+after that input is replaced, or after its placement/lane activation changes,
+still require canonical historical receipt handling. Native checkpoint recovery,
+abandoned-input cancellation, actual terminal delivery/restart reconciliation,
+and final timing/bounded-state/entry-point audits remain part of the full goal.
