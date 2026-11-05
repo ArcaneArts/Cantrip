@@ -7,6 +7,7 @@ mod control;
 mod dispatch;
 mod event_context;
 pub mod events;
+pub(crate) mod goal_handoff;
 mod inference_resources;
 mod logical_completions;
 mod logical_inputs;

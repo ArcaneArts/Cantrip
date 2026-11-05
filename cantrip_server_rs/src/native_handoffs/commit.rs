@@ -20,7 +20,7 @@ pub(super) async fn apply(
         .unwrap_or(&row["source"]);
     guards::assert_source(tx, owner, previous).await?;
     let chat = text(&row["chat_id"])?;
-    guards::assert_idle(tx, &chat).await?;
+    guards::assert_idle(tx, &chat, &row["queued_source"]).await?;
     let target = guards::target(
         tx,
         owner,

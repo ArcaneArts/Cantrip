@@ -3,6 +3,7 @@
 mod autonomous_source;
 mod commit;
 mod configuration;
+mod goal_claim;
 mod guards;
 mod inventory;
 mod prepared;

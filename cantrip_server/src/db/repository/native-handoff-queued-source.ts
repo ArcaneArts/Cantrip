@@ -17,6 +17,7 @@ import {
   autonomousHandoffAttempt,
   confirmAutonomousHandoffSource,
 } from "./native-handoff-autonomous-source.js";
+import { captureHandoffGoalClaim } from "./native-handoff-goal-claim.js";
 
 const pending = ["accepted", "dispatched", "uncertain"];
 const fail = (): never => {
@@ -116,6 +117,9 @@ export async function reserveHandoffQueuedSource(
   if (lanes.length !== 1 || commands.length !== 1) fail();
   const command = commands[0]!;
   const autonomousAttempt = autonomousHandoffAttempt(command);
+  const goalClaim = autonomousAttempt
+    ? await captureHandoffGoalClaim(tx, command, claims)
+    : undefined;
   const session = command.identity as NativeCommandSession;
   if (
     command.status !== "accepted" ||
@@ -142,7 +146,7 @@ export async function reserveHandoffQueuedSource(
   )
     fail();
   if (autonomousAttempt) {
-    if (claims.length) fail();
+    if (claims.length && !goalClaim) fail();
   } else {
     const claim = claims[0];
     if (
@@ -168,6 +172,7 @@ export async function reserveHandoffQueuedSource(
     operationGeneration: command.operationGeneration,
     withdrawn: false,
     ...(autonomousAttempt ? { autonomousAttempt } : {}),
+    ...(goalClaim ? { goalClaim } : {}),
   };
 }
 
@@ -197,6 +202,7 @@ export async function confirmHandoffQueuedSource(
       root,
       expected.autonomousAttempt,
       record,
+      expected.goalClaim,
     );
     return;
   }

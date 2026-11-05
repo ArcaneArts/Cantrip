@@ -41,7 +41,7 @@ pub(super) async fn apply(
         prior
     };
     guards::assert_source(tx, owner, &prior).await?;
-    guards::assert_idle(tx, &chat).await?;
+    guards::assert_idle(tx, &chat, &row["queued_source"]).await?;
     let (route, account) = if side == "source" {
         (
             &row["source"]["modelRouteId"],
