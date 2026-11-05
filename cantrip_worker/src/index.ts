@@ -7084,6 +7084,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             emit,
             () => handleCommand(resolved, emit),
             context.inferenceAdmissionAck === true,
+            context.inferenceOperationIdentity,
+            context.inferenceOperationSignal,
           ),
         );
       } catch (error) {

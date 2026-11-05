@@ -17,6 +17,12 @@ export const workerRequestEnvelopeSchema = z.object({
   // Older workers strip this optional envelope field. New workers only emit
   // the extended private admission event when the requesting server opts in.
   inferenceAdmissionAck: z.literal(true).optional(),
+  // Issued in send order by the current server command bridge. This is an
+  // execution identity, not a capacity grant or a second prompt queue.
+  inferenceSequence: z
+    .string()
+    .regex(/^[1-9][0-9]{0,39}$/u)
+    .optional(),
 });
 
 export const WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL = "cantrip-worker-legacy";

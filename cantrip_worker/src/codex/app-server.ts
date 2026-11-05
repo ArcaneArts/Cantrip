@@ -10,7 +10,10 @@ import {
   sourceInferenceFailure,
 } from "../inference-failure.js";
 import { startChatCompletionsAdapter } from "./chat-completions-adapter.js";
-import { withoutInferenceCommand } from "../inference-command.js";
+import {
+  claimInferenceCommandSource,
+  withoutInferenceCommand,
+} from "../inference-command.js";
 import { CodexAuthRecovery } from "./auth-recovery.js";
 import {
   CodexInferenceAdmission,
@@ -2936,6 +2939,18 @@ export class CodexAppServer implements CodexRuntime {
       options.initialLabel.providerId !== options.provider.id
     )
       await options.initialLabel.run(undefined, options.preparationSignal);
+    // Unreceipted legacy turns can use their actual transport-issued command
+    // owner. A receipt-bearing turn must keep its existing canonical source.
+    const commandOwner =
+      !options.inferenceSource && !options.operationGeneration
+        ? claimInferenceCommandSource(options.preparationSignal)
+        : undefined;
+    if (commandOwner)
+      options = {
+        ...options,
+        inferenceSource: commandOwner.source,
+        preparationSignal: commandOwner.source.signal,
+      };
     let inference: CodexInferenceExecution | undefined;
     let failure: unknown;
     let executionEntered = false;
@@ -2979,25 +2994,29 @@ export class CodexAppServer implements CodexRuntime {
       failure = error;
       throw error;
     } finally {
-      // After forwarding, only a native terminal receipt or actual process exit
-      // may release capacity. A rejected observer promise is not that evidence.
-      inference?.notDispatched();
-      await inference?.settled();
-      const evidence = inference?.failureEvidence();
-      if (failure && evidence) {
-        throw recordInferenceFailure(failure, {
-          ...evidence,
-          chatId: options.chatId,
-          messageId: options.clientMessageId,
-        });
-      } else if (
-        failure &&
-        !inference &&
-        !executionEntered &&
-        !options.preparationSignal?.aborted &&
-        !this.#pausedChats.has(options.chatId)
-      ) {
-        throw this.recordUndispatchedFailure(failure, options) ?? failure;
+      try {
+        // After forwarding, only a native terminal receipt or actual process exit
+        // may release capacity. A rejected observer promise is not that evidence.
+        inference?.notDispatched();
+        await inference?.settled();
+        const evidence = inference?.failureEvidence();
+        if (failure && evidence) {
+          throw recordInferenceFailure(failure, {
+            ...evidence,
+            chatId: options.chatId,
+            messageId: options.clientMessageId,
+          });
+        } else if (
+          failure &&
+          !inference &&
+          !executionEntered &&
+          !options.preparationSignal?.aborted &&
+          !this.#pausedChats.has(options.chatId)
+        ) {
+          throw this.recordUndispatchedFailure(failure, options) ?? failure;
+        }
+      } finally {
+        commandOwner?.close();
       }
     }
   }
@@ -3016,6 +3035,7 @@ export class CodexAppServer implements CodexRuntime {
     return recordInferenceFailure(error, {
       operationId:
         options.operationGeneration ??
+        options.inferenceSource?.operationId ??
         `preparation:${options.clientMessageId}:${randomUUID()}`,
       runtimeGeneration: this.#inference?.generation ?? null,
       chatId: options.chatId,
@@ -3253,17 +3273,32 @@ export class CodexAppServer implements CodexRuntime {
   async runAgentOperation(
     options: RunAgentOperationOptions,
   ): Promise<AgentOperationResult> {
-    await this.ensureStarted(options.model, options.provider);
-    const inference = await this.#inference?.acquire({
-      operationId: `operation:${options.operationId}`,
-      recoveryKey: `operation:${options.operationId}`,
-      provider: options.provider,
-    });
+    const owner = claimInferenceCommandSource();
+    let inference: CodexInferenceExecution | undefined;
     try {
+      await this.ensureStarted(options.model, options.provider);
+      const admission = this.#inference;
+      const lifetime = this.lifetimeForCurrentInferenceSource(
+        owner?.source,
+        admission,
+      );
+      inference = await admission?.acquire({
+        operationId:
+          owner?.source.operationId ?? `operation:${options.operationId}`,
+        lifetime,
+        recoveryKey: `operation:${options.operationId}`,
+        provider: options.provider,
+        signal: owner?.source.signal,
+      });
+      owner?.source.assertCurrent();
       return await this.executeAgentOperation(options, inference);
     } finally {
-      inference?.notDispatched();
-      await inference?.settled();
+      try {
+        inference?.notDispatched();
+        await inference?.settled();
+      } finally {
+        owner?.close();
+      }
     }
   }
 
@@ -5282,24 +5317,41 @@ export class CodexAppServer implements CodexRuntime {
     input: string;
     signal?: AbortSignal;
   }): Promise<string> {
-    await this.ensureStarted(options.model, options.provider);
-    const inference = await this.#inference?.acquire({
-      operationId: `label:${options.operationId ?? randomUUID()}`,
-      purpose: "label",
-      recoveryKey: options.operationId ? `label:${options.operationId}` : null,
-      provider: options.provider,
-      chatId: options.chatId,
-      signal: options.signal,
-    });
+    const owner = claimInferenceCommandSource(options.signal);
+    let inference: CodexInferenceExecution | undefined;
     try {
+      await this.ensureStarted(options.model, options.provider);
+      const admission = this.#inference;
+      const lifetime = this.lifetimeForCurrentInferenceSource(
+        owner?.source,
+        admission,
+      );
+      inference = await admission?.acquire({
+        operationId:
+          owner?.source.operationId ??
+          `label:${options.operationId ?? randomUUID()}`,
+        lifetime,
+        purpose: "label",
+        recoveryKey: options.operationId
+          ? `label:${options.operationId}`
+          : null,
+        provider: options.provider,
+        chatId: options.chatId,
+        signal: owner?.source.signal ?? options.signal,
+      });
+      owner?.source.assertCurrent();
       return await this.runInitialLabelInference({
         ...options,
         providerId: options.provider.id,
         inference,
       });
     } finally {
-      inference?.notDispatched();
-      await inference?.settled();
+      try {
+        inference?.notDispatched();
+        await inference?.settled();
+      } finally {
+        owner?.close();
+      }
     }
   }
 

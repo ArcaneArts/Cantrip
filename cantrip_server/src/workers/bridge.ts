@@ -268,6 +268,7 @@ export class WorkerBridge implements WorkerCommandBus {
   #failedRequests = 0;
   #routedRequests = 0;
   #succeededRequests = 0;
+  #inferenceSequence = 0n;
 
   constructor(
     private readonly reconnectGraceMs = 15_000,
@@ -859,7 +860,12 @@ export class WorkerBridge implements WorkerCommandBus {
       });
 
       try {
-        socket.send(envelope);
+        // Allocate in actual send order, after logging/pending registration.
+        // The validated envelope is already JSON; append only this private
+        // decimal identity rather than serializing a large command twice.
+        socket.send(
+          `${envelope.slice(0, -1)},"inferenceSequence":"${++this.#inferenceSequence}"}`,
+        );
       } catch {
         deadline.close();
         this.#pending.delete(requestId);
