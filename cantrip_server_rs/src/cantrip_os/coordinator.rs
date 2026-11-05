@@ -276,9 +276,9 @@ impl Coordinator {
                     text(i, "attachmentGeneration")?,
                     InstanceObservation {
                         status: "unknown",
-                        runtime: None,
+                        runtime: i["runtimeGeneration"].as_str(),
                         error: Some(
-                            "The executor could not be observed. No host fallback was attempted.",
+                            "The executor could not be observed. Check recovery before continuing.",
                         ),
                     },
                     i["runtimeGeneration"].as_str(),

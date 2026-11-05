@@ -349,6 +349,10 @@ export function osDispatchFixtures() {
       },
     ],
     cantripOsInspectSchema: [{ workerId: "worker", transport }],
+    cantripOsRecoveryRequestSchema: [
+      { attachmentGeneration: id, runtimeGeneration: id },
+      { attachmentGeneration: id, runtimeGeneration: null },
+    ],
     cantripOsWorkspaceCreateSchema: [
       { guestWorkspaceId: "example", operationId: id },
     ],

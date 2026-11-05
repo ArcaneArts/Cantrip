@@ -102,3 +102,27 @@ an isolated PostgreSQL database. Repository tests exercise both native PGlite an
 PostgreSQL. These HTTP/database fixtures use simulated worker receipts, separate
 from the actual guest tests above. Receipts are retained in the ignored
 `artifacts/phase3-dispatch/` directory.
+
+## Explicit instance recovery observation
+
+`POST /api/cantrip-os/:instanceId/recovery` accepts the selected
+`attachmentGeneration` and nullable `runtimeGeneration`. Both are compared with
+Server-owned records before observation; a stale selection is rejected. The
+Worker performs the existing read-only inspect command. The response contains
+`instance`, recorded `workspaces` and a `recovery` result:
+
+- `same-runtime`: the intended instance/attachment and previous runtime match.
+- `runtime-changed`: the same instance is running a different executor generation.
+- `first-observation`: no previous runtime was recorded for comparison.
+- `unavailable`: observation failed; it does not prove a guest reboot or diagnose
+  whether the Worker, transport or optional service caused the failure.
+- `identity-changed`: the transport returned a different instance or attachment.
+
+Unknown/replaced targets retain their recorded identities and last runtime;
+`status: unknown` prevents execution. Only a verified matching identity can update
+workspace records or supply a new current runtime. Existing compare-and-set
+observation guards prevent an older generation from overwriting a newer one.
+Recovery does not attach another machine, restart a desktop, resume a command,
+repeat provisioning or change any captured chat/view placement. Changed runtimes
+require source verification and newly admitted targets through the existing
+workflow. Worker/session recovery is a separate Phase 5 implementation cycle.

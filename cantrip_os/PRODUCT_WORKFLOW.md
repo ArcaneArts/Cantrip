@@ -45,8 +45,11 @@ rewritten or made usable by mounting unrelated repositories.
 Provisioning retains one prepared operation identity across manual retries.
 **Observe outcome** asks for the existing admitted operation; it does not clone
 or mount again. A saved completion is distinct from current availability.
-**Refresh OS**, then **Verify files**, observes the actual retained source and
-current generation. **New Linux agent** also performs these observations before
+**Check recovery** observes the selected attachment without repeating work. It
+reports the same runtime, a changed runtime, an unavailable OS or a changed
+identity. An unavailable connection retains its last observed generation as
+historical metadata while execution remains unavailable. **Verify files** then
+observes the actual retained source and current generation. **New Linux agent** also performs these observations before
 creating the captured placement.
 
 An OS restart or replacement invalidates older chats' captured runtime generation.

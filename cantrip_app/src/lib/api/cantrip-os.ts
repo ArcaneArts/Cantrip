@@ -1,6 +1,9 @@
 import { z } from "zod";
 import {
   cantripOsRunDefinitionApiSchema,
+  cantripOsRecoveryRequestSchema,
+  cantripOsRecoveryResultSchema,
+  type CantripOsInstanceSummary,
   cantripOsRunSourceSchema,
   cantripOsRunDefinitionResponseSchema,
   type CantripOsRunDefinitionRequest,
@@ -107,6 +110,18 @@ export async function attachCantripOs(
 }
 export async function refreshCantripOs(instanceId: string) {
   return mutate(`/api/cantrip-os/${route(instanceId)}/refresh`, {}, refreshed);
+}
+export async function recoverCantripOsInstance(
+  instance: CantripOsInstanceSummary,
+) {
+  return mutate(
+    `/api/cantrip-os/${route(instance.id)}/recovery`,
+    cantripOsRecoveryRequestSchema.parse({
+      attachmentGeneration: instance.attachmentGeneration,
+      runtimeGeneration: instance.runtimeGeneration,
+    }),
+    cantripOsRecoveryResultSchema,
+  );
 }
 export async function getCantripOsWorkspaces(instanceId: string) {
   return z

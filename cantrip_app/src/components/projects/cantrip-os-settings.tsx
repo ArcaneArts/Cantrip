@@ -13,6 +13,7 @@ import {
   getCantripOsInstances,
   getCantripOsWorkspaces,
   getCantripOsBindings,
+  recoverCantripOsInstance,
   refreshCantripOs,
   createCantripOsWorkspace,
   recoverCantripOsBinding,
@@ -72,8 +73,8 @@ export function CantripOsSettings({
     });
   };
   const refresh = useMutation({
-    mutationFn: () => refreshCantripOs(selected!.id),
-    onSuccess: refreshLists,
+    mutationFn: () => recoverCantripOsInstance(selected!),
+    onSettled: refreshLists,
   });
   const workspaceOperations = useRef(new Map<string, string>());
   const createWorkspace = useMutation({
@@ -234,9 +235,20 @@ export function CantripOsSettings({
               onClick={() => refresh.mutate()}
               disabled={refresh.isPending}
             >
-              Refresh OS
+              Check recovery
             </Button>
           </div>
+          {refresh.data?.instance.id === selected.id &&
+          refresh.data.instance.attachmentGeneration ===
+            selected.attachmentGeneration ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              {refresh.data.recovery.message}
+            </p>
+          ) : selected.lastError ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              {selected.lastError}
+            </p>
+          ) : null}
           <div className="rounded-lg border p-4 space-y-3">
             <h3 className="font-medium">Workspace</h3>
             <label className="block space-y-1 text-sm">

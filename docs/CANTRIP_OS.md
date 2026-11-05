@@ -590,6 +590,13 @@ the compressed VNC tradeoff.
 
 ### 5. Remote machines and state recovery
 
+In progress. The first checkpoint adds an explicit Server-owned recovery check
+for the selected attachment, with matching Node/native HTTP contracts and a
+client action. It distinguishes verified same/new runtimes from unavailable or
+changed identities without replaying work. See [dispatch behavior](../cantrip_os/DISPATCH.md#explicit-instance-recovery-observation).
+Process/output recovery, backups/restores, lifecycle preservation and real remote
+acceptance remain required for Phase 5 completion.
+
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output
 recovery, and worker-offline behavior. Deliver workspace backups/restores,

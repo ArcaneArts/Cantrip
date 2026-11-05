@@ -5,6 +5,7 @@ import {
   cantripOsInspectSchema,
   cantripOsProvisionSchema,
   cantripOsWorkspaceCreateSchema,
+  cantripOsRecoveryRequestSchema,
 } from "@cantrip/protocol";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import {
@@ -99,6 +100,12 @@ export function installCantripOsRoutes(
     "/api/cantrip-os/attach",
     parsed(cantripOsAttachSchema, (_request, input) =>
       coordinator.attach(owner(), input),
+    ),
+  );
+  app.post<Params>(
+    "/api/cantrip-os/:instanceId/recovery",
+    parsed(cantripOsRecoveryRequestSchema, (request, input) =>
+      coordinator.recoverInstance(owner(), request.params.instanceId!, input),
     ),
   );
   app.post<Params>(

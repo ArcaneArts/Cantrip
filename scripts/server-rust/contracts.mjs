@@ -618,6 +618,8 @@ export const contractRoots = [
   "cantripOsSourceReceiptSchema",
   "cantripOsOperationResultSchema",
   "cantripOsInspectSchema",
+  "cantripOsRecoveryRequestSchema",
+  "cantripOsRecoveryResultSchema",
   "cantripOsWorkspaceCreateSchema",
   "cantripOsBindingCreateSchema",
   "cantripOsProvisionSchema",

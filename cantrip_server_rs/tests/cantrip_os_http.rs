@@ -84,12 +84,16 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     let count = provisions.clone();
     let lose_run_reply = Arc::new(AtomicBool::new(false));
     let lose_reply = lose_run_reply.clone();
+    let recovery_mode = Arc::new(AtomicUsize::new(0));
+    let observed_mode = recovery_mode.clone();
     let bridge = service.workers.bridge.clone();
     let target = worker.clone();
     let actual_owner = owner.clone();
     let responder = tokio::spawn(async move {
         let guest = id();
         let generation = id();
+        let replacement_generation = id();
+        let replacement_guest = id();
         let mut attached = false;
         let mut profiles = Vec::new();
         let mut operations = HashMap::new();
@@ -100,7 +104,12 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
             };
             let request: Value = serde_json::from_str(&encoded)?;
             let command = &request["command"];
-            let observed = |attached: bool, profiles: &Vec<Value>| json!({"guestInstanceId":guest,"runtimeGeneration":generation,"attachment":if attached {json!({"ownerId":actual_owner,"workerId":target})}else{Value::Null},"workspaces":profiles});
+            let mode = observed_mode.load(Ordering::SeqCst);
+            if command["type"] == "cantrip-os.inspect" && mode == 1 {
+                bridge.receive(&target, &peer, &json!({"kind":"response","requestId":request["requestId"],"ok":false,"error":{"message":"Fixture transport unavailable"}}).to_string());
+                continue;
+            }
+            let observed = |attached: bool, profiles: &Vec<Value>| json!({"guestInstanceId":if mode == 2 {&replacement_guest} else {&guest},"runtimeGeneration":if mode == 3 {&replacement_generation} else {&generation},"attachment":if attached {json!({"ownerId":actual_owner,"workerId":target})}else{Value::Null},"workspaces":profiles});
             let result = match command["type"].as_str().context("OS fixture command")? {
                 "chat.files.references" => {
                     assert_eq!(command["root"]["kind"], "cantrip-os");
@@ -338,6 +347,66 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
             .status(),
         409
     );
+    let recovery_url = format!("{base}/api/cantrip-os/{instance}/recovery");
+    let mut expected = json!({"attachmentGeneration":attached["instance"]["attachmentGeneration"], "runtimeGeneration":attached["instance"]["runtimeGeneration"]});
+    let invalid = client.post(&recovery_url).json(&json!({})).send().await?;
+    assert_eq!(invalid.status(), 400);
+    for (mode, kind) in [
+        (0, "same-runtime"),
+        (1, "unavailable"),
+        (0, "same-runtime"),
+        (2, "identity-changed"),
+        (0, "same-runtime"),
+        (3, "runtime-changed"),
+        (0, "runtime-changed"),
+    ] {
+        recovery_mode.store(mode, Ordering::SeqCst);
+        let response = client.post(&recovery_url).json(&expected).send().await?;
+        let status = response.status();
+        let result: Value = response.json().await?;
+        assert_eq!(status, 200, "{result}");
+        assert_eq!(result["recovery"]["kind"], kind);
+        assert_eq!(
+            result["recovery"]["previousRuntimeGeneration"],
+            expected["runtimeGeneration"]
+        );
+        if mode == 1 || mode == 2 {
+            assert_eq!(result["instance"]["status"], "unknown");
+            assert_eq!(
+                result["instance"]["runtimeGeneration"],
+                expected["runtimeGeneration"]
+            );
+            assert!(result["recovery"]["observedRuntimeGeneration"].is_null());
+        }
+        assert_eq!(
+            result["instance"]["guestInstanceId"],
+            attached["instance"]["guestInstanceId"]
+        );
+        expected["runtimeGeneration"] = result["instance"]["runtimeGeneration"].clone();
+    }
+    let mut stale = expected.clone();
+    stale["attachmentGeneration"] = id().into();
+    assert_eq!(
+        client
+            .post(&recovery_url)
+            .json(&stale)
+            .send()
+            .await?
+            .status(),
+        409
+    );
+    stale = expected.clone();
+    stale["runtimeGeneration"] = id().into();
+    assert_eq!(
+        client
+            .post(&recovery_url)
+            .json(&stale)
+            .send()
+            .await?
+            .status(),
+        409
+    );
+    assert_eq!(provisions.load(Ordering::SeqCst), 1);
     // Canonical history remains owned/readable when the captured OS epoch is stale.
     let chat = id();
     database.query("INSERT INTO chats(id,owner_id,project_id,protected_label,active_worker_id,active_worktree_id,experience,worktree_mode) VALUES($1,$2,$3,'{}',$4,$5,'agent','pinned')", &[&chat,&owner,&project,&worker,&binding["worktreeId"].as_str().unwrap()]).await?;
