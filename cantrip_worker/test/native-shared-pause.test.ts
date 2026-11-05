@@ -192,6 +192,16 @@ describe.skipIf(!binary)("shared pause on the pinned native runtime", () => {
         // The stream is held open by this fixture. No native safe boundary has
         // happened yet, so a successful pause acknowledgement would be premature.
         expect(pauseSettled).toBe(false);
+        expect(
+          await f.authority.repository.nativeSuspensions.read(
+            f.authority.ownerId,
+            f.authority.chatId,
+          ),
+        ).toMatchObject({
+          phase: "pausing",
+          checkpoint: null,
+          active: { threadId: f.threadId, turnId },
+        });
         if (action !== "stop") {
           // Steering keeps the same turn alive across the completed response and
           // proves the next provider request is withheld at the pause boundary.
@@ -221,6 +231,16 @@ describe.skipIf(!binary)("shared pause on the pinned native runtime", () => {
           expect(paused.error).toBeUndefined();
           expect(paused.result).toEqual({ threadId: f.threadId, turnId });
           expect(f.captures).toHaveLength(1);
+          expect(
+            await f.authority.repository.nativeSuspensions.read(
+              f.authority.ownerId,
+              f.authority.chatId,
+            ),
+          ).toMatchObject({
+            phase: "paused",
+            checkpoint: f.captures[0],
+            active: { threadId: f.threadId, turnId },
+          });
           expect(f.captures[0]!.suspension).toMatchObject({
             threadId: f.threadId,
             turnId,
@@ -251,6 +271,15 @@ describe.skipIf(!binary)("shared pause on the pinned native runtime", () => {
               f.runtime.setActiveChatPaused(f.authority.chatId, false),
             ),
           ).toEqual({ threadId: f.threadId, turnId });
+          expect(
+            await f.authority.repository.nativeSuspensions.read(
+              f.authority.ownerId,
+              f.authority.chatId,
+            ),
+          ).toMatchObject({
+            phase: "running",
+            checkpoint: f.captures[0],
+          });
           expect(
             (
               await f.authority.repository.getChatExecutionContext(
@@ -322,6 +351,17 @@ describe.skipIf(!binary)("shared pause on the pinned native runtime", () => {
           );
           expect(f.messages).toContain("AFTER_RESUME");
         }
+        await vi.waitFor(async () =>
+          expect(
+            await f!.authority.repository.nativeSuspensions.read(
+              f!.authority.ownerId,
+              f!.authority.chatId,
+            ),
+          ).toMatchObject({
+            phase: action === "stop" ? "stopped" : "completed",
+            checkpoint: null,
+          }),
+        );
         const native = await f.runtime.readNativeHistory(f.threadId);
         expect(native.thread.turns).toHaveLength(1);
         expect(native.thread.turns[0]).toMatchObject({

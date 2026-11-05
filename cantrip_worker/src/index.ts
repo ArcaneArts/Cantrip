@@ -113,6 +113,7 @@ import { protectProjectAutomationDispatch } from "./automation-encryption.js";
 import { codexAccountHome } from "./codex/account-home.js";
 import {
   CodexAppServer,
+  CodexTurnFailureError,
   codexChatThreadSecurityParams,
   codexModelProviderName,
   codexRuntimeId,
@@ -6662,7 +6663,37 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             return await finalizeCuaAgentTurn(
               async () => {
                 try {
-                  return await runtime.runTurn(turnOptions);
+                  const terminal = async (
+                    turnId: string | undefined,
+                    status: "completed" | "failed" | "interrupted",
+                  ) => {
+                    if (
+                      nativeCommandState.entry &&
+                      nativeCommandState.dispatch &&
+                      nativeCommandState.receipt
+                    ) {
+                      if (!turnId)
+                        throw new Error(
+                          "The managed native terminal result has no turn identity.",
+                        );
+                      await nativeCommandState.entry.adapter.guiTerminal(
+                        nativeCommandState.receipt,
+                        nativeCommandState.dispatch,
+                        turnId,
+                        status,
+                      );
+                    }
+                  };
+                  let result;
+                  try {
+                    result = await runtime.runTurn(turnOptions);
+                  } catch (error) {
+                    if (error instanceof CodexTurnFailureError)
+                      await terminal(error.turnId, error.terminalStatus);
+                    throw error;
+                  }
+                  await terminal(result.turnId, "completed");
+                  return result;
                 } finally {
                   taskInputExecution?.settled();
                 }

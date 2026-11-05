@@ -22,6 +22,7 @@ import { isDeepStrictEqual } from "node:util";
 import {
   managedNativeMethods,
   nativeTurnSuspensionSchema,
+  nativeSuspensionEvidenceSchema,
   type NativeTurnSuspension,
 } from "@cantrip/protocol";
 import {
@@ -76,7 +77,10 @@ interface Execution {
   session: NativeCommandSession;
   handle?: AdmittedNativeExecution;
   nativeTurnId?: string;
+  nativeTerminalStatus?: "completed" | "failed" | "interrupted";
   nativeDeferred?: boolean;
+  durableSuspension?: true;
+  suspensionEvidence?: NativeCommandSettlement["suspensionEvidence"];
   retainedDeferred?: Pick<
     NonNullable<NativeCommandSettlement["deferred"]>,
     "retainedPrompt" | "attachments"
@@ -501,6 +505,12 @@ export class ManagedNativeCommandSession {
       operationId: execution.receipt.operationId,
       operationGeneration: execution.receipt.operationGeneration,
       status,
+      ...(execution.durableSuspension
+        ? { durableSuspension: true as const }
+        : {}),
+      ...(execution.suspensionEvidence
+        ? { suspensionEvidence: execution.suspensionEvidence }
+        : {}),
       resultDigest: terminal ? null : (protectedContent?.digest ?? null),
       protectedResult: terminal ? null : (protectedContent?.envelope ?? null),
       ...(terminal
@@ -551,6 +561,9 @@ export class ManagedNativeCommandSession {
               reconciliation: {
                 nativeTurnId: execution.nativeTurnId,
                 runtimeGeneration: execution.session.runtimeGeneration,
+                ...(execution.nativeTerminalStatus
+                  ? { terminalStatus: execution.nativeTerminalStatus }
+                  : {}),
               },
             }
           : {}),
@@ -869,6 +882,31 @@ export class ManagedNativeCommandSession {
     await this.persistResult(execution, result, "applied");
   }
 
+  /** Native terminal proof precedes the GUI's separate logical/publication
+   * cleanup. A transport failure must never call this with an invented status. */
+  async guiTerminal(
+    receipt: NativeCommandReceipt,
+    session: NativeCommandSession,
+    turnId: string,
+    terminalStatus: "completed" | "failed" | "interrupted",
+  ): Promise<void> {
+    this.assertTransport(session);
+    await this.options.client.settle({
+      operationId: receipt.operationId,
+      operationGeneration: receipt.operationGeneration,
+      status: "applied",
+      resultDigest: null,
+      protectedResult: null,
+      rejectionCode: null,
+      executionComplete: false,
+      reconciliation: {
+        nativeTurnId: turnId,
+        runtimeGeneration: session.runtimeGeneration!,
+        terminalStatus,
+      },
+    });
+  }
+
   /** A rejected physical attempt can retain the logical GUI message only when
    * native explicitly proves that no input was consumed. Never infer from a
    * timeout, a status label, or the absence of a turn-start notification. */
@@ -1177,6 +1215,18 @@ export class ManagedNativeCommandSession {
     );
     if (operation.expectedTurnId)
       intent.expectedTurnId = operation.expectedTurnId;
+    if (
+      this.options.captureSuspension &&
+      ["turn/pause", "turn/interrupt"].includes(operation.method)
+    ) {
+      const params = object(operation.frame.params)
+        ? operation.frame.params
+        : null;
+      if (typeof params?.turnId !== "string")
+        throw new Error("The controlled native turn identity is missing.");
+      intent.durableSuspension = true;
+      intent.expectedTurnId = params.turnId;
+    }
     if (operation.autonomousAttempt)
       intent.autonomousAttempt = operation.autonomousAttempt;
     if (operation.goalRecovery) {
@@ -1272,6 +1322,7 @@ export class ManagedNativeCommandSession {
       };
     }
     const execution = this.createExecution(grant.receipt, session);
+    execution.durableSuspension = intent.durableSuspension;
     execution.expectedTurnId = operation.expectedTurnId;
     execution.autonomousAttempt = operation.autonomousAttempt;
     execution.goalRecovery = operation.goalRecovery;
@@ -1339,6 +1390,7 @@ export class ManagedNativeCommandSession {
         // Releasing its local handle is not a failed model turn or user message.
         if (execution.nativeDeferred || execution.routeWithdrawal) return;
         if (result) {
+          execution.nativeTerminalStatus = "completed";
           execution.nativeTurnId ??= result.turnId;
           await publication?.complete(result);
           await releasePublication();
@@ -1356,6 +1408,7 @@ export class ManagedNativeCommandSession {
             !execution.nativeDecline
           ) {
             execution.nativeTurnId = error.turnId;
+            execution.nativeTerminalStatus = error.terminalStatus;
             nativeAcceptance = "applied";
           }
           await publication?.failed(error);
@@ -1669,11 +1722,28 @@ export class ManagedNativeCommandSession {
                 suspension.turnId !== turnId
               )
                 throw new Error("The native turn was not durably suspended.");
-              await this.options.captureSuspension({
-                session,
-                turnId,
-                suspension,
-              });
+              try {
+                execution.suspensionEvidence =
+                  nativeSuspensionEvidenceSchema.parse(
+                    await this.options.captureSuspension({
+                      session,
+                      turnId,
+                      suspension,
+                    }),
+                  );
+              } catch (error) {
+                // Preserve an uncertain native checkpoint while reporting the
+                // actual persistence failure through this exact control epoch.
+                await this.persistResult(execution, null, "uncertain").catch(
+                  (settlementError) => {
+                    this.options.onError(
+                      settlementError,
+                      operation.operationId,
+                    );
+                  },
+                );
+                throw error;
+              }
               assertRootCurrent();
               this.assertTransport(session);
             }

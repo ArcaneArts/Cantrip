@@ -271,7 +271,8 @@ export class NativeCommandClient {
       ...input,
       intent: {
         ...input.intent,
-        ...(input.origin === "autonomous" && this.options.workerGeneration
+        ...((input.origin === "autonomous" || input.intent.durableSuspension) &&
+        this.options.workerGeneration
           ? { workerGeneration: this.options.workerGeneration }
           : {}),
       },
@@ -383,6 +384,9 @@ export class NativeCommandClient {
       "receipt",
       nativeCommandSettlementSchema.parse({
         ...input,
+        ...(input.durableSuspension && this.options.workerGeneration
+          ? { workerGeneration: this.options.workerGeneration }
+          : {}),
         workerId: this.options.workerId,
       }),
       nativeCommandSettlementResultSchema,

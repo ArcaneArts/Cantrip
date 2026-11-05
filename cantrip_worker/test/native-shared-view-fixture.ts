@@ -10,7 +10,10 @@ import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { expect, vi } from "vitest";
 import { createNativeCommandWorkerFixture } from "../../cantrip_server/test/native-command-worker-fixture.js";
-import { CodexAppServer } from "../src/codex/app-server.js";
+import {
+  CodexAppServer,
+  CodexTurnFailureError,
+} from "../src/codex/app-server.js";
 import type {
   AgentInteractionRuntimeRequest,
   McpServerConfiguration,
@@ -252,6 +255,7 @@ export async function createNativeSharedViewFixture(
     const transport = {
       serverUrl: f.serverUrl,
       workerId,
+      workerGeneration: f.workerGeneration,
       token: () => f.token,
       fetch: f.fetch,
     };
@@ -697,8 +701,25 @@ export async function createNativeSharedViewFixture(
           }),
         );
         const settled = run.then(
-          (result) => ({ result, error: undefined }),
-          (error: unknown) => ({ result: undefined, error }),
+          async (result) => {
+            await adapter.guiTerminal(
+              receipt,
+              guiSession,
+              result.turnId,
+              "completed",
+            );
+            return { result, error: undefined };
+          },
+          async (error: unknown) => {
+            if (error instanceof CodexTurnFailureError)
+              await adapter.guiTerminal(
+                receipt,
+                guiSession,
+                error.turnId,
+                error.terminalStatus,
+              );
+            return { result: undefined, error };
+          },
         );
         return {
           settled,

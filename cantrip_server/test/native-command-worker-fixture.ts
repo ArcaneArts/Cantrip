@@ -35,6 +35,7 @@ export async function createNativeCommandWorkerFixture(options: {
     path.join(tmpdir(), "cantrip-native-worker-authority-"),
   );
   const workerId = randomUUID();
+  const workerGeneration = randomUUID();
   const serverId = randomUUID();
   const token = randomUUID();
   const config: ServerConfig = {
@@ -151,6 +152,14 @@ export async function createNativeCommandWorkerFixture(options: {
     installInternalNativeCommandRoutes(app, {
       config,
       serverId,
+      bridge: {
+        isConnected: () => true,
+        connectionIdentity: () => ({
+          credentialId: "fixture",
+          ownerId: LOCAL_USER_ID,
+          workerProcessGeneration: workerGeneration,
+        }),
+      },
       repository,
       runAsOwner: ownerContext.runAsOwner,
       dispatchNextQueuedPrompt:
@@ -222,6 +231,7 @@ export async function createNativeCommandWorkerFixture(options: {
       ownerId: LOCAL_USER_ID,
       workerId,
       serverId,
+      workerGeneration,
       token,
       chatId: chat.id,
       projectId: project.id,

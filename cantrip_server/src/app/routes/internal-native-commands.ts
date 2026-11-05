@@ -642,6 +642,20 @@ export function installInternalNativeCommandRoutes(
         );
         if (!authentication)
           return reply.code(401).send({ code: "unauthorized" });
+        if (phase === "receipt") {
+          const settlement = nativeCommandSettlementSchema.parse(parsed.data);
+          if (settlement.durableSuspension) {
+            const connection = dependencies.bridge?.connectionIdentity?.(
+              settlement.workerId,
+            );
+            if (
+              !settlement.workerGeneration ||
+              connection?.ownerId !== authentication.ownerId ||
+              connection.workerProcessGeneration !== settlement.workerGeneration
+            )
+              return reply.code(409).send({ code: "stale-worker-generation" });
+          }
+        }
         if (phase === "admit" || phase === "dispatch") {
           const generation =
             phase === "admit"
@@ -724,6 +738,16 @@ export function installInternalNativeCommandRoutes(
               );
               if (result.receipt.method === "thread/settings/update")
                 live.publishChatInvalidation(result.receipt.chatId, "chat");
+              if (
+                ["turn/pause", "turn/interrupt"].includes(result.receipt.method)
+              ) {
+                const context = await repository.getChatExecutionContext(
+                  authentication.ownerId,
+                  result.receipt.chatId,
+                );
+                if (context)
+                  live.publishChatSummary(context.chatId, context.projectId);
+              }
               return authority(authentication.ownerId, result);
             }
             const settlement = nativeCommandSettlementSchema.parse(parsed.data);
@@ -733,6 +757,17 @@ export function installInternalNativeCommandRoutes(
             );
             if (receipt.method === "thread/settings/update")
               live.publishChatInvalidation(receipt.chatId, "chat");
+            if (
+              settlement.durableSuspension ||
+              settlement.reconciliation?.terminalStatus
+            ) {
+              const context = await repository.getChatExecutionContext(
+                authentication.ownerId,
+                receipt.chatId,
+              );
+              if (context)
+                live.publishChatSummary(context.chatId, context.projectId);
+            }
             notifyManagedQueueReceipt(receipt.chatId);
             const wakesQueue =
               (settlement.executionComplete && !settlement.deferred) ||

@@ -65,6 +65,13 @@ impl Admission<'_> {
         {
             return reject("invalid-pause-intent");
         }
+        if truthy(intent.get("durableSuspension"))
+            && (!matches!(method.as_str(), "turn/pause" | "turn/interrupt")
+                || !truthy(intent.get("expectedTurnId"))
+                || !truthy(intent.get("workerGeneration")))
+        {
+            return reject("invalid-suspension-control");
+        }
         if truthy(intent.get("resumeAutonomy"))
             && !matches!(
                 method.as_str(),

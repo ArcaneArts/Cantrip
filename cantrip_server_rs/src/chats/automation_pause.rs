@@ -128,17 +128,32 @@ impl Service {
             ));
         }
         let native = managed_console::turn_session_context(context).is_some();
-        let resumed = if native && !paused {
+        let suspension = if native {
+            self.chats.native_suspension(owner, &chat).await?
+        } else {
+            None
+        };
+        if paused && let Some(state) = suspension.as_ref().filter(|s| s["phase"] == "paused") {
+            return Ok(
+                json!({"paused":true,"active":state["active"],"nativeSuspension":super::native_suspensions::stored_summary(state)}),
+            );
+        }
+        let durable_resume = native
+            && !paused
+            && suspension
+                .as_ref()
+                .is_some_and(|s| !s["checkpoint"].is_null());
+        let resumed = if native && !paused && !durable_resume {
             self.chats
                 .set_automation_paused(owner, &chat, false)
                 .await?
         } else {
             None
         };
-        if native && !paused && resumed.is_none() {
+        if native && !paused && !durable_resume && resumed.is_none() {
             return Err(failure(404, "Chat source not found."));
         }
-        if native && !paused {
+        if native && !paused && !durable_resume {
             self.native.resume_autonomy(owner, &chat).await?;
         }
         let connected = self.commands.is_connected(&worker);

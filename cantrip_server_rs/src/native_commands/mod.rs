@@ -29,6 +29,7 @@ mod settings_observations;
 pub mod settings_persistence;
 pub mod settings_state;
 mod settlement;
+mod suspension;
 mod thread_observation;
 pub mod transaction;
 mod transport_evidence;
