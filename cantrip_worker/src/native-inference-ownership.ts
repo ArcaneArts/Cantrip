@@ -162,6 +162,11 @@ export class LocalNativeInferenceOwnership implements NativeInferenceOwnership {
     this.owned = false;
     const child = this.keeper;
     if (!child) return;
+    // Idle keepers are unreferenced. Shutdown must own their lifetime until
+    // the process and its stdio have actually closed.
+    child.ref();
+    for (const stream of [child.stdin, child.stdout, child.stderr])
+      (stream as Socket).ref();
     await new Promise<void>((resolve) => {
       child.once("close", () => resolve());
       child.stdin.end();
