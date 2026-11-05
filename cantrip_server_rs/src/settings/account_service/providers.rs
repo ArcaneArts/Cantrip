@@ -61,6 +61,7 @@ impl AccountService {
                 .repository
                 .create_model_provider(&owner, &input)
                 .await?;
+            service.synchronize_inference_workers(&owner).await;
             let request = catalog(
                 &owner,
                 provider["id"].as_str().context("provider ID")?,
@@ -109,18 +110,9 @@ impl AccountService {
                 .update_model_provider(&owner, &provider, &input)
                 .await?;
             if updated.is_some() && input.get("maxConcurrentInference").is_some() {
-                let workers = crate::workers::repository::WorkerRepository {
-                    database: service.repository.database.clone(),
-                }
-                .list_workers(&owner)
-                .await?;
-                let deliveries = workers
-                    .iter()
-                    .filter_map(|worker| worker["workerId"].as_str())
-                    .map(|worker| service.synchronize_inference(&owner, worker));
-                // Delivery failures remain visible and owned by their sync jobs.
-                let _ = futures::future::join_all(deliveries).await;
+                service.synchronize_inference_workers(&owner).await;
             }
+
             if let Some(updated) = &updated
                 && native_configuration_changed
             {
@@ -146,16 +138,17 @@ impl AccountService {
         let (owner, worker) = (owner.to_owned(), worker.to_owned());
         self.launch(move |service| async move {
             let result = async {
-                let configurations = service.repository.provider_inference_configurations(&owner).await?;
+                let catalog = service.repository.provider_inference_catalog(&owner).await?;
                 let command = Value::from_serialize(&serde_json::json!({
-                    "type": "inference.configure", "configurations": configurations,
+                    "type": "inference.configure", "configurations": catalog["configurations"], "catalogRevision":catalog["catalogRevision"],
                 }));
                 let reply = service.commands.request(
                     &worker, command, Some(std::time::Duration::from_secs(30)), None,
                 ).await?;
                 let status = crate::settings::parse_response("workerInferenceStatusSchema", reply.as_ref())?;
                 anyhow::ensure!(
-                    status["workerId"] == worker && status["ownerId"] == owner,
+                    status["workerId"] == worker && status["ownerId"] == owner &&
+                        status["providerCatalogRevision"].as_i64().is_some_and(|revision| revision >= catalog["catalogRevision"].as_i64().unwrap_or(0)),
                     "Inference configuration acknowledgement belongs to another worker scope."
                 );
                 Ok(())
@@ -165,6 +158,32 @@ impl AccountService {
             }
             result
         })
+    }
+
+    async fn synchronize_inference_workers(self: &Arc<Self>, owner: &str) {
+        let workers = match (crate::workers::repository::WorkerRepository {
+            database: self.repository.database.clone(),
+        })
+        .list_workers(owner)
+        .await
+        {
+            Ok(workers) => workers,
+            Err(_) => {
+                LifecycleLog::emit(
+                    "warn",
+                    crate::wire::value::json!({"event":"inference.configuration.delivery-pending"}),
+                    "Provider inference configuration delivery remains pending",
+                );
+                return;
+            }
+        };
+        let _ = futures::future::join_all(
+            workers
+                .iter()
+                .filter_map(|worker| worker["workerId"].as_str())
+                .map(|worker| self.synchronize_inference(owner, worker)),
+        )
+        .await;
     }
 
     pub fn delete_provider(
@@ -217,10 +236,14 @@ impl AccountService {
                 .catalogs
                 .hydrator
                 .invalidate(&provider.clone().into());
-            service
+            let deleted = service
                 .repository
                 .delete_model_provider(&owner, &provider)
-                .await
+                .await?;
+            if deleted {
+                service.synchronize_inference_workers(&owner).await;
+            }
+            Ok(deleted)
         })
     }
 }

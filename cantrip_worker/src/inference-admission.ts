@@ -14,6 +14,8 @@ import {
 } from "./inference-command.js";
 import {
   providerInferenceConfigurationSchema,
+  providerInferenceCatalogSchema,
+  type ProviderInferenceCatalog,
   inferenceNeverStarted,
   inferenceNativeExecutionSchema,
   type InferenceNativeExecution,
@@ -30,6 +32,7 @@ export interface InferenceRequest {
   purpose?: InferenceOperationStatus["purpose"];
   operationId: string;
   providerId: string;
+  providerCreationRevision?: number;
   chatId?: string | null;
   projectId?: string | null;
   recoveryKey?: string | null;
@@ -81,7 +84,11 @@ interface Runtime {
 
 interface Pool {
   configuration: ProviderInferenceConfiguration;
+  disabled: boolean;
+  catalogCreationKnown: boolean;
+  configurationKnown: boolean;
   active: Set<Ticket>;
+  suspended: Set<Ticket>;
   queue: Ticket[];
 }
 
@@ -174,6 +181,8 @@ export class WorkerInferenceAdmission {
     (status: WorkerInferenceStatus) => void
   >();
   private revision = 0;
+  private catalogRevision: number | null = null;
+  private catalogProviders = new Map<string, number>();
   private notificationPending = false;
   private closing = false;
   private closure: Promise<void> | null = null;
@@ -237,50 +246,203 @@ export class WorkerInferenceAdmission {
     return this.journal?.recoverySnapshot() ?? [];
   }
 
-  /** Returns false for stale configuration; equal revisions cannot change a limit. */
+  /** Full membership is revisioned separately from each provider's limit. */
+  configureCatalog(input: ProviderInferenceCatalog): boolean {
+    const catalog = providerInferenceCatalogSchema.parse(input);
+    if (
+      this.catalogRevision !== null &&
+      catalog.catalogRevision < this.catalogRevision
+    )
+      return false;
+    const providers = new Map<string, number>();
+    for (const configuration of catalog.configurations) {
+      if (
+        providers.has(configuration.providerId) ||
+        configuration.inferenceCatalogCreatedRevision > catalog.catalogRevision
+      )
+        throw new Error(
+          "The provider inference catalog has inconsistent membership.",
+        );
+      providers.set(
+        configuration.providerId,
+        configuration.inferenceCatalogCreatedRevision,
+      );
+    }
+    if (
+      this.catalogRevision === catalog.catalogRevision &&
+      (providers.size !== this.catalogProviders.size ||
+        [...providers].some(
+          ([id, created]) => this.catalogProviders.get(id) !== created,
+        ))
+    )
+      throw new Error("Conflicting provider inference catalog revision.");
+    this.catalogRevision = catalog.catalogRevision;
+    this.catalogProviders = providers;
+    for (const pool of [...this.pools.values()]) {
+      if (
+        !providers.has(pool.configuration.providerId) &&
+        pool.configuration.inferenceCatalogCreatedRevision <=
+          catalog.catalogRevision
+      )
+        this.disablePool(pool);
+    }
+    for (const configuration of catalog.configurations) {
+      if (
+        (this.pools.get(configuration.providerId)?.configuration
+          .inferenceCatalogCreatedRevision ?? 0) > catalog.catalogRevision
+      )
+        continue;
+      this.configure(configuration);
+    }
+    this.changed();
+    return true;
+  }
+
+  private unavailableProvider(): Error {
+    return Object.assign(
+      new Error(
+        "The inference provider was removed or replaced. Select an available provider.",
+      ),
+      { code: "provider-removed" },
+    );
+  }
+
+  private disablePool(pool: Pool): void {
+    pool.disabled = true;
+    // A running turn retains capacity until physical settlement. Queued,
+    // reserved and confirmed-suspended operations cannot start another turn.
+    const operations = new Set([
+      ...pool.queue,
+      ...pool.active,
+      ...pool.suspended,
+    ]);
+    for (const ticket of operations)
+      if (["waiting", "granted", "suspended"].includes(ticket.state))
+        this.cancel(ticket, this.unavailableProvider());
+    this.prunePool(pool);
+    this.changed();
+  }
+
+  private prunePool(pool: Pool): void {
+    if (
+      pool.disabled &&
+      pool.active.size === 0 &&
+      pool.suspended.size === 0 &&
+      pool.queue.length === 0 &&
+      this.pools.get(pool.configuration.providerId) === pool
+    )
+      this.pools.delete(pool.configuration.providerId);
+  }
+
+  /** Runtime envelopes can initialize a newly created provider after an older
+   * membership snapshot, but cannot resurrect one removed by that snapshot. */
   configure(input: {
     providerId: string;
     maxConcurrentInference?: number;
     inferenceConfigRevision?: number;
+    inferenceCatalogCreatedRevision?: number;
   }): boolean {
-    const configuration = providerInferenceConfigurationSchema.parse(input);
-    const pool = this.pools.get(configuration.providerId);
-    // Legacy commands carry no configuration authority. They can initialize a
-    // default pool, but cannot overwrite even a revision-zero custom limit.
+    const pool = this.pools.get(input.providerId);
+    const configuration = providerInferenceConfigurationSchema.parse({
+      ...input,
+      maxConcurrentInference:
+        input.maxConcurrentInference ??
+        pool?.configuration.maxConcurrentInference,
+      inferenceConfigRevision:
+        input.maxConcurrentInference === undefined
+          ? (pool?.configuration.inferenceConfigRevision ?? 0)
+          : input.inferenceConfigRevision,
+      inferenceCatalogCreatedRevision:
+        input.inferenceCatalogCreatedRevision ??
+        (pool?.catalogCreationKnown
+          ? pool.configuration.inferenceCatalogCreatedRevision
+          : (this.catalogProviders.get(input.providerId) ??
+            pool?.configuration.inferenceCatalogCreatedRevision)) ??
+        0,
+    });
+    const created = configuration.inferenceCatalogCreatedRevision;
+    const creationKnown =
+      input.inferenceCatalogCreatedRevision !== undefined ||
+      this.catalogProviders.has(input.providerId);
+    const known = this.catalogProviders.get(configuration.providerId);
     if (
-      pool &&
-      input.maxConcurrentInference === undefined &&
-      input.inferenceConfigRevision === undefined
+      this.catalogRevision !== null &&
+      ((known === undefined && created <= this.catalogRevision) ||
+        (known !== undefined &&
+          created !== known &&
+          created <= this.catalogRevision))
     )
-      return true;
+      return false;
+    if (pool && created < pool.configuration.inferenceCatalogCreatedRevision)
+      return false;
     if (!pool) {
       this.pools.set(configuration.providerId, {
         configuration,
+        disabled: false,
+        catalogCreationKnown: creationKnown,
+        configurationKnown: input.maxConcurrentInference !== undefined,
         active: new Set(),
+        suspended: new Set(),
         queue: [],
       });
       this.changed();
       return true;
     }
-    if (
-      configuration.inferenceConfigRevision <
-      pool.configuration.inferenceConfigRevision
-    )
-      return false;
-    if (
-      configuration.inferenceConfigRevision ===
-      pool.configuration.inferenceConfigRevision
-    ) {
+    const replaced =
+      pool.catalogCreationKnown &&
+      created > pool.configuration.inferenceCatalogCreatedRevision;
+    if (!pool.catalogCreationKnown && creationKnown) {
+      // Learning the creation stamp of a legacy pool is not a replacement and
+      // must not cancel valid queued work or overwrite a newer known limit.
+      pool.configuration = {
+        ...pool.configuration,
+        inferenceCatalogCreatedRevision: created,
+      };
+      pool.catalogCreationKnown = true;
+      this.changed();
+    }
+    if (replaced) {
+      this.disablePool(pool);
+      this.pools.set(configuration.providerId, pool);
+    } else {
+      if (pool.disabled) return false;
+      // Legacy omissions do not reset a known limit or configuration revision.
       if (
-        configuration.maxConcurrentInference !==
-        pool.configuration.maxConcurrentInference
+        input.maxConcurrentInference === undefined &&
+        input.inferenceConfigRevision === undefined
       )
-        throw new Error(
-          "Conflicting provider inference configuration revision.",
-        );
-      return true;
+        return true;
+      if (
+        configuration.inferenceConfigRevision <
+        pool.configuration.inferenceConfigRevision
+      )
+        return false;
+      if (
+        configuration.inferenceConfigRevision ===
+        pool.configuration.inferenceConfigRevision
+      ) {
+        if (
+          pool.configurationKnown ||
+          input.maxConcurrentInference === undefined
+        ) {
+          if (
+            configuration.maxConcurrentInference !==
+            pool.configuration.maxConcurrentInference
+          )
+            throw new Error(
+              "Conflicting provider inference configuration revision.",
+            );
+          return true;
+        }
+        // A legacy envelope's fallback 8 is not an authoritative revision-zero
+        // limit. The first actual configuration may establish a different value.
+      }
     }
     pool.configuration = configuration;
+    pool.configurationKnown = replaced
+      ? input.maxConcurrentInference !== undefined
+      : pool.configurationKnown || input.maxConcurrentInference !== undefined;
+    pool.disabled = false;
     this.drain(pool);
     this.changed();
     return true;
@@ -331,11 +493,7 @@ export class WorkerInferenceAdmission {
     const pools: InferencePoolStatus[] = [];
     for (const pool of this.pools.values()) {
       const queued = this.queueEntries(pool);
-      const suspended = [...this.runtimes].flatMap((runtime) =>
-        [...runtime.records.values()].filter(
-          (ticket) => ticket.pool === pool && ticket.state === "suspended",
-        ),
-      );
+      const suspended = [...pool.suspended];
       pools.push({
         ...pool.configuration,
         activeCount: pool.active.size,
@@ -364,7 +522,14 @@ export class WorkerInferenceAdmission {
         ],
       });
     }
-    return { ...this.scope, revision: this.revision, pools };
+    return {
+      ...this.scope,
+      revision: this.revision,
+      pools,
+      ...(this.catalogRevision === null
+        ? {}
+        : { providerCatalogRevision: this.catalogRevision }),
+    };
   }
 
   private request(runtime: Runtime, input: InferenceRequest): InferenceTicket {
@@ -386,6 +551,8 @@ export class WorkerInferenceAdmission {
       if (
         (previous.input.purpose ?? "helper") !== (input.purpose ?? "helper") ||
         previous.input.providerId !== input.providerId ||
+        previous.input.providerCreationRevision !==
+          input.providerCreationRevision ||
         previous.input.chatId !== input.chatId ||
         previous.input.projectId !== input.projectId ||
         (previous.input.recoveryKey ?? null) !== (input.recoveryKey ?? null) ||
@@ -400,8 +567,20 @@ export class WorkerInferenceAdmission {
     // Old envelopes omit configuration. They establish the default only if this
     // provider has not already received a newer authoritative configuration.
     if (!this.pools.has(input.providerId))
-      this.configure({ providerId: input.providerId });
-    const pool = this.pools.get(input.providerId)!;
+      this.configure({
+        providerId: input.providerId,
+        inferenceCatalogCreatedRevision: input.providerCreationRevision,
+      });
+    const pool = this.pools.get(input.providerId);
+    if (
+      !pool ||
+      pool.disabled ||
+      (input.providerCreationRevision !== undefined &&
+        pool.catalogCreationKnown &&
+        input.providerCreationRevision !==
+          pool.configuration.inferenceCatalogCreatedRevision)
+    )
+      throw this.unavailableProvider();
     let resolve!: (lease: InferenceLease) => void;
     let reject!: (error: Error) => void;
     const ready = new Promise<InferenceLease>((yes, no) => {
@@ -595,10 +774,12 @@ export class WorkerInferenceAdmission {
         "Only a running inference can enter a native suspension boundary.",
       );
     this.transition(ticket, "suspended");
+    ticket.pool.suspended.add(ticket);
     this.diagnose(ticket, "suspended");
     ticket.observe?.(ticket.state);
     ticket.pool.active.delete(ticket);
     this.drain(ticket.pool);
+    if (ticket.pool.disabled) this.cancel(ticket, this.unavailableProvider());
     this.changed();
   }
 
@@ -621,6 +802,7 @@ export class WorkerInferenceAdmission {
       })
       .catch(() => {});
     this.transition(ticket, "waiting");
+    ticket.pool.suspended.delete(ticket);
     ticket.sequence = ++this.sequence;
     ticket.restoredOrder = null;
     ticket.enqueuedAt = Date.now();
@@ -671,10 +853,12 @@ export class WorkerInferenceAdmission {
     ticket.observe = undefined;
     ticket.admitted = undefined;
     ticket.stopListening();
+    ticket.pool.suspended.delete(ticket);
     ticket.pool.active.delete(ticket);
     const index = ticket.pool.queue.indexOf(ticket);
     if (index >= 0) ticket.pool.queue.splice(index, 1);
     this.drain(ticket.pool);
+    this.prunePool(ticket.pool);
     this.changed();
     // Keep the settled record for idempotent redelivery for this runtime's
     // lifetime. Confirmed runtime retirement drops its complete record set.
@@ -682,6 +866,7 @@ export class WorkerInferenceAdmission {
 
   private drain(pool: Pool): void {
     if (
+      pool.disabled ||
       this.closing ||
       (this.journal && this.reconcileRecovery && !this.recoveryInitialized) ||
       [...this.recoveryPending.values()].includes(
@@ -865,6 +1050,7 @@ export class WorkerInferenceAdmission {
   }
 
   private queueEntries(pool: Pool) {
+    if (pool.disabled) return [];
     const entries: Array<{
       ticket: Ticket | null;
       waiter: RestoredWaiter | null;
@@ -988,7 +1174,11 @@ export class WorkerInferenceAdmission {
                   this.diagnoseRecovery(record, "recovery-retired");
                 }
               } else if (result.disposition === "requeued") {
-                if (!this.pools.has(record.identity.providerId))
+                if (
+                  !this.pools.has(record.identity.providerId) &&
+                  (this.catalogRevision === null ||
+                    this.catalogProviders.has(record.identity.providerId))
+                )
                   this.configure({ providerId: record.identity.providerId });
                 if (!this.restored.has(record.key)) {
                   const previous = [...new Set(this.restored.values())].find(

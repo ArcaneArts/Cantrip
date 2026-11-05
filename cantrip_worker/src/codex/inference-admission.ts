@@ -66,6 +66,7 @@ interface Request {
     id: string;
     maxConcurrentInference?: number;
     inferenceConfigRevision?: number;
+    inferenceCatalogCreatedRevision?: number;
   };
   chatId?: string | null;
   projectId?: string | null;
@@ -121,6 +122,7 @@ export class CodexInferenceAdmission {
   acquire(input: Request): Promise<CodexInferenceExecution> {
     const identity = JSON.stringify([
       input.provider.id,
+      input.provider.inferenceCatalogCreatedRevision ?? null,
       input.purpose ?? "helper",
       input.chatId ?? null,
       input.projectId ?? null,
@@ -156,6 +158,7 @@ export class CodexInferenceAdmission {
       operationId: input.operationId,
       purpose: input.purpose,
       providerId: input.provider.id,
+      providerCreationRevision: input.provider.inferenceCatalogCreatedRevision,
       chatId: input.chatId,
       projectId: input.projectId,
       signal: input.signal,

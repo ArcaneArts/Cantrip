@@ -20,7 +20,17 @@ export const providerInferenceConfigurationSchema = z.object({
     DEFAULT_MAX_CONCURRENT_INFERENCE,
   ),
   inferenceConfigRevision: providerInferenceRevisionSchema.default(0),
+  inferenceCatalogCreatedRevision: providerInferenceRevisionSchema.default(0),
 });
+
+export const providerInferenceCatalogSchema = z.object({
+  catalogRevision: providerInferenceRevisionSchema,
+  configurations: z.array(providerInferenceConfigurationSchema).max(10_000),
+});
+
+export type ProviderInferenceCatalog = z.infer<
+  typeof providerInferenceCatalogSchema
+>;
 
 export const inferenceTicketStateSchema = z.enum([
   "waiting",
@@ -68,6 +78,7 @@ export const workerInferenceStatusSchema = z.object({
   workerId: z.string().min(1),
   workerGeneration: z.string().min(1),
   revision: z.number().int().nonnegative(),
+  providerCatalogRevision: providerInferenceRevisionSchema.optional(),
   pools: z.array(inferencePoolStatusSchema),
 });
 

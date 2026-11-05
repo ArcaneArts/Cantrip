@@ -169,7 +169,11 @@ impl SettingsRepository {
         }
         Ok(Some(provider_summary(row, vec![], None, None)?))
     }
+    pub async fn provider_inference_catalog(&self, owner: &str) -> Result<Value> {
+        // A single statement observes membership and its revision together.
+        self.json_rows("SELECT jsonb_build_object('catalogRevision', coalesce((SELECT revision FROM provider_inference_catalogs WHERE owner_id=$1),0), 'configurations', coalesce((SELECT jsonb_agg(jsonb_build_object('providerId',id,'maxConcurrentInference',max_concurrent_inference,'inferenceConfigRevision',inference_config_revision,'inferenceCatalogCreatedRevision',inference_catalog_created_revision) ORDER BY id) FROM model_providers WHERE owner_id=$1),'[]'::jsonb))", &[&owner]).await?.into_iter().next().context("provider inference catalog")
+    }
     pub async fn provider_inference_configurations(&self, owner: &str) -> Result<Vec<Value>> {
-        self.json_rows("SELECT jsonb_build_object('providerId',id,'maxConcurrentInference',max_concurrent_inference,'inferenceConfigRevision',inference_config_revision) FROM model_providers WHERE owner_id=$1", &[&owner]).await
+        self.json_rows("SELECT jsonb_build_object('providerId',id,'maxConcurrentInference',max_concurrent_inference,'inferenceConfigRevision',inference_config_revision,'inferenceCatalogCreatedRevision',inference_catalog_created_revision) FROM model_providers WHERE owner_id=$1", &[&owner]).await
     }
 }

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import {
   normalizeResponsesBaseUrl,
+  providerInferenceCatalogSchema,
   type AgentTimeSummary,
   type EncryptedModelProviderCreate,
   type EncryptedModelProviderUpdate,
@@ -402,12 +403,26 @@ export class ProviderCatalogRepository {
     return provider ? toProviderSummary(provider) : null;
   }
 
+  async readProviderInferenceCatalog(ownerId: string) {
+    // One MVCC statement: membership and its revision cannot come from different
+    // sides of a concurrent provider creation/deletion.
+    const [catalog] = await this.database
+      .select({
+        catalogRevision: sql<number>`coalesce((SELECT revision FROM provider_inference_catalogs WHERE owner_id = ${ownerId}), 0)`,
+        configurations: sql<unknown>`coalesce((SELECT jsonb_agg(jsonb_build_object('providerId', id, 'maxConcurrentInference', max_concurrent_inference, 'inferenceConfigRevision', inference_config_revision, 'inferenceCatalogCreatedRevision', inference_catalog_created_revision) ORDER BY id) FROM model_providers WHERE owner_id = ${ownerId}), '[]'::jsonb)`,
+      })
+      .from(sql`(SELECT 1) AS inference_catalog_scope`);
+    return providerInferenceCatalogSchema.parse(catalog);
+  }
+
   async listProviderInferenceConfigurations(ownerId: string) {
     return this.database
       .select({
         providerId: schema.modelProviders.id,
         maxConcurrentInference: schema.modelProviders.maxConcurrentInference,
         inferenceConfigRevision: schema.modelProviders.inferenceConfigRevision,
+        inferenceCatalogCreatedRevision:
+          schema.modelProviders.inferenceCatalogCreatedRevision,
       })
       .from(schema.modelProviders)
       .where(eq(schema.modelProviders.ownerId, ownerId));
