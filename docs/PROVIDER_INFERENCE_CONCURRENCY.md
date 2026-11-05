@@ -1352,3 +1352,39 @@ Source review covered committed, deleted, replaced, archived, legacy/unknown and
 conflicting receipts in both servers. Direct formatting, mechanical protocol
 export and `git diff --check` ran. No tests, builds, typechecks, benchmarks,
 migration execution, native execution or computer-use validation ran.
+
+## Transactional Task round completion
+
+Receipt-bearing live Task completions now use the same transaction as delayed
+worker-outcome recovery in both servers. The transaction commits the protected
+assistant message, Task/round metadata, retry bookkeeping, exact lane settlement,
+dispatch transition and a bounded terminal receipt together. Publication follows
+that commit. The callback receives its original input operation identity from
+the turn runtime; it never substitutes a newer input or server claim.
+
+The receipt contains monotonic authority already present on the round, native
+thread/turn identifiers, observation/projection timestamps and a SHA-256 digest
+of the validated outcome. The digest reuses the native history canonical JSON
+encoding, so JSONB key reordering and Node/Rust delivery do not change identity.
+A matching duplicate returns positive commit evidence before attempting current
+dispatch mutation authority. It checks the original physical receipt and current
+read authorization, then performs no Task/lane/dispatch/retry writes. Changed
+outcome content, status or supplied native identity is rejected. No response or
+prompt body is copied into this receipt. Migration 0259 validates new receipt
+metadata while allowing existing inputs without it.
+
+Completed finalization queues Goal startup on the same durable dispatch cycle.
+The next scheduler claim uses the saved finalizer result and fresh authority;
+the old completion callback does not launch the Goal again. Normal rounds settle
+once. This keeps completion and recovery consistent without granting any server
+control over provider tickets or changing worker physical-settlement rules.
+Legacy callbacks without an input receipt retain their existing behavior.
+
+Source review covered live/recovery races, duplicate completion after Task
+advancement, conflicting outcomes, supplied/omitted turn IDs, finalizer startup,
+archive/read authorization and rollback. Direct formatting, mechanical protocol
+export and `git diff --check` were performed. Migration 0259 was not executed.
+No tests, builds, typechecks, benchmarks, native execution or computer-use
+validation ran. Captured non-Goal Task-round disk delivery and historical-input
+retirement still require their integration; this terminal receipt makes a
+committed response distinguishable from a transport acknowledgement.

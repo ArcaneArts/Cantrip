@@ -622,7 +622,8 @@
     "executionTargetResourceKindSchema": 897,
     "executionTargetSchema": 865,
     "taskGoalOutcomeDeliverySchema": 10450,
-    "taskGoalOutcomeCommitSchema": 10457
+    "taskGoalOutcomeCommitSchema": 10457,
+    "workerChatTurnOutcomeNotificationSchema": 1963
   },
   "nodes": [
     {
@@ -11588,6 +11589,7 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
+      "name": "workerChatTurnOutcomeNotificationSchema",
       "shape": {
         "type": 1964,
         "nativeLogicalRoot": 1965,

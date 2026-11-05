@@ -1045,6 +1045,7 @@ export async function buildApp({
     launchPreparedTaskGoal,
     publishChatInvalidation,
     publishChatSummary,
+    publishTaskMessage,
     publishLiveInvalidation,
     readEncryptedTaskGoal,
     releaseTaskGoalLease,
