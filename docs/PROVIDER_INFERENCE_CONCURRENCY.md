@@ -633,3 +633,50 @@ capacity nor makes ambiguous input replayable. Task Goal/checkpoint ownership
 and pending-input outcome recovery remain separate required work. Source review,
 direct formatting, mechanical protocol export and diff checks were used; tests,
 builds, benchmarks and computer-use validation were not run.
+
+## Terminal pending-input failures
+
+An enforced input that was never forwarded can be recovered after transport
+loss. A positive worker setup/start rejection is different: it must follow the
+Task's normal failure/retry policy rather than repeatedly returning to the same
+canonical capacity queue with its attempt count restored. Both servers record
+that distinction as optional `failedBeforeDispatch` metadata on the existing
+round receipt. Older records without the field behave as false; no new prompt
+store or table is introduced.
+
+The observation requires the actual correlated worker failure with
+`input-not-dispatched` evidence and the exact operation, chat, message, provider
+and worker identities. It locks the owner, latest dispatch cycle and canonical
+placement/round before recording the marker. A replaced, deferred, archived or
+completed input cannot be changed by an old failure. Matching current authority
+or its single committed expiry fence may record the observation; delayed
+heartbeats, error text and absent UI activity cannot manufacture it.
+
+The marker commits before lease-sensitive failure settlement. A later stale
+lease error or a crash before the Task failure write cannot erase the positive
+observation. Expiry recovery revisits these unfinished terminal records to finish
+normal fenced failure settlement, including records with an earlier dispatch
+acknowledgement or uncertain predecessor. It does not requeue them or declare
+previous inference safe. Settled rounds leave that recovery selection.
+
+Marked receipts reject further input dispatch, pending-input deferral and
+no-start journal adoption. A freshly authorized Task attempt gets its own
+receipt and clears only its new marker; the same terminal cycle/fence cannot
+reset it by preparing again. Normal route failover still happens
+before terminal Task settlement and uses the existing output/input proof rules.
+
+Worker durable failure outcomes carry the same typed opaque proof through the
+existing authenticated notification path. Both servers record it before lane
+observation/heartbeat checks, so a lost normal response or an expired observer
+does not discard a valid terminal observation. Current-worker and previous-worker
+provider ticket settlement remain worker/native responsibilities. This metadata
+never frees a ticket or authorizes original-prompt replay.
+
+Source acceptance review covers a real unforwarded setup failure, an observer
+timeout without proof, a late predecessor after receipt replacement, expiry
+between response and failure settlement, a crash after recording the marker,
+and a fresh authorized retry. Existing cancellation exclusions in worker proof
+production remain in place. Task Goal/checkpoint ownership, abandoned preparation
+without a terminal observation, canonical timing integration and the final
+inference-path audit remain required. No tests, builds, benchmarks or computer-use
+validation were run; runtime behavior remains unverified.

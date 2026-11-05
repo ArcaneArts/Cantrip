@@ -1,6 +1,7 @@
 // Actual interactive server scheduling implementation, also exercised by the
 // Rust differential corpus. The extracted function body retains Source order.
 import type { FastifyInstance } from "fastify";
+import { workerInferenceFailure } from "../../chats/inference-failure.js";
 import {
   taskEncryptedOperationStartSchema,
   type TaskOpaqueSummary,
@@ -69,6 +70,10 @@ export function createTaskClaimedExecutionRuntime(
   ): Promise<void> => {
     let cleanupError: unknown = null;
     try {
+      await repository.tasks.inferenceInputs.recordFailure(
+        ownerId,
+        workerInferenceFailure(failure),
+      );
       if (
         await repository.tasks.inferenceInputs.defer(
           ownerId,

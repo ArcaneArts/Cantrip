@@ -1,7 +1,25 @@
 import { WorkerCommandError } from "../workers/bridge.js";
 
-/** Only the actual worker response can prove a failed attempt is replayable.
- * Timeouts/disconnects, message regexes and absent activity cannot mint proof. */
+/** Only correlated worker responses carry execution proof. Observation failures do not. */
+export function workerInferenceFailure(error: unknown):
+  | {
+      workerId: string;
+      evidence: import("@cantrip/protocol").InferenceFailureEvidence;
+    }
+  | undefined {
+  if (
+    !(error instanceof WorkerCommandError) ||
+    error.operation !== "chat.turn" ||
+    !error.workerId ||
+    !error.requestId ||
+    error.code === "worker-command-timeout" ||
+    !error.inference
+  )
+    return;
+  return { workerId: error.workerId, evidence: error.inference };
+}
+
+/** Safe output/dispatch evidence supplements, rather than replaces, input authority. */
 export function workerFailureAllowsRetry(
   error: unknown,
   expected: {
@@ -11,19 +29,12 @@ export function workerFailureAllowsRetry(
     providerId: string;
   },
 ): boolean {
-  if (
-    !(error instanceof WorkerCommandError) ||
-    error.operation !== "chat.turn" ||
-    error.workerId !== expected.workerId ||
-    !error.requestId ||
-    error.code === "worker-command-timeout"
-  )
-    return false;
-  const proof = error.inference;
+  const failure = workerInferenceFailure(error);
   return Boolean(
-    proof &&
-    proof.chatId === expected.chatId &&
-    proof.messageId === expected.messageId &&
-    proof.providerId === expected.providerId,
+    failure &&
+    failure.workerId === expected.workerId &&
+    failure.evidence.chatId === expected.chatId &&
+    failure.evidence.messageId === expected.messageId &&
+    failure.evidence.providerId === expected.providerId,
   );
 }

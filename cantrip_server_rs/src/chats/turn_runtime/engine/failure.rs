@@ -10,6 +10,11 @@ impl Runtime {
     ) -> Result<()> {
         let e = &turn.execution;
         if turn.task_relay.is_some() && truthy(turn.options.get("taskDispatchLease")) {
+            if let Some(proof) = crate::workers::inference_failure::evidence(error) {
+                crate::tasks::Repository::new(self.dependencies.events.database.clone())
+                    .record_inference_failure(&turn.owner, &events::text(&e["workerId"])?, proof)
+                    .await?;
+            }
             match crate::tasks::Repository::new(self.dependencies.events.database.clone())
                 .defer_inference_input(
                     &turn.owner,

@@ -44,7 +44,8 @@ const RETRYABLE_TERMINAL_STATES: readonly TaskDispatchCycleState[] = [
 ];
 
 /** A committed expiry can precede a server crash or failed recovery write.
- * Revisit only a still-canonical, enforced pending input, not expired history. */
+ * Revisit canonical pending input or a recorded terminal input awaiting failure
+ * settlement, not settled expired history. */
 function pendingInputRecovery() {
   return sql`EXISTS (
     SELECT 1 FROM task_planning_rounds r
@@ -53,10 +54,12 @@ function pendingInputRecovery() {
     WHERE r.id=${schema.taskDispatchCycles.operationId}
       AND r.status='running' AND r.relay_result IS NULL
       AND r.assistant_message_id IS NULL AND r.turn_id IS NULL
-      AND r.inference_input->>'accepted'='true'
-      AND r.inference_input->>'allAttemptsEnforced'='true'
       AND r.inference_input->>'deferred'='false'
-      AND r.inference_input->>'firstDispatchedOperationId' IS NULL
+      AND (r.inference_input->>'failedBeforeDispatch'='true' OR (
+        r.inference_input->>'accepted'='true'
+        AND r.inference_input->>'allAttemptsEnforced'='true'
+        AND r.inference_input->>'firstDispatchedOperationId' IS NULL
+      ))
       AND chat.archived_at IS NULL AND t.state NOT IN ('failed','complete')
       AND NOT EXISTS(SELECT 1 FROM task_dispatch_cycles newer
         WHERE newer.chat_id=${schema.taskDispatchCycles.chatId}

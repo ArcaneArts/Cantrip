@@ -10,7 +10,10 @@ import {
   labelingRoutes,
 } from "../../chats/automatic-labeling.js";
 import { canAutomaticallySwitchProviderAccount } from "../../models/chatgpt-account-routing.js";
-import { workerFailureAllowsRetry } from "../../chats/inference-failure.js";
+import {
+  workerFailureAllowsRetry,
+  workerInferenceFailure,
+} from "../../chats/inference-failure.js";
 import { clearAgentInteraction } from "./clear-agent-interaction.js";
 
 import { protectChatInput } from "./protect-chat-input.js";
@@ -2099,6 +2102,10 @@ export function createChatTurnRuntime({
       } catch (error: unknown) {
         if (options.taskDispatchLease && encryptedTaskRelay) {
           try {
+            await repository.tasks.inferenceInputs.recordFailure(
+              ownerId,
+              workerInferenceFailure(error),
+            );
             if (
               await repository.tasks.inferenceInputs.defer(
                 ownerId,

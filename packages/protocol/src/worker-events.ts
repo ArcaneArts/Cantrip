@@ -1,4 +1,5 @@
 import { workerInferenceStatusSchema } from "./inference-admission.js";
+import { inferenceFailureEvidenceSchema } from "./inference-failure.js";
 import { nativeTurnModelAttributionSchema } from "./native-turn-model-attribution.js";
 import { z } from "zod";
 import { generateLabelResultSchema } from "./labeling.js";
@@ -389,6 +390,7 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
         z.object({
           ok: z.literal(false),
           error: z.string().min(1),
+          inference: inferenceFailureEvidenceSchema.optional(),
         }),
       ]),
     })

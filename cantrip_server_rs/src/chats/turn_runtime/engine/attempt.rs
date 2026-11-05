@@ -18,23 +18,10 @@ fn worker_failure_allows_retry(
     turn: &PreparedTurn,
     runtime: &Value,
 ) -> bool {
-    let command = error
-        .downcast_ref::<CommandFailure>()
-        .and_then(|v| match v {
-            CommandFailure::Bridge(v) => Some(v),
-            _ => None,
-        })
-        .or_else(|| error.downcast_ref::<crate::workers::bridge::CommandError>());
-    let Some(command) = command else {
+    let Some(proof) = crate::workers::inference_failure::evidence(error) else {
         return false;
     };
-    let Some(proof) = &command.inference else {
-        return false;
-    };
-    !command.unavailable
-        && command.request_id.is_some()
-        && command.code.as_deref() != Some("worker-command-timeout")
-        && proof["chatId"] == turn.execution["chatId"]
+    proof["chatId"] == turn.execution["chatId"]
         && proof["messageId"] == turn.user_message["id"]
         && proof["providerId"] == runtime["provider"]["id"]
 }

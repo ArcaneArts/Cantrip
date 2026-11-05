@@ -3,6 +3,7 @@ pub mod command_bus;
 mod command_deadline;
 pub mod credentials;
 mod frames;
+pub(crate) mod inference_failure;
 pub mod limits;
 pub mod maintenance;
 mod notifications;
