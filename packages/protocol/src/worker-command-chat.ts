@@ -1,4 +1,7 @@
-import { cantripOsExecutionSchema } from "./worker-command-cantrip-os.js";
+import {
+  cantripOsExecutionSchema,
+  cantripOsDesktopPlacement,
+} from "./worker-command-cantrip-os.js";
 import {
   nativeSettingsUpdateCommandSchema,
   nativePermissionUpdateCommandSchema,
@@ -217,7 +220,6 @@ export const workerChatCommandSchemas = [
           command.worktreeId !== scope.worktreeId ||
           command.policyProjectId !== scope.projectId ||
           command.cwd !== scope.guestPath ||
-          command.computerUseAuthority !== undefined ||
           command.rootKind !==
             (scope.sourceKind === "git" ? "git-worktree" : "folder-root")
         ) {
@@ -226,6 +228,30 @@ export const workerChatCommandSchemas = [
             message:
               "OS turns must use their exact captured project, worktree, guest cwd, and Linux capabilities.",
             path: ["osExecution"],
+          });
+        }
+        const authority = command.computerUseAuthority;
+        const placement = cantripOsDesktopPlacement(command.osExecution);
+        if (
+          authority &&
+          (authority.ownerId !== scope.ownerId ||
+            authority.workerId !== scope.workerId ||
+            authority.chatId !== command.chatId ||
+            authority.contextKind !== "project" ||
+            authority.projectId !== scope.projectId ||
+            authority.placementId !== scope.worktreeId ||
+            authority.executionLaneId !== command.executionLaneId ||
+            Object.entries(placement).some(
+              ([key, value]) =>
+                authority.osPlacement?.[key as keyof typeof placement] !==
+                value,
+            ))
+        ) {
+          context.addIssue({
+            code: "custom",
+            message:
+              "OS computer use must match its captured desktop placement and execution lane.",
+            path: ["computerUseAuthority"],
           });
         }
       }

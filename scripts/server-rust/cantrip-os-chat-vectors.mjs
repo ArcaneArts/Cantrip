@@ -32,6 +32,73 @@ function add(schema, input) {
   });
 }
 add("workerRequestEnvelopeSchema", turn);
+const computerUseAuthority = {
+  ownerId: os.scope.ownerId,
+  serverId: "fixture-server",
+  workerId: os.scope.workerId,
+  chatId: turn.command.chatId,
+  projectId: os.scope.projectId,
+  contextKind: "project",
+  placementId: os.scope.worktreeId,
+  executionLaneId: "fixture-os-cua-lane",
+  generation: 1,
+  cantripAppAllowed: false,
+  profile: {
+    selectedId: ":yolo",
+    effectiveId: ":yolo",
+    forcedByWorktreePolicy: false,
+    usesDefault: false,
+  },
+  osPlacement: protocol.cantripOsDesktopPlacement(os),
+};
+const cuaTurn = {
+  ...turn,
+  command: {
+    ...turn.command,
+    executionLaneId: computerUseAuthority.executionLaneId,
+    computerUseAuthority,
+  },
+};
+add("workerRequestEnvelopeSchema", cuaTurn);
+if (!cases.at(-1).outcome.ok)
+  throw new Error(JSON.stringify(cases.at(-1).outcome));
+for (const key of Object.keys(computerUseAuthority.osPlacement)) {
+  add("workerRequestEnvelopeSchema", {
+    ...cuaTurn,
+    command: {
+      ...cuaTurn.command,
+      computerUseAuthority: {
+        ...computerUseAuthority,
+        osPlacement: {
+          ...computerUseAuthority.osPlacement,
+          [key]: "00000000-0000-4000-8000-000000000099",
+        },
+      },
+    },
+  });
+}
+for (const key of [
+  "ownerId",
+  "workerId",
+  "chatId",
+  "projectId",
+  "placementId",
+  "executionLaneId",
+])
+  add("workerRequestEnvelopeSchema", {
+    ...cuaTurn,
+    command: {
+      ...cuaTurn.command,
+      computerUseAuthority: { ...computerUseAuthority, [key]: "wrong" },
+    },
+  });
+add("workerRequestEnvelopeSchema", {
+  ...cuaTurn,
+  command: {
+    ...cuaTurn.command,
+    computerUseAuthority: { ...computerUseAuthority, osPlacement: undefined },
+  },
+});
 for (const override of [
   { executionProfile: "ide" },
   { osExecution: undefined },

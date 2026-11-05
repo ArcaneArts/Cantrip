@@ -31,13 +31,8 @@ fn authority(service: &AuthService, owner: &str, mut result: Value) -> Result<Va
         && truthy(context.get("computerUseEnabled"))
         && truthy(receipt.get("executionLaneId"))
     {
-        let profile = crate::chats::managed_console::permission_profile(context);
-        let mut authority = crate::settings::parse_response(
-            "cuaPreviewAuthoritySchema",
-            Some(
-                &json!({"ownerId":owner,"serverId":service.server_id,"workerId":context["workerId"],"chatId":context["chatId"],"projectId":context["projectId"],"contextKind":context["contextKind"],"placementId":if context["contextKind"]=="project" {context["worktreeId"].clone()} else {context["scratchRootId"].clone()},"generation":context["computerUseAuthorityGeneration"],"profile":json!({"selectedId":profile["selectedId"],"effectiveId":profile["effectiveId"],"forcedByWorktreePolicy":profile["forcedByWorktreePolicy"],"usesDefault":profile["usesDefault"]})}),
-            ),
-        )?;
+        let mut authority =
+            crate::chats::computer_use_authority::preview(owner, &service.server_id, context)?;
         authority["executionLaneId"] = receipt["executionLaneId"].clone();
         authority
     } else {
