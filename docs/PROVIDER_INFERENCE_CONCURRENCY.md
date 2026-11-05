@@ -128,8 +128,7 @@ processing remains independent of those waits. A shared first-turn title does
 not await release of its compound reservation before the response.
 
 This integrates regular and compaction model clients and exposes a session
-binding for independently admitted model-client helpers. Stateless label replies
-still need their explicit transport-drain integration. No public RPC, prompt
+binding for independently admitted model-client helpers. No public RPC, prompt
 queue, status polling or completed-resource registry is added.
 
 Patch `0056` admits every parallel stage-one memory extraction independently on
@@ -155,6 +154,23 @@ its real parent. This avoids rebinding the parent's connection gate to a new roo
 and preserves its shared inference channel. The child acquires its own turn ticket;
 the existing consolidation lease heartbeat also runs while that turn waits for
 capacity. This adds no provider-availability probe, second input queue or app poll.
+
+Patch `0057` binds stateless labeling to the same transport ownership resources
+without a nested provider acquisition. The worker already holds its standalone
+or compound title/response reservation. Native Core retains the 25-second
+inference deadline, then cancels and awaits actual dispatch/body/socket cleanup
+before returning either text or an error. The catalog RPC no longer wraps that
+cleanup in an observer timeout. Its existing timeout-versus-failure errors remain
+distinct. Dropping an observer also cancels the scope while retained transport
+resources finish; the worker's existing native fencing owns ambiguous outcomes.
+
+The worker still observes labels with its existing 27-second bound and retains
+its native settlement callback. The server's 30-second execution budget remains
+separate from capacity waiting. These observation deadlines cannot manufacture
+transport settlement. A same-provider first-response title uses its already-held
+reservation through cleanup and then continues serially; another provider is
+released before response admission. No new ticket, thread, prompt queue or RPC
+shape is introduced for this drain scope.
 
 Known dependency and user/approval waits can suspend their parent's reservation
 only after all parent sampling streams have stopped. Resumption rejoins FIFO before

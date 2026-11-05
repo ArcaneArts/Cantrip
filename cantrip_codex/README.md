@@ -497,3 +497,12 @@ parent's root gate. Its ordinary native turn owns separate capacity, and existin
 consolidation heartbeats cover capacity waits. Only source review, direct Rust
 formatting, mechanical patch generation and diff checks were performed. No native
 binary, test, build, benchmark or computer-use validation ran.
+
+Patch `0057` retains stateless labeling transport ownership through success,
+failure and its existing 25-second native execution deadline. Core cancels and
+awaits real response cleanup before the catalog RPC replies; a timeout alone
+cannot release the worker's outer ticket. This scope requests no nested grant,
+so a same-provider title and first response continue sharing one serial ticket
+at limit one. Existing worker/server observation budgets and timeout error
+classification remain. Source review, Rust formatting, mechanical patch
+generation and diff checks ran; no runtime, tests or builds were executed.
