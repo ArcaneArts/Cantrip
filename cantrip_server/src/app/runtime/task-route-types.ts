@@ -7,13 +7,13 @@ import type {
   TaskDispatchWorkerLease,
 } from "@cantrip/protocol";
 import type {
-  TaskGoalWorkerResult,
   TaskMessageOpaqueContent,
   TaskOpaqueSummary,
   TaskOperationRelayRequest,
   TaskGoalSyncContext,
 } from "@cantrip/protocol/tasks";
 import type { FastifyReply } from "fastify";
+import type { TaskGoalReadResult } from "./task-goal-runtime.js";
 import type {
   ChatExecutionAttribution,
   ChatExecutionContext,
@@ -146,9 +146,7 @@ export interface TaskRouteRuntimeDependencies {
     activateGoal?: boolean,
     runtimeFailure?: TaskGoalSyncContext["runtimeFailure"],
     observationOnly?: boolean,
-  ) => Promise<
-    Omit<TaskGoalWorkerResult, "task"> & { task: TaskOpaqueSummary }
-  >;
+  ) => Promise<TaskGoalReadResult>;
   releaseTaskGoalLease: (
     cycleId: string,
     expected?: import("@cantrip/protocol").TaskDispatchFence,

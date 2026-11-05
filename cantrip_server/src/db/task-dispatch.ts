@@ -1003,7 +1003,11 @@ export class TaskDispatchRepository {
     expected: TaskDispatchCycleSummary,
     leaseOwner: string,
     now = new Date(),
-    options: { allowSettled?: boolean } = {},
+    options: {
+      allowSettled?: boolean;
+      /** Condition from the actual native read; not independent lease authority. */
+      assertObservation?(transaction: TaskDispatchDatabase): Promise<void>;
+    } = {},
   ): Promise<TaskDispatchWorkerLease> {
     return this.database.transaction(async (transaction) => {
       // Same owner/task/cycle lock order as enqueue and claim; a recovery may
@@ -1014,6 +1018,7 @@ export class TaskDispatchRepository {
         .where(eq(schema.users.id, ownerId))
         .for("update")
         .limit(1);
+      await options.assertObservation?.(transaction);
       const tasks = await transaction
         .select()
         .from(schema.tasks)
@@ -1033,6 +1038,7 @@ export class TaskDispatchRepository {
         .limit(1);
       const row = rows[0];
       const task = tasks[0];
+      const input = row?.goalInput;
       const latest = await transaction
         .select({ id: schema.taskDispatchCycles.id })
         .from(schema.taskDispatchCycles)
@@ -1057,8 +1063,18 @@ export class TaskDispatchRepository {
         task.state === "complete" ||
         !task.hasFinalPlan ||
         !task.hasGoalPrompt ||
+        (input &&
+          !input.deferred &&
+          ((!input.failedBeforeDispatch &&
+            input.firstDispatchedOperationId === null) ||
+            (input.terminal && !input.terminal.projectedAt))) ||
         row.operationId !== expected.operationId ||
         row.fencingToken !== expected.fencingToken ||
+        row.state !== expected.state ||
+        row.leaseOwner !== expected.leaseOwner ||
+        row.physicalWorkerId !== expected.physicalWorkerId ||
+        row.modelRouteId !== expected.modelRouteId ||
+        row.providerAccountId !== expected.providerAccountId ||
         row.codexThreadId !== expected.codexThreadId ||
         row.worktreeId !== expected.worktreeId ||
         ![
