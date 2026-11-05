@@ -22,6 +22,14 @@ import { registerWorkerContracts } from "./worker-contracts.mjs";
 import { registerWorkerCommandContracts } from "./worker-command-contracts.mjs";
 
 export const contractRoots = [
+  "nativeTurnSuspensionSchema",
+  "nativeSuspensionTargetSchema",
+  "nativeSuspensionActorSchema",
+  "nativeSuspensionActiveTurnSchema",
+  "nativeSuspensionEvidenceSchema",
+  "nativeSuspensionErrorSchema",
+  "nativeSuspensionRecordSchema",
+  "chatNativeSuspensionSchema",
   "workerInferenceStatusSchema",
   "inferenceFailureEvidenceSchema",
   "nativeInferenceRecoverySchema",
@@ -701,6 +709,7 @@ export function sourceContractSchema(name) {
 }
 
 const refinements = new Map([
+  [protocol.nativeSuspensionRecordSchema, "native-suspension-record"],
   [protocol.cantripOsGuestPathSchema, "cantrip-os-guest-path"],
   [
     protocol.cantripOsDependencyOverlaySchema.shape.path,

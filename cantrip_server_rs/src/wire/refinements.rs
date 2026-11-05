@@ -7,6 +7,9 @@ pub(super) fn apply(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<(), ValidationError> {
+    if super::native_suspensions::refine(tag, result, path)? {
+        return Ok(());
+    }
     if super::cantrip_os::refine(tag, result, path, message)? {
         return Ok(());
     }

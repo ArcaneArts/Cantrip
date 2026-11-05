@@ -53,6 +53,67 @@ Authority remains split as follows:
   worker/runtime authority, and queue/autonomy pause state.
 - The app displays authoritative state and requests explicit Resume or Stop.
 
+## Server suspension records
+
+Migration `0266_native_turn_suspensions` adds nullable
+`chats.native_suspension_state`. Existing chats keep their existing JSON when
+this column is absent. A versioned record stores control intent, original
+native thread/turn identity, committed checkpoint evidence, source placement,
+and execution-owner correlation. The worker's persistent `storageId` is an
+opaque locator; server metadata contains no worker filesystem path, checkpoint
+contents, credentials, or reusable admission grants. Runtime fingerprints are
+diagnostic; actual native restoration decides compatibility.
+
+`pausing` describes a requested boundary; `paused` requires its committed
+checkpoint and exact original turn. `resuming` retains that checkpoint and the
+queue hold until a matching acknowledged Resume records `running`. The old
+checkpoint identity remains evidence while running, without authorizing another
+Resume. Stop intent supersedes earlier controls immediately. Its evidence is
+retained for cleanup until acknowledged Stop or actual terminal proof clears
+resumability. A failed Stop remains Stop intent and permits a Stop retry, not
+resumption. A failed new Pause does not offer Resume from evidence retained
+from the earlier running boundary; retry Pause to obtain current confirmation.
+Restoration errors retain an explicit Resume retry. Normal completion after a successful Resume retains the existing
+queue intent rather than introducing another pause.
+
+The TypeScript `NativeSuspensionRepository` commits each transition under the
+existing project/chat locks and advances the managed queue revision atomically.
+Duplicate requests join the canonical in-flight control. Every acknowledgement
+must match its control ID and current execution owner. An explicit actor claim
+in that control epoch is required before acknowledging Pause, Resume, idle, or
+Stop. Claims are correlation metadata, not execution authorization: the control
+service must obtain actual fresh admission and verify native checkpoint/history
+evidence before reporting success. Resume source checks compare actual locked
+chat placement, provider route, and source thread; they do not compare rotated
+API keys or require an exact diagnostic fingerprint.
+
+The database enforces the queue hold at the actual write for `pausing`,
+`paused`, `resuming`, `stopping`, `error`, and unknown phases/versions. Existing
+generic unpause writers cannot release that hold. Failed state writes roll
+back without losing the prior evidence. Public chat summaries expose only
+status, pending action, resumability, original turn, timing, and a fixed error code with optional encrypted
+details. Invalid or unsupported records remain stored and show a safe error;
+strict recovery reads reject them without replacing their bytes. Rust uses
+the generated source contracts, explicit semantic validation, strict recovery
+reads, and the same public projection.
+
+This is a persistence and protocol foundation. Production control orchestration,
+Rust mutation-service integration, worker reconciliation and client controls
+still need to adopt it. It does not change the current product pause guarantee
+or establish whole-worker termination acceptance.
+
+The server foundation is checked by 15 real migrated-database state tests,
+62 existing native-command cases, and seven settings-persistence cases. All
+1,114 protocol checks pass, including the unchanged historical export
+fingerprint. Rust compares 96 source contract cases and seven public
+projections, then seeds and reopens the actual server database in separate
+fresh processes and verifies the legacy-unpause constraint. Its test owns an
+isolated PostgreSQL runtime. These verify server metadata persistence, without
+claiming native Codex or whole-worker resumption. Server typecheck and focused
+format checks pass. The standard check still stops at the existing application
+decomposition limits; the separate repository guard reports the existing
+`native-commands.ts` limit. Later standard-check stages did not run.
+
 ## Checkpoint store foundation
 
 `codex-turn-checkpoint` is a small native workspace crate applied only to the

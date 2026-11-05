@@ -1,4 +1,8 @@
-import type { CantripOsRunRoots, TunnelWireSummary } from "@cantrip/protocol";
+import type {
+  CantripOsRunRoots,
+  TunnelWireSummary,
+  NativeSuspensionRecord,
+} from "@cantrip/protocol";
 import type { TaskInferenceInputState } from "./task-inference-inputs.js";
 export { projectAlerts, chatGoalObservations } from "./schema-alerts.js";
 export { inferenceResourceRevocations } from "./schema-inference-resource-revocations.js";
@@ -3373,6 +3377,9 @@ export const chats = pgTable(
       .notNull()
       .default(1),
     automationPaused: boolean("automation_paused").notNull().default(false),
+    nativeSuspensionState: jsonb(
+      "native_suspension_state",
+    ).$type<NativeSuspensionRecord>(),
     managedAutonomyStopped: boolean("managed_autonomy_stopped")
       .notNull()
       .default(false),
@@ -3446,6 +3453,10 @@ export const chats = pgTable(
     check(
       "chats_computer_use_authority_generation_check",
       sql`${table.computerUseAuthorityGeneration} >= 1`,
+    ),
+    check(
+      "chats_native_suspension_hold_check",
+      sql`${table.nativeSuspensionState} IS NULL OR CASE WHEN ${table.nativeSuspensionState}->>'version' = '1' AND ${table.nativeSuspensionState}->>'phase' IN ('running', 'idle', 'stopped', 'completed', 'failed') THEN true ELSE ${table.automationPaused} END`,
     ),
     check(
       "chats_github_agent_context_check",

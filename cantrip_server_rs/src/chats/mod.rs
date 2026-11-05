@@ -25,6 +25,7 @@ pub mod message_writes;
 mod messages;
 mod model_configuration;
 mod native_history;
+pub mod native_suspensions;
 pub mod protect_input;
 pub mod recovery;
 pub mod roots;

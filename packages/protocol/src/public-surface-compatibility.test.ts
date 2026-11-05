@@ -147,6 +147,21 @@ const retiredWorkbenchExports = [
   "protectedCodeSettingsRecordSchema",
   "unavailableCodeCapabilities",
 ];
+// Reviewed durable suspension contracts and privacy-preserving projections.
+const nativeSuspensionExports = [
+  "chatNativeSuspension",
+  "chatNativeSuspensionSchema",
+  "isNativeSuspensionResumable",
+  "nativeSuspensionActiveTurnSchema",
+  "nativeSuspensionActorSchema",
+  "nativeSuspensionErrorSchema",
+  "nativeSuspensionEvidenceSchema",
+  "nativeSuspensionPhaseSchema",
+  "nativeSuspensionRecordSchema",
+  "nativeSuspensionTargetSchema",
+  "nativeTurnSuspensionSchema",
+  "storedChatNativeSuspension",
+];
 const cuaRuntimeExports = [
   "CUA_CHUNK_BYTES",
   "CUA_CONTROL_BYTES",
@@ -517,6 +532,8 @@ const agentChatExports = [
 ].sort();
 
 const cantripOsExports = [
+  "cantripOsRecoveryRequestSchema",
+  "cantripOsRecoveryResultSchema",
   "tunnelOsPrepareResultSchema",
   "cantripOsDesktopPlacement",
   "cantripOsDesktopPlacementSchema",
@@ -684,6 +701,7 @@ describe("protocol public surface compatibility", () => {
     ).toEqual(nativeResourceAndTimingExports);
     expect(allExportNames).toHaveLength(
       2158 +
+        nativeSuspensionExports.length +
         cantripOsExports.length +
         inferenceAdmissionExports.length +
         providerSetupAndLabelExports.length +
@@ -706,6 +724,7 @@ describe("protocol public surface compatibility", () => {
       ...exportNames.filter(
         (name) =>
           !cuaRuntimeExports.includes(name) &&
+          !nativeSuspensionExports.includes(name) &&
           !managedRuntimeExports.includes(name) &&
           !accountCreditsExports.includes(name) &&
           !browserCursorExports.includes(name) &&
@@ -742,7 +761,12 @@ describe("protocol public surface compatibility", () => {
         retiredWorkspaceProfileExports.includes(name),
       ),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2151 + cantripOsExports.length);
+    expect(exportNames).toHaveLength(
+      2151 + cantripOsExports.length + nativeSuspensionExports.length,
+    );
+    expect(
+      exportNames.filter((name) => nativeSuspensionExports.includes(name)),
+    ).toEqual(nativeSuspensionExports);
     expect(
       exportNames.filter((name) => cantripOsExports.includes(name)),
     ).toEqual(cantripOsExports);
