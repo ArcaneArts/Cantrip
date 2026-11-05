@@ -35,6 +35,7 @@ import {
   taskMessageOpaqueContentSchema,
 } from "./tasks.js";
 import { taskDispatchWorkerLeaseSchema } from "./task-scheduling.js";
+import { taskInferenceInputReceiptSchema } from "./task-inference-input.js";
 import { encryptionKeyBytesSchema } from "./encryption.js";
 import { mcpServerOpaqueRuntimeSchema } from "./protected-secrets.js";
 import { NATIVE_SUBAGENT_PROTOCOL_VERSION } from "./runtime-capabilities.js";
@@ -199,8 +200,42 @@ export const workerChatCommandSchemas = [
       automationPaused: z.boolean().default(false),
       resultMode: agentTurnResultModeSchema.default({ kind: "visible" }),
       taskDispatchLease: taskDispatchWorkerLeaseSchema.optional(),
+      taskInferenceInput: taskInferenceInputReceiptSchema.optional(),
     })
     .superRefine((command, context) => {
+      const taskInput = command.taskInferenceInput;
+      if (
+        taskInput &&
+        (command.nativeCommandReceipt !== undefined ||
+          command.resultMode.kind !== "task-encrypted" ||
+          command.resultMode.operation.operationId !==
+            taskInput.dispatch.operationId ||
+          command.resultMode.operation.chatId !== taskInput.chatId ||
+          command.resultMode.operation.userMessage.id !==
+            taskInput.clientMessageId ||
+          command.chatId !== taskInput.chatId ||
+          command.clientMessageId !== taskInput.clientMessageId ||
+          command.executionLaneId !== taskInput.executionLaneId ||
+          command.worktreeId !== taskInput.worktreeId ||
+          command.provider.id !== taskInput.providerId ||
+          (command.provider.accountId ?? null) !==
+            taskInput.providerAccountId ||
+          command.model.routeId !== taskInput.modelRouteId ||
+          command.taskDispatchLease?.cycleId !== taskInput.dispatch.cycleId ||
+          command.taskDispatchLease?.operationId !==
+            taskInput.dispatch.operationId ||
+          command.taskDispatchLease?.leaseOwner !==
+            taskInput.dispatch.leaseOwner ||
+          command.taskDispatchLease?.fencingToken !==
+            taskInput.dispatch.fencingToken)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Task input receipt must match its canonical round, dispatch, and placement.",
+          path: ["taskInferenceInput"],
+        });
+      }
       if (
         (command.executionProfile === "cantrip-os") !==
         Boolean(command.osExecution)

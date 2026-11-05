@@ -895,6 +895,14 @@ export class ChatExecutionLaneRepository {
   ): Promise<boolean> {
     const now = new Date();
     return this.database.transaction(async (transaction) => {
+      // Start/recovery lock the chat before its lane. Settlement must follow
+      // that order too, including a concurrent failed transport observer.
+      await transaction
+        .select({ id: schema.chats.id })
+        .from(schema.chats)
+        .where(eq(schema.chats.id, chatId))
+        .for("update")
+        .limit(1);
       const laneRows = await transaction
         .select({
           lane: schema.chatExecutionLanes,

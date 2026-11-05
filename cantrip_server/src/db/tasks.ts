@@ -31,6 +31,8 @@ import {
   type TaskOperationLeaseFence,
 } from "./task-operation-fence.js";
 import { taskRetrySummary } from "../tasks/automatic-retry.js";
+import { TaskInferenceInputRepository } from "./task-inference-inputs.js";
+import type { ChatExecutionLaneRepository } from "./repository/chat-execution-lanes.js";
 import { detachProjectTab, projectTabKey } from "./tab-layouts.js";
 
 type TaskDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
@@ -231,7 +233,13 @@ function assertMutationKeepsOperationalState(
 }
 
 export class TaskRepository {
-  constructor(private readonly database: TaskDatabase) {}
+  readonly inferenceInputs: TaskInferenceInputRepository;
+  constructor(
+    private readonly database: TaskDatabase,
+    lanes?: ChatExecutionLaneRepository,
+  ) {
+    this.inferenceInputs = new TaskInferenceInputRepository(database, lanes);
+  }
 
   async list(ownerId: string, projectId: string): Promise<TaskOpaqueSummary[]> {
     const rows = await this.database
@@ -1135,14 +1143,23 @@ export class TaskRepository {
       .innerJoin(
         schema.taskPlanningRounds,
         eq(schema.taskPlanningRounds.id, schema.tasks.activeOperationId),
-      );
+      )
+      .where(isNull(schema.taskPlanningRounds.inferenceInput));
+    let reconciled = 0;
     for (const { task, round } of active) {
       await this.database.transaction(async (transaction) => {
         const now = new Date();
-        await transaction
+        const changed = await transaction
           .update(schema.taskPlanningRounds)
           .set({ ...roundColumns(round.failureRound), completedAt: now })
-          .where(eq(schema.taskPlanningRounds.id, round.id));
+          .where(
+            and(
+              eq(schema.taskPlanningRounds.id, round.id),
+              isNull(schema.taskPlanningRounds.inferenceInput),
+            ),
+          )
+          .returning({ id: schema.taskPlanningRounds.id });
+        if (!changed.length) return;
         await transaction
           .update(schema.tasks)
           .set({
@@ -1157,9 +1174,10 @@ export class TaskRepository {
               eq(schema.tasks.activeOperationId, round.id),
             ),
           );
+        reconciled += 1;
       });
     }
-    return active.length;
+    return reconciled;
   }
 
   /** @deprecated Plaintext Task completion was removed by the E2EE cutover. */

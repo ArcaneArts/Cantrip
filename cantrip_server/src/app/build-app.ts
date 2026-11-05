@@ -1317,6 +1317,7 @@ export async function buildApp({
     repository,
     runAsOwner,
     dispatchNextQueuedPrompt,
+    queueTaskScheduleTick,
     live: {
       publishEncryptedChatMessage,
       publishTaskMessage,

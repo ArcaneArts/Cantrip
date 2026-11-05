@@ -84,8 +84,24 @@ export function createTaskSchedulerRuntime(
           const expired = plan.reconcileStartedLeases
             ? await repository.taskDispatch.expireStartedLeases(ownerId)
             : [];
+          let expiredAttention = 0;
           for (const cycle of expired) {
             try {
+              if (
+                await repository.tasks.inferenceInputs.defer(
+                  ownerId,
+                  cycle.chatId,
+                  {
+                    kind: "expired",
+                    cycleId: cycle.id,
+                    operationId: cycle.operationId,
+                    fencingToken: cycle.fencingToken,
+                  },
+                )
+              ) {
+                publishChatInvalidation(cycle.chatId, "task");
+                continue;
+              }
               await repository.tasks.failOperation(
                 ownerId,
                 cycle.chatId,
@@ -113,16 +129,17 @@ export function createTaskSchedulerRuntime(
                 "Could not reconcile an expired started Task lease",
               );
             }
+            expiredAttention += 1;
             publishChatInvalidation(cycle.chatId, "task");
           }
-          if (expired.length > 0) {
+          if (expiredAttention > 0) {
             app.log.warn(
               {
                 event: "task.scheduler.started-leases-expired",
                 subsystem: "task-scheduler",
                 operation: "reconcile-leases",
                 status: "attention-required",
-                counts: { expired: expired.length },
+                counts: { expired: expiredAttention },
               },
               "Expired started Task leases require user attention",
             );

@@ -102,6 +102,7 @@ interface ChatTurnLiveMutationDependencies extends Pick<
   | "appendLiveTaskMessage"
   | "interruptLiveAgentInteractionRequests"
   | "publishChatSummary"
+  | "publishChatInvalidation"
   | "publishChatTurnBoundary"
   | "publishInferenceProgress"
   | "recordLiveAgentInteractionRequest"

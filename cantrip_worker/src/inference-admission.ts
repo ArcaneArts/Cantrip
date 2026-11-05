@@ -151,6 +151,7 @@ function timingField(
 interface RestoredWaiter {
   record: InferenceJournalRecord;
   records: InferenceJournalRecord[];
+  taskInputNotDispatched: Set<string>;
   enqueuedAt: number;
   claimed: Ticket | null;
 }
@@ -841,6 +842,15 @@ export class WorkerInferenceAdmission {
 
   private recoverable(record: InferenceJournalRecord): boolean {
     const identity = record.identity.recovery;
+    if (identity?.taskInput) {
+      const task = identity.taskInput;
+      return (
+        record.identity.chatId === task.chatId &&
+        identity.messageId === task.clientMessageId &&
+        record.identity.providerId === task.providerId &&
+        record.identity.operationId === task.operationId
+      );
+    }
     return (
       inferenceNeverStarted(record) &&
       Boolean(
@@ -939,10 +949,16 @@ export class WorkerInferenceAdmission {
                   const waiter = previous ?? {
                     record,
                     records: [],
+                    taskInputNotDispatched: new Set<string>(),
                     enqueuedAt: Date.now(),
                     claimed: null,
                   };
                   waiter.records.push(record);
+                  if (
+                    result.taskInputNotDispatched === true &&
+                    record.identity.recovery?.taskInput
+                  )
+                    waiter.taskInputNotDispatched.add(record.key);
                   if (record.order < waiter.record.order)
                     waiter.record = record;
                   this.restored.set(record.key, waiter);
@@ -1025,7 +1041,12 @@ export class WorkerInferenceAdmission {
         chatId: ticket.input.chatId ?? null,
         projectId: ticket.input.projectId ?? null,
       };
-      void this.adoptWithRetry(ticket, identity, records)
+      void this.adoptWithRetry(
+        ticket,
+        identity,
+        records,
+        new Set(waiter.taskInputNotDispatched),
+      )
         .then(() => {
           for (const record of records) this.removeRestoration(record.key);
           waiter.claimed = null;
@@ -1051,6 +1072,7 @@ export class WorkerInferenceAdmission {
     ticket: Ticket,
     identity: Parameters<WorkerInferenceJournal["adopt"]>[1],
     records: readonly InferenceJournalRecord[],
+    taskInputNotDispatched: ReadonlySet<string>,
   ): Promise<void> {
     let delay = 1_000;
     const signal = AbortSignal.any([
@@ -1068,6 +1090,7 @@ export class WorkerInferenceAdmission {
           records,
           ticket.restoredOrder,
           signal,
+          taskInputNotDispatched,
         );
         return;
       } catch (error) {
@@ -1085,6 +1108,7 @@ export class WorkerInferenceAdmission {
     const waiter = this.restored.get(key);
     this.restored.delete(key);
     if (!waiter) return;
+    waiter.taskInputNotDispatched.delete(key);
     waiter.records = waiter.records.filter((record) => record.key !== key);
     if (waiter.records.length)
       waiter.record = waiter.records.reduce((a, b) =>

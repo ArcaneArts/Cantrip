@@ -1,4 +1,5 @@
 import type { CantripOsRunRoots } from "@cantrip/protocol";
+import type { TaskInferenceInputState } from "./task-inference-inputs.js";
 export { projectAlerts, chatGoalObservations } from "./schema-alerts.js";
 export {
   projectSourceIdentities,
@@ -3756,6 +3757,7 @@ export const taskPlanningRounds = pgTable(
       .$type<TaskOperationRelayRequest>()
       .notNull(),
     relayResult: jsonb("relay_result").$type<TaskOperationRelayResult>(),
+    inferenceInput: jsonb("inference_input").$type<TaskInferenceInputState>(),
     failureTask: jsonb("failure_task").$type<TaskOpaqueContent>().notNull(),
     failureRound: jsonb("failure_round")
       .$type<TaskPlanningRoundOpaqueContent>()

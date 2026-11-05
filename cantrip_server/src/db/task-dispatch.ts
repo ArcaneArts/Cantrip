@@ -43,6 +43,27 @@ const RETRYABLE_TERMINAL_STATES: readonly TaskDispatchCycleState[] = [
   "expired",
 ];
 
+/** A committed expiry can precede a server crash or failed recovery write.
+ * Revisit only a still-canonical, enforced pending input, not expired history. */
+function pendingInputRecovery() {
+  return sql`EXISTS (
+    SELECT 1 FROM task_planning_rounds r
+    JOIN tasks t ON t.chat_id=r.chat_id AND t.active_operation_id=r.id
+    JOIN chats chat ON chat.id=t.chat_id
+    WHERE r.id=${schema.taskDispatchCycles.operationId}
+      AND r.status='running' AND r.relay_result IS NULL
+      AND r.assistant_message_id IS NULL AND r.turn_id IS NULL
+      AND r.inference_input->>'accepted'='true'
+      AND r.inference_input->>'allAttemptsEnforced'='true'
+      AND r.inference_input->>'deferred'='false'
+      AND r.inference_input->>'firstDispatchedOperationId' IS NULL
+      AND chat.archived_at IS NULL AND t.state NOT IN ('failed','complete')
+      AND NOT EXISTS(SELECT 1 FROM task_dispatch_cycles newer
+        WHERE newer.chat_id=${schema.taskDispatchCycles.chatId}
+          AND (newer.created_at,newer.id)>(${schema.taskDispatchCycles.createdAt},${schema.taskDispatchCycles.id}))
+  )`;
+}
+
 export class TaskDispatchNotFoundError extends Error {}
 
 export class TaskDispatchConflictError extends Error {
@@ -220,12 +241,18 @@ export class TaskDispatchRepository {
       })
       .from(schema.taskDispatchCycles)
       .where(
-        inArray(schema.taskDispatchCycles.state, [
-          "queued",
-          "claimed",
-          "running",
-          "paused",
-        ]),
+        or(
+          inArray(schema.taskDispatchCycles.state, [
+            "queued",
+            "claimed",
+            "running",
+            "paused",
+          ]),
+          and(
+            eq(schema.taskDispatchCycles.state, "expired"),
+            pendingInputRecovery(),
+          ),
+        ),
       )
       .orderBy(
         asc(schema.taskDispatchCycles.ownerId),
@@ -249,6 +276,7 @@ export class TaskDispatchRepository {
           owner.hasClaimed = true;
           break;
         case "running":
+        case "expired":
           owner.hasRunning = true;
           break;
         case "paused":
@@ -1085,6 +1113,7 @@ export class TaskDispatchRepository {
           eq(schema.taskDispatchCycles.ownerId, ownerId),
           eq(schema.taskDispatchCycles.state, "claimed"),
           isNull(schema.taskDispatchCycles.startedAt),
+          sql`NOT EXISTS (SELECT 1 FROM ${schema.taskPlanningRounds} r WHERE r.id = ${schema.taskDispatchCycles.operationId} AND r.inference_input IS NOT NULL)`,
           lte(schema.taskDispatchCycles.leaseExpiresAt, now),
         ),
       )
@@ -1117,15 +1146,30 @@ export class TaskDispatchRepository {
             eq(schema.taskDispatchCycles.state, "running"),
             and(
               eq(schema.taskDispatchCycles.state, "claimed"),
-              sql`${schema.taskDispatchCycles.startedAt} IS NOT NULL`,
+              or(
+                sql`${schema.taskDispatchCycles.startedAt} IS NOT NULL`,
+                sql`EXISTS (SELECT 1 FROM ${schema.taskPlanningRounds} r WHERE r.id = ${schema.taskDispatchCycles.operationId} AND r.inference_input IS NOT NULL)`,
+              ),
             ),
           ),
           lte(schema.taskDispatchCycles.leaseExpiresAt, now),
         ),
       )
       .returning();
+    const pending = await this.database
+      .select()
+      .from(schema.taskDispatchCycles)
+      .where(
+        and(
+          eq(schema.taskDispatchCycles.ownerId, ownerId),
+          eq(schema.taskDispatchCycles.state, "expired"),
+          pendingInputRecovery(),
+        ),
+      );
     return taskDispatchCycleListSchema.parse(
-      rows.map(toTaskDispatchCycleSummary),
+      [
+        ...new Map([...rows, ...pending].map((row) => [row.id, row])).values(),
+      ].map(toTaskDispatchCycleSummary),
     );
   }
 

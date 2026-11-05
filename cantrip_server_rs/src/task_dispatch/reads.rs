@@ -7,7 +7,7 @@ impl Repository {
         summaries(&all(Executor::Database(&self.database),"SELECT to_jsonb(c)::text FROM task_dispatch_cycles c WHERE c.owner_id=$1 ORDER BY c.fifo_created_at ASC,c.id ASC",&[&owner]).await?)
     }
     pub async fn list_scheduler_owners(&self) -> Result<Vec<Value>> {
-        let rows=self.database.query("SELECT DISTINCT owner_id,state FROM task_dispatch_cycles WHERE state IN ('queued','claimed','running','paused') ORDER BY owner_id ASC,state ASC",&[]).await?;
+        let rows=self.database.query(&format!("SELECT DISTINCT owner_id,state FROM task_dispatch_cycles c WHERE state IN ('queued','claimed','running','paused') OR (state='expired' AND {}) ORDER BY owner_id ASC,state ASC",super::recovery::PENDING_TASK_INPUT),&[]).await?;
         let mut owners = crate::wire::value::Object::new();
         for row in rows {
             let owner = row.get::<String>(0)?;
@@ -16,7 +16,7 @@ impl Repository {
             let key = match state.as_str() {
                 "queued" => "hasQueued",
                 "claimed" => "hasClaimed",
-                "running" => "hasRunning",
+                "running" | "expired" => "hasRunning",
                 "paused" => "hasPaused",
                 _ => continue,
             };

@@ -47,7 +47,7 @@ async fn apply(
     input: Value,
     phase: String,
 ) -> Result<Value> {
-    if phase == "inference-recovery" {
+    if phase == "inference-recovery" || phase == "task-input-dispatch" {
         let worker = input["workerId"].as_str().unwrap();
         let current = || {
             service.server_id.as_str() == input["serverId"].as_str().unwrap()
@@ -66,7 +66,25 @@ async fn apply(
             return Err(CommandError::new("stale-worker-generation", None, 409).into());
         }
         let repo = Repository::new(service.repository.database.clone());
-        let result = repo.reconcile_inference(&owner, &input).await?;
+        let result = if phase == "task-input-dispatch" {
+            crate::tasks::Repository::new(service.repository.database.clone())
+                .dispatch_inference_input(
+                    &owner,
+                    worker,
+                    &input["receipt"],
+                    input["phase"].as_str().unwrap(),
+                )
+                .await?
+        } else if input["record"]["identity"]["recovery"]
+            .get("taskInput")
+            .is_some_and(|v| !v.is_null())
+        {
+            crate::tasks::Repository::new(service.repository.database.clone())
+                .reconcile_inference_input(&owner, &input)
+                .await?
+        } else {
+            repo.reconcile_inference(&owner, &input).await?
+        };
         if !current() {
             return Err(CommandError::new("stale-worker-generation", None, 409).into());
         }
@@ -77,9 +95,20 @@ async fn apply(
                 json!({"kind":"chat","chatId":result["chatId"]}),
                 &Value::Null,
             );
+            if result["disposition"] == "requeued"
+                && input["record"]["identity"]["recovery"]
+                    .get("taskInput")
+                    .is_some_and(|v| !v.is_null())
+            {
+                service.execution.scheduler.queue_tick();
+            }
         }
         return crate::settings::parse_response(
-            "nativeInferenceRecoveryResultSchema",
+            if phase == "task-input-dispatch" {
+                "taskInferenceInputDispatchResultSchema"
+            } else {
+                "nativeInferenceRecoveryResultSchema"
+            },
             Some(&result),
         );
     }
@@ -162,6 +191,7 @@ async fn handle(
             "settings-evidence" => "nativeSettingsEvidenceSchema",
             "receipt" => "nativeCommandSettlementSchema",
             "inference-recovery" => "nativeInferenceRecoverySchema",
+            "task-input-dispatch" => "taskInferenceInputDispatchSchema",
             _ => "nativeCommandDispatchSchema",
         },
         body.as_ref(),
@@ -202,6 +232,8 @@ async fn handle(
         Err(cause) => {
             if let Some(e) = cause.downcast_ref::<CommandError>() {
                 code(e.status, &e.code)
+            } else if cause.is::<crate::task_dispatch::Conflict>() {
+                code(409, "stale-task-input")
             } else {
                 middleware::failure(&service, &ctx.id, &cause)
             }
@@ -214,6 +246,10 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         .route("/api/internal/native-commands/dispatch", post(handle))
         .route("/api/internal/native-commands/continue", post(handle))
         .route("/api/internal/native-commands/receipt", post(handle))
+        .route(
+            "/api/internal/native-commands/task-input-dispatch",
+            post(handle),
+        )
         .route(
             "/api/internal/native-commands/inference-recovery",
             post(handle),

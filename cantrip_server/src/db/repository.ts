@@ -695,7 +695,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
       ensureOwnerPolicyState: (ownerId) =>
         this.policies.ensureOwnerState(ownerId),
     });
-    this.tasks = new TaskRepository(database);
+    this.tasks = new TaskRepository(database, this.chatExecutionLanes);
     this.taskDispatch = new TaskDispatchRepository(database);
     this.taskRetries = new TaskRetryRepository(database);
     this.taskScheduling = new TaskSchedulingRepository(database);
