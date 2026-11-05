@@ -5431,7 +5431,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         >[0]["initialLabel"] = labelJob
           ? {
               providerId: labelJob.provider.id,
-              run: (inference) =>
+              run: (inference, signal) =>
                 (initialLabelPromise ??= (async () => {
                   let result: Awaited<
                     ReturnType<typeof generatePrivateLabel>
@@ -5463,7 +5463,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                           provider: labelingProvider,
                           instructions,
                           input,
-                          signal: preparationSignal,
+                          signal: signal ?? preparationSignal,
                         });
                       },
                     );
@@ -5486,6 +5486,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         ) => {
           let observation: InferenceProgressObservation | null = null;
           const nativeCommandState: {
+            inferenceSource:
+              | ReturnType<ManagedNativeCommandSession["adoptGuiContinuation"]>
+              | undefined;
             receipt: NativeCommandReceipt | undefined;
             prompt: string;
             authority: typeof command.computerUseAuthority;
@@ -5493,6 +5496,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             dispatch:
               Parameters<ManagedNativeCommandSession["dispatchGui"]>[1] | null;
           } = {
+            inferenceSource: undefined,
             receipt: command.nativeCommandReceipt,
             prompt,
             authority: command.computerUseAuthority,
@@ -6062,15 +6066,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                         !grant.execution
                       )
                         return;
-                      entry.adapter.adoptGuiContinuation(
-                        nativeCommandState.entry === entry
-                          ? previous.operationGeneration
-                          : null,
-                        grant.receipt,
-                        dispatch,
-                        rootReceipt,
-                        guiBridgeSignal,
-                      );
+                      nativeCommandState.inferenceSource =
+                        entry.adapter.adoptGuiContinuation(
+                          nativeCommandState.entry === entry
+                            ? previous.operationGeneration
+                            : null,
+                          grant.receipt,
+                          dispatch,
+                          rootReceipt,
+                          guiBridgeSignal,
+                        );
                       nativeCommandState.entry = entry;
                       nativeCommandState.dispatch = dispatch;
                       guiAdapters.add(entry.adapter);
@@ -6088,6 +6093,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 return {
                   operationGeneration:
                     nativeCommandState.receipt!.operationGeneration,
+                  inferenceSource: nativeCommandState.inferenceSource,
                   threadId,
                   prompt: nextPrompt,
                 };
@@ -6173,9 +6179,41 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     runtime,
                   );
                 }
+                if (command.nativeCommandReceipt) {
+                  const entry = managedCommandSessionFor(runtime, session, {
+                    cwd: command.cwd,
+                    threadId: prepared.threadId,
+                    model: command.model,
+                    provider: provider(),
+                    permissionProfileId: command.permissionProfileId,
+                  });
+                  const identity = managedSessionIdentity(session);
+                  const dispatch = {
+                    chatId: identity.chatId,
+                    threadId: prepared.threadId,
+                    contextKind: identity.contextKind,
+                    projectId: identity.projectId,
+                    placementId: identity.placementId,
+                    runtimeGeneration: entry.generation,
+                    connectionId: `gui:${command.nativeCommandReceipt.operationGeneration}`,
+                    modelRouteId: command.model.routeId,
+                    providerAccountId: provider().accountId ?? null,
+                  };
+                  nativeCommandState.inferenceSource =
+                    await entry.adapter.prepareGuiInference(
+                      nativeCommandState.receipt!,
+                      dispatch,
+                      command.nativeCommandReceipt,
+                      guiBridgeSignal,
+                    );
+                  nativeCommandState.entry = entry;
+                  nativeCommandState.dispatch = dispatch;
+                  guiAdapters.add(entry.adapter);
+                }
                 return {
                   threadId: prepared.threadId,
                   inheritThreadSettings: !standalone,
+                  inferenceSource: nativeCommandState.inferenceSource,
                 };
               };
             }

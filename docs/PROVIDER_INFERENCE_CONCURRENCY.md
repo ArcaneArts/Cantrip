@@ -1595,3 +1595,32 @@ tests, builds, typechecks, benchmarks, native execution, migration execution or
 computer-use validation ran. Before-capture native checkpoint recovery, ordinary
 Chat history coverage, canonical timing and bounded-runtime retention still need
 the final goal audit; this milestone covers captured Task response delivery.
+
+## Canonical GUI inference ownership
+
+Receipt-bearing GUI turns now bind their actual accepted native command before
+automatic naming or waiting for provider capacity. Both server implementations
+bind a newly created native thread under the existing chat/activation transaction;
+an already bound thread, placement, route, activation or transport cannot be
+replaced through preparation. Dispatch remains a separate transaction immediately
+before forwarding native input. A failed transport acknowledgement does not
+pretend that dispatch was rolled back.
+
+The resulting managed execution owns one inference source across preparation,
+same-provider naming and its response. An authorized native retry receives a new
+source and operation generation. Ending either physical or canonical logical
+execution seals new preparation and cancels an unused reservation immediately.
+The owner remains until both completion phases finish. Closing admission never
+frees already-started inference; native settlement or confirmed process fencing
+still owns that release. A separate naming provider receives the operation's
+cancellation signal without holding a response-provider ticket.
+
+Completed GUI tickets use source-owned weak references rather than permanent
+completed-operation registries. Redelivery must first pass the actual canonical
+accepted-command binding, so removing a collected handle cannot mint another
+grant for a finished command. Direct Task input and standalone helper lifetimes
+remain separate entries in the final retention audit.
+
+This integration received source review, direct formatting and `git diff --check`.
+No tests, builds, typechecks, benchmarks, native execution, migration execution,
+hosted checks or computer-use validation ran.

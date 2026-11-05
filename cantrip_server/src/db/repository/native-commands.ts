@@ -982,8 +982,10 @@ export class NativeCommandRepository {
         !samePlacement(context, input.workerId, input.session) ||
         !sameRuntimeRoute(context, input.session) ||
         !input.session.threadId ||
-        context.threadId !== input.session.threadId ||
-        prior.threadId !== input.session.threadId ||
+        (context.threadId !== null &&
+          context.threadId !== input.session.threadId) ||
+        (prior.threadId !== null &&
+          prior.threadId !== input.session.threadId) ||
         prior.placementId !== input.session.placementId ||
         prior.projectId !== input.session.projectId ||
         prior.contextKind !== input.session.contextKind ||
@@ -1010,6 +1012,22 @@ export class NativeCommandRepository {
           activation.runtimeGeneration !== input.session.runtimeGeneration)
       )
         throw new NativeCommandError("stale-activation");
+      // The first GUI preparation creates the native thread before the response
+      // is dispatched. Bind it under this same admission/activation lock rather
+      // than waiting for an eventual thread-loaded event to catch up.
+      if (!context.threadId) {
+        if (!row.executionLaneId)
+          throw new NativeCommandError("thread-identity-mismatch");
+        const bound = await this.lanes
+          .inTransaction(tx)
+          .updateChatExecutionLaneRuntime(
+            row.chatId,
+            row.executionLaneId,
+            input.session.threadId,
+            context.status,
+          );
+        if (!bound) throw new NativeCommandError("thread-identity-mismatch");
+      }
       await tx
         .update(schema.nativeCommandActivations)
         .set({ runtimeGeneration: input.session.runtimeGeneration })

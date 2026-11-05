@@ -1,9 +1,11 @@
 use super::{CommandError, Repository, context, receipt};
 use crate::{
+    chats::execution_lanes,
     database::{Executor, Transaction},
     wire::{self, Value, coercion::truthy},
 };
 use anyhow::{Context, Result};
+use futures::FutureExt;
 
 async fn bind(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Value> {
     let text = |value: &Value| {
@@ -36,11 +38,13 @@ async fn bind(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Value>
     }
     if valid {
         valid = truthy(session.get("threadId"))
-            && current.as_ref().unwrap()["threadId"] == session["threadId"];
+            && (current.as_ref().unwrap()["threadId"].is_null()
+                || current.as_ref().unwrap()["threadId"] == session["threadId"])
+            && (wire::property(row.get("identity"), "threadId")? == Some(&Value::Null)
+                || wire::property(row.get("identity"), "threadId")? == session.get("threadId"));
     }
     if valid {
         for field in [
-            "threadId",
             "placementId",
             "projectId",
             "contextKind",
@@ -88,6 +92,25 @@ async fn bind(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Value>
             && activation["runtime_generation"] != session["runtimeGeneration"])
     {
         return Err(CommandError::new("stale-activation", None, 409).into());
+    }
+    // Bind the first native thread with its actual accepted GUI activation.
+    // An eventual thread-loaded event is not preparation ownership authority.
+    if current["threadId"].is_null() {
+        if !truthy(row.get("execution_lane_id")) {
+            return Err(CommandError::new("thread-identity-mismatch", None, 409).into());
+        }
+        let bound = execution_lanes::update_runtime_in_transaction(
+            tx,
+            &chat,
+            &text(&row["execution_lane_id"])?,
+            Some(&text(&session["threadId"])?),
+            &text(&current["status"])?,
+        )
+        .boxed()
+        .await?;
+        if !bound {
+            return Err(CommandError::new("thread-identity-mismatch", None, 409).into());
+        }
     }
     tx.query(
         "UPDATE native_command_activations SET runtime_generation=$1 WHERE chat_id=$2",

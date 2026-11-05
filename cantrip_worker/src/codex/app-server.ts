@@ -16,7 +16,11 @@ import {
   CodexInferenceAdmission,
   type CodexInferenceExecution,
 } from "./inference-admission.js";
-import type { WorkerInferenceAdmission } from "../inference-admission.js";
+import type {
+  WorkerInferenceAdmission,
+  InferenceOperationSource,
+  InferenceOperationLifetime,
+} from "../inference-admission.js";
 import { codexProviderLogContext } from "./provider-config.js";
 export {
   planQuestionId,
@@ -2775,24 +2779,32 @@ export class CodexAppServer implements CodexRuntime {
       : null;
   }
 
+  private lifetimeForCurrentInferenceSource(
+    source: InferenceOperationSource | undefined,
+    admission: CodexInferenceAdmission | null,
+  ): InferenceOperationLifetime | undefined {
+    if (!source) return undefined;
+    if (
+      !source.nativeTransportGeneration ||
+      source.nativeTransportGeneration !== this.transportGeneration
+    )
+      throw new Error(
+        "The canonical inference source belongs to another native transport.",
+      );
+    source.assertCurrent();
+    return admission?.lifetimeForSource(source);
+  }
+
   async prepareAdmittedNativeExecution(
     options: PrepareAdmittedNativeExecutionOptions,
   ): Promise<AdmittedNativeExecution> {
     const admission = this.#inference;
     if (this.inferenceAdmission && !admission)
       throw new Error("The native inference process is no longer connected.");
-    if (
-      options.inferenceSource &&
-      (!options.inferenceSource.nativeTransportGeneration ||
-        options.inferenceSource.nativeTransportGeneration !==
-          this.transportGeneration)
-    )
-      throw new Error(
-        "The canonical inference source belongs to another native transport.",
-      );
-    const lifetime = options.inferenceSource
-      ? admission?.lifetimeForSource(options.inferenceSource)
-      : undefined;
+    const lifetime = this.lifetimeForCurrentInferenceSource(
+      options.inferenceSource,
+      admission,
+    );
     const inference = await admission?.acquire({
       operationId: options.operationGeneration,
       lifetime,
@@ -2907,11 +2919,21 @@ export class CodexAppServer implements CodexRuntime {
   private async runTurnAttempt(
     options: RunAgentTurnOptions,
   ): Promise<AgentTurnResult> {
+    if (options.inferenceSource?.signal)
+      options = {
+        ...options,
+        preparationSignal: options.preparationSignal
+          ? AbortSignal.any([
+              options.preparationSignal,
+              options.inferenceSource.signal,
+            ])
+          : options.inferenceSource.signal,
+      };
     if (
       options.initialLabel &&
       options.initialLabel.providerId !== options.provider.id
     )
-      await options.initialLabel.run();
+      await options.initialLabel.run(undefined, options.preparationSignal);
     let inference: CodexInferenceExecution | undefined;
     let failure: unknown;
     let executionEntered = false;
@@ -2922,10 +2944,17 @@ export class CodexAppServer implements CodexRuntime {
         options.subagentDefaults,
         options.executionProfile,
       );
-      inference = await this.#inference?.acquire({
+      const admission = this.#inference;
+      const lifetime = this.lifetimeForCurrentInferenceSource(
+        options.inferenceSource,
+        admission,
+      );
+      inference = await admission?.acquire({
         operationId:
           options.operationGeneration ??
+          options.inferenceSource?.operationId ??
           `turn:${options.clientMessageId}:${randomUUID()}`,
+        lifetime,
         purpose: "turn",
         recoveryKey: `chat:${options.chatId}:message:${options.clientMessageId}`,
         recovery: options.inferenceRecovery?.() ?? {
@@ -2938,8 +2967,10 @@ export class CodexAppServer implements CodexRuntime {
         signal: options.preparationSignal,
       });
 
+      options.inferenceSource?.assertCurrent();
       if (options.initialLabel?.providerId === options.provider.id)
-        await options.initialLabel.run(inference);
+        await options.initialLabel.run(inference, options.preparationSignal);
+      options.inferenceSource?.assertCurrent();
       executionEntered = true;
       return await this.executeInferenceTurn(options, inference);
     } catch (error) {

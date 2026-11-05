@@ -155,11 +155,17 @@ export class CodexInferenceAdmission {
     }
     const lifetime = this.runtime.createOperationLifetime(source.operationId);
     this.sourceLifetimes.set(source, lifetime);
-    // Closing source authority does not cancel or settle native inference.
-    void source.released.then(
-      () => lifetime.close(),
-      () => lifetime.close(),
-    );
+    const signal = source.signal;
+    const close = () => lifetime.close();
+    signal?.addEventListener("abort", close, { once: true });
+    if (signal?.aborted) close();
+    // Closing admission cancels only unused reservations. Running native work
+    // remains owned until actual settlement, even if publication has ended.
+    const released = () => {
+      signal?.removeEventListener("abort", close);
+      close();
+    };
+    void source.released.then(released, released);
     return lifetime;
   }
 

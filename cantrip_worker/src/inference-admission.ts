@@ -44,6 +44,7 @@ export interface InferenceOperationLifetime {
 export interface InferenceOperationSource {
   readonly operationId: string;
   readonly nativeTransportGeneration: string | null;
+  readonly signal?: AbortSignal;
   readonly released: Promise<void>;
   assertCurrent(): void;
 }
