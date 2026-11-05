@@ -77,25 +77,7 @@ impl GuiQueue {
         let prompt = prompt
             .filter(|prompt| truthy(Some(prompt)))
             .ok_or_else(|| CommandError::new("queue-item-unavailable", None, 409))?;
-        let resume = matches!(kind, "add" | "start");
-        let mut intent = json!({"scope":"thread","settingKeys":Vec::<Value>::new(),"expectedTurnId":Value::Null});
-        if resume {
-            intent["resumeAutonomy"] = json!(true);
-        }
-        let digest = options
-            .get("payloadDigest")
-            .filter(|v| !v.is_null())
-            .cloned()
-            .unwrap_or_else(|| json!(managed_queue::digest(&mutation.stringify())));
-        Ok(json!({
-            "expectedRevision":options.get("expectedRevision").filter(|v|!v.is_null()).unwrap_or(&state["revision"]),
-            "mutation":mutation,
-            "admission":json!({
-                "workerId":context["workerId"],"operationId":options["operationId"],"origin":"gui","method":format!("thread/queue/{kind}"),
-                "session":json!({"chatId":context["chatId"],"threadId":context["threadId"],"contextKind":context["contextKind"],"projectId":context["projectId"],"placementId":context["worktreeId"],"modelRouteId":context["modelRouteId"],"providerAccountId":context["providerAccountId"],"runtimeGeneration":control["runtimeGeneration"],"connectionId":Value::Null}),
-                "payloadDigest":digest,"protectedPayload":prompt["protectedContent"]["envelope"],"expectedActivationGeneration":control["activationGeneration"],"intent":intent
-            })
-        }))
+        prepare_input(context, mutation, options, &state, &control, &prompt)
     }
     pub async fn mutate(
         &self,
@@ -142,7 +124,7 @@ impl GuiQueue {
         }
     }
 }
-fn reject(result: &Value) -> Result<()> {
+pub(crate) fn reject(result: &Value) -> Result<()> {
     if result["receipt"]["status"] == "rejected" {
         let code = result["receipt"]
             .get("rejectionCode")
@@ -153,4 +135,39 @@ fn reject(result: &Value) -> Result<()> {
         return Err(CommandError::new(code, None, 409).into());
     }
     Ok(())
+}
+
+/// Shared GUI envelope construction; reads can be bound to an owning transaction.
+pub(crate) fn prepare_input(
+    context: &Value,
+    mutation: &Value,
+    options: &Value,
+    state: &Value,
+    control: &Value,
+    prompt: &Value,
+) -> Result<Value> {
+    let kind = mutation["kind"]
+        .as_str()
+        .context("GUI queue mutation kind")?;
+    let resume =
+        options.get("resumeAutonomy") != Some(&json!(false)) && matches!(kind, "add" | "start");
+    let mut intent =
+        json!({"scope":"thread","settingKeys":Vec::<Value>::new(),"expectedTurnId":Value::Null});
+    if resume {
+        intent["resumeAutonomy"] = json!(true);
+    }
+    let digest = options
+        .get("payloadDigest")
+        .filter(|v| !v.is_null())
+        .cloned()
+        .unwrap_or_else(|| json!(managed_queue::digest(&mutation.stringify())));
+    Ok(json!({
+        "expectedRevision":options.get("expectedRevision").filter(|v|!v.is_null()).unwrap_or(&state["revision"]),
+        "mutation":mutation,
+        "admission":json!({
+            "workerId":context["workerId"],"operationId":options["operationId"],"origin":"gui","method":format!("thread/queue/{kind}"),
+            "session":json!({"chatId":context["chatId"],"threadId":context["threadId"],"contextKind":context["contextKind"],"projectId":context["projectId"],"placementId":context["worktreeId"],"modelRouteId":context["modelRouteId"],"providerAccountId":context["providerAccountId"],"runtimeGeneration":control["runtimeGeneration"],"connectionId":Value::Null}),
+            "payloadDigest":digest,"protectedPayload":prompt["protectedContent"]["envelope"],"expectedActivationGeneration":control["activationGeneration"],"intent":intent
+        })
+    }))
 }

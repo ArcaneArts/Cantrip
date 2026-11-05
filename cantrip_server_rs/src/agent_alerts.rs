@@ -1,7 +1,7 @@
 //! The same live binding authority used by the Node MCP relay.
 use crate::wire::Value;
 
-pub const OPERATIONS: [&str; 10] = [
+pub const OPERATIONS: [&str; 11] = [
     "context.get",
     "alert.raise",
     "alert.resolve",
@@ -12,9 +12,13 @@ pub const OPERATIONS: [&str; 10] = [
     "chat.list",
     "chat.read",
     "chat.wait",
+    "chat.send",
 ];
 pub fn is_mutation(operation: &str) -> bool {
-    matches!(operation, "alert.raise" | "alert.resolve" | "task.create")
+    matches!(
+        operation,
+        "alert.raise" | "alert.resolve" | "task.create" | "chat.send"
+    )
 }
 fn permitted(permission: &Value, operation: &str) -> bool {
     permission != ":read-only"

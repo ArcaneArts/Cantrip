@@ -29,16 +29,19 @@ pub(super) async fn snapshot(tx: &Transaction<'_>, owner: &str, chat: &str) -> R
         &json!({"revision":state.get("revision").cloned().unwrap_or(json!(0)),"paused":truthy(current.get("automation_paused"))||truthy(current.get("managed_autonomy_stopped")),"items":items,"claims":claims,"pendingImports":imports}),
     )
 }
+pub(in crate::native_commands) async fn owned_snapshot(
+    tx: &Transaction<'_>,
+    owner: &str,
+    chat: &str,
+) -> Result<Value> {
+    authority::lock(tx, owner, chat).await?;
+    snapshot(tx, owner, chat).await
+}
 impl QueueRepository {
     pub async fn snapshot(&self, owner: &str, chat: &str) -> Result<Value> {
         let (owner, chat) = (owner.to_owned(), chat.to_owned());
         self.database
-            .transaction(|tx| {
-                Box::pin(async move {
-                    authority::lock(tx, &owner, &chat).await?;
-                    snapshot(tx, &owner, &chat).await
-                })
-            })
+            .transaction(|tx| Box::pin(async move { owned_snapshot(tx, &owner, &chat).await }))
             .await
     }
     pub async fn read(&self, owner: &str, worker: &Value, session: &Value) -> Result<Value> {

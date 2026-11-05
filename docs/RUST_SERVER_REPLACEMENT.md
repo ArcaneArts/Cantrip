@@ -18,6 +18,62 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The atomic MCP chat-delivery milestone starts from `dd9a1303f`. Rust now
+implements `chat.send` and advertises eleven MCP operations. The worker continues
+to prepare and open encrypted messages. The server checks Source's delivery
+identities and classifications, resolves the receiver's current model settings,
+preserves its autonomy pause and commits its queue entry and both history copies
+in one transaction. Project-first and sorted chat locks serialize opposite
+directions. Committed replays retain their original records despite fresh worker
+encryption, changed receiver configuration or a later missing default model.
+
+Local HTTP, audit and worker-encryption comparisons pass all three stores and
+authentication modes: 41 calls per peer/profile, 369 paired cases and 738 audit
+records. Eighteen actual server restarts retain the protected messages, queue
+entries and delivery receipts. Eighteen real failures of the third INSERT roll
+back the queue and receiving copy; a subsequent retry commits once. Initial
+simultaneous duplicates retain exactly one of the actual submitted ciphertext
+pairs. An additional PGlite scenario routes to another worker and placement,
+checking the receiving receipt and history attribution while retaining the
+caller's placement for its sent copy. Both persisted history events appear after
+successful delivery or replay;
+failed transactions publish neither. The unchanged worker code decrypts both
+transcripts before and after restart. Each cursor and sequence order is checked
+against the actual database. Independent reverse-direction requests can commit
+in either order; only that concurrent suffix is canonicalized across peers.
+
+The GUI queue helper now honors Source's explicit `resumeAutonomy: false`.
+Its normal path and the new transaction-bound path share envelope construction.
+Actual Source message INSERT SQL and driver parameter encodings are captured
+from the repository. MCP-only diagnostics attach them after an INSERT fails,
+retaining Source's 2,000 UTF-16-unit response limit. Each fault check verifies the
+whole statement and actual request-bound encrypted parameters before comparing
+independently encrypted peers. Public message writers retain their existing
+failure classification.
+
+All 610 previous ordered schema graphs and the native validation engine remain
+unchanged. One new root passes 4,339 Source normalization, issue and error-message
+comparisons; the combined manifest has 611 roots and 10,340 nodes. Local checks
+also pass 1,054 protocol tests, 34 focused Source tests, three typechecks and
+strict Clippy. Managed-queue regressions pass 129, 129 and 133 cases on PGlite,
+private PostgreSQL and external PostgreSQL; public message writes pass 62 cases
+per store. The earlier Task and read matrices have separate regression reports.
+
+Run delivery validation locally:
+
+```sh
+node --import tsx scripts/server-rust/agent-chat-send-http-compatibility.mjs --database pglite --report /tmp/mcp-chat-send.json
+node --import tsx scripts/server-rust/mcp-delivery-query-manifest.mjs
+node scripts/server-rust/cargo.mjs test --test mcp_chat_send_contracts -- --nocapture
+```
+
+Repeat the HTTP suite with `bundled-postgres` and `postgres`. These scenarios use
+controlled WorkerConnection peers and the actual worker MCP/encryption functions.
+They do not establish full native-worker lifecycle or supported-platform artifact
+acceptance. Other MCP domains, remaining operation failures and coordination,
+upgrades and post-write rollback, packaging and final cutover remain unfinished.
+Normal app/server entrypoints still use Node; the worker remains Node.
+
 The MCP chat-read milestone integrates `d075cd30a`, including native
 deferral/recovery and independent helper admission identities. The original local
 candidate used `233f548ab`. Rust now implements
@@ -75,9 +131,10 @@ node --import tsx scripts/server-rust/mcp-read-query-manifest.mjs
 node scripts/server-rust/cargo.mjs test --test mcp_chat_read_contracts --test mcp_operation_contracts -- --nocapture
 ```
 
-Repeat the read suite with `bundled-postgres` and `postgres`. Ten native MCP
-operations are advertised. Atomic `chat.send`, the remaining MCP domains and
-current native/platform/product acceptance remain unfinished. The earlier
+Repeat the read suite with `bundled-postgres` and `postgres`. That milestone
+advertised ten native MCP operations; the later atomic delivery milestone above
+adds `chat.send`. Remaining MCP domains and current native/platform/product
+acceptance remain unfinished. The earlier
 full-worker shutdown failure remains an open lifecycle result; these controlled
 WorkerConnection checks do not replace that acceptance.
 

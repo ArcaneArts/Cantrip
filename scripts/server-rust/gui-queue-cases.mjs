@@ -225,4 +225,20 @@ export async function runGuiQueueCases(h) {
       ),
     );
   await setup();
+  await seed("UPDATE chats SET automation_paused=true WHERE id='chat'");
+  const paused = await invoke(
+    "mutate",
+    "explicit false preserves recipient autonomy pause",
+    add(),
+    options("gui-preserve-pause", { resumeAutonomy: false }),
+  );
+  for (const value of paused) assert.equal(value.paused, true);
+  for (const state of report.snapshots.at(-1).values) {
+    const command = state.commands.find(
+      (c) => c.operation_id === "gui-preserve-pause",
+    );
+    assert.ok(command);
+    assert.equal(Object.hasOwn(command.intent, "resumeAutonomy"), false);
+  }
+  await setup();
 }

@@ -38,6 +38,15 @@ impl OperationError {
         if let Some(error) = cause.downcast_ref::<Self>() {
             return Self::new(error.status, error.code, error.message.clone());
         }
+        if let Some(error) = cause.downcast_ref::<crate::chats::agent_delivery::DeliveryError>() {
+            let (status, code) = match error {
+                crate::chats::agent_delivery::DeliveryError::ReceiverUnavailable => {
+                    (404, "not-found")
+                }
+                crate::chats::agent_delivery::DeliveryError::ModelRequired => (409, "conflict"),
+            };
+            return Self::new(status, code, error.to_string());
+        }
         if cause
             .downcast_ref::<crate::settings::ResponseValidationError>()
             .is_some()

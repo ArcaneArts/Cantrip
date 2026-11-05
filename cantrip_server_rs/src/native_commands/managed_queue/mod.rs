@@ -18,6 +18,7 @@ use crate::{
 use anyhow::Result;
 pub(super) use mutation::mutate as mutate_in_transaction;
 use sha2::{Digest, Sha256};
+pub(super) use snapshot::owned_snapshot;
 use std::sync::Arc;
 #[derive(Clone)]
 pub struct QueueRepository {
