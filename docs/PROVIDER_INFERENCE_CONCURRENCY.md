@@ -832,3 +832,41 @@ unverified. No migration or protocol regeneration was required.
 Unscheduled/legacy Goal launch authority, outcomes without current receipts,
 autonomous checkpoint recovery, preparation-stage failure classification, and the
 remaining lifecycle/accounting/bounded-state audit remain part of the full goal.
+
+### Goal startup preparation failures
+
+The ordinary claimed-operation failure handler treats an existing encrypted
+round result as a completed operation. For a finalized Task awaiting Goal startup,
+that result is an intermediate phase. A context/model preparation failure must
+not mark the dispatch successful before implementation begins.
+
+Both servers now capture cached-finalizer preparation authority before resolving
+context or model routes. This uses the actual canonical lease, finalizer result,
+placement revision, prior Goal input and implementation-start timestamp under the
+existing owner/cycle/project locks. An unfinished finalizer retains its existing
+input failure handling. A Goal input already owned by execution cannot be failed
+by this read-only preparation path.
+
+Preparation failures use the existing Goal startup failure writer and bounded,
+classified automatic-retry ledger, preserving the finalized plan. They do not
+settle the dispatch as successful, replay finalization, manufacture no-dispatch
+proof or free a provider ticket. Configuration failures and timeouts retain the
+existing category-specific retry behavior. A deferred Goal input remains on its
+canonical dispatch for the established retry/resume path.
+
+Every failure write revalidates its captured authority. A new input receipt,
+implementation-start transition, replacement lease/placement, pause or archive
+invalidates the old preparation failure. Normal Goal launch retains its own
+launch guard because that path can legitimately advance implementation before
+its input is prepared; it cannot reuse the narrower read-only preparation guard.
+
+Source acceptance review covered missing/unavailable model routes, context
+resolution failure/timeout, ordinary unfinished finalizers, deferred Goal input,
+new input/implementation winning the race, pause/archive/replacement, failure
+persistence and retry settlement. Direct formatting and `git diff --check` were
+used. No tests, typechecks, builds, benchmarks, native/helper execution,
+computer-use testing or hosted validation ran; runtime behavior is unverified.
+No persisted schema or transported protocol field changed.
+
+The full goal still requires the unscheduled/legacy authority, autonomous
+checkpoint recovery, abandoned preparation and final lifecycle/accounting audits.

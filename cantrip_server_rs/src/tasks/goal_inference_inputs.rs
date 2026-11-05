@@ -123,6 +123,33 @@ impl Repository {
             Ok(json!({"kind":"leased","lease":lease,"goalLaunch":json!({"inputOperationId":c["goal_input"].get("receipt").and_then(|r|r.get("operationId")).unwrap_or(&Value::Null),"placementRevision":placement["placement_revision"]})}))
         })).await
     }
+    /// Read-only setup can fail before Goal launch. Capture the cached
+    /// finalizer and prior input, so that failure cannot retire newer execution.
+    pub async fn goal_preparation_guard(
+        &self,
+        owner: &str,
+        chat: &str,
+        lease: &Value,
+    ) -> Result<Option<Value>> {
+        let (owner, chat, lease) = (owner.to_owned(), chat.to_owned(), lease.clone());
+        self.database.transaction(|tx|Box::pin(async move {
+            let operation=text(&lease["operationId"])?;
+            dispatch_fence::assert(tx,&owner,&chat,&operation,&json!({"kind":"leased","lease":lease}),false).await?;
+            let c=cycle(tx,&owner,&chat,Some(&text(&lease["cycleId"])?)).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?;
+            let Some(round)=locked_round(tx,&chat,&operation).await? else{return Ok(None);};
+            if round["kind"]!="finalize" || round["relay_result"].is_null() {return Ok(None);}
+            if !c["goal_input"].is_null() && c["goal_input"]["deferred"]!=true {return stale();}
+            tx.query("WITH p AS MATERIALIZED (SELECT projects.id FROM projects JOIN chats ON chats.project_id=projects.id WHERE projects.owner_id=$1 AND chats.id=$2 FOR UPDATE OF projects) SELECT chats.id FROM p JOIN chats ON chats.project_id=p.id WHERE chats.id=$2 FOR UPDATE OF chats",&[&owner,&chat]).await?;
+            let placement=one(Executor::Transaction(tx),"SELECT jsonb_build_object('chat',to_jsonb(c),'task',to_jsonb(t))::text FROM chats c JOIN tasks t ON t.chat_id=c.id WHERE c.id=$1 LIMIT 1 FOR UPDATE OF c,t",&[&chat]).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?;
+            let guard=json!({"kind":"leased","lease":lease,"goalLaunch":{
+                "inputOperationId":c["goal_input"].get("receipt").and_then(|r|r.get("operationId")).unwrap_or(&Value::Null),
+                "placementRevision":placement["chat"]["placement_revision"],
+                "preparation":{"implementationStartedAt":placement["task"]["implementation_started_at"]}
+            }});
+            dispatch_fence::assert(tx,&owner,&chat,&operation,&guard,false).await?;
+            Ok(Some(guard))
+        })).await
+    }
     pub async fn settle_goal_launch_failure(
         &self,
         owner: &str,

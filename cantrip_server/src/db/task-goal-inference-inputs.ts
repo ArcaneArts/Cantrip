@@ -78,6 +78,69 @@ export class TaskGoalInferenceInputRepository {
     });
   }
 
+  /** Capture cached-finalizer ownership before read-only launch preparation.
+   * Running finalizers retain their normal input failure path. A live Goal
+   * input owns its own settlement and must not be retired by preparation. */
+  async preparationGuard(
+    owner: string,
+    chat: string,
+    lease: TaskInferenceInputReceipt["dispatch"],
+  ): Promise<TaskOperationLeaseFence | null> {
+    return this.database.transaction(async (tx) => {
+      await assertTaskOperationDispatchFence(
+        tx,
+        owner,
+        chat,
+        lease.operationId,
+        { kind: "leased", lease },
+      );
+      const cycle = await this.cycle(tx, owner, chat, lease.cycleId);
+      const [round] = await tx
+        .select()
+        .from(schema.taskPlanningRounds)
+        .where(
+          and(
+            eq(schema.taskPlanningRounds.id, lease.operationId),
+            eq(schema.taskPlanningRounds.chatId, chat),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!round || round.kind !== "finalize" || !round.relayResult)
+        return null;
+      if (!cycle || (cycle.goalInput && !cycle.goalInput.deferred)) stale();
+      await tx.execute(projectChatExecutionLock(owner, chat));
+      const [placement] = await tx
+        .select({ chat: schema.chats, task: schema.tasks })
+        .from(schema.chats)
+        .innerJoin(schema.tasks, eq(schema.tasks.chatId, schema.chats.id))
+        .where(eq(schema.chats.id, chat))
+        .for("update")
+        .limit(1);
+      if (!placement) stale();
+      const guard: TaskOperationLeaseFence = {
+        kind: "leased",
+        lease,
+        goalLaunch: {
+          inputOperationId: cycle.goalInput?.receipt.operationId ?? null,
+          placementRevision: placement.chat.placementRevision,
+          preparation: {
+            implementationStartedAt:
+              placement.task.implementationStartedAt?.toISOString() ?? null,
+          },
+        },
+      };
+      await assertTaskOperationDispatchFence(
+        tx,
+        owner,
+        chat,
+        lease.operationId,
+        guard,
+      );
+      return guard;
+    });
+  }
+
   async settleLaunchFailure(
     owner: string,
     chat: string,
