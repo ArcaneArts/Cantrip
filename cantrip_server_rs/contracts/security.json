@@ -62172,14 +62172,20 @@
     },
     { "type": "never", "checks": [] },
     {
-      "type": "object",
+      "type": "union",
       "name": "taskGoalOutcomeCommitSchema",
+      "options": [10451, 10456],
+      "discriminator": "committed",
+      "checks": []
+    },
+    {
+      "type": "object",
       "shape": {
-        "deliveryId": 10451,
-        "taskInferenceInputOperationId": 10452,
-        "committed": 10453
+        "deliveryId": 10452,
+        "taskInferenceInputOperationId": 10453,
+        "committed": 10454
       },
-      "catchall": 10454,
+      "catchall": 10455,
       "checks": []
     },
     {
@@ -62208,7 +62214,32 @@
         }
       ]
     },
-    { "type": "boolean", "checks": [] },
+    { "type": "literal", "values": [true], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "deliveryId": 10452,
+        "taskInferenceInputOperationId": 10453,
+        "committed": 10457,
+        "retiredReason": 10458
+      },
+      "catchall": 10460,
+      "checks": []
+    },
+    { "type": "literal", "values": [false], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 10459,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["canonical-input-deleted", "canonical-input-replaced"],
+      "checks": []
+    },
     { "type": "never", "checks": [] }
   ]
 }

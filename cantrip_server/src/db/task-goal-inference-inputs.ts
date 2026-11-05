@@ -752,6 +752,53 @@ export class TaskGoalInferenceInputRepository {
     });
   }
 
+  /** Positive canonical deletion/replacement only, never lease expiry, archive,
+   * observer loss, or absence of a terminal notification. This retires delivery
+   * authority only and cannot settle any physical inference. */
+  async outcomeRetirementReason(
+    owner: string,
+    notification: Extract<WorkerNotification, { type: "chat.turn.outcome" }>,
+  ): Promise<"canonical-input-deleted" | "canonical-input-replaced" | null> {
+    return this.database.transaction(async (tx) => {
+      await tx.execute(projectChatExecutionLock(owner, notification.chatId));
+      const [row] = await tx
+        .select({ state: schema.chatMessages.taskGoalInput })
+        .from(schema.chatMessages)
+        .innerJoin(
+          schema.chats,
+          eq(schema.chats.id, schema.chatMessages.chatId),
+        )
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, owner),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.chatMessages.id, notification.clientMessageId),
+            eq(schema.chatMessages.chatId, notification.chatId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!row) return "canonical-input-deleted" as const;
+      const receipt = taskInferenceInputReceiptSchema.safeParse(
+        row.state?.receipt,
+      );
+      if (
+        receipt.success &&
+        receipt.data.kind === "goal" &&
+        receipt.data.chatId === notification.chatId &&
+        receipt.data.clientMessageId === notification.clientMessageId &&
+        receipt.data.operationId !== notification.taskInferenceInputOperationId
+      )
+        return "canonical-input-replaced" as const;
+      return null;
+    });
+  }
+
   /** A Goal input is not its already-completed finalization round. Apply its
    * protected history and exact lane settlement under the same input authority.
    * Task/Goal projection is synchronized separately; this never settles a Goal
