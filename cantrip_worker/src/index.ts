@@ -338,6 +338,7 @@ import { WorkerRoutingRegistry } from "./routing-registry.js";
 import { SkillManager } from "./skill-manager.js";
 import { WorkerConnection } from "./transport.js";
 import { WorkerEncryptionService } from "./worker-encryption.js";
+import { createNativeResourceProtection } from "./native-resource-protection.js";
 import { WorktreeManager } from "./worktrees.js";
 import { CantripOsController } from "./os-executor/controller.js";
 import { OsTerminalLauncher } from "./os-executor/terminal-launcher.js";
@@ -1865,6 +1866,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         namespace || nativeEnvironment ? configurationHome : null,
         nativeEnvironment,
         inferenceAdmissionForWorker(),
+        createNativeResourceProtection(workerEncryption),
       );
       runtime.setGoalObserver((threadId, goal) => {
         if (runtime && handoffStaging.held(runtime, threadId)) return;

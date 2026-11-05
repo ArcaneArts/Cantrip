@@ -26,6 +26,7 @@ const protocolChecks = {
     '"thread/settings/operation/read"',
     '"thread/managedConfig/update"',
     '"thread/managedExecution/bind"',
+    '"thread/nativeResources/resolve"',
     '"thread/managedExecution/resolve"',
     '"thread/managedExecution/invalidate"',
     '"thread/managedExecution/wake"',
@@ -46,6 +47,22 @@ const protocolChecks = {
   ],
   "v2/ThreadHistoryTurnMetadata.ts": ["initialSettings", "retention"],
   "v2/ThreadResumeParams.ts": ["expectedSuspension"],
+  "ServerNotification.ts": ['"thread/nativeResources/requested"'],
+  "v2/NativeResourceProtectionNotification.ts": [
+    "checkpointId",
+    "runnerGeneration",
+    "requestId",
+    "seal",
+    "value",
+  ],
+  "v2/NativeResourceProtectionResolveParams.ts": [
+    "threadId",
+    "turnId",
+    "checkpointId",
+    "runnerGeneration",
+    "requestId",
+    "value",
+  ],
 };
 
 async function expectedRuntime() {

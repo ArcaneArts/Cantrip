@@ -234,6 +234,70 @@ boundary alone is insufficient evidence that these resources survive death.
 Native integration validation, resource-policy acceptance and complete
 worker/server/UI acceptance remain distinct from the checkpoint-store tests.
 
+### Completed terminal resources
+
+Patch `0070` extends the native continuation contract to
+`0.166.0/cantrip-suspension-v6`. Completed, pollable terminal sessions retain their
+original session IDs, exit status, unread bytes, retained transcript and exact
+byte-omission counts across process termination. Restoration creates read-only
+completed records. It does not relaunch commands, recreate PTYs, replay stdin,
+emit another command completion, or restore launch permissions or approvals.
+Nonempty stdin and signals cannot execute against a restored completed record.
+
+Capture requires actual command exit and raw-output producer closure and joins
+the real output and history producers before committing the history boundary.
+Cancelling capture retains the output join for a subsequent attempt. A still-open
+producer, even after its parent command exits, refuses durable confirmation;
+the existing live Resume and Stop controls remain available. Poll or close
+completed sessions if their serialized resource data exceeds the 32 MiB limit.
+
+Private resource data uses the worker's existing `chat-content` component grant,
+field-key derivation and AES-256-GCM envelope. Associated data binds the original
+thread, turn and checkpoint to the verified logical server, account owner and
+stable worker principal. The checkpoint stores the envelope and key revision,
+without another plaintext key file, reusable execution grants or raw resource
+data. The private bridge targets only the owning connection, authenticates its
+runner generation and one-use request identity, and bypasses history observers
+and diagnostic payloads. Native protocol exports include both bridge operations.
+
+Attaching a held chat retains opaque resource data without decrypting it. Each
+explicit Resume attempts decryption with the current worker grant, including live
+resumption when the original process survives. Reopening the worker's existing
+HPKE identity alone does not restore the component grant. Missing authorization
+or damaged data leaves the continuation held and retryable; Stop can discard it
+without decryption. An unmanaged native session without a worker protector must
+use live controls or finish collecting its terminal sessions before durable pause.
+
+Older suspension contracts remain inspectable and stoppable, but require their
+matching runtime for Resume. This terminal-data milestone does not implement
+completed code-mode stores, MCP restoration, native child recovery, or the
+server-owned and client-visible process-tree recovery guarantee.
+
+The macOS ARM64 development runtime with all 71 reviewed patches passed 62
+native acceptance cases: 30 Goal cases, four suspension cases, six shared-pause
+cases, two physical TUI cases, and 20 terminal-resource cases. The resource
+cases use the production worker protection handler, real HPKE bootstrap and
+fresh component grants, real command processes and a local Responses fixture.
+They cover both native history formats, live and cold collection, concurrent
+cold Resume, large output with exact omission counts, repeated cold suspension,
+session-ID reservation during fresh commands, missing-grant repair, Stop without
+a grant, Stop during a withheld decryption reply, rejection of that late reply,
+and nonempty-stdin rejection without consuming output or rerunning the command.
+Every fixture verifies the actual current patch fingerprint and packaged
+artifacts. The original native thread and turn identities, initial input,
+completed side effects and original TurnStarted remain unique.
+
+The same candidate passed 80 command/session Rust cases, two private-gate cases,
+eight buffer cases, 345 native protocol cases and 44 Goal cases. One remote-only
+command case exited early because its environment was unavailable. The protocol
+run reports one ignored fixture writer; stable and experimental exports were
+regenerated through explicit writer invocations. These are local macOS results.
+
+This is native component acceptance. It does not establish whole-worker/server
+recovery, persistent product controls, code-mode or MCP resource recovery, native
+child recovery, or Linux/Windows execution. Final optimized product validation
+remains required.
+
 ## Required next milestones
 
 ### Native lifecycle and resource hardening

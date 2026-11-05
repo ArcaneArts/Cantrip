@@ -724,8 +724,31 @@ the existing format; restoration reattaches the actual thread's queue clock and
 resets its baseline before resumption, preserving fractional work without counting
 the offline interval or subtracting an old wait again.
 
-Patch `0069` received source review, direct formatting of its new clock source,
-mechanical patch authoring and `git diff --check` only. It was not applied,
-compiled or executed. The earlier development-runtime results above do not cover
-this patch. No tests, builds, benchmarks, native helpers or computer-use checks
-were run for this change.
+The original `0069` delivery received source review and formatting without a
+native build. PR #2593 repaired its normal patch application. The completed
+terminal milestone below includes an actual runtime build and Goal regression
+checks with that patch applied; whole-worker acceptance remains outstanding.
+
+## Completed terminal resource continuation
+
+Patch `0070` adds encrypted completed-terminal continuation data under native
+contract `0.166.0/cantrip-suspension-v6`. Capture joins real output/history
+producers and preserves unread output and byte-omission counts. A fresh process
+restores the original terminal IDs as read-only completed records, without
+launching a command or retaining launch authority. Active commands and open
+output producers still refuse durable acknowledgement with live controls intact.
+
+The connection-owned native resource bridge uses the actual worker's current
+`chat-content` grant. Checkpoint data contains only a versioned AES-GCM envelope;
+opening a held thread does not decrypt it. Explicit Resume revalidates the grant,
+and Stop can discard the continuation without it. The normal runtime verifier
+also checks the generated private bridge contracts. Resource and full product
+acceptance are tracked separately in [the suspension contract](../docs/DURABLE_TURN_SUSPENSION.md).
+
+The normal 71-patch macOS ARM64 development build passed all 62 native acceptance
+cases, including 20 terminal-resource cases using the actual worker protection
+handler and fresh encryption grants. Large output, repeated cold suspension,
+concurrent Resume, grant repair, Stop during restoration and read-only input
+errors preserve the original thread/turn identities and completed effects.
+Full worker/server/client recovery and optimized product acceptance remain
+outstanding.
