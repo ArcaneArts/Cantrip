@@ -1,5 +1,6 @@
 //! Durable Chat catalogs, state, retention and execution bindings.
 pub mod account_failover;
+pub(crate) mod agent_delivery;
 mod archive;
 pub mod automatic_title;
 pub mod automation_pause;
@@ -17,6 +18,7 @@ pub mod live_mutations;
 pub mod managed_console;
 pub mod managed_preparation;
 mod mcp;
+mod mcp_delivery_queries;
 pub(crate) mod mcp_read_queries;
 pub mod message_queries;
 pub mod message_writes;

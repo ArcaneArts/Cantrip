@@ -7,6 +7,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
 
 fn descriptor(chat: &Value, default_model: &Value) -> Value {
     json!({"id":chat["id"],"titleProtection":chat["titleProtection"],"status":chat["status"],"automationPaused":chat["automationPaused"],"configuration":json!({
@@ -16,7 +17,7 @@ fn descriptor(chat: &Value, default_model: &Value) -> Value {
 }
 
 pub(super) async fn execute(
-    service: &AuthService,
+    service: &Arc<AuthService>,
     owner: &str,
     context: &Value,
     operation: &str,
@@ -84,6 +85,9 @@ pub(super) async fn execute(
         .ok_or_else(|| {
             OperationError::new(404, "not-found", "Chat not found in the current project.")
         })?;
+    if operation == "chat.send" {
+        return super::agent_chat_send::execute(service, owner, context, arguments).await;
+    }
     let input = parse("cantripMcpChatReadInputSchema", arguments)?;
     let id = target["id"].as_str().context("Chat identity")?;
     let mut page = repository

@@ -529,6 +529,7 @@ export const contractRoots = [
   "cantripMcpChatListInputSchema",
   "cantripMcpChatReadInputSchema",
   "agentChatReadWireSchema",
+  "agentChatSendWireSchema",
   "workerCantripMcpCapabilitiesQuerySchema",
   "cantripAgentOperationResultSchema",
   "projectGoalSnapshotSchema",

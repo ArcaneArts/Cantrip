@@ -7,6 +7,7 @@ async fn append(
     chat: &str,
     input: &Value,
     attribution: Option<&Value>,
+    mcp: bool,
 ) -> Result<Option<Value>> {
     let input = crate::settings::parse_response("chatMessageOpaqueContentSchema", Some(input))?;
     let executor = Executor::Transaction(tx);
@@ -57,7 +58,7 @@ async fn append(
         ("task_protected_content", Value::Null),
         ("idempotency_key", input["idempotencyKey"].clone()),
     ]);
-    let rows = insert(executor, fields).await?;
+    let rows = insert_diagnostics(executor, fields, mcp).await?;
     touch(executor, chat).await?;
     messages::opaque(&required(&rows, "appending an encrypted chat message")?).map(Some)
 }
@@ -82,7 +83,7 @@ async fn upsert(
     )
     .await?
     else {
-        return append(tx, owner, chat, &input, attribution).await;
+        return append(tx, owner, chat, &input, attribution, false).await;
     };
     if saved["id"] != input["id"] {
         anyhow::bail!("Encrypted chat message update targets another row.")
@@ -104,6 +105,25 @@ pub(crate) async fn write_in_transaction(
     attribution: Option<&Value>,
     is_update: bool,
 ) -> Result<Option<Value>> {
+    write_with_diagnostics(tx, owner, chat, input, attribution, is_update, false).await
+}
+pub(crate) async fn append_for_mcp(
+    tx: &Transaction<'_>,
+    owner: &str,
+    chat: &str,
+    input: &Value,
+) -> Result<Option<Value>> {
+    write_with_diagnostics(tx, owner, chat, input, None, false, true).await
+}
+async fn write_with_diagnostics(
+    tx: &Transaction<'_>,
+    owner: &str,
+    chat: &str,
+    input: &Value,
+    attribution: Option<&Value>,
+    is_update: bool,
+    mcp: bool,
+) -> Result<Option<Value>> {
     checked(tx.query("WITH locked_project AS MATERIALIZED(SELECT p.id FROM projects p INNER JOIN chats c ON c.project_id=p.id WHERE p.owner_id=$1 AND c.id=$2 FOR UPDATE OF p) SELECT c.id FROM locked_project p INNER JOIN chats c ON c.project_id=p.id WHERE c.id=$2 FOR UPDATE OF c",&[&owner,&chat]).await,&[json!(owner),json!(chat)])?;
     let chats = checked(
         tx.query(
@@ -119,7 +139,9 @@ pub(crate) async fn write_in_transaction(
     if is_update {
         upsert(tx, owner, chat, input, attribution).boxed().await
     } else {
-        append(tx, owner, chat, input, attribution).boxed().await
+        append(tx, owner, chat, input, attribution, mcp)
+            .boxed()
+            .await
     }
 }
 impl Repository {

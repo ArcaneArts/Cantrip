@@ -332,8 +332,19 @@ impl SettingsRepository {
         owner: &str,
         context: Option<(&str, &[wire::Value])>,
     ) -> Result<Value> {
-        let result = self
-            .database
+        Self::user_settings_with(
+            crate::database::Executor::Database(&self.database),
+            owner,
+            context,
+        )
+        .await
+    }
+    pub(crate) async fn user_settings_with(
+        executor: crate::database::Executor<'_, '_>,
+        owner: &str,
+        context: Option<(&str, &[wire::Value])>,
+    ) -> Result<Value> {
+        let result = executor
             .query(
                 "SELECT to_jsonb(s) FROM user_settings s WHERE user_id=$1 LIMIT 1",
                 &[&owner],

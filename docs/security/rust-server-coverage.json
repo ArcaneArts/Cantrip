@@ -4,7 +4,7 @@
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
     "sha256": "00ce3c2672229b5ce73cf987edfe57550360016bd84bd8720a3680158ec2f6a4",
-    "baselineCommit": "d075cd30a2e6ea563d905fe2ba1e15491e68b347",
+    "baselineCommit": "dd9a1303f98863276f3beabdbb723e672b7923dc",
     "counts": {
       "routes": 537,
       "workerCommands": 295,
@@ -12,7 +12,7 @@
       "repositoryMethods": 366,
       "liveResources": 47
     },
-    "workingTreeNote": "Current Source inventory through d075cd30a: 537 routes, 295 worker commands, 115 declared tables, 366 repository methods and 47 Live resources; 122 physical tables and 252 migrations. Reviewed the new worker-authenticated, process-generation-bound inference-recovery route as lifecycle/identity control metadata; all 536 previous route classifications and other inventory sets remain unchanged. Local validation only; full product/platform/replacement acceptance remains unfinished.",
+    "workingTreeNote": "Current Source inventory through dd9a1303f: 537 routes, 295 worker commands, 115 declared tables, 366 repository methods and 47 Live resources; 122 physical tables and 252 migrations. Reviewed the new worker-authenticated, process-generation-bound inference-recovery route as lifecycle/identity control metadata; all 536 previous route classifications and other inventory sets remain unchanged. Local validation only; full product/platform/replacement acceptance remains unfinished.",
     "migrationBackedTableCount": 122
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
@@ -5155,10 +5155,11 @@
           "scripts/server-rust/agent-task-http-compatibility.mjs",
           "scripts/server-rust/agent-task-audit-publication-compatibility.mjs",
           "scripts/server-rust/agent-chat-read-http-compatibility.mjs",
-          "scripts/server-rust/agent-context-scope-http-compatibility.mjs"
+          "scripts/server-rust/agent-context-scope-http-compatibility.mjs",
+          "scripts/server-rust/agent-chat-send-http-compatibility.mjs"
         ],
         "remaining": [
-          "Ten native operations are advertised; atomic chat.send and other Source MCP domains remain unfinished.",
+          "Eleven native operations are advertised, including atomic chat.send. Other Source MCP domains remain unfinished.",
           "Current native and supported-platform product/packaging acceptance."
         ]
       },
@@ -5171,10 +5172,11 @@
           "scripts/server-rust/agent-task-http-compatibility.mjs",
           "scripts/server-rust/agent-task-audit-publication-compatibility.mjs",
           "scripts/server-rust/agent-chat-read-http-compatibility.mjs",
-          "scripts/server-rust/agent-context-scope-http-compatibility.mjs"
+          "scripts/server-rust/agent-context-scope-http-compatibility.mjs",
+          "scripts/server-rust/agent-chat-send-http-compatibility.mjs"
         ],
         "remaining": [
-          "Ten native operations are advertised; atomic chat.send and other Source MCP domains remain unfinished.",
+          "Eleven native operations are advertised, including atomic chat.send. Other Source MCP domains remain unfinished.",
           "Current native and supported-platform product/packaging acceptance."
         ]
       }
@@ -12319,7 +12321,7 @@
       "scope": "Native MCP Task admission directly enqueues durable dispatch, retains caller model and retry history, preserves ordered/deduplicated status reads, exact Source query/validation failures, read/mutation binding rules and awaited best-effort worker-owned audits. Actual Source HTTP compatible binding schema accepts legacy fields and filters future grants before strict canonical validation. All 603 previous ordered schema graphs and previous validation logic remain unchanged; two new roots pass 2432 exact Source comparisons. No public protocol or worker runtime changes.",
       "localEvidence": "All3stores x3auth modes pass24paired HTTP response/audit/failure cases per peer (216paired cases/432calls), with21matching audit rows per peer/profile. All3stores x3auth modes retain MCP retry history and opaque/configuration/revision/operation identities through36actual server restarts; public starts reset retry history. PostgreSQL passes18 audit publication barriers and12 committed Task/replay audit-failure cases across3auth modes, observing both App Live invalidations and one committed cycle before releasing the failing audit trigger. Another18calls prove absence of the extra post-commit retry-reset transaction that caused3real before-fix backend interruptions to return500. Local protocol tests1054, Source focused tests44, three typechecks, strict Clippy and Rustfmt pass. Full-worker reference run fails Source chat preparation because the available native executable rejects the ownership --scope option, followed by the existing worker shutdown assertion. No Rust Task/native execution result is claimed. Six additional real PostgreSQL cases abort the caller while its audit INSERT is actually blocked, then verify the audit commits after release. A local52patch native candidate executes all7MCP Task tool flows on Source and Rust through the unchanged full worker; the browser decrypts the completed child answer. Both processes then fail the existing worker stopped-log assertion at full-worker.mjs:172, before restart. A separate strict execution-subset proof retains successful tool behavior without calling the failed processes green.",
       "remaining": [
-        "Other MCP domain operations, including atomic chat.send. Context/get and read-only Agent discovery/history are covered by agentChatMcpReads.",
+        "Other MCP domain operations. Context/get and read-only Agent discovery/history are covered by agentChatMcpReads; atomic delivery is covered by agentChatMcpDelivery.",
         "Current pinned native artifact and complete Task native execution/restart acceptance; the available reference artifact fails actual Source preparation. Whole-product and supported-platform packaging acceptance.",
         "Multi-instance coordination, remaining execution/recovery failures and full replacement acceptance."
       ]
@@ -12343,9 +12345,36 @@
       "validatedSubset": "Native chat.list/read/wait preserve project-Agent scope, private labels, receiver/caller model configuration, turn-aware opaque history, exact latest-window cursor and maximal whole-message sixMiB suffix. Context.get retains9publicfields, Source argument handling/summary/readiness and standalone unsupported-capability result. Source row validation remains before filtering and target lookup; actual read failures expose Source SQL/params through MCP-only diagnostics. Public read SQL and mapping stay unchanged.",
       "localEvidence": "All3stores x3auth:42HTTP/audit cases per peer/profile,378pairs/756calls and audit rows,18actualserverrestarts and108realqueryfailures. Exact100row70k-ciphertext case retains89messages,6288919bytes, firstseq12; preceding stored-shaped message exceeds budget. Scope checks add21pairs/42calls across3auth. PriorTaskregressions pass216pairs/432calls acrosssame storage/authmatrix. New3roots3046Source comparisons plus2432compatiblebinding comparisons pass; Originalcandidate605priorgraphsunchangedat608roots10289nodes. Integratedc3ee49a5f candidateadds3roots to607basegraphs, all607unchangedandwireengineunchanged, combined610roots10337nodes. Integratedmatrixreruns are recorded separately. Local1054protocoltests/34Source tests/3typechecks/strictClippy/Rustfmt pass.",
       "remaining": [
-        "Atomic chat.send requires its own receiving-queue and two-message delivery transaction; not advertised yet.",
+        "Atomic chat.send is covered by agentChatMcpDelivery; additional MCP domains and whole-product execution acceptance remain.",
         "Other Source MCP domains and complete end-to-end native/worker lifecycle acceptance.",
         "Supported-platform product/packaging, multi-instance, migration/rollback and default server replacement acceptance."
+      ]
+    },
+    "agentChatMcpDelivery": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/chats/agent_delivery.rs",
+        "cantrip_server_rs/src/http/agent_chat_send.rs",
+        "cantrip_server_rs/src/chats/mcp_delivery_queries.rs",
+        "cantrip_server_rs/src/native_commands/transaction.rs",
+        "cantrip_server_rs/src/native_commands/runtime/gui_queue.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/agent-chat-send-http-compatibility.mjs",
+        "scripts/server-rust/agent-chat-send-http-cases.mjs",
+        "scripts/server-rust/agent-chat-send-http-lifecycle.mjs",
+        "scripts/server-rust/mcp-delivery-query-manifest.mjs",
+        "scripts/server-rust/mcp-chat-send-wire-fixtures.mjs",
+        "cantrip_server_rs/tests/mcp_chat_send_contracts.rs",
+        "scripts/server-rust/gui-queue-cases.mjs",
+        "scripts/server-rust/chat-message-write-repository-compatibility.mjs"
+      ],
+      "validatedSubset": "Server-side opaque chat.send validates Source envelopes, resolves current recipient model/configuration and permission context, preserves autonomy pause, and commits its GUI queue entry plus received/sent history records in one owning transaction with project-first and sorted chat locks. Exact and independently re-encrypted committed replays retain the original admission, including after receiver model removal. Shared owner tracking survives caller cancellation; messages publish only after commit and the normal owned queue dispatcher wakes. Source INSERT diagnostics attach only after actual MCP writes fail; healthy and public writers retain their existing paths.",
+      "localEvidence": "All3stores x3auth modes pass41HTTP calls per peer/profile:369paired cases/738calls and audit rows,18actual server restarts and18real third-write failures with complete delivery rollback and successful retry. Simultaneous initial duplicates commit exactly one actually submitted pair of opaque envelopes; opposite-direction sends serialize and retain local DB sequence/cursor order. An additional PGlite scenario proves a different recipient worker/placement controls its native receipt and received history while the sent copy retains the caller placement. Worker encryption/MCP functions decrypt history before and after restart; both successful/replayed history events are observed. Other schema/API/database checks are recorded in the local milestone reports and PR. All610prior ordered graphs and native validation engine remain unchanged; one new root has4339Source comparisons at611roots10340nodes. Protocol1054/Source34/three typechecks/strictClippy pass. Managed queue129/129/133cases with205/205/215snapshots and public message62cases/8snapshots perstore pass.",
+      "remaining": [
+        "Other Source MCP domains and additional operation-failure/coordination boundaries.",
+        "Full native worker/runtime product lifecycle, supported-platform packaging and complete deployment acceptance.",
+        "Existing-data upgrades and post-write rollback, multi-instance/Redis, performance acceptance, default cutover and production Node server removal."
       ]
     }
   },

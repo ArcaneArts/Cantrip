@@ -151,6 +151,37 @@ impl<'a, 'db> TransactionRepository<'a, 'db> {
             .boxed()
             .await
     }
+    /// Enqueue a GUI add using the surrounding delivery transaction throughout.
+    pub(crate) async fn add_gui_prompt(
+        &self,
+        owner: &str,
+        context: &Value,
+        prompt: &Value,
+        options: &Value,
+    ) -> Result<Value> {
+        let chat = super::admit::text(&context["chatId"])?;
+        let (snapshot_owner, snapshot_chat) = (owner.to_owned(), chat.clone());
+        let state = savepoint(self.tx, |tx| {
+            Box::pin(async move {
+                managed_queue::owned_snapshot(tx, &snapshot_owner, &snapshot_chat)
+                    .boxed()
+                    .await
+            })
+        })
+        .await?;
+        let control = self.control_context(owner, &chat).await?;
+        let mutation = crate::wire::value::json!({"kind":"add","prompt":prompt,"attachments":Vec::<Value>::new()});
+        let input = super::runtime::gui_queue::prepare_input(
+            context, &mutation, options, &state, &control, prompt,
+        )?;
+        let mut expected = Value::object([] as [(&str, Value); 0]);
+        if let Some(revision) = context.get("managedInputRevision") {
+            expected["expectedInputRevision"] = revision.clone();
+        }
+        let result = self.mutate_queue(owner, &input, &expected).await?;
+        super::runtime::gui_queue::reject(&result)?;
+        Ok(result)
+    }
     pub async fn create_prompt(
         &self,
         owner: &str,

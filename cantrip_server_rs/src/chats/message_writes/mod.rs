@@ -10,7 +10,7 @@ use crate::{
 use anyhow::{Context, Result};
 pub use canonical::HistoryError;
 pub(crate) use canonical::event_id;
-pub(crate) use encrypted::write_in_transaction;
+pub(crate) use encrypted::{append_for_mcp, write_in_transaction};
 pub(crate) use legacy::upsert_task_with;
 
 fn text(value: &Value) -> Result<String> {
@@ -59,7 +59,7 @@ async fn raw_key(executor: Executor<'_, '_>, chat: &str, key: &str) -> Result<Op
     let rows=checked(executor.query("SELECT to_jsonb(m)::text FROM chat_messages m WHERE chat_id=$1 AND idempotency_key=$2 LIMIT 1",&[&chat,&key]).await,&[json!(chat),json!(key)])?;
     rows.first().map(catalog::raw).transpose()
 }
-async fn owned_key(
+pub(crate) async fn owned_key(
     executor: Executor<'_, '_>,
     owner: &str,
     chat: &str,
@@ -159,12 +159,36 @@ fn parameters(fields: &Fields) -> Result<(Parameters, Vec<String>)> {
     Ok((parameters, binds))
 }
 async fn insert(executor: Executor<'_, '_>, fields: Fields) -> Result<Vec<Row>> {
+    insert_diagnostics(executor, fields, false).await
+}
+async fn insert_diagnostics(
+    executor: Executor<'_, '_>,
+    fields: Fields,
+    mcp: bool,
+) -> Result<Vec<Row>> {
     let (parameters, binds) = parameters(&fields)?;
     let refs = parameters
         .iter()
         .map(|p| p.as_ref() as &(dyn postgres_types::ToSql + Sync))
         .collect::<Vec<_>>();
-    checked(executor.query(&format!("INSERT INTO chat_messages({}) VALUES({}) RETURNING to_jsonb(chat_messages)::text",fields.iter().map(|(k,_)|*k).collect::<Vec<_>>().join(","),binds.join(",")),&refs).await,&fields.into_iter().map(|(_,v)|v).collect::<Vec<_>>())
+    let result = executor
+        .query(
+            &format!(
+                "INSERT INTO chat_messages({}) VALUES({}) RETURNING to_jsonb(chat_messages)::text",
+                fields.iter().map(|(k, _)| *k).collect::<Vec<_>>().join(","),
+                binds.join(",")
+            ),
+            &refs,
+        )
+        .await;
+    let result = match result {
+        Err(cause) if mcp => return super::mcp_delivery_queries::insert_failure(cause, &fields),
+        result => result,
+    };
+    checked(
+        result,
+        &fields.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
+    )
 }
 async fn update(executor: Executor<'_, '_>, id: &str, fields: Fields) -> Result<Vec<Row>> {
     let (mut parameters, binds) = parameters(&fields)?;

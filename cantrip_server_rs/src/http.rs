@@ -13,6 +13,7 @@ use serde_json::json;
 use crate::auth::service::AuthService;
 mod account;
 mod agent_alerts;
+mod agent_chat_send;
 mod agent_chats;
 mod agent_interactions;
 mod agent_operations;
