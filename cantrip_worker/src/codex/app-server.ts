@@ -2961,11 +2961,6 @@ export class CodexAppServer implements CodexRuntime {
             ])
           : options.inferenceSource.signal,
       };
-    if (
-      options.initialLabel &&
-      options.initialLabel.providerId !== options.provider.id
-    )
-      await options.initialLabel.run(undefined, options.preparationSignal);
     // Unreceipted legacy turns can use their actual transport-issued command
     // owner. A receipt-bearing turn must keep its existing canonical source.
     const commandOwner =
@@ -2993,13 +2988,13 @@ export class CodexAppServer implements CodexRuntime {
         options.inferenceSource,
         admission,
       );
-      inference = await admission?.acquire({
+      const request = {
         operationId:
           options.operationGeneration ??
           options.inferenceSource?.operationId ??
           `turn:${options.clientMessageId}:${randomUUID()}`,
         lifetime,
-        purpose: "turn",
+        purpose: "turn" as const,
         recoveryKey: `chat:${options.chatId}:message:${options.clientMessageId}`,
         recovery: options.inferenceRecovery?.() ?? {
           messageId: options.clientMessageId,
@@ -3010,7 +3005,20 @@ export class CodexAppServer implements CodexRuntime {
         projectId: options.projectId,
         threadId: options.threadId,
         signal: options.preparationSignal,
-      });
+      };
+
+      if (
+        options.initialLabel &&
+        options.initialLabel.providerId !== options.provider.id
+      ) {
+        const label = options.initialLabel;
+        if (admission)
+          await admission.prepareBeforeAcquire(request, (signal) =>
+            label.run(undefined, signal),
+          );
+        else await label.run(undefined, options.preparationSignal);
+      }
+      inference = await admission?.acquire(request);
 
       options.inferenceSource?.assertCurrent();
       if (options.initialLabel?.providerId === options.provider.id)
@@ -3038,6 +3046,7 @@ export class CodexAppServer implements CodexRuntime {
           });
         } else if (
           failure &&
+          !(failure instanceof InferenceWithdrawalError) &&
           !inference &&
           !executionEntered &&
           !options.preparationSignal?.aborted &&

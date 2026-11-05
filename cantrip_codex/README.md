@@ -752,3 +752,19 @@ concurrent Resume, grant repair, Stop during restoration and read-only input
 errors preserve the original thread/turn identities and completed effects.
 Full worker/server/client recovery and optimized product acceptance remain
 outstanding.
+
+## Withdrawing a response before alternate-provider naming finishes
+
+Patch `0071` adds the keeper's atomic `sealUnstarted` mutation. An actual canonical
+response source can be sealed before requesting any provider capacity, while its
+private title operation uses another provider's ticket. The mutation records only
+released, never-granted, never-started metadata and rejects an existing operation
+that could have inferred. Exact same-generation redelivery preserves its proof.
+It neither grants a ticket nor writes prompt content.
+
+The worker seals the response lifetime before cancelling the private label and
+waits for label settlement before publishing no-start evidence. Existing handoff
+deferral acknowledgement and source cleanup still precede history transfer.
+The native keeper and worker must be upgraded together. This patch received
+source review and mechanical authoring only; it was not applied, built, tested or
+executed. No native/helper or computer-use validation ran for this change.

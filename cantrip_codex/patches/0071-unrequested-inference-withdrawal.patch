@@ -1,0 +1,61 @@
+diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/cantrip_inference_journal.rs
+--- a/codex-rs/cli/src/cantrip_inference_journal.rs
++++ b/codex-rs/cli/src/cantrip_inference_journal.rs
+@@ -151,6 +151,10 @@
+     Enqueue {
+         key: String,
+         identity: Identity,
+     },
++    SealUnstarted {
++        key: String,
++        identity: Identity,
++    },
+     Adopt {
+         key: String,
+@@ -286,5 +290,46 @@
+                 Ok(serde_json::to_value(results)?)
+             }
++            Command::SealUnstarted { key, identity } => {
++                // The worker sealed a canonical source before it requested a
++                // ticket. Never convert an existing reservation into this proof.
++                anyhow::ensure!(
++                    key.len() == 64 && key.bytes().all(|byte| byte.is_ascii_hexdigit()),
++                    "invalid admission key"
++                );
++                anyhow::ensure!(
++                    !identity.operation_id.is_empty()
++                        && !identity.provider_id.is_empty()
++                        && !identity.runtime_generation.is_empty(),
++                    "missing admission identity"
++                );
++                if let Some(previous) = self.operations.get(&key) {
++                    anyhow::ensure!(
++                        previous.worker_generation == generation
++                            && previous.identity == identity
++                            && previous.state == State::Released
++                            && !previous.ever_granted
++                            && previous.native_execution.is_none()
++                            && previous.outcome.as_deref() == Some("never-started"),
++                        "unrequested inference identity was already used"
++                    );
++                    return Ok(serde_json::to_value(previous)?);
++                }
++                let order = self.next()?;
++                let operation = Operation {
++                    key: key.clone(),
++                    identity,
++                    worker_generation: generation.to_owned(),
++                    state: State::Released,
++                    order,
++                    revision: order,
++                    ever_granted: false,
++                    native_execution: None,
++                    outcome: Some("never-started".to_owned()),
++                };
++                let result = serde_json::to_value(&operation)?;
++                self.operations.insert(key, operation);
++                Ok(result)
++            }
+             Command::Enqueue { key, identity } => {
+                 anyhow::ensure!(
+                     key.len() == 64 && key.bytes().all(|byte| byte.is_ascii_hexdigit()),

@@ -1880,8 +1880,7 @@ inference time attributed to its capacity wait.
 
 This integration covers the managed GUI handoff lifecycle. It
 does not establish provider transfer for an already-forwarded native autonomous
-cycle, suspended turn, direct Task input or a response whose
-alternate-provider title is still waiting before the response reservation exists.
+cycle, suspended turn or direct Task input.
 Those lifecycle paths must not reuse this original-GUI no-input proof.
 
 Validation was source review, direct formatting, mechanical protocol export and
@@ -1952,3 +1951,47 @@ its revision, so transfer commit preserves the user's new per-message selection.
 Source review, direct formatting and `git diff --check` only. No tests, builds,
 typechecks, benchmarks, native/helper execution, hosted checks or computer-use
 validation were run.
+
+## Transfer while an alternate-provider title is pending
+
+The response runtime retains its actual canonical source and lifetime while an
+initial title uses another provider. This preparation boundary takes no response
+ticket, creates no response queue entry and cannot be borrowed by concurrent
+inference. The label retains its own provider's ordinary ticket and settlement
+rules. Normal completion then acquires the response ticket through FIFO as usual.
+
+Provider transfer can seal this exact response lifetime before any response
+reservation exists. Sealing happens synchronously before cancellation of the
+private label, so a label finishing concurrently cannot advance into response
+acquisition. The worker waits for the label callback, including its actual native
+settlement, before returning the response's no-start proof. Label failure keeps
+the existing fallback-title behavior. A successful label result remains usable.
+
+Patch `0071` adds `sealUnstarted` to the existing lifetime-keeper journal. One
+atomic mutation records the unrequested response as released, never granted and
+never started. It never inserts a waiter or grants capacity, and refuses to
+convert an existing waiting, granted, native-bound or otherwise executed record.
+Exact repeat mutations return the same durable proof. The worker checks the
+complete echoed identity and no-start evidence before returning it.
+
+The original input retains the existing canonical handoff acknowledgement
+barrier. Once the server defers that input and acknowledges withdrawal, physical
+and logical source cleanup completes before export or destination preparation.
+The existing keeper snapshot recovers lost acknowledgements, and exact proof
+retirement still occurs only after canonical acknowledgement and source closure.
+The preparation registry is a WeakMap owned by the actual source lifetime; there
+is no extra prompt queue or process-lifetime completed-input registry.
+
+Live withdrawal settlement is also retained by the worker admission service
+until that private label finishes. Keeper-snapshot recovery and proof retirement
+join this same boundary even if the response runtime or its source registry has
+already exited. On worker restart, actual keeper takeover fences every prior
+runtime before it acknowledges ownership or serves journal snapshots; a
+previous-generation proof therefore cannot bypass surviving labeling work.
+
+The worker and updated native keeper must be deployed together. Source review,
+direct formatting, mechanical patch authoring and `git diff --check` only were
+performed. The native patch was not applied or executed. No tests, builds,
+typechecks, benchmarks, native/helper validation, hosted checks or computer-use
+validation were run. Direct Task and already-forwarded/private native cycle
+transfer still require their own lifecycle integration.
