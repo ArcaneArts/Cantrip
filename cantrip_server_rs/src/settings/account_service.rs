@@ -19,6 +19,7 @@ use std::sync::{
 use tokio::sync::Notify;
 mod auth_flow;
 mod auth_observations;
+mod inference_delivery;
 mod providers;
 mod quota;
 use auth_flow::AuthObservation;
@@ -63,6 +64,7 @@ pub struct AccountService {
     auth_state: Mutex<AuthState>,
     observation_subscriptions:
         Mutex<std::collections::HashMap<String, crate::workers::bridge::NotificationSubscription>>,
+    inference_deliveries: Mutex<inference_delivery::Deliveries>,
     active: AtomicUsize,
     drained: Notify,
 }
@@ -151,6 +153,7 @@ impl AccountService {
                 revision: crate::auth::now().timestamp_millis() as f64 * 1000.0,
             }),
             observation_subscriptions: Mutex::new(std::collections::HashMap::new()),
+            inference_deliveries: Mutex::new(inference_delivery::Deliveries::default()),
             active: AtomicUsize::new(0),
             drained: Notify::new(),
         })
@@ -352,6 +355,7 @@ impl AccountService {
         Ok(payload)
     }
     pub async fn drained(&self) {
+        self.close_inference_delivery();
         loop {
             let notified = self.drained.notified();
             tokio::pin!(notified);

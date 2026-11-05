@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { synchronizeProviderInference } from "../../workers/provider-inference-config.js";
+import {
+  closeProviderInferenceDelivery,
+  synchronizeProviderInference,
+} from "../../workers/provider-inference-config.js";
 
 import {
   encodeWorkerConnectionEnvelope,
@@ -75,6 +78,7 @@ export interface InternalWorkerWebsocketRouteDependencies {
     ServerRepository,
     | "authenticateWorkerCredential"
     | "getWorkerOwnerId"
+    | "getWorker"
     | "readProviderInferenceCatalog"
   >;
   resumeNativeRuntimeHandoffsForWorker: (
@@ -484,5 +488,6 @@ export function installInternalWorkerWebsocketRoute(
   );
   return async () => {
     await Promise.all(pendingAuthentications);
+    await closeProviderInferenceDelivery(bridge);
   };
 }
