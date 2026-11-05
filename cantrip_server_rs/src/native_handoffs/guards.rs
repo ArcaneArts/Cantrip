@@ -41,7 +41,7 @@ pub(super) async fn assert_idle(tx: &Transaction<'_>, chat: &str, queued: &Value
             &[&chat],
         )
         .await?;
-    let command=tx.query("SELECT operation_id FROM native_commands WHERE chat_id=$1 AND status IN ('accepted','dispatched','uncertain') LIMIT 1",&[&chat]).await?;
+    let command=tx.query("SELECT operation_id FROM native_commands WHERE chat_id=$1 AND status IN ('accepted','dispatched','uncertain') AND NOT (execution_completed_at IS NOT NULL AND goal_recovery_source IS NOT NULL) LIMIT 1",&[&chat]).await?;
     let claims=tx.query("SELECT to_jsonb(c)::text FROM managed_queue_claims c WHERE chat_id=$1 AND status IN ('claimed','accepted','dispatched','uncertain') LIMIT 2",&[&chat]).await?;
     if !lane.is_empty() || !command.is_empty() || claims.len() > 1 {
         return reject("handoff-native-operation-pending");

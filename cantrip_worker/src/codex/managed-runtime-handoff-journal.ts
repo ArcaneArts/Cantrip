@@ -7,6 +7,9 @@ import {
   inferenceJournalRecordSchema,
   type InferenceJournalRecord,
   type NativeRuntimeHandoffState,
+  nativeGoalRecoverySourceSchema,
+  nativeGoalRecoveryWithdrawalSchema,
+  type NativeGoalRecoveryWithdrawal,
 } from "@cantrip/protocol";
 import type {
   ManagedHistoryExport,
@@ -32,6 +35,13 @@ const withdrawalSchema = z
     sourceOperationId: id,
     sourceOperationGeneration: id,
     record: inferenceJournalRecordSchema,
+  })
+  .strict();
+const goalWithdrawalSchema = withdrawalSchema
+  .omit({ record: true })
+  .extend({
+    source: nativeGoalRecoverySourceSchema,
+    receipt: nativeGoalRecoveryWithdrawalSchema,
   })
   .strict();
 const planSchema = z
@@ -132,6 +142,59 @@ export class ManagedRuntimeHandoffJournal {
     });
   }
 
+  async goalWithdrawal(
+    state: NativeRuntimeHandoffState,
+    capture: () => Promise<NativeGoalRecoveryWithdrawal>,
+  ): Promise<NativeGoalRecoveryWithdrawal> {
+    const source = state.queuedSource;
+    if (!source?.goalRecovery || state.workerId !== this.scope.workerId)
+      throw new Error(
+        "The handoff has no recovered Goal source for this worker.",
+      );
+    const root = this.root(state.chatId, state.operationId);
+    return serializeHistoryOperation(root, async () => {
+      const filename = path.join(root, "goal-withdrawal.json");
+      const identity = {
+        version: 1 as const,
+        scope: this.scope,
+        chatId: state.chatId,
+        operationId: state.operationId,
+        sourceBindingId: state.source.bindingId,
+        sourceOperationId: source.operationId,
+        sourceOperationGeneration: source.operationGeneration,
+        source: source.goalRecovery,
+      };
+      const existing = await readOptional(filename);
+      if (existing) {
+        const { receipt, ...stored } = goalWithdrawalSchema.parse(
+          JSON.parse(existing.toString("utf8")),
+        );
+        if (!isDeepStrictEqual(stored, identity))
+          throw new Error("The Goal withdrawal reservation changed.");
+        const current = state.binding ?? state.source;
+        if (
+          receipt.bindingId === current.bindingId &&
+          receipt.runtimeGeneration === current.runtimeGeneration
+        )
+          return receipt;
+        // The canonical source binding was actually replaced. Retire only its
+        // obsolete ACK, then capture a new native fence for that replacement.
+        await rm(filename);
+        await flushHistoryDirectory(root);
+      }
+      const receipt = await capture();
+      if (
+        receipt.operationId !== state.operationId ||
+        !isDeepStrictEqual(receipt.source, source.goalRecovery)
+      )
+        throw new Error("Native Goal invalidation returned another source.");
+      const value = goalWithdrawalSchema.parse({ ...identity, receipt });
+      await ensureHistoryDirectory(root);
+      await this.publish(filename, value);
+      return value.receipt;
+    });
+  }
+
   async retireWithdrawal(state: NativeRuntimeHandoffState): Promise<void> {
     if (!state.queuedSource?.withdrawn) return;
     if (
@@ -143,22 +206,27 @@ export class ManagedRuntimeHandoffJournal {
       );
     const root = this.root(state.chatId, state.operationId);
     await serializeHistoryOperation(root, async () => {
-      const filename = path.join(root, "withdrawal.json");
-      const bytes = await readOptional(filename);
-      if (!bytes) return;
-      const value = withdrawalSchema.parse(JSON.parse(bytes.toString("utf8")));
-      if (
-        !isDeepStrictEqual(value.scope, this.scope) ||
-        value.chatId !== state.chatId ||
-        value.operationId !== state.operationId ||
-        value.sourceBindingId !== state.source.bindingId ||
-        value.sourceOperationId !== state.queuedSource!.operationId ||
-        value.sourceOperationGeneration !==
-          state.queuedSource!.operationGeneration
-      )
-        throw new Error("Withdrawal metadata belongs to another handoff.");
-      await rm(filename, { force: true });
-      await flushHistoryDirectory(root);
+      for (const [name, schema] of [
+        ["withdrawal.json", withdrawalSchema],
+        ["goal-withdrawal.json", goalWithdrawalSchema],
+      ] as const) {
+        const filename = path.join(root, name);
+        const bytes = await readOptional(filename);
+        if (!bytes) continue;
+        const value = schema.parse(JSON.parse(bytes.toString("utf8")));
+        if (
+          !isDeepStrictEqual(value.scope, this.scope) ||
+          value.chatId !== state.chatId ||
+          value.operationId !== state.operationId ||
+          value.sourceBindingId !== state.source.bindingId ||
+          value.sourceOperationId !== state.queuedSource!.operationId ||
+          value.sourceOperationGeneration !==
+            state.queuedSource!.operationGeneration
+        )
+          throw new Error("Withdrawal metadata belongs to another handoff.");
+        await rm(filename, { force: true });
+        await flushHistoryDirectory(root);
+      }
     });
   }
 

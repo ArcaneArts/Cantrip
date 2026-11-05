@@ -40,6 +40,7 @@ export const contractRoots = [
   "nativeGoalRecoveryReceiptSchema",
   "nativeGoalRecoveryFenceSchema",
   "nativeGoalRecoveryFenceResultSchema",
+  "nativeGoalRecoveryWithdrawalSchema",
   "nativeInferenceResourceAuthorizationSchema",
   "nativeInferenceResourceAuthorizationResultSchema",
   "taskInferenceInputReceiptSchema",

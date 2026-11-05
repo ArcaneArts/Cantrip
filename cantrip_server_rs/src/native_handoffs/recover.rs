@@ -8,7 +8,12 @@ pub(super) async fn apply(
     expected: &Value,
     value: Value,
 ) -> Result<Value> {
-    if truthy(row.get("queued_source")) && row["queued_source"]["withdrawn"] != true {
+    if truthy(row.get("queued_source"))
+        && row["queued_source"]["withdrawn"] != true
+        && !(side == "source"
+            && row["phase"] == "preparing"
+            && truthy(row["queued_source"].get("goalRecovery")))
+    {
         return reject("handoff-queued-source-unconfirmed");
     }
     if if side == "source" {

@@ -626,6 +626,7 @@ const inferenceRecoveryExports = [
   "nativeGoalRecoveryReceiptSchema",
   "nativeGoalRecoverySchema",
   "nativeGoalRecoverySourceSchema",
+  "nativeGoalRecoveryWithdrawalSchema",
   "TASK_GOAL_OUTCOME_MAX_BYTES",
   "inferenceNativeExecutionSchema",
   "taskGoalOutcomeCommitSchema",
