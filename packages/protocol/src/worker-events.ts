@@ -414,6 +414,16 @@ export const workerChatTurnOutcomeNotificationSchema = z
 export const workerNotificationSchema = z.discriminatedUnion("type", [
   z
     .object({
+      type: z.literal("inference.task-settled"),
+      serverId: z.string().min(1).max(200),
+      ownerId: z.string().min(1).max(200),
+      workerId: z.string().min(1).max(200),
+      workerGeneration: z.uuid(),
+      inputOperationId: z.uuid(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("inference.status"),
       status: workerInferenceStatusSchema,
     })

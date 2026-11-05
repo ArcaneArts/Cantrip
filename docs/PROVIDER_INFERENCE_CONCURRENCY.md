@@ -1995,3 +1995,57 @@ performed. The native patch was not applied or executed. No tests, builds,
 typechecks, benchmarks, native/helper validation, hosted checks or computer-use
 validation were run. Direct Task and already-forwarded/private native cycle
 transfer still require their own lifecycle integration.
+
+## Queued direct Task provider changes
+
+Planning rounds, finalization rounds and direct Task implementation inputs can
+change provider, account and model before their first canonical input dispatch.
+The Task view exposes this action while queued. It does not relax active Task
+brief/plan editing or apply an idle native-session handoff to a running round.
+The server rechecks the actual input receipt, sticky dispatch evidence, current
+Task revision and dispatch fence under the existing owner and chat locks.
+Already-forwarded, uncertain and native Goal-cycle inputs are refused.
+
+The destination and a bounded change receipt are stored on the existing round.
+The original encrypted input and attachment identities stay in that round.
+Revoking its dispatch fence prevents any old command from forwarding that input.
+The same canonical cycle remains ineligible until its worker acknowledges
+physical settlement; the server never grants provider capacity. A worker tracks
+the physical Task command before its one-time claim RPC and removes it after
+`runTurn` has joined native inference settlement, including initial labeling.
+Revocation aborts that exact owner and promptly reports whether it is still
+settling, keeping the control channel available. On restart, an actual keeper
+snapshot claims ownership and fences surviving previous-generation execution.
+Absence from an in-memory map alone is not used to reclaim a ticket.
+
+Committed changes wake durable metadata delivery through the existing database
+notification channel. Startup, reconnect and a private worker-settlement event
+also wake delivery; only the exact worker command acknowledgment completes it.
+Pending changes are scanned in bounded pages, so one settling source does not
+prevent cancellation of later sources. A cancellation, replacement, archive or
+deletion cannot be undone by a late acknowledgment. User/project Pause flags
+still apply, and a transferred input starts fresh dispatch rather than resuming
+the retired native placement. The destination takes its provider's normal FIFO
+ticket after cleanup. No response ticket is reserved while old labeling settles.
+
+An enabled, owned destination is selected from configured routes and accounts.
+Its actual worker request determines execution availability; cached quota,
+connectivity and credential observations do not veto that explicit choice.
+The exact destination applies to the original deferred input, including across
+Pause/Resume; subsequent input receipts retain normal routing/fallback behavior.
+A second change of the same already-settled deferred input needs no additional
+old-worker cancellation. Client retries preserve the original operation identity
+after an uncertain HTTP response. Task invalidations update the control without
+an idle refresh timer. The UI distinguishes cleanup waiting from inference.
+Scheduler route reads are batched per owner after capturing cycle fences; a
+later retarget changes its fence and cannot reuse an older prepared destination.
+Selecting the already-selected route/account leaves its queue place untouched.
+
+Migration `0265` adds notification and bounded-lookup indexes for round metadata;
+it adds no prompt storage or independent execution queue. Both server
+implementations share the wire schemas and worker control. The contract manifest
+was mechanically exported from source (630 roots, 10,582 nodes). Source review,
+direct formatting and `git diff --check` are the only validation for this
+milestone. No tests, builds, typechecks, benchmarks, native/helper execution,
+hosted validation or computer-use testing were run. Already-forwarded/private
+native Goal-cycle transfers and the final lifecycle audit remain separate work.

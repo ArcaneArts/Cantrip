@@ -34,6 +34,11 @@ const control = (rationale) =>
   classified("intentionally-public-control-plane", rationale);
 
 export function nativeRouteContentClassification({ path }) {
+  if (path === "/api/tasks/:chatId/inference-route")
+    return classified(
+      "minimized-operational-metadata",
+      "owner-scoped canonical Task input, revision, destination route/account and worker settlement; Task text, attachments and private account labels remain endpoint protected",
+    );
   if (
     path === "/api/projects/:projectId/cantrip-os/bindings/:bindingId/provision"
   )

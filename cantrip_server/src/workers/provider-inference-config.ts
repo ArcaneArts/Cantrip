@@ -67,6 +67,10 @@ class InferenceMetadataDelivery {
           return;
         } catch (error) {
           if (this.closed) return;
+          // A settlement/configuration wake can arrive while this attempt is
+          // still awaiting its reply. Consume it now instead of burying the
+          // fresh state behind the preceding attempt's retry timer.
+          if (delivery.dirty) continue;
           if (delivery.failures++ === 0) {
             try {
               delivery.report(error, delivery.workerId);

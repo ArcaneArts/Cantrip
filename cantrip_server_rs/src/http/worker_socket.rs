@@ -18,7 +18,7 @@ use axum::{
     response::Response,
     routing::get,
 };
-use futures::{SinkExt, StreamExt};
+use futures::{FutureExt, SinkExt, StreamExt};
 use std::{
     sync::{Arc, atomic::Ordering},
     time::Duration,
@@ -282,6 +282,35 @@ async fn run(
         return;
     }
     state.invalidate(&owner, "worker-availability", &worker);
+    // Keep the subscription for this socket's lifetime. Notifications only wake
+    // durable delivery; its exact worker ACK establishes physical settlement.
+    let weak = Arc::downgrade(state);
+    let target_worker = worker.clone();
+    let _task_settlements = state.bridge.subscribe_owned_notifications(
+        &worker,
+        Arc::new(move |owner, event| {
+            let weak = weak.clone();
+            let worker = target_worker.clone();
+            async move {
+                if event["type"] == "inference.task-settled"
+                    && event["ownerId"] == owner
+                    && event["workerId"] == worker
+                    && let Some(state) = weak.upgrade()
+                    && state
+                        .bridge
+                        .connection_identity(&worker)
+                        .is_some_and(|identity| {
+                            identity.owner == owner
+                                && event["workerGeneration"] == identity.process_generation
+                        })
+                {
+                    crate::workers::resource_revocations::wake(state, &owner, &worker);
+                }
+                Ok(())
+            }
+            .boxed()
+        }),
+    );
     crate::workers::resource_revocations::wake(state.clone(), &owner, &worker);
     drop(
         service

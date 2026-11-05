@@ -354,6 +354,9 @@ export function installInternalWorkerWebsocketRoute(
           workerProcessGeneration: resolvedWorkerProcessGeneration,
         });
         catalogWorkers.set(workerId, workerAuth.ownerId);
+        repository.inferenceRevocations.receive(
+          JSON.stringify({ ownerId: workerAuth.ownerId, workerId }),
+        );
         synchronizeInferenceResourceRevocations(
           repository,
           bridge,

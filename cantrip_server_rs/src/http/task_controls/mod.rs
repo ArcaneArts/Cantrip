@@ -89,6 +89,15 @@ async fn execute(
         .id
         .clone();
     if matches!(method, Method::GET | Method::HEAD) {
+        if path.ends_with("/inference-route") {
+            return match tasks::Repository::new(service.repository.database.clone())
+                .inference_route_view(&owner, &chat)
+                .await?
+            {
+                Some(view) => output(200, "taskInferenceRouteViewSchema", &view),
+                None => Ok(error(404, "Task not found.")),
+            };
+        }
         if path.ends_with("/dashboard") {
             return service
                 .scratch_roots
@@ -139,6 +148,33 @@ async fn execute(
             .await;
     }
     if method == Method::POST {
+        if path.ends_with("/inference-route") {
+            let input = match parse("taskInferenceRouteChangeRequestSchema", body.as_ref())? {
+                Ok(input) => input,
+                Err(response) => return Ok(response),
+            };
+            let repository = tasks::Repository::new(service.repository.database.clone());
+            return match repository
+                .change_inference_route(&owner, &chat, &input)
+                .await
+            {
+                Ok(change) => {
+                    crate::workers::resource_revocations::wake(
+                        service.workers.clone(),
+                        &owner,
+                        change["source"]["workerId"]
+                            .as_str()
+                            .context("Task route worker")?,
+                    );
+                    service
+                        .chat_mutations
+                        .publish_invalidation(&owner, &chat, "task", None);
+                    service.execution.scheduler.queue_tick();
+                    output(200, "taskInferenceRouteChangeSchema", &change)
+                }
+                Err(cause) => mutation_error(cause),
+            };
+        }
         if path == "/api/projects/{projectId}/tasks" {
             let input = match parse("encryptedTaskCreateSchema", body.as_ref())? {
                 Ok(input) => input,
@@ -191,6 +227,10 @@ async fn handle(
 
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
+        .route(
+            "/api/tasks/{chatId}/inference-route",
+            get(handle).post(handle),
+        )
         .route("/api/chats/{chatId}/model-configuration", patch(handle))
         .route("/api/projects/{projectId}/tasks", post(handle))
         .route("/api/tasks/{chatId}", get(handle).delete(handle))

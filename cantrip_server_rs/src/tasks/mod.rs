@@ -9,6 +9,7 @@ mod goal_inference_inputs;
 mod goal_input_history;
 pub(crate) mod goal_observations;
 mod inference_inputs;
+mod inference_routes;
 mod operations;
 pub mod policy;
 mod query_error;

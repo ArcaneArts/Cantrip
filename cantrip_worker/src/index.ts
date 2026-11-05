@@ -10,6 +10,7 @@ import { BinaryFileWrites } from "./binary-file-writes.js";
 import { dispatchRepositoryOperation } from "./repository-operation-dispatch.js";
 import { BrowserSurfaceWebRuntime } from "./browser/surface-web-runtime.js";
 import { generatePrivateLabel } from "./automatic-labeling.js";
+import { TaskInputExecutions } from "./task-input-executions.js";
 import { ClaimedInferenceSource } from "./inference-source.js";
 import { createNativeHistoryOutputModeResolver } from "./native-history-output-mode.js";
 import { managedNativePathsMatch } from "./codex/managed-native-policy.js";
@@ -1627,6 +1628,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     );
   };
   const inferenceAdmissions = new Map<string, WorkerInferenceAdmission>();
+  const taskInputExecutions = new TaskInputExecutions(
+    (scope, inputOperationId) => {
+      if (JSON.stringify(nativeNamespaceScope()) !== JSON.stringify(scope))
+        return;
+      workerNotificationEmitter?.({
+        type: "inference.task-settled",
+        ...scope,
+        workerGeneration: workerProcessGeneration,
+        inputOperationId,
+      });
+    },
+  );
   let inferenceAuthorityRetired = false;
   const retireInferenceAuthority = async () => {
     // Block lazy creation as well as existing pools before any asynchronous
@@ -3572,6 +3585,32 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     switch (command.type) {
       case "inference.status":
         return inferenceAdmissionForWorker().snapshot();
+      case "inference.task-revoke": {
+        const scope = nativeNamespaceScope();
+        if (
+          command.ownerId !== scope.ownerId ||
+          command.source.workerId !== config.workerId
+        )
+          throw new Error(
+            "The Task input cancellation belongs to another worker owner.",
+          );
+        const settled = await taskInputExecutions.revoke(
+          command.source,
+          scope,
+          () => inferenceAdmissionForWorker().confirmNativeOwnership(),
+        );
+        if (JSON.stringify(nativeNamespaceScope()) !== JSON.stringify(scope))
+          throw new Error(
+            "The worker's Task input owner changed during settlement.",
+          );
+        return {
+          operationId: command.operationId,
+          source: command.source,
+          ...scope,
+          workerGeneration: workerProcessGeneration,
+          settled,
+        };
+      }
       case "inference.revoke": {
         const scope = nativeNamespaceScope();
         if (command.ownerId !== scope.ownerId)
@@ -5738,6 +5777,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 };
           const guiAdapters = new Set<ManagedNativeCommandSession>();
           let taskInferenceOwner: ClaimedInferenceSource | undefined;
+          let taskInputExecution:
+            ReturnType<TaskInputExecutions["begin"]> | undefined;
           const guiBridgeSignal = managedGuiBridgeLifetime.signal;
           const computerUseRegistration: {
             release: (() => Promise<void>) | null;
@@ -5798,6 +5839,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           }
           try {
             if (command.taskInferenceInput) {
+              taskInputExecution = taskInputExecutions.begin(
+                command.taskInferenceInput,
+                nativeNamespaceScope(),
+                preparationSignal
+                  ? AbortSignal.any([preparationSignal, guiBridgeSignal])
+                  : guiBridgeSignal,
+              );
               // Claim the actual input once before creating a collectible
               // admission owner. Repeated accepted receipts cannot remint it.
               await nativeCommands.dispatchTaskInput(
@@ -5807,23 +5855,23 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   receipt: command.taskInferenceInput,
                   phase: "claim",
                 },
-                guiBridgeSignal,
+                taskInputExecution.signal,
               );
               taskInferenceOwner = new ClaimedInferenceSource(
                 command.nativeCommandReceipt?.operationGeneration ??
                   command.taskInferenceInput.operationId,
-                preparationSignal
-                  ? AbortSignal.any([preparationSignal, guiBridgeSignal])
-                  : guiBridgeSignal,
+                taskInputExecution.signal,
               );
             }
             const turnOptions: Parameters<typeof runtime.runTurn>[0] = {
               taskOwned: encryptedTask,
               initialLabel,
               inferenceSource: taskInferenceOwner?.source,
-              preparationSignal: preparationSignal
-                ? AbortSignal.any([preparationSignal, guiBridgeSignal])
-                : undefined,
+              preparationSignal:
+                taskInputExecution?.signal ??
+                (preparationSignal
+                  ? AbortSignal.any([preparationSignal, guiBridgeSignal])
+                  : undefined),
               operationGeneration:
                 command.nativeCommandReceipt?.operationGeneration ??
                 command.taskInferenceInput?.operationId,
@@ -6444,13 +6492,20 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               };
             }
             return await finalizeCuaAgentTurn(
-              () => runtime.runTurn(turnOptions),
+              async () => {
+                try {
+                  return await runtime.runTurn(turnOptions);
+                } finally {
+                  taskInputExecution?.settled();
+                }
+              },
               async () => {
                 await computerUseRegistration.release?.();
               },
               () => protectedEventQueue,
             );
           } finally {
+            taskInputExecution?.settled();
             taskInferenceOwner?.close();
             if (command.nativeCommandReceipt)
               for (const adapter of guiAdapters)

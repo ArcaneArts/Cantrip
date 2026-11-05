@@ -146,6 +146,9 @@ impl Service {
     async fn dispatch(&self, owner: &str) -> Result<PreparedDispatch> {
         let dispatch = task_dispatch::Repository::new(self.database.clone());
         let cycles = dispatch.list(owner).await?;
+        let (pending_routes, route_changes) = crate::tasks::Repository::new(self.database.clone())
+            .inference_route_scheduling(owner)
+            .await?;
         let chats = Chats::new(self.database.clone());
         let physical = WorkerRepository::new(self.database.clone());
         let mut entries = HashMap::new();
@@ -172,17 +175,24 @@ impl Service {
             let physical_worker = physical
                 .get_worker(owner, &text(&context["workerId"])?)
                 .await?;
+            let route_change = route_changes.get(&text(&cycle["id"])?).cloned();
+            let route_pending = pending_routes.contains(&text(&cycle["chatId"])?);
             {
                 let mut runtime = None;
-                let resolution = if !(self.connected)(&text(&context["workerId"])?) {
+                let resolution = if route_pending {
+                    json!({"eligible":false,"code":"provider-transfer-pending"})
+                } else if route_change.is_none() && !(self.connected)(&text(&context["workerId"])?)
+                {
                     json!({"eligible":false,"code":"worker-offline"})
-                } else if !physical_worker.as_ref().is_some_and(|w| {
-                    w["encryption"]["grants"].as_array().is_some_and(|grants| {
-                        grants
-                            .iter()
-                            .any(|grant| grant["component"] == "task-content")
+                } else if route_change.is_none()
+                    && !physical_worker.as_ref().is_some_and(|w| {
+                        w["encryption"]["grants"].as_array().is_some_and(|grants| {
+                            grants
+                                .iter()
+                                .any(|grant| grant["component"] == "task-content")
+                        })
                     })
-                }) {
+                {
                     json!({"eligible":false,"code":"encryption-grant-unavailable"})
                 } else if !truthy(configuration.get("modelId")) {
                     json!({"eligible":false,"code":"model-unavailable"})
@@ -197,8 +207,31 @@ impl Service {
                     match self
                         .operations
                         .with_timeout("resolve-runtime", self.timeout_ms, async move {
+                            let roots = if let Some(change) = route_change {
+                                let mut target_context = configuration_context.clone();
+                                target_context["modelRouteId"] =
+                                    change["targetModelRouteId"].clone();
+                                target_context["providerAccountId"] =
+                                    change["targetProviderAccountId"].clone();
+                                Some(vec![
+                                    routing
+                                        .configured_managed_runtime(
+                                            &owner,
+                                            &target_context,
+                                            &configuration["modelId"],
+                                        )
+                                        .await?,
+                                ])
+                            } else {
+                                None
+                            };
                             routing
-                                .route_pairs(&owner, &configuration_context, &configuration, None)
+                                .route_pairs(
+                                    &owner,
+                                    &configuration_context,
+                                    &configuration,
+                                    roots.as_deref(),
+                                )
                                 .await
                         })
                         .await
@@ -249,10 +282,21 @@ impl Service {
         let cycles = task_dispatch::Repository::new(self.database.clone())
             .list(owner)
             .await?;
+        let (pending_routes, _) = crate::tasks::Repository::new(self.database.clone())
+            .inference_route_scheduling(owner)
+            .await?;
+
         let chats = Chats::new(self.database.clone());
         let mut resolutions = HashMap::new();
         for cycle in cycles.as_array().context("Task dispatch cycles")? {
             if cycle["state"] != "paused" {
+                continue;
+            }
+            if pending_routes.contains(&text(&cycle["chatId"])?) {
+                resolutions.insert(
+                    text(&cycle["id"])?,
+                    json!({"eligible":false,"code":"provider-transfer-pending"}),
+                );
                 continue;
             }
             let context = chats

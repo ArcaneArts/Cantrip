@@ -41,3 +41,47 @@ export async function boundManagedRuntime(
     },
   };
 }
+
+/** A newly selected destination honors enabled configuration, without using
+ * cached quota, authentication, or online observations as execution gates. */
+export async function configuredManagedRuntime(
+  ownerId: string,
+  context: ChatExecutionContext,
+  modelId: string,
+  repository: Pick<
+    ServerRepository,
+    "getModelRuntime" | "listModelProviderAccountRuntimes"
+  >,
+) {
+  const runtime = context.modelRouteId
+    ? await repository.getModelRuntime(ownerId, modelId, context.modelRouteId)
+    : null;
+  if (!runtime)
+    throw new Error("The selected provider route is no longer enabled.");
+  if (runtime.provider.kind !== "chatgpt" && runtime.provider.kind !== "grok") {
+    if (context.providerAccountId !== null)
+      throw new Error("The selected account does not belong to this provider.");
+    return runtime;
+  }
+  const account = (
+    await repository.listModelProviderAccountRuntimes(
+      ownerId,
+      runtime.provider.id,
+      context.workerId,
+      null,
+    )
+  ).find(
+    (entry) => entry.enabled && entry.accountId === context.providerAccountId,
+  );
+  if (!account)
+    throw new Error("The selected provider account is no longer enabled.");
+  return {
+    ...runtime,
+    provider: {
+      ...runtime.provider,
+      accountId: account.accountId,
+      credentialHomeKey: account.credentialHomeKey,
+      credits: account.credits,
+    },
+  };
+}

@@ -5,6 +5,7 @@ import {
   type ModelConfiguration,
 } from "@cantrip/protocol";
 import { TaskDispatchStatus } from "./task-dispatch-status";
+import { TaskQueuedProviderTransfer } from "./task-queued-provider-transfer";
 import {
   TASK_PRIORITY_MAX,
   TASK_PRIORITY_MIN,
@@ -712,22 +713,29 @@ export function TaskSurface({
 
   const mode = taskSurfaceMode(task.data);
   if (mode === "activity") {
+    const activityQueued =
+      Boolean(inferenceQueue.data) || task.data.dispatch?.state === "queued";
     return (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex shrink-0 items-center gap-3 border-b px-5 py-3">
           {onClose ? <TaskListBackButton onBack={onClose} /> : null}
-          {inferenceQueue.data ? (
+          {activityQueued ? (
             <Clock3 className="size-4 text-muted-foreground" />
           ) : (
             <Loader2 className="size-4 animate-spin text-violet-500" />
           )}
           <div className="min-w-0">
             <p className="text-sm font-medium">
-              {inferenceQueue.data
-                ? "Queued for provider capacity"
-                : task.data.state === "finalizing"
-                  ? "Finalizing Task"
-                  : "Planning Task"}
+              {task.data.dispatch?.eligibilityCode ===
+              "provider-transfer-pending"
+                ? "Changing queued provider"
+                : inferenceQueue.data
+                  ? "Queued for provider capacity"
+                  : activityQueued
+                    ? "Task queued"
+                    : task.data.state === "finalizing"
+                      ? "Finalizing Task"
+                      : "Planning Task"}
             </p>
             <p className="truncate text-xs text-muted-foreground">
               Read-only investigation · round {task.data.planningRound}
@@ -738,6 +746,12 @@ export function TaskSurface({
           <TaskInteractionRequests chat={chat} visible={visible} />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 sm:px-6">
+          <TaskQueuedProviderTransfer
+            chatId={chat.id}
+            revision={task.data.rowVersion}
+            queued={activityQueued}
+            visible={visible}
+          />
           <TaskOverviewSummary
             chat={chat}
             task={task.data}

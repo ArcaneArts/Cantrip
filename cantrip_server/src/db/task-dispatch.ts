@@ -533,7 +533,11 @@ export class TaskDispatchRepository {
             and(
               eq(schema.taskDispatchCycles.ownerId, ownerId),
               eq(schema.taskDispatchCycles.state, "queued"),
+              sql`NOT EXISTS (SELECT 1 FROM task_planning_rounds r
+                WHERE r.chat_id=${schema.taskDispatchCycles.chatId}
+                  AND r.inference_input->'routeChange'->>'phase'='draining')`,
               isNull(schema.chats.archivedAt),
+              eq(schema.chats.automationPaused, false),
               ne(schema.tasks.state, "complete"),
             ),
           )
@@ -872,6 +876,9 @@ export class TaskDispatchRepository {
           and(
             eq(schema.taskDispatchCycles.ownerId, ownerId),
             eq(schema.taskDispatchCycles.state, "paused"),
+            sql`NOT EXISTS (SELECT 1 FROM task_planning_rounds r
+              WHERE r.chat_id=${schema.taskDispatchCycles.chatId}
+                AND r.inference_input->'routeChange'->>'phase'='draining')`,
           ),
         )
         .orderBy(

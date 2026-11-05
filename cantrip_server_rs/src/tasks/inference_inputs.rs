@@ -5,7 +5,7 @@ fn stale<T>() -> Result<T> {
     Err(crate::task_dispatch::Conflict::stale().into())
 }
 
-async fn context(tx: &Transaction<'_>, owner: &str, receipt: &Value) -> Result<Value> {
+pub(super) async fn context(tx: &Transaction<'_>, owner: &str, receipt: &Value) -> Result<Value> {
     let (operation, chat, lane, activated) = (
         text(&receipt["dispatch"]["operationId"])?,
         text(&receipt["chatId"])?,
@@ -38,7 +38,7 @@ async fn context(tx: &Transaction<'_>, owner: &str, receipt: &Value) -> Result<V
     Ok(row)
 }
 
-async fn defer_locked(tx: &Transaction<'_>, row: &Value, state: &Value) -> Result<()> {
+pub(super) async fn defer_locked(tx: &Transaction<'_>, row: &Value, state: &Value) -> Result<()> {
     if state["failedBeforeDispatch"] == true {
         return stale();
     }
@@ -49,9 +49,11 @@ async fn defer_locked(tx: &Transaction<'_>, row: &Value, state: &Value) -> Resul
         text(&receipt["dispatch"]["operationId"])?,
         text(&receipt["dispatch"]["cycleId"])?,
     );
-    let paused = row["chat"]["automation_paused"] == true
-        || row["project"]["task_scheduling_paused"] == true
-        || row["task"]["state"] == "paused";
+    let transferred = state["routeChange"]["inputOperationId"] == receipt["operationId"];
+    let paused = !transferred
+        && (row["chat"]["automation_paused"] == true
+            || row["project"]["task_scheduling_paused"] == true
+            || row["task"]["state"] == "paused");
     crate::chats::execution_lanes::finish_in_transaction(tx,&chat,&lane,"idle",&json!({"expectedActivatedAt":receipt["executionLaneActivatedAt"],"markUnreadCompletion":false})).await?;
     let now = now();
     let at = text(&now)?;
@@ -102,7 +104,8 @@ impl Repository {
             let previous=&row["round"]["inference_input"];
             if previous["failedBeforeDispatch"]==true && previous["receipt"]["dispatch"]["cycleId"]==receipt["dispatch"]["cycleId"] && previous["receipt"]["dispatch"]["fencingToken"]==receipt["dispatch"]["fencingToken"] {return stale();}
             let attempts=if previous["deferred"]==true {previous["attemptCountBefore"].clone()}else{json!((cycle["attempt_count"].as_i64().context("Task attempts")?-1).max(0))};
-            let state=json!({"receipt":receipt,"deferred":false,"failedBeforeDispatch":false,"accepted":false,"dispatched":false,"allAttemptsEnforced":previous.is_null() || (previous["accepted"]==true && previous["allAttemptsEnforced"]==true),"firstDispatchedOperationId":previous["firstDispatchedOperationId"],"multipleDispatched":previous["multipleDispatched"]==true,"attemptCountBefore":attempts});
+            let mut state=json!({"receipt":receipt,"deferred":false,"failedBeforeDispatch":false,"accepted":false,"dispatched":false,"allAttemptsEnforced":previous.is_null() || (previous["accepted"]==true && previous["allAttemptsEnforced"]==true),"firstDispatchedOperationId":previous["firstDispatchedOperationId"],"multipleDispatched":previous["multipleDispatched"]==true,"attemptCountBefore":attempts});
+            if let Some(change)=previous.get("routeChange") { state["routeChange"]=change.clone(); }
             update(tx,Table::Round,&operation,&json!({"inference_input":state,"user_message_id":receipt["clientMessageId"],"execution_lane_id":receipt["executionLaneId"]}),None).await?;
             let route=text(&receipt["modelRouteId"])?;let account=receipt["providerAccountId"].as_str();let cycle_id=text(&cycle["id"])?;
             tx.query("UPDATE task_dispatch_cycles SET model_route_id=$2,provider_account_id=$3 WHERE id=$1",&[&cycle_id,&route,&account]).await?;

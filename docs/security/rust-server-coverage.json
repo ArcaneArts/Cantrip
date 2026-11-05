@@ -3,16 +3,16 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "c67ceba8bc17e1cde6fadcda80c5b82ead3e76960fb90df1bb0bdca809a41a83",
+    "sha256": "f828bc4d610ba2f9d8faf71ff90ba910f3f63368b5b3079591d9f9d36361d4f8",
     "baselineCommit": "2d68134ecb2f1ec71b06af5cf82dd355e70c6e5e",
     "counts": {
-      "routes": 538,
-      "workerCommands": 296,
-      "durableTables": 115,
-      "repositoryMethods": 366,
+      "routes": 542,
+      "workerCommands": 299,
+      "durableTables": 116,
+      "repositoryMethods": 367,
       "liveResources": 47
     },
-    "workingTreeNote": "Integrated 2d68134ec: 538routes,296worker commands,115declared tables,366repository methods,47Live resources,122physical tables and256migrations. The only added command is the reviewed surface.desktop.os-prepare generation-metadata contract; prior classifications/contracts are unchanged. Target MCP validation remains local. Pinned067906537/62patch full-native Task PGlite evidence does not establish current-main/platform/full replacement acceptance.",
+    "workingTreeNote": "Inventory includes queued Task provider-route control (542 routes, 299 worker commands). These additions have source review, direct formatting and diff checking only; no runtime/platform or broad replacement acceptance is inferred. Earlier acceptance evidence retains its recorded revisions.",
     "migrationBackedTableCount": 122
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
@@ -5204,6 +5204,32 @@
           "Sixteen native operations are advertised, including target.list/inspect, atomic chat.send, context.compact and opaque policy.list/read. Other Source MCP domains remain unfinished.",
           "Current native and supported-platform product/packaging, coordination and full replacement acceptance."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/tasks/:chatId/inference-route",
+        "implementation": "cantrip_server_rs/src/http/task_controls/mod.rs",
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/src/tasks/inference_routes.rs",
+          "cantrip_server_rs/src/workers/resource_revocations.rs"
+        ],
+        "remaining": [
+          "Source review, direct formatting and git diff --check only. Runtime, migration, race and supported-platform behavior are unverified; tests, builds, typechecks and native/helper execution remain prohibited."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/tasks/:chatId/inference-route",
+        "implementation": "cantrip_server_rs/src/http/task_controls/mod.rs",
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/src/tasks/inference_routes.rs",
+          "cantrip_server_rs/src/workers/resource_revocations.rs"
+        ],
+        "remaining": [
+          "Source review, direct formatting and git diff --check only. Runtime, migration, race and supported-platform behavior are unverified; tests, builds, typechecks and native/helper execution remain prohibited."
+        ]
       }
     ]
   },
@@ -6156,6 +6182,15 @@
         ],
         "remaining": [
           "Current-head supported-platform and complete packaged/standalone acceptance."
+        ]
+      },
+      {
+        "command": "inference.task-revoke",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/workers/resource_revocations.rs",
+        "evidence": ["cantrip_worker/src/task-input-executions.ts"],
+        "remaining": [
+          "Exact-source cancellation and physical settlement delivery are source-reviewed only; runtime/platform acceptance has not been run."
         ]
       }
     ]

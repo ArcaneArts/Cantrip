@@ -3823,6 +3823,17 @@ export const taskPlanningRounds = pgTable(
       table.chatId,
       table.startedAt,
     ),
+    index("task_inference_route_change_pending_idx")
+      .on(
+        table.chatId,
+        sql`(${table.inferenceInput}->'routeChange'->'source'->>'workerId')`,
+      )
+      .where(
+        sql`${table.inferenceInput}->'routeChange'->>'phase' = 'draining'`,
+      ),
+    index("task_inference_route_change_history_idx")
+      .on(table.chatId, table.ordinal.desc())
+      .where(sql`${table.inferenceInput} ? 'routeChange'`),
     check(
       "task_round_history_receipt_check",
       sql`${table.inferenceInput}->'terminal'->'historyOnly' IS NULL OR jsonb_typeof(${table.inferenceInput}->'terminal'->'historyOnly') = 'boolean'`,
