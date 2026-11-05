@@ -65,6 +65,7 @@ impl Runtime {
         let completion = Completion {
             turn: turn.clone(),
             result: result.clone(),
+            task_input_operation: sink.task_input_operation.lock().unwrap().clone(),
         };
         if truthy(turn.options.get("structuredResult")) {
             (hooks

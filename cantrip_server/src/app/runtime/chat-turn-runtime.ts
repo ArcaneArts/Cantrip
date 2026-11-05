@@ -1731,6 +1731,7 @@ export function createChatTurnRuntime({
                 execution,
                 result,
                 userMessage,
+                taskInferenceInputOperationId: taskInferenceInput?.operationId,
               });
             } else if (encryptedTaskMessages?.response) {
               const encryptedResult = taskMessageRelayResultSchema.parse(
@@ -1831,6 +1832,8 @@ export function createChatTurnRuntime({
                   execution,
                   result,
                   userMessage,
+                  taskInferenceInputOperationId:
+                    taskInferenceInput?.operationId,
                 });
               } catch (error) {
                 app.log.error(

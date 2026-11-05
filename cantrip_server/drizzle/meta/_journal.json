@@ -1814,6 +1814,13 @@
       "when": 1793871723893,
       "tag": "0258_provider_inference_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 259,
+      "version": "7",
+      "when": 1793871723894,
+      "tag": "0259_task_round_outcome_receipts",
+      "breakpoints": true
     }
   ]
 }

@@ -38,11 +38,13 @@ export interface TaskInferenceInputState {
   attemptCountBefore: number;
   /** A positive terminal worker failure, not a transport observation timeout. */
   failedBeforeDispatch?: boolean;
-  /** Bounded terminal receipt metadata for the existing Goal input. It is not
-   * a prompt queue, and cannot authorize a replacement native execution. */
+  /** Bounded terminal receipt metadata on the existing input. Goal projection
+   * and round completion keep their own authority; this cannot launch input. */
   terminal?: {
     ok: boolean;
     failureKind: TaskFailureKind | null;
+    /** Round completion's canonical protected-outcome identity; no response copy. */
+    outcomeDigest?: string;
     observedAt: string;
     projectedAt: string | null;
     threadId: string | null;

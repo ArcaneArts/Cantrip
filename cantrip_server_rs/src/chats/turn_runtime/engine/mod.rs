@@ -32,6 +32,7 @@ pub trait Continuation: Send + Sync {
 pub struct Completion {
     pub turn: Arc<PreparedTurn>,
     pub result: Value,
+    pub task_input_operation: Option<Value>,
 }
 #[derive(Clone)]
 pub struct Failure {

@@ -1,5 +1,9 @@
 import type { TaskOperationRelayResult } from "@cantrip/protocol/tasks";
-import type { WorkerNotification } from "@cantrip/protocol";
+import {
+  workerChatTurnOutcomeNotificationSchema,
+  type WorkerNotification,
+} from "@cantrip/protocol";
+import { nativeHistoryPayloadDigest } from "./repository/native-history-digest.js";
 import { and, eq, sql } from "drizzle-orm";
 import * as schema from "./schema.js";
 import type {
@@ -92,21 +96,6 @@ export async function recoverRoundOutcome(
         /* A terminal invalid result follows the canonical failure path. */
       }
     }
-    await assertTaskOperationDispatchFence(
-      tx,
-      owner,
-      n.chatId,
-      round.id,
-      guard,
-    );
-    const [cycle] = await tx
-      .select()
-      .from(schema.taskDispatchCycles)
-      .where(eq(schema.taskDispatchCycles.id, fence.cycleId))
-      .for("update")
-      .limit(1);
-    // assertTaskOperationDispatchFence also requires this to be the latest cycle.
-    if (!cycle || cycle.operationKind !== round.kind) stale();
     const input = round.inferenceInput;
     const receipt = input?.receipt;
     if (
@@ -126,6 +115,65 @@ export async function recoverRoundOutcome(
       receipt.dispatch.leaseOwner !== fence.leaseOwner
     )
       stale();
+    const failureKind = result
+      ? null
+      : classifyTaskFailure(
+          n.outcome.ok ? "Recovered Task result was invalid." : n.outcome.error,
+        );
+    const outcomeDigest = nativeHistoryPayloadDigest(
+      workerChatTurnOutcomeNotificationSchema.parse(n).outcome,
+    );
+    const terminal = input.terminal;
+    if (terminal?.projectedAt) {
+      if (
+        terminal.ok !== (result !== null) ||
+        terminal.failureKind !== failureKind ||
+        terminal.outcomeDigest !== outcomeDigest ||
+        (outcome &&
+          (terminal.threadId !== outcome.threadId ||
+            (outcome.turnId != null && terminal.turnId !== outcome.turnId)))
+      )
+        stale();
+      // A prior transaction is positive terminal evidence. Validate current
+      // read authorization, but never replay its Task/lane/dispatch mutations.
+      const [authorization] = await tx
+        .select({
+          projectId: schema.projects.id,
+          experience: schema.chats.experience,
+        })
+        .from(schema.chats)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, owner),
+          ),
+        )
+        .where(eq(schema.chats.id, n.chatId))
+        .limit(1);
+      if (!authorization || authorization.experience !== "task") return null;
+      return {
+        state: "owned" as const,
+        message: null,
+        chat: { ...authorization, experience: "task" as const },
+        terminal,
+      };
+    }
+    await assertTaskOperationDispatchFence(
+      tx,
+      owner,
+      n.chatId,
+      round.id,
+      guard,
+    );
+    const [cycle] = await tx
+      .select()
+      .from(schema.taskDispatchCycles)
+      .where(eq(schema.taskDispatchCycles.id, fence.cycleId))
+      .for("update")
+      .limit(1);
+    // assertTaskOperationDispatchFence also requires this to be the latest cycle.
+    if (!cycle || cycle.operationKind !== round.kind) stale();
     await tx.execute(projectChatExecutionLock(owner, n.chatId));
     const [placement] = await tx
       .select({ chat: schema.chats, project: schema.projects })
@@ -253,6 +301,19 @@ export async function recoverRoundOutcome(
         markUnreadCompletion: !goalStartup,
       });
     const now = new Date();
+    const observedTerminal = {
+      ok: result !== null,
+      failureKind,
+      outcomeDigest,
+      observedAt: terminal?.observedAt ?? now.toISOString(),
+      projectedAt: now.toISOString(),
+      threadId: outcome?.threadId ?? cycle.codexThreadId,
+      turnId: outcome?.turnId ?? cycle.turnId,
+    };
+    await tx
+      .update(schema.taskPlanningRounds)
+      .set({ inferenceInput: { ...input, terminal: observedTerminal } })
+      .where(eq(schema.taskPlanningRounds.id, round.id));
     await tx
       .update(schema.agentInteractionRequests)
       .set({ status: "interrupted", resolvedAt: now, updatedAt: now })
@@ -295,6 +356,7 @@ export async function recoverRoundOutcome(
         message,
         chat,
         ok: result !== null,
+        terminal: observedTerminal,
       };
     }
     const paused =
@@ -322,7 +384,12 @@ export async function recoverRoundOutcome(
         updatedAt: now,
       })
       .where(eq(schema.taskDispatchCycles.id, cycle.id));
-    return { state: "queued" as const, message, chat };
+    return {
+      state: "queued" as const,
+      message,
+      chat,
+      terminal: observedTerminal,
+    };
   });
 }
 

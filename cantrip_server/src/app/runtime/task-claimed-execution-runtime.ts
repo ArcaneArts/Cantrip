@@ -36,6 +36,7 @@ export type TaskClaimedExecutionDependencies = Pick<
   | "failTaskGoalLaunch"
   | "launchPreparedTaskGoal"
   | "publishChatInvalidation"
+  | "publishTaskMessage"
   | "releaseTaskGoalLease"
   | "repository"
   | "retainTaskGoalLease"
@@ -54,6 +55,7 @@ export function createTaskClaimedExecutionRuntime(
     failTaskGoalLaunch,
     launchPreparedTaskGoal,
     publishChatInvalidation,
+    publishTaskMessage,
     releaseTaskGoalLease,
     repository,
     retainTaskGoalLease,
@@ -406,7 +408,56 @@ export function createTaskClaimedExecutionRuntime(
                     taskDispatchLease: claim.lease,
                     structuredResult: {
                       taskOperation: request,
-                      async onCompleted({ attribution, result }) {
+                      async onCompleted({
+                        attribution,
+                        execution,
+                        result,
+                        userMessage,
+                        taskInferenceInputOperationId,
+                      }) {
+                        if (taskInferenceInputOperationId) {
+                          const recovered =
+                            await repository.tasks.recoverRoundOutcome(
+                              ownerId,
+                              execution.workerId,
+                              {
+                                type: "chat.turn.outcome",
+                                chatId: execution.chatId,
+                                clientMessageId: userMessage.id,
+                                executionLaneId: attribution.executionLaneId,
+                                contextKind: "project",
+                                worktreeId: execution.worktreeId,
+                                scratchRootId: null,
+                                taskInferenceInputOperationId,
+                                taskDispatchFence: {
+                                  cycleId: claim.lease.cycleId,
+                                  operationId: claim.lease.operationId,
+                                  leaseOwner: claim.lease.leaseOwner,
+                                  fencingToken: claim.lease.fencingToken,
+                                },
+                                outcome: { ok: true, result },
+                              },
+                            );
+                          if (!recovered)
+                            throw new Error(
+                              "The Task outcome lost its canonical input receipt.",
+                            );
+                          // Projection is committed before live publication. A
+                          // finalizer's Goal startup is a new durable claim.
+                          queueTaskScheduleTick();
+                          if (recovered.message)
+                            publishTaskMessage(
+                              recovered.message,
+                              recovered.chat,
+                            );
+                          publishChatInvalidation(
+                            execution.chatId,
+                            "task",
+                            null,
+                            execution,
+                          );
+                          return;
+                        }
                         await repository.taskDispatch.heartbeat(claim.lease);
                         const relayResult = parseTaskOperationRelayResult(
                           result.structuredResult,
@@ -460,7 +511,11 @@ export function createTaskClaimedExecutionRuntime(
                           context,
                         );
                       },
-                      async afterCompleted() {
+                      async afterCompleted({ taskInferenceInputOperationId }) {
+                        if (taskInferenceInputOperationId) {
+                          queueTaskScheduleTick();
+                          return;
+                        }
                         if (request.classification.kind !== "finalize") return;
                         await launchClaimedGoal(request.operationId);
                       },

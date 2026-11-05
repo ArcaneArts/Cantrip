@@ -8,6 +8,7 @@ import type {
 } from "@cantrip/protocol";
 import type {
   TaskMessageOpaqueContent,
+  TaskMessageOpaqueSummary,
   TaskOpaqueSummary,
   TaskOperationRelayRequest,
   TaskGoalSyncContext,
@@ -42,6 +43,7 @@ interface TaskTurnCallbackInput {
   execution: ChatExecutionContext;
   result: AgentTurnResult;
   userMessage: ChatMessage;
+  taskInferenceInputOperationId?: string;
 }
 
 interface TaskTurnOptions {
@@ -127,6 +129,10 @@ export interface TaskRouteRuntimeDependencies {
     chatId: string,
     resource: ChatLiveResource,
     entityId?: string | null,
+    routing?: ChatLiveRouting,
+  ) => void;
+  publishTaskMessage: (
+    message: TaskMessageOpaqueSummary,
     routing?: ChatLiveRouting,
   ) => void;
   publishChatSummary: (chatId: string, projectId: string | null) => void;

@@ -3822,6 +3822,16 @@ export const taskPlanningRounds = pgTable(
       table.chatId,
       table.startedAt,
     ),
+    check(
+      "task_round_outcome_receipt_check",
+      sql`${table.inferenceInput}->'terminal'->'outcomeDigest' IS NULL OR COALESCE((
+        jsonb_typeof(${table.inferenceInput}->'terminal'->'outcomeDigest') = 'string'
+        AND ${table.inferenceInput}->'terminal'->>'outcomeDigest' ~ '^[a-f0-9]{64}$'
+        AND jsonb_typeof(${table.inferenceInput}->'terminal'->'ok') = 'boolean'
+        AND jsonb_typeof(${table.inferenceInput}->'terminal'->'observedAt') = 'string'
+        AND jsonb_typeof(${table.inferenceInput}->'terminal'->'projectedAt') = 'string'
+      ), false)`,
+    ),
     check("task_planning_rounds_ordinal_check", sql`${table.ordinal} >= 0`),
     check(
       "task_planning_rounds_kind_check",

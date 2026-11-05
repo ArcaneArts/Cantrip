@@ -61,17 +61,20 @@ export interface ChatTurnOptions {
       execution: ChatExecutionContext;
       result: AgentTurnResult;
       userMessage: ChatMessage;
+      taskInferenceInputOperationId?: string;
     }): Promise<void>;
     onCompleted(input: {
       attribution: ChatExecutionAttribution;
       execution: ChatExecutionContext;
       result: AgentTurnResult;
       userMessage: ChatMessage;
+      taskInferenceInputOperationId?: string;
     }): Promise<void>;
     onFailed(input: {
       error: unknown;
       execution: ChatExecutionContext;
       userMessage: ChatMessage;
+      taskInferenceInputOperationId?: string;
     }): Promise<void>;
   };
   afterTurnCompleted?(input: {
