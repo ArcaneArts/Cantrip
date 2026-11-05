@@ -176,6 +176,11 @@ async fn internal_apply(
                 .withdrawn(&owner, &worker, &operation, &input["record"])
                 .await?
         }
+        "goal-recovery-withdrawn" => {
+            repository
+                .goal_recovery_withdrawn(&owner, &worker, &operation, &input["receipt"])
+                .await?
+        }
         "decline-queued-source" => {
             repository
                 .decline_queued_source(&owner, &worker, &operation)

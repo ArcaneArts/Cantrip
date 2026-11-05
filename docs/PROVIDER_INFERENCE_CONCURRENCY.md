@@ -2295,3 +2295,36 @@ execution, patch application/checks, hosted validation or computer-use testing
 ran for this work. Runtime and platform behavior remain unverified. The broader
 Task-private-cycle, provider-route, cancellation and restart lifecycle audits
 continue as part of the full concurrency goal.
+
+## Transferring a Goal whose unused source already retired
+
+A recovered cycle may still own its original first-cycle claim while its old
+native command has physically completed and the recovery marker has no admitted
+child. Runtime transfer now recognizes that canonical state directly. It keeps
+the applied setter and original encrypted input; it does not manufacture a live
+inference lease or replay the Goal prompt.
+
+The worker prepares the full source session and reads its actual native settings.
+Only source-binding reconstruction is allowed before withdrawal in this case;
+destination preparation and commit still require a confirmed withdrawal. The
+worker then invalidates the actual prepared native runner and saves a distinct
+`goal-withdrawal.json` receipt before acknowledging the transfer. A lost response
+reuses the exact saved acknowledgement. If the canonical source binding changes,
+its obsolete receipt is retired and a fresh native fence is captured.
+
+Both servers validate the reserved Goal source, current full settings binding,
+completed canonical source and retained first-cycle claim before accepting the
+new `goal-recovery-withdrawn` action. The ordinary lease-withdrawal action refuses
+this source type. Cancellation resolves any uncertain native acknowledgement
+before restoring the original source; explicit Stop/Pause keeps its stronger
+invalidation. A removed recovery marker is never recreated by transfer.
+
+Receipt cleanup is separate from provider FIFO evidence. Finishing this native
+fence does not delete a Goal's inference journal reservation. The broader causal
+FIFO audit across provider and account changes remains part of the active goal.
+
+This integration received source review, direct Prettier/rustfmt, mechanical
+source-based protocol export (648 roots, 10,732 nodes; Run export 11 roots,
+453 nodes), and `git diff --check`. No tests, builds, typechecks, benchmarks,
+native/helper execution, hosted validation, or computer-use testing ran. Runtime
+and platform behavior remain unverified.

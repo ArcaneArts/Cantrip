@@ -2,12 +2,28 @@ import { z } from "zod";
 import { modelProviderAccountWireSummarySchema } from "./providers.js";
 import { inferenceJournalRecordSchema } from "./inference-recovery.js";
 import { nativeAutonomousAttemptSchema } from "./native-commands.js";
+import { nativeGoalRecoverySourceSchema } from "./native-goal-recovery.js";
 import {
   nativeSettingsBindingSchema,
   protectedNativeSettingsSnapshotSchema,
 } from "./native-settings-state.js";
 
 const id = z.string().min(1).max(255);
+/** Actual native runner invalidation, distinct from an inference journal lease.
+ * The source was already retired under canonical no-dispatch authority. */
+export const nativeGoalRecoveryWithdrawalSchema = z
+  .object({
+    operationId: z.uuid(),
+    source: nativeGoalRecoverySourceSchema,
+    bindingId: id,
+    runtimeGeneration: id,
+    runnerGeneration: id,
+    workerGeneration: z.uuid(),
+  })
+  .strict();
+export type NativeGoalRecoveryWithdrawal = z.infer<
+  typeof nativeGoalRecoveryWithdrawalSchema
+>;
 export const nativeRuntimeHandoffQueuedSourceSchema = z
   .object({
     operationId: id,
@@ -15,6 +31,8 @@ export const nativeRuntimeHandoffQueuedSourceSchema = z
     withdrawn: z.boolean(),
     // Derived from the canonical accepted command, never from the UI request.
     autonomousAttempt: nativeAutonomousAttemptSchema.optional(),
+    goalRecovery: nativeGoalRecoverySourceSchema.optional(),
+    goalWithdrawal: nativeGoalRecoveryWithdrawalSchema.optional(),
     // The acknowledged Goal setter is never replayed. Only its exact pending
     // first-cycle claim is carried across the canonical route binding.
     goalClaim: z
@@ -130,6 +148,12 @@ export const nativeRuntimeHandoffWorkerRequestSchema = z.discriminatedUnion(
   "action",
   [
     workerOperation.extend({ action: z.literal("read") }).strict(),
+    workerOperation
+      .extend({
+        action: z.literal("goal-recovery-withdrawn"),
+        receipt: nativeGoalRecoveryWithdrawalSchema,
+      })
+      .strict(),
     workerOperation
       .extend({
         action: z.literal("withdrawn"),

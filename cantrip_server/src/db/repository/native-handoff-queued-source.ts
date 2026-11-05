@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { queuedPromptOpaqueContentSchema } from "@cantrip/protocol/communication-content";
 import type {
   InferenceJournalRecord,
@@ -18,6 +18,7 @@ import {
   confirmAutonomousHandoffSource,
 } from "./native-handoff-autonomous-source.js";
 import { captureHandoffGoalClaim } from "./native-handoff-goal-claim.js";
+import { reserveGoalRecoveryHandoff } from "./native-handoff-goal-recovery.js";
 
 const pending = ["accepted", "dispatched", "uncertain"];
 const fail = (): never => {
@@ -102,6 +103,9 @@ export async function reserveHandoffQueuedSource(
       and(
         eq(schema.nativeCommands.chatId, source.chatId),
         inArray(schema.nativeCommands.status, pending),
+        // Canonical no-dispatch retirement can preserve an uncertain receipt.
+        // Its actual completed source no longer owns executable native work.
+        sql`NOT (${schema.nativeCommands.executionCompletedAt} IS NOT NULL AND ${schema.nativeCommands.goalRecoverySource} IS NOT NULL)`,
       ),
     );
   const claims = await tx
@@ -113,6 +117,13 @@ export async function reserveHandoffQueuedSource(
         inArray(schema.managedQueueClaims.status, ["claimed", ...pending]),
       ),
     );
+  const recovery = await reserveGoalRecoveryHandoff(
+    tx,
+    source,
+    !lanes.length && !commands.length,
+    claims,
+  );
+  if (recovery) return recovery;
   if (!lanes.length && !commands.length && !claims.length) return null;
   if (lanes.length !== 1 || commands.length !== 1) fail();
   const command = commands[0]!;

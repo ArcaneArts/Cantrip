@@ -5,6 +5,7 @@ pub(crate) use autonomous_source::attempt as autonomous_attempt;
 mod commit;
 mod configuration;
 mod goal_claim;
+mod goal_recovery;
 mod guards;
 mod inventory;
 mod prepared;
@@ -31,6 +32,7 @@ pub struct Repository {
 enum Change {
     Cancel,
     Withdrawn(Value),
+    GoalRecoveryWithdrawn(Value),
     DeclineQueuedSource,
     Prepared {
         value: Value,
@@ -218,6 +220,7 @@ impl Repository {
                 },
                 Change::Prepared{value,runtime,epoch}=>prepared::apply(tx,&owner,&worker,row,value,&runtime,&epoch).boxed().await?,
                 Change::Withdrawn(record)=>queued_source::confirm(tx,&owner,&worker,row,&record).boxed().await?,
+                Change::GoalRecoveryWithdrawn(receipt)=>goal_recovery::confirm(tx,&owner,row,&receipt).boxed().await?,
                 Change::DeclineQueuedSource=>queued_source::decline(tx,&owner,row).boxed().await?,
                 Change::Commit=>commit::apply(tx,&owner,&worker,row).boxed().await?,
                 Change::Recover{side,expected,value}=>recover::apply(tx,&owner,&worker,row,&side,&expected,value).boxed().await?,
@@ -249,6 +252,21 @@ impl Repository {
     ) -> Result<Value> {
         self.mutate(owner, worker, operation, Change::Withdrawn(record.clone()))
             .await
+    }
+    pub async fn goal_recovery_withdrawn(
+        &self,
+        owner: &str,
+        worker: &str,
+        operation: &str,
+        receipt: &Value,
+    ) -> Result<Value> {
+        self.mutate(
+            owner,
+            worker,
+            operation,
+            Change::GoalRecoveryWithdrawn(receipt.clone()),
+        )
+        .await
     }
     pub async fn decline_queued_source(
         &self,

@@ -12,6 +12,7 @@ import {
   type NativeRuntimeHandoffPrepared,
   type NativeSettingsBinding,
   type InferenceJournalRecord,
+  type NativeGoalRecoveryWithdrawal,
 } from "@cantrip/protocol";
 import * as schema from "../schema.js";
 import type { RepositoryDatabase, RepositoryTransaction } from "./database.js";
@@ -34,6 +35,7 @@ import {
   retainedGoalClaimMatches,
 } from "./native-handoff-goal-claim.js";
 import type { GoalHandoffClaim } from "./native-goal-handoff-affinity.js";
+import { confirmGoalRecoveryHandoff } from "./native-handoff-goal-recovery.js";
 
 type Row = typeof schema.nativeRuntimeHandoffs.$inferSelect;
 const activePhases = ["preparing", "prepared", "committed"];
@@ -574,7 +576,15 @@ export class NativeRuntimeHandoffRepository {
   ) {
     const recovered = nativeRuntimeHandoffPreparedSchema.parse(value);
     return this.mutate(ownerId, workerId, operationId, async (tx, row) => {
-      if (row.queuedSource && !row.queuedSource.withdrawn)
+      if (
+        row.queuedSource &&
+        !row.queuedSource.withdrawn &&
+        !(
+          side === "source" &&
+          row.phase === "preparing" &&
+          row.queuedSource.goalRecovery
+        )
+      )
         fail("handoff-queued-source-unconfirmed");
       if (
         side === "source"
@@ -751,6 +761,8 @@ export class NativeRuntimeHandoffRepository {
     record: InferenceJournalRecord | null,
   ) {
     return this.mutate(ownerId, workerId, operationId, async (tx, row) => {
+      if (row.queuedSource?.goalRecovery)
+        fail("handoff-goal-recovery-receipt-required");
       if (row.queuedSource?.withdrawn) return row;
       if (row.phase !== "preparing" || row.prepared || !row.queuedSource)
         fail("handoff-phase-conflict");
@@ -767,6 +779,45 @@ export class NativeRuntimeHandoffRepository {
       await this.assertIdle(tx, row.chatId, row.queuedSource?.goalClaim);
       return this.update(tx, row, {
         queuedSource: { ...row.queuedSource!, withdrawn: true },
+        errorCode: null,
+      });
+    });
+  }
+
+  async goalRecoveryWithdrawn(
+    ownerId: string,
+    workerId: string,
+    operationId: string,
+    receipt: NativeGoalRecoveryWithdrawal,
+  ) {
+    return this.mutate(ownerId, workerId, operationId, async (tx, row) => {
+      if (row.queuedSource?.withdrawn) {
+        if (!isDeepStrictEqual(row.queuedSource.goalWithdrawal, receipt))
+          fail("handoff-operation-conflict");
+        return row;
+      }
+      if (
+        row.phase !== "preparing" ||
+        row.prepared ||
+        !row.queuedSource?.goalRecovery
+      )
+        fail("handoff-phase-conflict");
+      const source = row.binding ?? row.source;
+      await this.assertSource(tx, ownerId, source);
+      await confirmGoalRecoveryHandoff(
+        tx,
+        source,
+        row.queuedSource!,
+        operationId,
+        receipt,
+      );
+      await this.assertIdle(tx, row.chatId, row.queuedSource?.goalClaim);
+      return this.update(tx, row, {
+        queuedSource: {
+          ...row.queuedSource!,
+          withdrawn: true,
+          goalWithdrawal: receipt,
+        },
         errorCode: null,
       });
     });
@@ -907,6 +958,7 @@ export class NativeRuntimeHandoffRepository {
             "dispatched",
             "uncertain",
           ]),
+          sql`NOT (${schema.nativeCommands.executionCompletedAt} IS NOT NULL AND ${schema.nativeCommands.goalRecoverySource} IS NOT NULL)`,
         ),
       )
       .limit(1);

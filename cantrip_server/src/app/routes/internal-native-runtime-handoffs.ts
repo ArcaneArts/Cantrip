@@ -131,6 +131,14 @@ export function installInternalNativeRuntimeHandoffRoutes(
                 input.record,
               );
               break;
+            case "goal-recovery-withdrawn":
+              result = await operations.goalRecoveryWithdrawn(
+                authentication.ownerId,
+                input.workerId,
+                input.operationId,
+                input.receipt,
+              );
+              break;
             case "decline-queued-source":
               result = await operations.declineQueuedSource(
                 ownerId,

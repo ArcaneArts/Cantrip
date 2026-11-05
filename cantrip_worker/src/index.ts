@@ -3226,6 +3226,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     HandoffRuntime,
     NativeRuntimeHandoffConfiguration["configuration"]
   >();
+  const handoffRuntimes = new WeakMap<HandoffRuntime, CodexAppServer>();
   let handoffCoordinator: {
     identity: string;
     coordinator: ManagedRuntimeHandoffCoordinator;
@@ -3341,6 +3342,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       // Canonical acknowledgement is already durable. Metadata housekeeping
       // must not hold up destination publication or the original input's slot.
       void (async () => {
+        if (state.queuedSource!.goalRecovery) {
+          // This ACK fences a native runner; it did not withdraw a live lease.
+          // Let canonical Goal recovery decide FIFO restoration/retirement.
+          if (final) await journal.retireWithdrawal(state);
+          return;
+        }
         const record = await journal.withdrawal(state, () =>
           admission.withdrawalRecord({
             ...state.queuedSource!,
@@ -3370,6 +3377,43 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       client: handoffClient,
       namespaces: managedRuntimeNamespaces,
       journal,
+      withdrawGoalRecovery: async (state, prepared, signal) => {
+        signal.throwIfAborted();
+        if (
+          JSON.stringify(nativeNamespaceScope()) !== identity ||
+          !state.queuedSource?.goalRecovery
+        )
+          throw new Error(
+            "The recovered Goal handoff belongs to another worker scope.",
+          );
+        const runtime = handoffRuntimes.get(prepared);
+        const runner =
+          runtime && managedExecutionRunners.get(runtime)?.get(state.chatId);
+        const binding = state.binding ?? state.source;
+        if (
+          !runtime ||
+          !runner ||
+          runtime.transportGeneration !== binding.runtimeGeneration
+        )
+          throw new Error(
+            "The recovered Goal handoff lost its prepared native runner.",
+          );
+        const runnerGeneration = runner.configuration.runnerGeneration;
+        await runner.invalidateForProviderTransfer(
+          state.operationId,
+          runnerGeneration,
+          state.source.threadId,
+          binding.runtimeGeneration,
+        );
+        return {
+          operationId: state.operationId,
+          source: state.queuedSource.goalRecovery,
+          bindingId: binding.bindingId,
+          runtimeGeneration: binding.runtimeGeneration,
+          runnerGeneration,
+          workerGeneration: workerProcessGeneration,
+        };
+      },
       withdrawQueuedSource: async (state, signal, existingOnly) => {
         signal.throwIfAborted();
         if (JSON.stringify(nativeNamespaceScope()) !== identity)
@@ -3527,6 +3571,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           },
         };
         handoffConfigurations.set(prepared, options);
+        handoffRuntimes.set(prepared, runtime);
         return prepared;
       },
       protectSettings: async (state, side, prepared, observed) => {

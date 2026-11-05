@@ -3,6 +3,7 @@ import type {
   NativeRuntimeHandoffState,
   ProtectedNativeSettingsSnapshot,
   InferenceJournalRecord,
+  NativeGoalRecoveryWithdrawal,
 } from "@cantrip/protocol";
 import type {
   CodexAppServer,
@@ -49,6 +50,11 @@ export interface ManagedRuntimeHandoffDependencies {
     state: NativeRuntimeHandoffState,
     signal: AbortSignal,
   ): Promise<void>;
+  withdrawGoalRecovery?(
+    state: NativeRuntimeHandoffState,
+    source: HandoffRuntime,
+    signal: AbortSignal,
+  ): Promise<NativeGoalRecoveryWithdrawal>;
   /** Resolve fresh, exact server-authorized account and full MCP configuration.
    * Destination creation is isolated: no canonical association, observer or CLI
    * publication is allowed here. All prepared runtimes retain the execution gate. */
@@ -232,6 +238,51 @@ export class ManagedRuntimeHandoffCoordinator {
       return state;
     }
     try {
+      let source: HandoffRuntime | undefined;
+      const prepareSource = async (): Promise<HandoffRuntime> => {
+        if (source) return source;
+        source = await d.resolve(state, "source");
+        await source.runtime.prepareManagedThread({
+          ...source.configuration,
+          threadId: state.source.threadId,
+          intent: "preserve",
+          signal,
+        });
+        const observed = await this.snapshot(state, "source", source, signal);
+        const binding = state.binding ?? state.source;
+        if (
+          binding.runtimeGeneration !== observed.runtimeGeneration ||
+          binding.nativeEpoch !==
+            observed.snapshot.context.settingsVersion.epoch
+        )
+          state = await d.client.request(
+            {
+              ...scope,
+              action: "recover",
+              side: "source",
+              expectedBindingId: binding.bindingId,
+              recovered: observed,
+            },
+            signal,
+          );
+        return source;
+      };
+      if (state.queuedSource?.goalRecovery && !state.queuedSource.withdrawn) {
+        if (!d.withdrawGoalRecovery || !d.acknowledgeQueuedSource)
+          throw new Error("Recovered Goal handoff withdrawal is unavailable.");
+        // Resolve a lost native ACK even when cancellation is requested: the
+        // actual runner may already be invalidated. This retired Goal has no
+        // live lease to withdraw. A confirmed fence can safely restore the
+        // source through the existing cancellation path, preserving Stop/Pause.
+        const receipt = await d.journal.goalWithdrawal(state, async () => {
+          const prepared = await prepareSource();
+          return d.withdrawGoalRecovery!(state, prepared, signal);
+        });
+        state = await d.client.request(
+          { ...scope, action: "goal-recovery-withdrawn", receipt },
+          signal,
+        );
+      }
       if (state.queuedSource && !state.queuedSource.withdrawn) {
         if (!d.withdrawQueuedSource || !d.acknowledgeQueuedSource)
           throw new Error("Queued handoff withdrawal is unavailable.");
@@ -260,33 +311,8 @@ export class ManagedRuntimeHandoffCoordinator {
       if (state.queuedSource?.withdrawn)
         await d.acknowledgeQueuedSource?.(state, signal);
       if (state.cancelRequested) return await this.restore(state, signal);
-      let source: HandoffRuntime | undefined;
       if (state.phase !== "committed") {
-        source = await d.resolve(state, "source");
-        await source.runtime.prepareManagedThread({
-          ...source.configuration,
-          threadId: state.source.threadId,
-          intent: "preserve",
-          signal,
-        });
-        const observed = await this.snapshot(state, "source", source, signal);
-        const binding = state.binding ?? state.source;
-        if (
-          binding.runtimeGeneration !== observed.runtimeGeneration ||
-          binding.nativeEpoch !==
-            observed.snapshot.context.settingsVersion.epoch
-        ) {
-          state = await d.client.request(
-            {
-              ...scope,
-              action: "recover",
-              side: "source",
-              expectedBindingId: binding.bindingId,
-              recovered: observed,
-            },
-            signal,
-          );
-        }
+        source = await prepareSource();
       }
       const plan = await d.journal.prepare(state, async () => {
         if (!source)

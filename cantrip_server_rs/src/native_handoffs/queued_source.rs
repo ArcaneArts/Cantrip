@@ -19,8 +19,13 @@ pub(super) async fn reserve(tx: &Transaction<'_>, source: &Value) -> Result<Valu
         &[&chat],
     )
     .await?;
-    let commands = rows(tx, "SELECT to_jsonb(c)::text FROM native_commands c WHERE chat_id=$1 AND status IN ('accepted','dispatched','uncertain')", &[&chat]).await?;
+    let commands = rows(tx, "SELECT to_jsonb(c)::text FROM native_commands c WHERE chat_id=$1 AND status IN ('accepted','dispatched','uncertain') AND NOT (execution_completed_at IS NOT NULL AND goal_recovery_source IS NOT NULL)", &[&chat]).await?;
     let claims = rows(tx, "SELECT to_jsonb(c)::text FROM managed_queue_claims c WHERE chat_id=$1 AND status IN ('claimed','accepted','dispatched','uncertain')", &[&chat]).await?;
+    if let Some(recovery) =
+        goal_recovery::reserve(tx, source, lanes.is_empty() && commands.is_empty(), &claims).await?
+    {
+        return Ok(recovery);
+    }
     if lanes.is_empty() && commands.is_empty() && claims.is_empty() {
         return Ok(Value::Null);
     }
@@ -106,6 +111,9 @@ pub(super) async fn confirm(
     record: &Value,
 ) -> Result<Value> {
     let queued = &row["queued_source"];
+    if truthy(queued.get("goalRecovery")) {
+        return reject("handoff-goal-recovery-receipt-required");
+    }
     if queued["withdrawn"] == true {
         return Ok(row);
     }
