@@ -440,6 +440,51 @@ describe.skipIf(!enabled)("actual Linux Run generation driver", () => {
       );
       expect(journal).not.toContain(secretValue);
       expect(journal).not.toContain("python run-proof.py");
+      expect(JSON.parse(journal).protectedSecrets).toEqual(
+        input.protectedSecrets,
+      );
+      let recoveredOutput = "";
+      const resumedDriver = new OsRunExecution(
+        directory,
+        controller,
+        authority,
+        (projectId, secret) =>
+          openRunConfigurationSecretValue({
+            projectId,
+            secret,
+            service: cryptoService,
+          }),
+      );
+      const observedJob = await resumedDriver.resume(
+        { identity: input.identity, definitions, target },
+        {
+          output: (data) => {
+            recoveredOutput += data;
+          },
+          started: () => {
+            throw new Error(
+              "A completed recovered process was reported as running",
+            );
+          },
+        },
+      );
+      expect(observedJob).not.toBeNull();
+      expect(await observedJob!.completion).toEqual(completed);
+      expect(recoveredOutput).toContain("RUN_RESULT=");
+      expect(recoveredOutput).toContain("••••");
+      expect(recoveredOutput).not.toContain(secretValue);
+      expect(await get(`${targetPath}/runs.txt`)).toBe("once\n");
+      await expect(
+        resumedDriver.resume(
+          {
+            identity: { ...input.identity, operationId: randomUUID() },
+            definitions,
+            target,
+          },
+          { output: () => {}, started: () => {} },
+        ),
+      ).rejects.toThrow("captured admission");
+
       const staleDefinition = await driver.start(
         {
           ...input,
@@ -806,15 +851,33 @@ describe.skipIf(!enabled)("actual Linux Run generation driver", () => {
       crashWorker.kill("SIGKILL");
       await crashed;
       crashWorker = undefined;
-      // A fresh Worker supervisor observes and stops recorded handles. It does
-      // not recreate the process when its in-memory runtime is absent.
+      // A fresh Worker supervisor resumes the exact recorded native session.
+      // Reconciliation must neither stop nor replace the still-running process.
       const recovered = makeSupervisor();
       const reconciled = await recovered.reconcileLinux([managedCapture()]);
-      expect(reconciled.runtimes).toEqual([
-        { found: false, identity: managedLong.identity },
-      ]);
-      expect(await gone(thirdRoot)).toBe(true);
+      expect(reconciled.runtimes).toMatchObject([{ found: true }]);
+      await expect
+        .poll(() => recovered.status(managedLong.identity, managedCapture()), {
+          timeout: 30000,
+        })
+        .toMatchObject({ found: true, observation: { state: "running" } });
+      expect(await gone(thirdRoot)).toBe(false);
       expect(await get(`${targetPath}/root-child.pid`)).toBe(thirdRoot);
+      await recovered.reconcileLinux([managedCapture()]);
+      expect(await get(`${targetPath}/root-child.pid`)).toBe(thirdRoot);
+      managedLong.identity = {
+        ...managedLong.identity,
+        operationId: randomUUID(),
+      };
+      expect(
+        (
+          await recovered.stop({
+            type: "cantrip-os.run-runtime.stop",
+            ...managedCapture(),
+          })
+        ).observation?.state,
+      ).toBe("idle");
+      expect(await gone(thirdRoot)).toBe(true);
       expect(hostAuthorizations).toBe(0);
       const artifacts = new URL(
         "../../cantrip_os/artifacts/phase3-run-execution/",
@@ -840,7 +903,8 @@ describe.skipIf(!enabled)("actual Linux Run generation driver", () => {
               replayDidNotExecute: true,
               restartedRootStopped: firstRoot,
               stoppedRoot: secondRoot,
-              workerCrashRootStopped: thirdRoot,
+              workerCrashRootRetained: thirdRoot,
+              recoveredRootStoppedExplicitly: thirdRoot,
               recoveredWithoutReplay: reconciled.runtimes,
             },
           },

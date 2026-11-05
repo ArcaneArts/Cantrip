@@ -9,6 +9,7 @@ import type {
 import type {
   OsRunExecution,
   OsRunResult,
+  OsRunCallbacks,
 } from "./os-executor/run-execution.js";
 
 import type {
@@ -146,6 +147,13 @@ export interface RunConfigurationRuntimeSupervisorOptions {
       ...args: Parameters<OsRunExecution["start"]>
     ): Pick<ReturnType<OsRunExecution["start"]>, "completion" | "signal">;
     stopRecorded: OsRunExecution["stopRecorded"];
+    resume?(
+      capture: CantripOsRunCapture,
+      callbacks: OsRunCallbacks,
+    ): Promise<Pick<
+      ReturnType<OsRunExecution["start"]>,
+      "completion" | "signal"
+    > | null>;
   };
   environment?: NodeJS.ProcessEnv;
   notify?(observation: RunConfigurationRuntimeWorkerObservation): void;
@@ -490,6 +498,36 @@ export class RunConfigurationRuntimeSupervisor {
     );
   }
 
+  #newSession(command: StartCommand | CantripOsRunCapture): RuntimeSession {
+    const terminalId = command.identity.terminalId;
+    if (terminalId === null)
+      throw new Error("The Linux Run has no admitted terminal identity.");
+    return {
+      ...command.identity,
+      terminalId,
+      buffer: "",
+      endedAt: null,
+      exitCode: null,
+      failure: null,
+      launchTask: null,
+      outputRedactor: new RunConfigurationOutputRedactor([]),
+      process: null,
+      linuxRoots:
+        "definitions" in command
+          ? { definitions: command.definitions, target: command.target }
+          : null,
+      requestedRootKind: "rootKind" in command ? command.rootKind : null,
+      requestedSourcePath: "sourcePath" in command ? command.sourcePath : "",
+      requestedTargetPath: "targetPath" in command ? command.targetPath : "",
+      signal: null,
+      sourceRoot: null,
+      startedAt: null,
+      state: "starting",
+      stopGracePeriodMs: 3_000,
+      targetRoot: null,
+    };
+  }
+
   async start(
     command: StartCommand,
   ): Promise<RunConfigurationRuntimeWorkerOperationResult> {
@@ -527,29 +565,7 @@ export class RunConfigurationRuntimeSupervisor {
           "This worker is retaining the maximum number of Run configuration runtimes.",
         );
       }
-      const session: RuntimeSession = {
-        ...command.identity,
-        buffer: "",
-        endedAt: null,
-        exitCode: null,
-        failure: null,
-        launchTask: null,
-        outputRedactor: new RunConfigurationOutputRedactor([]),
-        process: null,
-        linuxRoots:
-          "definitions" in command
-            ? { definitions: command.definitions, target: command.target }
-            : null,
-        requestedRootKind: "rootKind" in command ? command.rootKind : null,
-        requestedSourcePath: "sourcePath" in command ? command.sourcePath : "",
-        requestedTargetPath: "targetPath" in command ? command.targetPath : "",
-        signal: null,
-        sourceRoot: null,
-        startedAt: null,
-        state: "starting",
-        stopGracePeriodMs: 3_000,
-        targetRoot: null,
-      };
+      const session = this.#newSession(command);
       this.#runtimes.set(session.runtimeId, session);
       this.#emit(session);
       this.#launch(session, command);
@@ -782,9 +798,9 @@ export class RunConfigurationRuntimeSupervisor {
     );
     const runtimes = [];
     for (const capture of captures) {
-      const status = this.status(capture.identity, capture);
-      if (!status.found) await this.#stopRecorded(capture);
-      runtimes.push(status);
+      if (!this.status(capture.identity, capture).found)
+        await this.#recoverLinux(capture);
+      runtimes.push(this.status(capture.identity, capture));
     }
     const orphaned = [...this.#runtimes.values()]
       .filter((session) => {
@@ -868,6 +884,64 @@ export class RunConfigurationRuntimeSupervisor {
     void task;
   }
 
+  async #recoverLinux(capture: CantripOsRunCapture): Promise<void> {
+    await this.#withLock(capture.identity.runtimeId, async () => {
+      if (this.#closing || this.#runtimes.has(capture.identity.runtimeId))
+        return;
+      const resume = this.#linux?.resume?.bind(this.#linux);
+      if (!resume) return;
+      this.#evictCompleted();
+      if (this.#runtimes.size >= MAX_RETAINED_RUNTIMES)
+        throw new Error(
+          "This worker is retaining the maximum number of Run configuration runtimes.",
+        );
+      const session = this.#newSession(capture);
+      const job = await resume(capture, this.#linuxCallbacks(session, capture));
+      if (!job) return;
+      this.#runtimes.set(session.runtimeId, session);
+      this.#emit(session);
+      const task = this.#watchLinuxJob(session, capture, job)
+        .catch(async () => {
+          await this.#withLock(session.runtimeId, async () => {
+            if (!generationIdentityMatches(session, capture.identity)) return;
+            session.state = "lost";
+            session.failure = boundedFailure(
+              new RuntimeLaunchError(
+                "reconcile",
+                "linux-recovery-unknown",
+                "Linux Run recovery has an unknown outcome. No replacement process was started.",
+                true,
+              ),
+            );
+            this.#emit(session);
+          });
+        })
+        .finally(() => {
+          if (session.launchTask === task) session.launchTask = null;
+        });
+      session.launchTask = task;
+    });
+  }
+
+  #linuxCallbacks(
+    session: RuntimeSession,
+    command: CantripOsRunCapture,
+  ): OsRunCallbacks {
+    return {
+      output: (data) => {
+        if (generationIdentityMatches(session, command.identity))
+          this.#appendOutput(session, data);
+      },
+      started: (grace) => {
+        if (!generationLaunchIsCurrent(session, command.identity)) return;
+        session.stopGracePeriodMs = grace;
+        session.startedAt = new Date().toISOString();
+        session.state = "running";
+        this.#emit(session);
+      },
+    };
+  }
+
   #assertPlacement(session: RuntimeSession, roots?: CantripOsRunRoots): void {
     const supplied = roots
       ? { definitions: roots.definitions, target: roots.target }
@@ -915,20 +989,16 @@ export class RunConfigurationRuntimeSupervisor {
         target: command.target,
         protectedSecrets: command.protectedSecrets,
       },
-      {
-        output: (data) => {
-          if (generationIdentityMatches(session, command.identity))
-            this.#appendOutput(session, data);
-        },
-        started: (grace) => {
-          if (!generationLaunchIsCurrent(session, command.identity)) return;
-          session.stopGracePeriodMs = grace;
-          session.startedAt = new Date().toISOString();
-          session.state = "running";
-          this.#emit(session);
-        },
-      },
+      this.#linuxCallbacks(session, command),
     );
+    return this.#watchLinuxJob(session, command, job);
+  }
+
+  async #watchLinuxJob(
+    session: RuntimeSession,
+    command: CantripOsRunCapture,
+    job: Pick<ReturnType<OsRunExecution["start"]>, "completion" | "signal">,
+  ): Promise<void> {
     const asExit = (result: OsRunResult): ProcessExit => ({
       exitCode: "exitCode" in result ? result.exitCode : null,
       signal: "signal" in result ? result.signal : null,
