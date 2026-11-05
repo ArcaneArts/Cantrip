@@ -515,3 +515,26 @@ rather than silently use an unscoped ticket. The worker can bind a root reservat
 to only one scope, and late old receipts cannot settle its replacement. No public
 schema is changed. Source review, formatting, patch generation and diff checks
 ran; tests, builds and native execution remain unrun.
+
+Patch `0059` adds an inference-only mode to the existing connection-owned native
+channel for Task-created threads. Task rounds and dispatch records retain input
+ownership; their native Goal cycles, children, compaction and dependency waits
+use the same worker inference boundary as IDE agents. Configuring or resuming a
+Task Goal installs the channel before activating the Goal. This mode does not
+request managed GUI input receipts or create another scheduler. External Task
+Goal activation and cold resume defer their initial automatic kickoff to the Task
+owner's explicit input; subsequent completed-turn idle events still continue the
+Goal. Interrupted Task turns cancel their inference scope without permanently
+invalidating the channel needed by a later explicit resume.
+
+A connection cannot reuse a gate generation with a different admission kind or
+downgrade an existing managed input guard to inference-only mode. Live channel
+installation binds the exact native thread, and replacement checks the actual
+inference owner even when it does not manage input. Existing full managed runners
+keep their behavior. Task permission selection and existing child defaults are
+preserved by the worker's separate preparation intent.
+
+The optional native configuration field and its checked-in TypeScript/JSON and
+precomputed export representations were updated mechanically from source. Source
+review, direct formatting, patch generation and diff checks were used. No native
+schema generator, runtime, tests, build or computer-use validation was run.

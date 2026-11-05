@@ -190,6 +190,28 @@ These fields use the existing private control payload and opaque generation
 string; no public protocol shape or additional semaphore is introduced. Wiring
 canonical restored-continuation recovery remains separate work.
 
+Patch `0059` installs an inference-only native channel for Task-created threads,
+including before Task Goal activation or active resumption. Task rounds and
+canonical dispatch records retain input authority; they do not enter the GUI
+prompt codec or a second scheduler. Actual native cycles, children and helpers
+still request the same worker/provider tickets, release after physical settlement,
+and rejoin FIFO for later cycles. Structured Task operations retain their existing
+independently admitted helper path. External Task Goal activation and cold resume
+prepare the channel but leave the initial kickoff to the Task owner's explicit
+input, avoiding a competing automatic turn during preparation. Later completed
+turns still trigger normal native continuation. An interruption cancels that
+scope while preserving the channel for a later explicit Task resume.
+
+This native mode does not claim managed input or permission ownership. Worker
+preparation keeps Task permission configuration and preserves existing child
+settings during Goal metadata operations. Gate generations cannot change mode,
+existing managed input ownership cannot be downgraded, and a live update binds
+its channel to the actual thread under the existing connection-owner check.
+The opaque chat association lives with the existing thread overlay, allowing
+later-cycle queue status to identify the Task after its preceding ticket was
+released. It is cleared with that overlay; no additional controller map or prompt
+store is added. Task canonical recovery and execution accounting remain unfinished.
+
 Known dependency and user/approval waits can suspend their parent's reservation
 only after all parent sampling streams have stopped. Resumption rejoins FIFO before
 another model request. Ordinary tool round trips retain their reservation. Native

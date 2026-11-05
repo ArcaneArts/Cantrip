@@ -78,6 +78,8 @@ interface NativeRequest {
   provider: Request["provider"];
   signal: AbortSignal;
   rootThreadId?: string | null;
+  /** Thread-owned association survives the preceding cycle's ticket release. */
+  chatId?: string | null;
   /** Concurrent helper work must never borrow a dispatched root's reservation. */
   independent?: boolean;
 }
@@ -401,7 +403,7 @@ export class CodexInferenceAdmission {
           ? "child"
           : "turn",
       provider: input.provider,
-      chatId: scope?.chatId,
+      chatId: scope?.chatId ?? input.chatId,
       projectId: scope?.projectId,
       threadId: input.threadId,
       expectedTurnId: input.turnId,
