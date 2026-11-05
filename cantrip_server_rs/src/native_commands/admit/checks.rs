@@ -34,8 +34,22 @@ impl Admission<'_> {
             &chat,
             runtime.as_deref(),
             None,
-            if policy::classify(&method) == Some(Kind::Attach) {
+            if self.options["canonicalQueueMutation"] == true
+                && matches!(
+                    method.as_str(),
+                    "thread/queue/add"
+                        | "thread/queue/update"
+                        | "thread/queue/delete"
+                        | "thread/queue/reorder"
+                )
+            {
+                Access::Queue
+            } else if policy::classify(&method) == Some(Kind::Attach) {
                 Access::Attach
+            } else if policy::classify(&method) == Some(Kind::Control)
+                || method == "serverRequest/reply"
+            {
+                Access::Control
             } else {
                 Access::Write
             },

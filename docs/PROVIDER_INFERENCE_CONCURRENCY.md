@@ -1925,3 +1925,30 @@ after the original reservation and source are settled.
 Source review, direct formatting, mechanical protocol export and
 `git diff --check` only. No tests, builds, typechecks, benchmarks, native/helper
 execution, hosted checks or computer-use validation were run.
+
+## Controls during a queued provider transfer
+
+Native controls and exact pending-request replies can be admitted and dispatched
+against the current canonical settings binding while a provider transfer is
+pending. Stop, Pause and Resume retain the existing activation, placement,
+route/account, reply and permission checks. They do not bypass native inference
+admission or release running capacity without actual settlement. A prepared
+destination and retired generations remain ineligible for these controls.
+
+The canonical queue can accept additions and update, remove or reorder pending
+items during transfer. Only the trusted canonical mutation path gets this
+metadata access; direct native mutations do not. Claimed inputs retain their
+existing edit restrictions until withdrawal returns them to pending. Metadata
+changes still require the current queue/item revisions and owned session scope.
+An idle queue can have no runtime generation after withdrawal; that does not
+prevent editing its durable pending inputs.
+
+Explicit queue-start requests and new native turns remain fenced during the
+transfer, and automatic queue claiming still checks for an active handoff. Thus
+accepting another message or editing the withdrawn input cannot start a competing
+turn or reserve destination capacity early. Editing that original input changes
+its revision, so transfer commit preserves the user's new per-message selection.
+
+Source review, direct formatting and `git diff --check` only. No tests, builds,
+typechecks, benchmarks, native/helper execution, hosted checks or computer-use
+validation were run.

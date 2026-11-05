@@ -480,9 +480,20 @@ export class NativeCommandRepository {
           input.session.chatId,
           input.session.runtimeGeneration,
           undefined,
-          classifyManagedNativeMethod(input.method) === "attach"
-            ? "attach"
-            : "write",
+          executionOptions.canonicalQueueMutation &&
+            [
+              "thread/queue/add",
+              "thread/queue/update",
+              "thread/queue/delete",
+              "thread/queue/reorder",
+            ].includes(input.method)
+            ? "queue"
+            : classifyManagedNativeMethod(input.method) === "attach"
+              ? "attach"
+              : classifyManagedNativeMethod(input.method) === "control" ||
+                  input.method === "serverRequest/reply"
+                ? "control"
+                : "write",
         );
         if (!managedTurnSessionContext(context))
           throw new NativeCommandError("managed-session-ineligible");
@@ -1066,7 +1077,11 @@ export class NativeCommandRepository {
         input.session.chatId,
         input.session.runtimeGeneration,
         undefined,
-        row.kind === "attach" ? "attach" : "write",
+        row.kind === "attach"
+          ? "attach"
+          : row.kind === "control" || row.kind === "reply"
+            ? "control"
+            : "write",
         row.status === "accepted" &&
           row.origin === "gui" &&
           row.kind === "start"

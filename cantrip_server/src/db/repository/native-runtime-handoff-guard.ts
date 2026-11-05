@@ -11,19 +11,19 @@ export async function assertNativeRuntimeWritable(
   chatId: string,
   runtimeGeneration?: string | null,
   nativeEpoch?: string | null,
-  access: "write" | "attach" = "write",
+  access: "write" | "attach" | "control" | "queue" = "write",
   acceptedDispatch?: { operationId: string; operationGeneration: string },
 ): Promise<void> {
-  // Attachment is a preserving, admitted view operation. During publication it
-  // may target only the actual canonical binding; it cannot start execution or
-  // select the prepared-but-uncommitted destination. Retirement still applies.
-  let currentAttachment = false;
-  if (access === "attach" && runtimeGeneration) {
+  // Canonical queue edits do not forward native input or claim execution.
+  // Attachments and controls may target only the actual canonical binding,
+  // never a prepared destination. All retirement fences still apply.
+  let allowPending = access === "queue";
+  if ((access === "attach" || access === "control") && runtimeGeneration) {
     const [settings] = await database
       .select({ state: schema.nativeSettingsStates.state })
       .from(schema.nativeSettingsStates)
       .where(eq(schema.nativeSettingsStates.chatId, chatId));
-    currentAttachment =
+    allowPending =
       settings?.state.binding?.runtimeGeneration === runtimeGeneration;
   }
   const [row] = await database
@@ -33,7 +33,10 @@ export async function assertNativeRuntimeWritable(
       and(
         eq(schema.nativeRuntimeHandoffs.chatId, chatId),
         or(
-          currentAttachment
+          // Metadata edits can have no runtime identity after withdrawal. Keep
+          // an empty retirement predicate false rather than dropping the OR.
+          sql`false`,
+          allowPending
             ? undefined
             : and(
                 inArray(schema.nativeRuntimeHandoffs.phase, activePhases),
