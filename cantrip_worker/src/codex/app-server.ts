@@ -4193,6 +4193,23 @@ export class CodexAppServer implements CodexRuntime {
     return this.refreshGoal(options.threadId);
   }
 
+  /** Fresh native epoch/status on the exact prepared transport; never replay a
+   * setter merely to resume an eligible cycle after worker restart. */
+  async readManagedGoalRecovery(
+    threadId: string,
+    expectedTransportGeneration: string,
+  ) {
+    this.assertManagedExecutionTransport(expectedTransportGeneration);
+    const result = await this.request("thread/goal/get", { threadId });
+    this.assertManagedExecutionTransport(expectedTransportGeneration);
+    return z
+      .object({
+        goal: threadGoalSchema.nullable(),
+        goalEpoch: z.string().min(1).nullable(),
+      })
+      .parse(result);
+  }
+
   /** Read native lifecycle without exporting transcript content or resuming it. */
   async readThreadExecution(threadId: string) {
     const response = (await this.request("thread/read", {
@@ -7634,14 +7651,18 @@ export class CodexAppServer implements CodexRuntime {
         if (entry && !attempt) return;
         const task =
           entry && attempt
-            ? Promise.resolve().then(() => {
-                const signal = AbortSignal.any([
-                  entry.controller.signal,
-                  attempt.controller.signal,
-                ]);
-                signal.throwIfAborted();
-                return entry.handler.requested(request.data, signal);
-              })
+            ? Promise.resolve().then(() =>
+                withoutInferenceCommand(() => {
+                  // A socket can inherit the command that prepared it. This
+                  // autonomous Source must survive that control acknowledgement.
+                  const signal = AbortSignal.any([
+                    entry.controller.signal,
+                    attempt.controller.signal,
+                  ]);
+                  signal.throwIfAborted();
+                  return entry.handler.requested(request.data, signal);
+                }),
+              )
             : Promise.reject(
                 new Error("No managed runner owns this native attempt."),
               );
@@ -7668,7 +7689,11 @@ export class CodexAppServer implements CodexRuntime {
           return;
         }
         void Promise.resolve()
-          .then(() => entry.handler.declined(declined.data))
+          .then(() =>
+            withoutInferenceCommand(() =>
+              entry.handler.declined(declined.data),
+            ),
+          )
           .catch((error) => entry.handler.failed(error))
           .finally(() => this.#managedExecutionGateHandlers.declined(pending));
       }

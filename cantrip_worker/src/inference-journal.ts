@@ -113,6 +113,7 @@ interface InferenceRecoveryReference {
   workerGeneration: string;
   revision: number;
   taskInputNotDispatched?: boolean;
+  goalInputNotDispatched?: boolean;
 }
 
 /** Serial durable metadata operations travel over the existing lifetime keeper.
@@ -216,7 +217,20 @@ export class WorkerInferenceJournal {
     key: string,
     outcome: NonNullable<InferenceJournalRecord["outcome"]>,
   ): Promise<InferenceJournalRecord> {
-    return this.write({ action: "release", key, outcome });
+    return this.write({ action: "release", key, outcome }).then((record) => {
+      if (
+        record.identity.recovery?.autonomousGoal &&
+        !record.nativeExecution &&
+        record.state === "released" &&
+        ["never-started", "runtime-exited"].includes(record.outcome ?? "")
+      ) {
+        this.recovered = [
+          ...this.recovered.filter((item) => item.key !== record.key),
+          record,
+        ].sort((a, b) => a.order - b.order);
+      }
+      return record;
+    });
   }
 
   async adopt(
@@ -226,6 +240,7 @@ export class WorkerInferenceJournal {
     retainedOrder: number | null = null,
     signal?: AbortSignal,
     taskInputNotDispatched: ReadonlySet<string> = new Set(),
+    goalInputNotDispatched: ReadonlySet<string> = new Set(),
   ): Promise<InferenceJournalRecord> {
     const validatedIdentity = identitySchema.parse(identity);
     // Persist the oldest same-provider ordinal in the first chunk. Every later
@@ -254,6 +269,9 @@ export class WorkerInferenceJournal {
           ...this.reference(item),
           ...(taskInputNotDispatched.has(item.key)
             ? { taskInputNotDispatched: true }
+            : {}),
+          ...(goalInputNotDispatched.has(item.key)
+            ? { goalInputNotDispatched: true }
             : {}),
         }),
         "utf8",
@@ -286,6 +304,9 @@ export class WorkerInferenceJournal {
           ...this.reference(item),
           ...(taskInputNotDispatched.has(item.key)
             ? { taskInputNotDispatched: true }
+            : {}),
+          ...(goalInputNotDispatched.has(item.key)
+            ? { goalInputNotDispatched: true }
             : {}),
         })),
       });

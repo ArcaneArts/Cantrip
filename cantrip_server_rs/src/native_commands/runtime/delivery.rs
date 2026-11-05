@@ -18,6 +18,8 @@ use std::{
 use tokio::sync::{Notify, oneshot, watch};
 
 pub type Dispatch = Arc<dyn Fn(String, String) -> BoxFuture<'static, Result<()>> + Send + Sync>;
+pub type GoalRecovery =
+    Arc<dyn Fn(String, String, Value) -> BoxFuture<'static, Result<()>> + Send + Sync>;
 pub type Publish = Arc<dyn Fn(String, String) -> Result<()> + Send + Sync>;
 pub type ErrorSink = Arc<dyn Fn(anyhow::Error) + Send + Sync>;
 pub type Sweep = Shared<BoxFuture<'static, ()>>;

@@ -1870,6 +1870,13 @@
       "when": 1793915700000,
       "tag": "0266_native_turn_suspensions",
       "breakpoints": true
+    },
+    {
+      "idx": 267,
+      "version": "7",
+      "when": 1793917085000,
+      "tag": "0267_managed_goal_recovery",
+      "breakpoints": true
     }
   ]
 }

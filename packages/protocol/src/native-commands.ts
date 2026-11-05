@@ -8,6 +8,7 @@ import { planModeSchema } from "./chat-runtime.js";
 import { worktreePolicySchema } from "./worktrees.js";
 import { cuaAgentAuthoritySchema } from "./computer-use-agent.js";
 import { z } from "zod";
+import { nativeGoalRecoverySourceSchema } from "./native-goal-recovery.js";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
 
 const id = z.string().min(1).max(255);
@@ -52,6 +53,8 @@ export const nativeCommandIntentSchema = z
     settingKeys: z.array(z.string().min(1).max(120)).max(64).default([]),
     expectedTurnId: id.nullable().default(null),
     autonomousAttempt: nativeAutonomousAttemptSchema.optional(),
+    workerGeneration: z.uuid().optional(),
+    goalRecovery: nativeGoalRecoverySourceSchema.optional(),
     permissionProfileId: id.optional(),
     permissionTransition: permissionTransitionSchema.optional(),
     configTarget: z.literal("account-defaults").optional(),
@@ -142,6 +145,7 @@ export const nativeCommandReceiptSchema = z
 export const nativeCommandDispatchSchema = z
   .object({
     workerId: id,
+    workerGeneration: z.uuid().optional(),
     operationId: id,
     operationGeneration: id,
     payloadDigest: digest,

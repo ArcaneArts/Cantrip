@@ -10,6 +10,7 @@ struct Native {
     repository: QueueRepository,
     commands: Arc<LimitedCommandBus>,
     publish: Publish,
+    recover_goal: Option<GoalRecovery>,
 }
 impl QueueDelivery {
     pub fn new(
@@ -17,6 +18,7 @@ impl QueueDelivery {
         commands: Arc<LimitedCommandBus>,
         publish: Publish,
         dispatch: Option<Dispatch>,
+        recover_goal: Option<GoalRecovery>,
         on_error: ErrorSink,
     ) -> Arc<Self> {
         Self::with_backend(
@@ -24,6 +26,7 @@ impl QueueDelivery {
                 repository: QueueRepository::new(database),
                 commands,
                 publish,
+                recover_goal,
             }),
             dispatch,
             on_error,
@@ -62,6 +65,10 @@ impl Backend for Native {
                 } }
             })).await;
             for outcome in outcomes { outcome?; }
+            if let Some(recovery) = entry.get("goalRecovery").filter(|v| !v.is_null()) {
+                let recover = self.recover_goal.as_ref().context("Managed Goal recovery delivery is unavailable.")?;
+                recover(text(&entry["ownerId"])?, text(&entry["chatId"])?, recovery.clone()).await?;
+            }
             Ok(())
         }
         .boxed()

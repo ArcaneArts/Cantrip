@@ -29,6 +29,7 @@ impl Admission<'_> {
         {
             return reject("invalid-autonomous-attempt");
         }
+        crate::native_commands::goal_recovery::assert_admission(tx, input).await?;
         let mut goal_claim = None;
         if truthy(input.get("goalQueueHandoff")) {
             let handoff = &input["goalQueueHandoff"];
@@ -99,7 +100,9 @@ impl Admission<'_> {
             }
             let queued=!tx.query("SELECT id FROM queued_prompts p WHERE chat_id=$1 AND state='pending' AND frozen=false AND NOT EXISTS(SELECT 1 FROM managed_queue_claims c WHERE c.prompt_id=p.id AND c.prompt_revision=p.revision AND c.status='rejected') LIMIT 1",&[&chat]).await?.is_empty();
             let claimed=!tx.query("SELECT id FROM managed_queue_claims WHERE chat_id=$1 AND status IN ('claimed','accepted','dispatched','uncertain') LIMIT 1",&[&chat]).await?.is_empty();
-            if (queued || claimed) && goal_claim.is_none() {
+            if ((queued && !truthy(input["intent"].get("goalRecovery"))) || claimed)
+                && goal_claim.is_none()
+            {
                 return reject("canonical-queue-pending");
             }
         }

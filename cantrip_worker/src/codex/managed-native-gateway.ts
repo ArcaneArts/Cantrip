@@ -38,6 +38,7 @@ export interface ManagedNativeOperation {
   operationId: string;
   expectedTurnId?: string;
   autonomousAttempt?: NativeCommandAdmission["intent"]["autonomousAttempt"];
+  goalRecovery?: NativeCommandAdmission["intent"]["goalRecovery"];
   queueClaim?: { id: string; promptRevision: number };
   goalQueueHandoff?: NativeCommandAdmission["goalQueueHandoff"];
   origin: "terminal" | "gui" | "autonomous";

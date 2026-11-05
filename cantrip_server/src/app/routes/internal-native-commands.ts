@@ -13,6 +13,8 @@ import {
   nativePendingRequestSchema,
   nativeInferenceRecoverySchema,
   nativeInferenceRecoveryResultSchema,
+  nativeGoalRecoveryFenceSchema,
+  nativeGoalRecoveryFenceResultSchema,
   nativeInferenceResourceAuthorizationSchema,
   nativeInferenceResourceAuthorizationResultSchema,
   taskInferenceInputDispatchSchema,
@@ -294,6 +296,55 @@ export function installInternalNativeCommandRoutes(
         if (!current())
           return reply.code(409).send({ code: "stale-worker-generation" });
         return taskInferenceInputDispatchResultSchema.parse(result);
+      });
+    },
+  );
+  app.post(
+    "/api/internal/native-commands/goal-recovery-fence",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const parsed = nativeGoalRecoveryFenceSchema.safeParse(request.body);
+      if (!parsed.success)
+        return reply.code(400).send({ code: "invalid-goal-recovery-fence" });
+      const input = parsed.data;
+      const authentication = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        input.workerId,
+        "worker:agent-tools",
+      );
+      if (!authentication)
+        return reply.code(401).send({ code: "unauthorized" });
+      const current = () => {
+        const identity = dependencies.bridge?.connectionIdentity?.(
+          input.workerId,
+        );
+        return (
+          input.serverId === serverId &&
+          identity?.ownerId === authentication.ownerId &&
+          identity.workerProcessGeneration === input.workerGeneration
+        );
+      };
+      if (!current())
+        return reply.code(409).send({ code: "stale-worker-generation" });
+      return runAsOwner(authentication.ownerId, async () => {
+        try {
+          const result =
+            await repository.nativeCommands.fenceGoalRecoveryAdmission(
+              authentication.ownerId,
+              input,
+            );
+          if (!current())
+            return reply.code(409).send({ code: "stale-worker-generation" });
+          return nativeGoalRecoveryFenceResultSchema.parse(result);
+        } catch (error) {
+          if (error instanceof NativeCommandError)
+            return reply
+              .code(error.statusCode)
+              .send({ code: error.code, error: error.message });
+          throw error;
+        }
       });
     },
   );
@@ -591,6 +642,23 @@ export function installInternalNativeCommandRoutes(
         );
         if (!authentication)
           return reply.code(401).send({ code: "unauthorized" });
+        if (phase === "admit" || phase === "dispatch") {
+          const generation =
+            phase === "admit"
+              ? nativeCommandAdmissionSchema.parse(parsed.data).intent
+                  .workerGeneration
+              : nativeCommandDispatchSchema.parse(parsed.data).workerGeneration;
+          if (generation) {
+            const connection = dependencies.bridge?.connectionIdentity?.(
+              parsed.data.workerId,
+            );
+            if (
+              connection?.ownerId !== authentication.ownerId ||
+              connection.workerProcessGeneration !== generation
+            )
+              return reply.code(409).send({ code: "stale-worker-generation" });
+          }
+        }
         if (
           !(await repository.getWorker(
             authentication.ownerId,

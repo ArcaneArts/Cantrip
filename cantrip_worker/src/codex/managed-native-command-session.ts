@@ -40,6 +40,8 @@ import type {
   InferenceJournalRecord,
   NativeRuntimeHandoffQueuedSource,
   NativeAutonomousAttempt,
+  NativeGoalRecoverySource,
+  NativeGoalRecoveryAdmission,
 } from "@cantrip/protocol";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
 import { NativeCommandClient } from "../native-command-client.js";
@@ -78,6 +80,7 @@ interface Execution {
   nativeDecline?: ManagedExecutionDeclined;
   expectedTurnId?: string;
   autonomousAttempt?: NativeAutonomousAttempt;
+  goalRecovery?: NativeGoalRecoverySource;
   guiPreparation?: boolean;
   logicalRoot?: Pick<
     NativeCommandReceipt,
@@ -131,6 +134,8 @@ export interface ManagedNativeCommandSessionOptions {
   /** Canonical late settlement made deferred input eligible; refresh native
    * permission evidence before the existing publication callback wakes it. */
   onDeferredReady?(): void;
+  /** A Goal's canonical reply and physical owner have both finished locally. */
+  onGoalSourceSettled?(): void;
   /** Capture and deliver the exact encrypted deferral independently of runtime lifetime. */
   settleDeferred?: NativeCommandClient["settle"];
   /** Encrypt the exact unconsumed direct terminal input for the canonical queue. */
@@ -167,6 +172,8 @@ const object = (value: unknown): value is NativeRpcFrame =>
 /** Shares the current admitted root across GUI and all attached terminal views. */
 export class ManagedNativeCommandSession {
   private active: Execution | null = null;
+  private readonly goalRecoveryObservers = new Set<() => void>();
+  private readonly pendingGoalOperations = new Map<string, Promise<void>>();
   private revoked = false;
   private goalMutationSettlement: Promise<void> | null = null;
   private goalMutationResponse: Promise<void> | null = null;
@@ -178,9 +185,101 @@ export class ManagedNativeCommandSession {
     return this.active?.receipt.activationGeneration ?? null;
   }
 
+  isGoalOperationSettling(
+    operationId: string,
+    operationGeneration: string,
+  ): boolean {
+    return this.pendingGoalOperations.has(
+      JSON.stringify([operationId, operationGeneration]),
+    );
+  }
+
+  private async awaitGoalSettlements(signal: AbortSignal): Promise<void> {
+    while (this.pendingGoalOperations.size) {
+      signal.throwIfAborted();
+      let aborted!: () => void;
+      const cancelled = new Promise<never>((_resolve, reject) => {
+        aborted = () => reject(signal.reason);
+        signal.addEventListener("abort", aborted, { once: true });
+        if (signal.aborted) aborted();
+      });
+      try {
+        await Promise.race([
+          Promise.all(this.pendingGoalOperations.values()), cancelled,
+        ]);
+      } finally {
+        signal.removeEventListener("abort", aborted);
+      }
+    }
+    signal.throwIfAborted();
+  }
+
+  goalRecoveryAdmission(
+    source: NativeGoalRecoverySource,
+  ): Omit<NativeGoalRecoveryAdmission, "workerGeneration"> | null {
+    const execution = this.active;
+    if (
+      this.revoked ||
+      !execution ||
+      execution.inferenceAbort.signal.aborted ||
+      execution.session.runtimeGeneration !==
+        this.options.runtime.transportGeneration ||
+      !isDeepStrictEqual(execution.goalRecovery, source)
+    )
+      return null;
+    return {
+      operationId: execution.receipt.operationId,
+      operationGeneration: execution.receipt.operationGeneration,
+    };
+  }
+
+  /** Observe actual canonical ownership before waiting for capacity. This
+   * deadline removes only the control observer, never the durable Goal source. */
+  waitForGoalRecoveryAdmission(
+    source: NativeGoalRecoverySource,
+    signal?: AbortSignal,
+  ) {
+    return new Promise<Omit<NativeGoalRecoveryAdmission, "workerGeneration">>(
+      (resolve, reject) => {
+        const cleanup = () => {
+          clearTimeout(deadline);
+          this.goalRecoveryObservers.delete(observe);
+          signal?.removeEventListener("abort", aborted);
+        };
+        const aborted = () => {
+          cleanup();
+          reject(
+            signal?.reason ??
+              new Error("Goal recovery observation was cancelled."),
+          );
+        };
+        const observe = () => {
+          const admitted = this.goalRecoveryAdmission(source);
+          if (admitted) {
+            cleanup();
+            resolve(admitted);
+          } else if (this.revoked) {
+            cleanup();
+            reject(new Error("The native resource was removed."));
+          }
+        };
+        const deadline = setTimeout(() => {
+          cleanup();
+          reject(new Error("Goal recovery admission remains unconfirmed."));
+        }, 8_000);
+        deadline.unref();
+        this.goalRecoveryObservers.add(observe);
+        signal?.addEventListener("abort", aborted, { once: true });
+        if (signal?.aborted) aborted();
+        else observe();
+      },
+    );
+  }
+
   /** Seal admission without claiming that its native execution has stopped. */
   revoke(): void {
     this.revoked = true;
+    for (const observe of this.goalRecoveryObservers) observe();
     this.active?.inferenceAbort.abort(
       new Error("The native resource was removed."),
     );
@@ -799,6 +898,7 @@ export class ManagedNativeCommandSession {
     session: NativeCommandSession,
     signal: AbortSignal,
     goalQueueHandoff?: NativeCommandAdmission["goalQueueHandoff"],
+    goalRecovery?: NativeGoalRecoverySource,
   ): Promise<void> {
     if (
       session.threadId !== attempt.threadId ||
@@ -809,6 +909,10 @@ export class ManagedNativeCommandSession {
         "The native attempt does not belong to this managed session.",
       );
     await this.awaitExecutionReleased(signal);
+    // Physical release can precede the canonical negative receipt. A fresh
+    // cycle must let that receipt preserve its original FIFO identity first;
+    // unrelated chats and control commands remain free to proceed.
+    await this.awaitGoalSettlements(signal);
     signal.throwIfAborted();
     this.assertTransport(session);
     const operation: ManagedNativeOperation = {
@@ -833,6 +937,7 @@ export class ManagedNativeCommandSession {
         ...(attempt.goalEpoch ? { goalEpoch: attempt.goalEpoch } : {}),
       },
       ...(goalQueueHandoff ? { goalQueueHandoff } : {}),
+      ...(goalRecovery ? { goalRecovery } : {}),
       frame: {
         method: "turn/start",
         params: { threadId: attempt.threadId },
@@ -1056,6 +1161,7 @@ export class ManagedNativeCommandSession {
       intent.expectedTurnId = operation.expectedTurnId;
     if (operation.autonomousAttempt)
       intent.autonomousAttempt = operation.autonomousAttempt;
+    if (operation.goalRecovery) intent.goalRecovery = operation.goalRecovery;
     if (operation.settingsBindingId !== undefined)
       intent.settingsBindingId = operation.settingsBindingId;
     const protectedContent = await protectNativeCommandContent({
@@ -1089,29 +1195,36 @@ export class ManagedNativeCommandSession {
         turnId: pending.turnId,
       });
     }
-    const grant = await this.options.client.admit({
-      operationId: operation.operationId,
-      origin: operation.origin,
-      session,
-      method: operation.reply ? "serverRequest/reply" : operation.method,
-      intent,
-      protectedPayload: protectedContent.envelope,
-      payloadDigest: protectedContent.digest,
-      ...(operation.queueClaim ? { queueClaim: operation.queueClaim } : {}),
-      ...(operation.goalQueueHandoff
-        ? { goalQueueHandoff: operation.goalQueueHandoff }
-        : {}),
-      expectedActivationGeneration: root?.receipt.activationGeneration ?? null,
-      ...(operation.reply
-        ? {
-            reply: {
-              ...operation.reply,
-              nativeRequestId: `${typeof operation.reply.nativeRequestId}:${operation.reply.nativeRequestId}`,
-            },
-          }
-        : {}),
-    });
-    if (grant.replayed)
+    const grant = await this.options.client.admit(
+      {
+        operationId: operation.operationId,
+        origin: operation.origin,
+        session,
+        method: operation.reply ? "serverRequest/reply" : operation.method,
+        intent,
+        protectedPayload: protectedContent.envelope,
+        payloadDigest: protectedContent.digest,
+        ...(operation.queueClaim ? { queueClaim: operation.queueClaim } : {}),
+        ...(operation.goalQueueHandoff
+          ? { goalQueueHandoff: operation.goalQueueHandoff }
+          : {}),
+        expectedActivationGeneration:
+          root?.receipt.activationGeneration ?? null,
+        ...(operation.reply
+          ? {
+              reply: {
+                ...operation.reply,
+                nativeRequestId: `${typeof operation.reply.nativeRequestId}:${operation.reply.nativeRequestId}`,
+              },
+            }
+          : {}),
+      },
+      operation.origin === "autonomous" &&
+        operation.autonomousAttempt?.goalEpoch
+        ? { continueUnobservedGoalAdmission: true }
+        : undefined,
+    );
+    if (grant.replayed && !grant.continuedAdmission)
       throw new Error(
         `Native command ${grant.receipt.operationId} is already ${grant.receipt.status}; its mutation will not be replayed.`,
       );
@@ -1122,12 +1235,30 @@ export class ManagedNativeCommandSession {
     const execution = this.createExecution(grant.receipt, session);
     execution.expectedTurnId = operation.expectedTurnId;
     execution.autonomousAttempt = operation.autonomousAttempt;
+    execution.goalRecovery = operation.goalRecovery;
     let publication: ManagedNativeExecutionPublication | null = null;
     let acceptance: Promise<void> = Promise.resolve();
     let resolveReceipt!: () => void;
     const receiptObserved = new Promise<void>((resolve) => {
       resolveReceipt = resolve;
     });
+    if (
+      operation.origin === "autonomous" &&
+      operation.autonomousAttempt?.goalEpoch
+    ) {
+      const key = JSON.stringify([
+        grant.receipt.operationId,
+        grant.receipt.operationGeneration,
+      ]);
+      const completion = Promise.all([receiptObserved, execution.released])
+        .then(() => {})
+        .finally(() => {
+          this.pendingGoalOperations.delete(key);
+          this.options.onGoalSourceSettled?.();
+        })
+        .catch(() => {});
+      this.pendingGoalOperations.set(key, completion);
+    }
     let resolveNativeResponse!: () => void;
     const nativeResponseObserved = new Promise<void>((resolve) => {
       resolveNativeResponse = resolve;
@@ -1245,6 +1376,7 @@ export class ManagedNativeCommandSession {
               "Another native execution owns this managed session.",
             );
           this.active = execution;
+          for (const observe of this.goalRecoveryObservers) observe();
           try {
             publication = await this.options.beginExecution(grant, session);
             execution.handle =
@@ -1510,6 +1642,13 @@ export class ManagedNativeCommandSession {
             // Completion may arrive before the RPC response; only settle it after
             // the corresponding acceptance write, without holding admission open.
             resolveReceipt();
+            if (start && !execution.handle) {
+              try {
+                await releasePublication();
+              } finally {
+                this.clearExecution(execution);
+              }
+            }
           }
         })()),
     };

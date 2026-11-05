@@ -94,6 +94,16 @@ export async function cancelGoalHandoffs(
   tx: RepositoryTransaction,
   chatId: string,
 ) {
+  const removedRecovery = await tx
+    .update(schema.managedQueueStates)
+    .set({ goalRecovery: null })
+    .where(
+      and(
+        eq(schema.managedQueueStates.chatId, chatId),
+        sql`${schema.managedQueueStates.goalRecovery} IS NOT NULL`,
+      ),
+    )
+    .returning({ chatId: schema.managedQueueStates.chatId });
   const cancelled = await tx
     .update(schema.managedQueueClaims)
     .set({ status: "rejected" })
@@ -134,7 +144,8 @@ export async function cancelGoalHandoffs(
       .set({ state: "pending" })
       .where(eq(schema.queuedPrompts.id, claim.promptId));
   }
-  if (cancelled.length) await queueStateChanged(tx, chatId);
+  if (cancelled.length || removedRecovery.length)
+    await queueStateChanged(tx, chatId);
 }
 export async function queueStateChanged(
   tx: RepositoryTransaction,

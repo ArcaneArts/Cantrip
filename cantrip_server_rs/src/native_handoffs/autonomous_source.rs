@@ -4,7 +4,7 @@ use super::*;
 use crate::chats::execution_lanes;
 use sha2::{Digest, Sha256};
 
-pub(super) fn attempt(command: &Value) -> Result<Option<Value>> {
+pub(crate) fn attempt(command: &Value) -> Result<Option<Value>> {
     let Some(attempt) = command["intent"].get("autonomousAttempt") else {
         return Ok(None);
     };
@@ -75,7 +75,7 @@ pub(super) async fn confirm(
     }
     if record.is_null() {
         return if already {
-            Ok(())
+            complete_recovered_withdrawal(tx, root).await
         } else {
             reject("handoff-native-operation-pending")
         };
@@ -110,7 +110,7 @@ pub(super) async fn confirm(
         return reject("handoff-native-operation-pending");
     }
     if already {
-        return Ok(());
+        return complete_recovered_withdrawal(tx, root).await;
     }
     let activation = one(
         Executor::Transaction(tx),
@@ -195,7 +195,50 @@ pub(super) async fn confirm(
         }
         crate::native_commands::queue_state_changed(tx, &chat).await?;
     }
-    Ok(())
+    complete_recovered_withdrawal(tx, root).await
+}
+
+/// Exact withdrawal plus native invalidation ACK retires only its own marker
+/// admission. Keep the logical source and immutable native settlement intact.
+async fn complete_recovered_withdrawal(tx: &Transaction<'_>, root: &Value) -> Result<()> {
+    let chat = text(&root["chat_id"])?;
+    let state = one(
+        Executor::Transaction(tx),
+        "SELECT to_jsonb(s)::text FROM managed_queue_states s WHERE chat_id=$1",
+        &[&chat],
+    )
+    .await?;
+    let Some(state) = state else {
+        return Ok(());
+    };
+    let Some(marker) = state.get("goal_recovery").filter(|m| !m.is_null()) else {
+        return Ok(());
+    };
+    let marker = parse("nativeGoalRecoverySchema", marker)?;
+    if marker["admission"].get("operationId") != root.get("operation_id")
+        || marker["admission"].get("operationGeneration") != root.get("operation_generation")
+    {
+        return Ok(());
+    }
+    if !deep_equal(&root["intent"]["goalRecovery"], &marker["source"])
+        || root["intent"].get("workerGeneration") != marker["admission"].get("workerGeneration")
+    {
+        return reject("handoff-native-operation-pending");
+    }
+    tx.query(
+        "UPDATE native_commands SET goal_recovery_source=$1::text::jsonb WHERE operation_id=$2",
+        &[&marker["source"].stringify(), &text(&root["operation_id"])?],
+    )
+    .await?;
+    tx.query(
+        "UPDATE managed_queue_states SET goal_recovery=$1::text::jsonb WHERE chat_id=$2",
+        &[
+            &json!({"source":marker["source"],"admission":Value::Null}).stringify(),
+            &chat,
+        ],
+    )
+    .await?;
+    crate::native_commands::queue_state_changed(tx, &chat).await
 }
 
 async fn persist_no_start(

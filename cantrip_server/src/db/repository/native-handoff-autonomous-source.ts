@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   nativeAutonomousAttemptSchema,
+  nativeGoalRecoverySchema,
   type NativeAutonomousAttempt,
   type NativeCommandAdmission,
   type NativeCommandSession,
@@ -121,6 +122,7 @@ export async function confirmAutonomousHandoffSource(
     );
   if (!record) {
     if (!alreadyDeferred) fail();
+    await completeRecoveredGoalWithdrawal(tx, root);
     return;
   }
   const identity = record.identity.recovery;
@@ -149,7 +151,10 @@ export async function confirmAutonomousHandoffSource(
     (alreadyDeferred && evidence?.key !== record.key)
   )
     fail();
-  if (alreadyDeferred) return;
+  if (alreadyDeferred) {
+    await completeRecoveredGoalWithdrawal(tx, root);
+    return;
+  }
   const [activation] = await tx
     .select()
     .from(schema.nativeCommandActivations)
@@ -273,4 +278,40 @@ export async function confirmAutonomousHandoffSource(
     if (updated.length !== 1) fail();
     await queueStateChanged(tx, root.chatId);
   }
+  await completeRecoveredGoalWithdrawal(tx, root);
+}
+
+/** Called only after the exact journal withdrawal and native invalidation ACK.
+ * The destination must not inherit a marker still owned by its sealed source.
+ * Preserve the logical source across transfers without rewriting its receipt. */
+async function completeRecoveredGoalWithdrawal(
+  tx: RepositoryTransaction,
+  root: Command,
+): Promise<void> {
+  const [state] = await tx
+    .select({ recovery: schema.managedQueueStates.goalRecovery })
+    .from(schema.managedQueueStates)
+    .where(eq(schema.managedQueueStates.chatId, root.chatId));
+  if (!state?.recovery) return;
+  const marker = nativeGoalRecoverySchema.parse(state.recovery);
+  if (
+    marker.admission?.operationId !== root.operationId ||
+    marker.admission.operationGeneration !== root.operationGeneration
+  )
+    return;
+  const intent = root.intent as NativeCommandAdmission["intent"];
+  if (
+    !isDeepStrictEqual(intent.goalRecovery, marker.source) ||
+    intent.workerGeneration !== marker.admission.workerGeneration
+  )
+    fail();
+  await tx
+    .update(schema.nativeCommands)
+    .set({ goalRecoverySource: marker.source })
+    .where(eq(schema.nativeCommands.operationId, root.operationId));
+  await tx
+    .update(schema.managedQueueStates)
+    .set({ goalRecovery: { source: marker.source, admission: null } })
+    .where(eq(schema.managedQueueStates.chatId, root.chatId));
+  await queueStateChanged(tx, root.chatId);
 }

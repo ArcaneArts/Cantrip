@@ -216,6 +216,7 @@ interface RestoredWaiter {
   record: InferenceJournalRecord;
   records: InferenceJournalRecord[];
   taskInputNotDispatched: Set<string>;
+  goalInputNotDispatched: Set<string>;
   enqueuedAt: number;
   claimed: Ticket | null;
 }
@@ -891,6 +892,22 @@ export class WorkerInferenceAdmission {
     runtime.records.set(input.operationId, ticket);
     lifetime.ticket = ticket;
     pool.queue.push(ticket);
+    // A retry can arrive before the durable queue notice. Reconcile matching
+    // physically ended Goal aliases before its new ticket can obtain a grant.
+    if (
+      input.recovery?.autonomousGoal &&
+      this.journal
+        ?.recoverySnapshot()
+        .some(
+          (record) =>
+            this.recoverable(record) &&
+            recoveryQueueIdentity(
+              record.identity.chatId,
+              record.identity.recovery,
+            ) === recoveryQueueIdentity(input.chatId, input.recovery),
+        )
+    )
+      this.wakeRecovery(input.chatId ?? undefined);
     this.diagnose(ticket, "queued");
     if (this.journal && ticket.journalKey) {
       void this.journal
@@ -1149,7 +1166,21 @@ export class WorkerInferenceAdmission {
     this.transition(ticket, "released");
     this.diagnose(ticket, "released", outcome);
     if (this.journal && ticket.journalKey) {
-      ticket.releaseReceipt = this.journal.release(ticket.journalKey, outcome);
+      const recoverGoal =
+        ticket.input.recovery?.autonomousGoal &&
+        !ticket.nativeExecution &&
+        recoveryQueueIdentity(ticket.input.chatId, ticket.input.recovery) &&
+        ticket.input.operationId === ticket.input.recovery.commandGeneration &&
+        ["never-started", "runtime-exited"].includes(outcome);
+      if (recoverGoal)
+        this.recoveryPending.set(ticket.journalKey, ticket.input.providerId);
+      ticket.releaseReceipt = recoverGoal
+        ? this.releaseGoalWithRetry(
+            ticket.journalKey,
+            outcome,
+            ticket.input.chatId ?? undefined,
+          )
+        : this.journal.release(ticket.journalKey, outcome);
       void ticket.releaseReceipt.catch((error) =>
         this.reportJournalError(error),
       );
@@ -1170,6 +1201,30 @@ export class WorkerInferenceAdmission {
     // retired sources cannot mint replacement owners from an evicted UUID.
     if (ticket.runtime.records.get(ticket.input.operationId) === ticket)
       ticket.runtime.records.delete(ticket.input.operationId);
+  }
+
+  private async releaseGoalWithRetry(
+    key: string,
+    outcome: InferenceSettlement,
+    chatId: string | undefined,
+  ) {
+    let delay = 1_000;
+    for (;;) {
+      this.recoveryLifetime.signal.throwIfAborted();
+      try {
+        const record = await this.journal!.release(key, outcome);
+        this.wakeRecovery(chatId);
+        return record;
+      } catch (error) {
+        this.recoveryLifetime.signal.throwIfAborted();
+        this.reportJournalError(error);
+        await retryDelay(delay, undefined, {
+          signal: this.recoveryLifetime.signal,
+          ref: false,
+        });
+        delay = Math.min(delay * 2, 30_000);
+      }
+    }
   }
 
   private drain(pool: Pool): void {
@@ -1390,7 +1445,11 @@ export class WorkerInferenceAdmission {
     const identity = record.identity.recovery;
     if (identity?.autonomousGoal)
       return (
-        inferenceNeverStarted(record) &&
+        (record.workerGeneration !== this.scope.workerGeneration ||
+          (record.state === "released" &&
+            ["never-started", "runtime-exited"].includes(
+              record.outcome ?? "",
+            ))) &&
         !record.nativeExecution &&
         Boolean(recoveryQueueIdentity(record.identity.chatId, identity)) &&
         record.identity.operationId === identity.commandGeneration
@@ -1459,6 +1518,13 @@ export class WorkerInferenceAdmission {
       void this.prepareRecovery();
       return;
     }
+    for (const record of this.journal.recoverySnapshot())
+      if (
+        this.recoverable(record) &&
+        record.identity.recovery?.autonomousGoal &&
+        (!chatId || record.identity.chatId === chatId)
+      )
+        this.recoveryPending.set(record.key, record.identity.providerId);
     if (chatId) this.recoveryChats.add(chatId);
     else this.recoveryAll = true;
     if (this.recoveryWork) return;
@@ -1536,6 +1602,7 @@ export class WorkerInferenceAdmission {
                     record,
                     records: [],
                     taskInputNotDispatched: new Set<string>(),
+                    goalInputNotDispatched: new Set<string>(),
                     enqueuedAt: Date.now(),
                     claimed: null,
                   };
@@ -1545,6 +1612,11 @@ export class WorkerInferenceAdmission {
                     record.identity.recovery?.taskInput
                   )
                     waiter.taskInputNotDispatched.add(record.key);
+                  if (
+                    result.goalInputNotDispatched === true &&
+                    record.identity.recovery?.autonomousGoal
+                  )
+                    waiter.goalInputNotDispatched.add(record.key);
                   if (record.order < waiter.record.order)
                     waiter.record = record;
                   this.restored.set(record.key, waiter);
@@ -1557,7 +1629,18 @@ export class WorkerInferenceAdmission {
                 if (this.recoveryPending.has(record.key))
                   this.diagnoseRecovery(record, "recovery-unresolved");
               }
-              this.recoveryPending.delete(record.key);
+              // A newer producer can arrive while this receipt was being
+              // reconciled. Keep its barrier through the next canonical read;
+              // an older unresolved response must not let that retry overtake
+              // the ordinal it is about to adopt.
+              if (
+                result.disposition === "retired" ||
+                !(
+                  this.recoveryAll ||
+                  this.recoveryChats.has(record.identity.chatId ?? "")
+                )
+              )
+                this.recoveryPending.delete(record.key);
               this.adoptRestorations();
             } catch (error) {
               if (!this.closing) {
@@ -1643,6 +1726,7 @@ export class WorkerInferenceAdmission {
         identity,
         records,
         new Set(waiter.taskInputNotDispatched),
+        new Set(waiter.goalInputNotDispatched),
       )
         .then(() => {
           for (const record of records) this.removeRestoration(record.key);
@@ -1670,6 +1754,7 @@ export class WorkerInferenceAdmission {
     identity: Parameters<WorkerInferenceJournal["adopt"]>[1],
     records: readonly InferenceJournalRecord[],
     taskInputNotDispatched: ReadonlySet<string>,
+    goalInputNotDispatched: ReadonlySet<string>,
   ): Promise<void> {
     let delay = 1_000;
     const signal = AbortSignal.any([
@@ -1688,6 +1773,7 @@ export class WorkerInferenceAdmission {
           ticket.restoredOrder,
           signal,
           taskInputNotDispatched,
+          goalInputNotDispatched,
         );
         return;
       } catch (error) {
@@ -1706,6 +1792,7 @@ export class WorkerInferenceAdmission {
     this.restored.delete(key);
     if (!waiter) return;
     waiter.taskInputNotDispatched.delete(key);
+    waiter.goalInputNotDispatched.delete(key);
     waiter.records = waiter.records.filter((record) => record.key !== key);
     if (waiter.records.length)
       waiter.record = waiter.records.reduce((a, b) =>

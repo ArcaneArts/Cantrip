@@ -61,7 +61,11 @@ impl Settlement<'_> {
         let operation = text(&self.row["operation_id"])?;
         raw_one(tx,"UPDATE native_commands SET status=$1,result_digest=$2,protected_result=$3::text::jsonb,terminal_result_digest=$4,protected_terminal_result=$5::text::jsonb,terminal_evidence=$6::text::jsonb,execution_completed_at=$7::text::timestamptz,rejection_code=$8,updated_at=$9 WHERE operation_id=$10 RETURNING to_jsonb(native_commands)::text",&[&status,&digest,&result,&terminal_digest,&terminal_result,&terminal,&completed,&code,&now,&operation]).await?.context("Database returned no row after settling native command.")
     }
-    pub(super) async fn finish(&self, tx: &Transaction<'_>) -> Result<()> {
+    pub(super) async fn finish(
+        &self,
+        tx: &Transaction<'_>,
+        goal_before_dispatch: bool,
+    ) -> Result<()> {
         let row = &self.row;
         let input = self.input;
         if !(truthy(input.get("executionComplete"))
@@ -82,7 +86,7 @@ impl Settlement<'_> {
         if truthy(active.get("active"))
             && active.get("generation") == row.get("activation_generation")
         {
-            let status = if truthy(input.get("deferred")) {
+            let status = if truthy(input.get("deferred")) || goal_before_dispatch {
                 "idle".into()
             } else {
                 input
@@ -112,7 +116,7 @@ impl Settlement<'_> {
                 &[&chat],
             )
             .await?;
-        } else if truthy(input.get("deferred"))
+        } else if (truthy(input.get("deferred")) || goal_before_dispatch)
             && active.get("generation") == row.get("activation_generation")
         {
             let now = crate::auth::now();

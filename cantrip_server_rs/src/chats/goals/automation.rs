@@ -1,5 +1,103 @@
 use super::*;
 impl Service {
+    pub fn recover_managed_goal(
+        self: &Arc<Self>,
+        owner: &str,
+        chat: &str,
+        recovery: &Value,
+    ) -> BoxFuture<'static, Result<()>> {
+        let (this, owner, chat, recovery) = (
+            self.clone(),
+            owner.to_owned(),
+            chat.to_owned(),
+            recovery.clone(),
+        );
+        self.operations.run(async move {
+            this.recover_managed_goal_one(&owner, &chat, &recovery)
+                .await
+        })
+    }
+
+    async fn recover_managed_goal_one(
+        self: &Arc<Self>,
+        owner: &str,
+        chat: &str,
+        recovery: &Value,
+    ) -> Result<()> {
+        let context = self
+            .chats
+            .execution_context(owner, chat)
+            .await?
+            .context("The Goal recovery placement changed.")?;
+        anyhow::ensure!(
+            context["experience"] == "agent"
+                && context.get("threadId") == recovery["source"].get("threadId"),
+            "The Goal recovery placement changed."
+        );
+        let queue = crate::native_commands::managed_queue::QueueRepository::new(
+            self.dependencies.database.clone(),
+        );
+        let snapshot = queue.snapshot(owner, chat).await?;
+        if !crate::native_commands::managed_queue::deep_equal(
+            &snapshot["goalRecovery"]["source"],
+            &recovery["source"],
+        ) || snapshot["paused"] == true
+        {
+            return Ok(());
+        }
+        let runtime = self
+            .dependencies
+            .routing
+            .runtime_for_context(owner, &context)
+            .await?
+            .context("Selected Goal recovery model was not found.")?;
+        let mut managed = self
+            .dependencies
+            .console
+            .prepare_launch(owner, &context, &runtime)
+            .await?;
+        managed["type"] = json!("chat.goal.recover");
+        managed["source"] = recovery["source"].clone();
+        managed["chatId"] = json!(chat);
+        managed["cwd"] = context["cwd"].clone();
+        managed["subagentDefaults"] = managed["subagentDefaults"].clone();
+        managed["mcpServers"] = selected(managed.get("mcpServers"), &Value::Array(Vec::new()));
+        managed["planMode"] = selected(managed.get("planMode"), &json!("default"));
+        managed["permissionProfileId"] =
+            managed_console::permission_profile(&context)["effectiveId"].clone();
+        let worker = text(&context["workerId"])?;
+        let response = self
+            .dependencies
+            .commands
+            .request_with_timeout(
+                &worker,
+                managed,
+                RequestTimeout::After(std::time::Duration::from_secs(10)),
+                None,
+            )
+            .await?;
+        let result =
+            crate::settings::parse_response("nativeGoalRecoveryReceiptSchema", response.as_ref())?;
+        let generation = if result["status"] == "admitted" {
+            &result["admission"]["workerGeneration"]
+        } else {
+            &result["workerGeneration"]
+        };
+        anyhow::ensure!(
+            crate::native_commands::managed_queue::deep_equal(
+                &result["source"],
+                &recovery["source"]
+            ) && self
+                .dependencies
+                .commands
+                .connection_identity(&worker)
+                .is_some_and(|identity| identity.owner == owner
+                    && Some(identity.process_generation.as_str()) == generation.as_str()),
+            "Goal recovery belongs to a replaced worker connection."
+        );
+        queue.confirm_goal_recovery(owner, chat, &result).await
+    }
+
     pub fn start_goal(
         self: &Arc<Self>,
         owner: &str,

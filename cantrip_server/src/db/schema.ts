@@ -2,6 +2,8 @@ import type {
   CantripOsRunRoots,
   TunnelWireSummary,
   NativeSuspensionRecord,
+  NativeGoalRecovery,
+  NativeGoalRecoverySource,
 } from "@cantrip/protocol";
 import type { TaskInferenceInputState } from "./task-inference-inputs.js";
 export { projectAlerts, chatGoalObservations } from "./schema-alerts.js";
@@ -5648,6 +5650,9 @@ export const nativeCommands = pgTable(
     terminalResultDigest: text("terminal_result_digest"),
     protectedTerminalResult: jsonb("protected_terminal_result"),
     terminalEvidence: jsonb("terminal_evidence"),
+    goalRecoverySource: jsonb(
+      "goal_recovery_source",
+    ).$type<NativeGoalRecoverySource>(),
     executionCompletedAt: timestamp("execution_completed_at", {
       withTimezone: true,
     }),
@@ -5911,6 +5916,7 @@ export const nativeLogicalCompletions = pgTable("native_logical_completions", {
     .defaultNow(),
 });
 export const managedQueueStates = pgTable("managed_queue_states", {
+  goalRecovery: jsonb("goal_recovery").$type<NativeGoalRecovery>(),
   notifiedRevision: integer("notified_revision").notNull().default(-1),
   notificationDueAt: timestamp("notification_due_at", { withTimezone: true })
     .notNull()

@@ -13,6 +13,7 @@ pub(crate) async fn changed(tx: &Transaction<'_>, chat: &str) -> Result<()> {
     Ok(())
 }
 pub(super) async fn cancel_goal_handoffs(tx: &Transaction<'_>, chat: &str) -> Result<()> {
+    let removed = tx.query("UPDATE managed_queue_states SET goal_recovery=NULL WHERE chat_id=$1 AND goal_recovery IS NOT NULL RETURNING chat_id", &[&chat]).await?;
     let rows=tx.query("UPDATE managed_queue_claims SET status='rejected' WHERE chat_id=$1 AND awaiting_goal=true AND goal_operation_id IS NULL AND status IN ('accepted','dispatched','uncertain') RETURNING to_jsonb(managed_queue_claims)::text",&[&chat]).await?;
     for row in &rows {
         let claim: Value = serde_json::from_str(&row.get::<String>(0)?)?;
@@ -29,7 +30,7 @@ pub(super) async fn cancel_goal_handoffs(tx: &Transaction<'_>, chat: &str) -> Re
         )
         .await?;
     }
-    if !rows.is_empty() {
+    if !rows.is_empty() || !removed.is_empty() {
         changed(tx, chat).await?;
     }
     Ok(())

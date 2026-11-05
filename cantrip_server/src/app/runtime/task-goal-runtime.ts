@@ -5,11 +5,14 @@ import {
 } from "../../terminals/managed-session.js";
 import { toChatAttachmentOpaqueSummary } from "../../db/repository.js";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   chatGoalResponseSchema,
   modelConfigurationSchema,
   taskDispatchWorkerLeaseSchema,
+  nativeGoalRecoveryReceiptSchema,
+  type NativeGoalRecovery,
   type AgentTurnResult,
   type ChatMessage,
   type ChatTurnCreate,
@@ -1107,6 +1110,66 @@ export function createTaskGoalRuntime({
     taskDispatchLease: lease,
   });
 
+  const recoverManagedGoal = async (
+    chatId: string,
+    recovery: NativeGoalRecovery,
+  ): Promise<void> => {
+    const ownerId = applicationOwnerId();
+    const context = await repository.getChatExecutionContext(ownerId, chatId);
+    if (
+      !context ||
+      context.experience !== "agent" ||
+      context.threadId !== recovery.source.threadId
+    )
+      throw new Error("The Goal recovery placement changed.");
+    const snapshot = await repository.managedQueue.snapshot(ownerId, chatId);
+    if (
+      !isDeepStrictEqual(snapshot.goalRecovery?.source, recovery.source) ||
+      snapshot.paused
+    )
+      return;
+    const runtime = await runtimeForContext(context);
+    if (!runtime)
+      throw new Error("Selected Goal recovery model was not found.");
+    const managed = await prepareManagedConsoleLaunch(context, runtime, {
+      ownerId,
+      bridge,
+      repository,
+      routePairsForConfiguration,
+    });
+    const result = nativeGoalRecoveryReceiptSchema.parse(
+      await bridge.request(
+        context.workerId,
+        {
+          ...managed,
+          type: "chat.goal.recover",
+          source: recovery.source,
+          chatId,
+          cwd: context.cwd,
+          threadId: managed.threadId!,
+          session: managed.session!,
+          subagentDefaults: managed.subagentDefaults ?? null,
+          mcpServers: managed.mcpServers ?? [],
+          planMode: managed.planMode ?? "default",
+          permissionProfileId: effectivePermissionProfile(context).effectiveId,
+        },
+        { ownerId, timeoutMs: 10_000 },
+      ),
+    );
+    const generation =
+      result.status === "admitted"
+        ? result.admission.workerGeneration
+        : result.workerGeneration;
+    const connection = bridge.connectionIdentity(context.workerId);
+    if (
+      !isDeepStrictEqual(result.source, recovery.source) ||
+      connection?.ownerId !== ownerId ||
+      connection.workerProcessGeneration !== generation
+    )
+      throw new Error("Goal recovery belongs to a replaced worker connection.");
+    await repository.managedQueue.confirmGoalRecovery(ownerId, chatId, result);
+  };
+
   const resumeChatAutomation = async (
     chatId: string,
     activateGoal = false,
@@ -1416,6 +1479,7 @@ export function createTaskGoalRuntime({
     releaseTaskGoalLease,
     retainTaskGoalLease,
     resumeChatAutomation,
+    recoverManagedGoal,
     scheduledTaskGoalTurnOptions,
     synchronizeScheduledTaskGoal,
     startGoalTurn,

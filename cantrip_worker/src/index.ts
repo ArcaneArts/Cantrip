@@ -43,6 +43,11 @@ import { updateNativePermissions } from "./native-permission-update.js";
 import { NativeSettingsPublisher } from "./native-settings-publisher.js";
 import { readProtectedNativeSettings } from "./native-settings-read.js";
 import { createHash, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+import {
+  nativeGoalRecoveryReceiptSchema,
+  type NativeGoalRecoveryReceipt,
+} from "@cantrip/protocol";
 import { lstat, mkdtemp, realpath, rm, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -1613,6 +1618,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const nativeCommands = new NativeCommandClient({
     serverUrl: config.serverUrl,
     workerId: config.workerId,
+    workerGeneration: workerProcessGeneration,
     token: () => config.token,
   });
   const authorizeInferenceResource = (
@@ -1696,15 +1702,56 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               error: workerLogError(error),
             },
           ),
-        (record, signal) =>
-          nativeCommands.reconcileInference(
-            {
-              serverId: scope.serverId,
-              workerGeneration: workerProcessGeneration,
-              record,
-            },
+        async (record, signal) => {
+          if (
+            record.workerGeneration === workerProcessGeneration &&
+            record.identity.recovery?.autonomousGoal
+          ) {
+            const recovery = record.identity.recovery;
+            for (const entries of managedCommandSessions.values())
+              for (const entry of entries.values()) {
+                const identity = entry.queueScope.identity;
+                if (
+                  identity.serverId === scope.serverId &&
+                  identity.ownerId === scope.ownerId &&
+                  entry.chatId === record.identity.chatId &&
+                  entry.threadId === recovery.threadId &&
+                  entry.adapter.isGoalOperationSettling(
+                    recovery.commandId!,
+                    recovery.commandGeneration!,
+                  )
+                )
+                  return {
+                    key: record.key,
+                    chatId: record.identity.chatId,
+                    disposition: "unresolved",
+                  };
+              }
+          }
+          const input = {
+            serverId: scope.serverId,
+            workerGeneration: workerProcessGeneration,
+            record,
+          };
+          const result = await nativeCommands.reconcileInference(input, signal);
+          if (!result.goalOwnershipChallenge) return result;
+          if (!record.identity.recovery?.autonomousGoal || !admission)
+            throw new Error(
+              "Goal recovery returned an unrelated ownership challenge.",
+            );
+          // This exact source identity was learned only from the canonical
+          // marker. Read the ACTUAL keeper after learning it, then compare it
+          // transactionally; an older alias cannot revoke a later native owner.
+          await admission.confirmNativeOwnership();
+          signal.throwIfAborted();
+          const confirmed = await nativeCommands.reconcileInference(
+            { ...input, expectedGoalAdmission: result.goalOwnershipChallenge },
             signal,
-          ),
+          );
+          if (confirmed.goalOwnershipChallenge)
+            throw new Error("Goal recovery ownership changed during fencing.");
+          return confirmed;
+        },
         ({
           action,
           timing,
@@ -2340,6 +2387,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             { session: entry.queueSession() },
             attemptSignal,
           );
+          if (queueSnapshot.paused)
+            throw new Error(
+              "Managed automation is paused; its native cycle was not admitted.",
+            );
           const handoff = managedQueueGoalHandoff(
             queueSnapshot,
             attempt.goalEpoch,
@@ -2359,6 +2410,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             },
             attemptSignal,
             handoff,
+            queueSnapshot.goalRecovery?.source,
           );
         },
         declined: (event) => {
@@ -2583,6 +2635,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       retainDeferredInput: (operation) => codec.retainTerminalPrompt(operation),
       onDeferredReady: () =>
         settingsPublishers.get(session.chatId)?.publisher.wake(),
+      onGoalSourceSettled: () =>
+        inferenceAdmissions
+          .get(
+            JSON.stringify({
+              serverId: identity.serverId,
+              ownerId: identity.ownerId,
+              workerId: identity.workerId,
+            }),
+          )
+          ?.wakeRecovery(identity.chatId),
       onPermissionApplied: (transition) => {
         if (runtime.transportGeneration !== generation)
           throw new Error(
@@ -3597,6 +3659,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
 
   // Provider decryption and the protected repository operation dispatcher stay
   // here with native runtime ownership. Feature handlers receive only their ports.
+  const managedGoalRecoveries = new Map<
+    string,
+    Promise<NativeGoalRecoveryReceipt>
+  >();
   const handleCommand = async (
     command: WorkerCommand,
     emit: (event: WorkerEvent) => void,
@@ -6902,6 +6968,145 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           },
           rollback,
         );
+      }
+      case "chat.goal.recover": {
+        if (
+          command.source.threadId !== command.threadId ||
+          command.session.chatId !== command.chatId
+        )
+          throw new Error("Goal recovery belongs to another managed session.");
+        const key = JSON.stringify([
+          nativeNamespaceScope(),
+          command.chatId,
+          command.source,
+        ]);
+        const pending = managedGoalRecoveries.get(key);
+        if (pending) return pending;
+        const recovery = (async (): Promise<NativeGoalRecoveryReceipt> => {
+          const admitted = (admission: {
+            operationId: string;
+            operationGeneration: string;
+          }): NativeGoalRecoveryReceipt => ({
+            source: command.source,
+            status: "admitted",
+            admission: {
+              ...admission,
+              workerGeneration: workerProcessGeneration,
+            },
+          });
+          const current = currentManagedRuntime(
+            command.chatId,
+            command.threadId,
+          );
+          const owned =
+            current &&
+            managedCommandSessions
+              .get(current)
+              ?.get(`${command.chatId}:${command.threadId}`)
+              ?.adapter.goalRecoveryAdmission(command.source);
+          if (owned) return admitted(owned);
+          const prepared = await prepareManagedMutation(command, provider());
+          if (!prepared)
+            throw new Error("Goal recovery has no prepared session.");
+          const { runtime, threadId } = prepared;
+          const entry = managedCommandSessions
+            .get(runtime)
+            ?.get(`${command.chatId}:${threadId}`);
+          if (!entry || entry.generation !== runtime.transportGeneration)
+            throw new Error(
+              "Goal recovery lost its prepared native transport.",
+            );
+          const signal = inferenceCommandSignal();
+          signal?.throwIfAborted();
+          let snapshot = await nativeQueueClient.read(
+            { session: entry.queueSession() },
+            signal,
+          );
+          const ineligible = (
+            reason: Extract<
+              NativeGoalRecoveryReceipt,
+              { status: "ineligible" }
+            >["reason"],
+          ): NativeGoalRecoveryReceipt => ({
+            source: command.source,
+            status: "ineligible",
+            workerGeneration: workerProcessGeneration,
+            reason,
+          });
+          if (!isDeepStrictEqual(snapshot.goalRecovery?.source, command.source))
+            return ineligible("source-changed");
+          if (snapshot.paused) return ineligible("paused");
+          const oldAdmission = snapshot.goalRecovery?.admission;
+          if (
+            oldAdmission &&
+            oldAdmission.workerGeneration !== workerProcessGeneration
+          ) {
+            // This old canonical source may have crashed before its first
+            // journal write. Fence the real keeper before retiring its exact
+            // marker admission; absence from our session maps proves nothing.
+            const admission = inferenceAdmissionForWorker();
+            await admission.confirmNativeOwnership();
+            signal?.throwIfAborted();
+            await nativeCommands.fenceGoalRecoveryAdmission(
+              {
+                serverId: entry.queueScope.identity.serverId,
+                workerGeneration: workerProcessGeneration,
+                source: command.source,
+                admission: oldAdmission,
+              },
+              signal,
+            );
+            admission.wakeRecovery(command.chatId);
+            snapshot = await nativeQueueClient.read(
+              { session: entry.queueSession() },
+              signal,
+            );
+            if (
+              !isDeepStrictEqual(snapshot.goalRecovery?.source, command.source)
+            )
+              return ineligible("source-changed");
+            if (snapshot.paused) return ineligible("paused");
+          }
+          const goal = await runtime.readManagedGoalRecovery(
+            threadId,
+            entry.generation,
+          );
+          if (goal.goalEpoch !== command.source.goalEpoch)
+            return ineligible("epoch-changed");
+          if (goal.goal?.status !== "active") return ineligible("not-active");
+          const existing = entry.adapter.goalRecoveryAdmission(command.source);
+          if (existing) return admitted(existing);
+          const runner = managedExecutionRunners
+            .get(runtime)
+            ?.get(command.chatId);
+          if (!runner) throw new Error("Goal recovery has no native runner.");
+          const observation = new AbortController();
+          const wait = entry.adapter.waitForGoalRecoveryAdmission(
+            command.source,
+            signal
+              ? AbortSignal.any([signal, observation.signal])
+              : observation.signal,
+          );
+          // The observer owns only this control acknowledgement, not execution.
+          void wait.catch(() => {});
+          try {
+            await runtime.wakeManagedExecution(
+              { threadId, ...runner.configuration },
+              entry.generation,
+            );
+            return admitted(await wait);
+          } finally {
+            observation.abort(new Error("Goal recovery observation ended."));
+          }
+        })().then((receipt) => nativeGoalRecoveryReceiptSchema.parse(receipt));
+        managedGoalRecoveries.set(key, recovery);
+        void recovery
+          .finally(() => {
+            if (managedGoalRecoveries.get(key) === recovery)
+              managedGoalRecoveries.delete(key);
+          })
+          .catch(() => {});
+        return recovery;
       }
       case "chat.automation.resume": {
         const prepared = await prepareManagedMutation(command, provider());
