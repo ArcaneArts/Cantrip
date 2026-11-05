@@ -103,6 +103,7 @@ export const workerLinkGrantOperationSchema = z.enum([
   "stream:write",
   "stream:half-close",
   "stream:guest-connect",
+  "stream:guest-listen",
   "events:subscribe",
   "datagram:send",
 ]);

@@ -28,7 +28,7 @@ checkpoints. Normal agent/preview routing selects the captured Linux display,
 including clipboard and resizing. An integrated source-bound desktop view now
 shares that helper over WorkerLink, including exclusive human takeover. Remote
 0.7.0 supplies protected guest SSH/SFTP/VNC/TCP carriers and managed product
-routes. Explicit guest-to-Host forwarding and final distribution/stream
+routes, including explicit Guest-to-Host forwarding. Final distribution/stream
 acceptance remain in progress.
 
 ## Optional package architecture
@@ -738,7 +738,7 @@ immutable capture before acquiring the guest service. The MCP client and
 credentials stay on the Worker. Actual packaged SDK tests exercise turn
 authorization and routing without a Host Cantrip-window grant or Host launch.
 Real-provider evidence is recorded separately. The remaining Phase 4 work
-includes stream-candidate comparison, explicit Guest-to-Host forwarding and
+includes stream-candidate comparison and
 refreshed ISO acceptance.
 
 Remote 0.3.0 adds scoped plain-text clipboard access and Unicode paste, actual
@@ -786,14 +786,20 @@ exclusive human-control lease: agent input is canceled and released before
 admission, another controller is refused, and unrelated workspaces continue.
 Disconnect/Stop returns control only after confirmed guest cleanup or an actually
 observed replacement epoch; uncertainty keeps the old lease blocked. The Native
-app exposes a loopback host/port for an ordinary VNC client. Explicit Guest-to-Host
-forwarding and remaining acceptance are still required.
-
+app exposes a loopback host/port for an ordinary VNC client. Remaining distribution
+and comparative stream/resource acceptance are still required.
 
 Remote 0.8.0 adds a protected guest-loopback listener carrier and a bounded
 Worker-host TCP bridge. It supports multiple clients and per-client half-close
 without Docker-specific Host addressing, and is retired with the remote package.
-This foundation does not yet expose saved Guest-to-Host routes in the product;
-that control-plane/UI integration remains the next Phase 4 milestone. Upgrades
+Saved Guest-to-Host routes now appear alongside Host and Linux service routes.
+A per-route direction selects a Linux loopback listener and its own Worker Host
+destination. Browser and Native clients can start/stop its signed WorkerLink
+control lease; the Worker owns the listener and Host bridge, with no device-side
+port or full Worker in the guest. Admission checks the protected direction,
+saved revision, canonical source generations and actual service identity. Legacy
+local-port clients cannot accidentally start a reverse definition. Stop retires
+the guest listener and all active clients; a disconnected controller cannot
+retarget another browser's replacement attachment. Upgrades
 also invalidate package-owned timestamp bytecode so reproducible source changes
 actually execute the new code. Retained desktop/workspace state is preserved.

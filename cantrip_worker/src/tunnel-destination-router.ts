@@ -221,6 +221,10 @@ export class TunnelDestinationRouter {
         throw new Error("Protected tunnel target belongs to another endpoint.");
       }
       reasonCode = "target-kind-mismatch";
+      if (content.source.kind === "worker-os-listener")
+        throw new Error(
+          "Guest listeners require their canonical control channel; no Host destination was opened.",
+        );
       if (
         Boolean(this.osServices?.isGuest(header.attachmentId)) !==
         (content.destination.kind === "worker-os-tcp" ||

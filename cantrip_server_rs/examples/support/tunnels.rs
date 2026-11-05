@@ -66,6 +66,8 @@ pub async fn run(database: Arc<Database>, request: &Value) -> Result<Value> {
                 &owner,
                 &text(request, "tunnel")?,
                 CreateAttachment {
+                    kind: v["kind"].as_str().map(str::to_owned),
+                    expected_revision: v["expectedRevision"].as_f64().map(|v| v as i64),
                     client: text(v, "clientId")?,
                     expires: date(v, "expiresAt").context("Attachment expiry")?,
                     secret_expires: date(v, "secretExpiresAt")

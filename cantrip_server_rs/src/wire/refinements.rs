@@ -365,12 +365,20 @@ pub(super) fn apply(
         }
         "tunnel-os-source" => {
             let guest = value["destination"]["kind"] == "worker-adapter";
-            if (guest
-                && (value["destination"]["resourceId"] != value["id"]
-                    || value["osSource"].is_null()
-                    || value["projectId"].is_null()))
-                || (!guest && !value["osSource"].is_null())
-            {
+            let listening = value["source"]["kind"] == "worker-listener";
+            let valid = if listening {
+                value["destination"]["kind"] == "worker-tcp"
+                    && value["source"]["workerId"] == value["destination"]["workerId"]
+                    && !value["osSource"].is_null()
+                    && !value["projectId"].is_null()
+            } else if guest {
+                value["destination"]["resourceId"] == value["id"]
+                    && !value["osSource"].is_null()
+                    && !value["projectId"].is_null()
+            } else {
+                value["osSource"].is_null()
+            };
+            if !valid {
                 custom(
                     &[],
                     "OS tunnels require a project and a captured source bound to their tunnel ID.",

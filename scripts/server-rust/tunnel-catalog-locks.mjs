@@ -1,5 +1,5 @@
-// Observe real blocked writes; retain the Source's pre-write snapshots and
-// final management predicate rather than inventing stronger transaction fences.
+// Observe real blocked writes: saved route edits must recheck attachment,
+// revision and management authority after taking the owning tunnel row lock.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { setTimeout as delay } from "node:timers/promises";
@@ -117,42 +117,38 @@ export async function tunnelCatalogLocks({ pair, urls, owner, report }) {
         }
         assert.equal(blocked.length, 1);
         assert.equal(blocked[0].wait_event_type, "Lock");
-        assert.match(
-          blocked[0].query,
-          deleting ? /delete from "?tunnels/i : /update "?tunnels/i,
-        );
+        assert.match(blocked[0].query, /select .*from "?tunnels.*for update/i);
         release.resolve();
         await transaction;
         const response = await pending;
-        assert.equal(response.rejected, false);
+        assert.equal(response.rejected, true);
         const stored = (
           await observer.unsafe(
             "SELECT jsonb_build_object('tunnel',(SELECT to_jsonb(t) FROM tunnels t WHERE id=$1),'attachments',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM tunnel_attachments a WHERE tunnel_id=$1),'leases',(SELECT jsonb_agg(to_jsonb(l) ORDER BY capability_id) FROM tunnel_attachment_direct_leases l WHERE capability_id='catalog-race-cap')) state",
             [id],
           )
         )[0].state;
-        if (scenario === "delete-attachment-after-guard") {
-          assert.equal(response.value, true);
-          assert.deepEqual(stored, {
-            tunnel: null,
-            attachments: null,
-            leases: null,
-          });
+        assert.ok(
+          stored.tunnel,
+          "the rejected write must retain the saved route",
+        );
+        if (scenario.includes("attachment-after-guard")) {
+          assert.equal(stored.tunnel.protected_revision, 1);
+          assert.equal(
+            stored.tunnel.protected_operation_id,
+            tunnelRecord.operationId,
+          );
+          assert.equal(stored.attachments[0].status, "active");
+          assert.equal(stored.leases[0].status, "active");
         } else if (scenario.includes("management-switch")) {
-          assert.equal(response.value, deleting ? false : null);
           assert.equal(stored.tunnel.management, "managed-durable");
           assert.equal(stored.tunnel.protected_revision, 1);
         } else {
           assert.equal(stored.tunnel.protected_revision, 2);
           assert.equal(
             stored.tunnel.protected_operation_id,
-            "accepted-catalog-operation",
+            "competing-operation",
           );
-          if (scenario === "update-attachment-after-guard") {
-            assert.equal(response.value.attachments[0].status, "active");
-            assert.equal(response.value.capabilities.canEdit, false);
-            assert.equal(stored.leases[0].status, "active");
-          }
         }
         outcomes.push({ response, stored, blocked: blocked[0] });
         await observer.unsafe("DELETE FROM tunnels WHERE id=$1", [id]);

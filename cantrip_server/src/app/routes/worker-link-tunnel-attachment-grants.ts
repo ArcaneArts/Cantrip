@@ -116,9 +116,11 @@ export function installWorkerLinkTunnelAttachmentGrantRoute(
             error: "The tunnel attachment changed while opening.",
           });
         }
+        const listening = authorization.source?.kind === "worker-listener";
         const guest =
-          authorization.destination.kind === "worker-adapter" &&
-          authorization.destination.adapter === "cantrip-os";
+          listening ||
+          (authorization.destination.kind === "worker-adapter" &&
+            authorization.destination.adapter === "cantrip-os");
         const osExecution = guest
           ? await repository.tunnels?.resolveOsExecution(authorization)
           : undefined;
@@ -136,7 +138,13 @@ export function installWorkerLinkTunnelAttachmentGrantRoute(
             "stream:read",
             "stream:write",
             "stream:half-close",
-            ...(guest ? ["stream:guest-connect" as const] : []),
+            ...(guest
+              ? [
+                  listening
+                    ? ("stream:guest-listen" as const)
+                    : ("stream:guest-connect" as const),
+                ]
+              : []),
           ],
           resourceId: authorization.tunnelId,
           resourceKind: "tunnel",
@@ -151,6 +159,7 @@ export function installWorkerLinkTunnelAttachmentGrantRoute(
               authorization.destination.workerId,
               {
                 type: "surface.tunnel.os-prepare",
+                ...(listening ? { mode: "listen" as const } : {}),
                 serverId: session.identity.serverId,
                 projectId: authorization.projectId!,
                 tunnelId: authorization.tunnelId,
@@ -185,6 +194,7 @@ export function installWorkerLinkTunnelAttachmentGrantRoute(
           current.tunnelId !== authorization.tunnelId ||
           current.clientId !== authorization.clientId ||
           !isDeepStrictEqual(current.destination, authorization.destination) ||
+          !isDeepStrictEqual(current.source, authorization.source) ||
           !isDeepStrictEqual(current.osSource, authorization.osSource) ||
           current.protectedRecord.revision !==
             authorization.protectedRecord.revision ||

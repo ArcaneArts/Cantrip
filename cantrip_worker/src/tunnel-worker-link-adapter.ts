@@ -18,6 +18,7 @@ interface ActiveTunnelChannel {
   emitter: WorkerLinkAdapterEmitter;
   grantId: string;
   guest: boolean;
+  listening: boolean;
   resourceId: string;
   workerId: string;
   waiters: Set<(available: boolean) => void>;
@@ -33,7 +34,7 @@ export class TunnelWorkerLinkAdapter implements WorkerLinkResourceAdapter {
     private readonly osServices?: OsTunnelServices,
   ) {}
 
-  open: WorkerLinkResourceAdapter["open"] = ({
+  open: WorkerLinkResourceAdapter["open"] = async ({
     grant,
     lane,
     emit,
@@ -58,21 +59,42 @@ export class TunnelWorkerLinkAdapter implements WorkerLinkResourceAdapter {
       closed: false,
       emitter: emit,
       grantId: grant.binding.grantId,
-      guest: grant.binding.operations.includes("stream:guest-connect"),
+      guest:
+        grant.binding.operations.includes("stream:guest-connect") ||
+        grant.binding.operations.includes("stream:guest-listen"),
+      listening: grant.binding.operations.includes("stream:guest-listen"),
       resourceId: resource.resourceId,
       waiters: new Set(),
       workerId: session.identity.workerId,
       writable: true,
     };
-    if (grant.binding.operations.includes("stream:guest-connect")) {
-      if (!this.osServices)
-        throw new WorkerLinkChannelRejectedError(
-          "resource-unavailable",
-          "Guest tunnel preparation is unavailable.",
-        );
-      this.osServices.activate(grant, session);
-    }
     this.#attachments.set(attachmentId, active);
+    try {
+      if (active.guest) {
+        if (!this.osServices)
+          throw new WorkerLinkChannelRejectedError(
+            "resource-unavailable",
+            "Guest tunnel preparation is unavailable.",
+          );
+        const listener = await this.osServices.activate(grant, session);
+        if (active.closed || this.#attachments.get(attachmentId) !== active)
+          throw new WorkerLinkChannelRejectedError(
+            "resource-unavailable",
+            "The guest tunnel channel was retired while opening.",
+          );
+        if (listener)
+          void listener.closed
+            .then(() =>
+              active.closed
+                ? undefined
+                : active.emitter.close("endpoint-disconnected"),
+            )
+            .catch(() => {});
+      }
+    } catch (error) {
+      await this.#close(active).catch(() => {});
+      throw error;
+    }
     return {
       carrierWritable: () => this.#markWritable(active),
       close: () => this.#close(active),
@@ -124,6 +146,13 @@ export class TunnelWorkerLinkAdapter implements WorkerLinkResourceAdapter {
     if (active.closed) throw new Error("Tunnel WorkerLink channel is closed.");
     if (active.guest && !this.osServices?.isGuest(active.attachmentId))
       throw new Error("The captured guest tunnel was retired.");
+    if (active.listening) {
+      if (payload.byteLength !== 1 || payload[0] !== 0)
+        throw new Error(
+          "Guest listener channels accept only their control heartbeat.",
+        );
+      return;
+    }
     const frame = decodeTunnelDataPlaneFrame(payload);
     if (
       frame.header.tunnelId !== active.resourceId ||
@@ -158,16 +187,16 @@ export class TunnelWorkerLinkAdapter implements WorkerLinkResourceAdapter {
     active.waiters.clear();
   }
 
-  #close(active: ActiveTunnelChannel): void {
+  async #close(active: ActiveTunnelChannel): Promise<void> {
     if (active.closed) return;
     active.closed = true;
     if (this.#attachments.get(active.attachmentId) === active) {
       this.#attachments.delete(active.attachmentId);
     }
     this.destinations.revokeAttachment(active.attachmentId);
-    void this.osServices?.revoke(active.attachmentId, active.grantId);
     for (const resolve of active.waiters) resolve(false);
     active.waiters.clear();
+    await this.osServices?.revoke(active.attachmentId, active.grantId);
   }
 }
 

@@ -223,7 +223,9 @@ const rotate = (label, client = "client-main", extra = {}, options) =>
     options,
   );
 try {
-  executable = await buildRustExample("project-repository-fixture");
+  executable =
+    option("--executable") ??
+    (await buildRustExample("project-repository-fixture"));
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
   for (const [i, kind] of ["node", "rust"].entries()) {

@@ -47,16 +47,19 @@ pub(super) async fn execute(
         let worker=auth["destination"]["workerId"].as_str().context("Tunnel destination worker")?;
         if !service.workers.bridge.is_connected(worker){return Ok(error(503,"Destination worker is offline."))}
         if !direct.bind_preparation(&lease,json!("tunnel"),auth["tunnelId"].clone()){return Ok(error(409,"The tunnel attachment changed while opening."))}
-        let guest=auth["destination"]["kind"]=="worker-adapter" && auth["destination"]["adapter"]=="cantrip-os";
+        let listening=auth["source"]["kind"]=="worker-listener";
+        let guest=listening || (auth["destination"]["kind"]=="worker-adapter" && auth["destination"]["adapter"]=="cantrip-os");
         let os_execution=repository.os_attachment_execution(&auth).await?;
         let mut grant_input=json!({"absoluteExpiresAt":auth["expiresAt"],"attachmentId":auth["attachmentId"],"lanes":["stream"],"maxChannels":1,"operations":["stream:open","stream:read","stream:write","stream:half-close"],"resourceId":auth["tunnelId"],"resourceKind":"tunnel","sessionId":session["sessionId"]});
-        if guest {grant_input["operations"]=json!(["stream:open","stream:read","stream:write","stream:half-close","stream:guest-connect"]);}
+        if guest {grant_input["operations"]=json!(["stream:open","stream:read","stream:write","stream:half-close",if listening {"stream:guest-listen"} else {"stream:guest-connect"}]);}
         let grant=service.worker_links.local.issue_grant(grant_input).await?;
         grant_id=Some(grant["binding"]["grantId"].as_str().context("Tunnel grant identity")?.to_owned());
         let mut service_identity=auth["osServiceIdentity"].clone();
         let mut ssh=Value::Null;
         if let Some(execution)=&os_execution {
-            let prepared=service.workers.commands.request(worker,json!({"type":"surface.tunnel.os-prepare","serverId":session["identity"]["serverId"],"projectId":auth["projectId"],"tunnelId":auth["tunnelId"],"attachmentId":auth["attachmentId"],"grantId":grant["binding"]["grantId"],"expiresAt":grant["binding"]["lease"]["absoluteExpiresAt"],"expectedIdentity":auth["osServiceIdentity"],"protectedRecord":auth["protectedRecord"],"osExecution":execution}),Some(Duration::from_secs(30)),None).await?;
+            let mut command=json!({"type":"surface.tunnel.os-prepare","serverId":session["identity"]["serverId"],"projectId":auth["projectId"],"tunnelId":auth["tunnelId"],"attachmentId":auth["attachmentId"],"grantId":grant["binding"]["grantId"],"expiresAt":grant["binding"]["lease"]["absoluteExpiresAt"],"expectedIdentity":auth["osServiceIdentity"],"protectedRecord":auth["protectedRecord"],"osExecution":execution});
+            if listening {command["mode"]=json!("listen");}
+            let prepared=service.workers.commands.request(worker,command,Some(Duration::from_secs(30)),None).await?;
             let prepared=crate::settings::parse_response("tunnelOsPrepareResultSchema",prepared.as_ref())?;
             if !repository.pin_os_service_identity(&auth,prepared["identity"].as_str().context("OS service identity")?).await? {
                 return Err(crate::tunnels::ManagementError("The OS tunnel attachment was retired during preparation.").into());
@@ -66,7 +69,7 @@ pub(super) async fn execute(
         }
         let current=repository.attachment(owner,attachment).await?;
         let source_changed=if let Some(current)=&current {guest && (current["osServiceIdentity"]!=service_identity || repository.os_attachment_execution(current).await?!=os_execution)}else{guest};
-        if source_changed || current.as_ref().is_none_or(|v|v["tunnelId"]!=auth["tunnelId"] || v["clientId"]!=auth["clientId"] || v["destination"]!=auth["destination"] || v["osSource"]!=auth["osSource"] || v["protectedRecord"]["revision"]!=auth["protectedRecord"]["revision"] || v["protectedRecord"]["operationId"]!=auth["protectedRecord"]["operationId"] || v["secretExpiresAt"]!=auth["secretExpiresAt"] || !direct.preparation_active(&lease)){
+        if source_changed || current.as_ref().is_none_or(|v|v["tunnelId"]!=auth["tunnelId"] || v["clientId"]!=auth["clientId"] || v["destination"]!=auth["destination"] || v["source"]!=auth["source"] || v["osSource"]!=auth["osSource"] || v["protectedRecord"]["revision"]!=auth["protectedRecord"]["revision"] || v["protectedRecord"]["operationId"]!=auth["protectedRecord"]["operationId"] || v["secretExpiresAt"]!=auth["secretExpiresAt"] || !direct.preparation_active(&lease)){
             service.worker_links.local.revoke_grant(session_id,grant_id.as_deref().unwrap(),if current.is_some(){"resource-stopped"}else{"resource-deleted"}).await;grant_id=None;
             return Ok(error(if current.is_some(){409}else{404},if current.is_some(){"The tunnel attachment changed while opening."}else{"Tunnel attachment not found."}));
         }

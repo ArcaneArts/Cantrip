@@ -15,7 +15,7 @@ fn scope(owner: &str, instance: &Value, workspace: &Value, binding: &Value) -> V
 }
 async fn exercise_os_tunnel(database: Arc<Database>, source: &Value) -> Result<()> {
     use cantrip_server::tunnels::{CreateAttachment, Repository as TunnelRepository};
-    let repository = TunnelRepository::new(database);
+    let repository = TunnelRepository::new(database.clone());
     let tunnel = id();
     let input = cantrip_server::wire::Value::from_serialize(&json!({
         "id":tunnel,"projectId":"project","protocolHint":"tcp",
@@ -36,6 +36,8 @@ async fn exercise_os_tunnel(database: Arc<Database>, source: &Value) -> Result<(
             "owner",
             &tunnel,
             CreateAttachment {
+                kind: None,
+                expected_revision: None,
                 client: client.clone(),
                 expires,
                 secret_expires: expires,
@@ -85,6 +87,8 @@ async fn exercise_os_tunnel(database: Arc<Database>, source: &Value) -> Result<(
             "owner",
             &tunnel,
             CreateAttachment {
+                kind: None,
+                expected_revision: None,
                 client,
                 expires,
                 secret_expires: expires,
@@ -105,6 +109,79 @@ async fn exercise_os_tunnel(database: Arc<Database>, source: &Value) -> Result<(
             .pin_os_service_identity(&auth, &"a".repeat(64))
             .await?
     );
+    let reverse_id = id();
+    let mut reverse = input.clone();
+    reverse["id"] = cantrip_server::wire::Value::from_serialize(&reverse_id);
+    reverse["source"] = cantrip_server::wire::Value::from_serialize(
+        &json!({"kind":"worker-listener","workerId":"worker"}),
+    );
+    reverse["destination"] = cantrip_server::wire::Value::from_serialize(
+        &json!({"kind":"worker-tcp","workerId":"worker","host":"127.0.0.1","port":51458}),
+    );
+    reverse["protectedRecord"]["operationId"] =
+        cantrip_server::wire::Value::from_serialize(&reverse_id);
+    let saved = repository.create_user("owner", &reverse).await?.unwrap();
+    assert_eq!(saved["source"]["kind"], "worker-listener");
+    let create = |kind: Option<&str>, revision: i64| CreateAttachment {
+        kind: kind.map(str::to_owned),
+        expected_revision: Some(revision),
+        client: id(),
+        expires,
+        secret_expires: expires,
+        secret_hash: "c".repeat(64),
+    };
+    assert!(
+        repository
+            .create_attachment("owner", &reverse_id, create(None, 1))
+            .await
+            .is_err()
+    );
+    assert!(
+        repository
+            .create_attachment("owner", &reverse_id, create(Some("worker-listener"), 2))
+            .await
+            .is_err()
+    );
+    let attached = repository
+        .create_attachment("owner", &reverse_id, create(Some("worker-listener"), 1))
+        .await?
+        .unwrap();
+    let attached_id = attached["attachmentId"].as_str().unwrap();
+    let auth = repository.attachment("owner", attached_id).await?.unwrap();
+    assert_eq!(auth["source"]["kind"], "worker-listener");
+    assert!(
+        repository
+            .authorize_attachment(attached_id, &"c".repeat(64))
+            .await?
+            .is_none()
+    );
+    assert!(repository.os_attachment_execution(&auth).await?.is_some());
+    assert!(
+        repository
+            .pin_os_service_identity(&auth, &"d".repeat(64))
+            .await?
+    );
+    let update = cantrip_server::wire::Value::from_serialize(
+        &json!({"protectedRecord":{"operationId":id(),"revision":2,"protectedContent":serde_json::from_str::<Value>(&input["protectedRecord"]["protectedContent"].stringify())?}}),
+    );
+    assert!(
+        repository
+            .update_user("owner", &reverse_id, &update)
+            .await
+            .is_err()
+    );
+    assert!(repository.delete_user("owner", &reverse_id).await.is_err());
+    repository
+        .stop_attachment("owner", attached_id, None, false, None)
+        .await?;
+    repository
+        .update_user("owner", &reverse_id, &update)
+        .await?
+        .unwrap();
+    assert!(repository.delete_user("owner", &reverse_id).await?);
+    // The database itself rejects Host rows carrying an incoming OS capture,
+    // including SQL's nullable adapter branch.
+    assert!(database.query("UPDATE tunnels SET destination_kind='worker-tcp',destination_adapter=NULL,destination_resource_id=NULL WHERE id=$1", &[&tunnel]).await.is_err());
     Ok(())
 }
 async fn exercise_run_captures(

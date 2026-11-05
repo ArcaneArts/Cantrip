@@ -52,11 +52,17 @@ impl Repository {
     }
     pub async fn create_user(&self, owner: &str, input: &Value) -> Result<Option<Value>> {
         let project = optional(input, "projectId")?;
+        let source = input
+            .get("source")
+            .filter(|v| !v.is_null())
+            .cloned()
+            .unwrap_or_else(|| json!({"kind":"desktop-loopback"}));
         self.os_execution(
             owner,
             &text(input, "id")?,
             project.as_deref(),
             &input["destination"],
+            &source,
             &input["osSource"],
         )
         .await?;
@@ -64,7 +70,7 @@ impl Repository {
             .references_owned(
                 owner,
                 project.as_deref(),
-                &json!({"kind":"desktop-loopback"}),
+                &source,
                 &input["destination"],
                 !input["osSource"].is_null(),
             )
@@ -82,9 +88,9 @@ impl Repository {
             ("origin", Some("user".into()), "text"),
             ("management", Some("user-managed".into()), "text"),
             ("protocol_hint", Some(text(input, "protocolHint")?), "text"),
-            ("source_kind", Some("desktop-loopback".into()), "text"),
+            ("source_kind", Some(text(&source, "kind")?), "text"),
             ("source_adapter", None, "text"),
-            ("source_worker_id", None, "text"),
+            ("source_worker_id", optional(&source, "workerId")?, "text"),
             (
                 "destination_kind",
                 Some(text(&input["destination"], "kind")?),
@@ -178,26 +184,39 @@ impl Repository {
         } else {
             optional(&existing, "project_id")?
         };
-        let source = source(&existing)?;
+        let source = input
+            .get("source")
+            .filter(|v| !v.is_null())
+            .cloned()
+            .map_or_else(|| source(&existing), Ok)?;
         let destination = input
             .get("destination")
             .filter(|v| !v.is_null())
             .cloned()
             .map_or_else(|| destination(&existing), Ok)?;
-        let capture =
-            if destination["kind"] == "worker-adapter" && destination["adapter"] == "cantrip-os" {
-                input
-                    .get("osSource")
-                    .unwrap_or(&existing["os_source"])
-                    .clone()
-            } else {
-                Value::Null
-            };
+        let capture = if (destination["kind"] == "worker-adapter"
+            && destination["adapter"] == "cantrip-os")
+            || source["kind"] == "worker-listener"
+        {
+            input
+                .get("osSource")
+                .unwrap_or(&existing["os_source"])
+                .clone()
+        } else {
+            Value::Null
+        };
         if !input["osSource"].is_null() && capture.is_null() {
             return Err(ManagementError("Host tunnels cannot capture an OS source.").into());
         }
-        self.os_execution(owner, id, project.as_deref(), &destination, &capture)
-            .await?;
+        self.os_execution(
+            owner,
+            id,
+            project.as_deref(),
+            &destination,
+            &source,
+            &capture,
+        )
+        .await?;
         if !self
             .references_owned(
                 owner,
@@ -212,6 +231,14 @@ impl Repository {
         }
         let mut bindings = Bindings::default();
         let mut set = Vec::new();
+        set.push(format!(
+            "source_kind={}",
+            bindings.add(Some(text(&source, "kind")?), "text")
+        ));
+        set.push(format!(
+            "source_worker_id={}",
+            bindings.add(optional(&source, "workerId")?, "text")
+        ));
         set.push(format!(
             "os_source={}",
             bindings.add((!capture.is_null()).then(|| capture.stringify()), "jsonb")
@@ -284,7 +311,22 @@ impl Repository {
         }
         let id_parameter = bindings.add(Some(id.to_owned()), "text");
         let owner_parameter = bindings.add(Some(owner.to_owned()), "text");
-        let rows = self.database.query(&tunnel_returning(&format!("UPDATE tunnels SET {} WHERE id={id_parameter} AND owner_id={owner_parameter} AND management='user-managed'",set.join(","))),&bindings.params()).await?;
+        let statement = tunnel_returning(&format!(
+            "UPDATE tunnels SET {} WHERE id={id_parameter} AND owner_id={owner_parameter} AND management='user-managed'",
+            set.join(",")
+        ));
+        let owned_id = id.to_owned();
+        let owned_owner = owner.to_owned();
+        let expected_revision = existing["protected_revision"].as_f64();
+        let expected_operation = optional(&existing, "protected_operation_id")?;
+        let rows=self.database.transaction(move |tx|Box::pin(async move {
+            let rows=tx.query("SELECT protected_revision,protected_operation_id,management FROM tunnels WHERE id=$1 AND owner_id=$2 LIMIT 1 FOR UPDATE",&[&owned_id,&owned_owner]).await?;
+            let Some(row)=rows.first()else{return Ok(vec![])};
+            if row.get::<String>(2)?!="user-managed" {return Err(ManagementError("Managed tunnels are controlled by their owning feature.").into())}
+            if !tx.query("SELECT id FROM tunnel_attachments WHERE tunnel_id=$1 AND status NOT IN ('stopped','failed') LIMIT 1",&[&owned_id]).await?.is_empty(){return Err(ManagementError("Stop every tunnel attachment before editing this tunnel.").into())}
+            if Some(f64::from(row.get::<i32>(0)?))!=expected_revision || row.get::<Option<String>>(1)?!=expected_operation {return Err(ManagementError("Tunnel protected content has a stale revision.").into())}
+            tx.query(&statement,&bindings.params()).await
+        })).await?;
         if rows.is_empty() {
             return Ok(None);
         }
@@ -305,6 +347,14 @@ impl Repository {
         };
         self.guard_user(&json!({"id":id,"management":row.get::<String>(0)?}), false)
             .await?;
-        Ok(self.database.query("DELETE FROM tunnels WHERE id=$1 AND owner_id=$2 AND management='user-managed' RETURNING id",&[&id,&owner]).await?.len()==1)
+        let id = id.to_owned();
+        let owner = owner.to_owned();
+        self.database.transaction(move |tx|Box::pin(async move {
+            let rows=tx.query("SELECT management FROM tunnels WHERE id=$1 AND owner_id=$2 LIMIT 1 FOR UPDATE",&[&id,&owner]).await?;
+            let Some(row)=rows.first()else{return Ok(false)};
+            if row.get::<String>(0)?!="user-managed" {return Err(ManagementError("Managed tunnels are controlled by their owning feature.").into())}
+            if !tx.query("SELECT id FROM tunnel_attachments WHERE tunnel_id=$1 AND status NOT IN ('stopped','failed') LIMIT 1",&[&id]).await?.is_empty(){return Err(ManagementError("Stop every tunnel attachment before deleting this tunnel.").into())}
+            Ok(tx.query("DELETE FROM tunnels WHERE id=$1 AND owner_id=$2 AND management='user-managed' RETURNING id",&[&id,&owner]).await?.len()==1)
+        })).await
     }
 }

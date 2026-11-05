@@ -2116,7 +2116,6 @@ and Native tunnel contract comparison. Main's added provider-catalog export is
 explicitly reviewed in the protocol compatibility list while the legacy export
 fingerprint is retained. No new guest package or migration is introduced here.
 
-
 ## Phase 4: managed VNC and shared control checkpoint (2026-11-05)
 
 Managed tunnels now include **VNC desktop** for an explicitly captured Linux
@@ -2170,7 +2169,6 @@ logging subsystem. `pnpm check` still stops at the unchanged Server line budgets
 does not claim refreshed ISO/distribution or comparative stream acceptance.
 Explicit Guest-to-Host forwarding and the remaining Phase 4 acceptance continue.
 
-
 After rebasing onto the current main, the production App build, App typecheck,
 39 focused Worker tests, both real guest cases on each architecture and all
 three product smoke cases passed again. Protocol contract regeneration matched
@@ -2178,7 +2176,6 @@ main (624 roots, 10483 nodes); no public Native contract changes were needed.
 The initial post-rebase launch used stale protocol build output; rebuilding the
 workspace dependencies restored the Server and Worker, and the product cases
 above passed against that rebuilt stack.
-
 
 ## Phase 4: Guest-to-Host listener foundation (2026-11-05)
 
@@ -2244,3 +2241,81 @@ on both architectures, all nine focused protocol tests passed, and all seven
 OS launcher tests passed. Scoped TypeScript/JavaScript formatting, Python
 compilation, shell syntax and `git diff --check` passed. The same baseline
 Worker typing error remains; no shared Native/public protocol changed.
+
+## Phase 4: saved Guest-to-Host product routes (2026-11-05)
+
+The tunnel inventory now saves an encrypted `worker-os-listener` source with a
+canonical source capture and an explicit same-Worker Host destination. Incoming
+Host/Linux service routes and outgoing Linux listeners share one inventory and
+per-route editor. Reverse listeners start in both browser and Native clients;
+there is no viewing-device listener or full guest Worker. A singleton Linux
+workspace appears as a label and is selected without an unnecessary dropdown.
+
+The Server admits the explicit attachment kind and expected saved revision,
+resolves current ownership/placement and pins the real service descriptor. The
+Worker binds a real guest listener before acknowledging preparation and dials
+the Host only after the matching signed `stream:guest-listen` grant activates.
+The control channel accepts only a one-byte heartbeat. Retired runtime, package,
+carrier or controller closes the listener and all multiplexed Host clients.
+Unique per-start attachment identities prevent late cancellation cleanup from
+revoking a replacement started in another tab. Saved edits/deletes now lock the
+owning route and recheck attachment/management/revision fences atomically.
+
+Actual protected admission tests passed on ARM Docker and the installed AMD64
+VM: wrong direction rejected, signed admission succeeded, a duplicate channel
+was refused, real Linux TCP reached the explicit Host service, unexpected data
+frames failed and closing the channel retired the physical guest port. Existing
+carrier binary/half-close and package retirement acceptance is recorded above.
+
+The private PostgreSQL QA stack ran all four actual product tests: Linux TCP vs
+Host substitution, SSH/SFTP, VNC, and the new saved reverse route. The reverse
+case saved real encrypted content, obtained an actual Server grant through the
+browser controller, traversed WorkerLink relay and reached the Host service at
+51458 from guest port 51566. The matching guest port returned the distinct Linux
+proof. It remained usable after the real heartbeat and Stop made the actual
+guest port refuse connections. Codex's own browser also created, started and
+stopped a separate saved route at 51567; an actual guest request returned the
+Host proof while active, and the real port was closed after browser Stop.
+Evidence screenshot is retained under local ignored `artifacts/phase4-reverse/`.
+
+Native canonical repository tests passed on PostgreSQL and native PGlite using
+a temporary diagnostic correction for two unchanged compilation errors in
+`tasks/round_outcomes.rs:100` and `tasks/round_input_history.rs:75` (wire JSON is
+passed to SQL without a `ToSql` wrapper). The temporary changes were restored
+and are not part of this milestone. A clean native server build remains blocked
+by those upstream errors; these diagnostic database results are not a claim
+that the unmodified full native server build passes. The fresh native Codex
+runtime build completed and the QA Worker uses that bundle.
+
+Full Phase 4 remains active for comparative streaming/resource measurements and
+refreshed Docker/live ISO/installed-system acceptance. No distribution acceptance
+is inferred from these tunnel tests.
+
+Focused verification passed: 44 App tests, 46 Server tests, 28 Worker tests and
+19 protocol tests. The App typecheck and production build passed. The paired
+Node/native tunnel repository comparison passed 311 cases and 146 snapshots on
+each database engine; PostgreSQL additionally exercised five actually blocked
+edit/delete races. Both implementations rejected the competing mutation and
+preserved admitted attachments, leases, revision and management ownership.
+Legacy non-OS Worker listener records and secret-based Host attachment access
+retain their historical behavior. Native comparison used the diagnostic
+compilation correction described above; its two unrelated files were restored.
+
+The standard root check was attempted and failed at unchanged application line
+budgets (`build-app.ts` 1516/1500 and `chat-turn-runtime.ts` 2216/1999). Repository
+decomposition reports unchanged `native-commands.ts` at 2049/2000; the touched
+tunnel repository is below its limit after extracting its summary projection.
+Worker and Server typechecks still reported their existing logging/task-history
+errors. These failures were not counted as passing checks.
+
+After rebasing onto `98a1cd074`, all 44 App tests and 19 protocol tests passed
+again, and the regenerated contract contains 626 roots / 10529 nodes. The final
+App build attempt is blocked by unchanged Worker `inference-command.ts:36/37`
+(`session.chatId` narrowing); Worker typecheck also reports the upstream
+inference-source/void annotations and the existing logging context error.
+Repository decomposition now reports upstream `native-commands.ts` at 2075/2000.
+The earlier App production-build success predates these main-branch changes.
+Actual product service tests passed after migration 263 and the intervening main
+migration were applied to the backed-up private QA database. The paired database
+comparison was repeated after renumbering: 311 cases / 146 snapshots on each
+engine and all five PostgreSQL mutation races passed again.
