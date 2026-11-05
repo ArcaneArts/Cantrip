@@ -39,8 +39,7 @@ dedicated 32 MiB HTTP body allowance in both servers, including base64 expansion
 
 This milestone covers captured explicit Task Goal outcomes. A crash before that
 capture still requires native checkpoint/terminal reconciliation. Ordinary Chat
-and Task-round outcome transport, explicit retirement of permanently stale
-pending outcome files, current-generation abandoned preparation, canonical timing
+and Task-round outcome transport, current-generation abandoned preparation, canonical timing
 integration and the final bounded-runtime/inference-path audit remain unfinished.
 Older servers without the commit endpoint cannot acknowledge these files. No
 tests, builds, typechecks, benchmarks, native execution or computer-use validation
@@ -1328,3 +1327,28 @@ store prompts, or select which inference runs. Worker admission remains the
 only authority for provider capacity. Source review, formatting and
 `git diff --check` were performed; runtime retry and shutdown behavior remains
 unverified under the user's prohibition on tests/builds/computer-use validation.
+
+## Retirement of captured Goal outcome delivery
+
+The commit endpoint can explicitly retire a pending result when its canonical
+input message/project/chat has been deleted, or when that same canonical message
+now carries a validated Goal receipt for a different input operation. Both
+servers read that actual owner-scoped state under the existing history locks,
+after trying normal protected-history persistence. The matching acknowledgement
+identifies the delivery, original physical input and retirement reason. The
+worker then removes the pending response file without retaining a tombstone.
+This is retirement of publication authority, not proof of inference settlement;
+it cannot free a ticket or authorize another execution.
+
+Archive, pause, lease expiry, route changes, a missing terminal notification,
+malformed or absent legacy receipt metadata, and transport/database errors do
+not constitute replacement proof. Uncertain results remain pending. Results
+whose original receipt is still valid continue through historical persistence,
+including after archive or placement/control changes. An older server returning
+only an uncommitted response cannot cause deletion. Files for an old authenticated
+server/account scope are not submitted under a new scope.
+
+Source review covered committed, deleted, replaced, archived, legacy/unknown and
+conflicting receipts in both servers. Direct formatting, mechanical protocol
+export and `git diff --check` ran. No tests, builds, typechecks, benchmarks,
+migration execution, native execution or computer-use validation ran.

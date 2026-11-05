@@ -61,10 +61,31 @@ async fn apply(
         }
         // Captured facts can outlive a worker generation. The transaction
         // validates exact original input authority, not current observer liveness.
-        let committed = crate::tasks::Repository::new(service.repository.database.clone())
+        let tasks = crate::tasks::Repository::new(service.repository.database.clone());
+        let committed = tasks
             .apply_goal_input_outcome(&owner, input["workerId"].as_str().unwrap(), note, true)
-            .await?
-            .is_some();
+            .await;
+        let (committed, conflict) = match committed {
+            Ok(result) => (result.is_some(), None),
+            Err(error)
+                if error
+                    .downcast_ref::<crate::task_dispatch::Conflict>()
+                    .is_some() =>
+            {
+                (false, Some(error))
+            }
+            Err(error) => return Err(error),
+        };
+        let retired = if committed {
+            None
+        } else {
+            tasks.goal_outcome_retirement(&owner, note).await?
+        };
+        if retired.is_none()
+            && let Some(error) = conflict
+        {
+            return Err(error);
+        }
         if committed {
             service
                 .execution
@@ -75,12 +96,11 @@ async fn apply(
                 )
                 .await?;
         }
-        return crate::settings::parse_response(
-            "taskGoalOutcomeCommitSchema",
-            Some(
-                &json!({"deliveryId":input["deliveryId"],"taskInferenceInputOperationId":note["taskInferenceInputOperationId"],"committed":committed}),
-            ),
-        );
+        let mut receipt = json!({"deliveryId":input["deliveryId"],"taskInferenceInputOperationId":note["taskInferenceInputOperationId"],"committed":committed});
+        if let Some(reason) = retired {
+            receipt["retiredReason"] = json!(reason);
+        }
+        return crate::settings::parse_response("taskGoalOutcomeCommitSchema", Some(&receipt));
     }
     if phase == "inference-recovery" || phase == "task-input-dispatch" {
         let worker = input["workerId"].as_str().unwrap();

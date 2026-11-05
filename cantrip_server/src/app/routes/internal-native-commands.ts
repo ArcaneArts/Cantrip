@@ -113,6 +113,7 @@ export function installInternalNativeCommandRoutes(
         return reply.code(400).send({ code: "invalid-task-goal-outcome" });
       return runAsOwner(authentication.ownerId, async () => {
         let committed;
+        let conflict: TaskDispatchConflictError | undefined;
         try {
           // This transaction validates the original physical receipt and saves
           // the protected response/terminal marker, including historical input.
@@ -124,10 +125,17 @@ export function installInternalNativeCommandRoutes(
             { recordOnly: true },
           );
         } catch (error) {
-          if (error instanceof TaskDispatchConflictError)
-            return reply.code(409).send({ code: "stale-task-input" });
-          throw error;
+          if (error instanceof TaskDispatchConflictError) conflict = error;
+          else throw error;
         }
+        const retiredReason = committed
+          ? null
+          : await repository.tasks.inferenceInputs.goals.outcomeRetirementReason(
+              authentication.ownerId,
+              note,
+            );
+        if (conflict && !retiredReason)
+          return reply.code(409).send({ code: "stale-task-input" });
         if (committed)
           await dependencies.onGoalOutcomeCommitted?.(
             authentication.ownerId,
@@ -138,6 +146,7 @@ export function installInternalNativeCommandRoutes(
           deliveryId: input.deliveryId,
           taskInferenceInputOperationId: note.taskInferenceInputOperationId,
           committed: Boolean(committed),
+          ...(retiredReason ? { retiredReason } : {}),
         });
       });
     },

@@ -177,12 +177,14 @@ export class NativeCommandClient {
       AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
     );
     if (
-      !result.committed ||
+      (!result.committed && !result.retiredReason) ||
       result.deliveryId !== input.deliveryId ||
       result.taskInferenceInputOperationId !==
         input.notification.taskInferenceInputOperationId
     )
-      throw new Error("Goal outcome has no matching canonical commit receipt.");
+      throw new Error(
+        "Goal outcome has no matching canonical commit or retirement receipt.",
+      );
   }
 
   async observeSettings(

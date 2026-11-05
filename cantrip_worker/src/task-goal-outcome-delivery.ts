@@ -149,7 +149,8 @@ export class TaskGoalOutcomeDelivery {
           // Credentials/bindings can change while disk reads are pending.
           if (this.directory(this.options.scope()) !== directory) return;
           await this.options.send(record, this.lifetime.signal);
-          // send resolves only after matching canonical persistence evidence.
+          // send resolves only after matching canonical commit or positive
+          // deletion/replacement retirement evidence; never a timeout.
           await rm(filename);
           await flushHistoryDirectory(directory);
         } catch (error) {

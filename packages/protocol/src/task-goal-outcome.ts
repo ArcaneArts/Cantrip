@@ -16,13 +16,22 @@ export const taskGoalOutcomeDeliverySchema = z
   })
   .strict();
 
-export const taskGoalOutcomeCommitSchema = z
-  .object({
-    deliveryId: z.uuid(),
-    taskInferenceInputOperationId: z.uuid(),
-    committed: z.boolean(),
-  })
-  .strict();
+const outcomeReceiptIdentity = {
+  deliveryId: z.uuid(),
+  taskInferenceInputOperationId: z.uuid(),
+};
+export const taskGoalOutcomeCommitSchema = z.discriminatedUnion("committed", [
+  z.object({ ...outcomeReceiptIdentity, committed: z.literal(true) }).strict(),
+  z
+    .object({
+      ...outcomeReceiptIdentity,
+      committed: z.literal(false),
+      retiredReason: z
+        .enum(["canonical-input-deleted", "canonical-input-replaced"])
+        .optional(),
+    })
+    .strict(),
+]);
 
 export type TaskGoalOutcomeDelivery = z.infer<
   typeof taskGoalOutcomeDeliverySchema
