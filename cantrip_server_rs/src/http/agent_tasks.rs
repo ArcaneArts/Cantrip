@@ -22,9 +22,9 @@ async fn status(
     next: Value,
     mutated: bool,
 ) -> Result<Value> {
-    let chats = chats::Repository::new(service.repository.database.clone())
-        .list_project(owner, text(&context["projectId"])?)
-        .await?;
+    let chats =
+        super::agent_operations::project_chats(service, owner, text(&context["projectId"])?)
+            .await?;
     let descriptors = tasks.iter().map(|task| {
         let chat = chats.iter().find(|chat| chat["id"] == task["chatId"]).ok_or_else(|| OperationError::new(404,"not-found","Task chat is unavailable."))?;
         let retrying = matches!(task["automaticRetry"]["status"].as_str(), Some("scheduled" | "retrying"));

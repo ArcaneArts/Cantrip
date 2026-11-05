@@ -1,7 +1,7 @@
 //! The same live binding authority used by the Node MCP relay.
 use crate::wire::Value;
 
-pub const OPERATIONS: [&str; 7] = [
+pub const OPERATIONS: [&str; 10] = [
     "context.get",
     "alert.raise",
     "alert.resolve",
@@ -9,7 +9,28 @@ pub const OPERATIONS: [&str; 7] = [
     "task.list",
     "task.status",
     "task.wait",
+    "chat.list",
+    "chat.read",
+    "chat.wait",
 ];
+pub fn is_mutation(operation: &str) -> bool {
+    matches!(operation, "alert.raise" | "alert.resolve" | "task.create")
+}
+fn permitted(permission: &Value, operation: &str) -> bool {
+    permission != ":read-only"
+        || matches!(
+            operation,
+            "context.get"
+                | "alert.raise"
+                | "alert.resolve"
+                | "task.list"
+                | "task.status"
+                | "task.wait"
+                | "chat.list"
+                | "chat.read"
+                | "chat.wait"
+        )
+}
 #[derive(Debug)]
 pub struct BindingError {
     pub status: u16,
@@ -77,8 +98,7 @@ pub fn validate_binding(
             changed.push(label);
         }
     }
-    let exact = binding["contextKind"] == "standalone"
-        || matches!(operation, "alert.raise" | "alert.resolve" | "task.create");
+    let exact = binding["contextKind"] == "standalone" || is_mutation(operation);
     if exact {
         for (key, label) in [
             ("executionLaneId", "execution lane"),
@@ -111,13 +131,7 @@ pub fn validate_binding(
             ),
         ));
     }
-    if permission == &Value::from_serialize(&serde_json::json!(":read-only"))
-        && operation != "context.get"
-        && !matches!(
-            operation,
-            "alert.raise" | "alert.resolve" | "task.list" | "task.status" | "task.wait"
-        )
-    {
+    if !permitted(permission, operation) {
         return Err(error(
             403,
             "forbidden",
@@ -155,7 +169,16 @@ pub fn readiness(binding: &Value, context: &Value, permission: &Value) -> Value 
     }
     let authorized = binding["allowedOperations"]
         .as_array()
-        .is_some_and(|v| v.iter().any(|v| v == "alert.raise" || v == "alert.resolve"));
+        .is_some_and(|operations| {
+            operations
+                .iter()
+                .filter_map(Value::as_str)
+                .any(|operation| {
+                    OPERATIONS.contains(&operation)
+                        && is_mutation(operation)
+                        && permitted(permission, operation)
+                })
+        });
     let status = if !changed.is_empty() {
         "refresh-required"
     } else if authorized {

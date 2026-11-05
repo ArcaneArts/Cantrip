@@ -6,6 +6,12 @@ use crate::{
 use anyhow::Result;
 use std::sync::Arc;
 
+/// Outcome and transport evidence for one logical GUI closure.
+pub struct GuiClosure<'a> {
+    pub status: &'a str,
+    pub transport_ended: bool,
+}
+
 /// Commit the logical GUI closure before releasing its native successors.
 pub async fn finish_managed_gui(
     repository: &Repository,
@@ -22,8 +28,10 @@ pub async fn finish_managed_gui(
         owner,
         worker,
         receipt,
-        status,
-        false,
+        GuiClosure {
+            status,
+            transport_ended: false,
+        },
         on_acknowledgment_error,
     )
     .await
@@ -35,8 +43,7 @@ pub async fn finish_managed_gui_with_transport(
     owner: &str,
     worker: &str,
     receipt: &Value,
-    status: &str,
-    transport_ended: bool,
+    closure: GuiClosure<'_>,
     on_acknowledgment_error: &(dyn Fn(anyhow::Error) + Send + Sync),
 ) -> Result<bool> {
     let operation = text(&receipt["operationId"])?;
@@ -47,8 +54,8 @@ pub async fn finish_managed_gui_with_transport(
             worker,
             &operation,
             &generation,
-            status,
-            transport_ended,
+            closure.status,
+            closure.transport_ended,
         )
         .await?;
     let acknowledgment = async {

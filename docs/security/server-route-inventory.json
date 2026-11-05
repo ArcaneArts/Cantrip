@@ -217,13 +217,13 @@
     "external-credential": 1,
     "public-authentication": 3,
     "public-bootstrap": 3,
-    "worker-control": 39,
-    "http": 529,
+    "worker-control": 40,
+    "http": 530,
     "legacyLocalOwnerRoutes": 0,
     "requestPrincipalRoutes": 427,
-    "total": 536,
+    "total": 537,
     "websocket": 7,
-    "workerCredentialRoutes": 39,
+    "workerCredentialRoutes": 40,
     "durableTables": 115,
     "agentOperations": 56,
     "workerCommands": 295,
@@ -242,7 +242,7 @@
   },
   "contractSetDigests": {
     "agentOperations": "c01cedeb5ad07aa7eeee81033073509e4be8826ed45621e68200d85a2c5c61b9",
-    "applicationRoutes": "f51c331796e3918f67e7aad89abd6eaaece15b164af295e1f084f2c7736357f5",
+    "applicationRoutes": "15e307bd261191e7a72a2c5347b87e56295fdd25fc6967fb7184a0f1368f7b84",
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
@@ -2897,7 +2897,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 286,
+      "line": 333,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/admit",
@@ -2910,7 +2910,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 286,
+      "line": 333,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/bind-preparation",
@@ -2923,7 +2923,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 286,
+      "line": 333,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/continue",
@@ -2936,7 +2936,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 286,
+      "line": 333,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/dispatch",
@@ -2949,7 +2949,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 105,
+      "line": 152,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/events",
@@ -2962,7 +2962,20 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 247,
+      "line": 75,
+      "method": "POST",
+      "ownerEvidence": "worker-credential",
+      "path": "/api/internal/native-commands/inference-recovery",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "worker-authenticated owner and current process generation; strict admission journal identities, lifecycle outcomes and recovery disposition only; prompt inputs remain in their existing endpoint-encrypted queues"
+      }
+    },
+    {
+      "boundary": "worker-control",
+      "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
+      "line": 294,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/pending",
@@ -2975,7 +2988,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 71,
+      "line": 118,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/permission-transition",
@@ -2988,7 +3001,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 286,
+      "line": 333,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/receipt",
@@ -3001,7 +3014,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 286,
+      "line": 333,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/settings-evidence",

@@ -111,6 +111,26 @@ impl Repository {
         task: bool,
         query: &Value,
     ) -> Result<Value> {
+        self.opaque_message_page_inner(owner, chat, task, query, false)
+            .await
+    }
+    pub(crate) async fn opaque_message_page_for_mcp(
+        &self,
+        owner: &str,
+        chat: &str,
+        query: &Value,
+    ) -> Result<Value> {
+        self.opaque_message_page_inner(owner, chat, false, query, true)
+            .await
+    }
+    async fn opaque_message_page_inner(
+        &self,
+        owner: &str,
+        chat: &str,
+        task: bool,
+        query: &Value,
+        mcp: bool,
+    ) -> Result<Value> {
         let experience = if task { "task" } else { "agent" };
         let column = if task {
             "task_protected_content"
@@ -124,19 +144,25 @@ impl Repository {
             let boundary = query["beforeSequence"]
                 .as_i64()
                 .context("Message page cursor")?;
-            checked(self.database.query(&format!("SELECT m.role,m.sequence {base} AND m.sequence<$4 ORDER BY m.sequence DESC LIMIT 501"),&[&owner,&chat,&experience,&boundary]).await,&[owner,chat,experience,&boundary.to_string()])?
+            let result=self.database.query(&format!("SELECT m.role,m.sequence {base} AND m.sequence<$4 ORDER BY m.sequence DESC LIMIT 501"),&[&owner,&chat,&experience,&boundary]).await;
+            if mcp {
+                super::mcp_read_queries::headers(result, owner, chat, Some(boundary))?
+            } else {
+                checked(result, &[owner, chat, experience, &boundary.to_string()])?
+            }
         } else {
-            checked(
-                self.database
-                    .query(
-                        &format!(
-                            "SELECT m.role,m.sequence {base} ORDER BY m.sequence DESC LIMIT 501"
-                        ),
-                        &[&owner, &chat, &experience],
-                    )
-                    .await,
-                &[owner, chat, experience],
-            )?
+            let result = self
+                .database
+                .query(
+                    &format!("SELECT m.role,m.sequence {base} ORDER BY m.sequence DESC LIMIT 501"),
+                    &[&owner, &chat, &experience],
+                )
+                .await;
+            if mcp {
+                super::mcp_read_queries::headers(result, owner, chat, None)?
+            } else {
+                checked(result, &[owner, chat, experience])?
+            }
         };
         if rows.is_empty() {
             return Ok(
@@ -167,7 +193,20 @@ impl Repository {
             .take(selected)
             .map(|(_, sequence)| *sequence)
             .collect::<Vec<_>>();
-        let rows=checked(self.database.query(&format!("SELECT to_jsonb(m)::text {base} AND m.sequence=ANY($4) ORDER BY m.sequence ASC"),&[&owner,&chat,&experience,&sequences]).await,&[owner,chat,experience])?;
+        let result = self
+            .database
+            .query(
+                &format!(
+                    "SELECT to_jsonb(m)::text {base} AND m.sequence=ANY($4) ORDER BY m.sequence ASC"
+                ),
+                &[&owner, &chat, &experience, &sequences],
+            )
+            .await;
+        let rows = if mcp {
+            super::mcp_read_queries::rows(result, owner, chat, &sequences)?
+        } else {
+            checked(result, &[owner, chat, experience])?
+        };
         let oldest = sequences.last().copied();
         let has_more = headers.len() > selected;
         Ok(

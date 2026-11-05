@@ -17,6 +17,7 @@ pub mod live_mutations;
 pub mod managed_console;
 pub mod managed_preparation;
 mod mcp;
+pub(crate) mod mcp_read_queries;
 pub mod message_queries;
 pub mod message_writes;
 mod messages;

@@ -55,6 +55,7 @@ import { taskDashboardWireFixtures } from "./task-dashboard-fixtures.mjs";
 import { projectAutomationWireFixtures } from "./project-automation-wire-fixtures.mjs";
 import { appendEndpointProviderWireFixtures } from "./endpoint-provider-wire-fixtures.mjs";
 import { mcpCompatibleWireFixtures } from "./mcp-compatible-wire-fixtures.mjs";
+import { mcpChatReadWireFixtures } from "./mcp-chat-read-wire-fixtures.mjs";
 
 export const owner = "11111111-1111-4111-8111-111111111111";
 export const clientId = "22222222-2222-4222-8222-222222222222";
@@ -829,5 +830,6 @@ securityFixtures.appLiveServerMessageSchema.push(...inferenceLiveMessages);
 const agentOperations = agentOperationWireFixtures(securityFixtures);
 Object.assign(securityFixtures, agentOperations.baselines);
 Object.assign(securityFixtures, mcpCompatibleWireFixtures(securityFixtures));
+Object.assign(securityFixtures, mcpChatReadWireFixtures(securityFixtures));
 export const agentOperationWireCases = (name) =>
   agentOperations.boundaries[name] ?? [];

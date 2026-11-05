@@ -109,35 +109,72 @@ async fn execute_operation(service: &Arc<AuthService>, owner: &str, call: &Value
     )
     .map_err(|error| OperationError::new(error.status, error.code, error.message))?;
     if operation == "context.get" {
-        if !call["request"]["arguments"]
-            .as_object()
-            .is_some_and(|v| v.is_empty())
-        {
-            return Err(
-                OperationError::new(400, "invalid", "Context probe takes no arguments.").into(),
-            );
-        }
-        let rows = service
-            .repository
-            .database
-            .query(
-                "SELECT name FROM workers WHERE id=$1 AND owner_id=$2",
-                &[&worker, &owner],
+        if context["contextKind"] != "project" {
+            return Err(OperationError::new(
+                409,
+                "unsupported-capability",
+                "Standalone Chats do not support IDE execution operations.",
             )
-            .await?;
-        let row = rows
-            .first()
-            .ok_or_else(|| OperationError::new(404, "not-found", "Worker not found."))?;
-        let name = row.get::<String>(0)?;
+            .into());
+        }
+        let source_worker = service
+            .workers
+            .repository
+            .get_worker_with_query_context(
+                owner,
+                worker,
+                Some((
+                    crate::chats::mcp_read_queries::sql("worker"),
+                    &[json!(worker), json!(owner), json!(1)],
+                )),
+            )
+            .await?
+            .ok_or_else(|| {
+                OperationError::new(
+                    404,
+                    "not-found",
+                    "The connected worker is no longer registered.",
+                )
+            })?;
+        let source_worker = parse(
+            "workerSummarySchema",
+            &Value::from_serialize(&source_worker),
+        )?;
+        let name = source_worker["name"].as_str().context("Worker name")?;
         let public = json!({"chatId":context["chatId"],"executionLaneId":context["executionLaneId"],"permissionProfileId":permission,"projectId":context["projectId"],"rootKind":context["rootKind"],"terminalId":Value::Null,"workerId":worker,"worktreeId":context["worktreeId"],"worktreeMode":context["worktreeMode"]});
-        let data = json!({"worker":json!({"id":worker,"name":name,"online":service.workers.bridge.is_connected(worker)}),"context":public,"binding":agent_alerts::readiness(binding,&context,permission),"contextWindow":Value::Null});
-        return parse(
-            "cantripMcpContextGetResultSchema",
-            &json!({"summary":"Returned the bound Cantrip context.","data":data,"worktreeId":context["worktreeId"],"target":Value::Null,"mutated":false,"continuationScheduled":false}),
-        );
+        let data = json!({"worker":json!({"id":worker,"name":name,"online":service.workers.bridge.is_connected(worker)}),"context":public});
+        // Source's CLI result is an alias of this generic operation contract.
+        let mut result = parse(
+            "cantripAgentOperationResultSchema",
+            &json!({"summary":format!("Connected through {name}; project context is ready."),"data":data,"worktreeId":context["worktreeId"]}),
+        )?;
+        let readiness = agent_alerts::readiness(binding, &context, permission);
+        let suffix = match readiness["status"].as_str() {
+            Some("ready") => " Managed MCP mutations are ready.",
+            Some("read-only") => " This managed MCP attachment is read-only.",
+            _ => " This managed MCP attachment requires a fresh Cantrip turn before mutations.",
+        };
+        let summary = result["summary"]
+            .as_js_string()
+            .context("Context summary")?;
+        let mut units = summary.units()[..summary.len().min(2000 - suffix.len())].to_vec();
+        units.extend(suffix.encode_utf16());
+        result["summary"] = Value::String(crate::wire::JsString::new(units));
+        result["data"]["binding"] = readiness;
+        return Ok(result);
     }
     if operation.starts_with("task.") {
         return super::agent_tasks::execute(
+            service,
+            owner,
+            &context,
+            operation,
+            &call["request"]["arguments"],
+        )
+        .await;
+    }
+    if operation.starts_with("chat.") {
+        return super::agent_chats::execute(
             service,
             owner,
             &context,
@@ -224,10 +261,9 @@ async fn handle_operation(
     .await;
     match result {
         Ok(result) => {
-            let mutation = matches!(
-                call["request"]["operation"].as_str(),
-                Some("task.create" | "alert.raise" | "alert.resolve")
-            );
+            let mutation = call["request"]["operation"]
+                .as_str()
+                .is_some_and(agent_alerts::is_mutation);
             audit(
                 service,
                 &owner,
