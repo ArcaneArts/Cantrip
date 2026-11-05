@@ -2439,3 +2439,164 @@ combined), the strict harness import-graph typecheck and seven OS tests passed.
 The current root check still fails on unchanged application budgets: 1516/1500
 and 2221/1999. The earlier measured numbers above remain the retained sample;
 the rebase run is an additional functional regression check.
+
+## Phase 4: refreshed distribution acceptance (2026-11-05)
+
+The ordinary ARM64 OS was built from the current distribution-cycle source with
+`CANTRIP_OS_WORKSPACES=0` (executor and remote consequently omitted). Its actual
+OCI payload manifest is
+`8a25cdb308510061fc55a996d51303ac9e9ade5767cfc7377b34a1dd92b0fb94`;
+attestation/index digests differ between equivalent exports. A fresh 4 GiB
+container had none of the three integration CLI binaries, and did contain htop,
+nano, Python 3, Chromium and IceWM. Its personal X11 display was available.
+Codex's own browser opened its passwordless OLED desktop, opened the IceWM menu
+and launched the ordinary terminal. The screenshot and package/limit proof are
+retained under `artifacts/phase4-distribution/`.
+
+The public root `pnpm os` foreground command was also run in that ordinary edition
+with a separate test instance and ports. It printed browser/VNC/root-shell
+information, reported that SSH was not enabled, streamed actual desktop logs and
+watched for changes. The browser returned HTTP 200 and X11 responded. Ctrl+C
+completed with exit 0, and Docker confirmed the container had stopped. Running
+the same foreground command again retained a file written into the personal home;
+a second Ctrl+C also stopped it cleanly. These checks establish the ordinary
+edition's launcher and optional-package omission; final integration-enabled
+media acceptance is recorded separately below when performed.
+
+The integration-enabled ARM64 image was then rebuilt from source revision
+`485014de8`, with the normal current Codex 0.166.0 / 70-patch preparation and a
+25m02s native executor compile. No cached-runtime override was used. Its actual
+OCI payload manifest is
+`48760f5fdc61585223d10c534d33407248f801a2ff6067d4b8bb3fa398ef5845`
+(config `fb5e38854453eb738614c9e8e289973e8bbc5528a874226b5dec435f890e7d21`).
+A fresh 4 GiB container reported workspace 0.3.0, executor 0.9.0 and remote 0.8.0.
+The real native executor test passed (12.13s body), and the four real native
+CUA/VNC cases passed (7.41s combined bodies), including integrated viewing,
+exclusive takeover/return, held-input cleanup, stale epochs and independent
+viewer/agent lifetimes. The full protected SSH/SFTP/VNC/TCP suite and destructive
+remote-package suite also passed, including removal/upgrade/purge/reinstall,
+retained ordinary desktops/data, stale bytecode replacement and unknown-state
+preservation.
+
+The public `pnpm os` command ran again with all integration packages enabled and
+an isolated test name/ports. Its unchanged native layers reused the build cache;
+all three package control services reported ready, and Chromium launched from
+the ordinary menu and rendered an HTTPS page in Codex's own browser. The image
+contains htop, nano, `python`, `python3`, Chromium and IceWM. Ctrl+C exited 0 and
+Docker confirmed the container stopped. The retained screenshot is
+`artifacts/phase4-distribution/current-docker-chromium.png`.
+
+The additional reverse-forwarding run initially exposed a missing `remoteCommand`
+import in the existing test fixture. That also prevented its post-kill cleanup
+from restarting the disposable remote manager. Restoring the import and restarting
+the fixture made all six real carrier/signed-admission cases pass (5.67s combined
+bodies), including >1 MiB binary half-close traffic, occupied/stale targets,
+manager restart/death, disable, signed role validation and physical listener
+retirement. The failed and corrected logs are both retained; this repair changes
+test execution, not guest forwarding behavior.
+
+Focused strict TypeScript checking then caught stale fixture types for route
+priority and channel close arguments. The fixture now keeps only `local` enabled
+while using the canonical four-route priority tuple, and closes with the explicit
+`normal` reason. The strict import-graph check passed, followed by all ten actual
+CUA/VNC/reverse-forwarding cases together (13.21s combined bodies). Guest runtime
+and product routing code are unchanged by these fixture corrections.
+
+The fresh AMD64 ISO from the same source booted into the live IceWM desktop in
+QEMU/TCG with 4 GiB RAM. Chromium rendered an HTTPS page, and htop ran from the
+ordinary terminal using Codex's own browser viewer. The native executor case and
+ten CUA/VNC/forwarding/admission cases passed against the live system. The
+installer then erased only the task-owned 20 GiB virtual disk and installed both
+BIOS and UEFI bootloaders. Disk-only BIOS boot retained a Unicode personal file,
+a workspace file and a shared `/etc` customization. The SSH carrier used for
+Worker acceptance was installed only into this disposable VM; the distribution
+still has no public system SSH listener.
+
+Real installed-system lifecycle testing found a remote-manager defect that the
+Docker daemon tests did not expose: `KillMode=mixed` let systemd kill the native
+helper and its guardian immediately after the broker died, before held X11 input
+could be released. Remote **0.9.0** retains mixed termination but sets
+`SendSIGKILL=no`. Guardians can finish their existing cleanup; a populated old
+cgroup prevents a replacement from starting. This does not weaken descriptor or
+control-lease checks. The package guide documents the systemd behavior and tradeoff.
+
+Both architecture packages and a fresh ARM64 image were rebuilt. The new image's
+OCI payload manifest is
+`632183e1e134f56ec585bae4325339b8a8f35460b94ab5c8d6fd24ed11c40656`
+(config `ebdfc8031543af904d46e5c4c9784abb79472529395179dd9495a4ff52943849`).
+All eleven native executor/CUA/VNC/reverse-forwarding/admission cases passed
+(24.70s combined bodies), followed by the full protected-service and destructive
+package suites. On the actual installed system, the production 0.9.0 `.deb`
+replaced the prototype override, and both complete suites passed, including
+systemd-managed broker death releasing actual held input, stale generation
+rejection, upgrades, disable, remove, purge and reinstall. Personal/workspace
+files, shared configuration and the instance identity survived; opening replacement
+services made the old live-media executor and remote descriptors fail explicitly.
+
+The protected-service fixture also now publishes its detached child's PID with
+an atomic rename. Under CPU emulation the previous existence-only handoff could
+observe an empty file before the PID write completed. This fixes the acceptance
+fixture without changing service behavior. The initial failure logs are retained.
+
+The production 0.9.0 package was also exercised after disk-only UEFI boot. The
+root filesystem was `/dev/vda3` (ext4), the firmware interface was actually UEFI,
+and all retained files and application checks passed. All eleven real native
+cases passed again (139.04s bodies / 144.08s total). The installed desktop opened
+its terminal and ran htop through Codex's own browser.
+
+After rebasing this final cycle onto `4c1f1542f`, full Worker type checking and the
+focused strict reverse-forwarding import graph passed. All eleven native cases
+passed against the fresh 0.9.0 Docker image again (21.12s bodies / 24.12s total).
+The root check still stops at unrelated Server budgets: `build-app.ts` 1516/1500
+and `chat-turn-runtime.ts` 2230/1999. Earlier failures recorded above describe
+those earlier revisions; they are not the final Worker typecheck result.
+
+The final integration-enabled AMD64 ISO includes workspace 0.3.0, executor 0.9.0
+and remote 0.9.0. Its SHA-256 is
+`b795e85406e484b5577d9b44e8b23fc2769f9700a0053c34f3d0bdf0ace10672`
+(1,468,071,936 bytes). This artifact uses native source `485014de8` with the
+normal pinned Codex 0.166.0 / 70-patch build, plus this cycle's remote 0.9.0
+package. It was built before the final documentation/test rebase; it is not
+claimed to contain subsequent unrelated Main native changes.
+
+That exact ISO then booted on a second fresh 20 GiB task-owned disk. The live
+system reported overlay root, all three services, passwordless sudo and all six
+application commands. Its personal desktop automatically logged in, and Chromium
+launched from the menu and rendered an HTTPS page in Codex's browser. Fresh
+workspace accounts and a separate instance identity were created. The installer
+successfully copied the live system and customization, generated initramfs and
+installed both BIOS and AMD64 EFI bootloaders. The ISO, package inventory,
+checksum, `.deb` files, logs and screenshots are retained locally under
+`artifacts/phase4-distribution/`; the older preliminary ISO is separately labeled.
+
+The second installation booted from disk alone in BIOS mode with `/dev/vda3`
+ext4 root. The Unicode personal file, workspace file and shared configuration
+survived, and both old live-media handles were rejected after new services opened.
+The packaged unit reported `KillMode=mixed`, `SendSIGKILL=no` and no drop-ins.
+The complete destructive remote-package suite passed on this fresh installation,
+including real held-input release after broker death, independent shell lifetime,
+retired placement rejection and disable/remove/upgrade/purge/reinstall behavior.
+
+The final disk then booted in UEFI mode without the ISO, with ext4 root, automatic
+personal desktop entry, the same instance identity and retained customization.
+Both old live-media descriptors were rejected again. The real native executor
+case and two CUA cases passed (51.71s bodies / 53.48s total), including screenshots,
+input, integrated viewing, human takeover/return and independent viewer/agent
+lifetimes. No per-test service override was present in this fresh installation.
+
+**Phase 4 is implemented and accepted for this tested matrix.** The optional
+remote package remains removable independently of the ordinary desktop and
+executor. Agent computer use, integrated source-bound viewing, exclusive human
+control, managed SSH/SFTP/VNC/TCP and explicit Guest-to-Worker forwarding have
+actual native, package and product evidence in the checkpoints above. Model
+credentials and orchestration remain outside the OS. The measured initial stream
+choice and active 4 GiB workload are recorded in `STREAMING.md`.
+
+This is local macOS/ARM64 Docker and AMD64 QEMU/TCG VM acceptance, not physical
+hardware, cloud provisioning, Wayland, WAN performance or Secure Boot validation.
+The emulated virtio GPU emitted a kernel warning during a VM shutdown and still
+powered off; a warning-free hardware/kernel matrix is not claimed. Selkies did
+not start in its measured environment and has no claimed performance result.
+Remote enrollment/state recovery and broader release/hardware qualification
+remain subsequent phases. The broad root check is still limited by the unrelated
+Server budgets above; focused checks and full Worker types passed.

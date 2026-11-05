@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import { describe, it, expect } from "vitest";
 import {
+  remoteCommand,
   remoteControl,
   type OsExecutorTransport,
 } from "../src/os-executor/connection.js";

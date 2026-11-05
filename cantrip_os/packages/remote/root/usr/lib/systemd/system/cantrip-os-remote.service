@@ -7,6 +7,9 @@ Wants=cantrip-os-workspaces.service cantrip-os-executor.service
 Type=simple
 ExecStart=/usr/bin/cantrip-remote daemon
 KillMode=mixed
+# Guardians must survive broker death long enough to close native stdin and
+# release held X11 input. A nonempty old cgroup must block a replacement.
+SendSIGKILL=no
 TimeoutStopSec=20
 Restart=on-failure
 RestartSec=1

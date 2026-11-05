@@ -1,6 +1,6 @@
 # Optional native desktop package
 
-`cantrip-os-remote` 0.8.0 supplies the Linux X11 `cantrip-cua` helper and a
+`cantrip-os-remote` 0.9.0 supplies the Linux X11 `cantrip-cua` helper and a
 workspace-bound protected stdio carrier. It depends on the existing workspace
 and executor packages. Removing it leaves those packages, ordinary desktops,
 and workspace files available. No Worker, conversation database, scheduler,
@@ -279,7 +279,6 @@ The opt-in App test `src/lib/os-ssh.product.integration.test.ts` additionally
 creates the actual saved encrypted route and uses real Server API/WorkerLink relay
 admission. Its disposable client keys and account recovery material stay on Host.
 
-
 ## Managed VNC product access
 
 The unchanged 0.7.0 guest package also supports Cantrip's managed VNC adapter.
@@ -310,7 +309,6 @@ SSH transport JSON. The tests exercise real RFB 3.8 pixels, native agent/VNC
 handoff, physical held-input cleanup, other-workspace independence and actual
 remote-manager replacement. Use disposable fixtures: the replacement test
 restarts their remote-access service.
-
 
 ## Guest listener carrier (0.8.0)
 
@@ -360,3 +358,19 @@ CANTRIP_OS_CUA_TEST_CONTAINER=<disposable-container> \
 Use the existing SSH transport JSON through `CANTRIP_OS_CUA_TEST_TRANSPORT` for
 an installed fixture. The test restarts/kills/disables that fixture's remote
 manager and restores it. It is not a test against a personal OS instance.
+
+## Installed-system guardian cleanup (0.9.0)
+
+The packaged systemd unit retains `KillMode=mixed` and sets `SendSIGKILL=no`.
+The root broker's pidfd/parent-death guardians own their native helpers and
+connection descendants. They need to survive an abruptly killed broker long
+enough to deliver native EOF, cancel operations and release held X11 input.
+Systemd's mixed-mode final SIGKILL previously killed those guardians/helpers
+immediately after broker death and could leave a mouse button held.
+
+A replacement unit must wait for the old cgroup to empty; if cleanup cannot
+finish, systemd refuses to restart over remaining processes. This keeps service
+cgroup ownership and the existing package cleanup protocol. It does not disable
+cleanup or use `KillMode=process`/`none`. See systemd's
+[kill semantics](https://github.com/systemd/systemd/blob/main/man/systemd.kill.xml).
+Docker continues to use the same package-owned guardians without systemd.

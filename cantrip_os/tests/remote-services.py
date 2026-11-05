@@ -198,9 +198,10 @@ with tempfile.TemporaryDirectory(prefix="cantrip-service-test-") as directory:
         pid_file.unlink(missing_ok=True)
         connection_id = str(uuid.uuid4())
         # A detached grandchild must still belong to this connection guardian.
-        script = "import os,time; pid=os.fork(); os._exit(0) if pid else None; os.setsid(); " + \
+        script = "import os,time,pathlib; pid=os.fork(); os._exit(0) if pid else None; os.setsid(); " + \
             "pid=os.fork(); os._exit(0) if pid else None; " + \
-            "open(" + repr(str(pid_file)) + ",'w').write(str(os.getpid())); time.sleep(120)"
+            "p=pathlib.Path(" + repr(str(pid_file)) + "); t=p.with_name(p.name+'.tmp'); " + \
+            "t.write_text(str(os.getpid())); t.replace(p); time.sleep(120)"
         child = subprocess.Popen(["ssh", *ssh_options(info("ssh"), connection_id), user,
                                   "python3 -c " + shlex.quote(script)],
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
