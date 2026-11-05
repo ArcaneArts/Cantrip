@@ -57,6 +57,7 @@ import { appendEndpointProviderWireFixtures } from "./endpoint-provider-wire-fix
 import { mcpCompatibleWireFixtures } from "./mcp-compatible-wire-fixtures.mjs";
 import { mcpChatReadWireFixtures } from "./mcp-chat-read-wire-fixtures.mjs";
 import { mcpChatSendWireFixtures } from "./mcp-chat-send-wire-fixtures.mjs";
+import { inferenceRecoveryWireFixtures } from "./inference-recovery-wire-fixtures.mjs";
 
 export const owner = "11111111-1111-4111-8111-111111111111";
 export const clientId = "22222222-2222-4222-8222-222222222222";
@@ -791,6 +792,7 @@ export const securityFixtures = {
   ],
   workerServerEnvelopeSchema: workerIngressFixtures,
   ...inferenceWireFixtures,
+  ...inferenceRecoveryWireFixtures,
   ...usageWireFixtures,
   ...policyWireFixtures,
   ...settingsWireFixtures,

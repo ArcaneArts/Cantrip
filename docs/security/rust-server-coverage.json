@@ -12545,6 +12545,31 @@
         "Latest native runtime/platform artifacts, mixed/Redis coordination and operation recovery at full product failure boundaries.",
         "Existing-data upgrades and post-write rollback, performance acceptance, packaged desktop/Winterhold rehearsal, default server cutover and production Node server removal."
       ]
+    },
+    "sourceTaskGoalIntegration": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server/src/db/task-goal-inference-inputs.ts",
+        "cantrip_server/src/db/task-goal-input-history.ts",
+        "cantrip_server/src/db/task-goal-observations.ts",
+        "cantrip_server/src/db/task-round-input-history.ts",
+        "cantrip_worker/src/codex/managed-native-command-session.ts",
+        "cantrip_worker/src/inference-command.ts"
+      ],
+      "evidence": [
+        "cantrip_server/test/task-input-authority.test.ts",
+        "scripts/server-rust/inference-recovery-wire-fixtures.mjs",
+        "scripts/server-rust/security-fixtures.mjs",
+        "scripts/server-rust/worker-command-fixtures.json",
+        "scripts/server-rust/worker-command-alternatives.json"
+      ],
+      "validatedSubset": "Thirty real-migration database cases retain input-not-dispatched classification, exact receipt/worker/fence guards, original physical-root attribution for encrypted historical output, owner isolation and Goal observation project/path affinity. Actual old-source regressions reproduce four authority/observation failures plus two historical writes attributed to the replacement root. The worker GUI continuation exposes its existing real inference-source return type; session resource lookup narrows WorkerLink/Chat variants and three operational error logs retain their required subsystem. No worker rewrite or protocol change.",
+      "localEvidence": "Server/worker/app typechecks and builds pass locally. Thirteen previously missing fixture roots have valid Source samples. Native wire suite passes619692 comparisons across625base roots, generated base/Run manifest equality and69648 JSON round trips. Separate Task input1692 and Run input2617 oracles pass. Full TypeScript server suite remains60failed/1699passed/58skipped and worker6failed/2745passed/225skipped. Every failing heading is reproduced in the clean d9e8ddf11 baseline; no broad-suite green claim. Broad repository check stops on unchanged Node source budgets1516/1500 and2230/1999. Focused native-runtime tests remain skipped without a current built test binary. Outgoing worker fixtures preserve all295 prior command inputs and1134 prior alternative cases, adding three already-existing command types and current enum values with complete schema coverage metadata. The outgoing streaming oracle passes298 complete requests,86 boundary cases and241091 mutations with100/100 authoritative refinement callbacks executed. All625 other root fixture digests remain unchanged.",
+      "remaining": [
+        "Resolve the separately reproduced full TypeScript suite failures and standard repository checks before full replacement acceptance.",
+        "Qualify current built native runtime with actual worker/client Task and Goal flows, all storage modes, failure/recovery boundaries and supported platforms.",
+        "Complete remaining MCP/domain behavior, mixed/Redis coordination, existing-data upgrades/post-write rollback, performance, desktop/container/Winterhold rehearsal, default cutover and production Node server removal."
+      ]
     }
   },
   "remainingAcceptance": [

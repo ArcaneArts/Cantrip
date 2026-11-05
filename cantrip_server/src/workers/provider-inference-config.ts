@@ -131,6 +131,7 @@ const defaultReporter: Reporter = (error, workerId) =>
     "Provider inference configuration delivery remains pending",
     {
       event: "inference.configuration.delivery-pending",
+      subsystem: "worker-command",
       workerId,
       error: error instanceof Error ? error : new Error(String(error)),
     },

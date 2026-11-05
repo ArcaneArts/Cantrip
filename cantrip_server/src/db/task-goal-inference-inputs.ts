@@ -808,7 +808,7 @@ export class TaskGoalInferenceInputRepository {
       const neverForwarded =
         receipt.success &&
         proof !== undefined &&
-        inferenceNeverStarted(proof) &&
+        proof.disposition === "input-not-dispatched" &&
         proof.operationId === receipt.data.operationId &&
         proof.providerId === receipt.data.providerId &&
         proof.chatId === receipt.data.chatId &&

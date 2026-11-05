@@ -12,6 +12,7 @@ const report = (error: unknown, workerId?: string) =>
     "Inference resource revocation delivery remains pending",
     {
       event: "inference.resource.delivery-pending",
+      subsystem: "worker-command",
       workerId,
       error: error instanceof Error ? error : new Error(String(error)),
     },

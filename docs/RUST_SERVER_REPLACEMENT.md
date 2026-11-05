@@ -18,6 +18,31 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The Task/Goal integration repair restores server, worker and app typechecks and
+builds. Retirement now reads the failure-evidence discriminator while retaining
+the existing receipt, worker and dispatch guards. Historical output resolves its
+physical worktree through the owning project source. Goal observations use the
+actual worktree path and project relationship. Thirty database regressions cover
+these paths, including original-root attribution, owner isolation, changed
+observation fences and failure classification. The old implementation reproduces
+four authority/observation failures and two wrong-root historical writes.
+
+Thirteen missing protocol fixture roots now have valid Source samples. The
+broad native wire suite passes 619,692 comparisons across 625 roots, both
+generated-manifest equality checks and 69,648 ECMAScript JSON round trips. The
+outgoing worker envelope separately passes 298 complete requests, 86 boundary
+cases and 241,091 mutations, executing all 100 registered refinement callbacks.
+Its refreshed fixtures preserve all 295 previous command inputs and 1,134
+alternative cases. All 625 other roots retain identical fixture inputs.
+Focused Task input
+and Run input oracles pass 1,692 and 2,617 comparisons. Current local broad
+TypeScript suites still fail: server 60 failed / 1,699 passed / 58 skipped;
+worker six failed / 2,745 passed / 225 skipped. Every failing test heading was
+reproduced on a separate clean `d9e8ddf11` checkout. The broad repository check
+also stops on unchanged Node source line limits. These failures remain required
+acceptance work. Native worker tests requiring a current built runtime remain
+separate; passing typechecks and builds do not establish native product readiness.
+
 The Run configuration MCP milestone adds twelve operations to the Rust registry,
 bringing the supported set to twenty-eight. It reuses native definition, secret,
 lifecycle and encrypted-output services. Reads validate the exact worker used
