@@ -28,7 +28,7 @@ async function endpoint(
 }
 
 describe("endpoint model discovery", () => {
-  it.each(["lm-studio", "llama-cpp", "vllm", "unsloth", "litellm"])(
+  it.each(["lm-studio", "llama-cpp", "vllm", "unsloth", "litellm", "mlx-lm"])(
     "reads %s models from the actual API root and preserves unknown capabilities",
     async (kind) => {
       const requests: Array<{

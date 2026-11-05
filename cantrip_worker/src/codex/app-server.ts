@@ -1,4 +1,6 @@
 import { CodexInteractions } from "./interactions.js";
+import { providerUsesChatCompletions } from "@cantrip/protocol";
+import { startChatCompletionsAdapter } from "./chat-completions-adapter.js";
 import { withoutInferenceCommand } from "../inference-command.js";
 import { CodexAuthRecovery } from "./auth-recovery.js";
 import {
@@ -1760,6 +1762,9 @@ export class CodexAppServer implements CodexRuntime {
     }
   >();
   #child: ChildProcessWithoutNullStreams | null = null;
+  #responsesAdapter: Awaited<
+    ReturnType<typeof startChatCompletionsAdapter>
+  > | null = null;
   readonly #authRecovery = new CodexAuthRecovery({
     providerAccessTokens: () => this.providerAccessTokens,
     request: (method, params) => this.request(method, params),
@@ -5386,6 +5391,8 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private stopFailedStart(): void {
+    this.#responsesAdapter?.close();
+    this.#responsesAdapter = null;
     this.clearManagedExecutionGateHandlers();
     this.#preparationEpoch += 1;
     this.#threadPreparations.clear();
@@ -6119,7 +6126,25 @@ export class CodexAppServer implements CodexRuntime {
     }
     const externalChatGptLease =
       await this.resolveExternalChatGptLease(runtimeProvider);
-    const providerConfiguration = codexProviderConfiguration(runtimeProvider);
+    const expectedRuntimeId = this.#runtimeId;
+    const adapter = providerUsesChatCompletions(runtimeProvider.kind)
+      ? await startChatCompletionsAdapter(runtimeProvider)
+      : null;
+    if (this.#runtimeId !== expectedRuntimeId) {
+      adapter?.close();
+      throw new Error("Codex startup was cancelled.");
+    }
+    this.#responsesAdapter = adapter;
+    if (adapter) this.#diagnosticSecrets.add(adapter.apiKey);
+    const providerConfiguration = codexProviderConfiguration(
+      adapter
+        ? {
+            ...runtimeProvider,
+            baseUrl: adapter.baseUrl,
+            apiKey: adapter.apiKey,
+          }
+        : runtimeProvider,
+    );
     const modelCatalogPath = model
       ? await writeManagedCodexModelCatalog(
           this.dataDirectory,
@@ -6193,6 +6218,8 @@ export class CodexAppServer implements CodexRuntime {
     // A launcher exit only begins reconciliation. The captured real native
     // process must release its OS lease before capacity can be reclaimed.
     const reconcileExit = () => {
+      adapter?.close();
+      if (this.#responsesAdapter === adapter) this.#responsesAdapter = null;
       void inference?.processExited().then(() => {
         if (this.#inference === inference) this.#inference = null;
       });
@@ -8336,6 +8363,8 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private handleExit(error: Error): void {
+    this.#responsesAdapter?.close();
+    this.#responsesAdapter = null;
     for (const pending of this.#nativeInferenceWaits.values())
       pending.controller.abort();
     this.#nativeInferenceWaits.clear();

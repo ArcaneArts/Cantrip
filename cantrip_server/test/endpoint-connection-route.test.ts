@@ -1,4 +1,4 @@
-import { nativeEndpointProviderKinds } from "@cantrip/protocol";
+import { endpointProviderKinds } from "@cantrip/protocol";
 import Fastify from "fastify";
 import { afterEach, expect, it, vi } from "vitest";
 import {
@@ -56,7 +56,7 @@ function setup(kind: string) {
   return { app, provider, runtime, request, getModelRuntimes };
 }
 
-it.each(["ollama", ...nativeEndpointProviderKinds])(
+it.each(["ollama", ...endpointProviderKinds])(
   "tests %s by dispatching real inference on the selected owned worker, without discovery",
   async (kind) => {
     const { app, runtime, request } = setup(kind);

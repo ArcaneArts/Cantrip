@@ -5,7 +5,8 @@ import {
   type ModelProfileSummary,
 } from "@cantrip/protocol";
 import type { ComponentProps, ReactNode } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToStaticMarkup as renderStaticMarkup } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
@@ -21,6 +22,29 @@ import {
   providerSetupFor,
   providerSetupOptions,
 } from "./provider-setup";
+
+// Models settings now includes a query-backed inference usage panel. Supply
+// its real query context while keeping worker requests out of navigation tests.
+function queryClient() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { staleTime: Infinity, retry: false } },
+  });
+  client.setQueryData(["workers"], []);
+  return client;
+}
+function withQueries(children: ReactNode, client = queryClient()) {
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+function renderToStaticMarkup(children: ReactNode) {
+  return renderStaticMarkup(withQueries(children));
+}
+function createView(...args: Parameters<typeof TestRenderer.create>) {
+  const client = queryClient();
+  const view = TestRenderer.create(withQueries(args[0], client), args[1]);
+  const update = view.update.bind(view);
+  view.update = (element) => update(withQueries(element, client));
+  return view;
+}
 
 // Exercise menu callbacks without a browser portal; the real primitives are covered by UI QA.
 vi.mock("@radix-ui/react-context-menu", () => {
@@ -147,9 +171,7 @@ describe("Models provider navigation", () => {
     async (activeTab) => {
       let view!: TestRenderer.ReactTestRenderer;
       await act(async () => {
-        view = TestRenderer.create(
-          <ModelsSettings {...props({ activeTab })} />,
-        );
+        view = createView(<ModelsSettings {...props({ activeTab })} />);
       });
       const strip = view.root.findByProps({ role: "tablist" }).parent!;
       const classes = (strip.props.className as string).split(/\s+/);
@@ -167,7 +189,7 @@ describe("Models provider navigation", () => {
     const inputs = props();
     let view!: TestRenderer.ReactTestRenderer;
     await act(async () => {
-      view = TestRenderer.create(<ModelsSettings {...inputs} />, {
+      view = createView(<ModelsSettings {...inputs} />, {
         createNodeMock: (element) =>
           (element.props as { role?: string }).role === "tablist"
             ? { querySelector: () => ({ scrollIntoView }) }
@@ -257,7 +279,7 @@ describe("Models provider navigation", () => {
     const inputs = props({ activeTab: "provider:local" });
     let view!: TestRenderer.ReactTestRenderer;
     await act(async () => {
-      view = TestRenderer.create(<ModelsSettings {...inputs} />);
+      view = createView(<ModelsSettings {...inputs} />);
     });
     await act(async () => {
       view.update(
@@ -287,7 +309,7 @@ describe("Models provider navigation", () => {
     const inputs = props({ activeTab: "provider:local" });
     let view!: TestRenderer.ReactTestRenderer;
     await act(async () => {
-      view = TestRenderer.create(<ModelsSettings {...inputs} />);
+      view = createView(<ModelsSettings {...inputs} />);
     });
     const buttons = view.root.findAllByType("button");
     for (const setup of providerSetupOptions) {
@@ -319,7 +341,7 @@ describe("Models provider navigation", () => {
       const inputs = props({ providers: [...providers, accountProvider] });
       let view!: TestRenderer.ReactTestRenderer;
       await act(async () => {
-        view = TestRenderer.create(<ModelsSettings {...inputs} />);
+        view = createView(<ModelsSettings {...inputs} />);
       });
       const disabled = view.root
         .findAllByType("button")
@@ -369,7 +391,7 @@ describe("Models provider navigation", () => {
   it("supports arrow/Home/End tab navigation with activation and prevents page scrolling", async () => {
     let view!: TestRenderer.ReactTestRenderer;
     await act(async () => {
-      view = TestRenderer.create(<ModelsSettings {...props()} />);
+      view = createView(<ModelsSettings {...props()} />);
     });
     const tabs = [0, 1, 2].map(() => ({ focus: vi.fn(), click: vi.fn() }));
     const handler = view.root.findByProps({ role: "tablist" }).props.onKeyDown;
@@ -427,6 +449,7 @@ describe("provider setup presets", () => {
       "vllm",
       "unsloth",
       "litellm",
+      "mlx-lm",
       "openrouter",
       "zai",
       "xai",
