@@ -137,14 +137,24 @@ export class WorkerInferenceJournal {
   ) {}
 
   initialize(): Promise<void> {
-    this.initialization ??= this.request({ action: "snapshot" }).then(
-      (result) => {
-        const snapshot = snapshotSchema.parse(result);
-        this.recovered = Object.values(snapshot.operations)
-          .filter((record) => record.workerGeneration !== this.workerGeneration)
-          .sort((a, b) => a.order - b.order);
-      },
-    );
+    if (!this.initialization) {
+      const initialization = this.request({ action: "snapshot" }).then(
+        (result) => {
+          const snapshot = snapshotSchema.parse(result);
+          this.recovered = Object.values(snapshot.operations)
+            .filter(
+              (record) => record.workerGeneration !== this.workerGeneration,
+            )
+            .sort((a, b) => a.order - b.order);
+        },
+      );
+      this.initialization = initialization;
+      void initialization.catch(() => {
+        // A failed observation is not an empty journal. Retry the actual keeper
+        // read; no caller may grant inference using a failed startup snapshot.
+        if (this.initialization === initialization) this.initialization = null;
+      });
+    }
     return this.initialization;
   }
 
