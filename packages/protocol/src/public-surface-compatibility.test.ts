@@ -877,6 +877,12 @@ describe("protocol public surface compatibility", () => {
     ).toEqual(["inference.task-revoke"]);
     expect(advertisedCommandTypes[7]).toBe("inference.task-revoke");
     expect(advertisedCommandTypes[8]).toBe("inference.revoke");
+    expect(
+      advertisedCommandTypes.filter((type) => type === "chat.goal.recover"),
+    ).toEqual(["chat.goal.recover"]);
+    expect(advertisedCommandTypes.indexOf("chat.goal.recover")).toBe(
+      advertisedCommandTypes.indexOf("chat.automation.resume") + 1,
+    );
     const inferenceStatusCommandTypes = advertisedCommandTypes.filter(
       (type) =>
         type !== "surface.desktop.os-prepare" &&
@@ -884,7 +890,7 @@ describe("protocol public surface compatibility", () => {
         type !== "inference.revoke" &&
         type !== "inference.task-revoke",
     );
-    expect(inferenceStatusCommandTypes).toHaveLength(295);
+    expect(inferenceStatusCommandTypes).toHaveLength(296);
     expect(inferenceStatusCommandTypes[6]).toBe("inference.status");
     expect(
       inferenceStatusCommandTypes.filter((type) => type === "inference.status"),
@@ -913,7 +919,7 @@ describe("protocol public surface compatibility", () => {
       (type) => type !== "inference.status",
     );
 
-    expect(currentCommandTypes).toHaveLength(294);
+    expect(currentCommandTypes).toHaveLength(295);
     expect(
       currentCommandTypes.filter((type) => type === "model.endpoint.catalog"),
     ).toEqual(["model.endpoint.catalog"]);
@@ -924,7 +930,7 @@ describe("protocol public surface compatibility", () => {
       (type) => type !== "model.endpoint.catalog",
     );
 
-    expect(allCommandTypes).toHaveLength(293);
+    expect(allCommandTypes).toHaveLength(294);
     expect(allCommandTypes[6]).toBe("inference.configure");
     expect(
       allCommandTypes.filter((type) => type === "inference.configure"),
@@ -942,7 +948,7 @@ describe("protocol public surface compatibility", () => {
         type !== "inference.command-state" && type !== "agent.automatic-label",
     );
 
-    expect(commandTypes).toHaveLength(292);
+    expect(commandTypes).toHaveLength(293);
     expect(
       commandTypes.filter((type) => type.startsWith("cantrip-os.")),
     ).toEqual([

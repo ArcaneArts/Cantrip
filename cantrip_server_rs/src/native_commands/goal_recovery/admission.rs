@@ -61,8 +61,9 @@ pub(in crate::native_commands) async fn record_admission(
     }) else {
         return reject("stale-goal-recovery");
     };
-    let marker = json!({"source":marker["source"],"admission":{"operationId":row["operation_id"],
-        "operationGeneration":row["operation_generation"],"workerGeneration":input["intent"]["workerGeneration"]}}).stringify();
+    let admission = json!({"operationId":row["operation_id"],
+        "operationGeneration":row["operation_generation"],"workerGeneration":input["intent"]["workerGeneration"]});
+    let marker = json!({"source":marker["source"],"admission":admission}).stringify();
     tx.query(
         "UPDATE managed_queue_states SET goal_recovery=$1::text::jsonb WHERE chat_id=$2",
         &[&marker, &chat],

@@ -4,6 +4,7 @@ import {
   resolvedAttribution,
 } from "./native-settings-fixtures.mjs";
 import { autonomousAttempts } from "./native-command-wire-fixtures.mjs";
+import { nativeGoalRecoveryWireFixtures } from "./native-goal-recovery-fixtures.mjs";
 export const handoffOperation = "77777777-7777-4777-8777-000000000077";
 export function handoffPrepared(extra = {}) {
   return {
@@ -22,6 +23,16 @@ export function handoffPrepared(extra = {}) {
   };
 }
 export function nativeHandoffWireFixtures(timestamp) {
+  const goalRecoverySource =
+    nativeGoalRecoveryWireFixtures().nativeGoalRecoverySourceSchema[0];
+  const goalWithdrawal = {
+    operationId: handoffOperation,
+    source: goalRecoverySource,
+    bindingId: "binding",
+    runtimeGeneration: "source-runtime",
+    runnerGeneration: "source-runner",
+    workerGeneration: "22222222-2222-4222-8222-222222222222",
+  };
   const prepared = handoffPrepared();
   const request = {
     operationId: handoffOperation,
@@ -72,6 +83,20 @@ export function nativeHandoffWireFixtures(timestamp) {
       binding: null,
       prepared: null,
       queuedSource: {
+        operationId: goalRecoverySource.operationId,
+        operationGeneration: goalRecoverySource.operationGeneration,
+        withdrawn,
+        autonomousAttempt: autonomousAttempts[1],
+        goalRecovery: goalRecoverySource,
+        ...(withdrawn ? { goalWithdrawal } : {}),
+      },
+    })),
+    ...[false, true].map((withdrawn) => ({
+      ...state,
+      phase: "preparing",
+      binding: null,
+      prepared: null,
+      queuedSource: {
         operationId: "queued-goal-claim",
         operationGeneration: "queued-generation",
         withdrawn,
@@ -88,6 +113,7 @@ export function nativeHandoffWireFixtures(timestamp) {
     })),
   );
   const fixtures = {
+    nativeGoalRecoveryWithdrawalSchema: [goalWithdrawal],
     nativeRuntimeHandoffRequestSchema: [request],
     nativeRuntimeHandoffPreparedSchema: [
       prepared,
@@ -115,6 +141,7 @@ export function nativeHandoffWireFixtures(timestamp) {
     ],
     nativeRuntimeHandoffWorkerRequestSchema: [
       { ...worker, action: "read" },
+      { ...worker, action: "goal-recovery-withdrawn", receipt: goalWithdrawal },
       {
         ...worker,
         action: "prepared",

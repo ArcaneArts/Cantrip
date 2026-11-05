@@ -1,5 +1,7 @@
 // Development oracle uses the actual protocol, including its semantic checks.
 import * as protocol from "../../packages/protocol/dist/index.js";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 const uuid = "f57d812b-37d4-4d1e-b87a-3503b0d89b23";
 const active = { threadId: "native-thread", turnId: "original-turn" };
@@ -15,7 +17,7 @@ const evidence = {
   runtimeVersion: "test/cantrip-suspension-v8",
   runtimeFingerprint: null,
 };
-const record = {
+export const record = {
   version: 1,
   controlId: uuid,
   action: "pause",
@@ -43,7 +45,7 @@ const record = {
   pausedAt: "2026-11-05T12:00:01.000Z",
   pausedMilliseconds: 0,
 };
-const cases = [];
+export const cases = [];
 function add(schema, input) {
   const parsed = protocol[schema].safeParse(input);
   cases.push({
@@ -107,7 +109,7 @@ for (const patch of [
 ])
   add("nativeSuspensionRecordSchema", { ...record, ...patch });
 
-const projections = [
+export const projections = [
   record,
   {
     ...record,
@@ -128,4 +130,8 @@ const projections = [
   input,
   output: protocol.storedChatNativeSuspension(input),
 }));
-process.stdout.write(JSON.stringify({ record, cases, projections }));
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+)
+  process.stdout.write(JSON.stringify({ record, cases, projections }));

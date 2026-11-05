@@ -33,11 +33,10 @@ pub(in crate::native_commands) async fn settle_before_dispatch(
         {
             return Ok(false);
         }
-        marker = Some(
-            json!({"source":{"operationId":row["operation_id"],"operationGeneration":row["operation_generation"],
-            "threadId":row["identity"]["threadId"],"goalEpoch":attempt.unwrap()["goalEpoch"]},
-            "admission":{"operationId":row["operation_id"],"operationGeneration":row["operation_generation"],"workerGeneration":row["intent"]["workerGeneration"]}}),
-        );
+        let source = json!({"operationId":row["operation_id"],"operationGeneration":row["operation_generation"],
+            "threadId":row["identity"]["threadId"],"goalEpoch":attempt.unwrap()["goalEpoch"]});
+        let admission = json!({"operationId":row["operation_id"],"operationGeneration":row["operation_generation"],"workerGeneration":row["intent"]["workerGeneration"]});
+        marker = Some(json!({"source":source,"admission":admission}));
         tx.query(
             "INSERT INTO managed_queue_states(chat_id) VALUES($1) ON CONFLICT DO NOTHING",
             &[&chat],

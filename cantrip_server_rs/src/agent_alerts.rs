@@ -1,7 +1,7 @@
 //! The same live binding authority used by the Node MCP relay.
 use crate::wire::Value;
 
-pub const OPERATIONS: [&str; 28] = [
+pub const OPERATIONS: &[&str] = &[
     "context.get",
     "alert.raise",
     "alert.resolve",
@@ -30,6 +30,12 @@ pub const OPERATIONS: [&str; 28] = [
     "run-configuration.status",
     "run-configuration.read-output",
     "run-configuration.secret-set",
+    "worktree.list",
+    "worktree.status",
+    "worktree.create",
+    "worktree.switch",
+    "worktree.release",
+    "worktree.remove",
 ];
 pub fn is_mutation(operation: &str) -> bool {
     matches!(
@@ -46,6 +52,10 @@ pub fn is_mutation(operation: &str) -> bool {
             | "run-configuration.restart"
             | "run-configuration.stop"
             | "run-configuration.secret-set"
+            | "worktree.create"
+            | "worktree.switch"
+            | "worktree.release"
+            | "worktree.remove"
     )
 }
 fn permitted(permission: &Value, operation: &str) -> bool {
@@ -70,6 +80,8 @@ fn permitted(permission: &Value, operation: &str) -> bool {
                 | "run-configuration.detect"
                 | "run-configuration.status"
                 | "run-configuration.read-output"
+                | "worktree.list"
+                | "worktree.status"
         )
 }
 #[derive(Debug)]

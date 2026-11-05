@@ -1,5 +1,6 @@
 import { nativeCommandWireFixtures } from "./native-command-wire-fixtures.mjs";
 import { retainedPrompt } from "./native-settlement-fixtures.mjs";
+import { nativeGoalRecoveryWireFixtures } from "./native-goal-recovery-fixtures.mjs";
 export function managedQueueWireFixtures(timestamp) {
   const native = nativeCommandWireFixtures(timestamp),
     admission = native.nativeCommandAdmissionSchema[0],
@@ -38,7 +39,7 @@ export function managedQueueWireFixtures(timestamp) {
     pendingImports: [],
   };
   const mutation = { kind: "add", prompt, attachments: [] };
-  return {
+  const fixtures = {
     managedQueueClaimSchema: [
       claim,
       {
@@ -148,4 +149,20 @@ export function managedQueueWireFixtures(timestamp) {
       { found: true, ...snapshot, receipt },
     ],
   };
+  const recoveries = [
+    null,
+    ...nativeGoalRecoveryWireFixtures().nativeGoalRecoverySchema,
+  ];
+  for (const name of [
+    "managedQueueSnapshotSchema",
+    "managedQueueMutationResultSchema",
+    "managedQueueImportResultSchema",
+    "managedQueueLookupResultSchema",
+  ]) {
+    const sample = fixtures[name].find((value) => value.found !== false);
+    fixtures[name].push(
+      ...recoveries.map((goalRecovery) => ({ ...sample, goalRecovery })),
+    );
+  }
+  return fixtures;
 }

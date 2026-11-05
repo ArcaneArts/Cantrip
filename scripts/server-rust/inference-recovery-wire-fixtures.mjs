@@ -1,5 +1,6 @@
 // Canonical admission, physical failure and outcome delivery contracts. These
 // contain operational identities and synthetic encrypted payloads only.
+import { nativeGoalRecoveryWireFixtures } from "./native-goal-recovery-fixtures.mjs";
 const id = "00000000-0000-4000-8000-000000000001";
 const generation = "00000000-0000-4000-8000-000000000002";
 const receipt = {
@@ -262,3 +263,25 @@ export const inferenceRecoveryWireFixtures = {
     },
   ],
 };
+
+const goalAdmission =
+  nativeGoalRecoveryWireFixtures().nativeGoalRecoveryAdmissionSchema[0];
+inferenceRecoveryWireFixtures.nativeInferenceRecoverySchema.push(
+  ...inferenceRecoveryWireFixtures.nativeInferenceRecoverySchema.map(
+    (value) => ({
+      ...value,
+      expectedGoalAdmission: goalAdmission,
+    }),
+  ),
+);
+inferenceRecoveryWireFixtures.nativeInferenceRecoveryResultSchema.push(
+  ...[false, true].flatMap((goalInputNotDispatched) =>
+    [undefined, goalAdmission].map((goalOwnershipChallenge) => ({
+      key: "a".repeat(64),
+      disposition: "unresolved",
+      chatId: receipt.chatId,
+      goalInputNotDispatched,
+      ...(goalOwnershipChallenge ? { goalOwnershipChallenge } : {}),
+    })),
+  ),
+);

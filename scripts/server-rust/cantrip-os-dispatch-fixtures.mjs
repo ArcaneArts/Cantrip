@@ -157,7 +157,7 @@ export function osDispatchFixtures() {
   };
   const { serverId: _server, ...executionScope } = osSourceScope;
   const { serverId: _linkedServer, ...linkedExecutionScope } = linked;
-  return {
+  const fixtures = {
     cantripOsRunSelectionSchema: [
       {
         kind: "binding",
@@ -375,4 +375,42 @@ export function osDispatchFixtures() {
       { operationId: id, bindingGeneration: id, protectedRequest: osOpaque },
     ],
   };
+  fixtures.cantripOsRecoveryResultSchema = [
+    ["same-runtime", id, id],
+    ["runtime-changed", id, "new-runtime"],
+    ["first-observation", null, id],
+    ["unavailable", id, null],
+    ["identity-changed", id, null],
+  ].flatMap(([kind, previousRuntimeGeneration, observedRuntimeGeneration]) =>
+    [
+      ["same-worker", id, id],
+      ["worker-restarted", id, "new-worker"],
+      ["first-observation", null, id],
+      ["unavailable", id, null],
+    ].map(
+      ([
+        workerContinuity,
+        previousWorkerProcessGeneration,
+        observedWorkerProcessGeneration,
+      ]) => ({
+        instance: {
+          ...fixtures.cantripOsRunSourceSchema[0].instance,
+          status: observedRuntimeGeneration ? "connected" : "unknown",
+        },
+        workspaces: observedRuntimeGeneration
+          ? [fixtures.cantripOsRunSourceSchema[0].workspace]
+          : [],
+        recovery: {
+          kind,
+          previousRuntimeGeneration,
+          observedRuntimeGeneration,
+          workerContinuity,
+          previousWorkerProcessGeneration,
+          observedWorkerProcessGeneration,
+          message: "Recovery fixture",
+        },
+      }),
+    ),
+  );
+  return fixtures;
 }

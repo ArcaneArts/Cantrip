@@ -3,16 +3,16 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "f828bc4d610ba2f9d8faf71ff90ba910f3f63368b5b3079591d9f9d36361d4f8",
-    "baselineCommit": "2d68134ecb2f1ec71b06af5cf82dd355e70c6e5e",
+    "sha256": "0c679466a4e3dc1c2eca48d160644ad680fe639e6b6eca946798f39bd436343d",
+    "baselineCommit": "50e2760be",
     "counts": {
-      "routes": 542,
-      "workerCommands": 299,
+      "routes": 544,
+      "workerCommands": 300,
       "durableTables": 116,
       "repositoryMethods": 367,
       "liveResources": 47
     },
-    "workingTreeNote": "Inventory includes queued Task provider-route control (542 routes, 299 worker commands). These additions have source review, direct formatting and diff checking only; no runtime/platform or broad replacement acceptance is inferred. Earlier acceptance evidence retains its recorded revisions.",
+    "workingTreeNote": "Integration with50e2760be reviews one new authenticated Goal recovery fence and chat.goal.recover command. Existing content classifications and all other reviewed contract-set digests are unchanged. Declared table count remains116; current full native product/platform and replacement acceptance remain required.",
     "migrationBackedTableCount": 122
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
@@ -5176,10 +5176,16 @@
           "scripts/server-rust/agent-target-http-compatibility.mjs",
           "scripts/server-rust/agent-target-stored-cases.mjs",
           "scripts/server-rust/mcp-target-query-manifest.mjs",
-          "cantrip_server_rs/tests/mcp_target_contracts.rs"
+          "cantrip_server_rs/tests/mcp_target_contracts.rs",
+          "scripts/server-rust/agent-run-http-compatibility.mjs",
+          "scripts/server-rust/agent-worktree-http-compatibility.mjs",
+          "scripts/server-rust/agent-worktree-http-fixtures.mjs",
+          "scripts/server-rust/agent-worktree-http-boundaries.mjs",
+          "scripts/server-rust/agent-worktree-http-disconnect.mjs",
+          "scripts/server-rust/mcp-worktree-query-manifest.mjs"
         ],
         "remaining": [
-          "Sixteen native operations are advertised, including target.list/inspect, atomic chat.send, context.compact and opaque policy.list/read. Other Source MCP domains remain unfinished.",
+          "Thirty-four of canonical Source55 MCP operations are advertised. Twenty-one MCP verbs and legacy CLI transport, including worktree.acquire, remain unfinished. Native product/platform and full replacement acceptance remain required.",
           "Current native and supported-platform product/packaging, coordination and full replacement acceptance."
         ]
       },
@@ -5198,10 +5204,16 @@
           "scripts/server-rust/agent-target-http-compatibility.mjs",
           "scripts/server-rust/agent-target-stored-cases.mjs",
           "scripts/server-rust/mcp-target-query-manifest.mjs",
-          "cantrip_server_rs/tests/mcp_target_contracts.rs"
+          "cantrip_server_rs/tests/mcp_target_contracts.rs",
+          "scripts/server-rust/agent-run-http-compatibility.mjs",
+          "scripts/server-rust/agent-worktree-http-compatibility.mjs",
+          "scripts/server-rust/agent-worktree-http-fixtures.mjs",
+          "scripts/server-rust/agent-worktree-http-boundaries.mjs",
+          "scripts/server-rust/agent-worktree-http-disconnect.mjs",
+          "scripts/server-rust/mcp-worktree-query-manifest.mjs"
         ],
         "remaining": [
-          "Sixteen native operations are advertised, including target.list/inspect, atomic chat.send, context.compact and opaque policy.list/read. Other Source MCP domains remain unfinished.",
+          "Thirty-four of canonical Source55 MCP operations are advertised. Twenty-one MCP verbs and legacy CLI transport, including worktree.acquire, remain unfinished. Native product/platform and full replacement acceptance remain required.",
           "Current native and supported-platform product/packaging, coordination and full replacement acceptance."
         ]
       },
@@ -5229,6 +5241,20 @@
         ],
         "remaining": [
           "Source review, direct formatting and git diff --check only. Runtime, migration, race and supported-platform behavior are unverified; tests, builds, typechecks and native/helper execution remain prohibited."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/goal-recovery-fence",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+        "evidence": [
+          "scripts/server-rust/native-goal-recovery-fixtures.mjs",
+          "scripts/server-rust/inference-recovery-wire-fixtures.mjs"
+        ],
+        "remaining": [
+          "Wire-parser and build qualification does not establish actual Goal recovery fencing, runtime ownership, successful native Task/Goal completion or supported-platform acceptance.",
+          "Complete current full-worker and multi-instance failure/recovery acceptance before default cutover."
         ]
       }
     ]
@@ -12541,7 +12567,7 @@
       "validatedSubset": "Twelve native Run MCP operations retain Source arguments/defaults, exact dispatched source/worker binding, Primary mutation prevalidation, durable project serialization, lifecycle/secret receipts, opaque output and Source success/rejection audit actions/resource IDs. Restart fences old execution claims before controlled fresh execution replays existing receipts. Public Run service response/error paths retain their previous interfaces. Only actual MCP worktree query failures receive captured Source SQL/original UTF16 parameter diagnostics; old target query statements remain unchanged. Empty worker-join reconciliation requests are retained independently of MCP call timing after verifying there are no active controlled worker runtimes; nonempty requests remain in command assertions.",
       "localEvidence": "Local qualification on 839d712f7/base485014de8 passes2617 Source Run wire comparisons,2432 compatible binding comparisons,1824 authority/readiness pairs and strict all-target Clippy. All3stores x3auth modes pass113 MCP HTTP/audit cases per peer/profile:1017 pairs/2034 calls and audit rows,18 actual server restarts,36 endpoint-decrypted outputs. Public Git/Run regression passes1089 paired observations/2178 calls across the same nine profiles. Actual second-worker dispatch and held-read Primary movement retain exact binding; UTF16/NUL failure context retains captured SQL and original parameters. Protocol1114/Source server49/worker18 focused tests pass; inherited server8/worker7/app2 type errors remain separately reproduced and are not green. Integration on9a6be65e9 keeps the base manifest byte-identical at626 roots/10545 nodes and isolates eleven Run roots in a453-node self-contained graph, composed natively with relocated references. Source oracle comparisons at three base graph sizes cover unrelated graph growth. Reviewed inventory records540 routes/298 worker commands/116 tables/367 repository methods with existing content classifications unchanged. Seven additive runtime exports and inference.revoke are explicitly reviewed; legacy fingerprints remain unchanged. Current integrated qualification and historical frozen matrix evidence are retained in milestone receipts.",
       "remaining": [
-        "Other MCP worktree/explorer/terminal/browser/client operations and actual full-worker native product acceptance.",
+        "Other MCP explorer/terminal/web/browser/client operations, legacy CLI transport and actual full-worker native product acceptance. The six MCP worktree verbs are covered by agentWorktreeMcp; CLI-only worktree.acquire is not advertised by MCP.",
         "Latest native runtime/platform artifacts, mixed/Redis coordination and operation recovery at full product failure boundaries.",
         "Existing-data upgrades and post-write rollback, performance acceptance, packaged desktop/Winterhold rehearsal, default server cutover and production Node server removal."
       ]
@@ -12602,6 +12628,99 @@
         "scope": "Schema and compilation coverage is separate from full worker/native Task/Goal execution and platform acceptance."
       },
       "strictLocalRustChecks": "Clippy --all-targets with -D warnings passes. All 50 Rust library tests pass, including 8,228 recursive JSON comparisons, Date.parse comparisons across 15 timezone settings and 7,851 Source Run comparisons after independent graph growth. Fresh generated-manifest equality passes for both contract blocks. These results cover the first-cycle Goal-claim integration; full native execution and platform acceptance remain separate."
+    },
+    "agentWorktreeMcp": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/http/agent_worktrees.rs",
+        "cantrip_server_rs/src/agent_alerts.rs",
+        "cantrip_server_rs/src/chats/execution_lanes/transitions.rs",
+        "cantrip_server_rs/src/chats/execution_lanes/mcp_queries.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/agent-worktree-http-compatibility.mjs",
+        "scripts/server-rust/agent-worktree-http-fixtures.mjs",
+        "scripts/server-rust/agent-worktree-http-boundaries.mjs",
+        "scripts/server-rust/agent-worktree-http-disconnect.mjs",
+        "scripts/server-rust/mcp-worktree-query-manifest.mjs"
+      ],
+      "scope": "Six MCP worktree verbs reuse native owned worktree, project coordinator, lane and Run-retirement services. Registry34 of canonical Source55; worktree.acquire is legacy CLI only and remains forbidden by MCP even when the binding grants it. Source validation order, capability/readonly/stale guards, lease visibility/paging/status truncation, structured mutation errors, exact worker inventory result, transaction rollback and SQL diagnostics retain Source behavior.",
+      "localEvidence": "Local integrated 20001aa43 qualification passes102 exact MCP response/worker-command/durable-snapshot cases per peer across all3stores x3auth modes:918 pairs,1836 responses,18 actual socket disconnects,1854 matching audit rows and18 real server restarts. NUL-purpose writes, including unpaired UTF16 and literal replacement-character variants, fail actual SQL and roll back the earlier lane suspension; full Source query text and original parameters match. Both peers capture all8 Task tables over live HTTP using the required result alias. Fifty Rust library tests and five focused OS/MCP contract/binding tests pass; fresh base and independent Run manifests equal current Source. All633 base roots have valid samples (2121 samples); all643 existing fixture arrays retain identical serialized JSON, with5 samples added only for the missing OS recovery result root. Production WorkerConnection carries controlled Git replies; full native product/platform acceptance is not established.",
+      "remaining": [
+        "Current-head supported-platform and full-worker native product acceptance, additional multi-worker/retirement/interruption cases, and full replacement requirements remain active.",
+        "Twenty-one other canonical MCP operations and legacy CLI transport/acquire remain required. Actual native worker product, additional multi-worker/retirement/interruption acceptance and supported-platform packaging remain separate.",
+        "Full replacement requirements, coordination, existing-data migrations/post-write rollback, performance, desktop/Winterhold rehearsal, default cutover and production Node server removal remain active."
+      ],
+      "currentSourceIntegration": {
+        "base": "50e2760be",
+        "taskSnapshotTables": 10,
+        "taskSnapshotScope": "Owner/project-scoped chats, managed_queue_states and eight execution tables, in one repeatable-read read-only transaction. Raw unknown suspension and canonical Goal recovery markers are retained before explicit fixture cleanup.",
+        "fixtureRoots": 648,
+        "validSamples": 2208,
+        "reachableGraphs": {
+          "added": 15,
+          "changed": 24,
+          "unchanged": 609
+        },
+        "preservedFixtureArrays": 627,
+        "priorCommandInputsRetained": 299,
+        "currentCommands": 300,
+        "priorAlternativeCasesRetained": 1156,
+        "currentAlternativeCases": 1157,
+        "integrationRepairs": [
+          "Use explicit nested native JSON values in Goal admission/negative receipts.",
+          "Iterate existing codexRuntimes and read WeakMap sessions; preserve weak lifetimes.",
+          "Review additive chat.goal.recover order/count while retaining old protocol fingerprints."
+        ],
+        "nativeProductAcceptance": false,
+        "nativeWireDelta": {
+          "comparisons": 142724,
+          "roots": 38,
+          "outcomesAndExactErrorMessages": true,
+          "workerEnvelopeComparedSeparately": true
+        },
+        "strictAllTargetClippy": "passes with -D warnings",
+        "currentHttpMatrix": {
+          "databaseModes": ["pglite", "postgres", "bundled-postgres"],
+          "authModes": ["none", "password", "accounts"],
+          "pairs": 918,
+          "responses": 1836,
+          "auditRows": 1854,
+          "disconnects": 18,
+          "restarts": 18,
+          "allPassedLocally": true
+        },
+        "localChecks": {
+          "protocolTests": 1114,
+          "sourceAuthorityAndSuspensionTests": 46,
+          "workerSessionHandoffClientTests": 46,
+          "serverWorkerAppTypechecks": "pass"
+        },
+        "runMcpRegression": {
+          "database": "pglite",
+          "auth": "none",
+          "pairedCases": 113,
+          "actualHttp": true,
+          "actualWorkerConnection": true,
+          "fullNativeProduct": false
+        },
+        "nativeTests": {
+          "library": 50,
+          "focused": 5,
+          "allPassedLocally": true
+        },
+        "outgoingWorkerWire": {
+          "commands": 300,
+          "boundaries": 86,
+          "mutations": 242426,
+          "customRefinementsExecuted": 100,
+          "actualRawJsonPreserved": true,
+          "allPassedLocally": true
+        },
+        "latestIntegratedMain": "4af03a674",
+        "incomingPauseScope": "Worker-only native suspension changes leave all qualified server, protocol and controlled worker transport inputs unchanged. Current Main admission options and strengthened assertions are retained.",
+        "workerPauseIntegrationTests": 62
+      }
     }
   },
   "remainingAcceptance": [

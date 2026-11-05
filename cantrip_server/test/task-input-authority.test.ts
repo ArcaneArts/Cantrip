@@ -314,13 +314,46 @@ describe.each(["round", "goal"] as const)(
 
 it("captures live Task evidence in one read-only snapshot scoped to its owner and project", async () => {
   const f = await input("round");
+  const unsupportedSuspension = {
+    version: 99,
+    phase: "future-suspension",
+    opaque: { retained: true },
+  };
+  const goalRecovery = {
+    source: {
+      operationId: "original-operation",
+      operationGeneration: "original-generation",
+      threadId: "original-thread",
+      goalEpoch: "original-goal",
+    },
+    admission: null,
+  };
+  await database
+    .insert(schema.managedQueueStates)
+    .values({
+      chatId: f.chat,
+      goalRecovery,
+      notifiedRevision: 0,
+      notificationDueAt: new Date("2099-01-01T00:00:00Z"),
+    })
+    .onConflictDoUpdate({
+      target: schema.managedQueueStates.chatId,
+      set: { goalRecovery },
+    });
+  await database
+    .update(schema.chats)
+    .set({
+      automationPaused: true,
+      nativeSuspensionState: unsupportedSuspension,
+    })
+    .where(eq(schema.chats.id, f.chat));
   const query = (statements: string[], queries: string[]) =>
     client.transaction(async (tx) => {
       for (const statement of statements) await tx.exec(statement);
       const values = [];
       for (const statement of queries) {
-        const result = await tx.query<{ state: string }>(statement);
-        values.push(JSON.parse(result.rows[0]!.state));
+        const result = await tx.query<{ result: string }>(statement);
+        values.push(JSON.parse(result.rows[0]!.result));
       }
       return values;
     });
@@ -340,7 +373,21 @@ it("captures live Task evidence in one read-only snapshot scoped to its owner an
       }),
     ]),
   );
-  expect(Object.keys(snapshot.rows)).toHaveLength(8);
+  expect(Object.keys(snapshot.rows)).toHaveLength(10);
+  expect(snapshot.rows.managed_queue_states).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ chat_id: f.chat, goal_recovery: goalRecovery }),
+    ]),
+  );
+  expect(snapshot.rows.chats).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: f.chat,
+        automation_paused: true,
+        native_suspension_state: unsupportedSuspension,
+      }),
+    ]),
+  );
   for (const scope of [
     { ownerId: randomUUID(), projectId: project },
     { ownerId: owner, projectId: randomUUID() },

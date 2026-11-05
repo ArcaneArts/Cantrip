@@ -1613,186 +1613,192 @@
       "kind": "union",
       "path": ["command"],
       "index": 268,
-      "case": 261
+      "case": 1156
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 269,
-      "case": 262
+      "case": 261
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 270,
-      "case": 263
+      "case": 262
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 271,
-      "case": 264
+      "case": 263
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 272,
-      "case": 265
+      "case": 264
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 273,
-      "case": 266
+      "case": 265
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 274,
-      "case": 267
+      "case": 266
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 275,
-      "case": 268
+      "case": 267
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 276,
-      "case": 269
+      "case": 268
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 277,
-      "case": 270
+      "case": 269
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 278,
-      "case": 271
+      "case": 270
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 279,
-      "case": 272
+      "case": 271
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 280,
-      "case": 273
+      "case": 272
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 281,
-      "case": 274
+      "case": 273
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 282,
-      "case": 275
+      "case": 274
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 283,
-      "case": 276
+      "case": 275
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 284,
-      "case": 277
+      "case": 276
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 285,
-      "case": 944
+      "case": 277
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 286,
-      "case": 946
+      "case": 944
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 287,
-      "case": 948
+      "case": 946
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 288,
-      "case": 950
+      "case": 948
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 289,
-      "case": 952
+      "case": 950
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 290,
-      "case": 960
+      "case": 952
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 291,
-      "case": 968
+      "case": 960
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 292,
-      "case": 1026
+      "case": 968
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 293,
-      "case": 1075
+      "case": 1026
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 294,
-      "case": 1076
+      "case": 1075
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 295,
-      "case": 1077
+      "case": 1076
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 296,
-      "case": 1078
+      "case": 1077
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 297,
-      "case": 1079
+      "case": 1078
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 298,
+      "case": 1079
+    },
+    {
+      "kind": "union",
+      "path": ["command"],
+      "index": 299,
       "case": 1080
     },
     {
@@ -11860,7 +11866,7 @@
       "path": [
         "command",
         "options",
-        "268",
+        "269",
         "taskContext",
         "innerType",
         "chatStatus"
@@ -11873,7 +11879,7 @@
       "path": [
         "command",
         "options",
-        "268",
+        "269",
         "taskContext",
         "innerType",
         "chatStatus"
@@ -11886,7 +11892,7 @@
       "path": [
         "command",
         "options",
-        "268",
+        "269",
         "taskContext",
         "innerType",
         "chatStatus"
@@ -11899,7 +11905,7 @@
       "path": [
         "command",
         "options",
-        "268",
+        "269",
         "taskContext",
         "innerType",
         "chatStatus"
@@ -11912,7 +11918,7 @@
       "path": [
         "command",
         "options",
-        "268",
+        "269",
         "taskContext",
         "innerType",
         "chatStatus"
@@ -11925,7 +11931,7 @@
       "path": [
         "command",
         "options",
-        "268",
+        "269",
         "taskContext",
         "innerType",
         "message",
@@ -11941,7 +11947,7 @@
       "path": [
         "command",
         "options",
-        "268",
+        "269",
         "taskContext",
         "innerType",
         "message",
@@ -11954,13 +11960,13 @@
     },
     {
       "kind": "union",
-      "path": ["command", "options", "269", "objective"],
+      "path": ["command", "options", "270", "objective"],
       "index": 0,
       "case": 262
     },
     {
       "kind": "union",
-      "path": ["command", "options", "269", "objective"],
+      "path": ["command", "options", "270", "objective"],
       "index": 1,
       "case": 928
     },
@@ -11969,7 +11975,7 @@
       "path": [
         "command",
         "options",
-        "269",
+        "270",
         "objective",
         "options",
         "1",
@@ -11984,7 +11990,7 @@
       "path": [
         "command",
         "options",
-        "269",
+        "270",
         "objective",
         "options",
         "1",
@@ -11999,7 +12005,7 @@
       "path": [
         "command",
         "options",
-        "269",
+        "270",
         "objective",
         "options",
         "1",
@@ -12014,7 +12020,7 @@
       "path": [
         "command",
         "options",
-        "269",
+        "270",
         "objective",
         "options",
         "1",
@@ -12029,7 +12035,7 @@
       "path": [
         "command",
         "options",
-        "269",
+        "270",
         "objective",
         "options",
         "1",
@@ -12044,7 +12050,7 @@
       "path": [
         "command",
         "options",
-        "269",
+        "270",
         "objective",
         "options",
         "1",
@@ -12056,151 +12062,151 @@
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "270", "status", "innerType"],
+      "path": ["command", "options", "271", "status", "innerType"],
       "index": 0,
       "case": 934
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "270", "status", "innerType"],
+      "path": ["command", "options", "271", "status", "innerType"],
       "index": 1,
       "case": 935
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "279", "executionProfile", "innerType"],
+      "path": ["command", "options", "280", "executionProfile", "innerType"],
       "index": 0,
       "case": 272
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "279", "executionProfile", "innerType"],
+      "path": ["command", "options", "280", "executionProfile", "innerType"],
       "index": 1,
       "case": 936
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "280", "executionProfile", "innerType"],
+      "path": ["command", "options", "281", "executionProfile", "innerType"],
       "index": 0,
       "case": 273
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "280", "executionProfile", "innerType"],
+      "path": ["command", "options", "281", "executionProfile", "innerType"],
       "index": 1,
       "case": 937
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "281", "executionProfile", "innerType"],
+      "path": ["command", "options", "282", "executionProfile", "innerType"],
       "index": 0,
       "case": 274
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "281", "executionProfile", "innerType"],
+      "path": ["command", "options", "282", "executionProfile", "innerType"],
       "index": 1,
       "case": 938
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "282", "executionProfile", "innerType"],
+      "path": ["command", "options", "283", "executionProfile", "innerType"],
       "index": 0,
       "case": 275
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "282", "executionProfile", "innerType"],
+      "path": ["command", "options", "283", "executionProfile", "innerType"],
       "index": 1,
       "case": 939
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "283", "executionProfile", "innerType"],
+      "path": ["command", "options", "284", "executionProfile", "innerType"],
       "index": 0,
       "case": 276
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "283", "executionProfile", "innerType"],
+      "path": ["command", "options", "284", "executionProfile", "innerType"],
       "index": 1,
       "case": 940
     },
     {
       "kind": "union",
-      "path": ["command", "options", "289", "scope"],
+      "path": ["command", "options", "290", "scope"],
       "index": 0,
       "case": 952
     },
     {
       "kind": "union",
-      "path": ["command", "options", "289", "scope"],
+      "path": ["command", "options", "290", "scope"],
       "index": 1,
       "case": 956
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "290", "sourceKind"],
+      "path": ["command", "options", "291", "sourceKind"],
       "index": 0,
       "case": 960
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "290", "sourceKind"],
+      "path": ["command", "options", "291", "sourceKind"],
       "index": 1,
       "case": 962
     },
     {
       "kind": "union",
-      "path": ["command", "options", "292", "request"],
+      "path": ["command", "options", "293", "request"],
       "index": 0,
       "case": 1026
     },
     {
       "kind": "union",
-      "path": ["command", "options", "292", "request"],
+      "path": ["command", "options", "293", "request"],
       "index": 1,
       "case": 1032
     },
     {
       "kind": "union",
-      "path": ["command", "options", "292", "request"],
+      "path": ["command", "options", "293", "request"],
       "index": 2,
       "case": 1038
     },
     {
       "kind": "union",
-      "path": ["command", "options", "292", "request"],
+      "path": ["command", "options", "293", "request"],
       "index": 3,
       "case": 1044
     },
     {
       "kind": "union",
-      "path": ["command", "options", "292", "request"],
+      "path": ["command", "options", "293", "request"],
       "index": 4,
       "case": 1050
     },
     {
       "kind": "union",
-      "path": ["command", "options", "292", "request"],
+      "path": ["command", "options", "293", "request"],
       "index": 5,
       "case": 1056
     },
     {
       "kind": "union",
-      "path": ["command", "options", "292", "request"],
+      "path": ["command", "options", "293", "request"],
       "index": 6,
       "case": 1062
     },
     {
       "kind": "union",
-      "path": ["command", "options", "292", "request"],
+      "path": ["command", "options", "293", "request"],
       "index": 7,
       "case": 1068
     },
     {
       "kind": "union",
-      "path": ["command", "options", "292", "request"],
+      "path": ["command", "options", "293", "request"],
       "index": 8,
       "case": 1101
     }
@@ -55643,6 +55649,53 @@
             "updatedAt": "2026-10-26T00:00:00.000Z"
           },
           "type": "task.operation.prepare"
+        }
+      }
+    },
+    {
+      "name": "reviewed added chat.goal.recover",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.goal.recover",
+          "session": {
+            "chatId": "fixture",
+            "computerUseEnabled": false,
+            "contextKind": "project",
+            "projectId": "fixture",
+            "worktreeId": "fixture",
+            "rootKind": "git-worktree",
+            "scratchRootId": null
+          },
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "planMode": "default",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture",
+          "source": {
+            "operationId": "original-goal-operation",
+            "operationGeneration": "original-goal-generation",
+            "threadId": "original-goal-thread",
+            "goalEpoch": "original-goal-epoch"
+          }
         }
       }
     }

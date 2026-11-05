@@ -79,6 +79,103 @@ include this SQL endpoint. A thirty-first database regression exercises the
 actual queries and rejects other owner/project scopes. This evidence-capture
 test does not establish successful native Task or Goal execution.
 
+The worktree MCP port implements six advertised operations: list, status, create,
+switch, release and remove. Rust now advertises 34 of Source's 55 MCP operations.
+`worktree.acquire` belongs to the shared legacy CLI executor and is rejected by
+the MCP allowlist, including when a binding explicitly grants it. Legacy CLI
+transport and its acquisition behavior remain separate required work.
+
+The worktree handlers retain Source argument order, history visibility, pagination
+caps, status truncation, UTF16 summaries, capability/permission guards and durable
+lane scheduling. Agent removal uses serialized Run retirement, worker removal
+and inventory reconciliation. The MCP result retains the worker's full removal
+inventory; its retained database row becomes missing, matching Source's MCP
+behavior. The public removal route separately records a removed state.
+Actual failed transition writes retain captured Source ORM diagnostics and the
+original JavaScript parameters. No configuration is rejected before attempting
+the real SQL operation. A NUL-purpose regression verifies the entire transaction
+rolls back its earlier pending-lane suspension. Generated error clocks are
+bounded and all SQL/parameter text is checked before comparison normalization.
+
+Local integrated qualification passes 102 MCP cases per peer across all three
+stores and all three authentication modes: 918 pairs, 1,836 responses, 18 actual
+socket disconnects, 1,854 matching audit rows and 18 server restarts. Each dropped
+socket closes after worker admission and its removal completes once. All peers
+fence the old execution after restart. NUL-purpose coverage retains unpaired
+UTF16, literal replacement characters and comma-containing parameters through
+real SQL failure and rollback. The controlled worker uses production
+WorkerConnection but supplies Git replies; full-worker/native product and
+supported-platform acceptance remain required. Node remains the default server
+and the worker remains Node.
+
+The frozen `20001aa43` integration supplies OS recovery result fixtures for all
+five result kinds. All 633 base roots have valid Source samples (2,121 samples),
+and all 643 existing fixture arrays retain identical serialized JSON. Fresh base
+and independent Run manifests equal Source. Fifty Rust library tests and five
+focused OS/MCP contract/binding tests pass. The two published OS recovery schemas
+are explicitly included in the export review while preserving all existing
+fingerprints. The reviewed inventory adds only the owner-scoped OS recovery
+route: 543 routes, 299 worker commands, 116 declared tables and 367 repository
+methods. All previous route classifications and other reviewed contract digests
+remain unchanged.
+
+The live Task evidence helper now returns the `result` SQL column required by the
+Node fixture gateway. Both peers exercise all eight capture queries through
+actual HTTP before the worktree cases. The database regression retains its owner
+and project scope assertions. This repairs evidence collection without claiming
+successful native Task/Goal execution.
+
+Integration with `50e2760be` repeats all nine worktree MCP profiles successfully:
+918 paired cases, 1,836 responses, 1,854 audit rows, 18 dropped sockets and 18
+restarts. The live Task snapshot now includes `chats` and `managed_queue_states`
+alongside its original eight tables. Both implementations retain an unknown
+suspension record and the canonical Goal-recovery marker through the real HTTP
+SQL gateway, before explicit disposable-fixture cleanup. Owner and project
+isolation remain covered by the database regression.
+
+All 648 current base roots have valid Source samples (2,208 samples). New samples
+include Goal-recovery source/admission/fencing/withdrawal, queue marker defaults,
+negative-dispatch ownership challenges and queued handoff state. The four worker
+continuity kinds accompany all five OS recovery outcomes. The refreshed outgoing
+corpus retains all 299 prior command inputs and all 1,156 alternative input cases,
+adding `chat.goal.recover` and one enclosing alternative. Exact reachable graphs
+retain 609 earlier roots; 15 roots are new and 24 changed. Another 627 existing
+fixture arrays retain identical serialized JSON. Base and independent Run
+manifests equal the authoritative current Source definitions.
+A native streaming parser passes 142,724 complete Source value, issue and exact
+error-message comparisons over all 38 changed or added non-worker roots. The
+outgoing-worker envelope separately passes all 300 command fixtures, 86
+boundary cases and 242,426 mutations, executing all 100 authoritative
+refinement callbacks. Strict all-target Clippy passes
+with warnings treated as errors. All 50 rebuilt Rust library tests and five
+focused OS/MCP contract and binding tests pass.
+A focused PGlite/anonymous Run-MCP regression retains 113 paired HTTP cases
+through the shared MCP error adapter.
+
+The current integration repairs actual Rust compile failures in nested native
+JSON construction and preserves weak session references by iterating the existing
+Codex runtime registry. Worker admissions retain integrated Main's options shape; autonomous Goal
+admission still requests its explicit continuation option, asserted by the
+existing test. All 1,114 protocol tests, 46 focused
+worker tests and 46 Task-authority/suspension database tests pass. Server, worker
+and app typechecks pass. These checks do not establish successful full native
+Task/Goal execution.
+
+Integration with worker-only Pause changes in `4af03a674` preserves the qualified
+server/protocol/transport inputs. All 62 focused worker session, handoff, client
+and suspension tests pass after retaining Main's admission options and assertions.
+This does not establish actual native Pause or Task/Goal product acceptance.
+
+The frozen broad Node server run exits with 122 failed, 1,571 passed and 133
+skipped tests; many failures are migration/setup timeouts. The frozen worker run
+has 13 failed, 2,741 passed and 235 skipped tests. A focused timing rerun passes
+five of seven cases, retaining GitHub lifecycle and encrypted-history timeout
+failures. These broad failures have not all been reproduced on a clean matching
+baseline and are not treated as passing. The current root `pnpm check` stops at
+unchanged Source line budgets (`build-app.ts` 1,519/1,500 and
+`chat-turn-runtime.ts` 2,230/1,999). Their source and checker bytes match integrated
+Main. Full product, supported-platform and replacement acceptance remain active.
+
 The Run configuration MCP milestone adds twelve operations to the Rust registry,
 bringing the supported set to twenty-eight. It reuses native definition, secret,
 lifecycle and encrypted-output services. Reads validate the exact worker used

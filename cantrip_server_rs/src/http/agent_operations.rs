@@ -38,6 +38,33 @@ impl OperationError {
         if let Some(error) = cause.downcast_ref::<Self>() {
             return Self::new(error.status, error.code, error.message.clone());
         }
+        if let Some(error) = cause.downcast_ref::<crate::projects::worktrees::MutationError>() {
+            let not_started = error.failure["mutation"]["outcome"] == "notStarted";
+            return Self::new(
+                if not_started { 404 } else { 409 },
+                if not_started { "not-found" } else { "conflict" },
+                error.failure["error"]
+                    .as_js_string()
+                    .cloned()
+                    .unwrap_or_else(|| "".into()),
+            );
+        }
+        if let Some(error) = cause.downcast_ref::<crate::workers::command_bus::CommandFailure>() {
+            if let crate::workers::command_bus::CommandFailure::Bridge(error) = error {
+                if error.encoding_error.is_some() {
+                    return Self::validation();
+                }
+                if error.unavailable {
+                    return Self::new(503, "unavailable", error.message.clone());
+                }
+            }
+            let message = error.message();
+            return Self::new(
+                400,
+                "invalid",
+                JsString::new(message.units()[..message.len().min(2000)].to_vec()),
+            );
+        }
         if let Some(error) = cause.downcast_ref::<crate::run_configurations::lifecycle::ApiError>()
         {
             return Self::new(

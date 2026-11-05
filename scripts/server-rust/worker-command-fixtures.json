@@ -5355,6 +5355,53 @@
       }
     },
     {
+      "type": "chat.goal.recover",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.goal.recover",
+          "session": {
+            "chatId": "fixture",
+            "computerUseEnabled": false,
+            "contextKind": "project",
+            "projectId": "fixture",
+            "worktreeId": "fixture",
+            "rootKind": "git-worktree",
+            "scratchRootId": null
+          },
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "planMode": "default",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture",
+          "source": {
+            "operationId": "original-goal-operation",
+            "operationGeneration": "original-goal-generation",
+            "threadId": "original-goal-thread",
+            "goalEpoch": "original-goal-epoch"
+          }
+        }
+      }
+    },
+    {
       "type": "chat.goal.get",
       "input": {
         "kind": "request",
