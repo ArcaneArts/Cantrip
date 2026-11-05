@@ -226,6 +226,16 @@ configuration never redirects existing output, Start/Restart, or Stop actions.
 **Edit** opens that configuration's original definition source. A lost Linux Run
 offers Stop before another Start; only confirmed cleanup reports Stopped.
 
+When the Worker reconnects, Linux Run reconciliation now resumes the exact saved
+native session and process rather than stopping it because Worker memory was
+lost. Its definition, target, launch identity and sealed secret snapshot must
+match the recorded admission. Retained output is replayed into the new Worker's
+Run buffer with redaction; the command and preparation are not repeated. Missing
+or changed native sessions remain unknown. Explicit Stop still owns termination.
+An already confirmed completion remains recorded even if output cannot be
+recovered, with an explanatory output message. The guest's retained output is
+bounded; explicit retention-boundary reporting is a subsequent Phase 5 cycle.
+
 The Files sidebar follows the focused Run's captured target. Its files and editor
 use the same Linux directory, including Linux dependency overlays. Identically
 named files in Primary and an alternate worktree open as distinct documents.

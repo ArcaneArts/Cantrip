@@ -54,6 +54,7 @@ interface RunJournal {
   definitions: OsRunLaunch["definitions"];
   target: OsRunLaunch["target"];
   fingerprint: string;
+  protectedSecrets?: RunConfigurationProtectedSecret[];
   native: { sessionId: string; executorGeneration: string } | null;
   processes: ProcessRecord[];
   result: OsRunResult | null;
@@ -87,6 +88,59 @@ export class OsRunExecution {
     ) => Promise<string>,
   ) {}
   start(supplied: OsRunLaunch, callbacks: OsRunCallbacks) {
+    return this.generation(supplied, callbacks, false);
+  }
+
+  /** Recover only an already admitted generation. Missing or mismatched records
+   * cannot fall through to preparation, process/start or input delivery. */
+  async resume(supplied: CantripOsRunCapture, callbacks: OsRunCallbacks) {
+    const capture = cantripOsRunCaptureSchema.parse(supplied);
+    if (
+      capture.definitions.scope.ownerId !== this.authority.ownerId() ||
+      capture.target.scope.ownerId !== this.authority.ownerId()
+    )
+      throw new Error("The Linux Run belongs to another account.");
+    const file = path.join(
+      this.directory,
+      "os-run-generations",
+      capture.identity.runtimeId,
+      `${capture.identity.generation}.json`,
+    );
+    let saved: RunJournal;
+    try {
+      saved = JSON.parse(await readFile(file, "utf8"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+    if (
+      saved.version !== 1 ||
+      !isDeepStrictEqual(saved.identity, capture.identity) ||
+      !isDeepStrictEqual(saved.definitions, capture.definitions) ||
+      !isDeepStrictEqual(saved.target, capture.target)
+    )
+      throw new Error(
+        "The Linux Run recovery differs from its captured admission.",
+      );
+    const input = osRunLaunchSchema.parse({
+      identity: saved.identity,
+      definitions: saved.definitions,
+      target: saved.target,
+      protectedSecrets: saved.protectedSecrets ?? [],
+    });
+    if (digest(input) !== saved.fingerprint)
+      throw new Error(
+        "The sealed Linux Run admission is unavailable; no process was replaced.",
+      );
+    return this.generation(input, callbacks, true, saved);
+  }
+
+  private generation(
+    supplied: OsRunLaunch,
+    callbacks: OsRunCallbacks,
+    resumeOnly: boolean,
+    saved?: RunJournal,
+  ) {
     const input = osRunLaunchSchema.parse(supplied);
     const { scope: s } = input.definitions,
       { scope: t } = input.target;
@@ -122,9 +176,19 @@ export class OsRunExecution {
         );
       return existing;
     }
-    const job = new OsRunGeneration(this, input, fingerprint, callbacks);
+    const job = new OsRunGeneration(
+      this,
+      input,
+      fingerprint,
+      callbacks,
+      resumeOnly,
+      saved,
+    );
     this.active.set(key, job);
-    void job.completion.finally(() => this.active.delete(key));
+    void job.completion.then(
+      () => this.active.delete(key),
+      () => this.active.delete(key),
+    );
     return job;
   }
 
@@ -345,6 +409,8 @@ export class OsRunGeneration {
     private readonly input: OsRunLaunch,
     readonly fingerprint: string,
     private readonly callbacks: OsRunCallbacks,
+    private readonly resumeOnly = false,
+    saved?: RunJournal,
   ) {
     const identity = input.identity;
     this.file = path.join(
@@ -353,12 +419,13 @@ export class OsRunGeneration {
       identity.runtimeId,
       `${identity.generation}.json`,
     );
-    this.record = {
+    this.record = saved ?? {
       version: 1,
       identity,
       definitions: input.definitions,
       target: input.target,
       fingerprint,
+      protectedSecrets: input.protectedSecrets,
       native: null,
       processes: [],
       result: null,
@@ -449,7 +516,12 @@ export class OsRunGeneration {
         });
       }
       sequence = Math.max(0, value.nextSeq - 1);
-      if (!known && process.phase === "runtime" && !this.stopping)
+      if (
+        !known &&
+        !value.exited &&
+        process.phase === "runtime" &&
+        !this.stopping
+      )
         this.callbacks.started(this.stopGracePeriodMs);
       known = true;
       for (const chunk of value.chunks) {
@@ -616,7 +688,7 @@ export class OsRunGeneration {
         this.input.target.transport,
         { ...this.input.target.scope, serverId },
       );
-      await this.driver.stopPrior(this.input);
+      if (!this.resumeOnly) await this.driver.stopPrior(this.input);
       await mkdir(path.dirname(this.file), { recursive: true, mode: 0o700 });
       let saved: RunJournal | null = null;
       try {
@@ -630,9 +702,17 @@ export class OsRunGeneration {
         this.record = saved;
         this.stopping ||= Boolean(saved.stopRequested);
         this.stopGracePeriodMs = saved.stopGracePeriodMs ?? 3000;
-        if (saved.result && saved.result.outcome !== "unknown")
+        if (
+          !this.resumeOnly &&
+          saved.result &&
+          saved.result.outcome !== "unknown"
+        )
           return saved.result;
       } else {
+        if (this.resumeOnly)
+          throw new OsExecutorDeliveryError(
+            "The recorded Linux Run admission disappeared; no process was started.",
+          );
         await durableTerminalJson(this.file, this.record, true);
         admission = true;
       }
@@ -651,7 +731,13 @@ export class OsRunGeneration {
       );
       if (saved) {
         const last = saved.processes.at(-1);
-        if (!saved.native || last?.phase !== "runtime")
+        if (!saved.native || last?.phase !== "runtime") {
+          if (saved.result && saved.result.outcome !== "unknown") {
+            this.callbacks.output(
+              "\r\n[Earlier Linux preparation output was not recovered; preparation was not repeated.]\r\n",
+            );
+            return saved.result;
+          }
           return {
             outcome: "unknown",
             phase: "reconcile",
@@ -659,6 +745,7 @@ export class OsRunGeneration {
             message:
               "The previous preparation has no admitted runtime process; it was not repeated.",
           };
+        }
         this.current = last;
         this.dispatched.add(last.id);
         await this.connect(true);
@@ -744,21 +831,32 @@ export class OsRunGeneration {
         signal: null,
       });
     } catch (error) {
-      const result: OsRunResult = this.record.processes.length
-        ? {
-            outcome: "unknown",
-            phase: "reconcile",
-            code: "linux-outcome-unknown",
-            message:
-              "The Linux Run outcome is unknown. Its admitted process was not replaced.",
-          }
-        : {
-            outcome: "failed",
-            phase: admission ? "environment" : "target",
-            code: "linux-launch-unavailable",
-            message:
-              "The Linux Run did not reach process launch. Inspect its Worker diagnostics.",
-          };
+      if (
+        this.resumeOnly &&
+        this.record.result &&
+        this.record.result.outcome !== "unknown"
+      ) {
+        this.callbacks.output(
+          "\r\n[The prior Run completion was retained; its output could not be fully recovered.]\r\n",
+        );
+        return this.record.result;
+      }
+      const result: OsRunResult =
+        this.resumeOnly || this.record.processes.length
+          ? {
+              outcome: "unknown",
+              phase: "reconcile",
+              code: "linux-outcome-unknown",
+              message:
+                "The Linux Run outcome is unknown. Its admitted process was not replaced.",
+            }
+          : {
+              outcome: "failed",
+              phase: admission ? "environment" : "target",
+              code: "linux-launch-unavailable",
+              message:
+                "The Linux Run did not reach process launch. Inspect its Worker diagnostics.",
+            };
       this.record.diagnostic = this.redactor.redactComplete(
         error instanceof Error
           ? error.message.slice(0, 4000)

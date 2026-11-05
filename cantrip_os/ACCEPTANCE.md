@@ -2636,3 +2636,43 @@ cloud project contains only another application's machines; they were not used
 or modified. Remote acceptance needs an explicitly authorized disposable Linux
 target and Worker-local SSH identity/known-host references. Local fixtures do not
 establish cloud acceptance.
+
+## Phase 5: recovering recorded Linux Runs (2026-11-05)
+
+Linux Run reconciliation previously called recorded cleanup whenever a fresh
+Worker supervisor lacked the runtime in memory. It now requests resume of the
+exact recorded launch. This path requires a matching private admission and can
+never enter new preparation/start/input delivery. Original encrypted secret
+snapshots are retained for redaction after restart; no plaintext secret is added
+to the journal. Missing/corrupt or different admissions cannot become a new Run.
+
+A fresh 4 GiB ARM64 Docker fixture used the existing remote/executor 0.9.0 image.
+The real Run and terminal integration cases passed (86.46s bodies / 94.24s total).
+The Run fixture SIGKILLed its separate Worker process while a real Linux Run and
+root child were active. A fresh supervisor reconciled the same native process,
+confirmed it remained alive, and preserved its PID/file. Repeating reconciliation
+did not replace it. Only an explicit Stop terminated the root child. The fixture
+also recovered an already completed secret-bearing Run's native output, reapplied
+real secret decryption/redaction and confirmed the command's side-effect file
+still contained one execution. A different launch operation was rejected.
+
+The terminal case exercised real nano editing, PTY resize, carrier death/resume
+without repeated shell input and explicit root-descendant cleanup, preserving an
+independent process. Existing terminal rehydration intentionally rebuilds a fresh
+terminal model from retained native output; a persisted stdout cursor alone
+would lose that model. No such cursor shortcut was introduced.
+
+Worker type checking, strict checking of the changed fixture import graph and
+13 focused unit cases passed. The initial nullable terminal-identity type error
+was fixed before the real integration run. Required root `pnpm check` still stops
+at unchanged Server budgets (1516/1500 and 2230/1999). No guest package or native
+executable changed in this cycle, and the previously built image is not presented
+as a new distribution artifact. Real remote product acceptance remains pending.
+
+Output retention coverage remains a Phase 5 requirement: the native buffer is
+bounded, and lifecycle events can produce legitimate sequence gaps. Explicit
+executor retention metadata and gap reporting will be implemented separately;
+these successful short-output tests do not establish complete history after
+native eviction. Worker-incarnation classification, other admitted operations,
+backup/restore, lifecycle/upgrade preservation and final distribution acceptance
+also remain required before the full goal can be completed.

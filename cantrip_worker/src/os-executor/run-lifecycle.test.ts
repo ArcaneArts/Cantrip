@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import type { CantripOsRunLaunch } from "@cantrip/protocol";
+import type {
+  CantripOsRunLaunch,
+  CantripOsRunCapture,
+} from "@cantrip/protocol";
 import { RunConfigurationRuntimeSupervisor } from "../run-configuration-runtime-supervisor.js";
 import type { OsRunCallbacks, OsRunResult } from "./run-execution.js";
 
@@ -65,6 +68,18 @@ function controlledDriver() {
       return { completion, signal };
     },
   );
+  const resume = vi.fn(
+    async (
+      _input: CantripOsRunCapture,
+      supplied: OsRunCallbacks,
+    ): Promise<{
+      completion: Promise<OsRunResult>;
+      signal: typeof signal;
+    } | null> => {
+      callbacks = supplied;
+      return { completion, signal };
+    },
+  );
   const stopRecorded = vi.fn(async (): Promise<OsRunResult> => ({
     outcome: "unknown",
     phase: "reconcile",
@@ -73,6 +88,7 @@ function controlledDriver() {
   }));
   return {
     start,
+    resume,
     stopRecorded,
     signal,
     finish: (result: OsRunResult) => finish(result),
@@ -82,6 +98,75 @@ function controlledDriver() {
 }
 
 describe("Linux Run common lifecycle", () => {
+  it("resumes an existing Linux process after Worker memory loss without starting or stopping it", async () => {
+    const driver = controlledDriver();
+    const supervisor = new RunConfigurationRuntimeSupervisor({
+      authorize: async () => {
+        throw new Error("Host");
+      },
+      linux: driver,
+    });
+    const input = fixture();
+    const capture = {
+      identity: input.identity,
+      definitions: input.definitions,
+      target: input.target,
+    };
+    const recovered = await supervisor.reconcileLinux([capture]);
+    expect(recovered.runtimes).toMatchObject([
+      {
+        found: true,
+        observation: {
+          state: "starting",
+          generation: input.identity.generation,
+        },
+      },
+    ]);
+    expect(driver.resume).toHaveBeenCalledTimes(1);
+    expect(driver.start).not.toHaveBeenCalled();
+    expect(driver.stopRecorded).not.toHaveBeenCalled();
+    driver.started();
+    driver.output("retained output\n");
+    await supervisor.reconcileLinux([capture]);
+    expect(supervisor.status(input.identity, capture)).toMatchObject({
+      found: true,
+      observation: { state: "running" },
+    });
+    expect(driver.resume).toHaveBeenCalledTimes(1);
+    driver.finish({ outcome: "exited", exitCode: 7, signal: null });
+    await vi.waitFor(() =>
+      expect(supervisor.status(input.identity, capture)).toMatchObject({
+        found: true,
+        observation: { state: "exited", exitCode: 7 },
+      }),
+    );
+    expect(driver.signal).not.toHaveBeenCalled();
+    await supervisor.closeAll();
+  });
+
+  it("leaves a missing native admission unknown rather than stopping or launching a process", async () => {
+    const driver = controlledDriver();
+    driver.resume.mockResolvedValue(null);
+    const supervisor = new RunConfigurationRuntimeSupervisor({
+      authorize: async () => {
+        throw new Error("Host");
+      },
+      linux: driver,
+    });
+    const input = fixture();
+    const capture = {
+      identity: input.identity,
+      definitions: input.definitions,
+      target: input.target,
+    };
+    expect((await supervisor.reconcileLinux([capture])).runtimes).toEqual([
+      { found: false, identity: input.identity },
+    ]);
+    expect(driver.start).not.toHaveBeenCalled();
+    expect(driver.stopRecorded).not.toHaveBeenCalled();
+    await supervisor.closeAll();
+  });
+
   it("confirms a naturally exited Linux generation under the new Stop operation after its launch reply was lost", async () => {
     const driver = controlledDriver();
     const supervisor = new RunConfigurationRuntimeSupervisor({

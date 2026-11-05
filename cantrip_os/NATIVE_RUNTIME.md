@@ -100,3 +100,24 @@ file creation, attachment materialization, Worker-owned HTTP MCP and Python
 artifact execution. These fixtures do not claim a live provider conversation or
 product-selected chat; those have separate recorded acceptance. Proofs are written to each test's private temporary directory;
 retained copies belong under ignored `artifacts/phase3-native-runtime/`.
+
+## Recovering Linux Run generations
+
+The Worker's private Run journal now retains the original encrypted secret
+references alongside the exact launch fingerprint. Reconciliation after Worker
+restart can reopen that recorded native session and observe its process without
+repeating preparation, process start or stdin. The native executor remains an
+execution service, not a second Worker. A missing journal or mismatched admission
+cannot enter the new-launch path; a journal disappearing during recovery also
+fails without launch. Earlier records without secret snapshots are recoverable
+only when their original no-secret fingerprint can be verified.
+
+A new Worker reconstructs its output buffer from retained native output and
+reapplies the original secret redaction. Confirmed completed processes are not
+reported as running during replay. If the native output/session is gone, a prior
+conclusive completion is retained and incomplete output recovery is reported.
+Stopping a Run remains an explicit lifecycle operation; reconnect itself no
+longer kills the admitted process. This checkpoint does not yet expose an
+authoritative native output-retention boundary, which requires a separate native
+protocol change. Sequence gaps alone are insufficient evidence of lost output
+because native lifecycle events share that sequence space.
