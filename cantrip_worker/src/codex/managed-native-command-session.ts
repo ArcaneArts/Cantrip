@@ -1,3 +1,4 @@
+import type { InferenceOperationSource } from "../inference-admission.js";
 import { ManagedNativeSettings } from "./managed-native-settings.js";
 import {
   isNativePermissionDeferred,
@@ -53,6 +54,7 @@ import {
 } from "./managed-native-policy.js";
 
 interface Execution {
+  inferenceSource: InferenceOperationSource;
   inferenceAbort: AbortController;
   inferenceForwarded?: boolean;
   receipt: NativeCommandReceipt;
@@ -210,13 +212,30 @@ export class ManagedNativeCommandSession {
     const released = new Promise<void>((resolve) => {
       markReleased = resolve;
     });
-    return {
+    const execution: Execution = {
       receipt,
       session,
       released,
       markReleased,
       inferenceAbort: new AbortController(),
+      inferenceSource: Object.freeze({
+        operationId: receipt.operationGeneration,
+        nativeTransportGeneration: session.runtimeGeneration,
+        released,
+        assertCurrent: () => {
+          if (
+            this.active !== execution ||
+            execution.receipt.operationGeneration !==
+              receipt.operationGeneration
+          )
+            throw new Error(
+              "The canonical native execution no longer owns inference preparation.",
+            );
+          this.assertTransport(session);
+        },
+      }),
     };
+    return execution;
   }
 
   /** Waits for the actual current publication/lane cleanup, without serializing controls. */
@@ -1051,6 +1070,7 @@ export class ManagedNativeCommandSession {
               await this.options.runtime.prepareAdmittedNativeExecution({
                 ...publication.options,
                 operationGeneration: grant.receipt.operationGeneration,
+                inferenceSource: execution.inferenceSource,
                 recoveryKey: `native-command:${grant.receipt.operationId}`,
                 recovery: {
                   commandId: grant.receipt.operationId,

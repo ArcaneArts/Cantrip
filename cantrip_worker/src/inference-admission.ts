@@ -39,6 +39,15 @@ export interface InferenceOperationLifetime {
   close(): void;
 }
 
+/** Stable identity from an existing one-time canonical execution admission.
+ * The source, rather than a cache window, decides whether first use is valid. */
+export interface InferenceOperationSource {
+  readonly operationId: string;
+  readonly nativeTransportGeneration: string | null;
+  readonly released: Promise<void>;
+  assertCurrent(): void;
+}
+
 interface OperationLifetimeState {
   operationId: string;
   closed: boolean;
@@ -511,7 +520,21 @@ export class WorkerInferenceAdmission {
             operationId,
             runtimeGeneration: runtime.generation,
             close: () => {
+              if (state.closed) return;
               state.closed = true;
+              const ticket = state.ticket;
+              // Canonical ownership ended before any model request began.
+              // A running/suspended/resuming turn still needs real settlement.
+              if (
+                ticket?.startedAt === null &&
+                (ticket.state === "waiting" || ticket.state === "granted")
+              )
+                this.cancel(
+                  ticket,
+                  new Error(
+                    "Canonical inference ownership ended before execution.",
+                  ),
+                );
             },
           });
           runtime.lifetimes.set(lifetime, state);

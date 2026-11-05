@@ -1,3 +1,4 @@
+import type { InferenceOperationSource } from "../inference-admission.js";
 import type { InferenceRecoveryIdentity } from "../inference-journal.js";
 import type {
   ChildProcessWithoutNullStreams,
@@ -478,6 +479,8 @@ export type PrepareAdmittedNativeExecutionOptions = Pick<
   threadId: string;
   /** Native preallocated identity. Matching it does not itself start a turn. */
   expectedTurnId?: string;
+  /** Current one-time command admission, never a reconstructed receipt cache. */
+  inferenceSource?: InferenceOperationSource;
   /** Execution-owner cancellation while waiting for provider capacity. */
   inferenceSignal?: AbortSignal;
 };
