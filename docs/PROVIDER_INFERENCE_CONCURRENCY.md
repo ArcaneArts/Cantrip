@@ -7,6 +7,29 @@ keep the limit optional so updates from older clients preserve it. Provider
 summaries and resolved model runtimes carry the configuration through both the
 Node and Rust server implementations.
 
+## Exact native begin denial
+
+A Core acknowledgment of `allow: false` consumes the exact pending private
+inference-begin request. The worker now uses that positive denial, or Core's
+correlated cancellation of a still-pending begin request, to retire that entry
+and settle its exact unused reservation. This includes a root reservation whose
+native binding failed before the allow response. The entry captures its selected
+owner before asynchronous binding. Both the physical scope and the exact Core
+gate request must match; denying another request cannot settle the owner. It
+cannot settle a replacement physical scope. Denied scopes use the existing bounded recent-completion set rather than retaining
+rejected entry promises until process exit.
+
+A negative-resolve timeout, transport replacement or otherwise uncertain reply
+is not denial evidence and does not free capacity. A denied resume also cannot
+release the previously admitted physical scope. Running work still requires its
+exact finish or confirmed process fencing. No timer, silence heuristic, queue
+replacement or native patch is introduced by this correction. The broader
+runtime operation-id retention audit remains open; this change does not evict
+arbitrary operation IDs or weaken redelivery idempotence.
+
+Source review and formatting only, plus `git diff --check`; tests, builds,
+typechecks, benchmarks, native execution and computer-use validation were not run.
+
 ## Worker timing in provider telemetry
 
 The existing private `inference.command-state` event carries exclusive monotonic

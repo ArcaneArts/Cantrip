@@ -78,7 +78,17 @@ interface Request {
   recovery?: InferenceRecoveryIdentity | null;
 }
 
+interface NativeEntry {
+  independent: boolean;
+  gateAttemptId?: string;
+  result: Promise<void>;
+  /** The exact reservation selected before an asynchronous bind can fail. */
+  operation?: Operation;
+}
+
 interface NativeRequest {
+  /** The live Core gate request, distinct from its physical inference scope. */
+  gateAttemptId?: string;
   threadId: string;
   turnId: string;
   scopeId: string;
@@ -100,10 +110,7 @@ export class CodexInferenceAdmission {
   private readonly runtime: InferenceRuntime;
   private readonly operations = new Set<Operation>();
   private readonly completed = new Set<string>();
-  private readonly nativeEntries = new Map<
-    string,
-    { independent: boolean; result: Promise<void> }
-  >();
+  private readonly nativeEntries = new Map<string, NativeEntry>();
   private readonly requests = new Map<
     string,
     { identity: string; result: Promise<CodexInferenceExecution> }
@@ -398,13 +405,33 @@ export class CodexInferenceAdmission {
       throw new Error("Native inference already settled.");
     let entering = this.nativeEntries.get(key);
     const independent = input.independent === true;
+    if (entering && entering.gateAttemptId !== input.gateAttemptId)
+      throw new Error(
+        "Native inference scope belongs to another gate request.",
+      );
     if (entering && entering.independent !== independent)
       throw new Error(
         "Native inference changed admission kind during redelivery.",
       );
     if (!entering) {
-      entering = { independent, result: this.admitNative(input) };
-      this.nativeEntries.set(key, entering);
+      let resolve!: () => void;
+      let reject!: (error: unknown) => void;
+      const result = new Promise<void>((done, failed) => {
+        resolve = done;
+        reject = failed;
+      });
+      const entry: NativeEntry = {
+        independent,
+        gateAttemptId: input.gateAttemptId,
+        result,
+      };
+      entering = entry;
+      this.nativeEntries.set(key, entry);
+      // Install correlation before admission starts, without postponing this
+      // eligible operation behind newer synchronous arrivals.
+      void this.admitNative(input, (operation) => {
+        entry.operation = operation;
+      }).then(resolve, reject);
     }
     await entering.result;
     const operation = this.findNative(
@@ -420,7 +447,10 @@ export class CodexInferenceAdmission {
     operation.observedStart = true;
   }
 
-  private async admitNative(input: NativeRequest): Promise<void> {
+  private async admitNative(
+    input: NativeRequest,
+    bindOwner: (operation: Operation) => void,
+  ): Promise<void> {
     const binding = {
       threadId: input.threadId,
       turnId: input.turnId,
@@ -436,6 +466,7 @@ export class CodexInferenceAdmission {
         throw new Error(
           "Independent inference cannot reuse an existing native turn.",
         );
+      bindOwner(existing);
       await existing.lease!.bindNative(binding);
       input.signal.throwIfAborted();
       return;
@@ -455,6 +486,7 @@ export class CodexInferenceAdmission {
     );
     if (roots.length === 1) {
       const operation = roots[0]!;
+      bindOwner(operation);
       operation.observedStart = true;
       operation.nativeBoundary = true;
       operation.nativeScopeId = input.scopeId;
@@ -505,6 +537,7 @@ export class CodexInferenceAdmission {
       );
       if (!operation?.lease)
         throw new Error("Native inference lost its binding owner.");
+      bindOwner(operation);
       await operation.lease.bindNative(binding);
       input.signal.throwIfAborted();
     } catch (error) {
@@ -532,6 +565,31 @@ export class CodexInferenceAdmission {
     if (!operation?.lease)
       throw new Error("Native resumption has no inference owner.");
     await operation.lease.resume();
+  }
+
+  /** Only Core's exact pending-begin cancellation or accepted negative resolve
+   * establishes that this physical scope cannot enter model execution. This
+   * must never be used for an uncertain resolver reply or a denied resume. */
+  rejectNativeBegin(
+    threadId: string,
+    turnId: string,
+    scopeId: string,
+    gateAttemptId: string,
+  ): void {
+    const key = JSON.stringify([threadId, turnId, scopeId]);
+    const entry = this.nativeEntries.get(key);
+    if (!entry || entry.gateAttemptId !== gateAttemptId) return;
+    const operation = entry.operation;
+    this.rememberCompleted(threadId, turnId, scopeId);
+    if (
+      operation &&
+      !operation.settled &&
+      !operation.preparing &&
+      operation.threadId === threadId &&
+      operation.turnId === turnId &&
+      (operation.nativeScopeId === scopeId || operation.nativeScopeId === null)
+    )
+      this.settle(operation, "failed");
   }
 
   finishNative(
