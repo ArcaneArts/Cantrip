@@ -2068,9 +2068,12 @@ semantics. This adds no timer, queue, grant or completed-request registry.
 Goal turn creation and failure/continuation accounting keep their existing
 authority; the patch never fabricates a turn or an execution result.
 
-The native patch was authored and reviewed against the tracked admission and
-clock patches. It was not applied or executed. Validation is source review,
-documentation formatting and `git diff --check` only. No tests, builds,
-typechecks, benchmarks, native/helper execution, hosted validation or
-computer-use testing were run. Runtime and supported-platform behavior remain
-unverified.
+The patch context was regenerated against the current turn-extension wrapper;
+its added and removed source lines are unchanged. The complete 75-patch series
+applies and builds through the normal development workflow on macOS ARM64.
+The default runtime verifier passes with patch fingerprint
+`d71d4f69c98d3e2b30e6d546957f691f0809270708e9dedf1d14c5f92a890612`.
+All 30 native durable Goal regression cases and all 44 Goal extension Rust tests
+pass against that source. These regressions do not establish the combined
+pre-start capacity-wait and cold-resumption budget scenario. Optimized builds,
+other platforms and whole-worker recovery acceptance remain unverified.

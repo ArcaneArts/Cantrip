@@ -1,7 +1,11 @@
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+index b862d2a..0ffc794 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -773,14 +773,24 @@ impl CodexThread {
+@@ -786,8 +786,17 @@ impl CodexThread {
+                     "replacement": request.responsesapi_client_metadata.replacement,
+                     "patch": request.responsesapi_client_metadata.patch
+                 }, "trace": request.trace });
 -            let attempt_id = gate
 -                .request_with_goal_epoch(
 +            let attempt_id = {
@@ -18,7 +22,7 @@ diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.
                      self.session.thread_id(),
                      turn_id.clone(),
                      request.start.turn_trigger.clone().unwrap(),
-                     snapshot,
+@@ -795,7 +804,8 @@ impl CodexThread {
                      goal_epoch,
                  )
                  .await
@@ -27,5 +31,4 @@ diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.
 +            };
              let result = self
                  .io
-                 .submit_turn_input_with_id(request, mode, turn_id)
-                 .await;
+                 .submit_turn_input_with_id(
