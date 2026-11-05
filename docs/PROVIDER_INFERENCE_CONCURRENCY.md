@@ -77,6 +77,51 @@ direct formatting, mechanical source patch/contract generation and diff checks
 were performed. Native execution, patch verification, tests, builds, benchmarks,
 typechecks and computer-use validation were not run.
 
+## Provider catalog changes
+
+Migration `0258_provider_inference_catalog` records one membership revision per
+owning account and each provider's creation ordinal. Existing providers start at
+zero. Provider creation, deletion and ownership changes advance membership in
+the same database transaction; ordinary edits preserve the creation ordinal and
+continue using the separate limit revision. Cascading user deletion does not
+recreate a deleted account's catalog. Both servers read membership, ordinals and
+limits together in one MVCC statement.
+
+Creation, deletion, limit changes and worker connection deliver the full
+`inference.configure` catalog. Workers ignore older membership snapshots and
+apply same-membership limit changes using each provider's monotonic revision.
+An authenticated runtime envelope for a provider created after an older snapshot
+can initialize that provider immediately. An envelope predating a snapshot that
+removed its provider cannot resurrect the pool. This avoids a growing list of
+deleted IDs and does not require polling or an availability probe before every
+inference. Legacy configuration arrays update limits without asserting deletions;
+learning a legacy pool's actual creation ordinal does not cancel its queue. A
+fallback default 8 can be replaced by its first actual revision-zero limit.
+
+Removal cancels waiting, granted-but-unstarted and confirmed-suspended tickets.
+Running tickets retain capacity through actual settlement. Subsequent Goal
+cycles and helpers cannot obtain new tickets for the removed provider. Current
+processes retain their existing lifecycle so removing a provider cannot kill a
+final response between physical inference settlement and worker result capture.
+Other providers' capacity is independent. Non-inference catalog/status work is
+not turned into an inference admission request. Suspended tickets have a live per-pool index, so snapshots and
+removal do not scan every completed operation.
+
+Workers acknowledge the applied catalog revision. Empty removed pools are
+discarded after their holders settle; pending canonical recovery metadata remains
+available for a separately authorized replacement route. The database membership
+counter is not a server semaphore and never grants or frees provider tickets.
+Delivery failures are reported without converting a committed provider mutation
+into a failed API mutation. Reconnection refreshes authoritative state; reliable
+retry of transient delivery failure on a still-connected worker remains a
+separate unfinished integration. Older workers need the updated catalog protocol.
+
+The migration was not executed. Source review, direct formatting, mechanical
+protocol export and diff checks were performed; no tests, builds, typechecks,
+benchmarks, native execution or computer-use validation ran. Runtime behavior is
+unverified. The remaining recovery, outcome-delivery, timing and bounded-runtime
+audit obligations of the full goal remain active.
+
 `WorkerInferenceAdmission` belongs to one server/owner/worker generation. Its
 provider pools are outside the project, account, model, and native-runtime maps.
 Runtime envelopes update the shared pool with their revision; stale revisions

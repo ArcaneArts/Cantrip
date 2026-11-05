@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { providerInferenceConfigurationSchema } from "./inference-admission.js";
+import {
+  providerInferenceConfigurationSchema,
+  providerInferenceRevisionSchema,
+} from "./inference-admission.js";
 import { endpointProviderKinds } from "./provider-definitions.js";
 import {
   directCapabilityPrepareCommandSchema,
@@ -53,6 +56,7 @@ export const workerCoreCommandSchemas = [
     .object({
       type: z.literal("inference.configure"),
       configurations: z.array(providerInferenceConfigurationSchema).max(10_000),
+      catalogRevision: providerInferenceRevisionSchema.optional(),
     })
     .strict(),
   directCapabilityPrepareCommandSchema,

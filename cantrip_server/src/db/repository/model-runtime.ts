@@ -53,6 +53,7 @@ export interface ModelRuntime {
     weeklyUsageReservePercent: number;
     maxConcurrentInference: number;
     inferenceConfigRevision: number;
+    inferenceCatalogCreatedRevision: number;
     credits?: ProviderCreditsSnapshot | null;
   };
 }
@@ -446,6 +447,8 @@ export class ModelRepository {
         weeklyUsageReservePercent: row.provider.weeklyUsageReservePercent,
         maxConcurrentInference: row.provider.maxConcurrentInference,
         inferenceConfigRevision: row.provider.inferenceConfigRevision,
+        inferenceCatalogCreatedRevision:
+          row.provider.inferenceCatalogCreatedRevision,
       },
     }));
   }

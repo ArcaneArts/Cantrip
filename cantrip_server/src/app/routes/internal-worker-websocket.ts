@@ -75,7 +75,7 @@ export interface InternalWorkerWebsocketRouteDependencies {
     ServerRepository,
     | "authenticateWorkerCredential"
     | "getWorkerOwnerId"
-    | "listProviderInferenceConfigurations"
+    | "readProviderInferenceCatalog"
   >;
   resumeNativeRuntimeHandoffsForWorker: (
     ownerId: string,

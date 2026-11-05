@@ -58,6 +58,7 @@ export const workerRuntimeProviderSchema = z.object({
   // Accept older runtime envelopes; admission resolves omissions to revision 0 / limit 8.
   maxConcurrentInference: providerInferenceLimitSchema.optional(),
   inferenceConfigRevision: providerInferenceRevisionSchema.optional(),
+  inferenceCatalogCreatedRevision: providerInferenceRevisionSchema.optional(),
   protectedApiKey: protectedSecretEnvelopeSchema.nullable().default(null),
   accountId: z.string().min(1).nullable().default(null),
   credentialHomeKey: z.string().min(1).max(500).nullable().default(null),

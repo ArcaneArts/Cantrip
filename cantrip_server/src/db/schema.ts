@@ -530,6 +530,22 @@ export const workerEnrollmentCodes = pgTable(
   ],
 );
 
+export const providerInferenceCatalogs = pgTable(
+  "provider_inference_catalogs",
+  {
+    ownerId: text("owner_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    revision: integer("revision").notNull().default(0),
+  },
+  (table) => [
+    check(
+      "provider_inference_catalogs_revision_check",
+      sql`${table.revision} >= 0`,
+    ),
+  ],
+);
+
 export const modelProviders = pgTable(
   "model_providers",
   {
@@ -550,6 +566,11 @@ export const modelProviders = pgTable(
       .notNull()
       .default(8),
     inferenceConfigRevision: integer("inference_config_revision")
+      .notNull()
+      .default(0),
+    inferenceCatalogCreatedRevision: integer(
+      "inference_catalog_created_revision",
+    )
       .notNull()
       .default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -581,6 +602,10 @@ export const modelProviders = pgTable(
     check(
       "model_providers_inference_config_revision_check",
       sql`${table.inferenceConfigRevision} >= 0`,
+    ),
+    check(
+      "model_providers_inference_catalog_created_revision_check",
+      sql`${table.inferenceCatalogCreatedRevision} >= 0`,
     ),
   ],
 );

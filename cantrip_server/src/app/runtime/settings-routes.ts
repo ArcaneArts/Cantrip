@@ -73,7 +73,7 @@ import {
   isZaiCodingPlanProvider,
   type ZaiCatalogService,
 } from "../../models/zai-catalog.js";
-import { synchronizeProviderInference } from "../../workers/provider-inference-config.js";
+import { synchronizeAllProviderInference } from "../../workers/provider-inference-config.js";
 import { WorkerUnavailableError } from "../../workers/bridge.js";
 import type { LimitedWorkerCommandBus } from "../../workers/limited-command-bus.js";
 import type { installProviderAccountAuthRoutes } from "../routes/provider-account-auth.js";
@@ -732,9 +732,24 @@ export function installSettingsRouteRuntime(
       return reply.code(400).send(invalidBody(input.error.issues));
     }
     try {
+      const ownerId = applicationOwnerId();
       const provider = await repository.createModelProvider(
-        applicationOwnerId(),
+        ownerId,
         input.data,
+      );
+      await synchronizeAllProviderInference(
+        repository,
+        bridge,
+        ownerId,
+        (error, workerId) =>
+          app.log.warn(
+            {
+              err: error,
+              workerId,
+              event: "inference.configuration.delivery-pending",
+            },
+            "Provider inference configuration delivery remains pending",
+          ),
       );
       if (isZaiCodingPlanProvider(provider)) {
         await loadProviderCatalog(
@@ -808,6 +823,21 @@ export function installSettingsRouteRuntime(
           ownerId,
           request.params.providerId,
         );
+        if (deleted)
+          await synchronizeAllProviderInference(
+            repository,
+            bridge,
+            ownerId,
+            (error, workerId) =>
+              app.log.warn(
+                {
+                  err: error,
+                  workerId,
+                  event: "inference.configuration.delivery-pending",
+                },
+                "Provider inference configuration delivery remains pending",
+              ),
+          );
         return deleted
           ? reply.code(204).send()
           : reply.code(404).send({ error: "Provider not found." });
@@ -848,27 +878,20 @@ export function installSettingsRouteRuntime(
           input.data,
         );
         if (provider && input.data.maxConcurrentInference !== undefined) {
-          const workers = await repository.listWorkers(ownerId);
-          const deliveries = await Promise.allSettled(
-            workers.map(({ workerId }) =>
-              synchronizeProviderInference(
-                repository,
-                bridge,
-                ownerId,
-                workerId,
-              ),
-            ),
-          );
-          deliveries.forEach((delivery, index) => {
-            if (delivery.status === "rejected")
+          await synchronizeAllProviderInference(
+            repository,
+            bridge,
+            ownerId,
+            (error, workerId) =>
               app.log.warn(
                 {
+                  err: error,
+                  workerId,
                   event: "inference.configuration.delivery-pending",
-                  workerId: workers[index]!.workerId,
                 },
                 "Provider inference configuration delivery remains pending",
-              );
-          });
+              ),
+          );
         }
         if (
           nativeConfigurationChanged &&

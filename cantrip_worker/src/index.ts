@@ -1727,6 +1727,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       providerId: command.provider.id,
       maxConcurrentInference: command.provider.maxConcurrentInference,
       inferenceConfigRevision: command.provider.inferenceConfigRevision,
+      inferenceCatalogCreatedRevision:
+        command.provider.inferenceCatalogCreatedRevision,
     });
     if (command.threadId && command.chatId && !stagingOperationId)
       projectGoalDelivery.watch(command.threadId, command.chatId);
@@ -3441,8 +3443,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "inference.configure": {
         const admission = inferenceAdmissionForWorker();
         admission.wakeRecovery();
-        for (const configuration of command.configurations)
-          admission.configure(configuration);
+        if (command.catalogRevision === undefined) {
+          for (const configuration of command.configurations)
+            admission.configure({
+              ...configuration,
+              inferenceCatalogCreatedRevision: undefined,
+            });
+        } else
+          admission.configureCatalog({
+            catalogRevision: command.catalogRevision,
+            configurations: command.configurations,
+          });
         const status = admission.snapshot();
         // Reconnection needs a snapshot even when configuration did not change.
         workerNotificationEmitter?.({ type: "inference.status", status });
