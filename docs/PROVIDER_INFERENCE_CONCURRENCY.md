@@ -704,6 +704,16 @@ their restored order until the existing canonical dispatcher delivers them. They
 appear in queue counts/positions and do not hold active inference capacity. Each
 replacement must durably adopt its order before its grant can resolve.
 
+Configuration and reconnect/queue notifications initialize this recovery even
+when no chat runtime is open. Startup coalesces with native launches and reads
+the actual ownership keeper before any runtime can grant capacity. A failed
+initial keeper launch or snapshot is retried with the existing bounded recovery
+backoff; it is never treated as an empty journal. Only a failed keeper that has
+actually closed can be relaunched. Losing an established keeper still retires
+its runtimes and requires a new worker generation. Recovery startup stays off
+the worker control-command completion path. Shutdown joins an in-flight startup
+before closing its keeper, so it cannot leave a late owner behind.
+
 Both servers atomically distinguish command transport loss from model/native
 completion when closing a GUI attempt. That marker alone authorizes no replay.
 Combined with exact previous-generation journal no-start evidence, it allows the

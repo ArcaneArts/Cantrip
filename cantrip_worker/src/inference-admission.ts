@@ -242,6 +242,7 @@ export class WorkerInferenceAdmission {
   private closure: Promise<void> | null = null;
   private readonly journal: WorkerInferenceJournal | null;
   private sequence = 0;
+  private recoveryStartup: Promise<void> | null = null;
   private recoveryInitialized = false;
   private readonly recoveryPending = new Map<string, string>();
   private readonly restored = new Map<string, RestoredWaiter>();
@@ -287,6 +288,7 @@ export class WorkerInferenceAdmission {
     this.closure = (async () => {
       const retired = [...this.runtimes].map((runtime) => this.retire(runtime));
       await Promise.all(retired);
+      await this.recoveryStartup?.catch(() => {});
       await this.recoveryWork?.catch(() => {});
       await this.journal?.flush();
       await this.nativeOwnership?.close();
@@ -304,6 +306,7 @@ export class WorkerInferenceAdmission {
   async confirmNativeOwnership(): Promise<void> {
     if (!this.journal)
       throw new Error("Native inference ownership is unavailable.");
+    await this.prepareRecovery();
     await this.journal.snapshot();
   }
 
@@ -578,11 +581,10 @@ export class WorkerInferenceAdmission {
           return runtime.generation;
         },
         prepareNativeLaunch: async () => {
+          await this.prepareRecovery();
           const environment = await this.nativeOwnership?.prepare(
             runtime.generation,
           );
-          await this.journal?.initialize();
-          this.initializeRecovery();
           if (this.closing || runtime.retiring || runtime.retired)
             throw new Error("The inference runtime was retired during launch.");
           runtime.prepared = true;
@@ -1414,6 +1416,30 @@ export class WorkerInferenceAdmission {
     );
   }
 
+  /** The actual keeper takeover and journal read must not depend on a chat
+   * opening. Configuration/reconnect notices can recover a cold worker too.
+   * Coalesce startup with native launches, without occupying a command channel
+   * or declaring capacity available before the keeper has fenced old owners. */
+  private prepareRecovery(): Promise<void> {
+    if (this.closing)
+      return Promise.reject(new Error("Inference ownership is retiring."));
+    if (this.recoveryStartup) return this.recoveryStartup;
+    const startup = (async () => {
+      await this.journal?.initialize();
+      if (this.closing)
+        throw new Error("Inference ownership retired during recovery.");
+      this.initializeRecovery();
+    })();
+    this.recoveryStartup = startup;
+    void startup.catch((error) => {
+      if (this.recoveryStartup === startup) this.recoveryStartup = null;
+      if (this.closing) return;
+      this.reportJournalError(error);
+      this.scheduleRecoveryRetry();
+    });
+    return startup;
+  }
+
   private initializeRecovery(): void {
     if (this.recoveryInitialized) return;
     if (this.reconcileRecovery)
@@ -1426,13 +1452,13 @@ export class WorkerInferenceAdmission {
 
   /** Existing queue/reconnect notifications wake metadata reconciliation only. */
   wakeRecovery(chatId?: string): void {
-    if (
-      !this.recoveryInitialized ||
-      !this.journal ||
-      !this.reconcileRecovery ||
-      this.closing
-    )
+    if (!this.journal || !this.reconcileRecovery || this.closing) return;
+    if (!this.recoveryInitialized) {
+      // Startup installs all recoverable records before processing notices;
+      // a chat-specific wake cannot accidentally omit the other projects.
+      void this.prepareRecovery();
       return;
+    }
     if (chatId) this.recoveryChats.add(chatId);
     else this.recoveryAll = true;
     if (this.recoveryWork) return;
@@ -1545,14 +1571,18 @@ export class WorkerInferenceAdmission {
       for (const pool of this.pools.values()) this.drain(pool);
       this.changed();
     } while (!this.closing && (this.recoveryAll || this.recoveryChats.size));
-    if (failed && !this.closing && !this.recoveryRetry) {
-      this.recoveryRetry = setTimeout(() => {
-        this.recoveryRetry = null;
-        this.wakeRecovery();
-      }, this.recoveryRetryMs);
-      this.recoveryRetry.unref();
-      this.recoveryRetryMs = Math.min(this.recoveryRetryMs * 2, 30_000);
-    } else if (!failed) this.recoveryRetryMs = 1_000;
+    if (failed) this.scheduleRecoveryRetry();
+    else this.recoveryRetryMs = 1_000;
+  }
+
+  private scheduleRecoveryRetry(): void {
+    if (this.closing || this.recoveryRetry) return;
+    this.recoveryRetry = setTimeout(() => {
+      this.recoveryRetry = null;
+      this.wakeRecovery();
+    }, this.recoveryRetryMs);
+    this.recoveryRetry.unref();
+    this.recoveryRetryMs = Math.min(this.recoveryRetryMs * 2, 30_000);
   }
 
   private adoptRestorations(): void {

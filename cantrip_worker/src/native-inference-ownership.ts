@@ -59,8 +59,7 @@ export class LocalNativeInferenceOwnership implements NativeInferenceOwnership {
 
   async prepare(runtimeGeneration: string): Promise<NodeJS.ProcessEnv> {
     if (this.closed) throw new Error("Native inference ownership is closed.");
-    this.owner ??= this.claim();
-    await this.owner;
+    await this.ensureOwner();
     await this.control(["--prepare", runtimeGeneration]);
     if (!this.owned || this.closed)
       throw new Error("Native inference ownership was lost.");
@@ -90,8 +89,7 @@ export class LocalNativeInferenceOwnership implements NativeInferenceOwnership {
   }
 
   async journal(command: InferenceJournalCommand): Promise<unknown> {
-    this.owner ??= this.claim();
-    await this.owner;
+    await this.ensureOwner();
     const child = this.keeper;
     if (!child || !this.owned || this.closed)
       throw new Error("Native inference journal has no live owner.");
@@ -232,6 +230,22 @@ export class LocalNativeInferenceOwnership implements NativeInferenceOwnership {
     if (this.closed)
       throw new Error("Native inference ownership closed during claim.");
     this.owned = true;
+  }
+
+  private async ensureOwner(): Promise<void> {
+    if (this.closed) throw new Error("Native inference ownership is closed.");
+    const owner = (this.owner ??= this.claim());
+    try {
+      await owner;
+    } catch (error) {
+      // A failed initial launch/read must not poison every future attempt.
+      // Retry only after the actual failed keeper has closed (or never spawned).
+      // A successfully owned keeper's later exit keeps its resolved promise:
+      // existing runtimes are retired, and this generation cannot reclaim it.
+      if (this.owner === owner && !this.closed && !this.keeper)
+        this.owner = null;
+      throw error;
+    }
   }
 
   private async control(arguments_: string[]): Promise<void> {
