@@ -33,8 +33,9 @@ source-aware product workflows. Final distribution acceptance is recorded below.
 Phase 4 adds the optional [native desktop package](packages/remote/README.md),
 including its protected CUA carrier. Docker/ISO builds include it with the
 executor edition by default; `CANTRIP_OS_REMOTE=0` omits it independently.
-Agent routing, integrated viewing/takeover and managed service access are still
-in progress. Native and package evidence is recorded in acceptance.
+Version 0.2.0 routes normal agent CUA and previews to the captured Linux desktop.
+Integrated viewing/takeover, clipboard and managed service access are still in
+progress. Native, package and product evidence are recorded in acceptance.
 
 Phase 3 execution and distribution acceptance is recorded. See [acceptance results](ACCEPTANCE.md)
 for the actual tested builds and platform limits. Iterate in Docker first; build

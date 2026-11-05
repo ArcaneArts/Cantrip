@@ -31,6 +31,11 @@ impl Raster {
 }
 
 pub trait CaptureBackend: Send {
+    /// Host displays can contain protected Cantrip windows. A backend bound by
+    /// the guest carrier to an explicit owned desktop has no host display.
+    fn protects_host_displays(&self) -> bool {
+        true
+    }
     /// Native application identity, never a window title supplied by the model.
     fn is_cantrip_application(&self, target: &Target) -> Result<bool> {
         Ok(target

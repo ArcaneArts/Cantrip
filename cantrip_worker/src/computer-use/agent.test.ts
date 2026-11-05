@@ -2,7 +2,11 @@ import { randomUUID } from "node:crypto";
 import type { CantripMcpBinding } from "@cantrip/protocol";
 import type { CuaAgentAuthority } from "@cantrip/protocol/computer-use-agent";
 import { describe, expect, it, vi } from "vitest";
-import { CuaAgentCoordinator, type CuaAgentCommand } from "./agent.js";
+import {
+  CuaAgentCoordinator,
+  type CuaAgentCommand,
+  type CuaAgentCoordinatorOptions,
+} from "./agent.js";
 import { CuaAgentApprovalEvents } from "./agent-approval-events.js";
 import type { CuaApprovalManager } from "./approvals.js";
 import type { CantripCuaService } from "./service.js";
@@ -37,7 +41,10 @@ const authority: CuaAgentAuthority = {
     usesDefault: true,
   },
 };
-function fixture(usesDefault = true) {
+function fixture(
+  usesDefault = true,
+  acquireService?: CuaAgentCoordinatorOptions["acquireService"],
+) {
   const currentAuthority = structuredClone(authority);
   currentAuthority.profile.usesDefault = usesDefault;
   const root = new AbortController();
@@ -63,6 +70,7 @@ function fixture(usesDefault = true) {
     identity: () => identity,
     authority: fetch,
     service: service as unknown as CantripCuaService,
+    acquireService,
     approvals: approvals as unknown as CuaApprovalManager,
     events,
   });
@@ -121,6 +129,37 @@ function fixture(usesDefault = true) {
   };
 }
 describe("CUA agent runtime authority", () => {
+  it("uses the acquired backend without touching Host and releases its command lease once", async () => {
+    const release = vi.fn(async () => {});
+    const guest = {
+      evaluateJavascript: vi.fn(async () => ({ value: 42, images: [] })),
+      cancelScope: vi.fn(),
+      resetJavascript: vi.fn(async () => {}),
+    };
+    const acquire = vi.fn(async () => ({
+      service: guest as unknown as CantripCuaService,
+      release,
+    }));
+    const f = fixture(true, acquire);
+    await f.call();
+    expect(guest.evaluateJavascript).toHaveBeenCalledTimes(1);
+    expect(f.service.evaluateJavascript).not.toHaveBeenCalled();
+    f.root.abort();
+    expect(guest.cancelScope).toHaveBeenCalled();
+    expect(f.service.cancelScope).not.toHaveBeenCalled();
+    await f.unregister();
+    await f.coordinator.close();
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+  it("does not acquire a backend when fresh Server authority fails", async () => {
+    const acquire = vi.fn();
+    const f = fixture(true, acquire);
+    f.fetch.mockRejectedValueOnce(new Error("Canonical placement retired"));
+    await expect(f.call()).rejects.toThrow("Canonical placement retired");
+    expect(acquire).not.toHaveBeenCalled();
+    expect(f.service.evaluateJavascript).not.toHaveBeenCalled();
+    await f.unregister();
+  });
   it("preserves unknown input receipts when a script discards them and no activity publisher exists", async () => {
     const f = fixture();
     f.service.evaluateJavascript.mockImplementationOnce(

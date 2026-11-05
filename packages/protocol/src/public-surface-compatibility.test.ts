@@ -517,6 +517,8 @@ const agentChatExports = [
 ].sort();
 
 const cantripOsExports = [
+  "cantripOsDesktopPlacement",
+  "cantripOsDesktopPlacementSchema",
   "cantripOsRunDefinitionRequestSchema",
   "cantripOsRunDefinitionWorkerCommandSchema",
   "cantripOsRunDefinitionApiSchema",

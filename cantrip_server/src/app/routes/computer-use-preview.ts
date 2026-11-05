@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { cantripOsDesktopPlacement } from "@cantrip/protocol";
 import {
   cuaPreviewAuthoritySchema,
   cuaPreviewLeaseSchema,
@@ -142,6 +143,9 @@ export function computerUsePreviewAuthority(input: {
         ? context.worktreeId
         : context.scratchRootId,
     generation: context.computerUseAuthorityGeneration,
+    ...(context.osExecution
+      ? { osPlacement: cantripOsDesktopPlacement(context.osExecution) }
+      : {}),
     cantripAppAllowed: context.computerUseCantripAppAllowed === true,
     profile: {
       selectedId: profile.selectedId,

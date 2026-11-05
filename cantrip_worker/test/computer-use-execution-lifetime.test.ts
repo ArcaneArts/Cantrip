@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
 import { CodexAppServer } from "../src/codex/app-server.js";
 import { CodexExecutionLifetime } from "../src/codex/execution-lifetime.js";
+import type { CodexNativeEnvironment } from "../src/codex/runtime-types.js";
 
 describe("observed Codex turn lifetime", () => {
   it("keeps one signal per turn and cannot revive its terminal signal", () => {
@@ -44,12 +45,22 @@ describe("observed Codex turn lifetime", () => {
 
 // Drive the existing native notification receiver directly. No process, model,
 // filesystem, CUA helper or permission prompt is needed for these state tests.
-function fixture(executionKind = "chat") {
+function fixture(
+  executionKind = "chat",
+  nativeEnvironment: CodexNativeEnvironment | null = null,
+) {
   const runtime = new CodexAppServer(
     "/unused/codex",
     "/unused/data",
     "/unused/home",
     unprobedCodexRuntimeReport,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    [],
+    null,
+    nativeEnvironment,
   );
   const native = runtime as unknown as {
     registerRootExecution(active: unknown): void;
@@ -155,6 +166,38 @@ function fixture(executionKind = "chat") {
 }
 
 describe("Codex runtime computer-use scope", () => {
+  it("resolves observed Linux turns and retains exact turn cancellation", () => {
+    const f = fixture("chat", {
+      selection: {
+        environmentId: "captured-linux",
+        cwd: "/workspace/project",
+        runtimeWorkspaceRoots: ["/workspace/project"],
+      },
+      instructions: "Captured Linux workspace",
+      prepare: vi.fn(async () => {}),
+      snapshot: vi.fn(async () => new Map()),
+      hasGitMetadata: vi.fn(async () => true),
+    });
+    const root = f.resolve()!;
+    expect(root).toMatchObject({
+      chatId: "chat",
+      rootThreadId: "root",
+      turnId: "root-turn",
+      signal: { aborted: false },
+    });
+    expect(f.resolve("root", "another-turn")).toBeNull();
+    expect(f.resolve("root", "root-turn", "another-chat")).toBeNull();
+    f.child();
+    const child = f.resolve("child", "child-turn")!;
+    expect(child.rootThreadId).toBe("root");
+    f.complete("root", "root-turn");
+    expect(root.signal.aborted).toBe(true);
+    expect(child.signal.aborted).toBe(true);
+    expect(f.resolve()).toBeNull();
+    expect(f.resolve("child", "child-turn")).toBeNull();
+    f.runtime.close();
+  });
+
   it("retains an early native child start until the spawn result supplies ancestry", () => {
     const f = fixture();
     f.start("child", "child-turn");

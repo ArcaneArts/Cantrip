@@ -893,7 +893,6 @@ export function createChatTurnRuntime({
                 nativeClientUserMessageId: options.nativeClientUserMessageId,
                 queuedPromptId: options.queuedPromptId,
                 computerUseAuthority:
-                  !execution.osExecution &&
                   execution.computerUseEnabled === true
                     ? {
                         ...computerUsePreviewAuthority({

@@ -59,7 +59,6 @@ export class CantripOsChatRepository {
   ): Promise<{
     cwd: string;
     osExecution?: CantripOsExecution;
-    computerUseEnabled?: false;
   }> {
     const [captured] = await this.database
       .select()
@@ -93,7 +92,7 @@ export class CantripOsChatRepository {
         "The chat worktree differs from its captured OS binding; no host fallback was attempted.",
       );
     const osExecution = cantripOsExecutionForSource(ownerId, source, placement);
-    return { cwd: b.guestPath, osExecution, computerUseEnabled: false };
+    return { cwd: b.guestPath, osExecution };
   }
 }
 

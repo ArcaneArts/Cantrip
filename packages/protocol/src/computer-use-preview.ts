@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { cuaIdSchema } from "./computer-use.js";
 import { encryptedAgentInteractionRequestCreateSchema } from "./agent-interactions.js";
+import { cantripOsDesktopPlacementSchema } from "./worker-command-cantrip-os.js";
 
 /** Server-owned authorization state, never copied from a browser request. */
 export const cuaPreviewAuthoritySchema = z.strictObject({
@@ -12,6 +13,7 @@ export const cuaPreviewAuthoritySchema = z.strictObject({
   contextKind: z.enum(["project", "standalone"]),
   placementId: cuaIdSchema,
   generation: z.number().int().min(1).max(2_147_483_647),
+  osPlacement: cantripOsDesktopPlacementSchema.optional(),
   cantripAppAllowed: z.boolean().default(false),
   profile: z.strictObject({
     selectedId: cuaIdSchema,

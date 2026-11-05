@@ -56,11 +56,12 @@ def daemon(store):
                         stop()
                         result = {"service": "stopping"}
                     elif command in ("open", "show"):
-                        result = manager.inspect(data.get("workspace"), command == "open")
+                        result = manager.inspect(data.get("workspace"), command == "open",
+                                                 expected_placement=data.get("expectedPlacement"))
                     elif command == "close":
-                        result = manager.close_workspace(data.get("workspace"))
+                        result = manager.close_workspace(data.get("workspace"), data.get("expected"), data.get("connectionId"))
                     elif command == "connect":
-                        record = manager.connect(data.get("workspace"), data.get("expected"))
+                        record = manager.connect(data.get("workspace"), data.get("expected"), data.get("connectionId"))
                         self.wfile.write(b'{"ready":true}\n')
                         self.wfile.flush()
                         streaming = True
@@ -148,10 +149,11 @@ def service(store, action):
     raise RuntimeError("Remote control did not become ready; inspect its system journal")
 
 
-def connect(store, workspace, expected):
+def connect(store, workspace, expected, connection_id):
     with socket.socket(socket.AF_UNIX) as connection:
         connection.connect(str(store.socket))
-        connection.sendall(json.dumps({"command": "connect", "workspace": workspace, "expected": expected}).encode() + b"\n")
+        connection.sendall(json.dumps({"command": "connect", "workspace": workspace, "expected": expected,
+                                       "connectionId": connection_id}).encode() + b"\n")
         with connection.makefile("rb", buffering=0) as stream:
             result = json.loads(stream.readline(65536))
         if result != {"ready": True}:
@@ -168,8 +170,11 @@ def main():
     for name in ("open", "show", "close", "connect"):
         command = commands.add_parser(name)
         command.add_argument("workspace")
-        if name == "connect":
-            command.add_argument("--expect", required=True, type=json.loads)
+        if name in ("connect", "close"):
+            command.add_argument("--expect", required=name == "connect", type=json.loads)
+            command.add_argument("--connection-id")
+        if name == "open":
+            command.add_argument("--expect-placement", type=json.loads)
     commands.add_parser("service").add_argument("action", choices=("start", "stop", "restart"))
     args = parser.parse_args()
     if os.geteuid() != 0:
@@ -179,13 +184,15 @@ def main():
     if args.command == "daemon":
         daemon(store)
     elif args.command == "connect":
-        connect(store, args.workspace, args.expect)
+        connect(store, args.workspace, args.expect, args.connection_id)
     else:
         with store.lock("control"):
             if args.command == "status":
                 print(json.dumps(running(store)))
             elif args.command in ("open", "show", "close"):
-                print(json.dumps(request(store, args.command, workspace=args.workspace)))
+                extra = {"expected": args.expect, "connectionId": args.connection_id} if args.command == "close" else \
+                    {"expectedPlacement": args.expect_placement} if args.command == "open" else {}
+                print(json.dumps(request(store, args.command, workspace=args.workspace, **extra)))
             elif args.command in ("enable", "disable"):
                 store.enabled(args.command == "enable")
                 if Path("/run/systemd/system").exists():

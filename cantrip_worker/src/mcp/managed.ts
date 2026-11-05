@@ -118,7 +118,9 @@ export function managedCuaMcpServer(
 export function managedCantripMcpHttpServer(
   connection: CantripMcpConnectionDocument,
   managedToolNames: readonly (typeof CANTRIP_MCP_TOOL_NAMES)[number][],
-): McpServerConfiguration & { managedToolNames: string[] } {
+): Extract<McpServerConfiguration, { transport: "http" }> & {
+  managedToolNames: string[];
+} {
   return {
     name: MANAGED_CANTRIP_MCP_NAME,
     enabled: true,
@@ -131,5 +133,22 @@ export function managedCantripMcpHttpServer(
     headers: { Authorization: `Bearer ${connection.credential}` },
     environmentHeaders: {},
     managedToolNames: [...managedToolNames],
+  };
+}
+
+/** CUA uses the same Worker-local, authenticated network boundary as Linux MCP. */
+export function managedCuaMcpHttpServer(
+  connection: CantripMcpConnectionDocument,
+): Extract<McpServerConfiguration, { transport: "http" }> & {
+  managedToolNames: string[];
+} {
+  return {
+    ...managedCantripMcpHttpServer(connection, []),
+    name: MANAGED_CUA_MCP_NAME,
+    url: new URL(
+      `/v1/cua-mcp/${connection.bindingId}`,
+      connection.endpoint,
+    ).toString(),
+    managedToolNames: ["js", "js_reset"],
   };
 }

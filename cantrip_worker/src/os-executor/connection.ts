@@ -115,19 +115,22 @@ export async function workspaceControl<T>(
 export function remoteControl<T>(
   transport: OsExecutorTransport,
   args: string[],
+  signal?: AbortSignal,
 ): Promise<T> {
-  return control<T>(transport, args, "cantrip-remote");
+  return control<T>(transport, args, "cantrip-remote", signal);
 }
 
 async function control<T>(
   transport: OsExecutorTransport,
   args: string[],
   program: "cantrip-executor" | "cantrip-workspaces" | "cantrip-remote",
+  signal?: AbortSignal,
 ): Promise<T> {
   const spec = programCommand(transport, args, program);
   return new Promise((resolve, reject) => {
     const child = spawn(spec.command, spec.args, {
       stdio: ["pipe", "pipe", "pipe"],
+      signal,
     });
     let output = "",
       diagnostics = "";

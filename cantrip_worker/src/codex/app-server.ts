@@ -175,6 +175,7 @@ import { lstat, mkdir } from "node:fs/promises";
 import {
   CUA_DISCOVERY_GUIDANCE,
   CUA_START_GUIDANCE,
+  CUA_LINUX_GUIDANCE,
 } from "../mcp/cua-guidance.js";
 import { createAgentActivityRawEnvelope } from "./raw-capture.js";
 import { boundedJsonValueSchema } from "@cantrip/protocol/bounded-json";
@@ -786,10 +787,12 @@ export function cantripChatThreadParams(
   executionProfile: RunAgentTurnOptions["executionProfile"] = "ide",
   mcpServers: NonNullable<RunAgentTurnOptions["mcpServers"]> = [],
 ) {
-  const cuaInstructions = mcpServers.some(
+  const cua = mcpServers.find(
     (server) => server.enabled && server.name === MANAGED_CUA_MCP_NAME,
-  )
-    ? `${CUA_DISCOVERY_GUIDANCE} ${CUA_START_GUIDANCE}\n\n`
+  );
+  // The managed HTTP adapter targets Linux; Host uses the stdio window adapter.
+  const cuaInstructions = cua
+    ? `${cua.transport === "http" ? CUA_LINUX_GUIDANCE : `${CUA_DISCOVERY_GUIDANCE} ${CUA_START_GUIDANCE}`}\n\n`
     : "Computer use is not enabled.\n\n";
   if (executionProfile === "standalone-chat") {
     return {
@@ -6003,7 +6006,6 @@ export class CodexAppServer implements CodexRuntime {
     threadId: string;
     turnId: string;
   }): CodexComputerUseExecution | null {
-    if (this.nativeEnvironment) return null;
     return this.#executions.resolveComputerUseExecution(input);
   }
 

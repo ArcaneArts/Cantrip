@@ -25,7 +25,7 @@ import { CuaAuthorizationError } from "./handler.js";
 import { waitBeforeCuaSend } from "./cancellation.js";
 import type { CuaJavascriptAction } from "./javascript.js";
 import { adaptCuaModelImages } from "./model-images.js";
-import { CantripCuaService } from "./service.js";
+import { CantripCuaService, type CuaServiceLease } from "./service.js";
 import type {
   ComputerUseOperation,
   CuaSession,
@@ -68,9 +68,16 @@ interface Registration {
   lifetimes: Map<AbortSignal, Lifetime>;
   calls: Set<Promise<unknown>>;
   cancelledThreads: Set<string>;
+  lease: CuaServiceLease | null;
+  acquisition: Promise<CuaServiceLease> | null;
+  retirement: Promise<void> | null;
 }
 export interface CuaAgentCoordinatorOptions {
   service: CantripCuaService;
+  acquireService?: (
+    authority: CuaAgentAuthority,
+    signal: AbortSignal,
+  ) => Promise<CuaServiceLease>;
   approvals: CuaApprovalManager;
   events: CuaAgentApprovalEvents;
   identity(): { ownerId: string; serverId: string; workerId: string };
@@ -131,6 +138,11 @@ export class CuaAgentCoordinator {
       lifetimes: new Map(),
       calls: new Set(),
       cancelledThreads: new Set(),
+      lease: this.options.acquireService
+        ? null
+        : { service: this.options.service, release: async () => {} },
+      acquisition: null,
+      retirement: null,
     };
     this.registrations.add(record);
     return async () => {
@@ -140,8 +152,41 @@ export class CuaAgentCoordinator {
         await this.options.events.drain(record.command.publish);
       } finally {
         this.registrations.delete(record);
+        await this.releaseService(record);
       }
     };
+  }
+
+  private service(record: Registration): Promise<CantripCuaService> {
+    if (record.controller.signal.aborted)
+      throw new CuaAuthorizationError("execution-unavailable");
+    if (record.lease) return Promise.resolve(record.lease.service);
+    if (!record.acquisition) {
+      const work = this.options.acquireService!(
+        record.authority,
+        record.controller.signal,
+      ).then((lease) => {
+        record.lease = lease;
+        return lease;
+      });
+      record.acquisition = work;
+      void work.catch(() => {
+        if (record.acquisition === work) record.acquisition = null;
+      });
+    }
+    return record.acquisition.then((lease) => lease.service);
+  }
+
+  private releaseService(record: Registration): Promise<void> {
+    if (!record.retirement)
+      record.retirement = (async () => {
+        await Promise.allSettled([...record.calls]);
+        await record.acquisition?.catch(() => {});
+        const lease = record.lease;
+        record.lease = null;
+        await lease?.release();
+      })();
+    return record.retirement;
   }
 
   private identity(input: {
@@ -224,7 +269,7 @@ export class CuaAgentCoordinator {
           () => {
             this.observations.clear(retained);
             this.options.approvals.revokeContext(retained.signal);
-            this.options.service.cancelScope(retained.scope);
+            record.lease?.service.cancelScope(retained.scope);
             record.lifetimes.delete(native.signal);
           },
           { once: true },
@@ -249,10 +294,11 @@ export class CuaAgentCoordinator {
     let priorSession: CuaSession | null = null;
     if (record.command.publishActivity) {
       try {
-        priorSession = this.options.service.javascriptSession(
-          lifetime.scope,
-          lifetime.signal,
-        );
+        priorSession =
+          record.lease?.service.javascriptSession(
+            lifetime.scope,
+            lifetime.signal,
+          ) ?? null;
       } catch {}
     }
     const publishTerminal = (failed: boolean, error?: unknown) => {
@@ -260,7 +306,7 @@ export class CuaAgentCoordinator {
       let session = priorSession;
       try {
         session =
-          this.options.service.javascriptSession(
+          record.lease?.service.javascriptSession(
             lifetime.scope,
             lifetime.signal,
           ) ?? priorSession;
@@ -346,9 +392,10 @@ export class CuaAgentCoordinator {
   ): Promise<CallToolResult> {
     const active = AbortSignal.any([signal, lifetime.signal]);
     await this.refresh(record, binding, active);
+    const service = await waitBeforeCuaSend(this.service(record), active);
     if (request.operation === "js_reset") {
       await waitBeforeCuaSend(
-        this.options.service.resetJavascript(lifetime.scope, lifetime.signal),
+        service.resetJavascript(lifetime.scope, lifetime.signal),
         active,
       );
       active.throwIfAborted();
@@ -362,7 +409,7 @@ export class CuaAgentCoordinator {
       };
     }
     const inputAttempts: { method: string; outcome: string }[] = [];
-    const result = await this.options.service.evaluateJavascript(
+    const result = await service.evaluateJavascript(
       lifetime.scope,
       request.script,
       {
@@ -419,7 +466,7 @@ export class CuaAgentCoordinator {
         authorize: async (action, callSignal) => {
           const authority = await this.refresh(record, binding, callSignal);
           if (action.operation === "wait") return; // lifetime/authority was refreshed above; no new observation or input.
-          const state = this.options.service.javascriptSession(
+          const state = service.javascriptSession(
             lifetime.scope,
             lifetime.signal,
           );
@@ -490,10 +537,7 @@ export class CuaAgentCoordinator {
     };
     const image = images.at(-1);
     const sessionSignal = image
-      ? this.options.service.javascriptSessionSignal(
-          lifetime.scope,
-          lifetime.signal,
-        )
+      ? service.javascriptSessionSignal(lifetime.scope, lifetime.signal)
       : null;
     if (image && sessionSignal) {
       const { executionLaneId: _lane, ...authority } = record.authority;
@@ -503,10 +547,7 @@ export class CuaAgentCoordinator {
         image,
         signal: AbortSignal.any([active, sessionSignal]),
         current: () =>
-          this.options.service.javascriptSession(
-            lifetime.scope,
-            lifetime.signal,
-          ),
+          service.javascriptSession(lifetime.scope, lifetime.signal),
       });
     }
     return response;
@@ -552,8 +593,9 @@ export class CuaAgentCoordinator {
     for (const lifetime of record.lifetimes.values()) {
       this.observations.clear(lifetime);
       this.options.approvals.revokeContext(lifetime.signal);
-      this.options.service.cancelScope(lifetime.scope);
+      record.lease?.service.cancelScope(lifetime.scope);
     }
+    void this.releaseService(record).catch(() => {});
   }
   cancelChat(chatId: string) {
     for (const r of this.registrations)
@@ -574,7 +616,7 @@ export class CuaAgentCoordinator {
             this.observations.clear(lifetime);
             lifetime.controller.abort();
             this.options.approvals.revokeContext(lifetime.signal);
-            this.options.service.cancelScope(lifetime.scope);
+            r.lease?.service.cancelScope(lifetime.scope);
           }
       }
     }
@@ -604,5 +646,8 @@ export class CuaAgentCoordinator {
   close() {
     this.closed = true;
     this.disconnect();
+    return Promise.allSettled(
+      [...this.registrations].map((record) => this.releaseService(record)),
+    ).then(() => {});
   }
 }

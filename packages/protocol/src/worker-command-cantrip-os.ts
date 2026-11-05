@@ -74,6 +74,30 @@ export const cantripOsExecutionSchema = z
   .strict();
 export type CantripOsExecution = z.infer<typeof cantripOsExecutionSchema>;
 
+/** Public CUA destination identity. Transport, private paths and account details
+ * stay in the separately admitted Worker execution capture. */
+export const cantripOsDesktopPlacementSchema = sourceScope.pick({
+  instanceId: true,
+  guestInstanceId: true,
+  attachmentGeneration: true,
+  runtimeGeneration: true,
+  bindingId: true,
+  bindingGeneration: true,
+  projectSourceId: true,
+  worktreeId: true,
+  workspaceId: true,
+  guestWorkspaceId: true,
+});
+export type CantripOsDesktopPlacement = z.infer<
+  typeof cantripOsDesktopPlacementSchema
+>;
+
+export function cantripOsDesktopPlacement(
+  execution: CantripOsExecution,
+): CantripOsDesktopPlacement {
+  return cantripOsDesktopPlacementSchema.strip().parse(execution.scope);
+}
+
 export const cantripOsProvisionIntentSchema = z.discriminatedUnion("mode", [
   z
     .object({

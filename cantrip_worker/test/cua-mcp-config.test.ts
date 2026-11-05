@@ -19,6 +19,22 @@ import { CANTRIP_MCP_LOCAL_OPERATION_TIMEOUT_MS } from "../src/mcp/timeouts.js";
 
 const invocation = { command: "node", arguments: ["cua-stdio.js"] };
 describe("managed CUA MCP configuration", () => {
+  it("gives Linux turns assigned-display instructions instead of the Host window starter", () => {
+    const instructions = cantripChatThreadParams(true, "ide", [
+      {
+        name: "cantrip_cua",
+        enabled: true,
+        transport: "http",
+        url: "http://127.0.0.1:1234/v1/cua-mcp/fixture",
+      },
+    ]).developerInstructions;
+    expect(instructions).toContain("assigned CantripOS X11 desktop");
+    expect(instructions).toContain("cua.targets()");
+    expect(instructions).toContain("cantrip-desktop");
+    expect(instructions).not.toContain("Computer use is not enabled");
+    expect(instructions).not.toContain("cua.openWindow({application:");
+    expect(instructions).not.toContain("Brave");
+  });
   it.each(["ide", "standalone-chat"] as const)(
     "advertises the actual CUA entry point in %s thread instructions",
     (profile) => {

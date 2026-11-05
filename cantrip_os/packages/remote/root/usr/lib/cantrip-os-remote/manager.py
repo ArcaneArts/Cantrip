@@ -15,12 +15,13 @@ HERE = Path(__file__).parent
 
 
 class Connection:
-    def __init__(self, workspace, context, child, ready, service_pins):
+    def __init__(self, workspace, context, child, ready, service_pins, connection_id):
         self.workspace = workspace
         self.context = context
         self.child = child
         self.ready = ready
         self.service_pins = service_pins
+        self.connection_id = connection_id
         self.pidfd = os.pidfd_open(child.pid)
         self.lock = threading.RLock()
         self.disposed = False
@@ -72,12 +73,13 @@ class Manager:
                                             "stopping": record.stopping.is_set()}
                                     for name, record in self.connections.items()}}
 
-    def inspect(self, workspace, start=False, pins=None):
+    def inspect(self, workspace, start=False, pins=None, expected_placement=None):
         if self.stopping:
             raise RuntimeError("Remote service is stopping")
-        return {**observe(workspace, start, pins), "remote_generation": self.generation}
+        return {**observe(workspace, start, pins, expected_placement), "remote_generation": self.generation}
 
-    def connect(self, workspace, expected):
+    def connect(self, workspace, expected, connection_id=None):
+        connection_id = str(uuid.UUID(connection_id)) if connection_id is not None else str(uuid.uuid4())
         pins = []
         try:
             current = self.inspect(workspace, pins=pins)
@@ -97,7 +99,7 @@ class Manager:
                                               str(os.getpid()), str(ready)], stdin=subprocess.PIPE,
                                              stdout=subprocess.PIPE, stderr=log, start_new_session=True,
                                              bufsize=0)
-                record = Connection(workspace, context, child, ready, pins)
+                record = Connection(workspace, context, child, ready, pins, connection_id)
                 pins = []
                 self.connections[workspace] = record
             try:
@@ -128,9 +130,15 @@ class Manager:
             if self.connections.get(record.workspace) is record:
                 del self.connections[record.workspace]
 
-    def close_workspace(self, workspace):
+    def close_workspace(self, workspace, expected=None, connection_id=None):
         with self.lock:
             record = self.connections.get(workspace)
+            if record is not None and connection_id is not None and record.connection_id != connection_id:
+                raise ValueError("Remote connection generation mismatch")
+            if expected is not None:
+                if not isinstance(expected, dict) or expected.get("remote_generation") != self.generation or \
+                        (record is not None and expected != {**record.context, "remote_generation": self.generation}):
+                    raise ValueError("Remote desktop attachment or generation mismatch")
         if record is not None:
             self.close(record)
         return {"workspace_id": workspace, "status": "closed"}

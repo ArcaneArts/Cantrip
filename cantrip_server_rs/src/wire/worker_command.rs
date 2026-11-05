@@ -301,7 +301,6 @@ pub(super) fn refine(
                     || value["worktreeId"] != scope["worktreeId"]
                     || value["policyProjectId"] != scope["projectId"]
                     || value["cwd"] != scope["guestPath"]
-                    || value.get("computerUseAuthority").is_some()
                     || value["rootKind"]
                         != if scope["sourceKind"] == "git" {
                             "git-worktree"
@@ -313,6 +312,35 @@ pub(super) fn refine(
                         &[json!("osExecution")],
                         "OS turns must use their exact captured project, worktree, guest cwd, and Linux capabilities."
                     );
+                }
+                if let Some(authority) = value.get("computerUseAuthority") {
+                    if authority["ownerId"] != scope["ownerId"]
+                        || authority["workerId"] != scope["workerId"]
+                        || authority["chatId"] != value["chatId"]
+                        || authority["contextKind"] != "project"
+                        || authority["projectId"] != scope["projectId"]
+                        || authority["placementId"] != scope["worktreeId"]
+                        || authority["executionLaneId"] != value["executionLaneId"]
+                        || [
+                            "instanceId",
+                            "guestInstanceId",
+                            "attachmentGeneration",
+                            "runtimeGeneration",
+                            "bindingId",
+                            "bindingGeneration",
+                            "projectSourceId",
+                            "worktreeId",
+                            "workspaceId",
+                            "guestWorkspaceId",
+                        ]
+                        .iter()
+                        .any(|key| authority["osPlacement"][*key] != scope[*key])
+                    {
+                        issue!(
+                            &[json!("computerUseAuthority")],
+                            "OS computer use must match its captured desktop placement and execution lane."
+                        );
+                    }
                 }
             }
             let project = (value["executionProfile"] == "ide"
