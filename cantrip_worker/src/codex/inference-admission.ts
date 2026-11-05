@@ -64,6 +64,16 @@ interface Request {
   recovery?: InferenceRecoveryIdentity | null;
 }
 
+interface NativeRequest {
+  threadId: string;
+  turnId: string;
+  provider: Request["provider"];
+  signal: AbortSignal;
+  rootThreadId?: string | null;
+  /** Concurrent helper work must never borrow a dispatched root's reservation. */
+  independent?: boolean;
+}
+
 /**
  * Correlates worker tickets with actual native turns independently of UI turn
  * tracking. Local publication failure or WebSocket loss is not native settlement.
@@ -73,7 +83,10 @@ export class CodexInferenceAdmission {
   private readonly runtime: InferenceRuntime;
   private readonly operations = new Set<Operation>();
   private readonly completed = new Set<string>();
-  private readonly nativeEntries = new Map<string, Promise<void>>();
+  private readonly nativeEntries = new Map<
+    string,
+    { independent: boolean; result: Promise<void> }
+  >();
   private readonly requests = new Map<
     string,
     { identity: string; result: Promise<CodexInferenceExecution> }
@@ -288,40 +301,40 @@ export class CodexInferenceAdmission {
   }
 
   /** Native Core may use an existing root ticket or admit an independent child. */
-  async enterNative(input: {
-    threadId: string;
-    turnId: string;
-    provider: Request["provider"];
-    signal: AbortSignal;
-    rootThreadId?: string | null;
-  }): Promise<void> {
+  async enterNative(input: NativeRequest): Promise<void> {
     const key = JSON.stringify([input.threadId, input.turnId]);
     if (this.completed.has(key))
       throw new Error("Native inference already settled.");
     let entering = this.nativeEntries.get(key);
+    const independent = input.independent === true;
+    if (entering && entering.independent !== independent)
+      throw new Error(
+        "Native inference changed admission kind during redelivery.",
+      );
     if (!entering) {
-      entering = this.admitNative(input);
+      entering = { independent, result: this.admitNative(input) };
       this.nativeEntries.set(key, entering);
     }
-    await entering;
+    await entering.result;
     const operation = this.findNative(input.threadId, input.turnId);
     if (!operation?.lease || operation.ticket.status().state !== "running")
       throw new Error("Native inference has no running grant.");
   }
 
-  private async admitNative(input: {
-    threadId: string;
-    turnId: string;
-    provider: Request["provider"];
-    signal: AbortSignal;
-    rootThreadId?: string | null;
-  }): Promise<void> {
-    if (this.findNative(input.threadId, input.turnId)) return;
+  private async admitNative(input: NativeRequest): Promise<void> {
+    if (this.findNative(input.threadId, input.turnId)) {
+      if (input.independent)
+        throw new Error(
+          "Independent inference cannot reuse an existing native turn.",
+        );
+      return;
+    }
     // Core's private begin can overtake the ordinary turn/started observer.
     // Its exact native turn identity binds the unique dispatched root without
     // acquiring a second ticket and deadlocking a provider with limit one.
     const roots = [...this.operations].filter(
       (operation) =>
+        !input.independent &&
         operation.threadId === input.threadId &&
         operation.dispatched &&
         !operation.turnId &&
@@ -342,8 +355,9 @@ export class CodexInferenceAdmission {
     const scope = root?.ticket.status();
     const execution = await this.acquire({
       operationId: `native-inference:${input.threadId}:${input.turnId}`,
-      purpose:
-        input.rootThreadId && input.rootThreadId !== input.threadId
+      purpose: input.independent
+        ? "helper"
+        : input.rootThreadId && input.rootThreadId !== input.threadId
           ? "child"
           : "turn",
       provider: input.provider,

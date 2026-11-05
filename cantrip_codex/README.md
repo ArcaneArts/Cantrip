@@ -457,3 +457,13 @@ This source patch was reviewed and formatted only. No native build, tests,
 benchmarks, helper execution or computer-use validation ran. It adds no public
 RPC or generated protocol shape and does not modify upstream snapshot hashes or
 manufacture a prebuilt runtime.
+
+Patch `0054` distinguishes independent helper admission from a root turn's
+`begin`, including Guardian and speculative background compaction. These requests
+cannot bind a dispatched root before
+its `turn/started` observation or borrow its reservation. Exact operation identity
+still governs their suspension, cancellation and settlement. The corresponding
+worker accepts `begin-independent`; older workers deny that unsupported private
+phase. Memory extraction and response transport ownership remain audit work.
+Only source review, formatting and diff checks were performed; no native binary
+was built or executed.
