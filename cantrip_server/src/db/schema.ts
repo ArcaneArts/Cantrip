@@ -4469,6 +4469,8 @@ export const chatMessages = pgTable(
       .$type<string[]>()
       .notNull()
       .default([]),
+    /** Receipt evidence only; the canonical message retains the encrypted body. */
+    taskGoalInput: jsonb("task_goal_input").$type<TaskInferenceInputState>(),
     nativeModelAttribution: jsonb("native_model_attribution").$type<
       import("@cantrip/protocol").NativeTurnModelAttribution
     >(),
@@ -4499,6 +4501,14 @@ export const chatMessages = pgTable(
     index("chat_messages_chat_sequence_index").on(
       table.chatId,
       table.sequence.desc(),
+    ),
+    check(
+      "chat_messages_task_goal_input_identity_check",
+      sql`${table.taskGoalInput} IS NULL OR COALESCE((
+      ${table.taskGoalInput}->'receipt'->>'kind' = 'goal' AND
+      ${table.taskGoalInput}->'receipt'->>'chatId' = ${table.chatId} AND
+      ${table.taskGoalInput}->'receipt'->>'clientMessageId' = ${table.id}
+    ), false)`,
     ),
     check(
       "chat_messages_execution_root_check",

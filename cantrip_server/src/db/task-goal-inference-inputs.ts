@@ -34,6 +34,7 @@ import {
 import type { TaskInferenceInputState } from "./task-inference-inputs.js";
 import { TaskRetryRepository } from "./task-retries.js";
 import { classifyTaskFailure } from "../tasks/automatic-retry.js";
+import { recoverGoalInputHistory } from "./task-goal-input-history.js";
 
 function outcomeGuard(
   receipt: TaskInferenceInputReceipt,
@@ -775,7 +776,13 @@ export class TaskGoalInferenceInputRepository {
         !state ||
         state.receipt.operationId !== notification.taskInferenceInputOperationId
       )
-        return null;
+        return recoverGoalInputHistory(
+          tx,
+          owner,
+          worker,
+          notification,
+          this.messages,
+        );
       const receipt = state.receipt;
       if (
         state.deferred ||
@@ -795,7 +802,20 @@ export class TaskGoalInferenceInputRepository {
         stale();
       const physical = physicalInput(cycle, receipt);
       const ownsControl = originalControl(physical, receipt);
-      const context = await this.context(tx, owner, receipt, { settled: true });
+      let context;
+      try {
+        context = await this.context(tx, owner, receipt, { settled: true });
+      } catch (error) {
+        if (error instanceof TaskDispatchConflictError)
+          return recoverGoalInputHistory(
+            tx,
+            owner,
+            worker,
+            notification,
+            this.messages,
+          );
+        throw error;
+      }
       if (!this.messages || !this.lanes)
         throw new Error(
           "Task Goal outcomes require transactional history and lane ownership.",
@@ -870,6 +890,7 @@ export class TaskGoalInferenceInputRepository {
           terminal,
           message: saved,
           finished: true,
+          historyOnly: false,
           chat: context.chat,
         };
       }
@@ -879,6 +900,7 @@ export class TaskGoalInferenceInputRepository {
           terminal,
           message: saved,
           finished: false,
+          historyOnly: false,
           chat: context.chat,
         };
       if (notification.outcome.ok)
@@ -920,6 +942,7 @@ export class TaskGoalInferenceInputRepository {
         terminal,
         message: saved,
         finished,
+        historyOnly: false,
         chat: context.chat,
       };
     });

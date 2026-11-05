@@ -1125,3 +1125,65 @@ after that input is replaced, or after its placement/lane activation changes,
 still require canonical historical receipt handling. Native checkpoint recovery,
 abandoned-input cancellation, actual terminal delivery/restart reconciliation,
 and final timing/bounded-state/entry-point audits remain part of the full goal.
+
+### Historical Goal input receipt evidence
+
+Migration `0256_task_goal_message_receipts` retains one bounded receipt-evidence
+object on each canonical Goal input message. Its encrypted body stays in the
+existing message field. There is no new prompt table, delivery queue, pending
+operation scan, ticket registry, polling timer or semaphore. Receipt evidence
+inherits the canonical message's retention/deletion lifetime and is omitted by
+both public message mappers.
+
+The migration deterministically backfills the latest still-recorded Goal input
+for each canonical message. It does not manufacture receipts for pre-migration
+inputs whose evidence had already been overwritten. The update trigger captures
+every normal Goal input preparation/acceptance/dispatch/deferral/terminal write
+from either server in the same database transaction. Initial cycle creation has
+no Goal input; preparation updates it only after its canonical message exists.
+The trigger intentionally does not run on cycle INSERT, preserving logical SQL
+restore ordering. Current dumps carry message evidence themselves; older SQL
+restores run the pending migration/backfill after loading their data.
+
+A message which has already forwarded input cannot receive another physical
+receipt identity. Rebinding requires an explicitly null canonical first-dispatched
+identity. Recovering a previously forwarded attempt must first establish and
+record the existing positive no-forwarding proof; missing evidence is insufficient.
+The trigger does not decide that proof or grant execution. For the same receipt,
+it preserves already-recorded terminal evidence and rejects conflicting terminal
+status/category. Clearing or replacing the live dispatch slot does not delete
+the older message's evidence.
+
+Both servers use this evidence when a notification belongs to a replaced input,
+an older cycle, or a placement/lane/Task state which no longer owns execution.
+They validate the actual worker, original complete receipt/fence correlation,
+canonical Goal message and acceptance/dispatch evidence before saving a protected
+response with its existing idempotency key. A revoked or unsupported receipt
+cannot replay input or relabel newer work. Duplicate protected responses retain
+the existing exact-message checks.
+
+This historical path updates only that message's receipt evidence and protected
+response history. It does not project Task state, finish lanes/interactions,
+resume work, wake Task scheduling, publish a completion boundary, unarchive the
+Chat, change its status/recency, or release provider capacity. Ordinary outcome
+recovery publishes a boundary only when it actually finished its exact lane.
+Actual current-input terminal projection retains its separate current-control
+and native-execution guards.
+
+Archived Chats can retain these attributed assistant responses. A missing or
+reactivated old lane is not permission to mutate it: historical insertion may
+leave its lane link empty. The response uses its original physical worktree when
+that owned record still exists, otherwise the canonical input's retained logical
+worktree. No filesystem checkout is opened, recreated or treated as available.
+Missing/deleted canonical messages do not get recreated from old notifications.
+
+Source review covered phase/terminal writes in both servers, deterministic
+backfill, logical restore ordering, forwarded-input identity protection,
+replacement cycles, pause/archive, moved/missing/reactivated placements and lanes,
+duplicate/conflicting results, message mapper field selection and notification
+publication. Direct formatting and `git diff --check` passed; the migration and runtime
+paths were not executed. No tests, typechecks, builds,
+benchmarks, native/helper execution, computer-use testing or hosted validation
+ran. Native checkpoint reconciliation, abandoned-input cancellation, actual
+terminal delivery/restart recovery, and final timing/bounded-state/entry-point
+audits remain required for the full goal.

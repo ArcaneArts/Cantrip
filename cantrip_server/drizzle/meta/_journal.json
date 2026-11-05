@@ -1793,6 +1793,13 @@
       "when": 1793816000005,
       "tag": "0255_cantrip_os_desktop_capture",
       "breakpoints": true
+    },
+    {
+      "idx": 256,
+      "version": "7",
+      "when": 1793871723891,
+      "tag": "0256_task_goal_message_receipts",
+      "breakpoints": true
     }
   ]
 }
