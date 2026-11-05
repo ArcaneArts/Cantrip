@@ -249,6 +249,11 @@ export function ManagedRemoteDesktopView({
   const [encryptionError, setEncryptionError] = useState<string | null>(null);
   const [encryptionAttempt, setEncryptionAttempt] = useState(0);
   const surfaceReady = renderedSurfaceId === desktop.id;
+  const [desktopControl, setDesktopControl] = useState<{
+    mode: "agent" | "switching" | "human";
+    isController: boolean;
+    leaseId: string | null;
+  } | null>(null);
   const pendingActionsRef = useRef(0);
 
   const transfer = useRemoteDesktopViewTransfer({
@@ -378,7 +383,8 @@ export function ManagedRemoteDesktopView({
     const message = remoteDesktopServerMessageSchema.parse(
       JSON.parse(decoder.decode(frame.payload)),
     );
-    if (message.type === "desktop-cursor-assets")
+    if (message.type === "desktop-control") setDesktopControl(message);
+    else if (message.type === "desktop-cursor-assets")
       setCursorAssets(message.participants);
     else if (message.type === "desktop-cursor")
       cursorOverlayRef.current?.remote(
@@ -474,6 +480,7 @@ export function ManagedRemoteDesktopView({
       setOwnCursorId(null);
       inputSequenceRef.current = 0;
       setInputMessage(null);
+      setDesktopControl(null);
       remoteCanvasRef.current?.reset();
       setStreamStatus(null);
       setLaunchingApplication(null);
@@ -698,6 +705,35 @@ export function ManagedRemoteDesktopView({
               : ""}
           </span>
         </div>
+        {desktop.osSource ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={
+              !desktopControl ||
+              desktopControl.mode === "switching" ||
+              (desktopControl.mode === "human" && !desktopControl.isController)
+            }
+            onClick={() => {
+              if (desktopControl?.isController && desktopControl.leaseId)
+                send({
+                  type: "desktop-control",
+                  operation: "return",
+                  leaseId: desktopControl.leaseId,
+                });
+              else send({ type: "desktop-control", operation: "take" });
+            }}
+          >
+            {desktopControl?.mode === "switching"
+              ? "Switching control…"
+              : desktopControl?.isController
+                ? "Return to agent"
+                : desktopControl?.mode === "human"
+                  ? "Human controlling"
+                  : "Take control"}
+          </Button>
+        ) : null}
         {fleetDiscovery && !desktop.osSource ? (
           <Button
             aria-pressed={fleetOpen}
@@ -888,6 +924,7 @@ export function ManagedRemoteDesktopView({
           className="size-8"
           title="Copy remote selection"
           disabled={Boolean(desktop.osSource) && !ownCursorId}
+          onMouseDown={(event) => event.preventDefault()}
           onClick={() =>
             send({ type: "clipboard", operation: "copy", text: "" })
           }
@@ -902,6 +939,7 @@ export function ManagedRemoteDesktopView({
           className="size-8"
           title="Paste local clipboard"
           disabled={Boolean(desktop.osSource) && !ownCursorId}
+          onMouseDown={(event) => event.preventDefault()}
           onClick={() => void pasteClipboard()}
         >
           <ClipboardPaste className="size-3.5" />

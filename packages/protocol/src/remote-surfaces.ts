@@ -279,6 +279,15 @@ export const remoteCursorSpriteSchema = z.object({
 });
 
 export const remoteDesktopClientMessageSchema = z.discriminatedUnion("type", [
+  z
+    .strictObject({
+      type: z.literal("desktop-control"),
+      operation: z.enum(["take", "return"]),
+      leaseId: z.uuid().optional(),
+    })
+    .refine((value) => value.operation !== "return" || Boolean(value.leaseId), {
+      message: "Returning control requires the current viewer lease.",
+    }),
   z.object({ type: z.literal("input-cancel"), inputEpoch: z.string().uuid() }),
   z.object({
     type: z.literal("viewport"),
@@ -349,6 +358,12 @@ export const remoteDesktopClientMessageSchema = z.discriminatedUnion("type", [
 ]);
 
 export const remoteDesktopServerMessageSchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    type: z.literal("desktop-control"),
+    mode: z.enum(["agent", "switching", "human"]),
+    isController: z.boolean(),
+    leaseId: z.uuid().nullable(),
+  }),
   z.object({
     type: z.literal("desktop-cursor-assets"),
     participants: z

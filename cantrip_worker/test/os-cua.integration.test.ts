@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { probeX11 } from "./fixtures/os-x11-probe.js";
 import { encryptSurfacePrivateState } from "@cantrip/crypto";
 import {
   OsDesktopSession,
@@ -326,6 +327,11 @@ describe.skipIf(!transport)(
           },
         });
         const frames: Uint8Array[] = [];
+        const controls: { id: string; message: any }[] = [];
+        const latest = (id: string, type: string) =>
+          controls.findLast(
+            (item) => item.id === id && item.message.type === type,
+          )?.message;
         const encryption = {
           ownerId: () => identity.ownerId,
           status: () => ({ error: null }),
@@ -374,6 +380,11 @@ describe.skipIf(!transport)(
             desktopStream: { targetFps: 2, quality: "balanced" },
           },
           (_id, channel, payload) => {
+            if (channel === "control" || channel === "clipboard")
+              controls.push({
+                id: _id,
+                message: JSON.parse(new TextDecoder().decode(payload)),
+              });
             if (channel === "frame") {
               firstFrameMs ??= performance.now() - viewerStartedAt;
               frames.push(payload);
@@ -474,6 +485,156 @@ describe.skipIf(!transport)(
             }),
           ),
         );
+        const sendHuman = (id: string, message: unknown) =>
+          viewer!.handleFrame(
+            id,
+            "control",
+            new TextEncoder().encode(JSON.stringify(message)),
+          );
+        const agentLease = await services.acquire(authority, lifetime.signal);
+        try {
+          const agentScope = {
+            ...identity,
+            chatId,
+            taskId: null,
+            threadId: "native-sdk-thread",
+            turnId: "native-sdk-turn",
+          };
+          const target = (await agentLease.service.targets(agentScope))[0]!;
+          const reference = {
+            targetId: target.id,
+            targetGeneration: target.generation,
+          };
+          const native = await agentLease.service.open(agentScope, reference);
+          const holding = agentLease.service
+            .perform(agentScope, native.binding.sessionId, reference, {
+              kind: "timeline",
+              frames: [
+                { atMs: 0, pointerDown: { x: 500, y: 500 } },
+                { atMs: 150000, pointerUp: true },
+              ],
+            })
+            .catch((error) => error);
+          expect(
+            (await probeX11(transport!, desktop.display, true)).mask & 256,
+          ).toBe(256);
+          await sendHuman("viewer", {
+            type: "desktop-control",
+            operation: "take",
+          });
+          expect(
+            (await probeX11(transport!, desktop.display, false)).mask & 256,
+          ).toBe(0);
+          expect(await holding).toMatchObject({ code: "cancelled" });
+          const control = latest("viewer", "desktop-control");
+          expect(control).toMatchObject({ mode: "human", isController: true });
+          const epoch = latest("viewer", "desktop-input").epoch;
+          expect(typeof epoch).toBe("string");
+          await sendHuman("viewer", {
+            type: "clipboard",
+            operation: "copy",
+            inputEpoch: epoch,
+            inputSequence: 1,
+          });
+          const clipboardDeadline = Date.now() + 20_000;
+          while (
+            !latest("viewer", "desktop-clipboard") &&
+            Date.now() < clipboardDeadline
+          )
+            await new Promise((resolve) => setTimeout(resolve, 25));
+          expect(latest("viewer", "desktop-clipboard")).toMatchObject({
+            text: "Cantrip SDK 日本語 café 🦀",
+          });
+          await expect(agentLease.service.targets(agentScope)).rejects.toThrow(
+            /human controls/,
+          );
+          const blocked = parseCuaMcpResult(
+            await client.callTool({
+              name: "js",
+              arguments: { script: "await cua.targets()" },
+              _meta: {
+                threadId: "native-sdk-thread",
+                "x-codex-turn-metadata": { turn_id: "native-sdk-turn" },
+                itemId: "during-human-control",
+                callId: "during-human-control",
+              },
+            }),
+          );
+          expect(blocked.isError).toBe(true);
+          await sendHuman("second-viewer", {
+            type: "desktop-control",
+            operation: "take",
+          });
+          expect(latest("second-viewer", "desktop-control")).toMatchObject({
+            mode: "human",
+            isController: false,
+          });
+          await sendHuman("viewer", {
+            type: "pointer",
+            event: "down",
+            x: 321,
+            y: 234,
+            button: "left",
+            inputEpoch: epoch,
+            inputSequence: 2,
+          });
+          const humanHeld = await probeX11(transport!, desktop.display, true);
+          expect(humanHeld).toMatchObject({ x: 321, y: 234 });
+          expect(humanHeld.mask & 256).toBe(256);
+          await sendHuman("viewer", {
+            type: "desktop-control",
+            operation: "return",
+            leaseId: randomUUID(),
+          });
+          expect(agentLease.service.control.owner).not.toBeNull();
+          await sendHuman("viewer", {
+            type: "desktop-control",
+            operation: "return",
+            leaseId: control.leaseId,
+          });
+          expect(
+            (await probeX11(transport!, desktop.display, false)).mask & 256,
+          ).toBe(0);
+          expect(agentLease.service.control.owner).toBeNull();
+          await sendHuman("viewer", {
+            type: "pointer",
+            event: "down",
+            x: 900,
+            y: 500,
+            button: "left",
+            inputEpoch: epoch,
+            inputSequence: 3,
+          });
+          expect((await probeX11(transport!, desktop.display)).mask & 256).toBe(
+            0,
+          );
+          const resumed = parseCuaMcpResult(
+            await client.callTool({
+              name: "js",
+              arguments: {
+                script:
+                  "const t=(await cua.targets()).targets[0]; await cua.attach({targetId:t.id,targetGeneration:t.generation}); await cua.snapshot()",
+              },
+              _meta: {
+                threadId: "native-sdk-thread",
+                "x-codex-turn-metadata": { turn_id: "native-sdk-turn" },
+                itemId: "after-human-return",
+                callId: "after-human-return",
+              },
+            }),
+          );
+          expect(
+            resumed.isError,
+            JSON.stringify(
+              resumed.content.filter((item) => item.type === "text"),
+            ),
+          ).not.toBe(true);
+          process.stdout.write(
+            "Linux takeover acceptance: actual agent hold released, exclusive human hold released on return, stale epoch rejected, same admitted turn resumed\n",
+          );
+        } finally {
+          await agentLease.release();
+        }
         await viewer.detach("viewer");
         await viewer.detach("second-viewer");
         // Detaching a viewer must not retire the agent's shared native service.
@@ -518,6 +679,53 @@ describe.skipIf(!transport)(
         expect(frames.length).toBeGreaterThan(beforeAgentStopped);
         process.stdout.write(
           "Linux viewer acceptance: viewer continued after agent retirement\n",
+        );
+        await sendHuman("after-agent", {
+          type: "desktop-control",
+          operation: "take",
+        });
+        const lastEpoch = latest("after-agent", "desktop-input").epoch;
+        await sendHuman("after-agent", {
+          type: "pointer",
+          event: "down",
+          x: 250,
+          y: 200,
+          button: "left",
+          inputEpoch: lastEpoch,
+          inputSequence: 1,
+        });
+        expect(
+          (await probeX11(transport!, desktop.display, true)).mask & 256,
+        ).toBe(256);
+        viewer.suspend();
+        expect(
+          (await probeX11(transport!, desktop.display, false)).mask & 256,
+        ).toBe(0);
+        viewer.resume();
+        await sendHuman("after-agent", {
+          type: "desktop-control",
+          operation: "take",
+        });
+        const renewedEpoch = latest("after-agent", "desktop-input").epoch;
+        expect(renewedEpoch).not.toBe(lastEpoch);
+        await sendHuman("after-agent", {
+          type: "pointer",
+          event: "down",
+          x: 250,
+          y: 200,
+          button: "left",
+          inputEpoch: renewedEpoch,
+          inputSequence: 1,
+        });
+        expect(
+          (await probeX11(transport!, desktop.display, true)).mask & 256,
+        ).toBe(256);
+        await viewer.detach("after-agent");
+        expect(
+          (await probeX11(transport!, desktop.display, false)).mask & 256,
+        ).toBe(0);
+        process.stdout.write(
+          "Linux takeover acceptance: viewer disconnect released actual human held input\n",
         );
       } finally {
         await viewer?.close();

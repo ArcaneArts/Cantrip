@@ -25,7 +25,7 @@ The native Linux capture/input backend and optional
 [`cantrip-os-remote`](../cantrip_os/packages/remote/README.md) carrier are Phase 4
 checkpoints. Normal agent/preview routing selects the captured Linux display,
 including clipboard and resizing. An integrated source-bound desktop view now
-shares that helper over WorkerLink. Human takeover and managed service access
+shares that helper over WorkerLink, including exclusive human takeover. Managed service access
 are still in progress.
 
 ## Optional package architecture
@@ -97,7 +97,7 @@ integration packages. An explicit executor selection wins. The ordinary Debian/
 IceWM desktop remains usable without either package. Host-only MCP Run/worktree/
 task-creation adapters are unavailable in Linux sessions; use the source-aware
 product workflows. Phase 4 adds Linux computer use and integrated viewing. Human
-takeover, general SSH/SFTP/TCP services, cloud provisioning, mirroring and backups remain
+control is implemented; general SSH/SFTP/TCP services, cloud provisioning, mirroring and backups remain
 in progress or later phases. The tested matrix and provider/platform limitations
 are recorded rather than implied to work on untested hardware.
 
@@ -724,7 +724,7 @@ See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 
 ## Phase 4 package checkpoint
 
-The optional `cantrip-os-remote` 0.4.0 package runs the first-party Linux CUA
+The optional `cantrip-os-remote` 0.5.0 package runs the first-party Linux CUA
 helper as the selected workspace account behind a protected root carrier.
 Docker and ISO scripts include it with the executor edition by default;
 `CANTRIP_OS_REMOTE=0` omits it. Its retained state uses a namespace inside the
@@ -735,7 +735,7 @@ immutable capture before acquiring the guest service. The MCP client and
 credentials stay on the Worker. Actual packaged SDK tests exercise turn
 authorization and routing without a Host Cantrip-window grant or Host launch.
 Real-provider evidence is recorded separately. The remaining Phase 4 work
-includes stream-candidate comparison, human takeover, managed SSH/SFTP/VNC/TCP
+includes stream-candidate comparison, managed SSH/SFTP/VNC/TCP
 and refreshed ISO acceptance.
 
 Remote 0.3.0 adds scoped plain-text clipboard access and Unicode paste, actual
@@ -749,6 +749,10 @@ Remote Desktop view through the authorized encrypted WorkerLink path. Its saved
 configuration contains only source identities and generations. The Server
 resolves current execution authority before attachment; transport details stay
 in the Worker command. Agent and viewer leases share one native guest connection,
-with independent capture and agent lifetimes. The initial view is read-only.
+with independent capture and agent lifetimes. The initial view is read-only;
+remote 0.5.0 adds an exclusive transient human controller lease, **Take control**
+and **Return to agent**. Held input is cleaned before handoff; old input is
+canceled rather than replayed. Disconnect or surface suspension ends the lease.
+Fresh CUA calls can continue on the same authorized agent turn after return.
 Current capture/encoding uses the existing adaptive JPEG pipeline; final stream
 selection and broader performance acceptance remain in Phase 4.

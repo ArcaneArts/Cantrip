@@ -200,6 +200,7 @@ export class OsCuaServices {
             workerId: this.options.workerId,
             binary: command.command,
             args: command.args,
+            allowMonitorInput: true,
           });
         entry = {
           service,

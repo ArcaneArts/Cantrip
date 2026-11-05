@@ -47,11 +47,15 @@ const modifiers = (bits: number): ("Shift" | "Control" | "Alt" | "Meta")[] => [
 export class DesktopParticipantInput {
   private readonly entries = new Map<string, Entry>();
   private readonly cleanup = new Set<Promise<void>>();
+  private cleanupFailure: unknown = null;
   constructor(
     private readonly options: {
       workerId: string;
       surfaceId: string;
       participants: Pick<WorkerInputParticipants, "open">;
+      allowMonitorInput?: boolean;
+      copyModifier?: "Meta" | "Control";
+      strictCleanup?: boolean;
       state(
         attachmentId: string,
         epoch: string | null,
@@ -59,7 +63,7 @@ export class DesktopParticipantInput {
       ): void;
       assets?(participants: { id: string; sprite: InteractionSprite }[]): void;
       cursor?(id: string, x: number, y: number, click: boolean): void;
-      readClipboard(): Promise<string>;
+      readClipboard(participant: InteractionParticipant): Promise<string>;
       clipboard(attachmentId: string, text: string): void;
     },
   ) {}
@@ -92,7 +96,9 @@ export class DesktopParticipantInput {
     return true;
   }
   private background(work: Promise<void>) {
-    const safe = work.catch(() => {});
+    const safe = work.catch((error) => {
+      if (this.options.strictCleanup) this.cleanupFailure = error;
+    });
     this.cleanup.add(safe);
     void safe.finally(() => this.cleanup.delete(safe));
   }
@@ -104,7 +110,10 @@ export class DesktopParticipantInput {
         this.options.state(id, existing.epoch, null);
       return;
     }
-    if (target.kind !== "window" || !target.id) {
+    if (
+      (target.kind !== "window" && !this.options.allowMonitorInput) ||
+      !target.id
+    ) {
       this.options.state(
         id,
         null,
@@ -122,7 +131,7 @@ export class DesktopParticipantInput {
         attachmentId: epoch,
         participantId: id,
       },
-      `macos-window-${target.id}`,
+      target.kind === "monitor" ? target.id! : `macos-window-${target.id}`,
       controller.signal,
     );
     const entry: Entry = {
@@ -174,6 +183,7 @@ export class DesktopParticipantInput {
   async close(): Promise<void> {
     this.reset();
     await Promise.all(this.cleanup);
+    if (this.cleanupFailure) throw this.cleanupFailure;
   }
   async send(
     id: string,
@@ -353,11 +363,15 @@ export class DesktopParticipantInput {
       } else {
         await post({
           type: "keyDown",
-          data: { key: "C", modifiers: ["Meta"], repeat: false },
+          data: {
+            key: "C",
+            modifiers: [this.options.copyModifier ?? "Meta"],
+            repeat: false,
+          },
         });
         await post({ type: "keyUp", data: { key: "C" } });
         await new Promise((resolve) => setTimeout(resolve, 60));
-        const text = await this.options.readClipboard();
+        const text = await this.options.readClipboard(entry.participant!);
         if (this.entries.get(id) === entry) this.options.clipboard(id, text);
       }
     });

@@ -16,6 +16,7 @@ import { CuaDesktopFrameSource } from "./cua-frame-source.js";
 import { ManagedDesktopRemoteSurfaceSession } from "./desktop-adapter.js";
 import { openRemoteDesktopPersistentPrivateState } from "./desktop-private-state.js";
 import type { DesktopAutomationClient } from "./automation-client.js";
+import { OsDesktopInput } from "./os-desktop-input.js";
 
 type Command = Extract<WorkerCommand, { type: "surface.attach" }>;
 
@@ -29,6 +30,7 @@ export class OsDesktopSession implements RemoteSurfaceSession {
   >;
   private inner: ManagedDesktopRemoteSurfaceSession | null = null;
   private lease: CuaServiceLease | null = null;
+  private input: OsDesktopInput | null = null;
   private queue = Promise.resolve<unknown>(undefined);
   private readonly attachments = new Set<string>();
   private readonly lifetime = new AbortController();
@@ -104,6 +106,18 @@ export class OsDesktopSession implements RemoteSurfaceSession {
         attachmentId: command.surfaceId,
         participantId: "remote-capture",
       });
+      this.input = new OsDesktopInput({
+        workerId: this.workerId,
+        surfaceId: command.surfaceId,
+        service: lease.service,
+        emit: this.emit,
+        target: async () => {
+          const target = (await source.inventory()).monitors[0];
+          if (!target)
+            throw new Error("The assigned Linux desktop is unavailable.");
+          return { kind: "monitor", id: target.id, name: target.name };
+        },
+      });
       // Any accidental compatibility path fails here, without touching Host.
       const client = new Proxy({} as DesktopAutomationClient, {
         get: () => async () => {
@@ -119,7 +133,15 @@ export class OsDesktopSession implements RemoteSurfaceSession {
         sharedCapture: true,
         createFramePipeline: (target) => source.open(target),
         display: { width: 1, height: 1 },
-        emit: this.emit,
+        emit: (id, channel, payload) => {
+          if (channel === "control") {
+            const message = JSON.parse(new TextDecoder().decode(payload));
+            if (message.type === "desktop-input") return true;
+            if (message.type === "desktop-state")
+              this.input?.size(message.width, message.height);
+          }
+          return this.emit(id, channel, payload);
+        },
         framePipeline: null,
         launchApplication: async () => {
           throw new Error("Use the assigned workspace to launch applications.");
@@ -137,11 +159,13 @@ export class OsDesktopSession implements RemoteSurfaceSession {
         },
         surfaceId: command.surfaceId,
       });
-      if (this.suspended) this.inner.suspend();
+      if (this.suspended) {
+        this.inner.suspend();
+        await this.input.suspend();
+      }
       return this.inner;
     } catch (error) {
-      this.lease = null;
-      await lease.release();
+      await this.release();
       throw error;
     }
   }
@@ -151,6 +175,7 @@ export class OsDesktopSession implements RemoteSurfaceSession {
       try {
         await session.attach(attachment);
         this.attachments.add(attachment.id);
+        this.input?.attach(attachment.id);
       } catch (error) {
         session.detach(attachment.id);
         if (!this.attachments.size) await this.release();
@@ -159,12 +184,23 @@ export class OsDesktopSession implements RemoteSurfaceSession {
     });
   detach: RemoteSurfaceSession["detach"] = (id) =>
     this.serial(async () => {
-      this.inner?.detach(id);
-      this.attachments.delete(id);
-      if (!this.attachments.size) await this.release();
+      try {
+        await this.input?.detach(id);
+      } finally {
+        this.inner?.detach(id);
+        this.attachments.delete(id);
+        if (!this.attachments.size) await this.release();
+      }
     });
-  handleFrame: RemoteSurfaceSession["handleFrame"] = (id, channel, payload) =>
-    this.inner?.handleFrame(id, channel, payload);
+  handleFrame: RemoteSurfaceSession["handleFrame"] = async (
+    id,
+    channel,
+    payload,
+  ) => {
+    if (channel === "control" && (await this.input?.handle(id, payload)))
+      return;
+    await this.inner?.handleFrame(id, channel, payload);
+  };
   updateConfiguration(
     configuration: RemoteSurfaceConfiguration,
     state: RemoteSurfacePrivateState | null,
@@ -193,25 +229,38 @@ export class OsDesktopSession implements RemoteSurfaceSession {
   }
   suspend() {
     this.suspended = true;
+    void this.input?.suspend().catch(() => {});
     this.inner?.suspend();
   }
   resume() {
     this.suspended = false;
+    this.input?.resume();
     this.inner?.resume();
   }
   private async release() {
-    this.inner?.close();
-    this.inner = null;
-    const lease = this.lease;
-    this.lease = null;
-    await lease?.release();
+    const input = this.input;
+    this.input = null;
+    try {
+      await input?.close();
+    } finally {
+      this.inner?.close();
+      this.inner = null;
+      const lease = this.lease;
+      this.lease = null;
+      await lease?.release();
+    }
   }
   close() {
     this.closed = true;
     this.lifetime.abort();
+    const inputClosed = this.input?.close();
     return this.serial(async () => {
       this.attachments.clear();
-      await this.release();
+      try {
+        await inputClosed;
+      } finally {
+        await this.release();
+      }
     });
   }
 }
