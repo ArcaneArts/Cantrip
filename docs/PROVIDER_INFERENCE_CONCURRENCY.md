@@ -1709,6 +1709,33 @@ native patch stack. Direct formatting of the new clock source, mechanical patch
 authoring and `git diff --check` were performed. No tests, builds, typechecks,
 benchmarks, native/helper execution, hosted checks or computer-use validation ran.
 
+## Evidence for withdrawing an unstarted reservation
+
+An exact live inference ticket can now withdraw itself before any model request
+has started. The state check and cancellation are synchronous, including when a
+grant acknowledgement is still pending. The returned promise resolves only with
+the lifetime keeper's durable `released` / `never-started` record for that exact
+worker generation, runtime, operation, provider and canonical recovery identity.
+A missing or failed acknowledgement does not manufacture no-start evidence.
+Repeated calls through that same retained owner return the same result; no
+completed-operation-ID registry is added.
+
+The native adapter requires the actual canonical source handle and also rejects
+forwarded inputs, title preparation that has started, private native gates and
+resumed turns. These checks are evidence boundaries for withdrawing work, not
+additional gates on normal inference. A suspended turn's zero active-slot count
+does not make its input safe to replay.
+
+This is the worker-side prerequisite for queued route changes. It does not yet
+relax the idle-only runtime-handoff API, move canonical input or authorize replay.
+The server must still reconcile the exact canonical claim and reserve its route
+transition before redispatch; native autonomous input needs its own established
+non-replayable boundary. No prompt is copied into the admission service.
+
+This change was source-reviewed, directly formatted, and checked with
+`git diff --check`. No tests, builds, typechecks, benchmarks, native/helper
+execution, hosted checks or computer-use validation ran.
+
 ## Resource-removal control boundary
 
 The private `inference.revoke` worker command targets a chat or a project and its
