@@ -418,8 +418,19 @@ impl Repository {
         input: &Value,
         guard: Option<&Value>,
     ) -> Result<Option<Value>> {
+        self.sync_implementation_state_observed(owner, chat, input, guard, None)
+            .await
+    }
+    pub(crate) async fn sync_implementation_state_observed(
+        &self,
+        owner: &str,
+        chat: &str,
+        input: &Value,
+        guard: Option<&Value>,
+        observation: Option<&Value>,
+    ) -> Result<Option<Value>> {
         let next = parse("taskOpaqueContentSchema", &input["task"])?;
-        if self.get(owner, chat).await?.is_none() {
+        if observation.is_none() && self.get(owner, chat).await?.is_none() {
             return Ok(None);
         }
         let (owner, chat, version, guard) = (
@@ -428,9 +439,13 @@ impl Repository {
             input["rowVersion"].clone(),
             guard.cloned(),
         );
+        let observation = observation.cloned();
         self.database
             .transaction(|tx| {
                 Box::pin(async move {
+                    if let Some(observation) = &observation {
+                        goal_observations::assert_in(tx, &owner, &chat, observation).await?;
+                    }
                     if let Some(guard) = &guard {
                         dispatch_fence::assert(
                             tx,

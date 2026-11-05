@@ -787,6 +787,14 @@ export function createTaskGoalRuntime({
     }
     const runtime = await runtimeForContext(context);
     if (!runtime) throw new Error("Selected model was not found.");
+    const observation =
+      !dispatchFence && !activateGoal && !message
+        ? await repository.tasks.goalObservations.capture(
+            applicationOwnerId(),
+            context,
+            task,
+          )
+        : undefined;
     const result = taskGoalWorkerResultSchema.parse(
       await bridge.request(context.workerId, {
         ...(activateGoal
@@ -827,32 +835,24 @@ export function createTaskGoalRuntime({
       throw new Error("Task Goal execution observation was not returned.");
     // No native Goal is a valid observation (e.g. an older handoff lost it),
     // not corrupt ciphertext and not evidence that this Task completed.
-    if ((!result.goal && !runtimeFailure) || observationOnly)
+    if ((!result.goal && !runtimeFailure) || observationOnly) {
+      if (observation)
+        await repository.tasks.goalObservations.validate(
+          applicationOwnerId(),
+          context.chatId,
+          observation,
+        );
       return { ...result, task };
-    let synchronized: TaskOpaqueSummary | null;
-    try {
-      synchronized = await repository.tasks.syncImplementationState(
-        applicationOwnerId(),
-        context.chatId,
-        { rowVersion: task.rowVersion, task: result.task },
-        dispatchFence,
-      );
-    } catch (error) {
-      if (
-        !(error instanceof TaskConflictError) ||
-        error.code !== "stale-version" ||
-        dispatchFence?.kind === "outcome" ||
-        message ||
-        activateGoal
-      )
-        throw error;
-      // Parallel status/dashboard reads may race one CAS. Discard the stale
-      // projection instead of failing a successful native observation.
-      synchronized = await repository.tasks.get(
-        applicationOwnerId(),
-        context.chatId,
-      );
     }
+    // A native observation and the Task it projected are one result. Never
+    // pair stale native state with a separately refreshed Task after a CAS loss.
+    const synchronized = await repository.tasks.syncImplementationState(
+      applicationOwnerId(),
+      context.chatId,
+      { rowVersion: task.rowVersion, task: result.task },
+      dispatchFence,
+      observation,
+    );
     if (synchronized && synchronized.rowVersion !== task.rowVersion) {
       publishChatInvalidation(context.chatId, "task", null, context);
     }

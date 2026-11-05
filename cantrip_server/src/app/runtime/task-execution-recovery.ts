@@ -2,6 +2,7 @@ import type {
   ChatExecutionContext,
   ServerRepository,
 } from "../../db/repository.js";
+import { TaskDispatchConflictError } from "../../db/task-dispatch.js";
 import type { createTaskGoalRuntime } from "./task-goal-runtime.js";
 import type { LimitedWorkerCommandBus } from "../../workers/limited-command-bus.js";
 
@@ -367,9 +368,14 @@ export function createTaskExecutionRecovery({
         continue;
       // A failed observation is not proof that native work has stopped. The
       // persisted lease still bounds ownership; explicit recovery can retry.
-      await recover(cycle.chatId).catch((error) =>
-        reportFailure?.(cycle.chatId, error),
-      );
+      await recover(cycle.chatId).catch((error) => {
+        if (
+          error instanceof TaskDispatchConflictError &&
+          error.code === "stale-version"
+        )
+          return;
+        reportFailure?.(cycle.chatId, error);
+      });
     }
   }
   return { recover, reconcile };
