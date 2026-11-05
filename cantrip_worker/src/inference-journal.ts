@@ -40,6 +40,7 @@ export function recoveryIdentity(
         ]
       : null,
     value?.autonomousGoal?.goalEpoch ?? null,
+    ...(value?.autonomousGoal ? [value.autonomousGoal.orderEpoch ?? 0] : []),
   ]);
 }
 
@@ -67,6 +68,7 @@ export function recoveryQueueIdentity(
       chatId,
       value.threadId,
       value.autonomousGoal.goalEpoch,
+      value.autonomousGoal.orderEpoch ?? 0,
     ]);
   }
   return value.messageId

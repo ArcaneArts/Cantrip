@@ -15,6 +15,56 @@ async fn marker(tx: &Transaction<'_>, chat: &str) -> Result<Option<Value>> {
         .map(|s| parse("nativeGoalRecoverySchema", &s))
         .transpose()
 }
+
+/// Duplicate commits return before this mutation. Capacity and FIFO ordinals
+/// remain worker-owned; this is the retained cycle's causal provider episode.
+pub(super) async fn commit_provider(
+    tx: &Transaction<'_>,
+    row: &Value,
+    provider: &Value,
+) -> Result<()> {
+    let chat = text(&row["chat_id"])?;
+    let Some(mut marker) = marker(tx, &chat).await? else {
+        return Ok(());
+    };
+    let queued = &row["queued_source"];
+    if queued["withdrawn"] != true || truthy(marker.get("admission")) {
+        return reject("handoff-native-operation-pending");
+    }
+    let retired = one(Executor::Transaction(tx), "SELECT to_jsonb(n)::text FROM native_commands n WHERE operation_id=$1 AND operation_generation=$2 AND chat_id=$3 AND worker_id=$4", &[
+        &text(&queued["operationId"])?, &text(&queued["operationGeneration"])?, &chat, &text(&row["worker_id"])?]).await?;
+    if retired.is_none_or(|r| {
+        !truthy(r.get("execution_completed_at"))
+            || !deep_equal(&r["goal_recovery_source"], &marker["source"])
+    }) {
+        return reject("handoff-native-operation-pending");
+    }
+    let mut previous = marker.get("providerId").cloned().filter(|p| !p.is_null());
+    if previous.is_none() && truthy(row["source"].get("modelRouteId")) {
+        let route = one(
+            Executor::Transaction(tx),
+            "SELECT to_jsonb(r)::text FROM model_routes r WHERE id=$1",
+            &[&text(&row["source"]["modelRouteId"])?],
+        )
+        .await?;
+        previous = route.and_then(|r| r.get("provider_id").cloned());
+    }
+    let epoch = marker["orderEpoch"].as_f64().unwrap_or(0.0)
+        + if previous.as_ref() == Some(provider) {
+            0.0
+        } else {
+            1.0
+        };
+    marker["providerId"] = provider.clone();
+    marker["orderEpoch"] = json!(epoch);
+    let marker = parse("nativeGoalRecoverySchema", &marker)?;
+    tx.query(
+        "UPDATE managed_queue_states SET goal_recovery=$1::text::jsonb WHERE chat_id=$2",
+        &[&marker.stringify(), &chat],
+    )
+    .await?;
+    crate::native_commands::queue_state_changed(tx, &chat).await
+}
 async fn root(tx: &Transaction<'_>, source: &Value, recovery: &Value) -> Result<Value> {
     let row = one(Executor::Transaction(tx), "SELECT to_jsonb(n)::text FROM native_commands n WHERE operation_id=$1 AND operation_generation=$2 AND chat_id=$3 AND worker_id=$4", &[
         &text(&recovery["operationId"])?, &text(&recovery["operationGeneration"])?,

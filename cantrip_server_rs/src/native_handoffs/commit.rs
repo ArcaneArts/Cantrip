@@ -103,6 +103,7 @@ pub(super) async fn apply(
     )
     .await?;
     let mut patch = json!({"phase":"committed","binding":binding,"retiredRuntimeGenerations":retire_runtime(&row,&previous["runtimeGeneration"]),"errorCode":Value::Null});
+    goal_recovery::commit_provider(tx, &row, &target["providerId"]).await?;
     if row["source"]["contextKind"] == "standalone"
         && truthy(row.get("queued_source"))
         && let Some(prompt) =

@@ -35,7 +35,10 @@ import {
   retainedGoalClaimMatches,
 } from "./native-handoff-goal-claim.js";
 import type { GoalHandoffClaim } from "./native-goal-handoff-affinity.js";
-import { confirmGoalRecoveryHandoff } from "./native-handoff-goal-recovery.js";
+import {
+  confirmGoalRecoveryHandoff,
+  commitGoalRecoveryProvider,
+} from "./native-handoff-goal-recovery.js";
 
 type Row = typeof schema.nativeRuntimeHandoffs.$inferSelect;
 const activePhases = ["preparing", "prepared", "committed"];
@@ -538,6 +541,12 @@ export class NativeRuntimeHandoffRepository {
         .update(schema.nativeSettingsStates)
         .set({ state: next, updatedAt: new Date() })
         .where(eq(schema.nativeSettingsStates.chatId, row.chatId));
+      await commitGoalRecoveryProvider(
+        tx,
+        row.source,
+        row.queuedSource,
+        target.providerId,
+      );
       const retargetedPrompt =
         row.source.contextKind === "standalone" && row.queuedSource
           ? await retargetStandaloneHandoffInput(

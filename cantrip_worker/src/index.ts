@@ -2414,7 +2414,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             },
             attemptSignal,
             handoff,
-            queueSnapshot.goalRecovery?.source,
+            queueSnapshot.goalRecovery ?? undefined,
           );
         },
         declined: (event) => {
@@ -3358,9 +3358,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       // Canonical acknowledgement is already durable. Metadata housekeeping
       // must not hold up destination publication or the original input's slot.
       void (async () => {
-        if (state.queuedSource!.goalRecovery) {
-          // This ACK fences a native runner; it did not withdraw a live lease.
-          // Let canonical Goal recovery decide FIFO restoration/retirement.
+        if (
+          state.queuedSource!.goalRecovery ||
+          state.queuedSource!.autonomousAttempt?.goalEpoch
+        ) {
+          // A Goal's journal carries FIFO evidence beyond the native fence.
+          // Canonical recovery decides whether that position is retained.
           if (final) await journal.retireWithdrawal(state);
           return;
         }

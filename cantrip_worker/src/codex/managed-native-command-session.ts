@@ -46,6 +46,7 @@ import type {
   NativeAutonomousAttempt,
   NativeGoalRecoverySource,
   NativeGoalRecoveryAdmission,
+  NativeGoalRecovery,
 } from "@cantrip/protocol";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
 import { NativeCommandClient } from "../native-command-client.js";
@@ -910,7 +911,7 @@ export class ManagedNativeCommandSession {
     session: NativeCommandSession,
     signal: AbortSignal,
     goalQueueHandoff?: NativeCommandAdmission["goalQueueHandoff"],
-    goalRecovery?: NativeGoalRecoverySource,
+    goalRecovery?: NativeGoalRecovery,
   ): Promise<void> {
     if (
       session.threadId !== attempt.threadId ||
@@ -949,7 +950,12 @@ export class ManagedNativeCommandSession {
         ...(attempt.goalEpoch ? { goalEpoch: attempt.goalEpoch } : {}),
       },
       ...(goalQueueHandoff ? { goalQueueHandoff } : {}),
-      ...(goalRecovery ? { goalRecovery } : {}),
+      ...(goalRecovery
+        ? {
+            goalRecovery: goalRecovery.source,
+            goalRecoveryOrderEpoch: goalRecovery.orderEpoch ?? 0,
+          }
+        : {}),
       frame: {
         method: "turn/start",
         params: { threadId: attempt.threadId },
@@ -1173,7 +1179,10 @@ export class ManagedNativeCommandSession {
       intent.expectedTurnId = operation.expectedTurnId;
     if (operation.autonomousAttempt)
       intent.autonomousAttempt = operation.autonomousAttempt;
-    if (operation.goalRecovery) intent.goalRecovery = operation.goalRecovery;
+    if (operation.goalRecovery) {
+      intent.goalRecovery = operation.goalRecovery;
+      intent.goalRecoveryOrderEpoch = operation.goalRecoveryOrderEpoch ?? 0;
+    }
     if (operation.settingsBindingId !== undefined)
       intent.settingsBindingId = operation.settingsBindingId;
     const protectedContent = await protectNativeCommandContent({
@@ -1428,6 +1437,7 @@ export class ManagedNativeCommandSession {
                     ? {
                         autonomousGoal: {
                           goalEpoch: operation.autonomousAttempt.goalEpoch,
+                          orderEpoch: operation.goalRecoveryOrderEpoch ?? 0,
                         },
                       }
                     : {}),

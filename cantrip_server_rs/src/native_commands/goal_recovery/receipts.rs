@@ -92,12 +92,13 @@ pub(in crate::native_commands) async fn settle_before_dispatch(
         &[&marker["source"].stringify(), &operation],
     )
     .await?;
+    let mut next_marker = marker.clone();
+    if truthy(row.get("execution_completed_at")) {
+        next_marker["admission"] = Value::Null;
+    }
     tx.query(
         "UPDATE managed_queue_states SET goal_recovery=$1::text::jsonb WHERE chat_id=$2",
-        &[
-            &json!({"source":marker["source"],"admission":if truthy(row.get("execution_completed_at")) { Value::Null } else { marker["admission"].clone() }}).stringify(),
-            &chat,
-        ],
+        &[&next_marker.stringify(), &chat],
     )
     .await?;
     queue::changed(tx, &chat).await?;

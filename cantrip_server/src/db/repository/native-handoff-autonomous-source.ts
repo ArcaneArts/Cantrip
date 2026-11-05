@@ -148,6 +148,14 @@ export async function confirmAutonomousHandoffSource(
     identity.commandGeneration !== root.operationGeneration ||
     identity.threadId !== source.threadId ||
     identity.turnId !== expected.turnId ||
+    (expected.goalEpoch &&
+      (identity.messageId ||
+        identity.taskInput ||
+        (identity.autonomousGoal?.orderEpoch ?? 0) !==
+          ((root.intent as NativeCommandAdmission["intent"])
+            .goalRecoveryOrderEpoch ?? 0) ||
+        (identity.autonomousGoal &&
+          identity.autonomousGoal.goalEpoch !== expected.goalEpoch))) ||
     (alreadyDeferred && evidence?.key !== record.key)
   )
     fail();
@@ -278,7 +286,7 @@ export async function confirmAutonomousHandoffSource(
     if (updated.length !== 1) fail();
     await queueStateChanged(tx, root.chatId);
   }
-  await completeRecoveredGoalWithdrawal(tx, root);
+  await completeRecoveredGoalWithdrawal(tx, root, record);
 }
 
 /** Called only after the exact journal withdrawal and native invalidation ACK.
@@ -287,31 +295,73 @@ export async function confirmAutonomousHandoffSource(
 async function completeRecoveredGoalWithdrawal(
   tx: RepositoryTransaction,
   root: Command,
+  freshRecord?: InferenceJournalRecord,
 ): Promise<void> {
   const [state] = await tx
     .select({ recovery: schema.managedQueueStates.goalRecovery })
     .from(schema.managedQueueStates)
     .where(eq(schema.managedQueueStates.chatId, root.chatId));
-  if (!state?.recovery) return;
-  const marker = nativeGoalRecoverySchema.parse(state.recovery);
-  if (
-    marker.admission?.operationId !== root.operationId ||
-    marker.admission.operationGeneration !== root.operationGeneration
-  )
-    return;
   const intent = root.intent as NativeCommandAdmission["intent"];
-  if (
-    !isDeepStrictEqual(intent.goalRecovery, marker.source) ||
-    intent.workerGeneration !== marker.admission.workerGeneration
-  )
-    fail();
+  let marker = state?.recovery
+    ? nativeGoalRecoverySchema.parse(state.recovery)
+    : null;
+  if (!marker) {
+    // Only the first actual withdrawal may establish this logical source.
+    // A late duplicate must never recreate a marker removed by Stop/dispatch.
+    const attempt = autonomousHandoffAttempt(root);
+    const session = root.identity as NativeCommandSession;
+    if (
+      !freshRecord ||
+      intent.goalRecovery ||
+      !attempt?.goalEpoch ||
+      !session.threadId
+    )
+      return;
+    const [chat] = await tx
+      .select()
+      .from(schema.chats)
+      .where(eq(schema.chats.id, root.chatId));
+    if (!chat || chat.archivedAt || chat.managedAutonomyStopped) return;
+    marker = {
+      source: {
+        operationId: root.operationId,
+        operationGeneration: root.operationGeneration,
+        threadId: session.threadId,
+        goalEpoch: attempt.goalEpoch,
+      },
+      admission: null,
+      providerId: freshRecord.identity.providerId,
+      orderEpoch: 0,
+    };
+    await tx
+      .insert(schema.managedQueueStates)
+      .values({ chatId: root.chatId, goalRecovery: marker })
+      .onConflictDoUpdate({
+        target: schema.managedQueueStates.chatId,
+        set: { goalRecovery: marker },
+      });
+  } else {
+    if (
+      marker.admission?.operationId !== root.operationId ||
+      marker.admission.operationGeneration !== root.operationGeneration
+    )
+      return;
+    if (
+      !isDeepStrictEqual(intent.goalRecovery, marker.source) ||
+      intent.workerGeneration !== marker.admission.workerGeneration ||
+      (intent.goalRecoveryOrderEpoch ?? 0) !== (marker.orderEpoch ?? 0)
+    )
+      fail();
+    if (!marker.providerId && freshRecord)
+      marker.providerId = freshRecord.identity.providerId;
+  }
   await tx
     .update(schema.nativeCommands)
     .set({ goalRecoverySource: marker.source })
     .where(eq(schema.nativeCommands.operationId, root.operationId));
   await tx
     .update(schema.managedQueueStates)
-    .set({ goalRecovery: { source: marker.source, admission: null } })
+    .set({ goalRecovery: { ...marker, admission: null } })
     .where(eq(schema.managedQueueStates.chatId, root.chatId));
   await queueStateChanged(tx, root.chatId);
 }

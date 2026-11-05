@@ -21,6 +21,7 @@ import {
   assertGoalClaimPrompt,
   retainedGoalClaimMatches,
 } from "./native-handoff-goal-claim.js";
+import { queueStateChanged } from "./native-command-queue.js";
 
 const fail = (): never => {
   throw new NativeCommandError("handoff-native-operation-pending");
@@ -31,6 +32,58 @@ async function markerFor(tx: RepositoryTransaction, chatId: string) {
     .from(schema.managedQueueStates)
     .where(eq(schema.managedQueueStates.chatId, chatId));
   return row?.recovery ? nativeGoalRecoverySchema.parse(row.recovery) : null;
+}
+
+/** Actual routing commit, after native withdrawal. Leaving a provider ends
+ * its FIFO episode even if the cycle later returns to the same provider. */
+export async function commitGoalRecoveryProvider(
+  tx: RepositoryTransaction,
+  source: NativeSettingsBinding,
+  queued: NativeRuntimeHandoffQueuedSource | null | undefined,
+  targetProviderId: string,
+): Promise<void> {
+  const marker = await markerFor(tx, source.chatId);
+  if (!marker) return;
+  if (!queued?.withdrawn || marker.admission) fail();
+  const [retired] = await tx
+    .select()
+    .from(schema.nativeCommands)
+    .where(
+      and(
+        eq(schema.nativeCommands.operationId, queued!.operationId),
+        eq(
+          schema.nativeCommands.operationGeneration,
+          queued!.operationGeneration,
+        ),
+        eq(schema.nativeCommands.chatId, source.chatId),
+        eq(schema.nativeCommands.workerId, source.workerId),
+      ),
+    );
+  if (
+    !retired?.executionCompletedAt ||
+    !isDeepStrictEqual(retired.goalRecoverySource, marker.source)
+  )
+    fail();
+  let previousProviderId = marker.providerId;
+  if (!previousProviderId && source.modelRouteId) {
+    const [route] = await tx
+      .select({ providerId: schema.modelRoutes.providerId })
+      .from(schema.modelRoutes)
+      .where(eq(schema.modelRoutes.id, source.modelRouteId));
+    previousProviderId = route?.providerId;
+  }
+  const next = nativeGoalRecoverySchema.parse({
+    ...marker,
+    providerId: targetProviderId,
+    orderEpoch:
+      (marker.orderEpoch ?? 0) +
+      (previousProviderId === targetProviderId ? 0 : 1),
+  });
+  await tx
+    .update(schema.managedQueueStates)
+    .set({ goalRecovery: next })
+    .where(eq(schema.managedQueueStates.chatId, source.chatId));
+  await queueStateChanged(tx, source.chatId);
 }
 
 async function validateClaim(

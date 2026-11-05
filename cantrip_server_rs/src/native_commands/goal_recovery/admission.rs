@@ -7,6 +7,9 @@ pub(in crate::native_commands) async fn assert_admission(
     let chat = text(&input["session"]["chatId"])?;
     let marker = read(tx, &chat).await?;
     let source = input["intent"].get("goalRecovery").filter(|v| !v.is_null());
+    if input["intent"].get("goalRecoveryOrderEpoch").is_some() && source.is_none() {
+        return reject("invalid-goal-recovery");
+    }
     if input["method"] != "turn/start" {
         if source.is_some() {
             return reject("invalid-goal-recovery");
@@ -20,6 +23,10 @@ pub(in crate::native_commands) async fn assert_admission(
         return reject("stale-goal-recovery");
     };
     if !deep_equal(&marker["source"], source)
+        || input["intent"]["goalRecoveryOrderEpoch"]
+            .as_f64()
+            .unwrap_or(0.0)
+            != marker["orderEpoch"].as_f64().unwrap_or(0.0)
         || input["origin"] != "autonomous"
         || input["intent"]["autonomousAttempt"].get("goalEpoch") != source.get("goalEpoch")
         || input["session"].get("threadId") != source.get("threadId")
@@ -57,13 +64,19 @@ pub(in crate::native_commands) async fn record_admission(
     let Some(marker) = marker.filter(|m| {
         !truthy(m.get("admission"))
             && deep_equal(&m["source"], &input["intent"]["goalRecovery"])
+            && m["orderEpoch"].as_f64().unwrap_or(0.0)
+                == input["intent"]["goalRecoveryOrderEpoch"]
+                    .as_f64()
+                    .unwrap_or(0.0)
             && truthy(input["intent"].get("workerGeneration"))
     }) else {
         return reject("stale-goal-recovery");
     };
     let admission = json!({"operationId":row["operation_id"],
         "operationGeneration":row["operation_generation"],"workerGeneration":input["intent"]["workerGeneration"]});
-    let marker = json!({"source":marker["source"],"admission":admission}).stringify();
+    let mut marker = marker;
+    marker["admission"] = admission;
+    let marker = marker.stringify();
     tx.query(
         "UPDATE managed_queue_states SET goal_recovery=$1::text::jsonb WHERE chat_id=$2",
         &[&marker, &chat],
@@ -93,6 +106,8 @@ pub(in crate::native_commands) async fn dispatch(
     .await?;
     if marker.as_ref().is_none_or(|m| {
         !deep_equal(&m["source"], &intent["goalRecovery"])
+            || m["orderEpoch"].as_f64().unwrap_or(0.0)
+                != intent["goalRecoveryOrderEpoch"].as_f64().unwrap_or(0.0)
             || m["admission"].get("operationId") != row.get("operation_id")
             || m["admission"].get("operationGeneration") != row.get("operation_generation")
             || m["admission"].get("workerGeneration") != Some(generation)

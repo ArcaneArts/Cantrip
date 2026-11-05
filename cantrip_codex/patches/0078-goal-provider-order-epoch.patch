@@ -1,0 +1,15 @@
+diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/cantrip_inference_journal.rs
+--- a/codex-rs/cli/src/cantrip_inference_journal.rs
++++ b/codex-rs/cli/src/cantrip_inference_journal.rs
+@@ -55,3 +55,5 @@
+ struct AutonomousGoal {
+     goal_epoch: String,
++    #[serde(default)]
++    order_epoch: u64,
+ }
+@@ -497,4 +499,5 @@
+                                         .is_some_and(|(goal, prior)| {
+                                             !goal.goal_epoch.is_empty()
+                                                 && goal.goal_epoch == prior.goal_epoch
++                                                && goal.order_epoch == prior.order_epoch
+                                         })
