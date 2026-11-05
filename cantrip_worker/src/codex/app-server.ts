@@ -1,5 +1,7 @@
 import { CodexInteractions } from "./interactions.js";
 import { setTimeout as retryDelay } from "node:timers/promises";
+import type { NativeResourceProtection } from "../native-resource-protection.js";
+import { handleNativeResourceProtection } from "./native-resource-control.js";
 import {
   providerUsesChatCompletions,
   isWorkerEndpointProviderKind,
@@ -1838,6 +1840,7 @@ export class CodexAppServer implements CodexRuntime {
     private readonly configurationHome: string | null = null,
     private readonly nativeEnvironment: CodexNativeEnvironment | null = null,
     private readonly inferenceAdmission: WorkerInferenceAdmission | null = null,
+    private readonly resourceProtection: NativeResourceProtection | null = null,
   ) {}
 
   private workspaceContext(cwd: string) {
@@ -6882,6 +6885,19 @@ export class CodexAppServer implements CodexRuntime {
     this.#socket.send(JSON.stringify(message));
   }
 
+  private async handleNativeResourceProtection(raw: unknown): Promise<void> {
+    await handleNativeResourceProtection(raw, {
+      owner: () => {
+        const transport = this.transportGeneration;
+        const runner = this.#inference?.generation;
+        return transport && runner ? { transport, runner } : null;
+      },
+      protection: this.resourceProtection,
+      resolve: (params) =>
+        this.request("thread/nativeResources/resolve", params),
+    });
+  }
+
   private async handleNativeInferenceControl(raw: unknown): Promise<void> {
     const base = z
       .object({
@@ -7084,6 +7100,16 @@ export class CodexAppServer implements CodexRuntime {
       return;
     }
 
+    if (message.method === "thread/nativeResources/requested") {
+      void this.handleNativeResourceProtection(message.params).catch(() => {
+        workerLogger.event("warn", "Native resource protection failed", {
+          event: "codex.native-resources.failed",
+          subsystem: "codex",
+          runtimeId: this.#runtimeId,
+        });
+      });
+      return;
+    }
     if (
       message.method === "thread/managedExecution/requested" &&
       objectRecord(message.params)?.trigger === "inference"

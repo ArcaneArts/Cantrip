@@ -68,6 +68,7 @@ async function fixture(t, change = {}) {
         "thread/settings/operation/read",
         "thread/managedConfig/update",
         "thread/managedExecution/bind",
+        "thread/nativeResources/resolve",
         "thread/managedExecution/resolve",
         "thread/managedExecution/invalidate",
         "thread/managedExecution/wake",
@@ -85,6 +86,18 @@ async function fixture(t, change = {}) {
     await writeFile(
       path.join(out, "v2/ThreadSettings.ts"),
       "settingsVersion subagentModel multiAgentEnabled",
+    );
+    await writeFile(
+      path.join(out, "ServerNotification.ts"),
+      '"thread/nativeResources/requested"',
+    );
+    await writeFile(
+      path.join(out, "v2/NativeResourceProtectionNotification.ts"),
+      "checkpointId runnerGeneration requestId seal value",
+    );
+    await writeFile(
+      path.join(out, "v2/NativeResourceProtectionResolveParams.ts"),
+      "threadId turnId checkpointId runnerGeneration requestId value",
     );
     await writeFile(
       path.join(out, "v2/ThreadHistoryTurnMetadata.ts"),
