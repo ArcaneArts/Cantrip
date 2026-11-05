@@ -989,3 +989,46 @@ The full goal still requires autonomous checkpoint/control authority, legacy
 observation authority, current-generation abandoned preparations, transport/outcome
 delivery and restart reconciliation, and the final timing/bounded-state/inference
 entry-point audit. This milestone does not claim those paths complete.
+
+### Passive Task Goal observation ownership
+
+Legacy/passive Goal reads now capture an ephemeral server-owned observation
+snapshot before the native RPC in both servers. This is read/projection authority,
+not a provider ticket, dispatch lease or input receipt. It cannot launch a turn,
+renew a lease, replay a prompt or reclaim inference capacity. It adds no protocol
+fields, durable prompt state, polling or completed-operation registry.
+
+The snapshot binds the actual Task revision, project/Chat identity, placement and
+Stop revisions, actual active worktree worker/path, Chat status and pause intent,
+project pause intent, active lane activation, runtime session/thread/route/account,
+latest dispatch identity and
+control token/state/owner, and the current Goal input identity/deferred flag. A
+read must target either the current native runtime or the latest dispatch's
+retained worker/worktree/thread affinity. Retained-session recovery can still
+observe its saved worktree before restoring active placement.
+
+The server releases all database locks before the RPC. It checks the snapshot
+again under the existing owner/project/Chat locks in the transaction that writes
+the encrypted Task projection. Lease heartbeat timestamps and observation timing
+are excluded: an ordinary heartbeat cannot invalidate a read or prove execution
+settlement. Actual ownership changes, lane reactivation, pause/Stop, archival,
+Task edits/deletion, input deferral and replacement dispatches invalidate it.
+
+Missing-Goal and observation-only responses also validate their snapshot before
+returning, so an older no-Goal response cannot authorize repair for a changed
+session. A lost Task CAS discards the entire native result; neither server pairs
+old native metadata with an independently refreshed Task. Explicit message and
+activation reads retain their existing mutation/dispatch authority and also no
+longer hide a stale Task CAS. The existing passive reconciliation loop quietly
+discards this expected observation conflict and can retry on its normal cadence.
+Actual metadata/transport errors retain their existing reporting. Physical
+control re-fencing remains part of the continuing lifecycle audit.
+
+Source review covered current/retained affinity, ownership changes during RPC,
+Task CAS races, missing Goal metadata, observation-only reads, ordinary lease
+heartbeats, and both server implementations. Direct formatting and
+`git diff --check` passed; runtime behavior is unverified.
+No tests, typechecks, builds, benchmarks, native/helper execution, computer-use
+testing or hosted validation ran. Autonomous checkpoint/control recovery,
+abandoned input cancellation, terminal delivery/restart reconciliation and final
+timing/bounded-state/inference-entry audits remain required for the full goal.

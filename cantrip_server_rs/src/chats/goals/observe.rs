@@ -34,6 +34,16 @@ impl Service {
             .runtime_for_context(owner, context)
             .await?
             .context("Selected model was not found.")?;
+        let observation =
+            if options.dispatch_guard.is_none() && !options.activate && options.message.is_none() {
+                Some(
+                    self.tasks
+                        .capture_goal_observation(owner, context, task)
+                        .await?,
+                )
+            } else {
+                None
+            };
         let mut command = if options.activate {
             json!({"type":"chat.goal.update","status":"active"})
         } else {
@@ -79,36 +89,26 @@ impl Service {
         if (!truthy(result.get("goal")) && options.runtime_failure.is_none())
             || options.observation_only
         {
+            if let Some(observation) = &observation {
+                self.tasks
+                    .validate_goal_observation(owner, &text(&context["chatId"])?, observation)
+                    .await?;
+            }
             result["task"] = task.clone();
             return Ok(result);
         }
-        let synchronized = match self
+        // Discard the whole native observation after a stale ownership/CAS
+        // result. Fresh Task state cannot make an older native result current.
+        let synchronized = self
             .tasks
-            .sync_implementation_state_guarded(
+            .sync_implementation_state_observed(
                 owner,
                 &text(&context["chatId"])?,
                 &json!({"rowVersion":task["rowVersion"],"task":result["task"]}),
                 options.dispatch_guard.as_ref(),
+                observation.as_ref(),
             )
-            .await
-        {
-            Ok(value) => value,
-            Err(error) => {
-                if error
-                    .downcast_ref::<tasks::Conflict>()
-                    .is_none_or(|e| e.code != "stale-version")
-                    || options
-                        .dispatch_guard
-                        .as_ref()
-                        .is_some_and(|g| g["kind"] == "outcome")
-                    || options.message.is_some()
-                    || options.activate
-                {
-                    return Err(error);
-                }
-                self.tasks.get(owner, &text(&context["chatId"])?).await?
-            }
-        };
+            .await?;
         if synchronized
             .as_ref()
             .is_some_and(|next| next["rowVersion"] != task["rowVersion"])

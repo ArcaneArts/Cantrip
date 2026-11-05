@@ -32,6 +32,10 @@ import {
 } from "./task-operation-fence.js";
 import { taskRetrySummary } from "../tasks/automatic-retry.js";
 import { TaskInferenceInputRepository } from "./task-inference-inputs.js";
+import {
+  TaskGoalObservationRepository,
+  type TaskGoalObservationFence,
+} from "./task-goal-observations.js";
 import type { ChatExecutionLaneRepository } from "./repository/chat-execution-lanes.js";
 import type { MessageWriteRepository } from "./repository/message-writes.js";
 import { detachProjectTab, projectTabKey } from "./tab-layouts.js";
@@ -240,11 +244,13 @@ function assertMutationKeepsOperationalState(
 
 export class TaskRepository {
   readonly inferenceInputs: TaskInferenceInputRepository;
+  readonly goalObservations: TaskGoalObservationRepository;
   constructor(
     private readonly database: TaskDatabase,
     private readonly lanes?: ChatExecutionLaneRepository,
     private readonly messages?: MessageWriteRepository,
   ) {
+    this.goalObservations = new TaskGoalObservationRepository(database);
     this.inferenceInputs = new TaskInferenceInputRepository(
       database,
       lanes,
@@ -1285,10 +1291,18 @@ export class TaskRepository {
     chatId: string,
     input: { rowVersion: number; task: TaskOpaqueContent },
     dispatchFence?: TaskOperationDispatchFence,
+    observationFence?: TaskGoalObservationFence,
   ): Promise<TaskOpaqueSummary | null> {
     const next = taskOpaqueContentSchema.parse(input.task);
-    if (!(await this.get(ownerId, chatId))) return null;
+    if (!observationFence && !(await this.get(ownerId, chatId))) return null;
     return this.database.transaction(async (transaction) => {
+      if (observationFence)
+        await this.goalObservations.assertInTransaction(
+          transaction,
+          ownerId,
+          chatId,
+          observationFence,
+        );
       if (dispatchFence)
         await assertTaskOperationDispatchFence(
           transaction,

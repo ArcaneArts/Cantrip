@@ -129,6 +129,13 @@ impl Service {
                     continue;
                 }
                 if let Err(error) = this.recover(&owner, &chat, false, false).await {
+                    if crate::operations::shared_failure::downcast_ref::<task_dispatch::Conflict>(
+                        &error,
+                    )
+                    .is_some_and(|e| e.code == "stale-version")
+                    {
+                        continue;
+                    }
                     (this.dependencies.report)(owner.clone(), chat, Arc::new(error));
                 }
             }
