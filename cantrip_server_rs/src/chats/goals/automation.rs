@@ -270,6 +270,25 @@ impl Service {
                 let Some(task) = self.tasks.get(owner, chat).await? else {
                     return Ok(());
                 };
+                if self
+                    .tasks
+                    .pending_goal_inference_input(owner, chat, None)
+                    .await?
+                    .is_some()
+                {
+                    if let Some(lease) = goal_dispatch_lease(&task)? {
+                        let mut options = GoalOptions {
+                            runtimes: Some(vec![runtime.clone()]),
+                            model_configuration: task["dispatch"]
+                                .get("modelConfiguration")
+                                .cloned(),
+                            ..GoalOptions::default()
+                        };
+                        self.resume_pending_goal_input(owner, &context, &lease, &mut options)
+                            .await?;
+                    }
+                    return Ok(());
+                }
                 let id = uuid::Uuid::new_v4().to_string();
                 let key = format!("task-goal-resume:{id}");
                 let result = self

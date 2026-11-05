@@ -15,6 +15,10 @@ import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import * as schema from "./schema.js";
 import {
+  assertTaskOperationDispatchFence,
+  type TaskOperationLeaseFence,
+} from "./task-operation-fence.js";
+import {
   TaskDispatchConflictError,
   TaskDispatchRepository,
 } from "./task-dispatch.js";
@@ -82,8 +86,18 @@ export class TaskRetryRepository {
     ) =>
       | { record: TaskRetryRecord | null; result: T }
       | Promise<{ record: TaskRetryRecord | null; result: T }>,
+    dispatchFence?: TaskOperationLeaseFence,
   ) {
     return this.database.transaction(async (transaction) => {
+      if (dispatchFence)
+        await assertTaskOperationDispatchFence(
+          transaction,
+          ownerId,
+          chatId,
+          dispatchFence.lease.operationId,
+          dispatchFence,
+          true,
+        );
       // Same lock order as enqueue/recovery. Claims across server replicas serialize.
       await transaction
         .select({ id: schema.users.id })
@@ -141,12 +155,18 @@ export class TaskRetryRepository {
     key: string,
     kind: TaskFailureKind,
     now = Date.now(),
+    dispatchFence?: TaskOperationLeaseFence,
   ) {
-    return this.mutate(ownerId, chatId, ({ task }) => {
-      if (task.state === "complete") return { record: null, result: false };
-      const record = scheduleTaskRetry(task.automaticRetry, key, kind, now);
-      return { record, result: record !== task.automaticRetry };
-    });
+    return this.mutate(
+      ownerId,
+      chatId,
+      ({ task }) => {
+        if (task.state === "complete") return { record: null, result: false };
+        const record = scheduleTaskRetry(task.automaticRetry, key, kind, now);
+        return { record, result: record !== task.automaticRetry };
+      },
+      dispatchFence,
+    );
   }
 
   /** A recovered outcome may settle before the live failure callback. */
@@ -156,6 +176,7 @@ export class TaskRetryRepository {
     fence: TaskDispatchFence,
     kind: TaskFailureKind,
     now = Date.now(),
+    dispatchFence?: TaskOperationLeaseFence,
   ) {
     const result = await this.mutate(
       ownerId,
@@ -186,6 +207,7 @@ export class TaskRetryRepository {
         const record = scheduleTaskRetry(task.automaticRetry, key, kind, now);
         return { record, result: record !== task.automaticRetry };
       },
+      dispatchFence,
     );
     if (result === null)
       throw new TaskDispatchConflictError(
@@ -228,23 +250,32 @@ export class TaskRetryRepository {
     return this.mutate(ownerId, chatId, () => ({ record: null, result: true }));
   }
 
-  async clearPending(ownerId: string, chatId: string) {
-    return this.mutate(ownerId, chatId, ({ task }) => ({
-      record:
-        task.state === "complete"
-          ? null
-          : ["blocked", "review"].includes(task.state) &&
-              task.automaticRetry &&
-              task.automaticRetry.status !== "latched"
-            ? {
-                ...task.automaticRetry,
-                status: "idle",
-                dueAt: null,
-                claim: null,
-              }
-            : task.automaticRetry,
-      result: true,
-    }));
+  async clearPending(
+    ownerId: string,
+    chatId: string,
+    dispatchFence?: TaskOperationLeaseFence,
+  ) {
+    return this.mutate(
+      ownerId,
+      chatId,
+      ({ task }) => ({
+        record:
+          task.state === "complete"
+            ? null
+            : ["blocked", "review"].includes(task.state) &&
+                task.automaticRetry &&
+                task.automaticRetry.status !== "latched"
+              ? {
+                  ...task.automaticRetry,
+                  status: "idle",
+                  dueAt: null,
+                  claim: null,
+                }
+              : task.automaticRetry,
+        result: true,
+      }),
+      dispatchFence,
+    );
   }
 
   async claimDue(ownerId: string, chatId: string, now = Date.now()) {

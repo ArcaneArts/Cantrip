@@ -56,6 +56,42 @@ pub(super) async fn assert(
     if !current || !valid {
         return Err(crate::task_dispatch::Conflict::stale().into());
     }
+    if leased && let Some(attempt) = expected.get("goalInferenceInputOperationId") {
+        let input = &cycle["goal_input"];
+        if input.is_null()
+            || input["deferred"] == true
+            || input["receipt"]["operationId"] != *attempt
+            || input["receipt"]["dispatch"]["fencingToken"] != cycle["fencing_token"]
+            || input["receipt"]["dispatch"]["leaseOwner"] != cycle["lease_owner"]
+        {
+            return Err(crate::task_dispatch::Conflict::stale().into());
+        }
+        let r = &input["receipt"];
+        tx.query("WITH p AS MATERIALIZED (SELECT projects.id FROM projects JOIN chats ON chats.project_id=projects.id WHERE projects.owner_id=$1 AND chats.id=$2 FOR UPDATE OF projects) SELECT chats.id FROM p JOIN chats ON chats.project_id=p.id WHERE chats.id=$2 FOR UPDATE OF chats",&[&owner,&chat]).await?;
+        let placement = one(
+            Executor::Transaction(tx),
+            "SELECT to_jsonb(c)::text FROM chats c WHERE c.id=$1 LIMIT 1 FOR UPDATE",
+            &[&chat],
+        )
+        .await?;
+        let lane=one(Executor::Transaction(tx),"SELECT to_jsonb(l)::text FROM chat_execution_lanes l WHERE l.chat_id=$1 AND l.id=$2 LIMIT 1 FOR UPDATE",&[&chat,&text(&r["executionLaneId"])?]).await?;
+        if !placement.as_ref().is_some_and(|c| {
+            c["archived_at"].is_null()
+                && c["active_worker_id"] == r["workerId"]
+                && c["active_worktree_id"] == r["worktreeId"]
+        }) || !lane.as_ref().is_some_and(|l| {
+            l["worker_id"] == r["workerId"]
+                && l["worktree_id"] == r["worktreeId"]
+                && l["activated_at"]
+                    .as_js_string()
+                    .and_then(crate::wire::date_milliseconds)
+                    == r["executionLaneActivatedAt"]
+                        .as_js_string()
+                        .and_then(crate::wire::date_milliseconds)
+        }) {
+            return Err(crate::task_dispatch::Conflict::stale().into());
+        }
+    }
     if leased && let Some(attempt) = expected.get("inferenceInputOperationId") {
         // Receipt prepare/defer uses this same owner/cycle lock. Match inside
         // the actual round-write transaction, not an earlier heartbeat.

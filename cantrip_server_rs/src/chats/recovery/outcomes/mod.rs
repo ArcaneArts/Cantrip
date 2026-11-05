@@ -106,6 +106,54 @@ impl Service {
                 .record_inference_failure(owner, worker, proof)
                 .await?;
         }
+        match self.tasks.apply_goal_input_outcome(owner, worker, n).await {
+            Ok(Some(goal)) => {
+                if !goal["message"].is_null() {
+                    self.dependencies
+                        .live
+                        .publish_persisted_message(
+                            owner,
+                            &goal["message"],
+                            MessageKind::Task,
+                            Some(&goal["chat"]),
+                        )
+                        .await;
+                }
+                self.dependencies.live.publish_boundary(
+                    owner,
+                    text(&n["chatId"])?,
+                    &goal["chat"]["projectId"],
+                    Some(&goal["chat"]),
+                );
+                let error = (n["outcome"]["ok"] == false).then(|| {
+                    Arc::new(anyhow::anyhow!(
+                        n["outcome"]["error"]
+                            .as_str()
+                            .unwrap_or("Task Goal input failed.")
+                            .to_owned()
+                    ))
+                });
+                self.dependencies
+                    .goals
+                    .synchronize_goal_input(
+                        owner,
+                        text(&n["chatId"])?,
+                        &n["taskDispatchFence"],
+                        n["outcome"]["ok"] == false,
+                        error,
+                        Some(&goal["receipt"]),
+                    )
+                    .await?;
+                self.log("info","Recovered Task Goal input outcome from worker",json!({"event":"chat.turn.outcome-recovered","subsystem":"chat-execution","chatId":n["chatId"],"workerId":worker,"taskInferenceInputOperationId":goal["receipt"]["operationId"],"status":if n["outcome"]["ok"]==true{"completed"}else{"failed"}}));
+                (self.dependencies.queue_tick)();
+                return Ok(());
+            }
+            Ok(None) => {}
+            Err(error) if downcast_ref::<task_dispatch::Conflict>(&error).is_some() => {
+                return Ok(());
+            }
+            Err(error) => return Err(error),
+        }
         let (chat, lane) = (text(&n["chatId"])?, text(&n["executionLaneId"])?);
         let context = self.lanes.recovery_context(owner, chat, lane).await?;
         let logical = if truthy(n.get("nativeLogicalRoot")) {

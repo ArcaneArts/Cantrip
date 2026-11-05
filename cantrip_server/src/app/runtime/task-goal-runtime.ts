@@ -16,6 +16,8 @@ import {
   type ModelConfiguration,
   type TaskDispatchCycleSummary,
   type TaskDispatchWorkerLease,
+  type TaskDispatchFence,
+  type TaskInferenceInputReceipt,
 } from "@cantrip/protocol";
 import {
   taskGoalWorkerResultSchema,
@@ -51,6 +53,7 @@ import type { LimitedWorkerCommandBus } from "../../workers/limited-command-bus.
 import { GOAL_RESUME_PROMPT } from "../shared/constants.js";
 import type { createChatRecoveryRuntime } from "./chat-recovery-runtime.js";
 import type { BeginChatTurn } from "./chat-turn-runtime.js";
+import type { TaskOperationLeaseFence } from "../../db/task-operation-fence.js";
 import type { createLiveMutationRuntime } from "./live-mutation-runtime.js";
 import type { createModelRoutingRuntime } from "./model-routing-runtime.js";
 
@@ -251,6 +254,76 @@ export function createTaskGoalRuntime({
     );
   }
 
+  async function resumePendingTaskGoalInput(
+    context: ChatExecutionContext,
+    lease: TaskDispatchWorkerLease,
+    options: Parameters<typeof startEncryptedTaskGoal>[4] = {},
+  ): Promise<boolean> {
+    const pending = await repository.tasks.inferenceInputs.goals.pending(
+      applicationOwnerId(),
+      context.chatId,
+      lease.cycleId,
+    );
+    if (!pending?.deferred) return false;
+    const configuration =
+      options.modelConfiguration ?? context.modelConfiguration;
+    const modelId = await resolveModelId(
+      context,
+      configuration.modelId ?? undefined,
+    );
+    await retainTaskGoalLease(lease);
+    const task = await repository.tasks.get(
+      applicationOwnerId(),
+      context.chatId,
+    );
+    if (!task) throw new Error("Task Chat source not found.");
+    // Restore paused Goal state without resetting its objective. The worker's
+    // inference-only activation leaves the first input to this canonical owner.
+    await readEncryptedTaskGoal(
+      context,
+      task,
+      null,
+      false,
+      true,
+      undefined,
+      false,
+      { kind: "leased", lease },
+    );
+    await beginTurn(
+      context,
+      {
+        ...configuration,
+        modelId,
+        text: "Resume the accepted Task Goal input.",
+        mode: "goal",
+        idempotencyKey: pending.message.idempotencyKey,
+      },
+      {
+        ...scheduledTaskGoalTurnOptions(lease),
+        ...(options.afterTurnCompleted
+          ? { afterTurnCompleted: options.afterTurnCompleted }
+          : {}),
+        ...(options.afterTurnFailed
+          ? { afterTurnFailed: options.afterTurnFailed }
+          : {}),
+        runtimes: options.runtimes,
+        acquiringActor: "agent",
+        purpose: "Resume queued Task Goal input",
+        messageRole:
+          pending.message.classification.role === "system" ? "system" : "user",
+        encryptedTaskMessages: {
+          userMessage: pending.message,
+          response: {
+            id: randomUUID(),
+            idempotencyKey: `assistant:${pending.message.id}`,
+          },
+        },
+        workerPrompt: GOAL_RESUME_PROMPT,
+      },
+    );
+    return true;
+  }
+
   async function launchPreparedTaskGoal(
     chatId: string,
     operationId: string,
@@ -268,6 +341,18 @@ export function createTaskGoalRuntime({
       !taskOperation.relayResult?.goal
     ) {
       throw new Error("The finalized Task objective is not available.");
+    }
+    if (options.taskDispatchLease) {
+      const context = await repository.getChatExecutionContext(ownerId, chatId);
+      if (
+        context &&
+        (await resumePendingTaskGoalInput(
+          context,
+          options.taskDispatchLease,
+          options,
+        ))
+      )
+        return (await repository.tasks.get(ownerId, chatId))!;
     }
     const goalStartKey = `task-goal:${operationId}`;
     const existingMessage = await repository.getTaskMessageByIdempotencyKey(
@@ -557,9 +642,18 @@ export function createTaskGoalRuntime({
       ? taskDispatchCycleLease(task.dispatch)
       : null;
 
-  const releaseTaskGoalLease = (cycleId: string) => {
+  const releaseTaskGoalLease = (
+    cycleId: string,
+    expected?: TaskDispatchFence,
+  ) => {
     const retained = retainedTaskGoalLeases.get(cycleId);
     if (!retained) return;
+    if (
+      expected &&
+      (retained.lease.fencingToken !== expected.fencingToken ||
+        retained.lease.leaseOwner !== expected.leaseOwner)
+    )
+      return;
     clearInterval(retained.timer);
     retainedTaskGoalLeases.delete(cycleId);
   };
@@ -585,7 +679,7 @@ export function createTaskGoalRuntime({
     const timer = setInterval(
       () => {
         void repository.taskDispatch.heartbeat(lease).catch((error) => {
-          releaseTaskGoalLease(lease.cycleId);
+          releaseTaskGoalLease(lease.cycleId, lease);
           if (!(error instanceof TaskDispatchConflictError)) {
             app.log.warn(
               { cycleId: lease.cycleId, err: error },
@@ -656,6 +750,7 @@ export function createTaskGoalRuntime({
     activateGoal = false,
     runtimeFailure?: TaskGoalSyncContext["runtimeFailure"],
     observationOnly = false,
+    dispatchFence?: TaskOperationLeaseFence,
   ) => {
     if (!context.threadId) {
       return { goal: null, message: null, task };
@@ -704,6 +799,7 @@ export function createTaskGoalRuntime({
         applicationOwnerId(),
         context.chatId,
         { rowVersion: task.rowVersion, task: result.task },
+        dispatchFence,
       );
     } catch (error) {
       if (
@@ -731,10 +827,18 @@ export function createTaskGoalRuntime({
 
   const synchronizeScheduledTaskGoal = async (
     chatId: string,
-    lease: TaskDispatchWorkerLease,
+    lease: TaskDispatchFence,
     turnFailed: boolean,
     turnError?: unknown,
+    receipt?: TaskInferenceInputReceipt,
   ) => {
+    const guard: TaskOperationLeaseFence = {
+      kind: "leased",
+      lease,
+      ...(receipt
+        ? { goalInferenceInputOperationId: receipt.operationId }
+        : {}),
+    };
     const context = await repository.getChatExecutionContext(
       applicationOwnerId(),
       chatId,
@@ -745,16 +849,24 @@ export function createTaskGoalRuntime({
       context.automationPaused &&
       taskGoalWorkerInterrupted(context.experience, "goal", turnError)
     ) {
-      releaseTaskGoalLease(lease.cycleId);
       try {
-        await repository.taskDispatch.pause(lease, {
-          threadId: context.threadId,
-          // The lost worker cannot attest that the previous native turn survived.
-          // Resume the Goal from history, not an assumed resident turn.
-          turnId: null,
-        });
+        if (receipt)
+          await repository.tasks.inferenceInputs.goals.pause(
+            applicationOwnerId(),
+            receipt,
+            context.threadId,
+          );
+        else
+          await repository.taskDispatch.pause(lease, {
+            threadId: context.threadId,
+            // The lost worker cannot attest that the previous native turn survived.
+            // Resume the Goal from history, not an assumed resident turn.
+            turnId: null,
+          });
+        releaseTaskGoalLease(lease.cycleId, lease);
       } catch (error) {
-        if (!(error instanceof TaskDispatchConflictError)) throw error;
+        if (error instanceof TaskDispatchConflictError) return;
+        throw error;
       }
       publishChatInvalidation(chatId, "task", null, context);
       queueTaskScheduleTick();
@@ -774,36 +886,46 @@ export function createTaskGoalRuntime({
         false,
         false,
         failure,
+        false,
+        guard,
       );
       if (failure && observed.task.state === "failed") {
         await repository.taskRetries.noteFailure(
           applicationOwnerId(),
           chatId,
-          `goal:${context.threadId}:${failure.occurredAt}`,
+          receipt
+            ? `goal-input:${receipt.operationId}`
+            : `goal:${context.threadId}:${failure.occurredAt}`,
           classifyTaskFailure(observed.task.lastError?.code ?? failure.kind),
+          undefined,
+          guard,
         );
         publishChatInvalidation(chatId, "task", null, context);
       } else if (["complete", "blocked"].includes(observed.task.state)) {
-        await repository.taskRetries.clearPending(applicationOwnerId(), chatId);
+        await repository.taskRetries.clearPending(
+          applicationOwnerId(),
+          chatId,
+          guard,
+        );
         publishChatInvalidation(chatId, "task", null, context);
       }
     } catch (error) {
+      if (error instanceof TaskDispatchConflictError) return;
       if (!turnFailed) throw error;
-      await repository.taskRetries.noteFailure(
-        applicationOwnerId(),
-        chatId,
-        `goal-observation:${lease.cycleId}:${Date.now()}`,
-        classifyTaskFailure(turnError ?? error),
-      );
-      releaseTaskGoalLease(lease.cycleId);
       try {
-        await repository.taskDispatch.heartbeat(lease);
-        await repository.taskDispatch.settle(lease, "failed");
-      } catch (dispatchError) {
-        if (!(dispatchError instanceof TaskDispatchConflictError)) {
-          throw dispatchError;
-        }
+        await repository.taskRetries.settleDispatchFailure(
+          applicationOwnerId(),
+          chatId,
+          lease,
+          classifyTaskFailure(turnError ?? error),
+          undefined,
+          guard,
+        );
+      } catch (failure) {
+        if (failure instanceof TaskDispatchConflictError) return;
+        throw failure;
       }
+      releaseTaskGoalLease(lease.cycleId, lease);
       publishChatInvalidation(chatId, "task", null, context);
       queueTaskScheduleTick();
     }
@@ -812,19 +934,61 @@ export function createTaskGoalRuntime({
   const scheduledTaskGoalTurnOptions = (lease: TaskDispatchWorkerLease) => ({
     async afterTurnCompleted({
       execution,
+      userMessage,
     }: {
       execution: ChatExecutionContext;
+      userMessage: ChatMessage;
     }) {
-      await synchronizeScheduledTaskGoal(execution.chatId, lease, false);
+      const receipt =
+        await repository.tasks.inferenceInputs.goals.receiptForTurn(
+          applicationOwnerId(),
+          execution.chatId,
+          lease,
+          {
+            clientMessageId: userMessage.id,
+            executionLaneId: execution.executionLaneId!,
+            executionLaneActivatedAt:
+              execution.executionLaneActivatedAt ?? undefined,
+          },
+        );
+      if (receipt)
+        await synchronizeScheduledTaskGoal(
+          execution.chatId,
+          lease,
+          false,
+          undefined,
+          receipt,
+        );
     },
     async afterTurnFailed({
       execution,
       error,
+      userMessage,
     }: {
       execution: ChatExecutionContext;
       error: unknown;
+      userMessage: ChatMessage;
     }) {
-      await synchronizeScheduledTaskGoal(execution.chatId, lease, true, error);
+      const receipt =
+        await repository.tasks.inferenceInputs.goals.receiptForTurn(
+          applicationOwnerId(),
+          execution.chatId,
+          lease,
+          {
+            clientMessageId: userMessage.id,
+            executionLaneId: execution.executionLaneId!,
+            executionLaneActivatedAt:
+              execution.executionLaneActivatedAt ?? undefined,
+          },
+        );
+      if (receipt)
+        await synchronizeScheduledTaskGoal(
+          execution.chatId,
+          lease,
+          true,
+          error,
+          receipt,
+        );
     },
     taskDispatchLease: lease,
   });
@@ -895,6 +1059,20 @@ export function createTaskGoalRuntime({
           context.chatId,
         );
         if (!task) return;
+        const pending = await repository.tasks.inferenceInputs.goals.pending(
+          applicationOwnerId(),
+          context.chatId,
+        );
+        if (pending) {
+          const lease = taskGoalDispatchLease(task);
+          if (lease)
+            await resumePendingTaskGoalInput(context, lease, {
+              runtimes: [runtime],
+              modelConfiguration:
+                task.dispatch?.modelConfiguration ?? undefined,
+            });
+          return;
+        }
         const messageId = randomUUID();
         const idempotencyKey = `task-goal-resume:${messageId}`;
         const result = await readEncryptedTaskGoal(
@@ -1106,6 +1284,7 @@ export function createTaskGoalRuntime({
     retainTaskGoalLease,
     resumeChatAutomation,
     scheduledTaskGoalTurnOptions,
+    synchronizeScheduledTaskGoal,
     startGoalTurn,
     taskContentFromSummary,
     taskDispatchCycleLease,

@@ -21,7 +21,7 @@ impl Repository {
                 if eligibility["eligible"]!=true { let now=clock(&options)?; change(ex,&text(&cycle["id"])?,&json!({"eligibility_code":eligibility["code"],"updated_at":now}),None,None,"").await?; continue; }
                 let now=clock(&options)?; let expires=expiry(&now,duration)?;
                 let fields=json!({"state":"running","lease_owner":row.get("lease_owner").filter(|v|!v.is_null()).cloned().unwrap_or_else(||json!(lease_owner)),"lease_expires_at":expires,"last_heartbeat_at":now,"eligibility_code":Value::Null,"paused_at":Value::Null,"updated_at":now});
-                let Some(resumed)=change(ex,&text(&cycle["id"])?,&fields,Some("paused"),Some(&cycle["fencingToken"]),",attempt_count=c.attempt_count+1").await? else { continue; };
+                let Some(resumed)=change(ex,&text(&cycle["id"])?,&fields,Some("paused"),Some(&cycle["fencingToken"]),",attempt_count=c.attempt_count+CASE WHEN c.goal_input->>'deferred'='true' THEN 0 ELSE 1 END").await? else { continue; };
                 let cycle=summary(&resumed)?;
                 return Ok(Some(json!({"lease":lease(&cycle)?,"cycle":cycle,"projectId":candidate["projectId"],"modelConfiguration":cycle["modelConfiguration"]})));
             }

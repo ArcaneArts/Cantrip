@@ -728,6 +728,7 @@ export async function buildApp({
     appendLiveChatMessage,
     appendLiveEncryptedChatMessage,
     appendLiveTaskMessage,
+    publishTaskMessage,
     applicationOwnerId,
     availableModelRuntimes,
     beginTurn: (...args) => beginTurn(...args),
@@ -746,6 +747,8 @@ export async function buildApp({
     publishChatInvalidation,
     publishChatTurnBoundary,
     queueTaskScheduleTick: () => queueTaskScheduleTick(),
+    synchronizeScheduledTaskGoal: (...args) =>
+      taskGoalRuntime.synchronizeScheduledTaskGoal(...args),
     repository,
     resolveModelId,
     routePairsForConfiguration,

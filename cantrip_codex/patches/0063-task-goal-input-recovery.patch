@@ -1,0 +1,32 @@
+diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/cantrip_inference_journal.rs
+index ee04f13..49a6ac4 100644
+--- a/codex-rs/cli/src/cantrip_inference_journal.rs
++++ b/codex-rs/cli/src/cantrip_inference_journal.rs
+@@ -42,9 +42,17 @@ struct Recovery {
+     task_input: Option<TaskInput>,
+ }
+ 
++#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(rename_all = "camelCase")]
++enum TaskInputKind {
++    Goal,
++}
++
+ #[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+ #[serde(rename_all = "camelCase", deny_unknown_fields)]
+ struct TaskInput {
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    kind: Option<TaskInputKind>,
+     operation_id: String,
+     chat_id: String,
+     client_message_id: String,
+@@ -340,7 +348,8 @@ impl Journal {
+                                     .and_then(|r| r.task_input.as_ref()),
+                             )
+                             .is_some_and(|(current, previous)| {
+-                                current.chat_id == previous.chat_id
++                                current.kind == previous.kind
++                                    && current.chat_id == previous.chat_id
+                                     && current.client_message_id == previous.client_message_id
+                                     && current.worker_id == previous.worker_id
+                                     && current.dispatch.cycle_id == previous.dispatch.cycle_id

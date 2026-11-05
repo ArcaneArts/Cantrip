@@ -207,12 +207,16 @@ export const workerChatCommandSchemas = [
       if (
         taskInput &&
         (command.nativeCommandReceipt !== undefined ||
-          command.resultMode.kind !== "task-encrypted" ||
-          command.resultMode.operation.operationId !==
-            taskInput.dispatch.operationId ||
-          command.resultMode.operation.chatId !== taskInput.chatId ||
-          command.resultMode.operation.userMessage.id !==
-            taskInput.clientMessageId ||
+          (taskInput.kind === "goal"
+            ? command.resultMode.kind !== "task-message-encrypted" ||
+              command.protectedTaskPrompt?.classification.mode !== "goal" ||
+              command.protectedTaskPrompt?.id !== taskInput.clientMessageId
+            : command.resultMode.kind !== "task-encrypted" ||
+              command.resultMode.operation.operationId !==
+                taskInput.dispatch.operationId ||
+              command.resultMode.operation.chatId !== taskInput.chatId ||
+              command.resultMode.operation.userMessage.id !==
+                taskInput.clientMessageId) ||
           command.chatId !== taskInput.chatId ||
           command.clientMessageId !== taskInput.clientMessageId ||
           command.executionLaneId !== taskInput.executionLaneId ||

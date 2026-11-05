@@ -5,6 +5,7 @@ mod dispatch_fence;
 mod edits;
 pub mod failure_kind;
 mod finish;
+mod goal_inference_inputs;
 mod inference_inputs;
 mod operations;
 pub mod policy;

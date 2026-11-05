@@ -76,6 +76,15 @@ export function createTaskExecutionRecovery({
       !task.implementationStartedAt
     )
       return false;
+    // An accepted Goal input owns the next turn. Do not invent a Resume
+    // message while its controller or canonical no-dispatch recovery owns it.
+    if (await repository.tasks.inferenceInputs.goals.pending(owner, chatId)) {
+      if (resume && !automatic && context.automationPaused) {
+        await unpause(owner, chatId);
+        publish(chatId, context.projectId!);
+      }
+      return true;
+    }
     if (task.state === "complete") {
       await goals.reconcileTaskGoalDispatch(task, "complete");
       return true;

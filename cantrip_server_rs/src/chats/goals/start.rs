@@ -154,6 +154,87 @@ impl Service {
         .await?;
         Ok(())
     }
+    pub(super) async fn resume_pending_goal_input(
+        self: &Arc<Self>,
+        owner: &str,
+        context: &Value,
+        lease: &Value,
+        options: &mut GoalOptions,
+    ) -> Result<bool> {
+        let chat = text(&context["chatId"])?;
+        let pending = self
+            .tasks
+            .pending_goal_inference_input(owner, &chat, Some(&text(&lease["cycleId"])?))
+            .await?;
+        let Some(pending) = pending.filter(|p| p["deferred"] == true) else {
+            return Ok(false);
+        };
+        let configuration = options
+            .model_configuration
+            .as_ref()
+            .filter(|v| !v.is_null())
+            .unwrap_or(&context["modelConfiguration"]);
+        let model = self
+            .dependencies
+            .routing
+            .resolve_model_id(
+                owner,
+                context,
+                configuration.get("modelId").filter(|v| !v.is_null()),
+            )
+            .await?;
+        self.retain(lease).await?;
+        let task = self
+            .tasks
+            .get(owner, &chat)
+            .await?
+            .context("Task Chat source not found.")?;
+        // Status activation preserves the objective and suppresses an automatic
+        // competing kickoff; this owner submits the saved encrypted input.
+        self.read_one(
+            owner,
+            context,
+            &task,
+            Observation {
+                activate: true,
+                dispatch_guard: Some(json!({"kind":"leased","lease":lease})),
+                ..Observation::default()
+            },
+        )
+        .await?;
+        let message = &pending["message"];
+        let mut input = json!({"text":"Resume the accepted Task Goal input.","mode":"goal","modelId":model,"idempotencyKey":message["idempotencyKey"]});
+        for key in [
+            "reasoningEffort",
+            "customSubagentModel",
+            "subagentModelId",
+            "subagentReasoningEffort",
+        ] {
+            input[key] = configuration[key].clone();
+        }
+        let mut turn_options = json!({"taskDispatchLease":lease,"acquiringActor":"agent","purpose":"Resume queued Task Goal input","messageRole":if message["classification"]["role"]=="system"{"system"}else{"user"},"encryptedTaskMessages":json!({"userMessage":message,"response":json!({"id":uuid::Uuid::new_v4().to_string(),"idempotencyKey":format!("assistant:{}",text(&message["id"])?)})}),"workerPrompt":RESUME_PROMPT});
+        if let Some(runtimes) = options.runtimes.take() {
+            turn_options["runtimes"] = Value::Array(runtimes);
+        }
+        let hooks = if options.hooks.structured.is_none()
+            && options.hooks.after_completed.is_none()
+            && options.hooks.after_failed.is_none()
+        {
+            self.scheduled_hooks(owner, lease)
+        } else {
+            std::mem::take(&mut options.hooks)
+        };
+        (self.dependencies.begin)(
+            owner.to_owned(),
+            context.clone(),
+            input,
+            turn_options,
+            hooks,
+        )
+        .await?;
+        Ok(true)
+    }
+
     pub fn launch_prepared(
         self: &Arc<Self>,
         owner: &str,
@@ -176,6 +257,20 @@ impl Service {
                     c["round"]["kind"] == "finalize" && truthy(c["relayResult"].get("goal"))
                 })
                 .context("The finalized Task objective is not available.")?;
+            if let Some(lease) = options.dispatch_lease.clone() {
+                if let Some(execution) = this.chats.execution_context(&owner, &chat).await? {
+                    if this
+                        .resume_pending_goal_input(&owner, &execution, &lease, &mut options)
+                        .await?
+                    {
+                        return this
+                            .tasks
+                            .get(&owner, &chat)
+                            .await?
+                            .context("Task Chat source not found.");
+                    }
+                }
+            }
             let key = format!("task-goal:{operation}");
             let existing = this
                 .chats

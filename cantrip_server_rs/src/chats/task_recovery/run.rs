@@ -18,6 +18,18 @@ impl Service {
             return Ok(false);
         };
         let goals = &self.dependencies.goals;
+        if self
+            .tasks
+            .pending_goal_inference_input(owner, chat, None)
+            .await?
+            .is_some()
+        {
+            if resume && !automatic && truthy(context.get("automationPaused")) {
+                (self.dependencies.unpause)(owner.to_owned(), chat.to_owned()).await?;
+                (self.dependencies.publish)(owner, chat, &text(&context["projectId"])?);
+            }
+            return Ok(true);
+        }
         if task["state"] == "complete" {
             goals.reconcile(owner, &task, &json!("complete")).await?;
             return Ok(true);

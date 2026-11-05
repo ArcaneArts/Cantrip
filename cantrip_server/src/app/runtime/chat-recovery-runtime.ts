@@ -8,7 +8,11 @@ import { effectivePermissionProfile } from "../../chats/execution-helpers.js";
 import { randomUUID } from "node:crypto";
 import { protectChatInput } from "./protect-chat-input.js";
 
-import { worktreeStatusResultSchema } from "@cantrip/protocol";
+import {
+  worktreeStatusResultSchema,
+  type TaskDispatchFence,
+  type TaskInferenceInputReceipt,
+} from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 
 import { chatIsExecuting } from "../../chats/execution-helpers.js";
@@ -32,6 +36,7 @@ interface ChatRecoveryMutationDependencies extends Pick<
   | "appendLiveChatMessage"
   | "appendLiveEncryptedChatMessage"
   | "appendLiveTaskMessage"
+  | "publishTaskMessage"
   | "deleteLiveQueuedPrompt"
   | "interruptLiveAgentInteractionRequests"
   | "publishChatInvalidation"
@@ -69,6 +74,13 @@ export interface ChatRecoveryRuntimeDependencies
     operationId: string,
   ) => Promise<unknown>;
   queueTaskScheduleTick: () => void;
+  synchronizeScheduledTaskGoal: (
+    chatId: string,
+    lease: TaskDispatchFence,
+    failed: boolean,
+    error?: unknown,
+    receipt?: TaskInferenceInputReceipt,
+  ) => Promise<void>;
   repository: ServerRepository;
   runAsOwner: OwnerRunner;
 }
@@ -82,6 +94,7 @@ export function createChatRecoveryRuntime({
   appendLiveChatMessage,
   appendLiveEncryptedChatMessage,
   appendLiveTaskMessage,
+  publishTaskMessage,
   applicationOwnerId,
   availableModelRuntimes,
   beginTurn,
@@ -97,6 +110,7 @@ export function createChatRecoveryRuntime({
   publishChatInvalidation,
   publishChatTurnBoundary,
   queueTaskScheduleTick,
+  synchronizeScheduledTaskGoal,
   repository,
   resolveModelId,
   routePairsForConfiguration,
@@ -525,6 +539,7 @@ export function createChatRecoveryRuntime({
     repository,
     bridge,
     appendLiveTaskMessage,
+    publishTaskMessage,
     appendLiveEncryptedChatMessage,
     upsertLiveChatMessage,
     interruptLiveAgentInteractionRequests,
@@ -533,6 +548,7 @@ export function createChatRecoveryRuntime({
     launchPreparedTaskGoal,
     failTaskGoalLaunch,
     queueTaskScheduleTick,
+    synchronizeScheduledTaskGoal,
     continuePendingWorktreeTransition,
     dispatchNextQueuedPrompt,
   });

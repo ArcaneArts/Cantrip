@@ -244,7 +244,7 @@ impl Bootstrap {
             }).await
         } else {
             let mut options = json!({"pauseAutomation":pause_automation});
-            if pause_automation {
+            if truthy(turn.execution.get("executionLaneActivatedAt")) {
                 options["expectedActivatedAt"] = turn.execution["executionLaneActivatedAt"].clone();
             }
             LaneRepository::new(self.database.clone())

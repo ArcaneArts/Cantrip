@@ -75,10 +75,11 @@ impl Service {
         }
         let synchronized = match self
             .tasks
-            .sync_implementation_state(
+            .sync_implementation_state_guarded(
                 owner,
                 &text(&context["chatId"])?,
                 &json!({"rowVersion":task["rowVersion"],"task":result["task"]}),
+                options.dispatch_guard.as_ref(),
             )
             .await
         {

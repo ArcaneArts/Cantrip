@@ -3830,6 +3830,7 @@ export const taskDispatchCycles = pgTable(
     ),
     taskWorkerRevision: integer("task_worker_revision"),
     continuityFamily: text("continuity_family"),
+    goalInput: jsonb("goal_input").$type<TaskInferenceInputState>(),
     modelConfiguration: jsonb(
       "model_configuration",
     ).$type<ModelConfiguration>(),
