@@ -39,7 +39,39 @@ export function recoveryIdentity(
           value.taskInput.dispatch.fencingToken,
         ]
       : null,
+    value?.autonomousGoal?.goalEpoch ?? null,
   ]);
+}
+
+/** An eligible logical input, independent of its replaced physical attempt.
+ * The worker/server/owner namespace belongs to the surrounding admission
+ * service. Never merge unrelated message-less helpers by a missing message ID. */
+export function recoveryQueueIdentity(
+  chatId: string | null | undefined,
+  value: InferenceRecoveryIdentity | null | undefined,
+): string | null {
+  if (!chatId || !value) return null;
+  if (value.autonomousGoal) {
+    if (
+      value.messageId ||
+      value.taskInput ||
+      !value.threadId ||
+      !value.turnId ||
+      !value.commandId ||
+      !value.commandGeneration ||
+      !value.autonomousGoal.goalEpoch
+    )
+      return null;
+    return JSON.stringify([
+      "goal",
+      chatId,
+      value.threadId,
+      value.autonomousGoal.goalEpoch,
+    ]);
+  }
+  return value.messageId
+    ? JSON.stringify(["message", chatId, value.messageId])
+    : null;
 }
 
 const snapshotSchema = z

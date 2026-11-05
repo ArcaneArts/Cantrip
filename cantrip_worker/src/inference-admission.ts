@@ -4,6 +4,7 @@ import { setTimeout as retryDelay } from "node:timers/promises";
 import {
   WorkerInferenceJournal,
   recoveryIdentity,
+  recoveryQueueIdentity,
   type InferenceRecoveryIdentity,
   type InferenceJournalRecord,
 } from "./inference-journal.js";
@@ -1385,6 +1386,13 @@ export class WorkerInferenceAdmission {
 
   private recoverable(record: InferenceJournalRecord): boolean {
     const identity = record.identity.recovery;
+    if (identity?.autonomousGoal)
+      return (
+        inferenceNeverStarted(record) &&
+        !record.nativeExecution &&
+        Boolean(recoveryQueueIdentity(record.identity.chatId, identity)) &&
+        record.identity.operationId === identity.commandGeneration
+      );
     if (identity?.taskInput) {
       const task = identity.taskInput;
       return (
@@ -1486,12 +1494,17 @@ export class WorkerInferenceAdmission {
                 )
                   this.configure({ providerId: record.identity.providerId });
                 if (!this.restored.has(record.key)) {
+                  const logicalIdentity = recoveryQueueIdentity(
+                    record.identity.chatId,
+                    record.identity.recovery,
+                  );
                   const previous = [...new Set(this.restored.values())].find(
                     (waiter) =>
-                      waiter.record.identity.chatId ===
-                        record.identity.chatId &&
-                      waiter.record.identity.recovery?.messageId ===
-                        record.identity.recovery?.messageId,
+                      logicalIdentity !== null &&
+                      recoveryQueueIdentity(
+                        waiter.record.identity.chatId,
+                        waiter.record.identity.recovery,
+                      ) === logicalIdentity,
                   );
                   const waiter = previous ?? {
                     record,
@@ -1545,13 +1558,19 @@ export class WorkerInferenceAdmission {
   private adoptRestorations(): void {
     for (const waiter of new Set(this.restored.values())) {
       if (waiter.claimed) continue;
+      const logicalIdentity = recoveryQueueIdentity(
+        waiter.record.identity.chatId,
+        waiter.record.identity.recovery,
+      );
+      if (logicalIdentity === null) continue;
       if (
         this.journal!.recoverySnapshot().some(
           (record) =>
             this.recoveryPending.has(record.key) &&
-            record.identity.chatId === waiter.record.identity.chatId &&
-            record.identity.recovery?.messageId ===
-              waiter.record.identity.recovery?.messageId,
+            recoveryQueueIdentity(
+              record.identity.chatId,
+              record.identity.recovery,
+            ) === logicalIdentity,
         )
       )
         continue;
@@ -1562,9 +1581,10 @@ export class WorkerInferenceAdmission {
             ticket.state === "waiting" &&
             ticket.startedAt === null &&
             !ticket.recoveryPending &&
-            ticket.input.chatId === waiter.record.identity.chatId &&
-            ticket.input.recovery?.messageId ===
-              waiter.record.identity.recovery?.messageId,
+            recoveryQueueIdentity(
+              ticket.input.chatId,
+              ticket.input.recovery,
+            ) === logicalIdentity,
         );
       if (!ticket?.journalKey) continue;
       waiter.claimed = ticket;

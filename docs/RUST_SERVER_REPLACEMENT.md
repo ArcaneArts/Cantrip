@@ -7254,3 +7254,15 @@ and `git diff --check` only. No tests, builds, typechecks, benchmarks,
 native/helper execution, patch application, hosted validation or computer-use
 checks ran. Neither this extension nor its boundary review establishes runtime
 or platform acceptance, and the overall replacement remains partial.
+
+The shared recovery contract subsequently adds optional typed autonomous Goal
+epoch metadata. The worker and native lifetime keeper use it to distinguish
+unused managed Goal attempts from GUI/Task inputs and private/resumed execution.
+The exported protocol has 631 roots and 10,595 nodes, with Run unchanged at
+11/453. Canonical autonomous reconciliation and durable wake-up are still
+unfinished; the server's GUI-only path currently leaves these records unresolved.
+This identity foundation received source review, formatting, mechanical protocol
+export and `git diff --check` only. The native patch was not applied or executed;
+no tests, builds, typechecks, benchmarks, native/helper execution,
+patch-application checks, hosted validation or computer-use checks ran. It adds
+no route or worker-command surface and establishes no runtime/platform acceptance.

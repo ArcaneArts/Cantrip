@@ -2177,3 +2177,43 @@ export (631 roots, 10,592 nodes; unchanged Run export of 11 roots, 453 nodes) an
 `git diff --check`. No tests, builds, typechecks, benchmarks, native/helper
 execution, patch application, hosted validation or computer-use checks ran.
 Runtime behavior and supported-platform operation remain unverified.
+
+## Recovery identity for unused managed Goal attempts
+
+A managed pre-start Goal attempt now records its actual Goal epoch in worker
+admission recovery metadata, alongside its canonical command generation and
+native thread/expected turn. This identity is issued only by the managed
+autonomous `turn/start` path. Private Goal inference channels, helpers and
+already-started/suspended turns do not gain a whole-turn replay identity.
+
+Worker recovery grouping distinguishes message-backed input from a Goal's
+chat/thread/epoch. It no longer needs to invent a GUI message ID for a Goal, and
+missing message IDs cannot collapse unrelated operations into one restoration.
+The full physical-operation identity also includes the epoch, so redelivery
+cannot change it under an existing ticket. Goal candidates require positive
+never-started eligibility, no native execution binding and a matching canonical
+command generation before entering reconciliation.
+
+Patch `0076` extends the keeper's existing atomic adoption operation with the
+same disjoint Goal identity. It still requires actual prior-generation ownership
+recovery, exact durable references and an unused old reservation. Both sides
+must identify managed commands on the same native thread and Goal epoch, with
+no GUI message or Task identity; a bound native execution cannot use this path.
+The existing message-backed and Task adoption paths remain separate. Adoption
+preserves same-provider FIFO ordinals and gives a changed provider its ordinary
+destination order, rather than minting another reservation or retaining both.
+
+This is the worker/keeper identity foundation. Canonical autonomous no-start
+reconciliation, first-cycle child retirement and durable native wake-up still
+need integration. The current GUI reconciliation path leaves a Goal candidate
+unresolved and retains its evidence; this milestone does not claim to restore a
+Goal merely by clearing its UI state. Legacy records without a typed Goal epoch
+are not grouped by guessed identities. The full restart audit remains open.
+
+Validation is source review, direct formatting, mechanical protocol export
+(631 roots, 10,595 nodes; unchanged Run export of 11 roots, 453 nodes) and
+`git diff --check`. The native patch was authored from tracked journal patches
+and formatted as source; it was not applied or executed. No tests, builds,
+typechecks, benchmarks, native/helper execution, patch-application checks,
+hosted validation or computer-use checks ran. Runtime and platform behavior
+remain unverified.
