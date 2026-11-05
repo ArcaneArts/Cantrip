@@ -15,6 +15,8 @@ import {
 import {
   providerInferenceConfigurationSchema,
   inferenceNeverStarted,
+  inferenceNativeExecutionSchema,
+  type InferenceNativeExecution,
   type NativeInferenceRecoveryResult,
   type InferenceOperationStatus,
   type InferencePoolStatus,
@@ -44,6 +46,8 @@ export interface InferenceLease {
   /** Cancellation asks the owner to stop; it does not free running capacity. */
   readonly signal: AbortSignal;
   start(): void;
+  /** Persist exact native correlation before its private model gate can return. */
+  bindNative(execution: InferenceNativeExecution): Promise<void>;
   /** Native execution established that it cannot infer until it resumes. */
   suspend(): void;
   /** Rejoin at the tail before any resumed inference. */
@@ -105,6 +109,8 @@ interface Ticket {
   admitted?: () => void;
   journalKey: string | null;
   durableQueueReady: boolean;
+  nativeExecution: InferenceNativeExecution | null;
+  nativeBinding: Promise<void> | null;
 }
 
 export interface InferenceDiagnostic {
@@ -429,6 +435,8 @@ export class WorkerInferenceAdmission {
       journalKey:
         this.journal?.key(runtime.generation, input.operationId) ?? null,
       durableQueueReady: !this.journal,
+      nativeExecution: null,
+      nativeBinding: null,
       handle: {
         ready,
         status: () => this.status(ticket),
@@ -440,6 +448,7 @@ export class WorkerInferenceAdmission {
           return ticket.controller.signal;
         },
         start: () => this.start(ticket),
+        bindNative: (execution) => this.bindNative(ticket, execution),
         suspend: () => this.suspend(ticket),
         resume: () => this.resume(ticket),
         settle: (outcome) => this.settle(ticket, outcome),
@@ -507,6 +516,49 @@ export class WorkerInferenceAdmission {
     ticket.observe?.(ticket.state);
     this.diagnose(ticket, "running");
     this.changed();
+  }
+
+  private bindNative(
+    ticket: Ticket,
+    input: InferenceNativeExecution,
+  ): Promise<void> {
+    const execution = inferenceNativeExecutionSchema.parse(input);
+    const current = () => {
+      if (
+        !["granted", "running"].includes(ticket.state) ||
+        ticket.controller.signal.aborted ||
+        ticket.runtime.retired ||
+        ticket.runtime.retiring ||
+        this.closing ||
+        (this.nativeOwnership && !this.nativeOwnership.available)
+      )
+        throw new Error("The native inference binding lost its owning grant.");
+    };
+    current();
+    if (
+      ticket.nativeExecution &&
+      JSON.stringify(ticket.nativeExecution) !== JSON.stringify(execution)
+    )
+      throw new Error("An inference grant cannot change its native execution.");
+    ticket.nativeExecution = execution;
+    ticket.nativeBinding ??= (async () => {
+      if (this.journal && ticket.journalKey) {
+        const record = await this.journal.bindNative(
+          ticket.journalKey,
+          execution,
+        );
+        if (
+          JSON.stringify(record.nativeExecution) !== JSON.stringify(execution)
+        )
+          throw new Error(
+            "The keeper did not acknowledge this native binding.",
+          );
+      }
+      // Cancellation/retirement may overtake the durable acknowledgement. It
+      // cannot make a late binding reply permission to begin model execution.
+      current();
+    })();
+    return ticket.nativeBinding;
   }
 
   private cancel(

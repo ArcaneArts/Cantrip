@@ -35,6 +35,20 @@ export const inferenceJournalIdentitySchema = z
   })
   .strict();
 
+/** Bound by Core's private inference begin, before it can invoke the model.
+ * This is correlation evidence, not proof of completion or safe input replay. */
+export const inferenceNativeExecutionSchema = z
+  .object({
+    threadId: identifier,
+    turnId: identifier,
+    scopeId: identifier,
+  })
+  .strict();
+
+export type InferenceNativeExecution = z.infer<
+  typeof inferenceNativeExecutionSchema
+>;
+
 export const inferenceJournalRecordSchema = z
   .object({
     key: z.string().regex(/^[a-f0-9]{64}$/u),
@@ -44,6 +58,7 @@ export const inferenceJournalRecordSchema = z
     order: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
     revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
     everGranted: z.boolean(),
+    nativeExecution: inferenceNativeExecutionSchema.optional(),
     outcome: z
       .enum([
         "completed",
