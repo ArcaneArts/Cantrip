@@ -414,7 +414,7 @@ export class TaskGoalInferenceInputRepository {
     owner: string,
     worker: string,
     receipt: TaskInferenceInputReceipt,
-    phase: "accepted" | "dispatch",
+    phase: "accepted" | "claim" | "dispatch",
   ) {
     if (worker !== receipt.workerId) stale();
     return this.database.transaction(async (tx) => {
@@ -451,11 +451,12 @@ export class TaskGoalInferenceInputRepository {
       )
         stale();
       if (phase === "dispatch" && !state.accepted) stale();
+      if (phase === "claim" && state.accepted) stale();
       await tx
         .update(schema.taskDispatchCycles)
         .set({
           goalInput:
-            phase === "accepted"
+            phase !== "dispatch"
               ? { ...state, accepted: true }
               : {
                   ...state,

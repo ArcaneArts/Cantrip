@@ -44,6 +44,9 @@ export interface InferenceOperationLifetime {
 export interface InferenceOperationSource {
   readonly operationId: string;
   readonly nativeTransportGeneration: string | null;
+  /** A worker-level canonical claim can bind its first actual native process
+   * lazily. Later attempts must keep that same transport incarnation. */
+  bindNativeTransport?(generation: string): void;
   readonly signal?: AbortSignal;
   readonly released: Promise<void>;
   assertCurrent(): void;

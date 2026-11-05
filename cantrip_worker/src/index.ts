@@ -10,6 +10,7 @@ import { BinaryFileWrites } from "./binary-file-writes.js";
 import { dispatchRepositoryOperation } from "./repository-operation-dispatch.js";
 import { BrowserSurfaceWebRuntime } from "./browser/surface-web-runtime.js";
 import { generatePrivateLabel } from "./automatic-labeling.js";
+import { ClaimedInferenceSource } from "./inference-source.js";
 import { createNativeHistoryOutputModeResolver } from "./native-history-output-mode.js";
 import { managedNativePathsMatch } from "./codex/managed-native-policy.js";
 import { completeManagedRuntimeHandoff } from "./codex/managed-runtime-handoff-completion.js";
@@ -5524,6 +5525,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   computerUseEnabled: Boolean(command.computerUseAuthority),
                 };
           const guiAdapters = new Set<ManagedNativeCommandSession>();
+          let taskInferenceOwner: ClaimedInferenceSource | undefined;
           const guiBridgeSignal = managedGuiBridgeLifetime.signal;
           const computerUseRegistration: {
             release: (() => Promise<void>) | null;
@@ -5584,21 +5586,29 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           }
           try {
             if (command.taskInferenceInput) {
-              // Confirm this controller enforces the receipt before its first
-              // provider wait. An older worker cannot create no-dispatch proof.
+              // Claim the actual input once before creating a collectible
+              // admission owner. Repeated accepted receipts cannot remint it.
               await nativeCommands.dispatchTaskInput(
                 {
                   serverId: nativeNamespaceScope().serverId,
                   workerGeneration: workerProcessGeneration,
                   receipt: command.taskInferenceInput,
-                  phase: "accepted",
+                  phase: "claim",
                 },
                 guiBridgeSignal,
+              );
+              taskInferenceOwner = new ClaimedInferenceSource(
+                command.nativeCommandReceipt?.operationGeneration ??
+                  command.taskInferenceInput.operationId,
+                preparationSignal
+                  ? AbortSignal.any([preparationSignal, guiBridgeSignal])
+                  : guiBridgeSignal,
               );
             }
             const turnOptions: Parameters<typeof runtime.runTurn>[0] = {
               taskOwned: encryptedTask,
               initialLabel,
+              inferenceSource: taskInferenceOwner?.source,
               preparationSignal: preparationSignal
                 ? AbortSignal.any([preparationSignal, guiBridgeSignal])
                 : undefined,
@@ -6225,6 +6235,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               () => protectedEventQueue,
             );
           } finally {
+            taskInferenceOwner?.close();
             if (command.nativeCommandReceipt)
               for (const adapter of guiAdapters)
                 adapter.markGuiFinished(

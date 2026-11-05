@@ -1624,3 +1624,27 @@ remain separate entries in the final retention audit.
 This integration received source review, direct formatting and `git diff --check`.
 No tests, builds, typechecks, benchmarks, native execution, migration execution,
 hosted checks or computer-use validation ran.
+
+## Direct Task input source lifetimes
+
+Direct Task rounds and receipt-bearing Goal inputs now use the existing
+acceptance transaction's `claim` phase before creating a collectible worker
+inference source. The claim succeeds only for a current, unaccepted canonical
+input under its actual dispatch fence and active placement. Repeating a claim
+cannot create another owner, including after the original worker source has
+been collected. The legacy `accepted` phase keeps its existing acknowledgement
+semantics. This private claim phase requires the matching server/worker release.
+
+No extra queue, prompt copy, persistent claim table or server semaphore is added.
+The existing accepted flag records one-time ownership, while the separate
+`dispatch` transaction remains immediately before native input. Route recovery
+uses the existing replacement receipt and no-input/physical-settlement rules;
+losing a claim acknowledgement never proves that execution happened or grants
+permission to replay it.
+
+The worker source pins its first actual native transport after startup and cannot
+move to a replacement process. It closes when the owning operation exits, removing
+unused reservations promptly; started inference still requires actual settlement.
+The source and completed ticket remain reachable through weak references only
+when an actual caller retains them. Standalone helpers and legacy unreceipted
+turns remain separate retention-audit entries.
