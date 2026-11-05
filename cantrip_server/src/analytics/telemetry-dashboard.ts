@@ -20,6 +20,7 @@ export interface TelemetryBehaviorRow {
   firstActivityAt: Date | null;
   firstVisibleResponseAt: Date | null;
   durationMs: number | null;
+  inferenceTiming?: import("@cantrip/protocol").InferenceCommandTiming | null;
   finalAnswerAppeared: boolean;
   toolCallCount: number;
   invalidToolCallCount: number;
@@ -115,6 +116,27 @@ export function summarizeModelBehavior(
       ({ immediateCorrectiveFollowup }) => immediateCorrectiveFollowup,
     ).length,
     durationMs: statistics(rows.map(({ durationMs }) => durationMs)),
+    executionDurationMs: statistics(
+      rows.map((row) =>
+        row.attemptStatus !== "running" && row.inferenceTiming?.complete
+          ? row.inferenceTiming.executionMs
+          : null,
+      ),
+    ),
+    queueWaitMs: statistics(
+      rows.map((row) =>
+        row.attemptStatus !== "running" && row.inferenceTiming?.complete
+          ? row.inferenceTiming.queueWaitMs
+          : null,
+      ),
+    ),
+    suspendedMs: statistics(
+      rows.map((row) =>
+        row.attemptStatus !== "running" && row.inferenceTiming?.complete
+          ? row.inferenceTiming.suspendedMs
+          : null,
+      ),
+    ),
     timeToFirstActivityMs: statistics(
       rows.map(({ firstActivityAt, startedAt }) =>
         firstActivityAt

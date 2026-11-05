@@ -1,3 +1,4 @@
+import { inferenceCommandTimingSchema } from "./inference-admission.js";
 import { nativeBehaviorAttributionSchema } from "./native-behavior-attribution.js";
 import { z } from "zod";
 import { nativeHistoryUsageSchema } from "./native-history-usage.js";
@@ -123,7 +124,12 @@ export const modelBehaviorSummarySchema = z.object({
   testCommandCount: z.number().int().nonnegative(),
   testFailureCount: z.number().int().nonnegative(),
   immediateCorrectiveFollowupCount: z.number().int().nonnegative(),
+  /** Total server-observed elapsed time, including queueing. */
   durationMs: telemetryValueStatisticsSchema,
+  /** Complete worker samples only; excludes queue, suspension and preparation. */
+  executionDurationMs: telemetryValueStatisticsSchema.optional(),
+  queueWaitMs: telemetryValueStatisticsSchema.optional(),
+  suspendedMs: telemetryValueStatisticsSchema.optional(),
   timeToFirstActivityMs: telemetryValueStatisticsSchema,
   timeToVisibleResponseMs: telemetryValueStatisticsSchema,
 });
@@ -359,6 +365,7 @@ const telemetryExportBehaviorSchema = z.object({
   completedAt: z.string().datetime().nullable(),
   finalizedAt: z.string().datetime().nullable(),
   durationMs: z.number().int().nonnegative().nullable(),
+  inferenceTiming: inferenceCommandTimingSchema.nullable().optional(),
   finalAnswerAppeared: z.boolean(),
   toolCallCount: z.number().int().nonnegative(),
   invalidToolCallCount: z.number().int().nonnegative(),

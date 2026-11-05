@@ -1,3 +1,4 @@
+import type { InferenceCommandTiming } from "@cantrip/protocol";
 import {
   shouldUseChatGptCredits,
   NATIVE_SUBAGENT_PROTOCOL_VERSION,
@@ -480,6 +481,7 @@ export function createModelRoutingRuntime({
       completedAt?: Date | null;
       finalizedAt?: Date | null;
       durationMs?: number | null;
+      inferenceTiming?: InferenceCommandTiming;
       turnId?: string | null;
       userInterrupted?: boolean;
       userRetryRegeneration?: boolean;
@@ -505,6 +507,7 @@ export function createModelRoutingRuntime({
         completedAt: attribution.completedAt,
         finalizedAt: attribution.finalizedAt,
         durationMs: attribution.durationMs,
+        inferenceTiming: attribution.inferenceTiming,
         turnId: attribution.turnId,
         userInterrupted: attribution.userInterrupted,
         userRetryRegeneration: attribution.userRetryRegeneration,

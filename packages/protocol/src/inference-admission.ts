@@ -50,6 +50,22 @@ export const inferenceTimingSchema = z.object({
   suspendedMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
 });
 
+/** Exclusive command phases measured by the worker's monotonic clock.
+ * Execution includes the admitted turn's ordinary tool round trips. A complete
+ * sample ends at command settlement; it is not proof of native settlement. */
+export const inferenceCommandTimingSchema = z
+  .object({
+    queueWaitMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    preparationMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    executionMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    suspendedMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    complete: z.boolean(),
+  })
+  .strict();
+export type InferenceCommandTiming = z.infer<
+  typeof inferenceCommandTimingSchema
+>;
+
 export const inferenceOperationStatusSchema = z.object({
   purpose: z.enum(["turn", "label", "child", "helper"]).default("helper"),
   operationId: z.string().min(1),

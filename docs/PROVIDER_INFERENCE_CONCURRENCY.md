@@ -7,6 +7,40 @@ keep the limit optional so updates from older clients preserve it. Provider
 summaries and resolved model runtimes carry the configuration through both the
 Node and Rust server implementations.
 
+## Worker timing in provider telemetry
+
+The existing private `inference.command-state` event carries exclusive monotonic
+command counters: provider queue wait, command preparation, admitted execution,
+and confirmed suspension. State transitions and command completion emit the
+counters; streamed tokens and idle time do not generate timing traffic. Commands
+that never observe inference do not emit a new completion event. Counters are
+correlated with the existing request and rejected by per-attempt sequence order.
+They do not own, grant, release or prove settlement of a provider ticket.
+
+Both servers persist the optional `inference_timing` object on the existing model
+behavior observation. A command that closes with an observed operation still
+unsettled is incomplete. Lost final events, old workers, and legacy observations
+remain unknown. Complete terminal samples feed separate execution, queue, and
+suspension statistics; latency change detection uses only their execution time.
+Historical wall-clock samples are deliberately not mixed into this new execution
+metric. Execution includes ordinary tools within the admitted turn and must not
+be described as model sampling time or tokens per second.
+
+Existing `durationMs`, first-activity/visible-response timestamps, and total
+elapsed metrics retain their wall-clock meaning. The provider telemetry dialog
+labels these totals and displays the new worker medians separately. Exports
+include the optional worker evidence. A delayed attribution snapshot that omits
+timing preserves existing evidence. Private timing stays out of domain/chat event
+streams, and observer failures cannot fail an admitted operation.
+
+This covers server-command-associated turns, including Task dispatch, not native
+autonomous cycles which run outside that command's observation lifetime. Those
+cycles retain their worker admission timing; stitching them into model-behavior
+observations requires their canonical native execution identity, not an invented
+RPC lifetime. Migration 0261 adds the optional column and validates its bounded,
+nonnegative integer counters. No migration, tests, builds, typechecks, benchmarks,
+native execution or computer-use checks were run for this milestone.
+
 ## Durable delivery of explicit Task Goal outcomes
 
 Settled `chat.turn` responses carrying a Goal input receipt now enter a worker-local

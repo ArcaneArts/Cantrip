@@ -99,6 +99,7 @@ export interface ModelBehaviorObservationInput {
   completedAt?: Date | null;
   finalizedAt?: Date | null;
   durationMs?: number | null;
+  inferenceTiming?: import("@cantrip/protocol").InferenceCommandTiming | null;
   finalAnswerAppeared?: boolean;
   toolCallCount?: number;
   invalidToolCallCount?: number;
@@ -1414,6 +1415,7 @@ export class TelemetryRepository {
         completedAt: row.completedAt?.toISOString() ?? null,
         finalizedAt: row.finalizedAt?.toISOString() ?? null,
         durationMs: row.durationMs,
+        inferenceTiming: row.inferenceTiming,
         finalAnswerAppeared: row.finalAnswerAppeared,
         toolCallCount: row.toolCallCount,
         invalidToolCallCount: row.invalidToolCallCount,

@@ -160,6 +160,7 @@ impl RuntimeTelemetry {
             "completedAt",
             "finalizedAt",
             "durationMs",
+            "inferenceTiming",
             "turnId",
             "userInterrupted",
             "userRetryRegeneration",
