@@ -16,6 +16,14 @@ use std::{
 use tokio::sync::{Notify, broadcast, watch};
 
 const CHANNEL: &str = "cantrip_inference_resource_revocations";
+#[derive(Debug)]
+struct SettlementPending;
+impl std::fmt::Display for SettlementPending {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Task input settlement is pending")
+    }
+}
+impl std::error::Error for SettlementPending {}
 type Key = (String, String);
 pub(super) type Pending = Mutex<HashMap<Key, Arc<Delivery>>>;
 pub(super) struct Delivery {
@@ -44,6 +52,9 @@ async fn stopped(stop: &mut watch::Receiver<bool>) {
     }
 }
 fn report(worker: Option<&str>, error: &anyhow::Error) {
+    if error.downcast_ref::<SettlementPending>().is_some() {
+        return;
+    }
     logging::server_logger()(LogCall::event(
         "warn",
         "Inference resource revocation delivery remains pending",
@@ -129,7 +140,7 @@ async fn deliver(service: &WorkerService, owner: &str, worker: &str) -> Result<(
             &[&owner,&worker],
         ).await?;
         if rows.is_empty() {
-            return Ok(());
+            break;
         }
         for row in rows {
             let id = row.get::<String>(0)?;
@@ -153,13 +164,73 @@ async fn deliver(service: &WorkerService, owner: &str, worker: &str) -> Result<(
             ).await?;
         }
     }
+    let tasks = crate::tasks::Repository::new(service.repository.database.clone());
+    let mut after: Option<String> = None;
+    let mut settling = false;
+    loop {
+        let pending = tasks
+            .pending_inference_routes(owner, worker, after.as_deref())
+            .await?;
+        if pending.is_empty() {
+            break;
+        }
+        after = pending
+            .last()
+            .and_then(|change| change["source"]["dispatch"]["operationId"].as_str())
+            .map(str::to_owned);
+        for change in pending {
+            let reply = service
+                .commands
+                .request(
+                    worker,
+                    json!({
+                        "type":"inference.task-revoke", "ownerId":owner,
+                        "operationId":change["operationId"], "source":change["source"],
+                    }),
+                    Some(Duration::from_secs(30)),
+                    None,
+                )
+                .await?;
+            let result = crate::wire::parse("taskInferenceRouteSettlementSchema", reply.as_ref())?;
+            anyhow::ensure!(
+                result["ownerId"] == owner
+                    && result["workerId"] == worker
+                    && result["operationId"] == change["operationId"]
+                    && result["source"] == change["source"],
+                "The Task input settlement belongs to another canonical operation."
+            );
+            if result["settled"] != true {
+                settling = true;
+                continue;
+            }
+            tasks
+                .complete_inference_route(owner, worker, &change)
+                .await?;
+            if let Some(chat) = change["source"]["chatId"].as_str() {
+                service.invalidate(owner, "task", chat);
+            }
+        }
+    }
+    if settling {
+        return Err(SettlementPending.into());
+    }
+    Ok(())
 }
 
 async fn recover(service: &Arc<WorkerService>) -> Result<()> {
-    let rows = service.repository.database.query(
-        "SELECT DISTINCT r.owner_id,r.worker_id FROM inference_resource_revocations r JOIN workers w ON w.id=r.worker_id AND w.owner_id=r.owner_id",
-        &[],
-    ).await?;
+    let rows = service
+        .repository
+        .database
+        .query(
+            "SELECT DISTINCT s.owner_id,s.worker_id FROM (
+            SELECT owner_id,worker_id FROM inference_resource_revocations
+            UNION ALL SELECT c.owner_id,r.inference_input->'routeChange'->'source'->>'workerId'
+            FROM task_planning_rounds r JOIN chats c ON c.id=r.chat_id
+            WHERE r.inference_input->'routeChange'->>'phase'='draining'
+         ) s JOIN workers w ON w.id=s.worker_id AND w.owner_id=s.owner_id",
+            &[],
+        )
+        .await?;
     for row in rows {
         wake(
             service.clone(),

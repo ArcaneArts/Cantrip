@@ -213,20 +213,20 @@
     "workerCommands": "packages/protocol/src/index.ts"
   },
   "summary": {
-    "application-principal": 490,
+    "application-principal": 492,
     "external-credential": 1,
     "public-authentication": 3,
     "public-bootstrap": 3,
     "worker-control": 43,
-    "http": 533,
+    "http": 535,
     "legacyLocalOwnerRoutes": 0,
-    "requestPrincipalRoutes": 427,
-    "total": 540,
+    "requestPrincipalRoutes": 429,
+    "total": 542,
     "websocket": 7,
     "workerCredentialRoutes": 43,
     "durableTables": 116,
     "agentOperations": 56,
-    "workerCommands": 298,
+    "workerCommands": 299,
     "liveResources": 47,
     "clientControlCommands": 4,
     "cliCommands": 35,
@@ -242,11 +242,11 @@
   },
   "contractSetDigests": {
     "agentOperations": "c01cedeb5ad07aa7eeee81033073509e4be8826ed45621e68200d85a2c5c61b9",
-    "applicationRoutes": "6774049273a6551f241aac5f23fbfc71e59441e45fafcb33f8ef84003f0a4709",
+    "applicationRoutes": "9c1769bf548f1ddffe02add8201a060f68e3bce6283de05a454b3c99a6a26f9d",
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
-    "workerCommands": "9124a113a3872d59a054f9b324292ea385678e7ed77c9b4e2168118603ceb155",
+    "workerCommands": "af2bfaea3e0271cdfa6524411b9353e92105af612333c2648764a4c0a2a8a1b5",
     "tunnelFrameKinds": "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8"
   },
   "durableTables": [
@@ -1914,7 +1914,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 769,
+      "line": 830,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/model-configuration",
@@ -4982,7 +4982,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 180,
+      "line": 186,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tasks",
@@ -4995,7 +4995,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 441,
+      "line": 502,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tasks/pause",
@@ -5008,7 +5008,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 454,
+      "line": 515,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tasks/pause",
@@ -6789,7 +6789,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 719,
+      "line": 780,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId",
@@ -6802,7 +6802,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 501,
+      "line": 562,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId",
@@ -6815,7 +6815,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 680,
+      "line": 741,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/attachments",
@@ -6828,7 +6828,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 929,
+      "line": 990,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/begin-implementation",
@@ -6841,7 +6841,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 898,
+      "line": 959,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/continue",
@@ -6854,7 +6854,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 514,
+      "line": 575,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/dashboard",
@@ -6867,7 +6867,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 745,
+      "line": 806,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/draft",
@@ -6880,7 +6880,33 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 812,
+      "line": 463,
+      "method": "GET",
+      "ownerEvidence": "request-principal",
+      "path": "/api/tasks/:chatId/inference-route",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "minimized-operational-metadata",
+        "rationale": "owner-scoped canonical Task input, revision, destination route/account and worker settlement; Task text, attachments and private account labels remain endpoint protected"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "file": "cantrip_server/src/app/runtime/task-routes.ts",
+      "line": 475,
+      "method": "POST",
+      "ownerEvidence": "request-principal",
+      "path": "/api/tasks/:chatId/inference-route",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "minimized-operational-metadata",
+        "rationale": "owner-scoped canonical Task input, revision, destination route/account and worker settlement; Task text, attachments and private account labels remain endpoint protected"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "file": "cantrip_server/src/app/runtime/task-routes.ts",
+      "line": 873,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/plan",
@@ -6893,7 +6919,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 867,
+      "line": 928,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/plan",
@@ -6906,7 +6932,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 142,
+      "line": 148,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/recover",
@@ -6919,7 +6945,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 960,
+      "line": 1021,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/retry",
@@ -6932,7 +6958,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/runtime/task-routes.ts",
-      "line": 836,
+      "line": 897,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/tasks/:chatId/start",
@@ -8330,6 +8356,7 @@
     "inference.configure",
     "inference.revoke",
     "inference.status",
+    "inference.task-revoke",
     "label.generate",
     "mcp.configurations.discover",
     "model.chatgpt.catalog",
@@ -9405,6 +9432,11 @@
       "command": "inference.status",
       "classification": "minimized-operational-metadata",
       "rationale": "authenticated owner requests current worker queue/capacity and operation identities without inference content, credentials or new grants; response identity and process generation are fenced before publication"
+    },
+    {
+      "command": "inference.task-revoke",
+      "classification": "minimized-operational-metadata",
+      "rationale": "authenticated owner revokes an exact canonical Task input source; worker process generation and physical settlement are acknowledged without prompt content or granting capacity"
     },
     {
       "command": "label.generate",
@@ -12787,6 +12819,16 @@
         "path": "/api/tasks/:chatId/draft"
       },
       {
+        "contract": "minimized-provider-route-control",
+        "method": "GET",
+        "path": "/api/tasks/:chatId/inference-route"
+      },
+      {
+        "contract": "minimized-provider-route-control",
+        "method": "POST",
+        "path": "/api/tasks/:chatId/inference-route"
+      },
+      {
         "contract": "opaque-mutation",
         "method": "PATCH",
         "path": "/api/tasks/:chatId/plan"
@@ -13063,7 +13105,11 @@
         "method": "PATCH",
         "path": "/api/project-views/:viewId"
       },
-      { "contract": "opaque-list", "method": "GET", "path": "/api/projects" },
+      {
+        "contract": "opaque-list",
+        "method": "GET",
+        "path": "/api/projects"
+      },
       {
         "contract": "opaque-archive-list",
         "method": "GET",

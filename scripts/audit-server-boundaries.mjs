@@ -110,7 +110,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "c01cedeb5ad07aa7eeee81033073509e4be8826ed45621e68200d85a2c5c61b9",
   applicationRoutes:
-    "6774049273a6551f241aac5f23fbfc71e59441e45fafcb33f8ef84003f0a4709",
+    "9c1769bf548f1ddffe02add8201a060f68e3bce6283de05a454b3c99a6a26f9d",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -118,7 +118,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
   workerCommands:
-    "9124a113a3872d59a054f9b324292ea385678e7ed77c9b4e2168118603ceb155",
+    "af2bfaea3e0271cdfa6524411b9353e92105af612333c2648764a4c0a2a8a1b5",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -1007,6 +1007,18 @@ function parseRoutes(sourceText, file) {
 
 function taskRouteBoundaryAudit(routes) {
   const requirements = [
+    [
+      "GET",
+      "/api/tasks/:chatId/inference-route",
+      "taskInferenceRouteViewSchema",
+      "minimized-provider-route-control",
+    ],
+    [
+      "POST",
+      "/api/tasks/:chatId/inference-route",
+      "taskInferenceRouteChangeRequestSchema",
+      "minimized-provider-route-control",
+    ],
     [
       "POST",
       "/api/projects/:projectId/tasks",
@@ -3692,6 +3704,12 @@ function workerCommandContentClassification(command) {
       classification: "endpoint-protected",
       rationale:
         "captured server/project/guest authority and expiring attachment/grant identity carry an opaque tunnel record; only the owning worker opens the target and prepares the captured guest service, with WorkerLink protecting forwarded content",
+    };
+  if (command === "inference.task-revoke")
+    return {
+      classification: "minimized-operational-metadata",
+      rationale:
+        "authenticated owner revokes an exact canonical Task input source; worker process generation and physical settlement are acknowledged without prompt content or granting capacity",
     };
   if (command === "surface.desktop.os-prepare")
     return {

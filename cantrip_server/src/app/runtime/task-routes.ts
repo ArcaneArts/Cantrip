@@ -58,6 +58,12 @@ import { createChatAutomationPauseRuntime } from "./chat-automation-pause-runtim
 import { createProjectTaskPauseRuntime } from "./project-task-pause-runtime.js";
 import { installTaskWorkloadRoute } from "./task-workload-route.js";
 import { WorkerUnavailableError } from "../../workers/bridge.js";
+import { installTaskInferenceRouteDelivery } from "../../workers/task-inference-routes.js";
+import {
+  taskInferenceRouteChangeRequestSchema,
+  taskInferenceRouteChangeSchema,
+  taskInferenceRouteViewSchema,
+} from "@cantrip/protocol";
 import { createTaskExecutionRecovery } from "./task-execution-recovery.js";
 import {
   createTaskAutomaticRetry,
@@ -391,6 +397,23 @@ export function installTaskRouteRuntime(
     app,
   );
   const { queueTaskScheduleTick } = taskScheduler;
+  const routeDelivery = installTaskInferenceRouteDelivery({
+    repository,
+    bridge,
+    changed: (ownerId, chatId) =>
+      runAsOwner(ownerId, async () => {
+        publishChatInvalidation(chatId, "task");
+        queueTaskScheduleTick();
+      }),
+    report: (error, workerId) =>
+      app.log.warn(
+        { err: error, workerId },
+        "Task provider transfer delivery remains pending",
+      ),
+  });
+  app.addHook("onClose", async () => {
+    routeDelivery.close();
+  });
 
   const { runClaimedTaskOperation } = createTaskClaimedExecutionRuntime(
     { ...dependencies, queueTaskScheduleTick },
@@ -437,6 +460,44 @@ export function installTaskRouteRuntime(
   queueTaskScheduleTick();
 
   installTaskWorkloadRoute(app, { applicationOwnerId, repository });
+  app.get<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/inference-route",
+    async (request, reply) => {
+      const view = await repository.tasks.inferenceInputs.routeView(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      return view
+        ? reply.send(taskInferenceRouteViewSchema.parse(view))
+        : reply.code(404).send({ error: "Task not found." });
+    },
+  );
+  app.post<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/inference-route",
+    async (request, reply) => {
+      const input = taskInferenceRouteChangeRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success)
+        return reply.code(400).send(invalidBody(input.error.issues));
+      try {
+        const ownerId = applicationOwnerId();
+        const change = await repository.tasks.inferenceInputs.changeRoute(
+          ownerId,
+          request.params.chatId,
+          input.data,
+        );
+        routeDelivery.wake(ownerId, change.source.workerId);
+        publishChatInvalidation(request.params.chatId, "task");
+        queueTaskScheduleTick();
+        return reply.send(taskInferenceRouteChangeSchema.parse(change));
+      } catch (error) {
+        const response = taskMutationError(error, reply);
+        if (response) return response;
+        throw error;
+      }
+    },
+  );
 
   app.get<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/tasks/pause",

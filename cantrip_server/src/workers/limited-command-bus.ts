@@ -36,6 +36,7 @@ interface LimitedWorkerCommandBusOptions {
 const EXECUTION_CONTROL_COMMANDS = new Set<WorkerCommand["type"]>([
   "inference.configure",
   "inference.revoke",
+  "inference.task-revoke",
   "inference.status",
   "worker.version",
   "worker.restart",

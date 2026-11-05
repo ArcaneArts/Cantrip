@@ -167,6 +167,24 @@ impl ModelRouting {
         }
         Ok(runtime)
     }
+    /// A newly selected destination requires enabled owned configuration, not
+    /// cached health/quota observations. Existing-runtime observation is separate.
+    pub async fn configured_managed_runtime(
+        &self,
+        owner: &str,
+        context: &Value,
+        model: &Value,
+    ) -> Result<Value> {
+        let route = text(context, "modelRouteId")?;
+        let profile = model.as_str().context("Selected model profile")?;
+        let account = context["providerAccountId"].as_str();
+        let rows = self.database.query("SELECT r.id FROM model_routes r JOIN model_profiles m ON m.id=r.model_id JOIN model_providers p ON p.id=r.provider_id WHERE r.id=$1 AND r.model_id=$2 AND m.owner_id=$3 AND p.owner_id=$3 AND r.enabled=true AND (CASE WHEN p.kind IN ('chatgpt','grok') THEN EXISTS(SELECT 1 FROM model_provider_accounts a WHERE a.id=$4 AND a.provider_id=p.id AND a.enabled=true) ELSE $4::text IS NULL END)", &[&route,&profile,&owner,&account]).await?;
+        anyhow::ensure!(
+            !rows.is_empty(),
+            "The selected destination is no longer enabled."
+        );
+        self.bound_managed_runtime(owner, context).await
+    }
     pub fn set_cooldown_key(&self, key: JsString, until: Option<f64>) {
         let mut cooldowns = self.cooldowns.lock().unwrap();
         if let Some(until) = until {

@@ -10,7 +10,12 @@ import {
   taskWireCreateResultSchema,
   taskImplementationOpaqueDashboardSchema,
   taskImplementationDashboardSchema,
+  taskInferenceRouteViewSchema,
+  taskInferenceRouteChangeRequestSchema,
+  taskInferenceRouteChangeSchema,
+  type TaskInferenceRouteChangeRequest,
 } from "@cantrip/protocol";
+import type { ClientSessionIdentitySnapshot } from "@/lib/client-session";
 import {
   mapWithConcurrency,
   CHAT_MESSAGE_DECRYPT_CONCURRENCY,
@@ -114,6 +119,58 @@ export async function getTask(chatId: string) {
   return openTaskOpaqueSummary(
     await request(`/api/tasks/${encodeURIComponent(chatId)}`),
   );
+}
+
+export async function getTaskInferenceRoute(
+  chatId: string,
+  identity: ClientSessionIdentitySnapshot,
+  signal?: AbortSignal,
+) {
+  const result = taskInferenceRouteViewSchema.parse(
+    await request(
+      `/api/tasks/${encodeURIComponent(chatId)}/inference-route`,
+      { signal },
+      { expectedIdentity: identity },
+    ),
+  );
+  if (
+    result.chatId !== chatId ||
+    (result.source && result.source.chatId !== chatId) ||
+    (result.latest && result.latest.source.chatId !== chatId)
+  )
+    throw new Error("The Task provider state belongs to another chat.");
+  return result;
+}
+
+export async function changeTaskInferenceRoute(
+  chatId: string,
+  identity: ClientSessionIdentitySnapshot,
+  input: TaskInferenceRouteChangeRequest,
+) {
+  const result = taskInferenceRouteChangeSchema.parse(
+    await request(
+      `/api/tasks/${encodeURIComponent(chatId)}/inference-route`,
+      {
+        method: "POST",
+        body: JSON.stringify(
+          taskInferenceRouteChangeRequestSchema.parse(input),
+        ),
+      },
+      { expectedIdentity: identity },
+    ),
+  );
+  if (
+    result.source.chatId !== chatId ||
+    result.operationId !== input.operationId ||
+    result.inputOperationId !== input.inputOperationId ||
+    result.expectedRevision !== input.expectedRevision ||
+    result.targetModelRouteId !== input.targetModelRouteId ||
+    result.targetProviderAccountId !== input.targetProviderAccountId
+  )
+    throw new Error(
+      "The Task provider receipt does not match the requested change.",
+    );
+  return result;
 }
 
 export async function recoverTaskImplementation(chatId: string) {

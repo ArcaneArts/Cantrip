@@ -570,6 +570,20 @@ export function createWorkerNotificationRuntime({
     workerId: string,
     notification: WorkerNotification,
   ): Promise<void> => {
+    if (notification.type === "inference.task-settled") {
+      const identity = bridge.connectionIdentity?.(workerId);
+      if (
+        identity?.ownerId === ownerId &&
+        notification.ownerId === ownerId &&
+        notification.serverId === serverId() &&
+        notification.workerId === workerId &&
+        notification.workerGeneration === identity.workerProcessGeneration
+      )
+        repository.inferenceRevocations.receive(
+          JSON.stringify({ ownerId, workerId }),
+        );
+      return;
+    }
     if (notification.type === "inference.status") {
       const status = notification.status;
       const identity = bridge.connectionIdentity?.(workerId);

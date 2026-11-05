@@ -142,6 +142,7 @@ export const taskDispatchEligibilityCodeSchema = z.enum([
   "placement-unavailable",
   "project-paused",
   "provider-route-unavailable",
+  "provider-transfer-pending",
   "reconciliation-required",
   "task-worker-disabled",
   "worker-offline",

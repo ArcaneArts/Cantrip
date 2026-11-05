@@ -4,6 +4,7 @@ import {
   providerInferenceRevisionSchema,
 } from "./inference-admission.js";
 import { endpointProviderKinds } from "./provider-definitions.js";
+import { taskInferenceInputReceiptSchema } from "./task-inference-input.js";
 import {
   directCapabilityPrepareCommandSchema,
   directCapabilityRenewCommandSchema,
@@ -52,6 +53,14 @@ import {
 
 export const workerCoreCommandSchemas = [
   z.object({ type: z.literal("inference.status") }).strict(),
+  z
+    .object({
+      type: z.literal("inference.task-revoke"),
+      operationId: z.uuid(),
+      ownerId: z.string().min(1).max(200),
+      source: taskInferenceInputReceiptSchema,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("inference.revoke"),

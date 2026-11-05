@@ -8,8 +8,12 @@ import {
   inferenceNeverStarted,
   type NativeInferenceRecovery,
   type NativeInferenceRecoveryResult,
+  type TaskInferenceRouteChange,
+  type TaskInferenceRouteChangeRequest,
+  taskInferenceRouteChangeSchema,
+  modelConfigurationSchema,
 } from "@cantrip/protocol";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import * as schema from "./schema.js";
 import type {
   RepositoryDatabase,
@@ -19,6 +23,7 @@ import type { ChatExecutionLaneRepository } from "./repository/chat-execution-la
 import type { MessageWriteRepository } from "./repository/message-writes.js";
 import { TaskDispatchConflictError } from "./task-dispatch.js";
 import { projectChatExecutionLock } from "./repository/chat-execution-lock.js";
+import { nativeRuntimeHandoffInventory } from "./repository/native-runtime-handoff-inventory.js";
 import {
   assertTaskOperationDispatchFence,
   type TaskOperationDispatchFence,
@@ -28,6 +33,7 @@ import {
  * Sticky dispatch evidence survives route retries: a later unstarted attempt
  * cannot authorize replay of an earlier possibly executed attempt. */
 export interface TaskInferenceInputState {
+  routeChange?: TaskInferenceRouteChange;
   receipt: TaskInferenceInputReceipt;
   deferred: boolean;
   accepted: boolean;
@@ -157,10 +163,15 @@ export class TaskInferenceInputRepository {
       ownerId,
       receipt,
     );
+    // A transferred input starts a fresh command, never resumes the old bound
+    // native session. User/project pause flags still gate claiming that command.
+    const transferred =
+      state.routeChange?.inputOperationId === receipt.operationId;
     const paused =
-      chat.automationPaused ||
-      project.taskSchedulingPaused ||
-      task.state === "paused";
+      !transferred &&
+      (chat.automationPaused ||
+        project.taskSchedulingPaused ||
+        task.state === "paused");
     await this.lanes!.inTransaction(tx).finishChatExecutionLane(
       chatId,
       lane.id,
@@ -225,6 +236,511 @@ export class TaskInferenceInputRepository {
       .where(eq(schema.taskDispatchCycles.id, receipt.dispatch.cycleId));
   }
 
+  async routeView(ownerId: string, chatId: string) {
+    const [owned] = await this.database
+      .select({ task: schema.tasks, archivedAt: schema.chats.archivedAt })
+      .from(schema.tasks)
+      .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+      .where(
+        and(eq(schema.tasks.chatId, chatId), eq(schema.chats.ownerId, ownerId)),
+      )
+      .limit(1);
+    if (!owned) return null;
+    const [currentRound] = owned.task.activeOperationId
+      ? await this.database
+          .select({ state: schema.taskPlanningRounds.inferenceInput })
+          .from(schema.taskPlanningRounds)
+          .where(
+            and(
+              eq(schema.taskPlanningRounds.chatId, chatId),
+              eq(schema.taskPlanningRounds.id, owned.task.activeOperationId),
+              eq(schema.taskPlanningRounds.status, "running"),
+            ),
+          )
+          .limit(1)
+      : [];
+    const [latestRound] = await this.database
+      .select({ state: schema.taskPlanningRounds.inferenceInput })
+      .from(schema.taskPlanningRounds)
+      .where(
+        and(
+          eq(schema.taskPlanningRounds.chatId, chatId),
+          sql`${schema.taskPlanningRounds.inferenceInput} ? 'routeChange'`,
+        ),
+      )
+      .orderBy(desc(schema.taskPlanningRounds.ordinal))
+      .limit(1);
+    const current = currentRound?.state;
+    const latest = latestRound?.state?.routeChange ?? null;
+    const inventory = await nativeRuntimeHandoffInventory(
+      this.database,
+      ownerId,
+      chatId,
+      null,
+    );
+    return {
+      chatId,
+      revision: owned.task.rowVersion,
+      source:
+        !owned.archivedAt &&
+        !["complete", "failed"].includes(owned.task.state) &&
+        current?.accepted &&
+        current.allAttemptsEnforced &&
+        !current.receipt.kind &&
+        !current.failedBeforeDispatch &&
+        current.firstDispatchedOperationId === null
+          ? current.receipt
+          : null,
+      latest,
+      providers: inventory?.providers ?? [],
+    };
+  }
+
+  /** Revoke primary dispatch authority under its existing locks. The worker's
+   * physical settlement acknowledgement is still required before re-eligibility. */
+  async changeRoute(
+    ownerId: string,
+    chatId: string,
+    input: TaskInferenceRouteChangeRequest,
+  ) {
+    if (!this.lanes)
+      throw new Error("Task route changes require execution lane ownership.");
+    return this.database.transaction(async (tx) => {
+      await tx
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update");
+      await tx.execute(projectChatExecutionLock(ownerId, chatId));
+      const [item] = await tx
+        .select({ round: schema.taskPlanningRounds, task: schema.tasks })
+        .from(schema.taskPlanningRounds)
+        .innerJoin(
+          schema.tasks,
+          and(
+            eq(schema.tasks.chatId, chatId),
+            eq(schema.tasks.activeOperationId, schema.taskPlanningRounds.id),
+          ),
+        )
+        .innerJoin(
+          schema.chats,
+          and(
+            eq(schema.chats.id, schema.tasks.chatId),
+            eq(schema.chats.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.taskPlanningRounds.chatId, chatId))
+        .limit(1);
+      const state = item?.round.inferenceInput;
+      if (!item || !state) stale();
+      const prior = state!.routeChange;
+      if (prior?.operationId === input.operationId) {
+        if (
+          prior.inputOperationId !== input.inputOperationId ||
+          prior.expectedRevision !== input.expectedRevision ||
+          prior.targetModelRouteId !== input.targetModelRouteId ||
+          prior.targetProviderAccountId !== input.targetProviderAccountId
+        )
+          throw new TaskDispatchConflictError(
+            "The route-change request changed identity.",
+            "idempotency-conflict",
+          );
+        return prior;
+      }
+      if (item!.task.rowVersion !== input.expectedRevision)
+        throw new TaskDispatchConflictError(
+          "The Task changed in another client.",
+          "stale-version",
+        );
+      if (
+        prior?.phase === "draining" ||
+        state!.receipt.operationId !== input.inputOperationId ||
+        state!.receipt.kind ||
+        !state!.accepted ||
+        !state!.allAttemptsEnforced ||
+        state!.failedBeforeDispatch ||
+        state!.firstDispatchedOperationId !== null
+      )
+        stale();
+      const source = state!.receipt;
+      const alreadySettled =
+        state!.deferred &&
+        prior?.phase === "completed" &&
+        prior.source.operationId === source.operationId;
+      if (
+        input.targetModelRouteId ===
+          (alreadySettled ? prior!.targetModelRouteId : source.modelRouteId) &&
+        input.targetProviderAccountId ===
+          (alreadySettled
+            ? prior!.targetProviderAccountId
+            : source.providerAccountId)
+      )
+        throw new TaskDispatchConflictError(
+          "The queued Task already uses that route and account.",
+          "stale-version",
+        );
+      const [cycle] = await tx
+        .select()
+        .from(schema.taskDispatchCycles)
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.id, source.dispatch.cycleId),
+            eq(schema.taskDispatchCycles.ownerId, ownerId),
+            eq(schema.taskDispatchCycles.chatId, chatId),
+            eq(schema.taskDispatchCycles.operationId, item!.round.id),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!cycle) stale();
+      if (
+        ["queued", "paused"].includes(cycle!.state) &&
+        cycle!.fencingToken > source.dispatch.fencingToken
+      ) {
+        // A previous deferral or Pause already revoked this exact old source.
+      } else {
+        await assertTaskOperationDispatchFence(
+          tx,
+          ownerId,
+          chatId,
+          item!.round.id,
+          { kind: "leased", lease: source.dispatch },
+        );
+      }
+      await this.context(tx, ownerId, source);
+      const [target] = await tx
+        .select({
+          modelId: schema.modelRoutes.modelId,
+          providerId: schema.modelRoutes.providerId,
+          kind: schema.modelProviders.kind,
+        })
+        .from(schema.modelRoutes)
+        .innerJoin(
+          schema.modelProfiles,
+          eq(schema.modelProfiles.id, schema.modelRoutes.modelId),
+        )
+        .innerJoin(
+          schema.modelProviders,
+          eq(schema.modelProviders.id, schema.modelRoutes.providerId),
+        )
+        .where(
+          and(
+            eq(schema.modelRoutes.id, input.targetModelRouteId),
+            eq(schema.modelRoutes.enabled, true),
+            eq(schema.modelProfiles.ownerId, ownerId),
+            eq(schema.modelProviders.ownerId, ownerId),
+          ),
+        )
+        .limit(1);
+      if (!target)
+        throw new TaskDispatchConflictError(
+          "The configured destination no longer exists.",
+          "stale-version",
+        );
+      const accountProvider =
+        target.kind === "chatgpt" || target.kind === "grok";
+      if (accountProvider !== (input.targetProviderAccountId !== null))
+        throw new TaskDispatchConflictError(
+          "Select an account belonging to the destination provider.",
+          "stale-version",
+        );
+      if (input.targetProviderAccountId) {
+        const [account] = await tx
+          .select({ id: schema.modelProviderAccounts.id })
+          .from(schema.modelProviderAccounts)
+          .where(
+            and(
+              eq(
+                schema.modelProviderAccounts.id,
+                input.targetProviderAccountId,
+              ),
+              eq(schema.modelProviderAccounts.providerId, target.providerId),
+              eq(schema.modelProviderAccounts.enabled, true),
+            ),
+          )
+          .limit(1);
+        if (!account)
+          throw new TaskDispatchConflictError(
+            "The destination account no longer exists.",
+            "stale-version",
+          );
+      }
+      const now = new Date();
+      const change = taskInferenceRouteChangeSchema.parse({
+        ...input,
+        source,
+        phase: alreadySettled ? "completed" : "draining",
+        queuedFencingToken: cycle!.fencingToken + 1,
+        createdAt: now.toISOString(),
+        completedAt: alreadySettled ? now.toISOString() : null,
+      });
+      await this.deferLocked(tx, ownerId, { ...state!, routeChange: change });
+      const configuration = modelConfigurationSchema.parse({
+        ...item!.task.modelConfiguration,
+        modelId: target.modelId,
+        reasoningEffort: null,
+      });
+      await tx
+        .update(schema.tasks)
+        .set({
+          modelConfiguration: configuration,
+          schedulerRevision: sql`${schema.tasks.schedulerRevision}+1`,
+          rowVersion: sql`${schema.tasks.rowVersion}+1`,
+          updatedAt: now,
+        })
+        .where(eq(schema.tasks.chatId, chatId));
+      await tx
+        .update(schema.taskDispatchCycles)
+        .set({
+          eligibilityCode: alreadySettled ? null : "provider-transfer-pending",
+        })
+        .where(eq(schema.taskDispatchCycles.id, cycle!.id));
+      return change;
+    });
+  }
+
+  async pendingRouteChanges(ownerId: string, workerId: string, after?: string) {
+    const rows = await this.database
+      .select({ input: schema.taskPlanningRounds.inferenceInput })
+      .from(schema.taskPlanningRounds)
+      .innerJoin(
+        schema.chats,
+        and(
+          eq(schema.chats.id, schema.taskPlanningRounds.chatId),
+          eq(schema.chats.ownerId, ownerId),
+        ),
+      )
+      .innerJoin(
+        schema.workers,
+        and(
+          eq(schema.workers.id, workerId),
+          eq(schema.workers.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          sql`${schema.taskPlanningRounds.inferenceInput}->'routeChange'->>'phase' = 'draining'`,
+          sql`${schema.taskPlanningRounds.inferenceInput}->'routeChange'->'source'->>'workerId' = ${workerId}`,
+          after ? gt(schema.taskPlanningRounds.id, after) : undefined,
+        ),
+      )
+      .orderBy(asc(schema.taskPlanningRounds.id))
+      .limit(100);
+    return rows.map((row) =>
+      taskInferenceRouteChangeSchema.parse(row.input?.routeChange),
+    );
+  }
+
+  async routeChangeScopes() {
+    return this.database
+      .selectDistinct({
+        ownerId: schema.chats.ownerId,
+        workerId: sql<string>`${schema.taskPlanningRounds.inferenceInput}->'routeChange'->'source'->>'workerId'`,
+      })
+      .from(schema.taskPlanningRounds)
+      .innerJoin(
+        schema.chats,
+        eq(schema.chats.id, schema.taskPlanningRounds.chatId),
+      )
+      .innerJoin(
+        schema.workers,
+        and(
+          eq(schema.workers.ownerId, schema.chats.ownerId),
+          sql`${schema.workers.id} = ${schema.taskPlanningRounds.inferenceInput}->'routeChange'->'source'->>'workerId'`,
+        ),
+      )
+      .where(
+        sql`${schema.taskPlanningRounds.inferenceInput}->'routeChange'->>'phase' = 'draining'`,
+      );
+  }
+
+  /** Only current queued destinations and draining intents are read; completed
+   * history never becomes a scheduler-wide in-memory receipt ledger. */
+  async routeSchedulingState(ownerId: string) {
+    const [pending, routes] = await Promise.all([
+      this.database
+        .selectDistinct({ chatId: schema.taskPlanningRounds.chatId })
+        .from(schema.taskPlanningRounds)
+        .innerJoin(
+          schema.chats,
+          and(
+            eq(schema.chats.id, schema.taskPlanningRounds.chatId),
+            eq(schema.chats.ownerId, ownerId),
+          ),
+        )
+        .where(
+          sql`${schema.taskPlanningRounds.inferenceInput}->'routeChange'->>'phase' = 'draining'`,
+        ),
+      this.database
+        .select({
+          cycleId: schema.taskDispatchCycles.id,
+          state: schema.taskPlanningRounds.inferenceInput,
+        })
+        .from(schema.taskDispatchCycles)
+        .innerJoin(
+          schema.taskPlanningRounds,
+          and(
+            eq(
+              schema.taskPlanningRounds.id,
+              schema.taskDispatchCycles.operationId,
+            ),
+            eq(
+              schema.taskPlanningRounds.chatId,
+              schema.taskDispatchCycles.chatId,
+            ),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.ownerId, ownerId),
+            inArray(schema.taskDispatchCycles.state, ["queued", "paused"]),
+            sql`${schema.taskPlanningRounds.inferenceInput}->'routeChange'->>'phase' = 'completed'`,
+            sql`${schema.taskPlanningRounds.inferenceInput}->>'deferred' = 'true'`,
+            sql`${schema.taskPlanningRounds.inferenceInput}->'receipt'->>'operationId' = ${schema.taskPlanningRounds.inferenceInput}->'routeChange'->>'inputOperationId'`,
+          ),
+        ),
+    ]);
+    return {
+      pendingChats: new Set(pending.map((row) => row.chatId)),
+      routes: new Map(
+        routes.map((row) => [
+          row.cycleId,
+          taskInferenceRouteChangeSchema.parse(row.state?.routeChange),
+        ]),
+      ),
+    };
+  }
+
+  async completeRouteChange(
+    ownerId: string,
+    workerId: string,
+    change: TaskInferenceRouteChange,
+  ) {
+    return this.database.transaction(async (tx) => {
+      await tx
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update");
+      await tx.execute(projectChatExecutionLock(ownerId, change.source.chatId));
+      const [cycle] = await tx
+        .select()
+        .from(schema.taskDispatchCycles)
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.id, change.source.dispatch.cycleId),
+            eq(schema.taskDispatchCycles.ownerId, ownerId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const [round] = await tx
+        .select({
+          round: schema.taskPlanningRounds,
+          task: schema.tasks,
+          archivedAt: schema.chats.archivedAt,
+        })
+        .from(schema.taskPlanningRounds)
+        .innerJoin(
+          schema.chats,
+          and(
+            eq(schema.chats.id, schema.taskPlanningRounds.chatId),
+            eq(schema.chats.ownerId, ownerId),
+          ),
+        )
+        .innerJoin(
+          schema.tasks,
+          eq(schema.tasks.chatId, schema.taskPlanningRounds.chatId),
+        )
+        .where(
+          eq(schema.taskPlanningRounds.id, change.source.dispatch.operationId),
+        )
+        .for("update")
+        .limit(1);
+      const state = round?.round.inferenceInput;
+      if (!state?.routeChange) return;
+      if (
+        state.routeChange.operationId !== change.operationId ||
+        change.source.workerId !== workerId ||
+        JSON.stringify(state.routeChange.source) !==
+          JSON.stringify(change.source)
+      )
+        stale();
+      if (state.routeChange.phase !== "draining") return;
+      const now = new Date();
+      const current =
+        round!.task.activeOperationId === change.source.dispatch.operationId &&
+        !round!.archivedAt &&
+        !["complete", "failed"].includes(round!.task.state) &&
+        cycle &&
+        cycle.chatId === change.source.chatId &&
+        cycle.operationId === change.source.dispatch.operationId &&
+        state.deferred &&
+        state.receipt.operationId === change.inputOperationId &&
+        ["queued", "paused"].includes(cycle.state);
+      await tx
+        .update(schema.taskPlanningRounds)
+        .set({
+          inferenceInput: {
+            ...state,
+            routeChange: {
+              ...state.routeChange,
+              phase: current ? "completed" : "cancelled",
+              completedAt: now.toISOString(),
+              queuedFencingToken: current
+                ? cycle!.fencingToken
+                : state.routeChange.queuedFencingToken,
+            },
+          },
+        })
+        .where(
+          eq(schema.taskPlanningRounds.id, change.source.dispatch.operationId),
+        );
+      await tx
+        .update(schema.taskDispatchCycles)
+        .set({
+          eligibilityCode: null,
+          updatedAt: now,
+          ...(current && cycle!.state === "paused"
+            ? {
+                state: "queued" as const,
+                pausedAt: null,
+                leaseOwner: null,
+                leaseExpiresAt: null,
+                selectedTaskWorkerId: null,
+                taskWorkerRevision: null,
+                continuityFamily: null,
+                modelConfiguration: null,
+                modelRouteId: null,
+                providerAccountId: null,
+                physicalWorkerId: null,
+                worktreeId: null,
+                codexThreadId: null,
+              }
+            : {}),
+        })
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.id, change.source.dispatch.cycleId),
+            current && cycle!.state === "paused"
+              ? undefined
+              : eq(
+                  schema.taskDispatchCycles.eligibilityCode,
+                  "provider-transfer-pending",
+                ),
+          ),
+        );
+      await tx
+        .update(schema.tasks)
+        .set({
+          schedulerRevision: sql`${schema.tasks.schedulerRevision}+1`,
+          rowVersion: sql`${schema.tasks.rowVersion}+1`,
+          updatedAt: now,
+        })
+        .where(eq(schema.tasks.chatId, change.source.chatId));
+    });
+  }
+
   async prepare(
     ownerId: string,
     input: Omit<TaskInferenceInputReceipt, "operationId">,
@@ -273,6 +789,7 @@ export class TaskInferenceInputRepository {
       )
         stale();
       const state: TaskInferenceInputState = {
+        ...(previous?.routeChange ? { routeChange: previous.routeChange } : {}),
         receipt,
         deferred: false,
         failedBeforeDispatch: false,

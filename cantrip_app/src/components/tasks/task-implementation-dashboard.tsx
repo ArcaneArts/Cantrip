@@ -48,6 +48,7 @@ import { taskCanBeDeleted } from "./task-deletion";
 import { TaskInteractionRequests } from "./task-interaction-requests";
 import { TaskListBackButton } from "./task-list-back-button";
 import { TaskOverviewSummary } from "./task-overview-summary";
+import { TaskQueuedProviderTransfer } from "./task-queued-provider-transfer";
 import { TaskRetryStatus, taskRetryFailureLabel } from "./task-retry-status";
 
 const goalLabels: Record<TaskGoalSnapshot["status"], string> = {
@@ -566,6 +567,16 @@ export function TaskImplementationDashboard({
           ) : null}
         </section>
 
+        {!task.planGoalEnabled ? (
+          <TaskQueuedProviderTransfer
+            chatId={chat.id}
+            revision={task.rowVersion}
+            queued={
+              Boolean(inferenceQueue.data) || task.dispatch?.state === "queued"
+            }
+            visible={visible}
+          />
+        ) : null}
         <TaskOverviewSummary
           chat={chat}
           task={task}

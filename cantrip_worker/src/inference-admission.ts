@@ -299,6 +299,12 @@ export class WorkerInferenceAdmission {
   recoverySnapshot(): readonly InferenceJournalRecord[] {
     return this.journal?.recoverySnapshot() ?? [];
   }
+  /** Join the actual keeper owner; takeover fences surviving prior processes. */
+  async confirmNativeOwnership(): Promise<void> {
+    if (!this.journal)
+      throw new Error("Native inference ownership is unavailable.");
+    await this.journal.snapshot();
+  }
 
   /** Recover a previously sealed handoff source after a lost acknowledgement.
    * Every matching physical alias must be durably released without inference. */

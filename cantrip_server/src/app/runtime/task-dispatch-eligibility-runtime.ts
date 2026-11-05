@@ -1,4 +1,5 @@
 import type { ModelConfiguration } from "@cantrip/protocol";
+import { configuredManagedRuntime } from "../../terminals/bound-managed-runtime.js";
 import { isDeepStrictEqual } from "node:util";
 import type { FastifyInstance } from "fastify";
 import type { ModelRuntime } from "../../db/repository.js";
@@ -43,6 +44,10 @@ export function createTaskDispatchEligibilityRuntime(
     ownerId: string,
   ): Promise<PreparedTaskDispatchEligibility> => {
     const cycles = await repository.taskDispatch.list(ownerId);
+    // Read route metadata after the cycle fences. A retarget that follows this
+    // snapshot then changes its fence and cannot use an older prepared route.
+    const routeState =
+      await repository.tasks.inferenceInputs.routeSchedulingState(ownerId);
     const resolutions = new Map<
       string,
       {
@@ -74,13 +79,18 @@ export function createTaskDispatchEligibilityRuntime(
         ownerId,
         context.workerId,
       );
+      const routeChange = routeState.routes.get(cycle.id);
+      const routePending = routeState.pendingChats.has(cycle.chatId);
       {
         const key = cycle.id;
         let resolution: Awaited<ReturnType<TaskDispatchEligibilityResolver>>;
         let runtime: ModelRuntime | null = null;
-        if (!bridge.isConnected(context.workerId)) {
+        if (routePending) {
+          resolution = { eligible: false, code: "provider-transfer-pending" };
+        } else if (!routeChange && !bridge.isConnected(context.workerId)) {
           resolution = { eligible: false, code: "worker-offline" };
         } else if (
+          !routeChange &&
           !physicalWorker?.encryption.grants.some(
             ({ component }) => component === "task-content",
           )
@@ -96,10 +106,25 @@ export function createTaskDispatchEligibilityRuntime(
             const pairs = await withTaskLaunchStageTimeout(
               "resolve-runtime",
               timeoutMs,
-              () =>
+              async () =>
                 routePairsForConfiguration(
                   { ...context, providerAccountId: null },
                   configuration,
+                  routeChange
+                    ? [
+                        await configuredManagedRuntime(
+                          ownerId,
+                          {
+                            ...context,
+                            modelRouteId: routeChange.targetModelRouteId,
+                            providerAccountId:
+                              routeChange.targetProviderAccountId,
+                          },
+                          configuration.modelId!,
+                          repository,
+                        ),
+                      ]
+                    : undefined,
                 ),
             );
             const selected = pairs[0]?.root.runtime;
@@ -192,12 +217,23 @@ export function createTaskDispatchEligibilityRuntime(
     ownerId: string,
   ): Promise<TaskDispatchResumeEligibilityResolver> => {
     const cycles = await repository.taskDispatch.list(ownerId);
+    // Read route metadata after the cycle fences. A retarget that follows this
+    // snapshot then changes its fence and cannot use an older prepared route.
+    const routeState =
+      await repository.tasks.inferenceInputs.routeSchedulingState(ownerId);
     const resolutions = new Map<
       string,
       Awaited<ReturnType<TaskDispatchResumeEligibilityResolver>>
     >();
     for (const cycle of cycles) {
       if (cycle.state !== "paused") continue;
+      if (routeState.pendingChats.has(cycle.chatId)) {
+        resolutions.set(cycle.id, {
+          eligible: false,
+          code: "provider-transfer-pending",
+        });
+        continue;
+      }
       const context = await repository.getChatExecutionContext(
         ownerId,
         cycle.chatId,
