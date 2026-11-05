@@ -76,7 +76,7 @@ without opening the Host desktop. Remote package 0.3.0 adds plain UTF-8 clipboar
 read/write/paste, physical pointer movement and supported live desktop resizing
 through the SDK. Clipboard text is limited to 1 MiB and its selection owner lasts
 only for the helper/desktop lifetime; final JavaScript output retains its 32 KiB
-limit. Integrated human takeover remains in progress.
+limit. Remote 0.5.0 supplies integrated human takeover.
 
 ## View the assigned desktop
 
@@ -87,13 +87,18 @@ an existing agent. The encrypted stream uses the normal authorized WorkerLink
 route and shares the guest native helper with agent CUA. Model credentials stay
 on the Worker.
 
-This checkpoint is view-only: remote input and clipboard buttons are disabled.
-An agent can continue operating while you watch. Closing the last viewer releases
+The view starts in viewing mode while an agent operates. Choose **Take control**
+to pause guest CUA and use pointer, keyboard and clipboard input. Choose **Return
+to agent** to release human input; the agent can make a fresh CUA call and attach
+again. Canceled operations are not replayed. Only one viewer can control the
+assigned desktop, including across different saved views. Disconnecting or
+suspending its surface releases that transient lease and held input. Shell work
+continues independently. Closing the last viewer releases
 its capture without stopping the agent or desktop; retiring the agent leaves
 an attached viewer usable. Reconnect observes the same captured destination.
 After an OS runtime changes, create a new view for the verified source rather
 than silently following the replacement. A retired view can still be closed or
-removed. Human takeover and managed service endpoints remain later Phase 4 work.
+removed. Managed service endpoints remain later Phase 4 work.
 
 ## Files and editor
 

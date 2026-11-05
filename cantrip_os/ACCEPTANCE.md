@@ -1824,3 +1824,89 @@ invented for the older incomplete view. Fresh repository migration tests passed.
 After rebuilding the protocol package with that explicit command review, the
 complete protocol run passed 1098 tests. Its only two failures are the source
 and built copies of the already-reproduced root-export baseline assertion.
+
+## Phase 4: human takeover checkpoint (2026-11-05)
+
+Optional remote package 0.5.0 permits trusted input participants only on the
+explicitly assigned guest X11 monitor. The existing Host/window restriction
+remains in place for other backends. Integrated views expose **Take control**
+and **Return to agent** through their existing Server-authorized, captured
+WorkerLink attachment. One transient human lease is shared across the guest
+service's views; it does not change durable placement or move an agent.
+
+Takeover fences guest agent CUA immediately, interrupts active JavaScript without
+revoking the admitted turn, cancels queued/native agent input and waits for
+native cleanup before opening human input. Return releases human holds first.
+A second viewer cannot steal the lease or return it, and stale lease IDs and
+input epochs cannot dispatch. Disconnect or explicit surface suspension ends the
+human lease and releases input. Only fresh authorized agent calls can proceed;
+canceled/uncertain actions are never replayed. Shell processes remain independent.
+An invalid native close acknowledgement retires the helper instead of handing
+input to a human with uncertain cleanup.
+
+The actual ARM64 Docker and installed AMD64 Worker SDK cases independently
+queried X11 physical button state. They observed a long-running agent timeline
+holding the left button, took over through the viewer adapter, and observed the
+button release. A normal agent MCP request was rejected during human control.
+The human copy path returned the expected Unicode clipboard contents. A second
+viewer was denied; actual human pointer input reached the intended coordinates
+and held the button. A stale return nonce did not release the lease; the correct
+return released the physical hold. Old-epoch input did not post. A fresh normal
+SDK call attached and captured on the same admitted turn after return. Suspension
+and viewer disconnect also released actual human holds, and resumption minted
+a new input epoch. The final test bodies took 2.94 seconds in ARM64 and 19.83
+seconds in emulated AMD64. These are acceptance timings, not stream benchmarks.
+
+Both architectures passed the destructive package lifecycle harness, including
+clipboard/resize/isolation, carrier and manager death, desktop/runtime retirement,
+upgrade, disable/remove/purge/reinstall, and retained files/desktops. The optional
+package split remains independent of the ordinary OS desktop and delegated shell.
+
+| Package architecture | Bytes   | SHA-256                                                            |
+| -------------------- | ------- | ------------------------------------------------------------------ |
+| ARM64 0.5.0          | 1343052 | `1ae67f896710f081775b3281f67401e05e0fab19d92cbed4d20ba695ae80130f` |
+| AMD64 0.5.0          | 1548280 | `ac5ea5aa2983fbcd5babca659c2f31dd801486bd609b41e271896fff20d24781` |
+
+The actual Cantrip product was tested only in Codex's isolated browser. Takeover
+changed the toolbar to **Return to agent** and enabled clipboard controls. Human
+pointer input opened IceWM's menu and launched xterm; individual keyboard events
+ran `whoami`, which reported the assigned `ctw-phase4` account. Clipboard paste
+then ran a harmless terminal command that printed `Cantrip human takeover OK`.
+Return restored viewing mode and disabled human clipboard controls. The Linux
+file previously created by the real agent remained open in the Cantrip editor.
+Screenshots are retained with the ignored local `phase4-human` artifacts.
+
+The first browser toolbar paste exposed a real focus race: blurring the canvas
+canceled its input epoch before the asynchronous clipboard read completed. The
+clipboard buttons now retain canvas focus on mouse down; the repeated browser
+test visibly pasted and executed the complete command. The browser automation's
+bulk typing shortcut delivered only its first physical key to the canvas;
+individual key events and the clipboard path were tested separately.
+
+Native macOS tests passed all 224 cases. Linux passed formatting, 87 library tests,
+its remaining native integration suites, and strict all-target Clippy; the native
+X11 environment-dependent test was skipped in that build stage, while actual X11
+was exercised by both installed guest SDK/lifecycle suites above. Native-backed
+Worker service/JavaScript tests passed all 82 cases, including interruption of the
+actual JS engine, fresh calls on the same turn after return, and rejection of an
+unconfirmed close acknowledgement. The focused Worker run passed 110 tests with
+35 platform/environment skips; App tests passed 21 cases, and four focused
+protocol placement/control cases passed.
+
+Worker types and the App's actual `pnpm --filter @cantrip/app typecheck` passed.
+An earlier App `tsc --noEmit` invocation targeted an empty root reference project
+and did not check application sources; it is superseded by the actual `tsc -b`
+result, not counted as App validation. Initial QA loading also required building
+the App's Glitch workspace dependency before Vite could resolve it.
+
+After rebasing onto Main `2d68134ec`, Server types report seven errors in
+unchanged Task Goal callback/ChatLiveRouting code. The first three were already
+reproduced on clean Main in the previous checkpoint; the newer Main outcome
+paths add four instances of the same routing type mismatch. Required `pnpm check`
+still stops at unchanged budgets: `build-app.ts` 1513/1500 and
+`chat-turn-runtime.ts` 2199/1999. These failures are recorded as failures.
+
+This checkpoint completes the human-control milestone, not the complete Phase 4
+goal. Managed SSH/SFTP/VNC/TCP, explicit guest-to-Host forwarding, comparative
+stream measurements, active multi-desktop resource acceptance and refreshed
+Docker/ISO live/install/disk-boot validation remain outstanding.

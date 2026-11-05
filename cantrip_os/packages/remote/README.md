@@ -1,6 +1,6 @@
 # Optional native desktop package
 
-`cantrip-os-remote` 0.4.0 supplies the Linux X11 `cantrip-cua` helper and a
+`cantrip-os-remote` 0.5.0 supplies the Linux X11 `cantrip-cua` helper and a
 workspace-bound protected stdio carrier. It depends on the existing workspace
 and executor packages. Removing it leaves those packages, ordinary desktops,
 and workspace files available. No Worker, conversation database, scheduler,
@@ -11,8 +11,10 @@ placement. The MCP client, turn authorization and provider credentials stay on
 the Worker. Project Settings → CantripOS → Open desktop supplies integrated
 viewing through the existing encrypted Remote Desktop/WorkerLink path, sharing
 the same guest helper with agents. Viewing remains available after an agent
-retires, and closing a viewer does not cancel the agent. Human takeover and
-managed SSH/SFTP/VNC/TCP access require the following Phase 4 cycles. The
+retires, and closing a viewer does not stop the desktop. **Take control** obtains
+an exclusive guest CUA lease; **Return to agent** releases human input before
+fresh agent calls can continue. Managed SSH/SFTP/VNC/TCP access requires the
+following Phase 4 cycles. The
 independent local workspace viewer continues to work.
 
 From the repository root:
@@ -150,3 +152,18 @@ view starts or observes its actual assigned desktop before the Server saves its
 identity. Reconnecting a saved view cannot start or follow a replacement desktop.
 A retired view can be closed; use **Open desktop** to explicitly create a new view.
 Incomplete captures remain readable for cleanup but cannot acquire a viewer.
+
+Version 0.5.0 adds remote input participants for the explicitly assigned Linux
+monitor. Host displays remain view-only under this participant contract. The
+Worker pauses guest agent CUA, cancels queued/current scripts and native input,
+and waits for cleanup before admitting the human participant. A second viewer
+cannot take or return another viewer's lease. Shell processes remain independent.
+
+Human input uses a fresh attachment epoch and increasing event sequence. Return,
+viewer disconnect, or explicit surface suspension releases held input before
+ending the lease. Reconnecting requires a fresh takeover. Canceled or uncertain
+input is never replayed; after return the agent must make a fresh authorized call
+and attach again. Its live turn authorization is retained. Unconfirmed cleanup
+retires the helper instead of handing off input. The lease is transient Worker
+runtime state authorized by the Server's existing captured-surface WorkerLink
+grant, rather than a new durable placement or a guest-side scheduler.

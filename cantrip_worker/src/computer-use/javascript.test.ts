@@ -54,6 +54,7 @@ function options(controller = new AbortController()) {
 }
 function fixture(
   evaluate: (options: CuaRequestOptions) => Promise<unknown> = async () => null,
+  allowMonitorInput = false,
 ) {
   const request = vi.fn(
     async (input: unknown, opts: CuaRequestOptions = {}) => {
@@ -74,10 +75,84 @@ function fixture(
     request,
     close: vi.fn(async () => {}),
   }));
-  const service = new CantripCuaService({ workerId: "worker", launch });
+  const service = new CantripCuaService({
+    workerId: "worker",
+    launch,
+    allowMonitorInput,
+  });
   services.push(service);
   return { service, launch, request };
 }
+
+it("cancels an active agent script for exclusive takeover and accepts a fresh call after return", async () => {
+  const started = deferred<void>();
+  let evaluations = 0;
+  const { service } = fixture(async (request) => {
+    if (evaluations++ > 0) return "fresh";
+    started.resolve();
+    return new Promise((_, reject) =>
+      request.signal!.addEventListener(
+        "abort",
+        () => reject(new CuaProcessError("cancelled", "unknown")),
+        { once: true },
+      ),
+    );
+  }, true);
+  const opts = options();
+  const active = service
+    .evaluateJavascript(scope, "waiting", opts)
+    .catch((error) => error);
+  await started.promise;
+  await service.takeControl("viewer-one");
+  expect(await active).toMatchObject({ code: "cancelled" });
+  await expect(
+    service.evaluateJavascript(scope, "blocked", opts),
+  ).rejects.toThrow(/human controls/);
+  await expect(service.takeControl("viewer-two")).rejects.toMatchObject({
+    code: "ownership-mismatch",
+  });
+  expect(() => service.returnControl("viewer-two")).toThrow();
+  service.returnControl("viewer-one");
+  expect(
+    (await service.evaluateJavascript(scope, "new request", opts)).value,
+  ).toBe("fresh");
+});
+
+it.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
+  "interrupts the actual native JS engine for takeover without revoking the live turn",
+  async () => {
+    const service = new CantripCuaService({
+      workerId: "worker",
+      binary: process.env.CANTRIP_CUA_TEST_BINARY!,
+      args: ["--backend", "fake"],
+      allowMonitorInput: true,
+    });
+    services.push(service);
+    const opts = options();
+    await service.evaluateJavascript(
+      scope,
+      "await cua.attach({targetId:'fake-window',targetGeneration:1})",
+      opts,
+    );
+    opts.authorize.mockClear();
+    const running = service
+      .evaluateJavascript(scope, "await cua.wait(10000)", opts)
+      .catch((error) => error);
+    await vi.waitFor(() =>
+      expect(
+        opts.authorize.mock.calls.some(
+          ([action]) => action.operation === "wait",
+        ),
+      ).toBe(true),
+    );
+    await service.takeControl("viewer");
+    expect(await running).toMatchObject({ code: "cancelled" });
+    service.returnControl("viewer");
+    expect((await service.evaluateJavascript(scope, "42", opts)).value).toBe(
+      42,
+    );
+  },
+);
 
 describe("bounded CUA JavaScript host arguments", () => {
   it.each(["state", "targets", "snapshot", "cursor", "detach", "controls"])(

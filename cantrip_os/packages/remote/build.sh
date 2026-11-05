@@ -15,4 +15,4 @@ install -m 0755 "$runtime/cantrip-cua" "$stage/usr/lib/cantrip-os-remote/cantrip
 cp -a "$runtime/licenses" "$runtime/build-manifest.sha256" "$stage/usr/share/doc/cantrip-os-remote/"
 export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1793742880}
 find "$stage" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
-dpkg-deb --root-owner-group --uniform-compression -Zxz -z6 --build "$stage" "$output/cantrip-os-remote_0.4.0_$architecture.deb"
+dpkg-deb --root-owner-group --uniform-compression -Zxz -z6 --build "$stage" "$output/cantrip-os-remote_0.5.0_$architecture.deb"

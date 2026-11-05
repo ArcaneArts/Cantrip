@@ -297,6 +297,14 @@ export class CuaJavascriptContexts {
     for (const [identity, lifetime] of this.lifetimes)
       if (matches(lifetime.scope)) this.revoke(identity);
   }
+  /** Interrupt current scripts without retiring their authorized turn lifetime. */
+  async interrupt(): Promise<void> {
+    await Promise.all(
+      [...this.contexts.values()].map((context) =>
+        this.dispose(context, false),
+      ),
+    );
+  }
   runtimeFailed(runtime: CuaJavascriptRuntime, error: CuaProcessError): void {
     for (const context of this.contexts.values()) {
       if (context.runtime !== runtime) continue;

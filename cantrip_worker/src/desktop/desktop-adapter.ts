@@ -330,6 +330,8 @@ export class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession 
     const message = remoteDesktopClientMessageSchema.parse(
       JSON.parse(decoder.decode(payload)),
     );
+    // Guest takeover is handled by its assigned-desktop adapter only.
+    if (message.type === "desktop-control") return;
     if (message.type === "viewport") {
       const attachment = this.#attachments.get(attachmentId);
       if (attachment) attachment.viewport = message.viewport;
@@ -1096,6 +1098,7 @@ export class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession 
       | { type: "request-target-icons" }
       | { type: "stream-feedback" }
       | { type: "viewport" }
+      | { type: "desktop-control" }
     >,
   ): Promise<void> {
     if (this.#participantInput) {

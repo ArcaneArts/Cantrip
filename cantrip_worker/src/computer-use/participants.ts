@@ -9,6 +9,7 @@ import {
   cuaTargetReferenceSchema,
   cuaTargetSchema,
   cuaSessionSchema,
+  cuaClipboardResultSchema,
   type CuaPoint,
   type CuaTargetReference,
 } from "./types.js";
@@ -86,6 +87,7 @@ export interface InteractionParticipant {
     signal?: AbortSignal,
   ): Promise<InteractionReceipt>;
   close(): Promise<void>;
+  readClipboard?(): Promise<string>;
 }
 interface Runtime {
   transport: CuaTransport;
@@ -95,6 +97,7 @@ interface Owner {
   isCurrent(runtime: Runtime): boolean;
   authorize(binding: InteractionBinding): void;
   background(work: Promise<void>): void;
+  allowMonitorInput?(): boolean;
 }
 interface Record {
   binding: InteractionBinding;
@@ -194,7 +197,10 @@ export class WorkerInputParticipants {
         result.payload.length ||
         opened.target.id !== target.targetId ||
         opened.target.generation !== target.targetGeneration ||
-        opened.target.kind !== "window"
+        (opened.target.kind !== "window" &&
+          !(
+            opened.target.kind === "monitor" && this.owner.allowMonitorInput?.()
+          ))
       )
         throw new CuaProcessError("protocol-error", "unknown");
       this.assertLive(record, "unknown");
@@ -209,6 +215,12 @@ export class WorkerInputParticipants {
         send: (sequence, event, operationSignal) =>
           this.send(record, handle, sequence, event, operationSignal),
         close: () => this.retire(record),
+        readClipboard: async () => {
+          this.assertLive(record);
+          const result = await this.readClipboard(record, handle);
+          this.assertLive(record, "unknown");
+          return result;
+        },
       };
     } catch (error) {
       await this.retire(record);
@@ -225,6 +237,21 @@ export class WorkerInputParticipants {
       throw new CuaProcessError("cancelled", outcome);
     if (!record.runtime || !this.owner.isCurrent(record.runtime))
       throw new CuaProcessError("process-exited", outcome);
+  }
+  private async readClipboard(record: Record, handle: number): Promise<string> {
+    const result = await record.runtime!.transport.request(
+      {
+        operation: "interaction.request",
+        request: { type: "clipboardRead", binding: record.binding, handle },
+      },
+      { signal: record.controller.signal },
+    );
+    if (result.payload.length)
+      throw new CuaProcessError("protocol-error", "unknown");
+    return (
+      cuaClipboardResultSchema.pick({ text: true }).parse(result.data).text ??
+      ""
+    );
   }
   private present(record: Record, handle: number, point: CuaPoint): void {
     if (record.retired) return;

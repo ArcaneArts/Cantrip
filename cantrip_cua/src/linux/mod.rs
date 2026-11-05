@@ -140,6 +140,9 @@ impl X11Backend {
     }
 }
 impl CaptureBackend for X11Backend {
+    fn remote_monitor_input(&self) -> bool {
+        true
+    }
     fn desktop_io(&self) -> bool {
         true
     }

@@ -31,6 +31,10 @@ impl Raster {
 }
 
 pub trait CaptureBackend: Send {
+    /// Only an explicitly owned guest display may accept remote monitor input.
+    fn remote_monitor_input(&self) -> bool {
+        false
+    }
     fn desktop_io(&self) -> bool {
         false
     }

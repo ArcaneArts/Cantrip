@@ -3,10 +3,51 @@ import {
   remoteDesktopCreateSchema,
   encryptedRemoteDesktopCreateSchema,
 } from "./remote-desktops.js";
+import {
+  remoteDesktopClientMessageSchema,
+  remoteDesktopServerMessageSchema,
+} from "./remote-surfaces.js";
 import { workerCommandSchema } from "./worker-commands.js";
 
 const uuid = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+it("requires an exact lease for return and carries no caller-supplied desktop authority", () => {
+  expect(
+    remoteDesktopClientMessageSchema.safeParse({
+      type: "desktop-control",
+      operation: "take",
+    }).success,
+  ).toBe(true);
+  expect(
+    remoteDesktopClientMessageSchema.safeParse({
+      type: "desktop-control",
+      operation: "return",
+    }).success,
+  ).toBe(false);
+  expect(
+    remoteDesktopClientMessageSchema.safeParse({
+      type: "desktop-control",
+      operation: "return",
+      leaseId: uuid(1),
+    }).success,
+  ).toBe(true);
+  expect(
+    remoteDesktopClientMessageSchema.safeParse({
+      type: "desktop-control",
+      operation: "take",
+      workerId: "other",
+    }).success,
+  ).toBe(false);
+  expect(
+    remoteDesktopServerMessageSchema.safeParse({
+      type: "desktop-control",
+      mode: "human",
+      isController: true,
+      leaseId: uuid(1),
+    }).success,
+  ).toBe(true);
+});
 const opaque = {
   formatVersion: 1,
   keyRevision: 1,

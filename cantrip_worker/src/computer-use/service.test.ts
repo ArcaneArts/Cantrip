@@ -39,6 +39,16 @@ afterEach(async () => {
 });
 
 describe("CUA worker composition without activation", () => {
+  it("does not grant takeover on a Host service or launch a helper for it", async () => {
+    const launch = vi.fn();
+    const service = new CantripCuaService({ workerId: "worker", launch });
+    services.push(service);
+    await expect(service.takeControl("viewer")).rejects.toMatchObject({
+      code: "ownership-mismatch",
+    });
+    expect(service.control.owner).toBeNull();
+    expect(launch).not.toHaveBeenCalled();
+  });
   it("does no work at construction, idle disconnect, reconnect, or shutdown", async () => {
     const launch = vi.fn();
     const service = new CantripCuaService({ workerId: "worker", launch });
@@ -110,6 +120,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
   () => {
     function create(
       options: {
+        allowMonitorInput?: boolean;
         beforeRequest?: (operation: unknown) => void;
         transform?: (
           operation: unknown,
@@ -153,6 +164,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
         binary: process.env.CANTRIP_CUA_TEST_BINARY!,
         args: ["--backend", "fake"],
         launch,
+        allowMonitorInput: options.allowMonitorInput,
       });
       services.push(service);
       return { service, launch, children, operations };
@@ -162,6 +174,20 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       child.kill("SIGKILL");
       await closed;
     }
+    it("retires the helper instead of handing over unconfirmed input cleanup", async () => {
+      const { service } = create({
+        allowMonitorInput: true,
+        transform: (operation, response) =>
+          (operation as { operation: string }).operation === "session.close"
+            ? { data: { closed: false }, payload: Buffer.alloc(0) }
+            : response,
+      });
+      await service.open(scope, windowTarget);
+      await expect(service.takeControl("viewer")).rejects.toMatchObject({
+        code: "protocol-error",
+      });
+      expect(service.status().state).toBe("closed");
+    });
     it.each([undefined, false, true])(
       "preserves native inventory truncation %s while retaining array callers",
       async (truncated) => {

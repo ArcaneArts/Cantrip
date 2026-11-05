@@ -70,6 +70,10 @@ pub enum Request {
     CloseBinding {
         binding: Binding,
     },
+    ClipboardRead {
+        binding: Binding,
+        handle: u64,
+    },
 }
 struct Participant {
     binding: Binding,
@@ -157,7 +161,9 @@ impl Participants {
                 }
                 let target = backend.resolve_target(&target_id, target_generation, cancel)?;
                 target.validate()?;
-                if target.kind != TargetKind::Window {
+                if target.kind != TargetKind::Window
+                    && !(target.kind == TargetKind::Monitor && backend.remote_monitor_input())
+                {
                     return Err(CuaError::new(
                         ErrorCode::Unsupported,
                         "Independent input requires a window target; global input is not substituted.",
@@ -221,6 +227,24 @@ impl Participants {
                 self.close(backend, handle)?;
                 Ok(json!({"closed":true}))
             }
+            Request::ClipboardRead { binding, handle } => {
+                let state = self.get(handle, &binding)?;
+                cancel.check()?;
+                if !backend.remote_monitor_input() || state.target.kind != TargetKind::Monitor {
+                    return Err(CuaError::new(
+                        ErrorCode::Unsupported,
+                        "Participant clipboard access requires an assigned guest display.",
+                    ));
+                }
+                let target = backend.resolve_interaction_target(&state.target, cancel)?;
+                if target.id != state.target.id || target.generation != state.target.generation {
+                    return Err(CuaError::new(
+                        ErrorCode::StaleTarget,
+                        "Interaction target was replaced.",
+                    ));
+                }
+                Ok(json!({"text":backend.clipboard_read(&target,cancel)?}))
+            }
             Request::Present {
                 binding,
                 handle,
@@ -271,7 +295,10 @@ impl Participants {
                     if target.id != state.target.id
                         || target.generation != state.target.generation
                         || target.process_id != state.target.process_id
-                        || target.kind != TargetKind::Window
+                        || target.kind != state.target.kind
+                        || (target.kind != TargetKind::Window
+                            && !(target.kind == TargetKind::Monitor
+                                && backend.remote_monitor_input()))
                     {
                         return Err(CuaError::new(
                             ErrorCode::StaleTarget,

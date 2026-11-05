@@ -54,21 +54,23 @@ export class CuaServiceError extends Error {
       | "unavailable"
       | "closed"
       | "capacity",
+    messageOverride?: string,
   ) {
     super(
-      {
-        "ownership-mismatch":
-          "CUA belongs to another worker or execution context.",
-        "session-not-found":
-          "CUA session is no longer active; explicitly attach a new session.",
-        "stale-target":
-          "The selected CUA target changed; attach the current target.",
-        disconnected: "The worker lost its authorized server connection.",
-        unavailable:
-          "CUA helper is unavailable. A new authorized request can start a fresh helper; do not replay input from the failed request.",
-        closed: "CUA worker service is closed.",
-        capacity: "CUA operation or session capacity reached.",
-      }[code],
+      messageOverride ??
+        {
+          "ownership-mismatch":
+            "CUA belongs to another worker or execution context.",
+          "session-not-found":
+            "CUA session is no longer active; explicitly attach a new session.",
+          "stale-target":
+            "The selected CUA target changed; attach the current target.",
+          disconnected: "The worker lost its authorized server connection.",
+          unavailable:
+            "CUA helper is unavailable. A new authorized request can start a fresh helper; do not replay input from the failed request.",
+          closed: "CUA worker service is closed.",
+          capacity: "CUA operation or session capacity reached.",
+        }[code],
     );
     this.name = "CuaServiceError";
   }
@@ -97,6 +99,8 @@ export interface CantripCuaServiceOptions {
   /** Explicit fake selection is for tests/QA only; never an automatic fallback. */
   args?: string[];
   launch?: typeof launchCuaTransport;
+  /** Only the explicit guest carrier enables monitor participants/takeover. */
+  allowMonitorInput?: boolean;
 }
 
 export interface CuaServiceLease {
@@ -122,6 +126,10 @@ export class CantripCuaService {
   private cleanup = new Set<Promise<void>>();
   private lastFailure: string | null = null;
   private readonly javascript: CuaJavascriptContexts;
+  private readonly agentCleanup = new Set<Promise<void>>();
+  private readonly controlListeners = new Set<() => void>();
+  private controllerOwner: string | null = null;
+  private takingControl: Promise<void> | null = null;
   readonly participants: WorkerInputParticipants;
   readonly captures: WorkerCaptures;
 
@@ -141,7 +149,14 @@ export class CantripCuaService {
         this.runtime === runtime && this.connected && !this.stopped,
       background: (work) => this.background(work),
     };
-    this.participants = new WorkerInputParticipants(participantOwner);
+    this.participants = new WorkerInputParticipants({
+      ...participantOwner,
+      allowMonitorInput: () =>
+        Boolean(
+          this.options.allowMonitorInput &&
+          this.runtime?.capabilities?.backend === "linux-x11",
+        ),
+    });
     this.captures = new WorkerCaptures(participantOwner);
     this.javascript = new CuaJavascriptContexts(this, {
       runtime: async (signal) => {
@@ -191,6 +206,7 @@ export class CantripCuaService {
     action: (signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
     this.assertActive(signal);
+    this.assertAgentControl();
     // Reserve transport slots for out-of-band close/cancellation of all 16
     // sessions, even when ordinary callers saturate the service.
     if (this.pending.size >= 16) throw new CuaServiceError("capacity");
@@ -341,6 +357,7 @@ export class CantripCuaService {
     options: CuaJavascriptOptions,
   ) {
     this.assertActive(options.executionSignal);
+    this.assertAgentControl();
     return this.javascript.evaluate(this.scope(input), source, options);
   }
   resetJavascript(
@@ -882,25 +899,104 @@ export class CantripCuaService {
     ) as Promise<CuaSnapshot>;
   }
   private invalidate(record: SessionRecord, revokeJavascript = false) {
-    if (this.sessions.get(record.binding.sessionId) !== record) return;
+    if (this.sessions.get(record.binding.sessionId) !== record)
+      return Promise.resolve();
     this.sessions.delete(record.binding.sessionId);
     this.javascript.nativeSessionClosed(
       record.binding.sessionId,
       revokeJavascript,
     );
     record.controller.abort();
-    if (!record.runtime.transport.closed)
-      this.background(
-        record.runtime.transport
-          .request(
-            {
-              operation: "session.close",
-              binding: record.binding,
-            },
-            { lifecycle: true },
+    if (!record.runtime.transport.closed) {
+      const work = record.runtime.transport
+        .request(
+          {
+            operation: "session.close",
+            binding: record.binding,
+          },
+          { lifecycle: true },
+        )
+        .then((response) => {
+          if (
+            response.payload.length ||
+            !z
+              .strictObject({ closed: z.literal(true) })
+              .safeParse(response.data).success
           )
-          .then(() => {}),
+            this.protocolFailure(record.runtime);
+        });
+      this.agentCleanup.add(work);
+      void work.then(
+        () => this.agentCleanup.delete(work),
+        () => this.agentCleanup.delete(work),
       );
+      this.background(work);
+      return work;
+    }
+    return Promise.resolve();
+  }
+  get control() {
+    return {
+      owner: this.controllerOwner,
+      switching: Boolean(this.takingControl),
+    };
+  }
+  subscribeControl(listener: () => void) {
+    this.controlListeners.add(listener);
+    return () => {
+      this.controlListeners.delete(listener);
+    };
+  }
+  private publishControl() {
+    for (const listener of this.controlListeners) {
+      try {
+        listener();
+      } catch {}
+    }
+  }
+  private assertAgentControl() {
+    if (this.controllerOwner)
+      throw new CuaServiceError(
+        "ownership-mismatch",
+        "A human controls this Linux desktop. Return control before requesting fresh computer use.",
+      );
+  }
+  /** The authorized viewer owns one transient lease, shared by this guest service. */
+  async takeControl(owner: string): Promise<void> {
+    this.assertActive();
+    if (
+      !this.options.allowMonitorInput ||
+      (this.controllerOwner && this.controllerOwner !== owner)
+    )
+      throw new CuaServiceError("ownership-mismatch");
+    if (this.controllerOwner === owner)
+      return this.takingControl ?? Promise.resolve();
+    this.controllerOwner = owner;
+    for (const pending of this.pending) pending.controller.abort();
+    const interrupted = this.javascript.interrupt();
+    for (const record of this.sessions.values()) this.invalidate(record);
+    const work = Promise.all([interrupted, ...this.agentCleanup]).then(
+      () => {},
+    );
+    this.takingControl = work;
+    this.publishControl();
+    try {
+      await work;
+      this.assertActive();
+    } catch (error) {
+      // Unconfirmed releases cannot hand the display to a human participant.
+      await this.close();
+      throw error;
+    } finally {
+      this.takingControl = null;
+      this.publishControl();
+    }
+  }
+  returnControl(owner: string) {
+    if (this.controllerOwner !== owner || this.takingControl)
+      throw new CuaServiceError("ownership-mismatch");
+    this.controllerOwner = null;
+    this.publishControl();
   }
   stopSession(input: CuaScope, sessionId: string): void {
     this.invalidate(this.record(input, sessionId), true);
