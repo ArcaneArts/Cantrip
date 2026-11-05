@@ -2,6 +2,7 @@
 // Keep credentials and provider secrets out of these scoped operational rows.
 const tables = [
   "chats",
+  "managed_queue_states",
   "tasks",
   "task_planning_rounds",
   "task_dispatch_cycles",

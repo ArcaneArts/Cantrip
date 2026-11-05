@@ -11,6 +11,7 @@ import { buildRustExample } from "./build.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { password } from "./security-fixtures.mjs";
 import { captureTaskRuntimeState } from "./task-runtime-snapshot.mjs";
+import { nativeGoalRecoveryWireFixtures } from "./native-goal-recovery-fixtures.mjs";
 import { worktreeDisconnectCase } from "./agent-worktree-http-disconnect.mjs";
 import {
   worktreeReadBoundaries,
@@ -244,15 +245,24 @@ try {
           phase: "future-suspension",
           opaque: { retained: true },
         };
+        const goalRecovery =
+          nativeGoalRecoveryWireFixtures().nativeGoalRecoverySchema[2];
         await h.fixture.sql([
           `UPDATE chats SET automation_paused=true,native_suspension_state=${json(unsupportedSuspension)} WHERE id=${literal(chat)}`,
+          `INSERT INTO managed_queue_states(chat_id,goal_recovery,notified_revision,notification_due_at) VALUES(${literal(chat)},${json(goalRecovery)},0,'2099-01-01T00:00:00Z') ON CONFLICT(chat_id) DO UPDATE SET goal_recovery=excluded.goal_recovery,notified_revision=excluded.notified_revision,notification_due_at=excluded.notification_due_at`,
         ]);
         const taskSnapshot = await captureTaskRuntimeState({
           ownerId: h.owner,
           projectId: project,
           query: (statements, queries) => h.fixture.sql(statements, queries),
         });
-        assert.equal(Object.keys(taskSnapshot.rows).length, 9);
+        assert.equal(Object.keys(taskSnapshot.rows).length, 10);
+        assert.deepEqual(
+          taskSnapshot.rows.managed_queue_states.find(
+            (row) => row.chat_id === chat,
+          )?.goal_recovery,
+          goalRecovery,
+        );
         assert.deepEqual(
           taskSnapshot.rows.chats.find((row) => row.id === chat)
             ?.native_suspension_state,
@@ -269,12 +279,14 @@ try {
           ),
         );
         result.liveTaskSnapshotProtocolProof = {
-          operationalTablesCaptured: 9,
+          operationalTablesCaptured: 10,
+          canonicalGoalRecoveryRetained: true,
           unknownSuspensionBytesRetained: true,
           existingRuntimeRetained: true,
         };
         await h.fixture.sql([
           `UPDATE chats SET native_suspension_state=NULL,automation_paused=false WHERE id=${literal(chat)}`,
+          `DELETE FROM managed_queue_states WHERE chat_id=${literal(chat)}`,
         ]);
         assert.equal(
           (await call("initial list", "list")).data.worktrees.length,

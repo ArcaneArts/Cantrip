@@ -319,6 +319,27 @@ it("captures live Task evidence in one read-only snapshot scoped to its owner an
     phase: "future-suspension",
     opaque: { retained: true },
   };
+  const goalRecovery = {
+    source: {
+      operationId: "original-operation",
+      operationGeneration: "original-generation",
+      threadId: "original-thread",
+      goalEpoch: "original-goal",
+    },
+    admission: null,
+  };
+  await database
+    .insert(schema.managedQueueStates)
+    .values({
+      chatId: f.chat,
+      goalRecovery,
+      notifiedRevision: 0,
+      notificationDueAt: new Date("2099-01-01T00:00:00Z"),
+    })
+    .onConflictDoUpdate({
+      target: schema.managedQueueStates.chatId,
+      set: { goalRecovery },
+    });
   await database
     .update(schema.chats)
     .set({
@@ -352,7 +373,12 @@ it("captures live Task evidence in one read-only snapshot scoped to its owner an
       }),
     ]),
   );
-  expect(Object.keys(snapshot.rows)).toHaveLength(9);
+  expect(Object.keys(snapshot.rows)).toHaveLength(10);
+  expect(snapshot.rows.managed_queue_states).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ chat_id: f.chat, goal_recovery: goalRecovery }),
+    ]),
+  );
   expect(snapshot.rows.chats).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
