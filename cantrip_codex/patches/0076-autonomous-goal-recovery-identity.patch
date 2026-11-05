@@ -1,7 +1,9 @@
 diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/cantrip_inference_journal.rs
+index fb1a6ec..27ee018 100644
 --- a/codex-rs/cli/src/cantrip_inference_journal.rs
 +++ b/codex-rs/cli/src/cantrip_inference_journal.rs
-@@ -38,9 +38,17 @@
+@@ -38,6 +38,8 @@ struct Recovery {
+     message_id: Option<String>,
      thread_id: Option<String>,
      turn_id: Option<String>,
 +    #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -9,17 +11,23 @@ diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/ca
      #[serde(skip_serializing_if = "Option::is_none")]
      task_input: Option<TaskInput>,
  }
+@@ -48,6 +50,12 @@ enum TaskInputKind {
+     Goal,
+ }
  
- #[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
- #[serde(rename_all = "camelCase", deny_unknown_fields)]
++#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
 +struct AutonomousGoal {
 +    goal_epoch: String,
 +}
 +
-+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
-+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+ #[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+ #[serde(rename_all = "camelCase", deny_unknown_fields)]
  struct TaskInput {
-@@ -393,12 +401,57 @@
+@@ -447,16 +455,61 @@ impl Journal {
+                             || task_input_not_dispatched,
+                         "recovery cannot replay potentially executed input"
+                     );
 +                    // A managed pre-start Goal has no GUI message ID. A
 +                    // replaced attempt may retain its Goal's waiting ordinal,
 +                    // but never replay a bound/private or partially used turn.
@@ -84,3 +92,4 @@ diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/ca
 +                            && (same_message || same_goal),
                          "recovery changed canonical input"
                      );
+                     if identity.provider_id == old.identity.provider_id {

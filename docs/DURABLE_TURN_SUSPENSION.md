@@ -10,9 +10,10 @@ terminal-history-based retirement of unreadable records. Patch `0061` retains
 continuations through resumption preparation and binds controls to their native
 turn and generation. Patch `0064` preserves a held continuation through native
 runtime teardown and transport EOF. Patches `0072` and `0073` retain finalized
-CodeMode data through both gRPC and the default framed-stdio transport. Cantrip's current
-product pause remains an in-memory execution gate until the worker/server/client
-integration is delivered. Do not treat the
+CodeMode data through both gRPC and the default framed-stdio transport. Patch
+`0075` quiesces MCP clients and defers held startup until explicit resumption.
+Cantrip's current product pause remains an in-memory execution gate until the
+worker/server/client integration is delivered. Do not treat the
 existing product acknowledgement as a process-termination guarantee.
 
 The complete acceptance target is:
@@ -647,3 +648,84 @@ typecheck reports seven pre-existing errors in untouched production code.
 Later repository-check stages, optimized production and Linux/Windows validation
 are not claimed. Complete worker/server/client process-tree recovery remains
 unproven and required.
+
+### MCP clients and held startup
+
+Patch `0075` defers initial MCP publication and required-server validation when
+native attachment is held by a suspension. Auth changes and background prewarm
+retain pending invalidation without publishing connections. Direct Apps catalog
+refresh and reconnect return a concrete held-turn error. An uncached required
+server can therefore be unavailable while the chat is inspected or stopped.
+
+At capture, the global elicitation service fences new MCP registrations under
+the same lock used to count actual outstanding interactions. An outstanding
+interaction refuses durable confirmation and retains its responder. The user
+can answer it, retry Pause, use live Resume or Stop. The callback permit covers
+verification, automated review and automatic approval as well as surfaced forms.
+Turn-owned pending interactions retain their existing refusal policy.
+
+After freezing input, capture joins the real MCP publication gate, retires this
+thread's publications and joins their client shutdown before committing the
+checkpoint. Retired callbacks lose their authority; subscribed event streams
+are canceled. Shared clients belonging to other chats retain their own leases.
+The thread's response router remains usable for later explicit resumption.
+Publication retirement and callback revocation take place under the current
+native control generation. Client cleanup survives cancellation of its caller;
+Pause joins that cleanup and propagates an actual join failure. Re-pausing a
+pending Resume also joins its new clients before acknowledging the retained
+checkpoint. No active-turn or control lock is held across client IPC.
+
+Explicit Resume acquires fresh native inference admission before rebuilding MCP
+from the attached runtime's configuration and current authentication. It waits
+for actual required-server initialization. Failure retains the suspension and
+closes that attempt's clients, allowing repair and retry; it does not advance
+the model. Stop can supersede restoration while real MCP initialization is
+withheld. Native lifecycle cleanup reopens the interaction registry for future
+turns without itself starting a server.
+
+MCP connections are fresh sessions. Completed tool results remain in native
+history and are not called again during restoration. Server-owned cursors,
+subscriptions and opaque handles have no portable snapshot contract: a later
+operation uses the fresh server and can report a lost or unknown handle. Cantrip
+does not recreate such handles by replaying their original operation. This
+patch adds no serialized MCP configuration, credentials, sockets or execution
+grants. The native checkpoint and protected-resource formats remain unchanged.
+
+Whole-worker/server/client recovery and the remaining native child/input
+producer policies are still required. These native changes do not change the
+current product pause guarantee.
+
+The normal 76-patch macOS ARM64 development build passes the default packaged
+runtime verifier with fingerprint
+`716ba21963ea37c985feb2a78c83f36021f8291e9992f633e8d6715b4edcab4c`.
+All 72 native acceptance cases pass: six real stdio MCP cases and the existing
+66 suspension, Goal, terminal, CodeMode and shared-control cases. The MCP cases
+cover live/cold recovery, completed operations and pending input, a never-started
+required server, initialization failure and retry, Stop during withheld real
+initialization, and re-pause joining superseded startup processes before ACK.
+A trusted SessionStart hook runs initially and stays idle on held attachment.
+All 276 MCP Rust tests and 45 Core interaction tests pass; all 12 changed native
+files match the actual prepared source and pass focused Rust formatting.
+
+After incorporating Main's worker fixes, worker typecheck and all six shared
+GUI/terminal controls pass again, and the current default runtime verification
+still passes. `pnpm check` stops at existing server decomposition limits
+(`build-app.ts` 1516/1500 and `chat-turn-runtime.ts` 2230/1999); later stages did
+not run. Earlier validation caught the now-fixed re-pause race. Earlier MCP
+Rust runs failed an existing CLI capability probe; its exact CLI command and the
+unchanged suites subsequently passed, as did the final 276-case suite.
+
+After incorporating Main's unused-Goal recovery identity, patch `0076` needed a
+context repair around the existing `TaskInputKind` enum. Its intended source
+additions and removals are preserved. The combined 77-patch development build
+passes the current default verifier with fingerprint
+`42387966f377d8ae8e3646265a8eb1169387c53279f930522a9256dec420f6c7`.
+All 72 native acceptance cases, 276 MCP Rust tests, 45 Core interaction tests
+and worker typecheck pass on this baseline; all 13 intended native files match
+the actual prepared source. Three real keeper smoke cases verify same-Goal
+unused adoption and rejection of a foreign Goal epoch or a bound native turn.
+Those checks cover admission metadata, without claiming complete Goal recovery.
+
+These cases do not yet establish model-facing session-loss notices or recovery
+of opaque MCP handles. Those acceptance paths, complete worker/server/client
+recovery, optimized production builds and other platforms remain outstanding.

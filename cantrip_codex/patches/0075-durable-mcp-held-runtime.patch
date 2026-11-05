@@ -1,0 +1,740 @@
+diff --git a/codex-rs/codex-mcp/src/connection_manager.rs b/codex-rs/codex-mcp/src/connection_manager.rs
+index c466934..b2f2c69 100644
+--- a/codex-rs/codex-mcp/src/connection_manager.rs
++++ b/codex-rs/codex-mcp/src/connection_manager.rs
+@@ -1227,6 +1227,20 @@ impl McpConnectionSet {
+             || view.connection.client_for_call().await.is_ok()
+     }
+ 
++    pub(crate) fn fence_suspension(&self) {
++        // Old callbacks cannot acquire authority after this publication retires.
++        self.elicitation_requests
++            .authority
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take();
++    }
++
++    pub(crate) async fn suspend(&self) {
++        self.fence_suspension();
++        join_all(self.servers.values().map(|view| view.connection.shutdown())).await;
++    }
++
+     /// Release this manager's clients, terminating shared stdio servers after their final release.
+     pub async fn shutdown(&self) {
+         let connections = self
+diff --git a/codex-rs/codex-mcp/src/elicitation.rs b/codex-rs/codex-mcp/src/elicitation.rs
+index 4f4e3ec..38ead2a 100644
+--- a/codex-rs/codex-mcp/src/elicitation.rs
++++ b/codex-rs/codex-mcp/src/elicitation.rs
+@@ -69,23 +69,31 @@ pub type ElicitationReviewerHandle = Arc<dyn ElicitationReviewer>;
+ /// Holds an owner-provided registration while an MCP elicitation is waiting for a response.
+ #[derive(Clone)]
+ pub struct ElicitationLifecycle {
+-    register: Arc<dyn Fn() -> Box<dyn Send + Sync> + Send + Sync>,
++    register: Arc<dyn Fn() -> Result<Box<dyn Send + Sync>> + Send + Sync>,
+ }
+ 
+ impl ElicitationLifecycle {
+     pub fn new<T>(register: impl Fn() -> T + Send + Sync + 'static) -> Self
++    where
++        T: Send + Sync + 'static,
++    {
++        Self::try_new(move || Ok(register()))
++    }
++
++    /// Registers an actual interaction or refuses it while its owner is held.
++    pub fn try_new<T>(register: impl Fn() -> Result<T> + Send + Sync + 'static) -> Self
+     where
+         T: Send + Sync + 'static,
+     {
+         Self {
+-            register: Arc::new(move || Box::new(register())),
++            register: Arc::new(move || register().map(|value| Box::new(value) as _)),
+         }
+     }
+ 
+-    fn start(&self) -> ActiveElicitation {
+-        ActiveElicitation {
+-            _registration: (self.register)(),
+-        }
++    fn start(&self) -> Result<ActiveElicitation> {
++        Ok(ActiveElicitation {
++            _registration: (self.register)()?,
++        })
+     }
+ }
+ 
+@@ -318,7 +326,8 @@ impl ElicitationRequestRouter {
+         let _active_elicitation = authority
+             .lifecycle
+             .as_ref()
+-            .map(ElicitationLifecycle::start);
++            .map(ElicitationLifecycle::start)
++            .transpose()?;
+         let event = Event {
+             id: "mcp_elicitation_request".to_string(),
+             msg: EventMsg::ElicitationRequest(ElicitationRequestEvent {
+@@ -445,10 +454,21 @@ impl ElicitationRequestManager {
+             let server_name = server_name.clone();
+             let authority = authority.clone();
+             async move {
+-                let authority = authority
++                let mut authority = authority
+                     .lock()
+                     .ok()
+                     .and_then(|authority| authority.clone());
++                // Cover every path before review, verification or automatic approval.
++                let _interaction = authority
++                    .as_ref()
++                    .and_then(|authority| authority.lifecycle.as_ref())
++                    .map(ElicitationLifecycle::start)
++                    .transpose()?;
++                // This callback owns the permit through delivery. Direct router
++                // users still obtain their own permit in request_user_interaction.
++                if let Some(authority) = authority.as_mut() {
++                    authority.lifecycle = None;
++                }
+                 if let Elicitation::UserVerification {
+                     meta,
+                     title,
+@@ -509,10 +529,7 @@ impl ElicitationRequestManager {
+                     });
+                 };
+                 let ElicitationAuthority {
+-                    config,
+-                    reviewer,
+-                    lifecycle,
+-                    ..
++                    config, reviewer, ..
+                 } = &authority;
+                 let approval_policy = config.approval_policy.value();
+                 let Some(permission_profile) = config.permission_profile_for_server(&server_name)
+@@ -538,8 +555,6 @@ impl ElicitationRequestManager {
+                         let Some(reviewer) = reviewer.as_ref() else {
+                             return Ok(strict_auto_review_decline());
+                         };
+-                        let _active_elicitation =
+-                            lifecycle.as_ref().map(ElicitationLifecycle::start);
+                         return Ok(
+                             match reviewer
+                                 .review(ElicitationReviewRequest {
+diff --git a/codex-rs/codex-mcp/src/elicitation_tests.rs b/codex-rs/codex-mcp/src/elicitation_tests.rs
+index b36d3e4..5c233ae 100644
+--- a/codex-rs/codex-mcp/src/elicitation_tests.rs
++++ b/codex-rs/codex-mcp/src/elicitation_tests.rs
+@@ -341,12 +341,7 @@ impl ElicitationReviewer for RecordingReviewer {
+         assert_eq!(request.server_name, "independent-mcp");
+         self.calls.fetch_add(/*val*/ 1, Relaxed);
+         let active_elicitations = self.active_elicitations.clone();
+-        let active_during_review = usize::from(
+-            request
+-                .elicitation
+-                .meta()
+-                .is_some_and(|meta| meta.get(STRICT_AUTO_REVIEW_KEY) == Some(&Value::Bool(true))),
+-        );
++        let active_during_review = 1;
+         let response = self.response.clone();
+         async move {
+             assert_eq!(active_elicitations.load(Relaxed), active_during_review);
+@@ -1105,3 +1100,40 @@ async fn user_verification_rejects_attached_servers_even_if_they_use_the_plugin_
+         assert!(events.try_recv().is_err());
+     }
+ }
++
++#[tokio::test]
++async fn suspended_owner_refuses_callbacks_before_review_or_automatic_approval() {
++    for approval in [AskForApproval::OnRequest, AskForApproval::Never] {
++        for strict in [None, Some(json!(true))] {
++            let reviewer = RecordingReviewer::new(Ok(Some(approved_response())));
++            let (manager, events, sender) = elicitation_fixture(
++                approval.clone(),
++                PermissionProfile::Disabled,
++                Some(Arc::clone(&reviewer)),
++            );
++            assert!(manager.update(
++                test_elicitation_config("independent-mcp", approval, PermissionProfile::Disabled),
++                Some(reviewer.clone() as Arc<dyn ElicitationReviewer>),
++                Some(ElicitationLifecycle::try_new(|| {
++                    Err::<(), _>(anyhow!("durable owner is suspended"))
++                })),
++            ));
++            let elicitation = Elicitation::Mcp(ElicitRequestParams::FormElicitationParams {
++                meta: strict.map(|value| {
++                    RequestMetaObject::from(Map::from_iter([(
++                        STRICT_AUTO_REVIEW_KEY.into(),
++                        value,
++                    )]))
++                }),
++                message: "Must not execute".to_string(),
++                requested_schema: ElicitationSchema::builder().build().unwrap(),
++            });
++            let error = sender(RequestId::Number(7), elicitation)
++                .await
++                .expect_err("held owner");
++            assert_eq!(error.to_string(), "durable owner is suspended");
++            assert_eq!(reviewer.calls.load(Relaxed), 0);
++            assert!(events.is_empty());
++        }
++    }
++}
+diff --git a/codex-rs/codex-mcp/src/runtime.rs b/codex-rs/codex-mcp/src/runtime.rs
+index 12eae6c..ad5f537 100644
+--- a/codex-rs/codex-mcp/src/runtime.rs
++++ b/codex-rs/codex-mcp/src/runtime.rs
+@@ -949,6 +949,58 @@ impl McpRuntime {
+         cancellation.retained_subscription_cancellation = Some(retained);
+     }
+ 
++    /// Releases this thread's real clients without permanently closing its router.
++    /// Callers serialize publication and fence interaction registration first.
++    pub fn suspend(
++        &self,
++    ) -> impl std::future::Future<Output = Result<(), tokio::task::JoinError>> + Send + 'static
++    {
++        let current = self.current.load_full();
++        let prefix = current
++            .config
++            .as_ref()
++            .is_none_or(|config| config.prefix_mcp_tool_names);
++        let empty = Self::empty(prefix);
++        let current = self.current.swap(empty.current.load_full());
++        let superseded = std::mem::take(
++            &mut *self
++                .superseded_connections
++                .lock()
++                .unwrap_or_else(std::sync::PoisonError::into_inner),
++        );
++        {
++            let mut cancellation = self
++                .event_stream_cancellation
++                .lock()
++                .unwrap_or_else(std::sync::PoisonError::into_inner);
++            cancellation.event_server_available = false;
++            cancellation
++                .cancel_event_streams_on_server_removal
++                .send_replace(());
++            if let Some(retained) = &cancellation.retained_subscription_cancellation {
++                retained.send_replace(());
++            }
++        }
++        let mut connections = superseded
++            .into_iter()
++            .filter_map(|connections| connections.upgrade())
++            .collect::<Vec<_>>();
++        connections.push(Arc::clone(&current.connections));
++        for connection in &connections {
++            connection.fence_suspension();
++        }
++        self.reconnect_on_next_refresh();
++        self.invalidate_resource_caches();
++        // Detach publication and revoke callbacks synchronously under the
++        // owner's control fence. Actual cleanup survives caller cancellation.
++        let cleanup = tokio::spawn(async move {
++            for connection in connections {
++                connection.suspend().await;
++            }
++        });
++        async move { cleanup.await }
++    }
++
+     pub async fn shutdown(&self) {
+         self.elicitation_router.close().await;
+         let superseded = std::mem::take(
+diff --git a/codex-rs/core/src/elicitation.rs b/codex-rs/core/src/elicitation.rs
+index b29207a..24caa8d 100644
+--- a/codex-rs/core/src/elicitation.rs
++++ b/codex-rs/core/src/elicitation.rs
+@@ -21,6 +21,7 @@ struct Inner {
+ #[derive(Default)]
+ struct State {
+     outstanding: i64,
++    suspended: bool,
+ }
+ 
+ pub(crate) struct ElicitationRegistration {
+@@ -45,6 +46,49 @@ impl ElicitationService {
+         }
+     }
+ 
++    /// Fence future MCP interactions atomically with observing existing waiters.
++    /// Existing interactions retain their responders and can still be answered.
++    pub(crate) fn suspend(&self) -> bool {
++        let mut state = self
++            .inner
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        state.suspended = true;
++        state.outstanding == 0
++    }
++
++    pub(crate) fn resume(&self) {
++        self.inner
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .suspended = false;
++    }
++
++    pub(crate) fn try_register(&self) -> anyhow::Result<ElicitationRegistration> {
++        let mut state = self
++            .inner
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        anyhow::ensure!(
++            !state.suspended,
++            "MCP interactions are held by durable pause"
++        );
++        let was_clear = state.outstanding == 0;
++        state.outstanding = state
++            .outstanding
++            .checked_add(1)
++            .expect("outstanding elicitation count overflowed");
++        if was_clear {
++            self.inner.paused.send_replace(true);
++        }
++        Ok(ElicitationRegistration {
++            service: self.clone(),
++        })
++    }
++
+     fn increment(&self) {
+         let mut state = self
+             .inner
+diff --git a/codex-rs/core/src/elicitation_tests.rs b/codex-rs/core/src/elicitation_tests.rs
+index eefe1f5..9aac50b 100644
+--- a/codex-rs/core/src/elicitation_tests.rs
++++ b/codex-rs/core/src/elicitation_tests.rs
+@@ -17,3 +17,40 @@ async fn wait_until_clear_waits_for_every_registration() {
+     drop(second);
+     waiting.await.expect("elicitation waiter should complete");
+ }
++
++#[test]
++fn suspension_fences_new_mcp_requests_without_losing_existing_responders() {
++    let service = ElicitationService::new();
++    let existing = service.try_register().expect("live request");
++    assert!(
++        !service.suspend(),
++        "an actual pending request refuses the boundary"
++    );
++    assert!(
++        service.try_register().is_err(),
++        "no later request can race the boundary"
++    );
++    drop(existing);
++    assert!(
++        service.suspend(),
++        "the answered request releases the boundary"
++    );
++    assert!(service.try_register().is_err());
++    service.resume();
++    let _fresh = service
++        .try_register()
++        .expect("explicit resumption reopens requests");
++}
++
++#[test]
++fn repeated_hold_and_resume_does_not_change_the_outstanding_count() {
++    let service = ElicitationService::new();
++    assert!(service.suspend());
++    assert!(service.suspend());
++    service.resume();
++    service.resume();
++    let active = service.try_register().expect("fresh interaction");
++    assert!(!service.suspend());
++    drop(active);
++    assert!(service.suspend());
++}
+diff --git a/codex-rs/core/src/session/durable_suspension.rs b/codex-rs/core/src/session/durable_suspension.rs
+index f01f3e7..e6e09a2 100644
+--- a/codex-rs/core/src/session/durable_suspension.rs
++++ b/codex-rs/core/src/session/durable_suspension.rs
+@@ -661,7 +661,7 @@ impl DurableSuspension {
+         .map_err(io)?
+     }
+ 
+-    pub(crate) fn release_live_gate(&self) {
++    pub(crate) fn release_live_gate(&self, session: &Session) {
+         let _control = self.control();
+         *self
+             .last_resumed
+@@ -671,6 +671,7 @@ impl DurableSuspension {
+         self.epoch.fetch_add(1, Ordering::AcqRel);
+         self.requested.store(false, Ordering::Release);
+         self.frozen.store(false, Ordering::Release);
++        session.services.elicitations.resume();
+         self.stopping.store(false, Ordering::Release);
+         if let Ok(mut boundary) = self.boundary.lock() {
+             *boundary = None;
+@@ -828,6 +829,46 @@ impl DurableSuspension {
+         }
+     }
+ 
++    async fn quiesce_mcp_for_pause(&self, session: &Session, epoch: u64) -> Result<()> {
++        {
++            let _control = self.control();
++            if self.epoch.load(Ordering::Acquire) != epoch || !self.frozen.load(Ordering::Acquire) {
++                return Err(invalid("MCP pause confirmation was superseded"));
++            }
++            if !session.services.elicitations.suspend() {
++                return Err(invalid(
++                    "answer outstanding MCP interactions before durable pause",
++                ));
++            }
++        }
++        self.suspend_mcp_at_epoch(session, epoch).await?;
++        {
++            let _control = self.control();
++            if self.epoch.load(Ordering::Acquire) != epoch || !self.frozen.load(Ordering::Acquire) {
++                return Err(invalid("MCP pause confirmation was superseded"));
++            }
++            if !session.services.elicitations.suspend() {
++                return Err(invalid("MCP interactions have not finished suspending"));
++            }
++        }
++        Ok(())
++    }
++
++    pub(crate) async fn suspend_mcp_at_epoch(&self, session: &Session, epoch: u64) -> Result<()> {
++        let _refresh = session.mcp_refresh.acquire().await.map_err(io)?;
++        let cleanup = {
++            let _control = self.control();
++            if self.epoch.load(Ordering::Acquire) != epoch || !self.frozen.load(Ordering::Acquire) {
++                return Err(invalid("MCP suspension was superseded"));
++            }
++            session.services.elicitations.suspend();
++            session.services.mcp_runtime.suspend()
++        };
++        cleanup.await.map_err(io)?;
++        session.mark_mcp_runtime_dirty();
++        Ok(())
++    }
++
+     #[expect(clippy::too_many_arguments)]
+     async fn capture_inner(
+         self: &Arc<Self>,
+@@ -891,6 +932,8 @@ impl DurableSuspension {
+             // Stop cannot finish and then be refrozen by an older capture.
+             self.frozen.store(true, Ordering::Release);
+         }
++        // Join actual publications and clients; no active-turn lock across IPC.
++        self.quiesce_mcp_for_pause(session, epoch).await?;
+         // Drain session-owned speculative inference and its usage accounting.
+         // A cancelled compaction candidate can be recomputed after explicit Resume.
+         super::async_compaction::suspend(session).await;
+@@ -1331,6 +1374,7 @@ impl DurableSuspension {
+         for contributor in session.services.extensions.durable_turn_contributors() {
+             contributor.resume(&session.services.thread_extension_data);
+         }
++        session.services.elicitations.resume();
+         self.requested.store(false, Ordering::Release);
+         self.frozen.store(false, Ordering::Release);
+         *expected = None;
+@@ -1893,11 +1937,13 @@ impl crate::CodexThread {
+         // Fence even a repeated pause before waiting for checkpoint IO. An
+         // older Resume may already be blocked on that IO outside the SQ.
+         if stored_only {
++            owner.quiesce_mcp_for_pause(&self.session, epoch).await?;
+             let suspension = self.confirm_stored_pause(turn_id).await?;
+             owner.confirm_pause_epoch(epoch)?;
+             return Ok(suspension);
+         }
+         if self.set_suspended_turn_paused(turn_id, epoch, true).await? {
++            owner.quiesce_mcp_for_pause(&self.session, epoch).await?;
+             let suspension = self.confirm_stored_pause(turn_id).await?;
+             owner.confirm_pause_epoch(epoch)?;
+             return Ok(suspension);
+@@ -2076,7 +2122,7 @@ impl crate::CodexThread {
+                 prepare_extensions_for_discard(&self.session, &owner, turn_id, stop_epoch).await?;
+                 discard_extensions(&self.session, &owner, turn_id, stop_epoch).await?;
+                 owner.retire_if_terminal(&self.session).await?;
+-                owner.release_live_gate();
++                owner.release_live_gate(&self.session);
+                 return Ok(());
+             }
+             validate_unfinished(&history, turn_id)?;
+@@ -2129,7 +2175,7 @@ impl crate::CodexThread {
+             self.session
+                 .agent_status
+                 .send_replace(super::AgentStatus::Interrupted);
+-            owner.release_live_gate();
++            owner.release_live_gate(&self.session);
+             drop(active_guard);
+             self.session.deliver_event_raw(event).await;
+         }
+@@ -2433,6 +2479,30 @@ pub(crate) async fn run_restored_turn(
+     context: Arc<TurnContext>,
+     restored: Arc<RestoredContinuation>,
+     cancellation_token: tokio_util::sync::CancellationToken,
++) -> Result<Option<String>> {
++    let result = run_restored_turn_inner(
++        Arc::clone(&session),
++        context,
++        Arc::clone(&restored),
++        cancellation_token,
++    )
++    .await;
++    if result.is_err()
++        && !restored.did_resume()
++        && let Err(error) = coordinator(&session)
++            .suspend_mcp_at_epoch(&session, restored.epoch)
++            .await
++    {
++        tracing::warn!(%error, "MCP cleanup after failed cold restoration");
++    }
++    result
++}
++
++async fn run_restored_turn_inner(
++    session: Arc<Session>,
++    context: Arc<TurnContext>,
++    restored: Arc<RestoredContinuation>,
++    cancellation_token: tokio_util::sync::CancellationToken,
+ ) -> Result<Option<String>> {
+     let saved = &restored.saved;
+     if let Some(error) = restored.preparation_error.lock().map_err(io)?.as_ref() {
+@@ -2555,6 +2625,10 @@ pub(crate) async fn run_restored_turn(
+             .turn_metadata_state
+             .set_turn_started_at_unix_ms(started_at.saturating_mul(1000));
+     }
++    session
++        .resume_suspended_mcp()
++        .await
++        .map_err(|error| invalid(error.to_string()))?;
+     let mut mcp = saved.mcp.clone();
+     let step = session
+         .capture_step_context_with_required_mcp_servers(
+diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
+index 856a557..52dea59 100644
+--- a/codex-rs/core/src/session/handlers.rs
++++ b/codex-rs/core/src/session/handlers.rs
+@@ -522,7 +522,7 @@ pub(super) async fn submission_loop(
+                         .thread_extension_data
+                         .get::<super::durable_suspension::DurableSuspension>()
+                     {
+-                        suspension.release_live_gate();
++                        suspension.release_live_gate(&sess);
+                     }
+                     interrupt(&sess).await;
+                     false
+diff --git a/codex-rs/core/src/session/mcp.rs b/codex-rs/core/src/session/mcp.rs
+index 3d85a45..f5e1f61 100644
+--- a/codex-rs/core/src/session/mcp.rs
++++ b/codex-rs/core/src/session/mcp.rs
+@@ -38,6 +38,7 @@ use codex_protocol::openai_models::GuardianScope;
+ use codex_rmcp_client::Elicitation;
+ use rmcp::model::ElicitationAction;
+ use serde_json::Map;
++use std::sync::atomic::Ordering;
+ 
+ const TOOL_SUGGESTION_ACTION_INSTALL: &str = "install";
+ const TOOL_SUGGESTION_ACTION_KEY: &str = "suggest_type";
+@@ -184,14 +185,28 @@ impl Session {
+         codex_mcp::configured_mcp_servers(&self.runtime_mcp_config(config).await)
+     }
+ 
++    pub(crate) fn mcp_is_suspended(&self) -> bool {
++        self.services
++            .thread_extension_data
++            .get::<super::durable_suspension::DurableSuspension>()
++            .is_some_and(|owner| owner.frozen.load(Ordering::Acquire))
++    }
++
+     /// Publishes changed MCP state, waiting for any refresh already in progress.
+     #[tracing::instrument(name = "mcp.runtime.refresh_if_dirty", skip_all)]
+     pub(crate) async fn refresh_mcp_if_dirty(self: &Arc<Self>) {
++        self.refresh_mcp_runtime(false).await;
++    }
++
++    async fn refresh_mcp_runtime(self: &Arc<Self>, explicit_resume: bool) {
+         let Ok(_refresh) = self.mcp_refresh.acquire().await else {
+             error!("MCP runtime refresh semaphore closed");
+             return;
+         };
+         loop {
++            if self.mcp_is_suspended() && !explicit_resume {
++                return;
++            }
+             // Compare and rebuild from current environments, not choices saved for a future turn.
+             let environments = self.services.turn_environments.snapshot().await;
+             let environment_selections = environments.all_selections();
+@@ -268,6 +283,20 @@ impl Session {
+         }
+     }
+ 
++    pub(crate) async fn resume_suspended_mcp(self: &Arc<Self>) -> anyhow::Result<()> {
++        self.services.elicitations.resume();
++        self.mark_mcp_runtime_dirty();
++        self.refresh_mcp_runtime(true).await;
++        if let Err(error) = self.services.mcp_runtime.validate_required_servers().await {
++            self.services.elicitations.suspend();
++            let _refresh = self.mcp_refresh.acquire().await?;
++            self.services.mcp_runtime.suspend().await?;
++            self.mark_mcp_runtime_dirty();
++            return Err(error);
++        }
++        Ok(())
++    }
++
+     /// Refreshes Apps tools on the published thread runtime and returns that client's snapshot.
+     pub(crate) async fn refresh_codex_apps_tools(
+         self: &Arc<Self>,
+@@ -280,6 +309,10 @@ impl Session {
+             .acquire()
+             .await
+             .map_err(|_| anyhow::anyhow!("MCP runtime refresh semaphore closed"))?;
++        anyhow::ensure!(
++            !self.mcp_is_suspended(),
++            "Resume the suspended native turn before refreshing MCP servers"
++        );
+         self.services.mcp_runtime.refresh_codex_apps_tools().await
+     }
+ 
+@@ -292,6 +325,10 @@ impl Session {
+             .acquire()
+             .await
+             .map_err(|_| anyhow::anyhow!("MCP runtime refresh semaphore closed"))?;
++        anyhow::ensure!(
++            !self.mcp_is_suspended(),
++            "Resume the suspended native turn before reconnecting MCP servers"
++        );
+         // This is forced work even when there was no pending invalidation.
+         self.mcp_refresh.claim();
+         let mut refresh_invalidation = McpRefreshInvalidationGuard {
+@@ -688,7 +725,7 @@ impl Session {
+         self.mcp_elicitation_lifecycle_handle
+             .get_or_init(|| {
+                 let elicitations = self.services.elicitations.clone();
+-                codex_mcp::ElicitationLifecycle::new(move || elicitations.register())
++                codex_mcp::ElicitationLifecycle::try_new(move || elicitations.try_register())
+             })
+             .clone()
+     }
+@@ -704,6 +741,16 @@ impl Session {
+         request_id: RequestId,
+         request: ElicitationRequest,
+     ) -> McpServerElicitationOutcome {
++        let Ok(_elicitation) = self.services.elicitations.try_register() else {
++            return McpServerElicitationOutcome {
++                response: Some(ElicitationResponse {
++                    action: codex_rmcp_client::ElicitationAction::Cancel,
++                    content: None,
++                    meta: None,
++                }),
++                sent: false,
++            };
++        };
+         if self.services.mcp_runtime.elicitations_auto_deny() {
+             return McpServerElicitationOutcome {
+                 response: Some(ElicitationResponse {
+@@ -724,7 +771,6 @@ impl Session {
+         {
+             turn_context.turn_timing_state.invalidate_critical_path();
+         }
+-        let _elicitation = self.services.elicitations.register();
+         let (tx_response, rx_response) = oneshot::channel();
+         let prev_entry = {
+             let mut active = self.active_turn.lock().await;
+diff --git a/codex-rs/core/src/session/mcp_runtime.rs b/codex-rs/core/src/session/mcp_runtime.rs
+index ac0bc4a..9c013fc 100644
+--- a/codex-rs/core/src/session/mcp_runtime.rs
++++ b/codex-rs/core/src/session/mcp_runtime.rs
+@@ -103,6 +103,11 @@ impl Session {
+         mcp_projection: McpRuntimeProjection,
+         resolved_environments: &TurnEnvironmentSnapshot,
+     ) -> anyhow::Result<()> {
++        if self.mcp_is_suspended() {
++            self.services.elicitations.suspend();
++            self.mark_mcp_runtime_dirty();
++            return Ok(());
++        }
+         let config = self.build_per_turn_config(
+             session_configuration,
+             resolved_environments.local_selection(),
+diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
+index 4beecf4..484a433 100644
+--- a/codex-rs/core/src/session/turn.rs
++++ b/codex-rs/core/src/session/turn.rs
+@@ -177,7 +177,7 @@ struct TurnPauseBoundary<'a> {
+ }
+ 
+ async fn wait_for_turn_resume(
+-    sess: &Session,
++    sess: &Arc<Session>,
+     turn_context: &TurnContext,
+     turn_pause_state: &mut tokio::sync::watch::Receiver<bool>,
+     cancellation_token: &CancellationToken,
+@@ -227,6 +227,9 @@ async fn wait_for_turn_resume(
+             let suspension = super::durable_suspension::coordinator(sess);
+             if let Some(attempt) = suspension.current_live_resume() {
+                 let result = async {
++                    sess.resume_suspended_mcp()
++                        .await
++                        .map_err(|error| CodexErr::InvalidRequest(error.to_string()))?;
+                     if let Some(identity) = &attempt.identity {
+                         suspension
+                             .prepare_admission(sess, identity, attempt.epoch)
+@@ -241,6 +244,10 @@ async fn wait_for_turn_resume(
+                     if cancellation_token.is_cancelled() {
+                         return Err(CodexErr::TurnAborted);
+                     }
++                    if let Err(cleanup) = suspension.suspend_mcp_at_epoch(sess, attempt.epoch).await
++                    {
++                        tracing::warn!(%cleanup, "MCP cleanup after failed native resumption");
++                    }
+                     suspension.fail_live_resume(sess, &attempt, error.to_string());
+                     tracing::warn!(%error, "native resume retained its paused task after admission failure");
+                     continue;
+@@ -288,7 +295,8 @@ pub(crate) async fn run_turn(
+             sess.thread_id,
+             turn_context.sub_id.clone(),
+             cancellation_token.clone(),
+-            sess.services.thread_extension_data
++            sess.services
++                .thread_extension_data
+                 .get_or_init::<codex_extension_api::InferenceQueueClock>(
+                     codex_extension_api::InferenceQueueClock::default,
+                 ),
+@@ -632,7 +640,7 @@ pub(crate) fn run_turn_loop<'a>(
+             required_plugins: required_plugins.clone(),
+         };
+         wait_for_turn_resume(
+-            sess.as_ref(),
++            &sess,
+             &turn_context,
+             &mut turn_pause_state,
+             &cancellation_token,
+diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
+index 3ac5438..1dc34ab 100644
+--- a/codex-rs/core/src/tasks/mod.rs
++++ b/codex-rs/core/src/tasks/mod.rs
+@@ -681,7 +681,7 @@ impl Session {
+                         .thread_extension_data
+                         .get::<crate::session::durable_suspension::DurableSuspension>()
+                 {
+-                    suspension.release_live_gate();
++                    suspension.release_live_gate(self);
+                 }
+                 active.take()
+             } else {
+@@ -987,7 +987,7 @@ impl Session {
+                         .thread_extension_data
+                         .get::<crate::session::durable_suspension::DurableSuspension>()
+                 {
+-                    suspension.release_live_gate();
++                    suspension.release_live_gate(self);
+                 }
+                 *active = None;
+                 true
+@@ -1036,7 +1036,7 @@ impl Session {
+                     .thread_extension_data
+                     .get::<crate::session::durable_suspension::DurableSuspension>()
+             {
+-                suspension.release_live_gate();
++                suspension.release_live_gate(self);
+             }
+         }
+         active

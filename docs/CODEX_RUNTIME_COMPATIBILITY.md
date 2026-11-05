@@ -357,3 +357,13 @@ Missing capabilities, old formats and malformed identities fail explicitly;
 earlier checkpoints require their matching runtime for Resume and remain
 inspectable/stoppable. The protected resource and encryption envelope versions
 remain 2 and 1 respectively. Complete product recovery is still outstanding.
+
+Patch `0075` leaves those formats unchanged and adds a held MCP lifecycle.
+Attaching a suspended native thread defers all initial server publication and
+required-server validation until explicit Resume. Existing clients quiesce before
+durable confirmation; resumption initializes fresh sessions under current runtime
+authentication. Failed required startup remains held and retryable, and Stop
+does not require that startup to finish. Pending MCP interactions refuse durable
+confirmation without losing their responders. Completed results remain native
+history; opaque server handles are not reconstructed by replaying side effects.
+See the [MCP recovery policy](DURABLE_TURN_SUSPENSION.md#mcp-clients-and-held-startup).
