@@ -723,7 +723,7 @@ See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 
 ## Phase 4 package checkpoint
 
-The optional `cantrip-os-remote` 0.2.0 package runs the first-party Linux CUA
+The optional `cantrip-os-remote` 0.3.0 package runs the first-party Linux CUA
 helper as the selected workspace account behind a protected root carrier.
 Docker and ISO scripts include it with the executor edition by default;
 `CANTRIP_OS_REMOTE=0` omits it. Its retained state uses a namespace inside the
@@ -734,5 +734,11 @@ immutable capture before acquiring the guest service. The MCP client and
 credentials stay on the Worker. Actual packaged SDK tests exercise turn
 authorization and routing without a Host Cantrip-window grant or Host launch.
 Real-provider evidence is recorded separately. The remaining Phase 4 work
-includes clipboard, measured streaming, human takeover, managed SSH/SFTP/VNC/TCP
+includes measured streaming, human takeover, managed SSH/SFTP/VNC/TCP
 and refreshed ISO acceptance.
+
+Remote 0.3.0 adds scoped plain-text clipboard access and Unicode paste, actual
+Linux pointer motion and live resizing through supported RandR modes. These
+operations retain the captured target and require the existing native interaction
+grant. `moveCursor` remains logical presentation. Clipboard selections are
+ephemeral desktop/helper state. See the package guide for limits and lifecycle.

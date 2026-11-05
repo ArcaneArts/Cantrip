@@ -1,4 +1,7 @@
-import { CUA_MAX_SCRIPT_BYTES } from "@cantrip/protocol";
+import {
+  CUA_MAX_SCRIPT_BYTES,
+  computerUseActionSchema,
+} from "@cantrip/protocol";
 import { setTimeout as delay } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -8,6 +11,7 @@ import type { CantripCuaService } from "./service.js";
 import type { CuaTransport } from "./transport.js";
 import {
   cuaCursorAppearanceSchema,
+  cuaClipboardResultSchema,
   cuaInputCommandSchema,
   cuaIdSchema,
   cuaPointSchema,
@@ -30,6 +34,16 @@ export const CUA_JAVASCRIPT_MAX_IMAGE_BYTES = 16 * 1024 * 1024;
 
 /** Script arguments contain no session, account, worker, or execution authority. */
 export const cuaJavascriptActionSchema = z.discriminatedUnion("operation", [
+  z.strictObject({ operation: z.literal("readClipboard") }),
+  z.strictObject({
+    operation: z.literal("writeClipboard"),
+    text: cuaClipboardResultSchema.shape.text.unwrap(),
+  }),
+  z.strictObject({
+    operation: z.literal("resizeDesktop"),
+    width: z.number().int().min(32).max(8192),
+    height: z.number().int().min(32).max(8192),
+  }),
   z.strictObject({
     operation: z.literal("perform"),
     command: cuaInputCommandSchema,
@@ -583,6 +597,48 @@ export class CuaJavascriptContexts {
       targetId: session.target.id,
       targetGeneration: session.target.generation,
     };
+    if (action.operation === "readClipboard")
+      return this.service.readClipboard(scope, sessionId, target, signal);
+    if (action.operation === "writeClipboard") {
+      const parsed = computerUseActionSchema.parse({
+        operation: "clipboard.write",
+        sessionId,
+        ...target,
+        text: action.text,
+      });
+      if (parsed.operation !== "clipboard.write")
+        throw new CuaNativeError("invalid-request");
+      return {
+        session: await this.service.writeClipboard(
+          scope,
+          sessionId,
+          target,
+          parsed.text,
+          signal,
+        ),
+      };
+    }
+    if (action.operation === "resizeDesktop") {
+      const parsed = computerUseActionSchema.parse({
+        operation: "desktop.resize",
+        sessionId,
+        ...target,
+        width: action.width,
+        height: action.height,
+      });
+      if (parsed.operation !== "desktop.resize")
+        throw new CuaNativeError("invalid-request");
+      return {
+        session: await this.service.resizeDesktop(
+          scope,
+          sessionId,
+          target,
+          parsed.width,
+          parsed.height,
+          signal,
+        ),
+      };
+    }
     if (action.operation === "configureCursor")
       return {
         session: await this.service.configure(

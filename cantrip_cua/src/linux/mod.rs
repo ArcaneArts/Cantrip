@@ -1,5 +1,6 @@
 //! One explicitly selected X server. Never reconnect or discover another DISPLAY.
 mod capture;
+mod desktop_io;
 mod gestures;
 mod input;
 mod keys;
@@ -37,6 +38,7 @@ pub(super) fn lock<T>(value: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 pub struct X11Backend {
+    display: String,
     connection: Arc<RustConnection>,
     screen: usize,
     id: String,
@@ -69,6 +71,7 @@ impl X11Backend {
         let connection = Arc::new(connection);
         let input = input::host(connection.clone(), screen);
         Ok(Self {
+            display: display.to_owned(),
             connection,
             screen,
             id: format!("x11-{display}-{desktop_generation}"),
@@ -137,6 +140,33 @@ impl X11Backend {
     }
 }
 impl CaptureBackend for X11Backend {
+    fn desktop_io(&self) -> bool {
+        true
+    }
+    fn clipboard_read(&mut self, target: &Target, cancel: &Cancellation) -> Result<Option<String>> {
+        self.current(target, cancel)?;
+        desktop_io::read(&self.display, cancel)
+    }
+    fn clipboard_write(
+        &mut self,
+        target: &Target,
+        text: &str,
+        cancel: &Cancellation,
+    ) -> Result<()> {
+        self.current(target, cancel)?;
+        desktop_io::write(&self.display, text, cancel)
+    }
+    fn resize_desktop(
+        &mut self,
+        target: &Target,
+        width: u32,
+        height: u32,
+        cancel: &Cancellation,
+    ) -> Result<Target> {
+        self.current(target, cancel)?;
+        desktop_io::resize(&self.display, width, height, cancel)?;
+        self.current(target, cancel)
+    }
     fn protects_host_displays(&self) -> bool {
         false
     }

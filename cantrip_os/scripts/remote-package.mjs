@@ -11,7 +11,7 @@ export async function prepareRemote(architecture, options = {}) {
   const context = resolve(
     root,
     ".build/remote-packages",
-    "0.2.0",
+    "0.3.0",
     architecture,
   );
   await mkdir(output, { recursive: true });
@@ -32,7 +32,7 @@ export async function prepareRemote(architecture, options = {}) {
     ],
     options,
   );
-  const name = `cantrip-os-remote_0.2.0_${architecture}.deb`;
+  const name = `cantrip-os-remote_0.3.0_${architecture}.deb`;
   await cp(resolve(output, name), resolve(context, name));
   console.log(`Remote package: ${output}/${name}`);
   return context;

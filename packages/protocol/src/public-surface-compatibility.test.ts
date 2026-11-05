@@ -612,19 +612,31 @@ const inferenceRecoveryExports = [
   "taskInferenceInputReceiptSchema",
 ].sort();
 
+const desktopIoExports = [
+  "CUA_MAX_CLIPBOARD_BYTES",
+  "cuaClipboardResultSchema",
+].sort();
+
 describe("protocol public surface compatibility", () => {
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
     const currentExportNames = Object.keys(protocol).sort();
+    expect(
+      currentExportNames.filter((name) => desktopIoExports.includes(name)),
+    ).toEqual(desktopIoExports);
     expect(
       currentExportNames.filter((name) =>
         endpointProviderExports.includes(name),
       ),
     ).toEqual(endpointProviderExports);
     const allExportNames = currentExportNames.filter(
-      (name) => !endpointProviderExports.includes(name),
+      (name) =>
+        !endpointProviderExports.includes(name) &&
+        !desktopIoExports.includes(name),
     );
     expect(currentExportNames).toHaveLength(
-      allExportNames.length + endpointProviderExports.length,
+      allExportNames.length +
+        endpointProviderExports.length +
+        desktopIoExports.length,
     );
     expect(
       allExportNames.filter((name) => agentTaskExports.includes(name)),

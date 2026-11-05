@@ -110,6 +110,7 @@ describe("bounded native macros", () => {
   it.each([
     "background-text",
     "background-key",
+    "background-move",
     "background-drag",
     "background-scroll",
   ] as const)(

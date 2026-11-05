@@ -39,6 +39,9 @@ pub enum InputCommand {
         #[serde(default)]
         modifiers: Vec<Modifier>,
     },
+    Move {
+        point: Point,
+    },
     Drag {
         start: Point,
         end: Point,
@@ -101,6 +104,7 @@ impl InputCommand {
             Self::Timeline { .. } => "background-timeline",
             Self::Text { .. } => "background-text",
             Self::Key { .. } => "background-key",
+            Self::Move { .. } => "background-move",
             Self::Media { .. } => "system-media",
             Self::Drag { .. } => "background-drag",
             Self::Scroll { .. } => "background-scroll",
@@ -132,6 +136,7 @@ impl InputCommand {
                         .any(|c| c.is_ascii_control() && !matches!(c, '\n' | '\r' | '\t'))
             }
             Self::Key { key, modifiers } => key_code(key).is_some() && valid_modifiers(modifiers),
+            Self::Move { point: p } => point(*p),
             Self::Media { modifiers, .. } => valid_modifiers(modifiers),
             Self::Drag {
                 start,
@@ -367,6 +372,25 @@ mod tests {
         timeline.validate().unwrap();
         let duplicate: InputCommand = serde_json::from_value(serde_json::json!({"kind":"timeline","frames":[{"atMs":0,"keyDown":["k","K"]},{"atMs":10,"keyUp":["k","K"]}]})).unwrap();
         assert!(duplicate.validate().is_err());
+    }
+    #[test]
+    fn pointer_motion_is_explicit_and_validates_its_point() {
+        let valid = InputCommand::Move {
+            point: Point { x: 321., y: 234. },
+        };
+        valid.validate().unwrap();
+        assert_eq!(valid.method(), "background-move");
+        assert!(!valid.prepares_window());
+        for point in [
+            Point { x: -1., y: 0. },
+            Point { x: f64::NAN, y: 0. },
+            Point {
+                x: 0.,
+                y: f64::INFINITY,
+            },
+        ] {
+            assert!(InputCommand::Move { point }.validate().is_err());
+        }
     }
     #[test]
     fn prepared_press_is_a_single_bounded_unmodified_action() {

@@ -93,7 +93,7 @@ assert set(environment) <= {key.encode() for key in ('LANG', 'LC_ALL', 'TZ', 'HO
         request = self.send(operation)
         while True:
             header_size, payload_size = struct.unpack("!II", self.read(8))
-            assert header_size <= 65536 and payload_size <= 16 * 1024 * 1024
+            assert header_size <= 16 * 1024 * 1024 and payload_size <= 16 * 1024 * 1024
             message = json.loads(self.read(header_size))["message"]
             payload = self.read(payload_size)
             if message["kind"] != "response":
@@ -135,6 +135,13 @@ class Pointer:
         assert self.lib.XQueryPointer(self.display, self.root, *[ctypes.byref(v) for v in windows + points], ctypes.byref(mask))
         return mask.value
 
+    def position(self):
+        windows = [ctypes.c_ulong(), ctypes.c_ulong()]
+        points = [ctypes.c_int() for _ in range(4)]
+        mask = ctypes.c_uint()
+        assert self.lib.XQueryPointer(self.display, self.root, *[ctypes.byref(v) for v in windows + points], ctypes.byref(mask))
+        return points[0].value, points[1].value
+
 
 command("cantrip-executor", "status")
 executor_state = Path(json.loads(Path("/etc/cantrip-os/executor.json").read_text())["state_dir"])
@@ -149,6 +156,36 @@ second_mask = second.mask()
 first = Native(context)
 _, image = first.call({"operation": "observation.snapshot", **first.identity})
 assert image.startswith(b"\x89PNG\r\n\x1a\n")
+other_native = Native(other)
+text = "Cantrip clipboard 日本語 café 🦀\n" + "".join(chr(0x4e00 + i) for i in range(512)) + "x" * 70000
+first.call({"operation": "clipboard.write", **first.identity, "text": text})
+assert first.call({"operation": "clipboard.read", **first.identity})[0]["text"] == text
+other_native.call({"operation": "clipboard.write", **other_native.identity, "text": "Other workspace clipboard"})
+assert first.call({"operation": "clipboard.read", **first.identity})[0]["text"] == text
+assert other_native.call({"operation": "clipboard.read", **other_native.identity})[0]["text"] == "Other workspace clipboard"
+before_other = second.position()
+first.call({"operation": "input.perform", **first.identity, "command": {"kind": "move", "point": {"x": 321, "y": 234}}})
+wait(lambda: pointer.position() == (321, 234))
+assert second.position() == before_other
+old_target = first.target.copy()
+resized = first.call({"operation": "desktop.resize", **first.identity, "width": 1280, "height": 720})[0]["session"]["target"]
+assert (resized["pixelWidth"], resized["pixelHeight"]) == (1280, 720)
+assert (resized["id"], resized["generation"]) == (old_target["id"], old_target["generation"])
+_, resized_png = first.call({"operation": "observation.snapshot", **first.identity})
+assert struct.unpack("!II", resized_png[16:24]) == (1280, 720)
+other_shot, _ = other_native.call({"operation": "observation.snapshot", **other_native.identity})
+assert other_shot["session"]["target"]["pixelWidth"] == other_native.target["pixelWidth"]
+first.call({"operation": "desktop.resize", **first.identity, "width": 1440, "height": 900})
+for operation in ({"operation": "clipboard.write", "text": "must not replace"},
+                  {"operation": "desktop.resize", "width": 800, "height": 600}):
+    try:
+        first.call({**first.identity, **operation, "targetGeneration": first.target["generation"] + 1})
+        raise RuntimeError("A stale desktop operation was accepted")
+    except AssertionError as error:
+        assert "stale-target" in str(error)
+assert first.call({"operation": "clipboard.read", **first.identity})[0]["text"] == text
+other_native.close()
+print("PASS large Unicode clipboard isolation, physical pointer movement, live resize and stale operation rejection", flush=True)
 first.hold()
 wait(lambda: pointer.mask() & 256)
 first.close()

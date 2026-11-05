@@ -11,7 +11,7 @@ sys.path.insert(0, "/usr/lib/cantrip-os-workspaces")
 from service import Store, atomic_json
 
 CONFIG = "/etc/cantrip-os/remote.json"
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 
 def request(store, command, pins=None, **arguments):

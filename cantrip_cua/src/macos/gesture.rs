@@ -139,6 +139,12 @@ fn perform_inner(
     progress: &mut dyn FnMut(Point, bool),
 ) -> Result<(Target, InputReceipt)> {
     command.validate()?;
+    if matches!(command, InputCommand::Move { .. }) {
+        return Err(crate::error::CuaError::new(
+            crate::error::ErrorCode::Unsupported,
+            "Physical pointer movement is available on the assigned Linux desktop only.",
+        ));
+    }
     // Focus reports updated geometry. It is never an implicit input fallback.
     if matches!(command, InputCommand::Focus {}) {
         let mut current = target.clone();
@@ -334,7 +340,7 @@ fn perform_inner(
                     cancel,
                 )
                 .map(|_| ())?,
-            InputCommand::Focus {} => unreachable!(),
+            InputCommand::Focus {} | InputCommand::Move { .. } => unreachable!(),
         }
         Ok(())
     })();
