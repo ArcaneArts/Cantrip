@@ -85,7 +85,7 @@ diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/ca
                          Err(anyhow::anyhow!("invalid admission mutation"))
                      } else {
                          self.apply(command, generation)
-@@ -203,6 +255,116 @@
+@@ -203,6 +255,125 @@
                  let result = serde_json::to_value(&operation)?;
                  self.operations.insert(key, operation);
                  Ok(result)
@@ -189,12 +189,21 @@ diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/ca
 +                Ok(result)
 +            }
 +            Command::Forget { previous } => {
-+                anyhow::ensure!(
-+                    previous.worker_generation != generation,
-+                    "recovery requires a retired generation"
-+                );
-+                if self.operations.contains_key(&previous.key) {
-+                    self.recovered(&previous, generation)?;
++                if let Some(operation) = self.operations.get(&previous.key) {
++                    if previous.worker_generation == generation {
++                        // The current worker has positively closed this unused
++                        // owner and received canonical deferral acknowledgement.
++                        // A live, started or stale record must never be erased.
++                        anyhow::ensure!(
++                            operation.worker_generation == generation
++                                && operation.revision == previous.revision
++                                && operation.state == State::Released
++                                && operation.outcome.as_deref() == Some("never-started"),
++                            "retirement requires exact released no-start evidence"
++                        );
++                    } else {
++                        self.recovered(&previous, generation)?;
++                    }
 +                    self.next()?;
 +                    self.operations.remove(&previous.key);
 +                }

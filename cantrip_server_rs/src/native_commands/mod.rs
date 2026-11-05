@@ -31,7 +31,7 @@ mod thread_observation;
 pub mod transaction;
 mod transport_evidence;
 pub mod turns;
-mod undispatched_gui;
+pub(crate) mod undispatched_gui;
 use crate::database::Database;
 use std::sync::Arc;
 #[cfg(test)]

@@ -1,11 +1,22 @@
 import { z } from "zod";
 import { modelProviderAccountWireSummarySchema } from "./providers.js";
+import { inferenceJournalRecordSchema } from "./inference-recovery.js";
 import {
   nativeSettingsBindingSchema,
   protectedNativeSettingsSnapshotSchema,
 } from "./native-settings-state.js";
 
 const id = z.string().min(1).max(255);
+export const nativeRuntimeHandoffQueuedSourceSchema = z
+  .object({
+    operationId: id,
+    operationGeneration: id,
+    withdrawn: z.boolean(),
+  })
+  .strict();
+export type NativeRuntimeHandoffQueuedSource = z.infer<
+  typeof nativeRuntimeHandoffQueuedSourceSchema
+>;
 export const nativeRuntimeHandoffRequestSchema = z
   .object({
     operationId: z.string().uuid(),
@@ -40,6 +51,9 @@ export const nativeRuntimeHandoffStateSchema = z
     // Immutable reservation identity, including the original begin binding.
     cancelRequested: z.boolean().default(false),
     source: nativeSettingsBindingSchema,
+    // A reservation is not no-start proof. Only the owning worker may confirm
+    // withdrawal, after sealing this exact canonical source.
+    queuedSource: nativeRuntimeHandoffQueuedSourceSchema.nullable().optional(),
     // Current canonical binding while recovery replaces a native incarnation.
     binding: nativeSettingsBindingSchema.nullable().default(null),
     retiredRuntimeGenerations: z.array(id).default([]),
@@ -94,6 +108,16 @@ export const nativeRuntimeHandoffWorkerRequestSchema = z.discriminatedUnion(
   "action",
   [
     workerOperation.extend({ action: z.literal("read") }).strict(),
+    workerOperation
+      .extend({
+        action: z.literal("withdrawn"),
+        // Null can only reuse an already persisted, exact no-start deferral.
+        record: inferenceJournalRecordSchema.nullable(),
+      })
+      .strict(),
+    workerOperation
+      .extend({ action: z.literal("decline-queued-source") })
+      .strict(),
     workerOperation
       .extend({
         action: z.literal("prepared"),

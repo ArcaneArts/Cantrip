@@ -2,6 +2,7 @@ import type {
   NativeRuntimeHandoffPrepared,
   NativeRuntimeHandoffState,
   ProtectedNativeSettingsSnapshot,
+  InferenceJournalRecord,
 } from "@cantrip/protocol";
 import type {
   CodexAppServer,
@@ -13,6 +14,7 @@ import type {
   ManagedRuntimeNamespaces,
   ManagedRuntimeNamespaceScope,
 } from "./managed-runtime-namespaces.js";
+import { UnstartedInferenceUnavailableError } from "../inference-withdrawal.js";
 
 type Preparation = Omit<
   PrepareManagedThreadOptions,
@@ -38,6 +40,15 @@ export interface ManagedRuntimeHandoffDependencies {
   journal: ManagedRuntimeHandoffJournal;
   namespaces: ManagedRuntimeNamespaces;
   scope: ManagedRuntimeNamespaceScope;
+  withdrawQueuedSource?(
+    state: NativeRuntimeHandoffState,
+    signal: AbortSignal,
+    existingOnly: boolean,
+  ): Promise<InferenceJournalRecord | null>;
+  acknowledgeQueuedSource?(
+    state: NativeRuntimeHandoffState,
+    signal: AbortSignal,
+  ): Promise<void>;
   /** Resolve fresh, exact server-authorized account and full MCP configuration.
    * Destination creation is isolated: no canonical association, observer or CLI
    * publication is allowed here. All prepared runtimes retain the execution gate. */
@@ -221,6 +232,33 @@ export class ManagedRuntimeHandoffCoordinator {
       return state;
     }
     try {
+      if (state.queuedSource && !state.queuedSource.withdrawn) {
+        if (!d.withdrawQueuedSource || !d.acknowledgeQueuedSource)
+          throw new Error("Queued handoff withdrawal is unavailable.");
+        let record: InferenceJournalRecord | null;
+        try {
+          record = await d.journal.withdrawal(state, () =>
+            d.withdrawQueuedSource!(state, signal, state.cancelRequested),
+          );
+        } catch (error) {
+          if (!(error instanceof UnstartedInferenceUnavailableError))
+            throw error;
+          // This refusal is synchronous and precedes any slot withdrawal. Do
+          // not stop work that won the race and has already begun inference.
+          const declined = await d.client.request(
+            { ...scope, action: "decline-queued-source" },
+            signal,
+          );
+          await d.cancelled?.(declined);
+          return declined;
+        }
+        state = await d.client.request(
+          { ...scope, action: "withdrawn", record },
+          signal,
+        );
+      }
+      if (state.queuedSource?.withdrawn)
+        await d.acknowledgeQueuedSource?.(state, signal);
       if (state.cancelRequested) return await this.restore(state, signal);
       let source: HandoffRuntime | undefined;
       if (state.phase !== "committed") {

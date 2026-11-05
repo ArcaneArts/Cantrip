@@ -5,6 +5,7 @@ mod configuration;
 mod guards;
 mod inventory;
 mod prepared;
+mod queued_source;
 mod reads;
 mod recover;
 pub mod service;
@@ -26,6 +27,8 @@ pub struct Repository {
 }
 enum Change {
     Cancel,
+    Withdrawn(Value),
+    DeclineQueuedSource,
     Prepared {
         value: Value,
         runtime: Value,
@@ -82,6 +85,7 @@ fn wire(row: &Value) -> Result<Value> {
         ("phase", "phase"),
         ("cancelRequested", "cancel_requested"),
         ("source", "source"),
+        ("queuedSource", "queued_source"),
         ("binding", "binding"),
         ("retiredRuntimeGenerations", "retired_runtime_generations"),
         ("retiredNativeEpochs", "retired_native_epochs"),
@@ -146,6 +150,7 @@ async fn update(tx: &Transaction<'_>, row: &Value, patch: Value) -> Result<Value
         ("cancelRequested", "cancel_requested", "bool"),
         ("binding", "binding", "json"),
         ("prepared", "prepared", "json"),
+        ("queuedSource", "queued_source", "json"),
         (
             "retiredRuntimeGenerations",
             "retired_runtime_generations",
@@ -209,6 +214,8 @@ impl Repository {
                     if row["phase"]=="cancelled"{row}else if matches!(row["phase"].as_str(),Some("committed"|"completed")){return reject("handoff-already-committed")}else if row["cancel_requested"]==true{row}else{update(tx,&row,json!({"cancelRequested":true,"errorCode":Value::Null})).await?}
                 },
                 Change::Prepared{value,runtime,epoch}=>prepared::apply(tx,&owner,&worker,row,value,&runtime,&epoch).boxed().await?,
+                Change::Withdrawn(record)=>queued_source::confirm(tx,&owner,&worker,row,&record).boxed().await?,
+                Change::DeclineQueuedSource=>queued_source::decline(tx,&owner,row).boxed().await?,
                 Change::Commit=>commit::apply(tx,&owner,&worker,row).boxed().await?,
                 Change::Recover{side,expected,value}=>recover::apply(tx,&owner,&worker,row,&side,&expected,value).boxed().await?,
                 Change::Finish(outcome)=>commit::finish(tx,row,&outcome).await?,
@@ -228,6 +235,25 @@ impl Repository {
             return reject("handoff-not-found");
         };
         self.mutate(owner, &text(&state["workerId"])?, operation, Change::Cancel)
+            .await
+    }
+    pub async fn withdrawn(
+        &self,
+        owner: &str,
+        worker: &str,
+        operation: &str,
+        record: &Value,
+    ) -> Result<Value> {
+        self.mutate(owner, worker, operation, Change::Withdrawn(record.clone()))
+            .await
+    }
+    pub async fn decline_queued_source(
+        &self,
+        owner: &str,
+        worker: &str,
+        operation: &str,
+    ) -> Result<Value> {
+        self.mutate(owner, worker, operation, Change::DeclineQueuedSource)
             .await
     }
     pub async fn prepared(

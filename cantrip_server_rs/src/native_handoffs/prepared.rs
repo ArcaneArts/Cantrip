@@ -8,6 +8,9 @@ pub(super) async fn apply(
     runtime: &Value,
     epoch: &Value,
 ) -> Result<Value> {
+    if truthy(row.get("queued_source")) && row["queued_source"]["withdrawn"] != true {
+        return reject("handoff-queued-source-unconfirmed");
+    }
     if row["cancel_requested"] == true {
         return reject("handoff-cancel-requested");
     }

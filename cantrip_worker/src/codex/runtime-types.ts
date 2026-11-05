@@ -413,6 +413,8 @@ export interface RunAgentTurnOptions {
   ) => void | Promise<void>;
   attachments?: RuntimeChatAttachment[];
   chatId: string;
+  /** Canonical project scope; standalone turns omit it. */
+  projectId?: string | null;
   captureProtectedDiagnostics: boolean;
   clientMessageId: string;
   cwd: string;

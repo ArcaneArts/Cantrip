@@ -40,7 +40,7 @@ export function deferUndispatchedGui(
   );
 }
 
-async function deferGuiBeforeExecution(
+export async function deferGuiBeforeExecution(
   tx: RepositoryTransaction,
   lanes: ChatExecutionLaneRepository,
   ownerId: string,

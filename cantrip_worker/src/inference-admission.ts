@@ -8,6 +8,7 @@ import {
   type InferenceJournalRecord,
 } from "./inference-journal.js";
 import type { NativeInferenceOwnership } from "./native-inference-ownership.js";
+import { UnstartedInferenceUnavailableError } from "./inference-withdrawal.js";
 import {
   observeInferenceCommand,
   observeInferenceCommandAdmission,
@@ -96,7 +97,7 @@ export interface InferenceTicket {
   cancel(reason?: Error): void;
   /** Seal this exact unused reservation before returning durable no-start
    * evidence. This is not permission to replay its canonical input. */
-  withdrawUnstarted(): Promise<InferenceJournalRecord>;
+  withdrawUnstarted(reason?: Error): Promise<InferenceJournalRecord>;
 }
 
 export interface InferenceRuntime {
@@ -283,6 +284,52 @@ export class WorkerInferenceAdmission {
    * never contains inputs and is not a competing delivery queue. */
   recoverySnapshot(): readonly InferenceJournalRecord[] {
     return this.journal?.recoverySnapshot() ?? [];
+  }
+
+  /** Recover a previously sealed handoff source after a lost acknowledgement.
+   * Every matching physical alias must be durably released without inference. */
+  async withdrawalRecord(expected: {
+    operationId: string;
+    operationGeneration: string;
+    chatId: string;
+  }): Promise<InferenceJournalRecord | null> {
+    if (!this.journal) return null;
+    const records = (await this.journal.snapshot()).filter(
+      (record) =>
+        record.identity.operationId === expected.operationGeneration &&
+        record.identity.chatId === expected.chatId &&
+        record.identity.recovery?.commandId === expected.operationId &&
+        record.identity.recovery.commandGeneration ===
+          expected.operationGeneration,
+    );
+    if (
+      !records.length ||
+      records.some(
+        (record) =>
+          record.state !== "released" ||
+          record.outcome !== "never-started" ||
+          Boolean(record.nativeExecution),
+      )
+    )
+      return null;
+    return records.reduce((latest, record) =>
+      record.revision > latest.revision ? record : latest,
+    );
+  }
+
+  /** Only after canonical acknowledgement and closure of the actual source.
+   * This retires metadata; it cannot release or revoke model execution. */
+  async retireWithdrawal(record: InferenceJournalRecord): Promise<void> {
+    if (
+      !this.journal ||
+      record.state !== "released" ||
+      record.outcome !== "never-started" ||
+      record.nativeExecution
+    )
+      throw new Error(
+        "Withdrawal retirement requires exact no-start evidence.",
+      );
+    await this.journal.forget(record);
   }
 
   /** Full membership is revisioned separately from each provider's limit. */
@@ -704,7 +751,7 @@ export class WorkerInferenceAdmission {
         ready,
         status: () => this.status(ticket),
         cancel: (reason) => this.cancel(ticket, reason),
-        withdrawUnstarted: () => this.withdrawUnstarted(ticket),
+        withdrawUnstarted: (reason) => this.withdrawUnstarted(ticket, reason),
       },
       lease: {
         id: randomUUID(),
@@ -853,7 +900,10 @@ export class WorkerInferenceAdmission {
     ticket.controller.abort(reason);
   }
 
-  private withdrawUnstarted(ticket: Ticket): Promise<InferenceJournalRecord> {
+  private withdrawUnstarted(
+    ticket: Ticket,
+    reason = new Error("Unstarted inference reservation withdrawn."),
+  ): Promise<InferenceJournalRecord> {
     if (ticket.withdrawal) return ticket.withdrawal;
     if (
       !this.journal ||
@@ -863,16 +913,13 @@ export class WorkerInferenceAdmission {
       ticket.nativeExecution ||
       ticket.recoveryPending
     )
-      throw new Error(
+      throw new UnstartedInferenceUnavailableError(
         "Only an unused, durably owned inference reservation can be withdrawn.",
       );
     // No await separates the state check from cancellation. A pending grant ACK
     // cannot revive this reservation, and a previously resolved ready promise
     // cannot start it after its lease signal is aborted.
-    this.cancel(
-      ticket,
-      new Error("Unstarted inference reservation withdrawn."),
-    );
+    this.cancel(ticket, reason);
     ticket.withdrawal = ticket.releaseReceipt!.then((record) => {
       if (
         record.key !== ticket.journalKey ||

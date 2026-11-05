@@ -256,7 +256,7 @@ impl Runtime {
                             )
                             .await?
                     {
-                        self.record_transport_deferred(&sink, index, began).await;
+                        self.record_deferred_input(&sink, index, began).await;
                         self.dependencies.events.live.publish_summary(
                             &turn.owner,
                             &turn.execution["chatId"],
@@ -279,6 +279,7 @@ impl Runtime {
                             )
                             .await?
                     {
+                        self.record_deferred_input(&sink, index, began).await;
                         self.dependencies
                             .bootstrap
                             .finish(&turn, "idle", false)

@@ -28,6 +28,10 @@ import type {
   InferenceOperationSource,
   InferenceOperationLifetime,
 } from "../inference-admission.js";
+import {
+  InferenceWithdrawalError,
+  UnstartedInferenceUnavailableError,
+} from "../inference-withdrawal.js";
 import { codexProviderLogContext } from "./provider-config.js";
 export {
   planQuestionId,
@@ -2522,6 +2526,7 @@ export class CodexAppServer implements CodexRuntime {
       } catch (caught) {
         const error = sourceInferenceFailure(caught);
         let propagated = caught;
+        if (error instanceof InferenceWithdrawalError) throw propagated;
         preparation?.controller.signal.throwIfAborted();
         options.preparationSignal?.throwIfAborted();
         // A captured remote environment must never replay an entire agent input
@@ -2811,6 +2816,14 @@ export class CodexAppServer implements CodexRuntime {
     return admission?.lifetimeForSource(source);
   }
 
+  withdrawUnstartedInference(source: InferenceOperationSource, reason: Error) {
+    if (!this.#inference)
+      throw new UnstartedInferenceUnavailableError(
+        "The original inference runtime is no longer connected.",
+      );
+    return this.#inference.withdrawUnstarted(source, reason);
+  }
+
   async prepareAdmittedNativeExecution(
     options: PrepareAdmittedNativeExecutionOptions,
   ): Promise<AdmittedNativeExecution> {
@@ -2991,6 +3004,7 @@ export class CodexAppServer implements CodexRuntime {
         },
         provider: options.provider,
         chatId: options.chatId,
+        projectId: options.projectId,
         threadId: options.threadId,
         signal: options.preparationSignal,
       });
@@ -3003,6 +3017,8 @@ export class CodexAppServer implements CodexRuntime {
       return await this.executeInferenceTurn(options, inference);
     } catch (error) {
       failure = error;
+      if (error instanceof InferenceWithdrawalError)
+        await error.wait(options.preparationSignal);
       throw error;
     } finally {
       try {
@@ -3207,6 +3223,7 @@ export class CodexAppServer implements CodexRuntime {
           : {}),
       };
       options.preparationSignal?.throwIfAborted();
+      inference?.sealInputDispatch();
       await options.onBeforeNativeDispatch?.(threadId);
       options.preparationSignal?.throwIfAborted();
       dispatchedInput = params.input;

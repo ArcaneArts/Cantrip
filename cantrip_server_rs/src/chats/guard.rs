@@ -58,6 +58,16 @@ pub async fn assert_runtime_writable(
     epoch: Option<&str>,
     access: Access,
 ) -> Result<()> {
+    assert_runtime_writable_for_dispatch(tx, chat, generation, epoch, access, None).await
+}
+pub async fn assert_runtime_writable_for_dispatch(
+    tx: &Transaction<'_>,
+    chat: &str,
+    generation: Option<&str>,
+    epoch: Option<&str>,
+    access: Access,
+    accepted_source: Option<(&str, &str)>,
+) -> Result<()> {
     let generation = generation.filter(|v| !v.is_empty());
     let epoch = epoch.filter(|v| !v.is_empty());
     let mut current_attachment = false;
@@ -77,7 +87,13 @@ pub async fn assert_runtime_writable(
                 binding.and_then(|v| v.get("runtimeGeneration")) == Some(&json!(generation));
         }
     }
-    let rows=tx.query("SELECT phase FROM native_runtime_handoffs WHERE chat_id=$1 AND ((NOT $4::boolean AND phase IN ('preparing','prepared','committed')) OR ($2::text IS NOT NULL AND retired_runtime_generations @> jsonb_build_array($2::text)) OR ($2::text IS NOT NULL AND $3::text IS NOT NULL AND retired_native_epochs @> jsonb_build_array(jsonb_build_object('runtimeGeneration',$2::text,'nativeEpoch',$3::text))) OR ($2::text IS NOT NULL AND phase IN ('committed','completed') AND source->>'runtimeGeneration'=$2)) LIMIT 1", &[&chat,&generation,&epoch,&current_attachment]).await?;
+    // Only an exact, already-admitted source can win the race against a queued
+    // handoff. Retirement fences and every new admission remain unchanged.
+    let (operation, operation_generation) = accepted_source
+        .map_or((None, None), |(operation, generation)| {
+            (Some(operation), Some(generation))
+        });
+    let rows=tx.query("SELECT phase FROM native_runtime_handoffs WHERE chat_id=$1 AND ((NOT $4::boolean AND phase IN ('preparing','prepared','committed') AND NOT COALESCE((phase='preparing' AND queued_source->>'withdrawn'='false' AND queued_source->>'operationId'=$5::text AND queued_source->>'operationGeneration'=$6::text),false)) OR ($2::text IS NOT NULL AND retired_runtime_generations @> jsonb_build_array($2::text)) OR ($2::text IS NOT NULL AND $3::text IS NOT NULL AND retired_native_epochs @> jsonb_build_array(jsonb_build_object('runtimeGeneration',$2::text,'nativeEpoch',$3::text))) OR ($2::text IS NOT NULL AND phase IN ('committed','completed') AND source->>'runtimeGeneration'=$2)) LIMIT 1", &[&chat,&generation,&epoch,&current_attachment,&operation,&operation_generation]).await?;
     if let Some(row) = rows.first() {
         let phase = row.get::<String>(0)?;
         bail!(NativeCommandError::conflict(

@@ -5,7 +5,7 @@ import type {
   NativeCommandContinuation,
   NativeCommandSession,
 } from "@cantrip/protocol";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import * as schema from "../schema.js";
 import { effectivePermissionProfile } from "../../chats/execution-helpers.js";
 import { ChatExecutionLaneRepository } from "./chat-execution-lanes.js";
@@ -523,8 +523,23 @@ export class NativeLogicalInputRepository {
             eq(schema.nativeCommands.workerId, workerId),
             eq(schema.nativeCommands.logicalOperationId, root.operationId),
             eq(schema.nativeCommands.status, "rejected"),
-            eq(schema.nativeCommands.rejectionCode, "native-settings-pending"),
-            sql`${schema.nativeCommands.terminalEvidence}->>'kind' = 'deferred'`,
+            or(
+              and(
+                eq(
+                  schema.nativeCommands.rejectionCode,
+                  "native-settings-pending",
+                ),
+                sql`${schema.nativeCommands.terminalEvidence}->>'kind' = 'deferred'`,
+              ),
+              and(
+                eq(
+                  schema.nativeCommands.rejectionCode,
+                  "worker-inference-deferred",
+                ),
+                sql`${schema.nativeCommands.terminalEvidence}->>'kind' = 'not-started'`,
+                sql`${schema.nativeCommands.terminalEvidence}->>'source' = 'worker-inference-journal'`,
+              ),
+            ),
             sql`${schema.nativeCommands.executionCompletedAt} IS NOT NULL`,
           ),
         )

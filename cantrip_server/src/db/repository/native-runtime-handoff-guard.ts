@@ -1,4 +1,4 @@
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, not, or, sql } from "drizzle-orm";
 import * as schema from "../schema.js";
 import type { RepositoryDatabase } from "./database.js";
 import { NativeCommandError } from "./native-command-errors.js";
@@ -12,6 +12,7 @@ export async function assertNativeRuntimeWritable(
   runtimeGeneration?: string | null,
   nativeEpoch?: string | null,
   access: "write" | "attach" = "write",
+  acceptedDispatch?: { operationId: string; operationGeneration: string },
 ): Promise<void> {
   // Attachment is a preserving, admitted view operation. During publication it
   // may target only the actual canonical binding; it cannot start execution or
@@ -34,7 +35,20 @@ export async function assertNativeRuntimeWritable(
         or(
           currentAttachment
             ? undefined
-            : inArray(schema.nativeRuntimeHandoffs.phase, activePhases),
+            : and(
+                inArray(schema.nativeRuntimeHandoffs.phase, activePhases),
+                // A route reservation may lose to its already-admitted input.
+                // Let only that exact source commit dispatch; the worker will
+                // then decline withdrawal. New inputs remain blocked.
+                acceptedDispatch
+                  ? not(sql`COALESCE((
+                      ${schema.nativeRuntimeHandoffs.phase} = 'preparing'
+                      AND ${schema.nativeRuntimeHandoffs.queuedSource}->>'withdrawn' = 'false'
+                      AND ${schema.nativeRuntimeHandoffs.queuedSource}->>'operationId' = ${acceptedDispatch.operationId}
+                      AND ${schema.nativeRuntimeHandoffs.queuedSource}->>'operationGeneration' = ${acceptedDispatch.operationGeneration}
+                    ), false)`)
+                  : undefined,
+              ),
           runtimeGeneration
             ? sql`${schema.nativeRuntimeHandoffs.retiredRuntimeGenerations} @> ${JSON.stringify([runtimeGeneration])}::jsonb`
             : undefined,

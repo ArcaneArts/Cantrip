@@ -472,7 +472,10 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     this.nativeHistoryIngestion = new NativeHistoryIngestionRepository(
       this.nativeHistoryBindings,
     );
-    this.nativeRuntimeHandoffs = new NativeRuntimeHandoffRepository(database);
+    this.nativeRuntimeHandoffs = new NativeRuntimeHandoffRepository(
+      database,
+      this.chatExecutionLanes,
+    );
     this.managedChatPreparations = new ManagedChatPreparationRepository(
       database,
     );

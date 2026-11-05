@@ -171,6 +171,16 @@ async fn internal_apply(
     let action = text(&input["action"])?;
     let result = match action.as_str() {
         "read" => state,
+        "withdrawn" => {
+            repository
+                .withdrawn(&owner, &worker, &operation, &input["record"])
+                .await?
+        }
+        "decline-queued-source" => {
+            repository
+                .decline_queued_source(&owner, &worker, &operation)
+                .await?
+        }
         "prepared" => {
             repository
                 .prepared(

@@ -97,7 +97,7 @@ impl Repository {
         self.database.transaction(|tx|Box::pin(async move {
             let root=context::read(Executor::Transaction(tx),&owner,&worker,&operation,&generation).await?;
             if root["origin"]!="gui" || root.get("logical_operation_id")!=root.get("operation_id") {return Ok(false);}
-            Ok(!tx.query("SELECT operation_id FROM native_commands WHERE owner_id=$1 AND worker_id=$2 AND logical_operation_id=$3 AND status='rejected' AND rejection_code='native-settings-pending' AND terminal_evidence->>'kind'='deferred' AND execution_completed_at IS NOT NULL LIMIT 1",&[&owner,&worker,&text(&root["operation_id"])?]).await?.is_empty())
+            Ok(!tx.query("SELECT operation_id FROM native_commands WHERE owner_id=$1 AND worker_id=$2 AND logical_operation_id=$3 AND status='rejected' AND ((rejection_code='native-settings-pending' AND terminal_evidence->>'kind'='deferred') OR (rejection_code='worker-inference-deferred' AND terminal_evidence->>'kind'='not-started' AND terminal_evidence->>'source'='worker-inference-journal')) AND execution_completed_at IS NOT NULL LIMIT 1",&[&owner,&worker,&text(&root["operation_id"])?]).await?.is_empty())
         })).await
     }
 }

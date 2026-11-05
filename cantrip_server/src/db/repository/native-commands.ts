@@ -1067,6 +1067,14 @@ export class NativeCommandRepository {
         input.session.runtimeGeneration,
         undefined,
         row.kind === "attach" ? "attach" : "write",
+        row.status === "accepted" &&
+          row.origin === "gui" &&
+          row.kind === "start"
+          ? {
+              operationId: row.operationId,
+              operationGeneration: row.operationGeneration,
+            }
+          : undefined,
       );
       if (
         row.payloadDigest !== input.payloadDigest ||

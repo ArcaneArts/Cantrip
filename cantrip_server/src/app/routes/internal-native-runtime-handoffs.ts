@@ -123,6 +123,21 @@ export function installInternalNativeRuntimeHandoffRoutes(
           if (input.action === "read") return state;
           let result;
           switch (input.action) {
+            case "withdrawn":
+              result = await operations.withdrawn(
+                ownerId,
+                input.workerId,
+                input.operationId,
+                input.record,
+              );
+              break;
+            case "decline-queued-source":
+              result = await operations.declineQueuedSource(
+                ownerId,
+                input.workerId,
+                input.operationId,
+              );
+              break;
             case "prepared":
               result = await operations.prepared(
                 ownerId,

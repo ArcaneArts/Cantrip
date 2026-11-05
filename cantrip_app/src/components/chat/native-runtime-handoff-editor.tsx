@@ -90,8 +90,9 @@ export function NativeRuntimeHandoffEditor({
       <p className="font-medium">Provider and account</p>
       <p className="text-xs text-muted-foreground">
         Move this conversation to another provider or account. History and
-        session settings are retained. Start the transfer when the agent is
-        idle; queued messages wait for it to finish.
+        session settings are retained. Transfer while idle or waiting for
+        provider capacity. Queued messages continue automatically after
+        transfer.
       </p>
       <p className="text-xs">
         Current: {sourceProvider?.name ?? "Current provider"}
@@ -185,7 +186,11 @@ export function NativeRuntimeHandoffEditor({
                 cancelled: "Transfer cancelled",
               }[latest.phase]}
           {destination ? ` · ${destination.name}` : ""}
-          {latest.errorCode ? ` · ${latest.errorCode}` : ""}
+          {latest.errorCode === "handoff-source-no-longer-queued"
+            ? " · Transfer is unavailable for the current turn; try again when the agent is idle."
+            : latest.errorCode
+              ? ` · ${latest.errorCode}`
+              : ""}
         </p>
       ) : null}
       {unconfirmed ? (

@@ -3227,11 +3227,111 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     const identity = JSON.stringify(scope);
     if (handoffCoordinator?.identity === identity)
       return handoffCoordinator.coordinator;
+    const journal = new ManagedRuntimeHandoffJournal(
+      config.dataDirectory,
+      scope,
+    );
+    const retireQueuedWithdrawal = (
+      state: NativeRuntimeHandoffState,
+      final = false,
+    ) => {
+      if (
+        !state.queuedSource?.withdrawn ||
+        JSON.stringify(nativeNamespaceScope()) !== identity
+      )
+        return;
+      const admission = inferenceAdmissionForWorker();
+      // Canonical acknowledgement is already durable. Metadata housekeeping
+      // must not hold up destination publication or the original input's slot.
+      void (async () => {
+        const record = await journal.withdrawal(state, () =>
+          admission.withdrawalRecord({
+            ...state.queuedSource!,
+            chatId: state.chatId,
+          }),
+        );
+        if (record) await admission.retireWithdrawal(record);
+        if (final) await journal.retireWithdrawal(state);
+      })().catch((error) =>
+        workerLogger.rateLimited(
+          `inference-withdrawal-retirement:${identity}`,
+          "warn",
+          "Queued transfer metadata retirement is pending",
+          {
+            event: "inference.withdrawal.retirement-pending",
+            subsystem: "inference-admission",
+            chatId: state.chatId,
+            operationId: state.operationId,
+            workerGenerationId: workerProcessGeneration,
+            error: workerLogError(error),
+          },
+        ),
+      );
+    };
     const coordinator = new ManagedRuntimeHandoffCoordinator({
       scope,
       client: handoffClient,
       namespaces: managedRuntimeNamespaces,
-      journal: new ManagedRuntimeHandoffJournal(config.dataDirectory, scope),
+      journal,
+      withdrawQueuedSource: async (state, signal, existingOnly) => {
+        signal.throwIfAborted();
+        if (JSON.stringify(nativeNamespaceScope()) !== identity)
+          throw new Error("The handoff's worker owner binding changed.");
+        const admission = inferenceAdmissionForWorker();
+        const queued = state.queuedSource;
+        if (!queued)
+          throw new Error("The handoff has no reserved queued source.");
+        const runtime = managedCurrentRuntimes.get(state.chatId);
+        const entry =
+          runtime &&
+          managedCommandSessions
+            .get(runtime)
+            ?.get(`${state.chatId}:${state.source.threadId}`);
+        if (
+          runtime &&
+          entry &&
+          runtime.transportGeneration ===
+            (state.binding ?? state.source).runtimeGeneration
+        ) {
+          try {
+            return await entry.adapter.withdrawGuiInference(
+              state.operationId,
+              queued,
+              existingOnly,
+            );
+          } catch (error) {
+            // A lost handoff acknowledgement may outlive its local source.
+            // Consult actual durable metadata before treating a refusal as a
+            // source that has never been withdrawn by this handoff.
+            const recovered = await admission.withdrawalRecord({
+              ...queued,
+              chatId: state.chatId,
+            });
+            if (recovered) return recovered;
+            throw error;
+          }
+        }
+        return admission.withdrawalRecord({
+          ...queued,
+          chatId: state.chatId,
+        });
+      },
+      acknowledgeQueuedSource: async (state, signal) => {
+        signal.throwIfAborted();
+        if (JSON.stringify(nativeNamespaceScope()) !== identity)
+          throw new Error("The handoff's worker owner binding changed.");
+        const runtime = managedCurrentRuntimes.get(state.chatId);
+        const entry =
+          runtime &&
+          managedCommandSessions
+            .get(runtime)
+            ?.get(`${state.chatId}:${state.source.threadId}`);
+        if (entry) {
+          entry.adapter.acknowledgeGuiWithdrawal(state.operationId);
+          await entry.adapter.awaitExecutionReleased(signal);
+        }
+        retireQueuedWithdrawal(state);
+      },
       resolve: async (state, side) => {
         const fresh = await handoffClient.configuration({
           chatId: state.chatId,
@@ -3354,6 +3454,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       restoreSource: (state, staged) =>
         handoffPublication.publish(state, staged, "source"),
       cancelled: async (state) => {
+        retireQueuedWithdrawal(state, true);
         for (const runtime of stagedHandoffDestinations.get(
           state.operationId,
         ) ?? []) {
@@ -3372,6 +3473,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         await finishRuntimeHandoff(state);
       },
       completed: async (state) => {
+        retireQueuedWithdrawal(state, true);
         stagedHandoffDestinations.delete(state.operationId);
         await finishRuntimeHandoff(state);
       },
@@ -5751,6 +5853,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   ),
                 })),
               chatId: command.chatId,
+              projectId:
+                command.contextKind === "project"
+                  ? command.policyProjectId
+                  : null,
               captureProtectedDiagnostics: encryptedChat || encryptedTask,
               clientMessageId: command.clientMessageId,
               cwd: command.cwd,

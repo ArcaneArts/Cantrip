@@ -16,6 +16,7 @@ import type {
   WorkerInferenceAdmission,
 } from "../inference-admission.js";
 import { trackInferenceCommandOperation } from "../inference-command.js";
+import { UnstartedInferenceUnavailableError } from "../inference-withdrawal.js";
 
 interface Operation {
   operationId: string;
@@ -23,6 +24,7 @@ interface Operation {
   threadId: string | null;
   turnId: string | null;
   dispatched: boolean;
+  inputDispatching: boolean;
   leaseStarted: boolean;
   preparing: boolean;
   preparationEnded?: () => void;
@@ -49,6 +51,8 @@ export interface CodexInferenceExecution {
   bindTurn(turnId: string): void;
   /** Immediately before forwarding the exact native request. */
   dispatched(): void;
+  /** Close withdrawal before committing native dispatch metadata over HTTP. */
+  sealInputDispatch(): void;
   /** The exact native start was rejected, not a transport timeout. */
   rejected(): void;
   /** Preparation failed before this owner forwarded any model request. */
@@ -256,6 +260,7 @@ export class CodexInferenceAdmission {
       threadId: input.threadId ?? null,
       turnId: input.expectedTurnId ?? null,
       dispatched: false,
+      inputDispatching: false,
       leaseStarted: false,
       preparing: false,
       observedStart: false,
@@ -273,7 +278,8 @@ export class CodexInferenceAdmission {
     this.lifetimeOperations.set(input.lifetime, operation);
     try {
       operation.lease = await ticket.ready;
-      if (this.exited || operation.settled || operation.lease.signal.aborted)
+      operation.lease.signal.throwIfAborted();
+      if (this.exited || operation.settled)
         throw new Error("The native inference admission was cancelled.");
     } catch (error) {
       // Nothing was forwarded before this acquisition returned to its owner.
@@ -338,11 +344,11 @@ export class CodexInferenceAdmission {
       },
       bindTurn: (turnId) => this.bindTurn(operation, turnId),
       dispatched: () => {
+        operation.lease!.signal.throwIfAborted();
         if (operation.dispatched || operation.settled || operation.preparing)
           throw new Error(
             "The inference operation was already dispatched or settled.",
           );
-        operation.lease!.signal.throwIfAborted();
         if (!operation.leaseStarted) operation.lease!.start();
         operation.leaseStarted = true;
         operation.dispatched = true;
@@ -353,6 +359,17 @@ export class CodexInferenceAdmission {
           this.completed.delete(
             JSON.stringify([operation.threadId, operation.turnId]),
           );
+      },
+      sealInputDispatch: () => {
+        operation.lease!.signal.throwIfAborted();
+        if (
+          operation.inputDispatching ||
+          operation.settled ||
+          operation.dispatched ||
+          operation.preparing
+        )
+          throw new Error("The inference input cannot begin dispatch.");
+        operation.inputDispatching = true;
       },
       rejected: () => {
         // Contradictory receipts cannot override an observed running native turn.
@@ -369,6 +386,7 @@ export class CodexInferenceAdmission {
           );
       },
       prepare: async (providerId, action) => {
+        operation.lease!.signal.throwIfAborted();
         if (
           providerId !== input.provider.id ||
           operation.preparing ||
@@ -378,7 +396,6 @@ export class CodexInferenceAdmission {
           throw new Error(
             "Inference preparation does not own this provider turn.",
           );
-        operation.lease!.signal.throwIfAborted();
         operation.preparing = true;
         let sent = false;
         let finished!: () => void;
@@ -422,23 +439,29 @@ export class CodexInferenceAdmission {
    * already forwarded input and cannot use this no-replay boundary. */
   withdrawUnstarted(
     source: InferenceOperationSource,
+    reason?: Error,
   ): Promise<InferenceJournalRecord> {
     const lifetime = this.sourceLifetimes.get(source);
     const operation = lifetime && this.lifetimeOperations.get(lifetime);
     if (!operation)
-      throw new Error("This source does not own an inference reservation.");
+      throw new UnstartedInferenceUnavailableError(
+        "This source does not own an inference reservation.",
+      );
     if (operation.withdrawal) return operation.withdrawal;
     source.assertCurrent();
     if (
       this.exited ||
       operation.settled ||
       operation.dispatched ||
+      operation.inputDispatching ||
       operation.leaseStarted ||
       operation.preparing ||
       operation.nativeBoundary
     )
-      throw new Error("The canonical input is no longer unforwarded.");
-    operation.withdrawal = operation.ticket.withdrawUnstarted();
+      throw new UnstartedInferenceUnavailableError(
+        "The canonical input is no longer unforwarded.",
+      );
+    operation.withdrawal = operation.ticket.withdrawUnstarted(reason);
     this.settle(operation, "never-started");
     return operation.withdrawal;
   }

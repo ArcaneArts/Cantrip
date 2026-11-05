@@ -5724,6 +5724,10 @@ export const nativeRuntimeHandoffs = pgTable(
       .references(() => workers.id, { onDelete: "cascade" }),
     phase: text("phase").notNull(),
     cancelRequested: boolean("cancel_requested").notNull().default(false),
+    queuedSource:
+      jsonb("queued_source").$type<
+        import("@cantrip/protocol").NativeRuntimeHandoffQueuedSource
+      >(),
     source: jsonb("source")
       .$type<import("@cantrip/protocol").NativeSettingsBinding>()
       .notNull(),

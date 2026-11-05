@@ -140,6 +140,7 @@ pub struct CommandStats {
 // allowlist aligned with workers/limited-command-bus.ts; new input stays ordinary.
 fn is_execution_control(command: &Value) -> bool {
     match command["type"].as_str() {
+        Some("chat.runtime.handoff") => command["intent"] == "cancel",
         Some("chat.native-control") => matches!(
             command["control"]["kind"].as_str(),
             Some("interrupt" | "pause" | "reply")
