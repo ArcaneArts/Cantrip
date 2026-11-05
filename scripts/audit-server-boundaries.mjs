@@ -110,7 +110,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "c01cedeb5ad07aa7eeee81033073509e4be8826ed45621e68200d85a2c5c61b9",
   applicationRoutes:
-    "9ce11892a29c4944d41c97d2fea6b3897a90556900c170ab2e15f78118dd88c3",
+    "6774049273a6551f241aac5f23fbfc71e59441e45fafcb33f8ef84003f0a4709",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -118,7 +118,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
   workerCommands:
-    "79cd849b898ae92aa159bb1646e9787b9325f03ae16a8d1286ad27aad1576fb8",
+    "9124a113a3872d59a054f9b324292ea385678e7ed77c9b4e2168118603ceb155",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -135,6 +135,8 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   modelProviders: "endpoint-protected",
   modelProviderAccounts: "endpoint-protected",
   modelProviderAccountWorkers: "intentionally-public-control-plane",
+  // Owner key and nonnegative revision only: canonical catalog fencing.
+  providerInferenceCatalogs: "minimized-operational-metadata",
   providerQuotaObservations: "minimized-operational-metadata",
   providerModels: "intentionally-public-control-plane",
   providerModelCatalogSnapshots: "minimized-operational-metadata",
@@ -3454,6 +3456,20 @@ function durableTableContentInventory(schemaText) {
 }
 
 function applicationRouteContentClassification(route) {
+  if (
+    route.path === "/api/internal/native-commands/inference-resource-authorize"
+  )
+    return {
+      classification: "minimized-operational-metadata",
+      rationale:
+        "authenticated worker/server/owner/process identity and canonical Chat or project ID only; rechecks the same incarnation after the actual resource lookup, grants no inference capacity and carries no prompt or credentials",
+    };
+  if (route.path === "/api/internal/native-commands/task-goal-outcome")
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "authenticated owner/worker delivers original physical-input receipt and fence facts; round and Goal repositories validate the operation-bound protected response before persistence, with terminal failure metadata and a bounded body; the server does not decrypt Task content",
+    };
   if (route.path === "/api/workers/:workerId/inference")
     return {
       classification: "minimized-operational-metadata",
@@ -3665,6 +3681,18 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (command === "inference.revoke")
+    return {
+      classification: "minimized-operational-metadata",
+      rationale:
+        "owner-bound canonical Chat/project resource IDs revoke existing native admission and managed sessions for that owner; no prompt, credentials or new capacity grant",
+    };
+  if (command === "surface.tunnel.os-prepare")
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "captured server/project/guest authority and expiring attachment/grant identity carry an opaque tunnel record; only the owning worker opens the target and prepares the captured guest service, with WorkerLink protecting forwarded content",
+    };
   if (command === "surface.desktop.os-prepare")
     return {
       classification: "intentionally-public-control-plane",

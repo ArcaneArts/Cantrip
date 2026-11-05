@@ -193,6 +193,16 @@ async fn execute_operation(service: &Arc<AuthService>, owner: &str, call: &Value
         )
         .await;
     }
+    if operation.starts_with("run-configuration.") {
+        return super::agent_runs::execute(
+            service,
+            owner,
+            &context,
+            operation,
+            &call["request"]["arguments"],
+        )
+        .await;
+    }
     if operation.starts_with("target.") {
         return super::agent_targets::execute(
             service,
@@ -281,20 +291,43 @@ async fn handle_operation(
     .await;
     match result {
         Ok(result) => {
-            let mutation = call["request"]["operation"]
-                .as_str()
-                .is_some_and(agent_alerts::is_mutation);
-            audit(
+            let operation = call["request"]["operation"].as_str().unwrap();
+            let runtime = if matches!(
+                operation,
+                "run-configuration.start" | "run-configuration.restart" | "run-configuration.stop"
+            ) {
+                crate::wire::parse(
+                    "runConfigurationRuntimeOperationResultSchema",
+                    result.get("data"),
+                )
+                .ok()
+            } else {
+                None
+            };
+            let action = match operation {
+                "run-configuration.start" => "run-configuration.mcp.started",
+                "run-configuration.restart" => "run-configuration.mcp.restarted",
+                "run-configuration.stop" => "run-configuration.mcp.stopped",
+                "run-configuration.delete" => "run-configuration.mcp.deleted",
+                _ if agent_alerts::is_mutation(operation) => "mcp.operation.mutated",
+                _ => "mcp.operation.executed",
+            };
+            let (resource_type, resource) = if let Some(runtime) = runtime.as_ref() {
+                (
+                    "run-configuration",
+                    runtime["operation"]["configurationId"].as_str(),
+                )
+            } else {
+                ("mcp-binding", binding["bindingId"].as_str())
+            };
+            super::agent_operations::audit_resource(
                 service,
                 &owner,
-                binding,
                 &context.id,
-                if mutation {
-                    "mcp.operation.mutated"
-                } else {
-                    "mcp.operation.executed"
-                },
+                action,
                 "succeeded",
+                resource_type,
+                resource,
             )
             .await;
             Ok(json_response(StatusCode::OK, result))

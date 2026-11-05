@@ -10,7 +10,7 @@ use crate::{
     wire::{Value, value::json},
     workers::command_bus::CommandFailure,
 };
-use anyhow::{Result, bail};
+use anyhow::Result;
 use axum::{
     Extension, Router,
     extract::{MatchedPath, Request, State},
@@ -140,31 +140,56 @@ async fn execute(
         );
     }
     let result: Result<Response> = async {
-        let runtime=if let Some(source)=os_source.as_ref(){
-            if !source["runtime"].is_null(){Some(source["runtime"].clone())}else{repository.get_in_execution(owner,project,input["configurationId"].as_str().unwrap(),input["worktreeId"].as_str().unwrap(),source["executionKey"].as_str().unwrap()).await?}
-        }else{repository.get(owner, project, input["configurationId"].as_str().unwrap(), input["worktreeId"].as_str().unwrap()).await?};
-        let Some(runtime) = runtime.filter(|row| !row["terminalId"].is_null()) else {
-            return Ok(coded_error(StatusCode::NOT_FOUND, "not-found", "Run configuration runtime not found."));
+        let runtime = if let Some(source) = os_source.as_ref() {
+            if !source["runtime"].is_null() {
+                Some(source["runtime"].clone())
+            } else {
+                repository
+                    .get_in_execution(
+                        owner,
+                        project,
+                        input["configurationId"].as_str().unwrap(),
+                        input["worktreeId"].as_str().unwrap(),
+                        source["executionKey"].as_str().unwrap(),
+                    )
+                    .await?
+            }
+        } else {
+            repository
+                .get(
+                    owner,
+                    project,
+                    input["configurationId"].as_str().unwrap(),
+                    input["worktreeId"].as_str().unwrap(),
+                )
+                .await?
         };
-        let worker = runtime["workerId"].as_str().unwrap();
-        if !service.workers.bridge.is_connected(worker) {
-            return Ok(coded_error(StatusCode::SERVICE_UNAVAILABLE, "unavailable", "The Run configuration worker is offline."));
-        }
-        let mut identity = Value::Object(Default::default());
-        for (key, field) in [("runtimeId","id"),("projectId","projectId"),("configurationId","configurationId"),("worktreeId","worktreeId"),("workerId","workerId"),("definitionRevision","definitionRevision"),("codexEnvironmentRevision","codexEnvironmentRevision"),("generation","generation"),("operationId","requestedOperationId"),("terminalId","terminalId")] {
-            identity[key] = runtime[field].clone();
-        }
-        let mut command=json!({"type":"project.run-configuration-runtime.output","requestOperationId":input["operationId"],"serverId":service.server_id,"identity":identity,"tail":input["tail"]});
-        if let Some(source)=os_source.as_ref(){command["type"]=json!("cantrip-os.run-runtime.output");command["definitions"]=source["osExecution"]["definitions"].clone();command["target"]=source["osExecution"]["target"].clone();}
-        let response=service.workers.commands.request(worker,command,None,None).await?;
-        let response = crate::settings::parse_response("protectedRunConfigurationRuntimeWorkerOutputSchema", response.as_ref())?;
-        if response["requestOperationId"] != input["operationId"] || response["identity"] != identity {
-            bail!("The Run configuration output response was misrouted.");
-        }
-        output(200, "protectedRunConfigurationRuntimeOutputResultSchema", &json!({"operationId":input["operationId"],"projectId":runtime["projectId"],"configurationId":runtime["configurationId"],"worktreeId":runtime["worktreeId"],"generation":runtime["generation"],"protectedOutput":response["protectedOutput"]}))
-    }.await;
+        let result = crate::run_configurations::output::read(
+            service,
+            runtime.as_ref(),
+            &input,
+            os_source.as_ref(),
+        )
+        .await?;
+        output(
+            200,
+            "protectedRunConfigurationRuntimeOutputResultSchema",
+            &result,
+        )
+    }
+    .await;
     match result {
         Ok(response) => Ok(response),
+        Err(failure) if failure.is::<crate::run_configurations::lifecycle::ApiError>() => {
+            let api = failure
+                .downcast_ref::<crate::run_configurations::lifecycle::ApiError>()
+                .unwrap();
+            Ok(coded_error(
+                StatusCode::from_u16(api.status)?,
+                api.code,
+                &api.message,
+            ))
+        }
         Err(failure) => Ok(error(
             failure
                 .downcast_ref::<CommandFailure>()

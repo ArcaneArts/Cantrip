@@ -26,6 +26,10 @@ fn generated_contracts_match_the_current_protocol() -> Result<()> {
         oracle(&["--manifest"])?,
         serde_json::from_str::<Value>(include_str!("../contracts/security.json"))?
     );
+    assert_eq!(
+        oracle(&["--run-manifest"])?,
+        serde_json::from_str::<Value>(include_str!("../contracts/mcp-run.json"))?
+    );
     Ok(())
 }
 

@@ -13,6 +13,24 @@ struct Query {
     params: Vec<Value>,
 }
 pub(crate) fn context<T>(result: Result<T>, key: &str, owner: &str, id: &Value) -> Result<T> {
+    context_scope(result, key, owner, None, id)
+}
+pub(crate) fn context_in_project<T>(
+    result: Result<T>,
+    key: &str,
+    owner: &str,
+    project: &str,
+    id: &Value,
+) -> Result<T> {
+    context_scope(result, key, owner, Some(project), id)
+}
+fn context_scope<T>(
+    result: Result<T>,
+    key: &str,
+    owner: &str,
+    project: Option<&str>,
+    id: &Value,
+) -> Result<T> {
     if result.is_ok() {
         return result;
     }
@@ -29,6 +47,8 @@ pub(crate) fn context<T>(result: Result<T>, key: &str, owner: &str, id: &Value) 
                 json!(owner)
             } else if value == "fixture-target" {
                 id.clone()
+            } else if value == "fixture-project" && project.is_some() {
+                json!(project)
             } else {
                 value.clone()
             }

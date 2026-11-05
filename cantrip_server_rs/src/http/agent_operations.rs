@@ -38,6 +38,14 @@ impl OperationError {
         if let Some(error) = cause.downcast_ref::<Self>() {
             return Self::new(error.status, error.code, error.message.clone());
         }
+        if let Some(error) = cause.downcast_ref::<crate::run_configurations::lifecycle::ApiError>()
+        {
+            return Self::new(
+                error.status,
+                error.mcp_code.unwrap_or(error.code),
+                error.message.clone(),
+            );
+        }
         if let Some(error) = cause.downcast_ref::<crate::projects::placement::Unavailable>() {
             let offline = matches!(error.code, "worker-offline" | "capability-unavailable");
             return Self::new(
@@ -115,6 +123,27 @@ pub(super) async fn audit(
     action: &'static str,
     result: &'static str,
 ) {
+    audit_resource(
+        service,
+        owner,
+        request_id,
+        action,
+        result,
+        "mcp-binding",
+        binding["bindingId"].as_str(),
+    )
+    .await;
+}
+
+pub(super) async fn audit_resource(
+    service: &AuthService,
+    owner: &str,
+    request_id: &str,
+    action: &'static str,
+    result: &'static str,
+    resource_type: &str,
+    resource: Option<&str>,
+) {
     if service
         .repository
         .audit(AuditRecord {
@@ -123,8 +152,8 @@ pub(super) async fn audit(
             owner: Some(owner),
             actor: None,
             session: None,
-            resource_type: "mcp-binding",
-            resource: binding["bindingId"].as_str(),
+            resource_type,
+            resource,
             request_id,
         })
         .await

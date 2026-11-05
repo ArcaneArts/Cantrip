@@ -32,6 +32,7 @@ fn conflict(message: &'static str) -> anyhow::Error {
     super::lifecycle::ApiError {
         status: 409,
         code: "conflict",
+        mcp_code: Some("stale-binding"),
         message: message.into(),
     }
     .into()

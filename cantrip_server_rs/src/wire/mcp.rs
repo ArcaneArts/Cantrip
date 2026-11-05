@@ -46,6 +46,18 @@ pub(super) fn refine(
         .ok_or(ValidationError::Operation)?
         .clone();
     match tag {
+        "mcp-run-update" => {
+            if value["configurationId"] != value["document"]["id"] {
+                let mut at = path.to_vec();
+                at.extend([json!("document"), json!("id")]);
+                result.issue(
+                    json!({"code":"custom"}),
+                    &at,
+                    "The requested and document configuration IDs must match.".into(),
+                    false,
+                );
+            }
+        }
         "mcp-binding-dates" => {
             let issue = |message: &str| {
                 let mut at = path.to_vec();

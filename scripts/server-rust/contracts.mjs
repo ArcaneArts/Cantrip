@@ -650,6 +650,22 @@ export const contractRoots = [
   "inferenceCommandTimingSchema",
 ];
 
+// Keep independently added roots self-contained. Numeric graph references must
+// not depend on the size of the base graph after an unrelated branch merges.
+export const runMcpContractRoots = [
+  "cantripMcpRunConfigurationListInputSchema",
+  "cantripMcpRunConfigurationGetInputSchema",
+  "cantripMcpRunConfigurationDetectInputSchema",
+  "cantripMcpRunConfigurationCreateInputSchema",
+  "cantripMcpRunConfigurationUpdateInputSchema",
+  "cantripMcpRunConfigurationDeleteInputSchema",
+  "cantripMcpRunConfigurationStartInputSchema",
+  "cantripMcpRunConfigurationRestartInputSchema",
+  "cantripMcpRunConfigurationStopInputSchema",
+  "cantripMcpRunConfigurationStatusInputSchema",
+  "cantripMcpRunConfigurationReadOutputInputSchema",
+];
+
 // Resolve the actual source schemas, including their separate protocol modules.
 // Compatibility oracles use this registry, never the generated native manifest.
 export function sourceContractSchema(name) {
@@ -728,6 +744,7 @@ const refinements = new Map([
     "run-secret-summary",
   ],
   [runSecrets.runConfigurationSecretSummaryListSchema, "run-secret-summaries"],
+  [protocol.cantripMcpRunConfigurationUpdateInputSchema, "mcp-run-update"],
   [
     runConfigurationRuntime.runConfigurationRuntimeWorkerOperationResultSchema,
     "worker-wire-runtime-result",
@@ -1182,7 +1199,7 @@ function constantMessage(error, where) {
   return message;
 }
 
-export function buildContractManifest() {
+export function buildContractManifest(rootNames = contractRoots) {
   const nodes = [];
   const ids = new Map();
   const names = new Map(
@@ -1342,10 +1359,7 @@ export function buildContractManifest() {
   return {
     schemaVersion: 1,
     roots: Object.fromEntries(
-      contractRoots.map((name) => [
-        name,
-        visit(sourceContractSchema(name), name),
-      ]),
+      rootNames.map((name) => [name, visit(sourceContractSchema(name), name)]),
     ),
     nodes,
   };
@@ -1385,6 +1399,18 @@ if (
       filepath: filename,
     }),
   );
+  const runManifest = buildContractManifest(runMcpContractRoots);
+  const runDestination = new URL(
+    "../../cantrip_server_rs/contracts/mcp-run.json",
+    import.meta.url,
+  );
+  await writeFile(
+    runDestination,
+    await format(JSON.stringify(runManifest), {
+      ...(await resolveConfig(fileURLToPath(runDestination))),
+      filepath: fileURLToPath(runDestination),
+    }),
+  );
   // Zod's strict object checks enumerate inherited Buffer properties as well
   // as byte indices. Retain Source's enumeration for binary-body contracts;
   // the Rust server does not need a JavaScript object/prototype runtime.
@@ -1405,6 +1431,8 @@ if (
     JSON.stringify({
       roots: Object.keys(manifest.roots).length,
       nodes: manifest.nodes.length,
+      runRoots: Object.keys(runManifest.roots).length,
+      runNodes: runManifest.nodes.length,
     }),
   );
 }

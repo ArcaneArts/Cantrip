@@ -625,6 +625,18 @@ const desktopIoExports = [
   "remoteDesktopOsSourceSchema",
 ].sort();
 
+// Reviewed canonical-resource authorization, physical outcome facts, timing and
+// captured OS tunnel source helpers. Preserve every unrelated export baseline.
+const nativeResourceAndTimingExports = [
+  "inferenceCommandTimingSchema",
+  "inferenceProviderCommandTimingSchema",
+  "nativeInferenceResourceAuthorizationResultSchema",
+  "nativeInferenceResourceAuthorizationSchema",
+  "nativeRuntimeHandoffQueuedSourceSchema",
+  "tunnelContentOsSource",
+  "workerChatTurnOutcomeNotificationSchema",
+].sort();
+
 describe("protocol public surface compatibility", () => {
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
     const currentExportNames = Object.keys(protocol).sort();
@@ -660,12 +672,18 @@ describe("protocol public surface compatibility", () => {
     expect(
       allExportNames.filter((name) => inferenceRecoveryExports.includes(name)),
     ).toEqual(inferenceRecoveryExports);
+    expect(
+      allExportNames.filter((name) =>
+        nativeResourceAndTimingExports.includes(name),
+      ),
+    ).toEqual(nativeResourceAndTimingExports);
     expect(allExportNames).toHaveLength(
       2158 +
         cantripOsExports.length +
         inferenceAdmissionExports.length +
         providerSetupAndLabelExports.length +
-        inferenceRecoveryExports.length,
+        inferenceRecoveryExports.length +
+        nativeResourceAndTimingExports.length,
     );
     // Retain every existing 2,151-export assertion and baseline fingerprint;
     // the seven newly reviewed Task schemas are checked explicitly above.
@@ -674,6 +692,7 @@ describe("protocol public surface compatibility", () => {
         !agentTaskExports.includes(name) &&
         !inferenceAdmissionExports.includes(name) &&
         !inferenceRecoveryExports.includes(name) &&
+        !nativeResourceAndTimingExports.includes(name) &&
         !providerSetupAndLabelExports.includes(name),
     );
     const baselineNames = [
@@ -813,10 +832,15 @@ describe("protocol public surface compatibility", () => {
           type === "surface.tunnel.os-prepare",
       ),
     ).toEqual(["surface.tunnel.os-prepare", "surface.desktop.os-prepare"]);
+    expect(
+      advertisedCommandTypes.filter((type) => type === "inference.revoke"),
+    ).toEqual(["inference.revoke"]);
+    expect(advertisedCommandTypes[7]).toBe("inference.revoke");
     const inferenceStatusCommandTypes = advertisedCommandTypes.filter(
       (type) =>
         type !== "surface.desktop.os-prepare" &&
-        type !== "surface.tunnel.os-prepare",
+        type !== "surface.tunnel.os-prepare" &&
+        type !== "inference.revoke",
     );
     expect(inferenceStatusCommandTypes).toHaveLength(295);
     expect(inferenceStatusCommandTypes[6]).toBe("inference.status");

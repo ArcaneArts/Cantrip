@@ -18,6 +18,7 @@ mod agent_chats;
 mod agent_interactions;
 mod agent_metadata;
 mod agent_operations;
+mod agent_runs;
 mod agent_targets;
 mod agent_tasks;
 mod audit;

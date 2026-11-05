@@ -4,6 +4,7 @@ mod agent_interactions;
 mod browsers;
 mod cantrip_os;
 pub(crate) mod coercion;
+mod contract_blocks;
 mod intersections;
 mod js_date;
 mod json_contract;
@@ -232,22 +233,7 @@ fn display(value: &Value) -> String {
 
 fn contracts() -> &'static Contracts {
     static CONTRACTS: OnceLock<Contracts> = OnceLock::new();
-    CONTRACTS.get_or_init(|| {
-        let mut contracts: Contracts =
-            serde_json::from_str(include_str!("../../contracts/security.json"))
-                .expect("embedded protocol contracts");
-        for node in &mut contracts.nodes {
-            for check in &mut node.checks {
-                if let Some(pattern) = &check.pattern {
-                    check.compiled = Some(
-                        regress::Regex::with_flags(pattern, check.flags.as_str())
-                            .expect("compiled protocol regex"),
-                    );
-                }
-            }
-        }
-        contracts
-    })
+    CONTRACTS.get_or_init(contract_blocks::load)
 }
 
 pub fn parse(name: &str, input: Option<&Value>) -> Result<Value, ValidationError> {

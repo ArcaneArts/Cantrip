@@ -2,7 +2,11 @@
 // exported protocol schemas, not the native manifest or its interpreter.
 import * as protocol from "../../packages/protocol/dist/index.js";
 import { cantripOsWireCases } from "./cantrip-os-wire-fixtures.mjs";
-import { buildContractManifest, sourceContractSchema } from "./contracts.mjs";
+import {
+  buildContractManifest,
+  runMcpContractRoots,
+  sourceContractSchema,
+} from "./contracts.mjs";
 import {
   agentOperationWireCases,
   projectChatWireCases,
@@ -20,6 +24,7 @@ import { publicChatWireCases } from "./public-chat-wire-fixtures.mjs";
 import { projectAutomationWireCases } from "./project-automation-wire-fixtures.mjs";
 import { endpointProviderWireCases } from "./endpoint-provider-wire-fixtures.mjs";
 import { mcpCompatibleWireCases } from "./mcp-compatible-wire-fixtures.mjs";
+import { runMcpInputWireCases } from "./run-wire-fixtures.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -68,6 +73,7 @@ export function* vectorCases(name, samples = securityFixtures[name]) {
     };
   }
   yield prepare(undefined, false);
+  for (const input of runMcpInputWireCases(name, samples)) yield prepare(input);
   for (const input of mcpCompatibleWireCases(name, samples))
     yield prepare(input);
   for (const input of endpointProviderWireCases(name)) yield prepare(input);
@@ -209,6 +215,10 @@ if (
     process.stdout.write(JSON.stringify(securityFixtures));
   else if (process.argv.includes("--manifest"))
     process.stdout.write(JSON.stringify(buildContractManifest()));
+  else if (process.argv.includes("--run-manifest"))
+    process.stdout.write(
+      JSON.stringify(buildContractManifest(runMcpContractRoots)),
+    );
   else if (process.argv.includes("--vectors"))
     process.stdout.write(JSON.stringify(vectors(process.argv.at(-1))));
   else {

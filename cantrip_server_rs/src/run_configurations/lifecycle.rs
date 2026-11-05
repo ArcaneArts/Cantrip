@@ -13,6 +13,9 @@ use std::{sync::Arc, time::Duration};
 pub struct ApiError {
     pub status: u16,
     pub code: &'static str,
+    // The public API folds execution-lane conflicts into its conflict code.
+    // MCP retains Source's distinct binding classification.
+    pub mcp_code: Option<&'static str>,
     pub message: String,
 }
 impl std::fmt::Display for ApiError {
@@ -25,12 +28,19 @@ fn api(status: u16, code: &'static str, message: impl Into<String>) -> anyhow::E
     ApiError {
         status,
         code,
+        mcp_code: None,
         message: message.into(),
     }
     .into()
 }
 fn conflict(message: impl Into<String>) -> anyhow::Error {
-    api(409, "conflict", message)
+    ApiError {
+        status: 409,
+        code: "conflict",
+        mcp_code: Some("stale-binding"),
+        message: message.into(),
+    }
+    .into()
 }
 fn invalidate(service: &AuthService, owner: &str, runtime: &Value) -> Result<()> {
     service.live.publish_event(json!({"ownerId":owner,"scope":json!({"kind":"project","projectId":runtime["projectId"]}),"resource":"run","action":"invalidated","entityId":runtime["id"],"revision":Value::Null,"payload":Value::Null}))?;
@@ -130,7 +140,9 @@ async fn execute(service: Arc<AuthService>, owner: String, input: Value) -> Resu
             || (!input["targetWorktreeId"].is_null()
                 && replay["operation"]["worktreeId"] != input["targetWorktreeId"])
         {
-            return Err(conflict(
+            return Err(api(
+                409,
+                "conflict",
                 "The Run configuration operation ID is already bound to another request.",
             ));
         }
