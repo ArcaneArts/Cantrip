@@ -147,6 +147,8 @@ impl Service {
                 .await?
                 .filter(|latest| unpaused(latest, &context, true))
                 .context(CHANGED)?;
+            current_observation = None;
+            task = self.tasks.get(owner, chat).await?.context(CHANGED)?;
         }
         let mut observed_context = context.clone();
         for (target, source) in [
@@ -214,17 +216,17 @@ impl Service {
             && context["status"] != "running";
         let allow_settled =
             cycle["state"] == "succeeded" || (automatic && cycle["state"] != "running");
+        let observation = observed
+            .get("observationFence")
+            .filter(|f| !f.is_null())
+            .context("Task Goal recovery requires its native observation scope.")?;
         let lease = self
             .dispatch
             .recover_started_goal(
                 owner,
                 &cycle,
                 &self.dependencies.lease_owner,
-                &if allow_settled {
-                    json!({"allowSettled":true})
-                } else {
-                    Value::Null
-                },
+                &json!({"allowSettled":allow_settled,"goalObservation":observation}),
             )
             .await?;
         if context["worktreeId"] != cycle["worktreeId"] {

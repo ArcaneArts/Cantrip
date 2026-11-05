@@ -32,6 +32,7 @@ import {
 } from "@cantrip/protocol/tasks";
 import { classifyTaskFailure } from "../../tasks/automatic-retry.js";
 import { TaskConflictError } from "../../db/tasks.js";
+import type { TaskGoalObservationFence } from "../../db/task-goal-observations.js";
 import type { FastifyInstance } from "fastify";
 
 import {
@@ -59,6 +60,12 @@ import type {
 } from "../../db/task-operation-fence.js";
 import type { createLiveMutationRuntime } from "./live-mutation-runtime.js";
 import type { createModelRoutingRuntime } from "./model-routing-runtime.js";
+
+export type TaskGoalReadResult = Omit<TaskGoalWorkerResult, "task"> & {
+  task: TaskOpaqueSummary;
+  /** Private server read scope; HTTP responses select only public fields. */
+  observationFence?: TaskGoalObservationFence;
+};
 
 type ChatRecoveryRuntime = ReturnType<typeof createChatRecoveryRuntime>;
 type LiveMutationRuntime = ReturnType<typeof createLiveMutationRuntime>;
@@ -781,9 +788,9 @@ export function createTaskGoalRuntime({
     runtimeFailure?: TaskGoalSyncContext["runtimeFailure"],
     observationOnly = false,
     dispatchFence?: TaskOperationDispatchFence,
-  ) => {
+  ): Promise<TaskGoalReadResult> => {
     if (!context.threadId) {
-      return { goal: null, message: null, task };
+      return { goal: null, message: null, task, observationFence: undefined };
     }
     const runtime = await runtimeForContext(context);
     if (!runtime) throw new Error("Selected model was not found.");
@@ -842,7 +849,7 @@ export function createTaskGoalRuntime({
           context.chatId,
           observation,
         );
-      return { ...result, task };
+      return { ...result, task, observationFence: observation };
     }
     // A native observation and the Task it projected are one result. Never
     // pair stale native state with a separately refreshed Task after a CAS loss.
@@ -859,7 +866,16 @@ export function createTaskGoalRuntime({
     const nextTask = { ...(synchronized ?? task), dispatch: task.dispatch };
     if (!observeExecution)
       await reconcileTaskGoalDispatch(task, nextTask.state);
-    return { ...result, task: nextTask };
+    return {
+      ...result,
+      task: nextTask,
+      observationFence: observation
+        ? repository.tasks.goalObservations.afterProjection(
+            observation,
+            nextTask.rowVersion,
+          )
+        : undefined,
+    };
   };
 
   const synchronizeScheduledTaskGoal = async (

@@ -1032,3 +1032,47 @@ No tests, typechecks, builds, benchmarks, native/helper execution, computer-use
 testing or hosted validation ran. Autonomous checkpoint/control recovery,
 abandoned input cancellation, terminal delivery/restart reconciliation and final
 timing/bounded-state/inference-entry audits remain required for the full goal.
+
+### Retained Goal control takeover conditions
+
+A passive Goal read carries its private observation scope into retained-Goal
+control recovery. The encrypted Task projection can advance only that scope's
+Task revision to the exact revision it committed; it does not fetch newer
+ownership and attach the older native result to it. Missing-Goal and read-only
+results keep the original scope. The private field stays inside the server:
+HTTP Goal/Task responses continue selecting their existing public fields.
+
+Both servers validate that scope in the actual `recoverStartedGoal` transaction,
+before changing its dispatch control token or lease. The recovery operation
+retains all its existing authorization and native-affinity requirements; the
+observation is an additional condition, never independent permission to launch
+inference or grant a provider ticket. The dispatch state, lease owner, physical
+worker, route and account must still match the captured dispatch, alongside its
+existing exact operation/token/worktree/thread checks. Normal heartbeat timing
+remains excluded from observation identity.
+
+A canonical unforwarded Goal input retains its own authority. A recorded terminal
+input waiting for projection must finish that projection before control takeover.
+Observation snapshots include input dispatch/terminal progress so these changes
+cannot silently race the read. The original physical input receipt is not
+rewritten to claim that a newer control token executed that input.
+
+Explicit Resume discards a cached paused observation after it unpauses the Chat,
+reloads the Task, and obtains a fresh native observation under the new intent.
+It does not reuse the previous paused projection to take control. Other callers
+of retained control recovery retain their existing launch guards and also
+validate the exact captured dispatch state/owner/route.
+
+Source review covered a Task/placement/Stop/pause/lane/runtime/dispatch change
+between native read and takeover, heartbeat-only changes, terminal projection
+ordering, and explicit unpause in both servers. Direct formatting and
+`git diff --check` passed. No tests, typechecks, builds,
+benchmarks, native/helper execution, computer-use testing or hosted validation
+ran; runtime behavior remains unverified. This adds no migration, transported
+contract, semaphore or prompt queue.
+
+The full goal still requires autonomous native checkpoint reconciliation, late
+physical-input outcomes across control replacement, abandoned-input cancellation,
+terminal delivery/restart recovery, and the final timing/bounded-state/entry-point
+audit. These changes fence a server control takeover; they do not claim that
+a native checkpoint alone has been durably reconciled.

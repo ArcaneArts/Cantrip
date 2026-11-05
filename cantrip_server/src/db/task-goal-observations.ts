@@ -15,7 +15,7 @@ interface Target {
   modelRouteId: string | null;
   providerAccountId: string | null;
 }
-/** Ephemeral read authority only. It cannot launch, lease, settle or admit work. */
+/** Ephemeral read authority only. It cannot itself launch, lease, settle or admit work. */
 export interface TaskGoalObservationFence {
   target: Target;
   fingerprint: string;
@@ -166,6 +166,11 @@ async function snapshot(
       ? {
           operationId: cycle.goalInput.receipt.operationId,
           deferred: cycle.goalInput.deferred,
+          firstDispatchedOperationId:
+            cycle.goalInput.firstDispatchedOperationId,
+          failedBeforeDispatch: cycle.goalInput.failedBeforeDispatch ?? false,
+          terminalObservedAt: cycle.goalInput.terminal?.observedAt ?? null,
+          terminalProjectedAt: cycle.goalInput.terminal?.projectedAt ?? null,
         }
       : null,
   };
@@ -240,6 +245,17 @@ export class TaskGoalObservationRepository {
         stale();
       return { target, fingerprint: JSON.stringify(s) };
     });
+  }
+  /** The projection transaction changed only the Task revision in this scope.
+   * Carry that exact committed revision into a subsequent control CAS; do not
+   * capture a newer scope and apply the old native observation to it. */
+  afterProjection(
+    fence: TaskGoalObservationFence,
+    rowVersion: number,
+  ): TaskGoalObservationFence {
+    const snapshot = JSON.parse(fence.fingerprint);
+    snapshot.taskRowVersion = rowVersion;
+    return { ...fence, fingerprint: JSON.stringify(snapshot) };
   }
   async assertInTransaction(
     tx: Database,

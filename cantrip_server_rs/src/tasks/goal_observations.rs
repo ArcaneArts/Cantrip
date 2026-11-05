@@ -18,7 +18,7 @@ async fn snapshot(tx: &Transaction<'_>, owner: &str, chat: &str, target: &Value)
     };
     let runtime=one(Executor::Transaction(tx),"SELECT jsonb_build_object('id',r.id,'threadId',r.codex_thread_id,'modelRouteId',r.model_route_id,'providerAccountId',r.provider_account_id)::text FROM chat_runtime_sessions r WHERE r.chat_id=$1 AND r.worker_id=$2 AND r.worktree_id=$3 LIMIT 1 FOR UPDATE",&[&chat,&text(&target["workerId"])?,&text(&target["worktreeId"])?]).await?;
     let lane=one(Executor::Transaction(tx),"SELECT jsonb_build_object('id',l.id,'activatedAt',l.activated_at,'workerId',l.worker_id,'worktreeId',l.worktree_id,'threadId',l.codex_thread_id)::text FROM chat_execution_lanes l WHERE l.chat_id=$1 AND l.state='active' LIMIT 1 FOR UPDATE",&[&chat]).await?;
-    let cycle=one(Executor::Transaction(tx),"SELECT jsonb_build_object('dispatch',jsonb_build_object('id',c.id,'operationId',c.operation_id,'state',c.state,'fencingToken',c.fencing_token,'leaseOwner',c.lease_owner,'physicalWorkerId',c.physical_worker_id,'worktreeId',c.worktree_id,'codexThreadId',c.codex_thread_id,'modelRouteId',c.model_route_id,'providerAccountId',c.provider_account_id),'goalInput',CASE WHEN c.goal_input IS NULL THEN NULL ELSE jsonb_build_object('operationId',c.goal_input->'receipt'->'operationId','deferred',c.goal_input->'deferred') END)::text FROM task_dispatch_cycles c WHERE c.owner_id=$1 AND c.chat_id=$2 ORDER BY c.created_at DESC,c.id DESC LIMIT 1 FOR UPDATE",&[&owner,&chat]).await?;
+    let cycle=one(Executor::Transaction(tx),"SELECT jsonb_build_object('dispatch',jsonb_build_object('id',c.id,'operationId',c.operation_id,'state',c.state,'fencingToken',c.fencing_token,'leaseOwner',c.lease_owner,'physicalWorkerId',c.physical_worker_id,'worktreeId',c.worktree_id,'codexThreadId',c.codex_thread_id,'modelRouteId',c.model_route_id,'providerAccountId',c.provider_account_id),'goalInput',CASE WHEN c.goal_input IS NULL THEN NULL ELSE jsonb_build_object('operationId',c.goal_input->'receipt'->'operationId','deferred',c.goal_input->'deferred','firstDispatchedOperationId',c.goal_input->'firstDispatchedOperationId','failedBeforeDispatch',COALESCE(c.goal_input->'failedBeforeDispatch','false'::jsonb),'terminalObservedAt',c.goal_input->'terminal'->'observedAt','terminalProjectedAt',c.goal_input->'terminal'->'projectedAt') END)::text FROM task_dispatch_cycles c WHERE c.owner_id=$1 AND c.chat_id=$2 ORDER BY c.created_at DESC,c.id DESC LIMIT 1 FOR UPDATE",&[&owner,&chat]).await?;
     source["runtime"] = runtime.unwrap_or(Value::Null);
     source["lane"] = lane.unwrap_or(Value::Null);
     source["dispatch"] = cycle
@@ -39,7 +39,7 @@ fn dispatch_identity(d: &Value) -> Value {
         "leaseOwner":d["leaseOwner"],"physicalWorkerId":d["physicalWorkerId"],"worktreeId":d["worktreeId"],
         "codexThreadId":d["codexThreadId"],"modelRouteId":d["modelRouteId"],"providerAccountId":d["providerAccountId"]})
 }
-pub(super) async fn assert_in(
+pub(crate) async fn assert_in(
     tx: &Transaction<'_>,
     owner: &str,
     chat: &str,
@@ -49,6 +49,11 @@ pub(super) async fn assert_in(
         return stale();
     }
     Ok(())
+}
+pub(crate) fn after_projection(fence: &Value, version: &Value) -> Value {
+    let mut fence = fence.clone();
+    fence["snapshot"]["taskRowVersion"] = version.clone();
+    fence
 }
 impl Repository {
     pub async fn capture_goal_observation(

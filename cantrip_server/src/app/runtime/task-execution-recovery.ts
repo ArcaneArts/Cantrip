@@ -225,6 +225,11 @@ export function createTaskExecutionRecovery({
       )
         throw new Error("The Task changed during recovery. Please retry.");
       context = unpaused;
+      // Unpause changed the captured intent, and may have advanced Task state.
+      // Observe again instead of reusing the earlier paused native result.
+      currentObservation = undefined;
+      task = await repository.tasks.get(owner, chatId);
+      if (!task) return false;
     }
     const observedContext: ChatExecutionContext = {
       ...context,
@@ -284,20 +289,29 @@ export function createTaskExecutionRecovery({
         (resume && result.execution.status === "failed")) &&
       (resume || result.goal.status === "active") &&
       context.status !== "running";
-    const lease =
-      cycle.state === "succeeded" || (automatic && cycle.state !== "running")
-        ? await repository.taskDispatch.recoverStartedGoal(
+    const observation = result.observationFence;
+    if (!observation)
+      throw new Error(
+        "Task Goal recovery requires its native observation scope.",
+      );
+    const lease = await repository.taskDispatch.recoverStartedGoal(
+      owner,
+      cycle,
+      leaseOwner,
+      new Date(),
+      {
+        allowSettled:
+          cycle.state === "succeeded" ||
+          (automatic && cycle.state !== "running"),
+        assertObservation: (transaction) =>
+          repository.tasks.goalObservations.assertInTransaction(
+            transaction,
             owner,
-            cycle,
-            leaseOwner,
-            new Date(),
-            { allowSettled: true },
-          )
-        : await repository.taskDispatch.recoverStartedGoal(
-            owner,
-            cycle,
-            leaseOwner,
-          );
+            chatId,
+            observation,
+          ),
+      },
+    );
     if (context.worktreeId !== cycle.worktreeId) {
       const restored = await repository.updateChatWorktree(
         owner,
