@@ -25,8 +25,9 @@ Chats continue through their separate execution paths.
 
 Receipt HTTP with queue wake/delivery, GUI queue and turn orchestration,
 canonical history ingestion and full native runtime product flows remain
-unfinished. The `native-commands` CI job exercises the kernel and protected APIs
-on Linux, macOS and Windows; local checks do not establish those platform passes.
+unfinished. Development validation runs locally; GitHub Actions is reserved for
+releases and deployments. Local macOS checks do not establish Linux or Windows
+platform acceptance.
 
 Protected Chat message listing, turn-aware pagination, append and stored turn
 archive reads also execute natively. Repository and real HTTP/Live comparisons

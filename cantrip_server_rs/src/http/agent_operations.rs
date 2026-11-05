@@ -38,6 +38,12 @@ impl OperationError {
         if let Some(error) = cause.downcast_ref::<Self>() {
             return Self::new(error.status, error.code, error.message.clone());
         }
+        if cause
+            .downcast_ref::<crate::settings::ResponseValidationError>()
+            .is_some()
+        {
+            return Self::validation();
+        }
         let message = cause
             .downcast_ref::<crate::database::query_error::QueryError>()
             .map_or_else(
@@ -60,6 +66,23 @@ impl std::error::Error for OperationError {}
 
 pub(super) fn parse(schema: &str, input: &Value) -> Result<Value> {
     crate::wire::parse(schema, Some(input)).map_err(|_| OperationError::validation().into())
+}
+
+pub(super) async fn project_chats(
+    service: &AuthService,
+    owner: &str,
+    project: &str,
+) -> Result<Vec<Value>> {
+    crate::chats::Repository::new(service.repository.database.clone())
+        .list_project_with_query_context(
+            owner,
+            project,
+            Some((
+                crate::chats::mcp_read_queries::sql("list"),
+                &[json!(owner), json!(project)],
+            )),
+        )
+        .await
 }
 
 pub(super) async fn audit(

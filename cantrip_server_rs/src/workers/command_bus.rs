@@ -515,10 +515,10 @@ impl LimitedCommandBus {
                         });
                     }
                     // Private admission/clock events never enter domain streams.
-                    if event["type"] != "inference.command-state" {
-                        if let Some(handler) = handler {
-                            handler(event).await?;
-                        }
+                    if event["type"] != "inference.command-state"
+                        && let Some(handler) = handler
+                    {
+                        handler(event).await?;
                     }
                     Ok(())
                 }) as BoxFuture<'static, Result<(), CommandError>>

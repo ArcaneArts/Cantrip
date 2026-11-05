@@ -259,7 +259,7 @@ impl Repository {
             if truthy(row.get("logical_completed_at")) && !is_transport_closure(row.get("terminal_evidence")) &&
               (row["rejection_code"] != "worker-inference-deferred" ||
                 row["terminal_evidence"].get("key") != record.get("key")) {
-                result["disposition"] = "retired".into();
+                result["disposition"] = json!("retired");
                 return Ok(result);
             }
             if !defer(tx, &owner, &worker, &operation, &generation, Some(&record)).await? {
@@ -272,9 +272,9 @@ impl Repository {
             let eligible = if let Some(prompt) = prompt {
                 super::managed_queue::recovery_eligible(tx, &owner, &worker, &chat, &text(&prompt["id"])?).await?
             } else { false };
-            result["disposition"] = if eligible {
+            result["disposition"] = json!(if eligible {
                 "requeued"
-            } else { "retired" }.into();
+            } else { "retired" });
             Ok(result)
         })).await;
         match result {
@@ -286,7 +286,7 @@ impl Repository {
                     }) =>
             {
                 let mut result = unresolved;
-                result["disposition"] = "retired".into();
+                result["disposition"] = json!("retired");
                 Ok(result)
             }
             other => other,

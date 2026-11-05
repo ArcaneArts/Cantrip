@@ -83,8 +83,10 @@ async fn apply(
                 &Value::Null,
             );
         }
-        return wire::parse("nativeInferenceRecoveryResultSchema", Some(&result))
-            .map_err(Into::into);
+        return crate::settings::parse_response(
+            "nativeInferenceRecoveryResultSchema",
+            Some(&result),
+        );
     }
     if phase == "receipt" {
         return service.execution.receipts.settle(&owner, &input).await;

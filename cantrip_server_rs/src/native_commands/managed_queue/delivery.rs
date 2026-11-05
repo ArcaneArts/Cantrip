@@ -41,7 +41,7 @@ impl QueueRepository {
                     entry["additionalWorkerIds"] = Value::from_serialize(&workers);
                 }
                 if context.is_none() {
-                    entry["recoveryOnly"] = true.into();
+                    entry["recoveryOnly"] = json!(true);
                 }
                 result.push(entry);
             } else {

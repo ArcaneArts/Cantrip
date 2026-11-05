@@ -11,7 +11,10 @@ use crate::{
     database::Database,
     native_commands::{
         Repository as NativeCommands,
-        runtime::{finish_gui::finish_managed_gui_with_transport, gui_admission::GuiAdmission},
+        runtime::{
+            finish_gui::{GuiClosure, finish_managed_gui_with_transport},
+            gui_admission::GuiAdmission,
+        },
     },
     operations::logging::{self, LogCall, Logger},
     wire::{Value, coercion::truthy, value::json},
@@ -225,7 +228,7 @@ impl Bootstrap {
         let chat = text(&turn.execution, "chatId")?;
         if let Some(receipt) = &turn.native_receipt {
             let logger = self.logger.clone();
-            finish_managed_gui_with_transport(&NativeCommands::new(self.database.clone()),&self.commands,&turn.owner,text(&turn.execution,"workerId")?,receipt,status,transport_ended,&move |_| {
+            finish_managed_gui_with_transport(&NativeCommands::new(self.database.clone()),&self.commands,&turn.owner,text(&turn.execution,"workerId")?,receipt,GuiClosure { status, transport_ended },&move |_| {
                 (logger)(LogCall::event("warn","The worker did not acknowledge logical GUI completion.",json!({"event":"native-command.logical-completion-ack-failed","chatId":chat,"operationId":receipt["operationId"]})));
             }).await
         } else {

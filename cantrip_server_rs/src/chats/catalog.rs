@@ -69,7 +69,21 @@ pub(super) fn iso(value: &Value) -> Result<Value> {
 }
 impl Repository {
     pub async fn list_project(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
-        self.database.query("SELECT to_jsonb(c)::text FROM chats c INNER JOIN projects p ON p.id=c.project_id AND p.owner_id=$1 WHERE c.project_id=$2 AND c.archived_at IS NULL ORDER BY c.position ASC,c.created_at ASC", &[&owner,&project]).await?.iter().map(|row|wire_summary(&raw(row)?)).collect()
+        self.list_project_with_query_context(owner, project, None)
+            .await
+    }
+    pub(crate) async fn list_project_with_query_context(
+        &self,
+        owner: &str,
+        project: &str,
+        context: Option<(&str, &[Value])>,
+    ) -> Result<Vec<Value>> {
+        let result=self.database.query("SELECT to_jsonb(c)::text FROM chats c INNER JOIN projects p ON p.id=c.project_id AND p.owner_id=$1 WHERE c.project_id=$2 AND c.archived_at IS NULL ORDER BY c.position ASC,c.created_at ASC", &[&owner,&project]).await;
+        let rows = match context {
+            Some((sql, params)) => crate::database::query_error::context(result, sql, params)?,
+            None => result?,
+        };
+        rows.iter().map(|row| wire_summary(&raw(row)?)).collect()
     }
     pub async fn list_archived_project(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
         let rows = self.database.query("SELECT to_jsonb(c)::text,(SELECT count(*)::int FROM chat_messages m WHERE m.chat_id=c.id) FROM chats c INNER JOIN projects p ON p.id=c.project_id AND p.owner_id=$1 WHERE c.project_id=$2 AND c.archived_at IS NOT NULL ORDER BY c.archived_at DESC", &[&owner,&project]).await?;

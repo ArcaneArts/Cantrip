@@ -594,6 +594,17 @@ const endpointProviderExports = [
   "nativeEndpointProviderKinds",
 ].sort();
 
+// Reviewed native recovery identities/results and additive timing metadata.
+const inferenceRecoveryExports = [
+  "inferenceJournalIdentitySchema",
+  "inferenceJournalRecordSchema",
+  "inferenceNeverStarted",
+  "inferenceRecoveryIdentitySchema",
+  "inferenceTimingSchema",
+  "nativeInferenceRecoveryResultSchema",
+  "nativeInferenceRecoverySchema",
+].sort();
+
 describe("protocol public surface compatibility", () => {
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
     const currentExportNames = Object.keys(protocol).sort();
@@ -619,11 +630,15 @@ describe("protocol public surface compatibility", () => {
         providerSetupAndLabelExports.includes(name),
       ),
     ).toEqual(providerSetupAndLabelExports);
+    expect(
+      allExportNames.filter((name) => inferenceRecoveryExports.includes(name)),
+    ).toEqual(inferenceRecoveryExports);
     expect(allExportNames).toHaveLength(
       2158 +
         cantripOsExports.length +
         inferenceAdmissionExports.length +
-        providerSetupAndLabelExports.length,
+        providerSetupAndLabelExports.length +
+        inferenceRecoveryExports.length,
     );
     // Retain every existing 2,151-export assertion and baseline fingerprint;
     // the seven newly reviewed Task schemas are checked explicitly above.
@@ -631,6 +646,7 @@ describe("protocol public surface compatibility", () => {
       (name) =>
         !agentTaskExports.includes(name) &&
         !inferenceAdmissionExports.includes(name) &&
+        !inferenceRecoveryExports.includes(name) &&
         !providerSetupAndLabelExports.includes(name),
     );
     const baselineNames = [

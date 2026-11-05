@@ -325,12 +325,28 @@ impl SettingsRepository {
     }
 
     pub async fn get_user_settings(&self, owner: &str) -> Result<Value> {
-        let rows = self
-            .json_rows(
+        self.get_user_settings_with_query_context(owner, None).await
+    }
+    pub(crate) async fn get_user_settings_with_query_context(
+        &self,
+        owner: &str,
+        context: Option<(&str, &[wire::Value])>,
+    ) -> Result<Value> {
+        let result = self
+            .database
+            .query(
                 "SELECT to_jsonb(s) FROM user_settings s WHERE user_id=$1 LIMIT 1",
                 &[&owner],
             )
-            .await?;
+            .await;
+        let rows = match context {
+            Some((sql, params)) => crate::database::query_error::context(result, sql, params)?,
+            None => result?,
+        };
+        let rows = rows
+            .iter()
+            .map(|row| row.get::<Value>(0))
+            .collect::<Result<Vec<_>>>()?;
         Ok(project(
             rows.first()
                 .context("Database returned no row after loading user settings.")?,

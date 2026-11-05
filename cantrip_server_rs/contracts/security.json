@@ -505,109 +505,112 @@
     "workerCantripMcpOperationCallSchema": 9642,
     "compatibleWorkerCantripMcpOperationCallSchema": 9673,
     "cantripAgentOperationNameSchema": 9652,
-    "workerCantripMcpCapabilitiesQuerySchema": 9697,
-    "cantripAgentOperationResultSchema": 9700,
-    "projectGoalSnapshotSchema": 9713,
-    "projectGoalObservationSchema": 9718,
-    "projectGoalObservationResultSchema": 9725,
-    "cantripMcpContextGetResultSchema": 9730,
-    "archivedChatWireSummarySchema": 9791,
-    "encryptedChatCreateSchema": 9798,
-    "conversationCatalogQuerySchema": 9808,
-    "conversationCatalogWirePageSchema": 9816,
-    "conversationCursorSchema": 9833,
-    "conversationUsageSchema": 9841,
-    "conversationUsageResultSchema": 9846,
-    "agentThreadSyncSchema": 9850,
-    "agentThreadSyncItemSchema": 9866,
-    "archivedChatCleanupResultSchema": 9878,
-    "projectAutomationIntervalScheduleSchema": 9880,
-    "projectAutomationWeeklyScheduleSchema": 9885,
-    "projectAutomationCronScheduleSchema": 9894,
-    "projectAutomationScheduleSchema": 9898,
+    "cantripMcpChatListInputSchema": 9697,
+    "cantripMcpChatReadInputSchema": 9703,
+    "agentChatReadWireSchema": 9712,
+    "workerCantripMcpCapabilitiesQuerySchema": 9720,
+    "cantripAgentOperationResultSchema": 9723,
+    "projectGoalSnapshotSchema": 9736,
+    "projectGoalObservationSchema": 9741,
+    "projectGoalObservationResultSchema": 9748,
+    "cantripMcpContextGetResultSchema": 9753,
+    "archivedChatWireSummarySchema": 9814,
+    "encryptedChatCreateSchema": 9821,
+    "conversationCatalogQuerySchema": 9831,
+    "conversationCatalogWirePageSchema": 9839,
+    "conversationCursorSchema": 9856,
+    "conversationUsageSchema": 9864,
+    "conversationUsageResultSchema": 9869,
+    "agentThreadSyncSchema": 9873,
+    "agentThreadSyncItemSchema": 9889,
+    "archivedChatCleanupResultSchema": 9901,
+    "projectAutomationIntervalScheduleSchema": 9903,
+    "projectAutomationWeeklyScheduleSchema": 9908,
+    "projectAutomationCronScheduleSchema": 9917,
+    "projectAutomationScheduleSchema": 9921,
     "projectAutomationOpaqueContentSchema": 2738,
-    "encryptedProjectAutomationCreateSchema": 9899,
-    "encryptedProjectAutomationUpdateSchema": 9905,
-    "projectAutomationWireSchema": 9916,
-    "projectAutomationWireListSchema": 9925,
-    "projectAutomationDispatchRequestSchema": 9926,
-    "projectAutomationDispatchResultSchema": 9928,
-    "projectAutomationProtectedDispatchResultSchema": 9932,
+    "encryptedProjectAutomationCreateSchema": 9922,
+    "encryptedProjectAutomationUpdateSchema": 9928,
+    "projectAutomationWireSchema": 9939,
+    "projectAutomationWireListSchema": 9948,
+    "projectAutomationDispatchRequestSchema": 9949,
+    "projectAutomationDispatchResultSchema": 9951,
+    "projectAutomationProtectedDispatchResultSchema": 9955,
     "agentInteractionRequestWireSchema": 1152,
-    "agentInteractionResolutionWireCreateSchema": 9936,
-    "agentInteractionAcceptedSchema": 9937,
+    "agentInteractionResolutionWireCreateSchema": 9959,
+    "agentInteractionAcceptedSchema": 9960,
     "cuaAgentAuthoritySchema": 2272,
     "customizationContentScopeSchema": 4465,
-    "protectedCustomizationRequestSchema": 9939,
-    "protectedCustomizationResponseSchema": 9943,
+    "protectedCustomizationRequestSchema": 9962,
+    "protectedCustomizationResponseSchema": 9966,
     "customizationOperationIdSchema": 9502,
-    "permissionProfileCapabilitySchema": 9949,
-    "chatPermissionProfileStateSchema": 9957,
-    "chatPermissionProfileUpdateSchema": 9971,
+    "permissionProfileCapabilitySchema": 9972,
+    "chatPermissionProfileStateSchema": 9980,
+    "chatPermissionProfileUpdateSchema": 9994,
     "configurablePermissionProfileIdSchema": 5975,
-    "chatModelUpdateSchema": 9979,
-    "chatReasoningUpdateSchema": 9981,
-    "skillSettingsContextSchema": 9983,
-    "skillAudienceContextSchema": 9989,
-    "skillAudienceUpdateSchema": 9991,
-    "skillAudienceSummarySchema": 9994,
-    "skillAudienceListSchema": 9997,
-    "skillSettingsInventorySchema": 9998,
-    "skillSettingsDocumentSchema": 10019,
-    "skillSettingsMutationResultSchema": 10025,
-    "skillSettingsConfigResultSchema": 10029,
-    "skillSettingsFileRequestSchema": 10031,
-    "skillSettingsFileUpdateSchema": 10033,
-    "skillSettingsDeleteRequestSchema": 10035,
-    "skillSettingsConfigUpdateSchema": 10036,
-    "encryptedMcpServerCreateSchema": 10038,
-    "encryptedMcpServerUpdateSchema": 10046,
-    "mcpServerWireSummarySchema": 10049,
-    "mcpServerWireListSchema": 10059,
-    "mcpServerDiscoveryResultSchema": 10060,
-    "agentTaskCreateWireSchema": 10074,
-    "agentTaskStatusWireSchema": 10077,
-    "cantripMcpTaskCreateInputSchema": 10094,
-    "cantripMcpTaskListInputSchema": 10100,
-    "cantripMcpTaskStatusInputSchema": 10106,
-    "cantripMcpTaskWaitInputSchema": 10109,
+    "chatModelUpdateSchema": 10002,
+    "chatReasoningUpdateSchema": 10004,
+    "skillSettingsContextSchema": 10006,
+    "skillAudienceContextSchema": 10012,
+    "skillAudienceUpdateSchema": 10014,
+    "skillAudienceSummarySchema": 10017,
+    "skillAudienceListSchema": 10020,
+    "skillSettingsInventorySchema": 10021,
+    "skillSettingsDocumentSchema": 10042,
+    "skillSettingsMutationResultSchema": 10048,
+    "skillSettingsConfigResultSchema": 10052,
+    "skillSettingsFileRequestSchema": 10054,
+    "skillSettingsFileUpdateSchema": 10056,
+    "skillSettingsDeleteRequestSchema": 10058,
+    "skillSettingsConfigUpdateSchema": 10059,
+    "encryptedMcpServerCreateSchema": 10061,
+    "encryptedMcpServerUpdateSchema": 10069,
+    "mcpServerWireSummarySchema": 10072,
+    "mcpServerWireListSchema": 10082,
+    "mcpServerDiscoveryResultSchema": 10083,
+    "agentTaskCreateWireSchema": 10097,
+    "agentTaskStatusWireSchema": 10100,
+    "cantripMcpTaskCreateInputSchema": 10117,
+    "cantripMcpTaskListInputSchema": 10123,
+    "cantripMcpTaskStatusInputSchema": 10129,
+    "cantripMcpTaskWaitInputSchema": 10132,
     "cantripOsExecutionSchema": 2534,
     "cantripOsExecutionScopeSchema": 2536,
     "cantripOsDispatchScopeSchema": 5585,
     "cantripOsSourceDispatchScopeSchema": 5598,
-    "cantripOsProvisionIntentSchema": 10115,
-    "cantripOsProvisionRequestContentSchema": 10137,
-    "cantripOsObservedInstanceSchema": 10144,
-    "cantripOsSourceReceiptSchema": 10156,
-    "cantripOsOperationResultSchema": 10174,
-    "cantripOsInspectSchema": 10195,
-    "cantripOsWorkspaceCreateSchema": 10198,
-    "cantripOsBindingCreateSchema": 10202,
-    "cantripOsProvisionSchema": 10219,
+    "cantripOsProvisionIntentSchema": 10138,
+    "cantripOsProvisionRequestContentSchema": 10160,
+    "cantripOsObservedInstanceSchema": 10167,
+    "cantripOsSourceReceiptSchema": 10179,
+    "cantripOsOperationResultSchema": 10197,
+    "cantripOsInspectSchema": 10218,
+    "cantripOsWorkspaceCreateSchema": 10221,
+    "cantripOsBindingCreateSchema": 10225,
+    "cantripOsProvisionSchema": 10242,
     "cantripOsGuestPathSchema": 2551,
-    "projectSourceLocationSchema": 10223,
+    "projectSourceLocationSchema": 10246,
     "cantripOsTransportSchema": 2563,
     "cantripOsDependencyOverlaySchema": 2553,
     "cantripOsDependencyOverlaysSchema": 2552,
-    "cantripOsAttachSchema": 10231,
-    "cantripOsWorkspaceObservationSchema": 10151,
-    "cantripOsInstanceSummarySchema": 10236,
-    "cantripOsWorkspaceSummarySchema": 10247,
-    "cantripOsProjectSourceSummarySchema": 10252,
-    "cantripOsProjectWorktreeSummarySchema": 10259,
-    "cantripOsSourceBindingSummarySchema": 10261,
+    "cantripOsAttachSchema": 10254,
+    "cantripOsWorkspaceObservationSchema": 10174,
+    "cantripOsInstanceSummarySchema": 10259,
+    "cantripOsWorkspaceSummarySchema": 10270,
+    "cantripOsProjectSourceSummarySchema": 10275,
+    "cantripOsProjectWorktreeSummarySchema": 10282,
+    "cantripOsSourceBindingSummarySchema": 10284,
     "cantripOsRunDefinitionRequestSchema": 5622,
-    "cantripOsRunDefinitionApiSchema": 10273,
-    "cantripOsRunDefinitionResponseSchema": 10280,
-    "cantripOsRunPrimarySchema": 10281,
-    "cantripOsRunRootsSchema": 10289,
-    "cantripOsRunLaunchSchema": 10291,
+    "cantripOsRunDefinitionApiSchema": 10296,
+    "cantripOsRunDefinitionResponseSchema": 10303,
+    "cantripOsRunPrimarySchema": 10304,
+    "cantripOsRunRootsSchema": 10312,
+    "cantripOsRunLaunchSchema": 10314,
     "cantripOsRunCaptureSchema": 5660,
     "cantripOsRunSelectionSchema": 6873,
-    "cantripOsRunSourceSchema": 10293,
-    "desktopUpdateActiveWorkSummarySchema": 10297,
-    "providerConnectionTestResultSchema": 10302,
-    "workerProviderConnectionTestResultSchema": 10311
+    "cantripOsRunSourceSchema": 10316,
+    "desktopUpdateActiveWorkSummarySchema": 10320,
+    "providerConnectionTestResultSchema": 10325,
+    "workerProviderConnectionTestResultSchema": 10334
   },
   "nodes": [
     {
@@ -57250,9 +57253,164 @@
     },
     {
       "type": "object",
+      "name": "cantripMcpChatListInputSchema",
+      "shape": { "cursor": 9698, "limit": 9700 },
+      "catchall": 9702,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9699,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 100000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9701,
+      "defaultValue": 50,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpChatReadInputSchema",
+      "shape": {
+        "chatId": 9704,
+        "beforeSequence": 9705,
+        "limit": 9707,
+        "maxChars": 9709
+      },
+      "catchall": 9711,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9706,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9708,
+      "defaultValue": 20,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 50, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9710,
+      "defaultValue": 20000,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 100000, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "agentChatReadWireSchema",
+      "shape": {
+        "cursor": 9713,
+        "chat": 9714,
+        "sender": 9714,
+        "messages": 9718,
+        "page": 8669
+      },
+      "catchall": 9719,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-f0-9]{64}$",
+          "flags": "",
+          "displayPattern": "/^[a-f0-9]{64}$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "agentChatWireDescriptorSchema",
+      "shape": {
+        "id": 9704,
+        "titleProtection": 779,
+        "status": 9715,
+        "automationPaused": 9716,
+        "configuration": 931
+      },
+      "catchall": 9717,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "element": 4973,
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
       "name": "workerCantripMcpCapabilitiesQuerySchema",
-      "shape": { "workerId": 9698 },
-      "catchall": 9699,
+      "shape": { "workerId": 9721 },
+      "catchall": 9722,
       "checks": []
     },
     {
@@ -57267,12 +57425,12 @@
       "type": "object",
       "name": "cantripCliCommandResultSchema",
       "shape": {
-        "summary": 9701,
-        "target": 9702,
-        "worktreeId": 9704,
-        "continuationScheduled": 9707,
-        "mutated": 9709,
-        "data": 9711
+        "summary": 9724,
+        "target": 9725,
+        "worktreeId": 9727,
+        "continuationScheduled": 9730,
+        "mutated": 9732,
+        "data": 9734
       },
       "checks": []
     },
@@ -57286,7 +57444,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9703,
+      "innerType": 9726,
       "defaultValue": null,
       "checks": []
     },
@@ -57294,11 +57452,11 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9705,
+      "innerType": 9728,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 9706, "checks": [] },
+    { "type": "nullable", "innerType": 9729, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -57306,7 +57464,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9708,
+      "innerType": 9731,
       "defaultValue": false,
       "checks": []
     },
@@ -57314,7 +57472,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9710,
+      "innerType": 9733,
       "defaultValue": false,
       "checks": []
     },
@@ -57323,18 +57481,18 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9712,
+      "innerType": 9735,
       "checks": []
     },
     { "type": "unknown", "checks": [] },
     {
       "type": "object",
       "name": "projectGoalSnapshotSchema",
-      "shape": { "kind": 9619, "goal": 9714 },
-      "catchall": 9717,
+      "shape": { "kind": 9619, "goal": 9737 },
+      "catchall": 9740,
       "checks": []
     },
-    { "type": "nullable", "innerType": 9715, "checks": [] },
+    { "type": "nullable", "innerType": 9738, "checks": [] },
     {
       "type": "object",
       "shape": {
@@ -57347,7 +57505,7 @@
         "updatedAt": 9378,
         "protectedObjective": 1669
       },
-      "catchall": 9716,
+      "catchall": 9739,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -57356,14 +57514,14 @@
       "type": "object",
       "name": "projectGoalObservationSchema",
       "shape": {
-        "chatId": 9719,
-        "workerId": 9720,
-        "threadId": 9721,
-        "generation": 9722,
-        "revision": 9723,
-        "snapshot": 9713
+        "chatId": 9742,
+        "workerId": 9743,
+        "threadId": 9744,
+        "generation": 9745,
+        "revision": 9746,
+        "snapshot": 9736
       },
-      "catchall": 9724,
+      "catchall": 9747,
       "checks": [
         {
           "check": "refinement",
@@ -57418,8 +57576,8 @@
     {
       "type": "object",
       "name": "projectGoalObservationResultSchema",
-      "shape": { "accepted": 9726, "reason": 9727 },
-      "catchall": 9729,
+      "shape": { "accepted": 9749, "reason": 9750 },
+      "catchall": 9752,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -57427,7 +57585,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9728,
+      "innerType": 9751,
       "checks": []
     },
     {
@@ -57446,14 +57604,14 @@
       "type": "object",
       "name": "cantripMcpContextGetResultSchema",
       "shape": {
-        "summary": 9731,
-        "target": 9732,
-        "worktreeId": 9734,
-        "continuationScheduled": 9737,
-        "mutated": 9739,
-        "data": 9741
+        "summary": 9754,
+        "target": 9755,
+        "worktreeId": 9757,
+        "continuationScheduled": 9760,
+        "mutated": 9762,
+        "data": 9764
       },
-      "catchall": 9790,
+      "catchall": 9813,
       "checks": []
     },
     {
@@ -57466,7 +57624,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9733,
+      "innerType": 9756,
       "defaultValue": null,
       "checks": []
     },
@@ -57474,11 +57632,11 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9735,
+      "innerType": 9758,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 9736, "checks": [] },
+    { "type": "nullable", "innerType": 9759, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -57489,7 +57647,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9738,
+      "innerType": 9761,
       "defaultValue": false,
       "checks": []
     },
@@ -57497,7 +57655,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9740,
+      "innerType": 9763,
       "defaultValue": false,
       "checks": []
     },
@@ -57505,18 +57663,18 @@
     {
       "type": "object",
       "shape": {
-        "worker": 9742,
-        "context": 9747,
-        "binding": 9761,
-        "contextWindow": 9770
+        "worker": 9765,
+        "context": 9770,
+        "binding": 9784,
+        "contextWindow": 9793
       },
-      "catchall": 9789,
+      "catchall": 9812,
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "id": 9743, "name": 9744, "online": 9745 },
-      "catchall": 9746,
+      "shape": { "id": 9766, "name": 9767, "online": 9768 },
+      "catchall": 9769,
       "checks": []
     },
     {
@@ -57538,20 +57696,20 @@
     {
       "type": "object",
       "shape": {
-        "chatId": 9748,
-        "executionLaneId": 9750,
-        "permissionProfileId": 9752,
-        "projectId": 9753,
+        "chatId": 9771,
+        "executionLaneId": 9773,
+        "permissionProfileId": 9775,
+        "projectId": 9776,
         "rootKind": 4422,
-        "terminalId": 9754,
-        "workerId": 9756,
-        "worktreeId": 9757,
-        "worktreeMode": 9758
+        "terminalId": 9777,
+        "workerId": 9779,
+        "worktreeId": 9780,
+        "worktreeMode": 9781
       },
-      "catchall": 9760,
+      "catchall": 9783,
       "checks": []
     },
-    { "type": "nullable", "innerType": 9749, "checks": [] },
+    { "type": "nullable", "innerType": 9772, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -57559,7 +57717,7 @@
         { "check": "max_length", "maximum": 200, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 9751, "checks": [] },
+    { "type": "nullable", "innerType": 9774, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -57575,7 +57733,7 @@
         { "check": "max_length", "maximum": 200, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 9755, "checks": [] },
+    { "type": "nullable", "innerType": 9778, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -57597,20 +57755,20 @@
         { "check": "max_length", "maximum": 200, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 9759, "checks": [] },
+    { "type": "nullable", "innerType": 9782, "checks": [] },
     { "type": "enum", "values": ["agent-managed", "pinned"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "cantripMcpBindingReadinessSchema",
       "shape": {
-        "status": 9762,
-        "mutationReady": 9763,
-        "staleClaims": 9764,
-        "recoveryInstruction": 9766,
-        "expiresAt": 9768
+        "status": 9785,
+        "mutationReady": 9786,
+        "staleClaims": 9787,
+        "recoveryInstruction": 9789,
+        "expiresAt": 9791
       },
-      "catchall": 9769,
+      "catchall": 9792,
       "checks": []
     },
     {
@@ -57621,7 +57779,7 @@
     { "type": "boolean", "checks": [] },
     {
       "type": "array",
-      "element": 9765,
+      "element": 9788,
       "checks": [{ "check": "max_length", "maximum": 10, "when": "length" }]
     },
     {
@@ -57641,7 +57799,7 @@
       ],
       "checks": []
     },
-    { "type": "nullable", "innerType": 9767, "checks": [] },
+    { "type": "nullable", "innerType": 9790, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -57665,26 +57823,26 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9771,
+      "innerType": 9794,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 9772, "checks": [] },
+    { "type": "nullable", "innerType": 9795, "checks": [] },
     {
       "type": "object",
       "name": "cantripMcpContextWindowSchema",
       "shape": {
-        "threadId": 9773,
-        "turnId": 9774,
-        "usedTokens": 9775,
-        "contextWindowTokens": 9777,
-        "remainingTokens": 9779,
-        "usedPercent": 9781,
-        "remainingPercent": 9783,
-        "usageUpdatedAtMs": 9785,
-        "compactionScheduled": 9787
+        "threadId": 9796,
+        "turnId": 9797,
+        "usedTokens": 9798,
+        "contextWindowTokens": 9800,
+        "remainingTokens": 9802,
+        "usedPercent": 9804,
+        "remainingPercent": 9806,
+        "usageUpdatedAtMs": 9808,
+        "compactionScheduled": 9810
       },
-      "catchall": 9788,
+      "catchall": 9811,
       "checks": []
     },
     {
@@ -57701,7 +57859,7 @@
         { "check": "max_length", "maximum": 200, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 9776, "checks": [] },
+    { "type": "nullable", "innerType": 9799, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -57709,7 +57867,7 @@
         { "check": "greater_than", "value": 0, "inclusive": true }
       ]
     },
-    { "type": "nullable", "innerType": 9778, "checks": [] },
+    { "type": "nullable", "innerType": 9801, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -57717,7 +57875,7 @@
         { "check": "greater_than", "value": 0, "inclusive": false }
       ]
     },
-    { "type": "nullable", "innerType": 9780, "checks": [] },
+    { "type": "nullable", "innerType": 9803, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -57725,7 +57883,7 @@
         { "check": "greater_than", "value": 0, "inclusive": true }
       ]
     },
-    { "type": "nullable", "innerType": 9782, "checks": [] },
+    { "type": "nullable", "innerType": 9805, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -57733,7 +57891,7 @@
         { "check": "less_than", "value": 100, "inclusive": true }
       ]
     },
-    { "type": "nullable", "innerType": 9784, "checks": [] },
+    { "type": "nullable", "innerType": 9807, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -57741,7 +57899,7 @@
         { "check": "less_than", "value": 100, "inclusive": true }
       ]
     },
-    { "type": "nullable", "innerType": 9786, "checks": [] },
+    { "type": "nullable", "innerType": 9809, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -57758,17 +57916,17 @@
       "name": "archivedChatWireSummarySchema",
       "shape": {
         "id": 8562,
-        "experience": 9792,
+        "experience": 9815,
         "messageCount": 8564,
         "archivedAt": 8565,
         "expiresAt": 8566,
         "createdAt": 8567,
         "updatedAt": 8568,
-        "contextKind": 9794,
-        "projectId": 9796,
+        "contextKind": 9817,
+        "projectId": 9819,
         "titleProtection": 779
       },
-      "catchall": 9797,
+      "catchall": 9820,
       "checks": [
         {
           "check": "refinement",
@@ -57782,7 +57940,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9793,
+      "innerType": 9816,
       "defaultValue": "agent",
       "checks": []
     },
@@ -57791,7 +57949,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9795,
+      "innerType": 9818,
       "checks": []
     },
     { "type": "literal", "values": ["project"], "checks": [] },
@@ -57810,14 +57968,14 @@
         "tabGroupId": 7234,
         "targetRegion": 7236,
         "target": 9540,
-        "cantripOsBindingId": 9799,
-        "attachToTabLayout": 9801,
-        "id": 9803,
+        "cantripOsBindingId": 9822,
+        "attachToTabLayout": 9824,
+        "id": 9826,
         "titleProtection": 779,
-        "autoTitle": 9804,
-        "githubAgentContext": 9806
+        "autoTitle": 9827,
+        "githubAgentContext": 9829
       },
-      "catchall": 9807,
+      "catchall": 9830,
       "checks": [
         {
           "check": "refinement",
@@ -57835,7 +57993,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9800,
+      "innerType": 9823,
       "checks": []
     },
     {
@@ -57855,7 +58013,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9802,
+      "innerType": 9825,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -57876,7 +58034,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9805,
+      "innerType": 9828,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -57891,14 +58049,14 @@
     {
       "type": "object",
       "name": "conversationCatalogQuerySchema",
-      "shape": { "state": 9809, "limit": 9811, "cursor": 9813 },
-      "catchall": 9815,
+      "shape": { "state": 9832, "limit": 9834, "cursor": 9836 },
+      "catchall": 9838,
       "checks": []
     },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9810,
+      "innerType": 9833,
       "defaultValue": "active",
       "checks": []
     },
@@ -57906,7 +58064,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9812,
+      "innerType": 9835,
       "defaultValue": 50,
       "checks": []
     },
@@ -57923,7 +58081,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9814,
+      "innerType": 9837,
       "checks": []
     },
     {
@@ -57937,23 +58095,23 @@
     {
       "type": "union",
       "name": "conversationCatalogWirePageSchema",
-      "options": [9817, 9828],
+      "options": [9840, 9851],
       "discriminator": "state",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "state": 9818,
-        "items": 9819,
-        "total": 9824,
-        "nextCursor": 9825
+        "state": 9841,
+        "items": 9842,
+        "total": 9847,
+        "nextCursor": 9848
       },
-      "catchall": 9827,
+      "catchall": 9850,
       "checks": []
     },
     { "type": "literal", "values": ["active"], "checks": [] },
-    { "type": "array", "element": 9820, "checks": [] },
+    { "type": "array", "element": 9843, "checks": [] },
     {
       "type": "object",
       "name": "conversationWireSummarySchema",
@@ -57961,7 +58119,7 @@
         "cantripOsBindingId": 854,
         "cantripOsRuntimeGeneration": 856,
         "id": 858,
-        "experience": 9821,
+        "experience": 9844,
         "position": 861,
         "status": 862,
         "activeWorkerId": 863,
@@ -57979,13 +58137,13 @@
         "githubAgentContext": 887,
         "createdAt": 895,
         "updatedAt": 896,
-        "contextKind": 9822,
+        "contextKind": 9845,
         "projectId": 899,
         "activeWorktreeId": 900,
         "activeScratchRootId": 901,
         "worktreeMode": 903,
         "titleProtection": 779,
-        "lastUsedAt": 9823
+        "lastUsedAt": 9846
       },
       "catchall": 904,
       "checks": [
@@ -58019,39 +58177,39 @@
         { "check": "greater_than", "value": 0, "inclusive": true }
       ]
     },
-    { "type": "nullable", "innerType": 9826, "checks": [] },
+    { "type": "nullable", "innerType": 9849, "checks": [] },
     { "type": "string", "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "shape": {
-        "state": 9829,
-        "items": 9830,
-        "total": 9824,
-        "nextCursor": 9825
+        "state": 9852,
+        "items": 9853,
+        "total": 9847,
+        "nextCursor": 9848
       },
-      "catchall": 9832,
+      "catchall": 9855,
       "checks": []
     },
     { "type": "literal", "values": ["archived"], "checks": [] },
-    { "type": "array", "element": 9831, "checks": [] },
+    { "type": "array", "element": 9854, "checks": [] },
     {
       "type": "object",
       "name": "archivedConversationWireSummarySchema",
       "shape": {
         "id": 8562,
-        "experience": 9821,
+        "experience": 9844,
         "messageCount": 8564,
         "archivedAt": 8565,
         "expiresAt": 8566,
         "createdAt": 8567,
         "updatedAt": 8568,
-        "contextKind": 9822,
-        "projectId": 9796,
+        "contextKind": 9845,
+        "projectId": 9819,
         "titleProtection": 779,
-        "lastUsedAt": 9823
+        "lastUsedAt": 9846
       },
-      "catchall": 9797,
+      "catchall": 9820,
       "checks": [
         {
           "check": "refinement",
@@ -58067,14 +58225,14 @@
       "type": "object",
       "name": "conversationCursorSchema",
       "shape": {
-        "version": 9834,
-        "projectId": 9835,
-        "state": 9836,
-        "at": 9837,
-        "createdAt": 9838,
-        "id": 9839
+        "version": 9857,
+        "projectId": 9858,
+        "state": 9859,
+        "at": 9860,
+        "createdAt": 9861,
+        "id": 9862
       },
-      "catchall": 9840,
+      "catchall": 9863,
       "checks": []
     },
     { "type": "literal", "values": [1], "checks": [] },
@@ -58115,8 +58273,8 @@
     {
       "type": "object",
       "name": "conversationUsageSchema",
-      "shape": { "clientId": 9842, "operationId": 9843, "sequence": 9844 },
-      "catchall": 9845,
+      "shape": { "clientId": 9865, "operationId": 9866, "sequence": 9867 },
+      "catchall": 9868,
       "checks": []
     },
     {
@@ -58156,8 +58314,8 @@
     {
       "type": "object",
       "name": "conversationUsageResultSchema",
-      "shape": { "lastUsedAt": 9847, "applied": 9848 },
-      "catchall": 9849,
+      "shape": { "lastUsedAt": 9870, "applied": 9871 },
+      "catchall": 9872,
       "checks": []
     },
     {
@@ -58178,10 +58336,10 @@
       "type": "object",
       "name": "agentThreadSyncSchema",
       "shape": {
-        "threadId": 9851,
-        "status": 9852,
-        "statusSource": 9853,
-        "turns": 9855
+        "threadId": 9874,
+        "status": 9875,
+        "statusSource": 9876,
+        "turns": 9878
       },
       "checks": []
     },
@@ -58194,20 +58352,20 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9854,
+      "innerType": 9877,
       "checks": []
     },
     { "type": "literal", "values": ["native-thread"], "checks": [] },
-    { "type": "array", "element": 9856, "checks": [] },
+    { "type": "array", "element": 9879, "checks": [] },
     {
       "type": "object",
       "shape": {
-        "id": 9857,
-        "status": 9858,
-        "startedAt": 9859,
-        "completedAt": 9861,
-        "durationMs": 9863,
-        "items": 9865
+        "id": 9880,
+        "status": 9881,
+        "startedAt": 9882,
+        "completedAt": 9884,
+        "durationMs": 9886,
+        "items": 9888
       },
       "checks": []
     },
@@ -58220,7 +58378,7 @@
       "values": ["completed", "failed", "interrupted", "inProgress"],
       "checks": []
     },
-    { "type": "nullable", "innerType": 9860, "checks": [] },
+    { "type": "nullable", "innerType": 9883, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -58228,7 +58386,7 @@
         { "check": "greater_than", "value": 0, "inclusive": true }
       ]
     },
-    { "type": "nullable", "innerType": 9862, "checks": [] },
+    { "type": "nullable", "innerType": 9885, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -58236,7 +58394,7 @@
         { "check": "greater_than", "value": 0, "inclusive": true }
       ]
     },
-    { "type": "nullable", "innerType": 9864, "checks": [] },
+    { "type": "nullable", "innerType": 9887, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -58244,21 +58402,21 @@
         { "check": "greater_than", "value": 0, "inclusive": true }
       ]
     },
-    { "type": "array", "element": 9866, "checks": [] },
+    { "type": "array", "element": 9889, "checks": [] },
     {
       "type": "union",
       "name": "agentThreadSyncItemSchema",
-      "options": [9867, 9874, 9876],
+      "options": [9890, 9897, 9899],
       "discriminator": "type",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "type": 9868,
-        "id": 9869,
-        "text": 9870,
-        "externalAttachmentIds": 9871
+        "type": 9891,
+        "id": 9892,
+        "text": 9893,
+        "externalAttachmentIds": 9894
       },
       "checks": [
         {
@@ -58278,13 +58436,13 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9872,
+      "innerType": 9895,
       "defaultValue": [],
       "checks": []
     },
     {
       "type": "array",
-      "element": 9873,
+      "element": 9896,
       "checks": [{ "check": "max_length", "maximum": 20, "when": "length" }]
     },
     {
@@ -58303,7 +58461,7 @@
     {
       "type": "object",
       "shape": {
-        "type": 9875,
+        "type": 9898,
         "id": 1630,
         "text": 1631,
         "phase": 1632,
@@ -58316,14 +58474,14 @@
     { "type": "literal", "values": ["agentMessage"], "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 9877, "activity": 1220 },
+      "shape": { "type": 9900, "activity": 1220 },
       "checks": []
     },
     { "type": "literal", "values": ["activity"], "checks": [] },
     {
       "type": "object",
       "name": "archivedChatCleanupResultSchema",
-      "shape": { "deleted": 9879 },
+      "shape": { "deleted": 9902 },
       "checks": []
     },
     {
@@ -58335,7 +58493,7 @@
     },
     {
       "type": "object",
-      "shape": { "kind": 9881, "every": 9882, "unit": 9883, "startsAt": 9884 },
+      "shape": { "kind": 9904, "every": 9905, "unit": 9906, "startsAt": 9907 },
       "checks": []
     },
     { "type": "literal", "values": ["interval"], "checks": [] },
@@ -58367,19 +58525,19 @@
     {
       "type": "object",
       "shape": {
-        "kind": 9886,
-        "weekdays": 9887,
-        "hour": 9891,
-        "minute": 9892,
-        "timeZone": 9893
+        "kind": 9909,
+        "weekdays": 9910,
+        "hour": 9914,
+        "minute": 9915,
+        "timeZone": 9916
       },
       "checks": []
     },
     { "type": "literal", "values": ["weekly"], "checks": [] },
-    { "type": "pipe", "in": 9888, "out": 9890, "checks": [] },
+    { "type": "pipe", "in": 9911, "out": 9913, "checks": [] },
     {
       "type": "array",
-      "element": 9889,
+      "element": 9912,
       "checks": [
         { "check": "min_length", "minimum": 1, "when": "length" },
         { "check": "max_length", "maximum": 7, "when": "length" }
@@ -58431,7 +58589,7 @@
     },
     {
       "type": "object",
-      "shape": { "kind": 9895, "expression": 9896, "timeZone": 9897 },
+      "shape": { "kind": 9918, "expression": 9919, "timeZone": 9920 },
       "checks": [
         {
           "check": "refinement",
@@ -58459,20 +58617,20 @@
     },
     {
       "type": "union",
-      "options": [9880, 9885, 9894],
+      "options": [9903, 9908, 9917],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "id": 9900,
-        "chatId": 9901,
-        "schedule": 9898,
-        "enabled": 9902,
+        "id": 9923,
+        "chatId": 9924,
+        "schedule": 9921,
+        "enabled": 9925,
         "content": 2738
       },
-      "catchall": 9904,
+      "catchall": 9927,
       "checks": []
     },
     {
@@ -58498,7 +58656,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9903,
+      "innerType": 9926,
       "defaultValue": true,
       "checks": []
     },
@@ -58507,12 +58665,12 @@
     {
       "type": "object",
       "shape": {
-        "chatId": 9906,
-        "schedule": 9907,
-        "enabled": 9908,
-        "content": 9910
+        "chatId": 9929,
+        "schedule": 9930,
+        "enabled": 9931,
+        "content": 9933
       },
-      "catchall": 9915,
+      "catchall": 9938,
       "checks": [
         {
           "check": "refinement",
@@ -58526,21 +58684,21 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9901,
+      "innerType": 9924,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9898,
+      "innerType": 9921,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9909,
+      "innerType": 9932,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -58548,15 +58706,15 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9911,
+      "innerType": 9934,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "protectedName": 9912,
-        "protectedPrompt": 9913,
-        "protectedCondition": 9914
+        "protectedName": 9935,
+        "protectedPrompt": 9936,
+        "protectedCondition": 9937
       },
       "catchall": 2742,
       "checks": []
@@ -58586,22 +58744,22 @@
     {
       "type": "object",
       "shape": {
-        "id": 9901,
-        "projectId": 9901,
-        "chatId": 9901,
-        "workerId": 9901,
-        "schedule": 9898,
-        "enabled": 9917,
-        "revision": 9918,
-        "nextRunAt": 9919,
-        "lastRunAt": 9920,
-        "lastStatus": 9921,
-        "lastError": 9922,
-        "createdAt": 9884,
-        "updatedAt": 9884,
+        "id": 9924,
+        "projectId": 9924,
+        "chatId": 9924,
+        "workerId": 9924,
+        "schedule": 9921,
+        "enabled": 9940,
+        "revision": 9941,
+        "nextRunAt": 9942,
+        "lastRunAt": 9943,
+        "lastStatus": 9944,
+        "lastError": 9945,
+        "createdAt": 9907,
+        "updatedAt": 9907,
         "content": 2738
       },
-      "catchall": 9924,
+      "catchall": 9947,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -58612,8 +58770,8 @@
         { "check": "greater_than", "value": 0, "inclusive": false }
       ]
     },
-    { "type": "nullable", "innerType": 9884, "checks": [] },
-    { "type": "nullable", "innerType": 9884, "checks": [] },
+    { "type": "nullable", "innerType": 9907, "checks": [] },
+    { "type": "nullable", "innerType": 9907, "checks": [] },
     {
       "type": "enum",
       "values": [
@@ -58626,16 +58784,16 @@
       ],
       "checks": []
     },
-    { "type": "nullable", "innerType": 9923, "checks": [] },
+    { "type": "nullable", "innerType": 9946, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 5000, "when": "length" }]
     },
     { "type": "never", "checks": [] },
-    { "type": "array", "element": 9916, "checks": [] },
+    { "type": "array", "element": 9939, "checks": [] },
     {
       "type": "object",
-      "shape": { "revision": 9927, "scheduledFor": 9884 },
+      "shape": { "revision": 9950, "scheduledFor": 9907 },
       "checks": []
     },
     {
@@ -58647,7 +58805,7 @@
     },
     {
       "type": "object",
-      "shape": { "accepted": 9929, "status": 9930, "nextRunAt": 9931 },
+      "shape": { "accepted": 9952, "status": 9953, "nextRunAt": 9954 },
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -58656,12 +58814,12 @@
       "values": ["started", "queued", "skipped"],
       "checks": []
     },
-    { "type": "nullable", "innerType": 9884, "checks": [] },
+    { "type": "nullable", "innerType": 9907, "checks": [] },
     {
       "type": "object",
       "name": "projectAutomationProtectedDispatchResultSchema",
-      "shape": { "allowed": 9933, "protectedTurn": 9934 },
-      "catchall": 9935,
+      "shape": { "allowed": 9956, "protectedTurn": 9957 },
+      "catchall": 9958,
       "checks": [
         {
           "check": "refinement",
@@ -58682,7 +58840,7 @@
     {
       "type": "object",
       "name": "agentInteractionAcceptedSchema",
-      "shape": { "accepted": 9938 },
+      "shape": { "accepted": 9961 },
       "checks": []
     },
     { "type": "literal", "values": [true], "checks": [] },
@@ -58690,12 +58848,12 @@
       "type": "object",
       "name": "protectedCustomizationRequestSchema",
       "shape": {
-        "operationId": 9940,
-        "operation": 9941,
+        "operationId": 9963,
+        "operation": 9964,
         "scope": 4465,
         "protectedRequest": 2337
       },
-      "catchall": 9942,
+      "catchall": 9965,
       "checks": []
     },
     {
@@ -58739,14 +58897,14 @@
       "type": "object",
       "name": "protectedCustomizationResponseSchema",
       "shape": {
-        "operationId": 9944,
-        "operation": 9941,
+        "operationId": 9967,
+        "operation": 9964,
         "scope": 4465,
-        "result": 9945,
-        "lifecycle": 9946,
+        "result": 9968,
+        "lifecycle": 9969,
         "protectedResponse": 2337
       },
-      "catchall": 9948,
+      "catchall": 9971,
       "checks": []
     },
     {
@@ -58766,7 +58924,7 @@
     {
       "type": "nullable",
       "name": "customizationContentLifecycleSchema",
-      "innerType": 9947,
+      "innerType": 9970,
       "checks": []
     },
     {
@@ -58778,20 +58936,20 @@
     {
       "type": "object",
       "name": "permissionProfileCapabilitySchema",
-      "shape": { "available": 9950, "profiles": 9951, "reason": 9955 },
+      "shape": { "available": 9973, "profiles": 9974, "reason": 9978 },
       "checks": []
     },
     { "type": "boolean", "checks": [] },
-    { "type": "array", "element": 9952, "checks": [] },
+    { "type": "array", "element": 9975, "checks": [] },
     {
       "type": "object",
       "name": "permissionProfileSummarySchema",
-      "shape": { "id": 4628, "description": 9953, "allowed": 9954 },
+      "shape": { "id": 4628, "description": 9976, "allowed": 9977 },
       "checks": []
     },
     { "type": "string", "checks": [] },
     { "type": "boolean", "checks": [] },
-    { "type": "nullable", "innerType": 9956, "checks": [] },
+    { "type": "nullable", "innerType": 9979, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -58800,17 +58958,17 @@
       "type": "object",
       "name": "chatPermissionProfileStateSchema",
       "shape": {
-        "available": 9950,
-        "profiles": 9951,
-        "reason": 9955,
+        "available": 9973,
+        "profiles": 9974,
+        "reason": 9978,
         "selectedId": 4628,
         "effectiveId": 4628,
-        "defaultId": 9958,
-        "usesDefault": 9959,
-        "forcedByWorktreePolicy": 9961,
-        "policyRevision": 9962,
-        "confirmed": 9964,
-        "transition": 9966
+        "defaultId": 9981,
+        "usesDefault": 9982,
+        "forcedByWorktreePolicy": 9984,
+        "policyRevision": 9985,
+        "confirmed": 9987,
+        "transition": 9989
       },
       "checks": []
     },
@@ -58824,7 +58982,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9960,
+      "innerType": 9983,
       "defaultValue": false,
       "checks": []
     },
@@ -58833,7 +58991,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9963,
+      "innerType": 9986,
       "defaultValue": "0",
       "checks": []
     },
@@ -58852,7 +59010,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9965,
+      "innerType": 9988,
       "defaultValue": false,
       "checks": []
     },
@@ -58860,11 +59018,11 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9967,
+      "innerType": 9990,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 9968, "checks": [] },
+    { "type": "nullable", "innerType": 9991, "checks": [] },
     {
       "type": "object",
       "shape": {
@@ -58872,8 +59030,8 @@
         "resolvedSelectedId": 4628,
         "effectiveId": 4628,
         "expectedRevision": 4781,
-        "operationId": 9969,
-        "status": 9970
+        "operationId": 9992,
+        "status": 9993
       },
       "catchall": 4782,
       "checks": []
@@ -58891,10 +59049,10 @@
       "type": "object",
       "name": "chatPermissionProfileUpdateSchema",
       "shape": {
-        "id": 9972,
-        "operationId": 9973,
-        "bindingId": 9975,
-        "expectedRevision": 9977
+        "id": 9995,
+        "operationId": 9996,
+        "bindingId": 9998,
+        "expectedRevision": 10000
       },
       "checks": []
     },
@@ -58903,7 +59061,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9974,
+      "innerType": 9997,
       "checks": []
     },
     {
@@ -58917,7 +59075,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9976,
+      "innerType": 9999,
       "checks": []
     },
     {
@@ -58931,7 +59089,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9978,
+      "innerType": 10001,
       "checks": []
     },
     {
@@ -58949,7 +59107,7 @@
     {
       "type": "object",
       "name": "chatModelUpdateSchema",
-      "shape": { "modelId": 9980 },
+      "shape": { "modelId": 10003 },
       "checks": []
     },
     {
@@ -58959,14 +59117,14 @@
     {
       "type": "object",
       "name": "chatReasoningUpdateSchema",
-      "shape": { "reasoningEffort": 9982 },
+      "shape": { "reasoningEffort": 10005 },
       "checks": []
     },
     { "type": "nullable", "innerType": 871, "checks": [] },
     {
       "type": "object",
       "name": "skillSettingsContextSchema",
-      "shape": { "workerId": 9984, "providerId": 9985, "projectId": 9986 },
+      "shape": { "workerId": 10007, "providerId": 10008, "projectId": 10009 },
       "checks": []
     },
     {
@@ -58986,11 +59144,11 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9987,
+      "innerType": 10010,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 9988, "checks": [] },
+    { "type": "nullable", "innerType": 10011, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -59001,8 +59159,8 @@
     {
       "type": "object",
       "name": "skillAudienceContextSchema",
-      "shape": { "workerId": 9984, "providerId": 9985 },
-      "catchall": 9990,
+      "shape": { "workerId": 10007, "providerId": 10008 },
+      "catchall": 10013,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -59010,12 +59168,12 @@
       "type": "object",
       "name": "skillAudienceUpdateSchema",
       "shape": {
-        "workerId": 9984,
-        "providerId": 9985,
+        "workerId": 10007,
+        "providerId": 10008,
         "audienceKey": 126,
-        "audience": 9992
+        "audience": 10015
       },
-      "catchall": 9993,
+      "catchall": 10016,
       "checks": []
     },
     {
@@ -59029,8 +59187,8 @@
     {
       "type": "object",
       "name": "skillAudienceSummarySchema",
-      "shape": { "audienceKey": 126, "audience": 9995 },
-      "catchall": 9996,
+      "shape": { "audienceKey": 126, "audience": 10018 },
+      "catchall": 10019,
       "checks": []
     },
     {
@@ -59044,36 +59202,36 @@
     {
       "type": "array",
       "name": "skillAudienceListSchema",
-      "element": 9994,
+      "element": 10017,
       "checks": [{ "check": "max_length", "maximum": 5000, "when": "length" }]
     },
     {
       "type": "object",
       "name": "skillSettingsInventorySchema",
-      "shape": { "project": 9999, "global": 10014, "errors": 10015 },
+      "shape": { "project": 10022, "global": 10037, "errors": 10038 },
       "checks": []
     },
     {
       "type": "array",
-      "element": 10000,
+      "element": 10023,
       "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
     },
     {
       "type": "object",
       "name": "skillSettingsItemSchema",
       "shape": {
-        "name": 10001,
-        "description": 10002,
-        "displayName": 10003,
-        "id": 10005,
+        "name": 10024,
+        "description": 10025,
+        "displayName": 10026,
+        "id": 10028,
         "audienceKey": 126,
-        "audience": 10006,
-        "scope": 10007,
-        "location": 10008,
-        "path": 10009,
-        "enabled": 10010,
-        "editable": 10012,
-        "deletable": 10013
+        "audience": 10029,
+        "scope": 10030,
+        "location": 10031,
+        "path": 10032,
+        "enabled": 10033,
+        "editable": 10035,
+        "deletable": 10036
       },
       "checks": []
     },
@@ -59082,7 +59240,7 @@
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
     { "type": "string", "checks": [] },
-    { "type": "nullable", "innerType": 10004, "checks": [] },
+    { "type": "nullable", "innerType": 10027, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -59122,7 +59280,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 10011,
+      "innerType": 10034,
       "defaultValue": true,
       "checks": []
     },
@@ -59131,18 +59289,18 @@
     { "type": "boolean", "checks": [] },
     {
       "type": "array",
-      "element": 10000,
+      "element": 10023,
       "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
     },
     {
       "type": "array",
-      "element": 10016,
+      "element": 10039,
       "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
     },
     {
       "type": "object",
       "name": "skillSettingsErrorSchema",
-      "shape": { "path": 10017, "message": 10018 },
+      "shape": { "path": 10040, "message": 10041 },
       "checks": []
     },
     {
@@ -59160,17 +59318,17 @@
       "type": "object",
       "name": "skillSettingsDocumentSchema",
       "shape": {
-        "skill": 10000,
-        "file": 10020,
-        "files": 10023,
-        "content": 10024
+        "skill": 10023,
+        "file": 10043,
+        "files": 10046,
+        "content": 10047
       },
       "checks": []
     },
     {
       "type": "object",
       "name": "skillSettingsFileSchema",
-      "shape": { "path": 10021, "sizeBytes": 10022 },
+      "shape": { "path": 10044, "sizeBytes": 10045 },
       "checks": []
     },
     {
@@ -59190,7 +59348,7 @@
     },
     {
       "type": "array",
-      "element": 10020,
+      "element": 10043,
       "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
     },
     {
@@ -59202,11 +59360,11 @@
     {
       "type": "object",
       "name": "skillSettingsMutationResultSchema",
-      "shape": { "changed": 10026, "recoveryPath": 10027 },
+      "shape": { "changed": 10049, "recoveryPath": 10050 },
       "checks": []
     },
     { "type": "literal", "values": [true], "checks": [] },
-    { "type": "nullable", "innerType": 10028, "checks": [] },
+    { "type": "nullable", "innerType": 10051, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -59217,7 +59375,7 @@
     {
       "type": "object",
       "name": "skillSettingsConfigResultSchema",
-      "shape": { "skillId": 10005, "effectiveEnabled": 10030 },
+      "shape": { "skillId": 10028, "effectiveEnabled": 10053 },
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -59225,18 +59383,18 @@
       "type": "object",
       "name": "skillSettingsFileRequestSchema",
       "shape": {
-        "workerId": 9984,
-        "providerId": 9985,
-        "projectId": 9986,
-        "skillId": 10005,
-        "file": 10032
+        "workerId": 10007,
+        "providerId": 10008,
+        "projectId": 10009,
+        "skillId": 10028,
+        "file": 10055
       },
       "checks": []
     },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 10021,
+      "innerType": 10044,
       "defaultValue": "SKILL.md",
       "checks": []
     },
@@ -59244,12 +59402,12 @@
       "type": "object",
       "name": "skillSettingsFileUpdateSchema",
       "shape": {
-        "workerId": 9984,
-        "providerId": 9985,
-        "projectId": 9986,
-        "skillId": 10005,
-        "file": 10032,
-        "content": 10034
+        "workerId": 10007,
+        "providerId": 10008,
+        "projectId": 10009,
+        "skillId": 10028,
+        "file": 10055,
+        "content": 10057
       },
       "checks": []
     },
@@ -59263,10 +59421,10 @@
       "type": "object",
       "name": "skillSettingsDeleteRequestSchema",
       "shape": {
-        "workerId": 9984,
-        "providerId": 9985,
-        "projectId": 9986,
-        "skillId": 10005
+        "workerId": 10007,
+        "providerId": 10008,
+        "projectId": 10009,
+        "skillId": 10028
       },
       "checks": []
     },
@@ -59274,11 +59432,11 @@
       "type": "object",
       "name": "skillSettingsConfigUpdateSchema",
       "shape": {
-        "workerId": 9984,
-        "providerId": 9985,
-        "projectId": 9986,
-        "skillId": 10005,
-        "enabled": 10037
+        "workerId": 10007,
+        "providerId": 10008,
+        "projectId": 10009,
+        "skillId": 10028,
+        "enabled": 10060
       },
       "checks": []
     },
@@ -59287,14 +59445,14 @@
       "type": "object",
       "name": "encryptedMcpServerCreateSchema",
       "shape": {
-        "id": 10039,
-        "audience": 10040,
-        "enabled": 10041,
-        "workerId": 10042,
+        "id": 10062,
+        "audience": 10063,
+        "enabled": 10064,
+        "workerId": 10065,
         "nameBlindIndex": 126,
         "protectedConfiguration": 2634
       },
-      "catchall": 10045,
+      "catchall": 10068,
       "checks": []
     },
     {
@@ -59321,11 +59479,11 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 10043,
+      "innerType": 10066,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 10044, "checks": [] },
+    { "type": "nullable", "innerType": 10067, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -59338,13 +59496,13 @@
       "type": "object",
       "name": "encryptedMcpServerUpdateSchema",
       "shape": {
-        "enabled": 10041,
-        "workerId": 10042,
+        "enabled": 10064,
+        "workerId": 10065,
         "nameBlindIndex": 126,
         "protectedConfiguration": 2634,
-        "audience": 10047
+        "audience": 10070
       },
-      "catchall": 10048,
+      "catchall": 10071,
       "checks": []
     },
     {
@@ -59359,18 +59517,18 @@
       "type": "intersection",
       "name": "mcpServerWireSummarySchema",
       "left": 4326,
-      "right": 10050,
+      "right": 10073,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "audience": 10051,
-        "scope": 10052,
-        "projectId": 10053,
-        "workerId": 10055,
-        "createdAt": 10057,
-        "updatedAt": 10058
+        "audience": 10074,
+        "scope": 10075,
+        "projectId": 10076,
+        "workerId": 10078,
+        "createdAt": 10080,
+        "updatedAt": 10081
       },
       "checks": []
     },
@@ -59387,12 +59545,12 @@
       "values": ["global", "project"],
       "checks": []
     },
-    { "type": "nullable", "innerType": 10054, "checks": [] },
+    { "type": "nullable", "innerType": 10077, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 10056, "checks": [] },
+    { "type": "nullable", "innerType": 10079, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -59427,19 +59585,19 @@
     {
       "type": "array",
       "name": "mcpServerWireListSchema",
-      "element": 10049,
+      "element": 10072,
       "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
     },
     {
       "type": "object",
       "name": "mcpServerDiscoveryResultSchema",
       "shape": {
-        "workerId": 10061,
-        "observedAt": 10062,
-        "candidates": 10063,
-        "issues": 10068
+        "workerId": 10084,
+        "observedAt": 10085,
+        "candidates": 10086,
+        "issues": 10091
       },
-      "catchall": 10073,
+      "catchall": 10096,
       "checks": []
     },
     {
@@ -59463,18 +59621,18 @@
     },
     {
       "type": "array",
-      "element": 10064,
+      "element": 10087,
       "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
     },
     {
       "type": "object",
       "name": "mcpServerDiscoveryCandidateSchema",
       "shape": {
-        "source": 10065,
-        "sourceScope": 10066,
-        "configuration": 10038
+        "source": 10088,
+        "sourceScope": 10089,
+        "configuration": 10061
       },
-      "catchall": 10067,
+      "catchall": 10090,
       "checks": [
         {
           "check": "refinement",
@@ -59498,19 +59656,19 @@
     { "type": "never", "checks": [] },
     {
       "type": "array",
-      "element": 10069,
+      "element": 10092,
       "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
     },
     {
       "type": "object",
       "name": "mcpServerDiscoveryIssueSchema",
       "shape": {
-        "source": 10065,
-        "sourceScope": 10066,
-        "code": 10070,
-        "message": 10071
+        "source": 10088,
+        "sourceScope": 10089,
+        "code": 10093,
+        "message": 10094
       },
-      "catchall": 10072,
+      "catchall": 10095,
       "checks": []
     },
     {
@@ -59530,8 +59688,8 @@
     {
       "type": "object",
       "name": "agentTaskCreateWireSchema",
-      "shape": { "operationId": 10075, "task": 9535 },
-      "catchall": 10076,
+      "shape": { "operationId": 10098, "task": 9535 },
+      "catchall": 10099,
       "checks": []
     },
     {
@@ -59551,30 +59709,30 @@
     {
       "type": "object",
       "name": "agentTaskStatusWireSchema",
-      "shape": { "tasks": 10078, "missingTaskIds": 10090, "nextCursor": 10091 },
-      "catchall": 10093,
+      "shape": { "tasks": 10101, "missingTaskIds": 10113, "nextCursor": 10114 },
+      "catchall": 10116,
       "checks": []
     },
     {
       "type": "array",
-      "element": 10079,
+      "element": 10102,
       "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
     },
     {
       "type": "object",
       "name": "agentTaskWireDescriptorSchema",
       "shape": {
-        "id": 10080,
+        "id": 10103,
         "titleProtection": 779,
         "state": 4846,
-        "dispatchState": 10081,
-        "eligibilityCode": 10083,
+        "dispatchState": 10104,
+        "eligibilityCode": 10106,
         "configuration": 931,
-        "terminal": 10085,
-        "completedAt": 10086,
-        "updatedAt": 10088
+        "terminal": 10108,
+        "completedAt": 10109,
+        "updatedAt": 10111
       },
-      "catchall": 10089,
+      "catchall": 10112,
       "checks": []
     },
     {
@@ -59590,18 +59748,18 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 10082, "checks": [] },
+    { "type": "nullable", "innerType": 10105, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 10084, "checks": [] },
+    { "type": "nullable", "innerType": 10107, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
     },
     { "type": "boolean", "checks": [] },
-    { "type": "nullable", "innerType": 10087, "checks": [] },
+    { "type": "nullable", "innerType": 10110, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -59629,10 +59787,10 @@
     { "type": "never", "checks": [] },
     {
       "type": "array",
-      "element": 10080,
+      "element": 10103,
       "checks": [{ "check": "max_length", "maximum": 50, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 10092, "checks": [] },
+    { "type": "nullable", "innerType": 10115, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -59644,8 +59802,8 @@
     {
       "type": "object",
       "name": "cantripMcpTaskCreateInputSchema",
-      "shape": { "description": 10095, "title": 10096, "operationId": 10098 },
-      "catchall": 10099,
+      "shape": { "description": 10118, "title": 10119, "operationId": 10121 },
+      "catchall": 10122,
       "checks": []
     },
     {
@@ -59660,7 +59818,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 10097,
+      "innerType": 10120,
       "checks": []
     },
     {
@@ -59688,14 +59846,14 @@
     {
       "type": "object",
       "name": "cantripMcpTaskListInputSchema",
-      "shape": { "cursor": 10101, "limit": 10103 },
-      "catchall": 10105,
+      "shape": { "cursor": 10124, "limit": 10126 },
+      "catchall": 10128,
       "checks": []
     },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 10102,
+      "innerType": 10125,
       "defaultValue": 0,
       "checks": []
     },
@@ -59710,7 +59868,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 10104,
+      "innerType": 10127,
       "defaultValue": 50,
       "checks": []
     },
@@ -59726,13 +59884,13 @@
     {
       "type": "object",
       "name": "cantripMcpTaskStatusInputSchema",
-      "shape": { "taskIds": 10107 },
-      "catchall": 10108,
+      "shape": { "taskIds": 10130 },
+      "catchall": 10131,
       "checks": []
     },
     {
       "type": "array",
-      "element": 10080,
+      "element": 10103,
       "checks": [
         { "check": "min_length", "minimum": 1, "when": "length" },
         { "check": "max_length", "maximum": 50, "when": "length" }
@@ -59742,14 +59900,14 @@
     {
       "type": "object",
       "name": "cantripMcpTaskWaitInputSchema",
-      "shape": { "taskIds": 10107, "mode": 10110, "timeoutMs": 10112 },
-      "catchall": 10114,
+      "shape": { "taskIds": 10130, "mode": 10133, "timeoutMs": 10135 },
+      "catchall": 10137,
       "checks": []
     },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 10111,
+      "innerType": 10134,
       "defaultValue": "all",
       "checks": []
     },
@@ -59757,7 +59915,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 10113,
+      "innerType": 10136,
       "defaultValue": 0,
       "checks": []
     },
@@ -59773,18 +59931,18 @@
     {
       "type": "union",
       "name": "cantripOsProvisionIntentSchema",
-      "options": [10116, 10120],
+      "options": [10139, 10143],
       "discriminator": "mode",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "mode": 10117,
-        "workerPath": 10118,
+        "mode": 10140,
+        "workerPath": 10141,
         "dependencyOverlays": 2552
       },
-      "catchall": 10119,
+      "catchall": 10142,
       "checks": []
     },
     { "type": "literal", "values": ["linked"], "checks": [] },
@@ -59795,21 +59953,21 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "mode": 10121, "source": 10122 },
-      "catchall": 10136,
+      "shape": { "mode": 10144, "source": 10145 },
+      "catchall": 10159,
       "checks": []
     },
     { "type": "literal", "values": ["linux-owned"], "checks": [] },
     {
       "type": "union",
-      "options": [10123, 10128, 10133],
+      "options": [10146, 10151, 10156],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 10124, "repositoryUrl": 10125, "revision": 10126 },
-      "catchall": 10127,
+      "shape": { "kind": 10147, "repositoryUrl": 10148, "revision": 10149 },
+      "catchall": 10150,
       "checks": []
     },
     { "type": "literal", "values": ["git"], "checks": [] },
@@ -59835,8 +59993,8 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 10129, "revision": 10130, "branch": 10131 },
-      "catchall": 10132,
+      "shape": { "kind": 10152, "revision": 10153, "branch": 10154 },
+      "catchall": 10155,
       "checks": []
     },
     { "type": "literal", "values": ["git-worktree"], "checks": [] },
@@ -59856,8 +60014,8 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 10134 },
-      "catchall": 10135,
+      "shape": { "kind": 10157 },
+      "catchall": 10158,
       "checks": []
     },
     { "type": "literal", "values": ["folder"], "checks": [] },
@@ -59867,14 +60025,14 @@
       "type": "object",
       "name": "cantripOsProvisionRequestContentSchema",
       "shape": {
-        "type": 10138,
-        "instanceId": 10139,
-        "workspaceId": 10140,
-        "bindingId": 10141,
-        "bindingGeneration": 10142,
-        "intent": 10115
+        "type": 10161,
+        "instanceId": 10162,
+        "workspaceId": 10163,
+        "bindingId": 10164,
+        "bindingGeneration": 10165,
+        "intent": 10138
       },
-      "catchall": 10143,
+      "catchall": 10166,
       "checks": []
     },
     {
@@ -59939,12 +60097,12 @@
       "type": "object",
       "name": "cantripOsObservedInstanceSchema",
       "shape": {
-        "guestInstanceId": 10145,
-        "runtimeGeneration": 10146,
-        "attachment": 10147,
-        "workspaces": 10150
+        "guestInstanceId": 10168,
+        "runtimeGeneration": 10169,
+        "attachment": 10170,
+        "workspaces": 10173
       },
-      "catchall": 10155,
+      "catchall": 10178,
       "checks": []
     },
     {
@@ -59973,25 +60131,25 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 10148, "checks": [] },
+    { "type": "nullable", "innerType": 10171, "checks": [] },
     {
       "type": "object",
       "shape": { "ownerId": 2538, "workerId": 2538 },
-      "catchall": 10149,
+      "catchall": 10172,
       "checks": []
     },
     { "type": "never", "checks": [] },
-    { "type": "array", "element": 10151, "checks": [] },
+    { "type": "array", "element": 10174, "checks": [] },
     {
       "type": "object",
       "name": "cantripOsWorkspaceObservationSchema",
       "shape": {
         "guestWorkspaceId": 2566,
-        "uid": 10152,
-        "gid": 10153,
+        "uid": 10175,
+        "gid": 10176,
         "homeGuestPath": 2551
       },
-      "catchall": 10154,
+      "catchall": 10177,
       "checks": []
     },
     {
@@ -60014,25 +60172,25 @@
       "type": "object",
       "name": "cantripOsSourceReceiptSchema",
       "shape": {
-        "bindingId": 10157,
-        "workspaceId": 10158,
+        "bindingId": 10180,
+        "workspaceId": 10181,
         "guestWorkspaceId": 2538,
-        "mode": 10159,
+        "mode": 10182,
         "guestPath": 2551,
-        "runtimeGeneration": 10160,
-        "uid": 10161,
+        "runtimeGeneration": 10183,
+        "uid": 10184,
         "homeGuestPath": 2551,
-        "head": 10162,
-        "branch": 10164,
-        "detached": 10166,
-        "repositoryFingerprint": 10167,
-        "gitCommonGuestPath": 10168,
-        "recreated": 10169,
-        "interruptedGuestWorkspaces": 10170,
+        "head": 10185,
+        "branch": 10187,
+        "detached": 10189,
+        "repositoryFingerprint": 10190,
+        "gitCommonGuestPath": 10191,
+        "recreated": 10192,
+        "interruptedGuestWorkspaces": 10193,
         "dependencyOverlays": 2552,
-        "cleanupWarnings": 10171
+        "cleanupWarnings": 10194
       },
-      "catchall": 10173,
+      "catchall": 10196,
       "checks": []
     },
     {
@@ -60082,16 +60240,16 @@
         { "check": "greater_than", "value": 0, "inclusive": false }
       ]
     },
-    { "type": "nullable", "innerType": 10163, "checks": [] },
+    { "type": "nullable", "innerType": 10186, "checks": [] },
     { "type": "string", "checks": [] },
-    { "type": "nullable", "innerType": 10165, "checks": [] },
+    { "type": "nullable", "innerType": 10188, "checks": [] },
     { "type": "string", "checks": [] },
     { "type": "boolean", "checks": [] },
     { "type": "nullable", "innerType": 2538, "checks": [] },
     { "type": "nullable", "innerType": 2551, "checks": [] },
     { "type": "boolean", "checks": [] },
     { "type": "array", "element": 2538, "checks": [] },
-    { "type": "array", "element": 10172, "checks": [] },
+    { "type": "array", "element": 10195, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 4000, "when": "length" }]
@@ -60100,21 +60258,21 @@
     {
       "type": "union",
       "name": "cantripOsOperationResultSchema",
-      "options": [10175, 10189],
+      "options": [10198, 10212],
       "discriminator": "state",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "operationId": 10176,
-        "startedAt": 10177,
-        "updatedAt": 10178,
-        "state": 10179,
-        "error": 10180,
-        "receipt": 10181
+        "operationId": 10199,
+        "startedAt": 10200,
+        "updatedAt": 10201,
+        "state": 10202,
+        "error": 10203,
+        "receipt": 10204
       },
-      "catchall": 10188,
+      "catchall": 10211,
       "checks": []
     },
     {
@@ -60158,22 +60316,22 @@
     { "type": "null", "checks": [] },
     {
       "type": "union",
-      "options": [10182, 10185],
+      "options": [10205, 10208],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 10183, "workspace": 10151 },
-      "catchall": 10184,
+      "shape": { "kind": 10206, "workspace": 10174 },
+      "catchall": 10207,
       "checks": []
     },
     { "type": "literal", "values": ["workspace"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 10186, "source": 10156 },
-      "catchall": 10187,
+      "shape": { "kind": 10209, "source": 10179 },
+      "catchall": 10210,
       "checks": []
     },
     { "type": "literal", "values": ["source"], "checks": [] },
@@ -60182,14 +60340,14 @@
     {
       "type": "object",
       "shape": {
-        "operationId": 10176,
-        "startedAt": 10177,
-        "updatedAt": 10178,
-        "state": 10190,
-        "error": 10191,
-        "receipt": 10193
+        "operationId": 10199,
+        "startedAt": 10200,
+        "updatedAt": 10201,
+        "state": 10213,
+        "error": 10214,
+        "receipt": 10216
       },
-      "catchall": 10194,
+      "catchall": 10217,
       "checks": []
     },
     {
@@ -60197,18 +60355,18 @@
       "values": ["running", "failed", "unknown"],
       "checks": []
     },
-    { "type": "nullable", "innerType": 10192, "checks": [] },
+    { "type": "nullable", "innerType": 10215, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 4000, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 10181, "checks": [] },
+    { "type": "nullable", "innerType": 10204, "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "cantripOsInspectSchema",
-      "shape": { "workerId": 10196, "transport": 2563 },
-      "catchall": 10197,
+      "shape": { "workerId": 10219, "transport": 2563 },
+      "catchall": 10220,
       "checks": []
     },
     {
@@ -60222,8 +60380,8 @@
     {
       "type": "object",
       "name": "cantripOsWorkspaceCreateSchema",
-      "shape": { "guestWorkspaceId": 10199, "operationId": 10200 },
-      "catchall": 10201,
+      "shape": { "guestWorkspaceId": 10222, "operationId": 10223 },
+      "catchall": 10224,
       "checks": []
     },
     {
@@ -60255,19 +60413,19 @@
     {
       "type": "union",
       "name": "cantripOsBindingCreateSchema",
-      "options": [10203, 10208, 10213],
+      "options": [10226, 10231, 10236],
       "discriminator": "mode",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "mode": 10204,
-        "workspaceId": 10205,
-        "worktreeId": 10206,
+        "mode": 10227,
+        "workspaceId": 10228,
+        "worktreeId": 10229,
         "dependencyOverlays": 2552
       },
-      "catchall": 10207,
+      "catchall": 10230,
       "checks": []
     },
     { "type": "literal", "values": ["linked"], "checks": [] },
@@ -60300,8 +60458,8 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "mode": 10209, "workspaceId": 10210, "sourceKind": 10211 },
-      "catchall": 10212,
+      "shape": { "mode": 10232, "workspaceId": 10233, "sourceKind": 10234 },
+      "catchall": 10235,
       "checks": []
     },
     { "type": "literal", "values": ["linux-owned"], "checks": [] },
@@ -60323,12 +60481,12 @@
     {
       "type": "object",
       "shape": {
-        "mode": 10214,
-        "sourceBindingId": 10215,
-        "expectedRuntimeGeneration": 10216,
-        "operationId": 10217
+        "mode": 10237,
+        "sourceBindingId": 10238,
+        "expectedRuntimeGeneration": 10239,
+        "operationId": 10240
       },
-      "catchall": 10218,
+      "catchall": 10241,
       "checks": []
     },
     { "type": "literal", "values": ["linux-worktree"], "checks": [] },
@@ -60376,11 +60534,11 @@
       "type": "object",
       "name": "cantripOsProvisionSchema",
       "shape": {
-        "operationId": 10220,
-        "bindingGeneration": 10221,
+        "operationId": 10243,
+        "bindingGeneration": 10244,
         "protectedRequest": 4333
       },
-      "catchall": 10222,
+      "catchall": 10245,
       "checks": []
     },
     {
@@ -60413,14 +60571,14 @@
     {
       "type": "union",
       "name": "projectSourceLocationSchema",
-      "options": [10224, 10228],
+      "options": [10247, 10251],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 10225, "workerPath": 10226 },
-      "catchall": 10227,
+      "shape": { "kind": 10248, "workerPath": 10249 },
+      "catchall": 10250,
       "checks": []
     },
     { "type": "literal", "values": ["worker-local"], "checks": [] },
@@ -60432,12 +60590,12 @@
     {
       "type": "object",
       "shape": {
-        "kind": 10229,
+        "kind": 10252,
         "instanceId": 2566,
         "workspaceId": 2566,
         "guestPath": 2551
       },
-      "catchall": 10230,
+      "catchall": 10253,
       "checks": []
     },
     { "type": "literal", "values": ["cantrip-os"], "checks": [] },
@@ -60447,12 +60605,12 @@
       "name": "cantripOsAttachSchema",
       "shape": {
         "workerId": 2566,
-        "guestInstanceId": 10232,
-        "name": 10233,
+        "guestInstanceId": 10255,
+        "name": 10256,
         "transport": 2563,
-        "expectedAttachmentGeneration": 10234
+        "expectedAttachmentGeneration": 10257
       },
-      "catchall": 10235,
+      "catchall": 10258,
       "checks": []
     },
     {
@@ -60484,15 +60642,15 @@
         "id": 2566,
         "ownerId": 2566,
         "workerId": 2566,
-        "guestInstanceId": 10237,
+        "guestInstanceId": 10260,
         "attachmentGeneration": 2566,
-        "name": 10238,
-        "status": 10239,
-        "runtimeGeneration": 10240,
-        "lastError": 10241,
-        "lastObservedAt": 10243,
-        "createdAt": 10245,
-        "updatedAt": 10246
+        "name": 10261,
+        "status": 10262,
+        "runtimeGeneration": 10263,
+        "lastError": 10264,
+        "lastObservedAt": 10266,
+        "createdAt": 10268,
+        "updatedAt": 10269
       },
       "checks": []
     },
@@ -60522,12 +60680,12 @@
       "checks": []
     },
     { "type": "nullable", "innerType": 2566, "checks": [] },
-    { "type": "nullable", "innerType": 10242, "checks": [] },
+    { "type": "nullable", "innerType": 10265, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 4000, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 10244, "checks": [] },
+    { "type": "nullable", "innerType": 10267, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -60572,11 +60730,11 @@
         "instanceId": 2566,
         "workerId": 2566,
         "guestWorkspaceId": 2566,
-        "uid": 10248,
-        "gid": 10249,
+        "uid": 10271,
+        "gid": 10272,
         "homeGuestPath": 2551,
-        "createdAt": 10250,
-        "updatedAt": 10251
+        "createdAt": 10273,
+        "updatedAt": 10274
       },
       "checks": []
     },
@@ -60629,13 +60787,13 @@
         "instanceId": 2566,
         "workspaceId": 2566,
         "guestPath": 2551,
-        "ownershipKind": 10253,
-        "repositoryFingerprint": 10254,
-        "primaryWorktreeId": 10255,
-        "createdAt": 10256,
-        "updatedAt": 10257
+        "ownershipKind": 10276,
+        "repositoryFingerprint": 10277,
+        "primaryWorktreeId": 10278,
+        "createdAt": 10279,
+        "updatedAt": 10280
       },
-      "catchall": 10258,
+      "catchall": 10281,
       "checks": []
     },
     { "type": "enum", "values": ["cantrip", "user"], "checks": [] },
@@ -60693,7 +60851,7 @@
         "workspaceId": 2566,
         "guestPath": 2551
       },
-      "catchall": 10260,
+      "catchall": 10283,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -60709,23 +60867,23 @@
         "worktreeId": 2566,
         "instanceId": 2566,
         "workspaceId": 2566,
-        "mode": 10262,
-        "linkedWorkerPath": 10263,
+        "mode": 10285,
+        "linkedWorkerPath": 10286,
         "guestPath": 2551,
         "bindingGeneration": 2566,
-        "provisionedAttachmentGeneration": 10265,
-        "provisionedRuntimeGeneration": 10266,
-        "state": 10267,
-        "lastError": 10268,
+        "provisionedAttachmentGeneration": 10288,
+        "provisionedRuntimeGeneration": 10289,
+        "state": 10290,
+        "lastError": 10291,
         "dependencyOverlays": 2552,
-        "createdAt": 10270,
-        "updatedAt": 10271
+        "createdAt": 10293,
+        "updatedAt": 10294
       },
-      "catchall": 10272,
+      "catchall": 10295,
       "checks": []
     },
     { "type": "enum", "values": ["linked", "linux-owned"], "checks": [] },
-    { "type": "nullable", "innerType": 10264, "checks": [] },
+    { "type": "nullable", "innerType": 10287, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -60737,7 +60895,7 @@
       "values": ["provisioning", "ready", "failed", "unknown", "retired"],
       "checks": []
     },
-    { "type": "nullable", "innerType": 10269, "checks": [] },
+    { "type": "nullable", "innerType": 10292, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 4000, "when": "length" }]
@@ -60771,19 +60929,19 @@
       "type": "object",
       "name": "cantripOsRunDefinitionApiSchema",
       "shape": {
-        "bindingGeneration": 10274,
-        "attachmentGeneration": 10276,
-        "runtimeGeneration": 10278,
+        "bindingGeneration": 10297,
+        "attachmentGeneration": 10299,
+        "runtimeGeneration": 10301,
         "request": 5622
       },
-      "catchall": 10279,
+      "catchall": 10302,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 10275,
+      "innerType": 10298,
       "checks": []
     },
     {
@@ -60803,7 +60961,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 10277,
+      "innerType": 10300,
       "checks": []
     },
     {
@@ -60836,21 +60994,21 @@
     {
       "type": "object",
       "name": "cantripOsRunDefinitionResponseSchema",
-      "shape": { "source": 10281, "result": 10287 },
-      "catchall": 10288,
+      "shape": { "source": 10304, "result": 10310 },
+      "catchall": 10311,
       "checks": []
     },
     {
       "type": "object",
       "name": "cantripOsRunPrimarySchema",
       "shape": {
-        "bindingId": 10282,
-        "worktreeId": 10283,
-        "projectSourceId": 10284,
-        "runtimeGeneration": 10285,
+        "bindingId": 10305,
+        "worktreeId": 10306,
+        "projectSourceId": 10307,
+        "runtimeGeneration": 10308,
         "guestPath": 2551
       },
-      "catchall": 10286,
+      "catchall": 10309,
       "checks": []
     },
     {
@@ -60917,7 +61075,7 @@
       "type": "object",
       "name": "cantripOsRunRootsSchema",
       "shape": { "definitions": 2534, "target": 2534 },
-      "catchall": 10290,
+      "catchall": 10313,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -60930,7 +61088,7 @@
         "identity": 3615,
         "protectedSecrets": 3622
       },
-      "catchall": 10292,
+      "catchall": 10315,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -60938,13 +61096,13 @@
       "type": "object",
       "name": "cantripOsRunSourceSchema",
       "shape": {
-        "binding": 10261,
-        "instance": 10236,
-        "workspace": 10247,
-        "target": 10294,
-        "available": 10295
+        "binding": 10284,
+        "instance": 10259,
+        "workspace": 10270,
+        "target": 10317,
+        "available": 10318
       },
-      "catchall": 10296,
+      "catchall": 10319,
       "checks": []
     },
     {
@@ -60967,10 +61125,10 @@
       "type": "object",
       "name": "desktopUpdateActiveWorkSummarySchema",
       "shape": {
-        "activeChats": 10298,
-        "queuedPrompts": 10299,
-        "terminalServices": 10300,
-        "backgroundJobs": 10301
+        "activeChats": 10321,
+        "queuedPrompts": 10322,
+        "terminalServices": 10323,
+        "backgroundJobs": 10324
       },
       "checks": []
     },
@@ -61010,12 +61168,12 @@
       "type": "object",
       "name": "providerConnectionTestResultSchema",
       "shape": {
-        "ok": 10303,
-        "stage": 10304,
-        "message": 10305,
-        "workerId": 10306,
-        "modelName": 10308,
-        "durationMs": 10310
+        "ok": 10326,
+        "stage": 10327,
+        "message": 10328,
+        "workerId": 10329,
+        "modelName": 10331,
+        "durationMs": 10333
       },
       "checks": []
     },
@@ -61042,12 +61200,12 @@
         { "check": "max_length", "maximum": 20000, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 10307, "checks": [] },
+    { "type": "nullable", "innerType": 10330, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 10309, "checks": [] },
+    { "type": "nullable", "innerType": 10332, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -61062,7 +61220,7 @@
     {
       "type": "object",
       "name": "workerProviderConnectionTestResultSchema",
-      "shape": { "accepted": 10312, "durationMs": 10313 },
+      "shape": { "accepted": 10335, "durationMs": 10336 },
       "checks": []
     },
     { "type": "literal", "values": [true], "checks": [] },
