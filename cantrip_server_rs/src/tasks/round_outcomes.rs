@@ -97,6 +97,7 @@ impl Repository {
                 "threadId":n["outcome"]["result"].get("threadId").filter(|v|!v.is_null()).unwrap_or(&c["codex_thread_id"]),
                 "turnId":n["outcome"]["result"].get("turnId").filter(|v|!v.is_null()).unwrap_or(&c["turn_id"])});
             let mut recorded=input.clone();recorded["terminal"]=terminal.clone();
+            let recorded=postgres_types::Json(recorded);
             tx.query("UPDATE task_planning_rounds SET inference_input=$2 WHERE id=$1",&[&operation,&recorded]).await?;
             tx.query("UPDATE agent_interaction_requests SET status='interrupted',resolved_at=$1,updated_at=$1 WHERE chat_id=$2 AND execution_lane_id=$3 AND status='pending'",&[&now,&chat,&lane_id]).await?;
             tx.query("UPDATE chats SET status=$3,updated_at=$2 WHERE id=$1 AND NOT EXISTS(SELECT 1 FROM chat_execution_lanes WHERE chat_id=$1 AND state='active')",&[&chat,&now,&status]).await?;

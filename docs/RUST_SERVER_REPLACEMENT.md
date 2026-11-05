@@ -18,6 +18,17 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+Native PGlite runtime reuse now attempts initialization with existing asset
+directories, including packaged assets without the optional extraction marker.
+A missing marker no longer blocks startup. New runtime extraction retains actual
+filesystem errors, and incomplete assets report the actual executable error.
+Local subprocess coverage reproduces the old rejection, then verifies fresh
+initialization, retained database writes, transaction rollback and unchanged
+runtime asset bytes/links without the marker. Current Task round terminal writes
+also use PostgreSQL JSON parameter bindings; their previous direct wire-value
+bindings did not compile. Full product, migration and platform acceptance remains
+separate from these storage checks.
+
 The execution-target MCP milestone integrates `2d68134ec`. Rust advertises
 sixteen operations, including `target.list` and `target.inspect`. These reuse
 the native owned catalog and placement services, retaining Source filtering,

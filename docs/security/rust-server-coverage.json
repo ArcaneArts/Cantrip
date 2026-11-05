@@ -12466,6 +12466,16 @@
         "Other storage modes, supported platforms, native Goal/failure boundaries and complete product/replacement acceptance.",
         "Full owned QA/temp fixture archive before native worktree cleanup."
       ]
+    },
+    "pgliteRuntimeAssets": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/third-party/pglite-rs/src/engine.rs",
+      "evidence": ["cantrip_server_rs/tests/pglite_runtime_assets.rs"],
+      "localEvidence": "Actual native subprocess regression reproduces rejection of a complete runtime after removing only its cache marker. Fixed startup performs fresh initialization and SQL operations with those assets, reopens retained writes, preserves rollback and leaves every asset byte/link unchanged. An empty existing runtime reaches its actual missing-executable error. Incoming Task round terminal JSON writes use postgres_types::Json rather than an unsupported direct wire-value binding. Scoped compiler/lint repairs preserve existing Task guards, WorkerBridge deadline observation and resource-revocation behavior. Database migration/reopen/rollback and host signal checks pass locally with an isolated native runtime; the shared pre-existing damaged runtime remains untouched and reports its actual missing postgres.bki error.",
+      "remaining": [
+        "Supported-platform packaged artifact execution and full app/storage/runtime acceptance remain required.",
+        "The separate frozen df0114df0/64patch native Task/Goal PGlite scenario failed on the Node reference before Rust; a successful native artifact build/pin is not full product acceptance."
+      ]
     }
   },
   "remainingAcceptance": [

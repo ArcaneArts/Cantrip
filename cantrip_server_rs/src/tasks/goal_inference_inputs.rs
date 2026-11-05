@@ -321,9 +321,8 @@ impl Repository {
             let Some(c)=c else{return Ok(None);};
             let s=&c["goal_input"];let r=&s["receipt"];
             if s["terminal"].is_null() || !s["terminal"]["projectedAt"].is_null() || s["deferred"]==true {return Ok(None);}
-            if let Some(expected)=expected {
-                if parse("taskInferenceInputReceiptSchema",&expected)?!=parse("taskInferenceInputReceiptSchema",r)? {return Ok(None);}
-            }
+            if let Some(expected)=expected
+                && parse("taskInferenceInputReceiptSchema",&expected)?!=parse("taskInferenceInputReceiptSchema",r)? {return Ok(None);}
             physical_input(&c,r)?;
             let mut guard=outcome_guard(r);
             let row=context(tx,&owner,r,true,true).await?;

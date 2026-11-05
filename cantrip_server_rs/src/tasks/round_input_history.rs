@@ -72,6 +72,7 @@ impl Repository {
                 crate::chats::message_writes::append_task_history_with(Executor::Transaction(tx),&owner,&chat,&result["assistantMessage"],&json!({"executionLaneId":r["executionLaneId"],"worktreeId":root})).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?
             } else {Value::Null};
             let mut recorded=input.clone();recorded["terminal"]=terminal.clone();
+            let recorded=postgres_types::Json(recorded);
             tx.query("UPDATE task_planning_rounds SET inference_input=$2 WHERE id=$1",&[&operation,&recorded]).await?;
             Ok(Some(json!({"state":"owned","message":saved,"chat":routing,"terminal":terminal})))
         })).await

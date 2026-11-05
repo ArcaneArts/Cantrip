@@ -540,13 +540,12 @@ impl WorkerBridge {
             return;
         }
         if let Some(pending) = state.pending.get(id).filter(|p| p.worker == worker) {
-            if event["type"] == "inference.command-state" {
-                if let (Some(sequence), Some(phase)) =
+            if event["type"] == "inference.command-state"
+                && let (Some(sequence), Some(phase)) =
                     (event["sequence"].as_u64(), event["state"].as_str())
-                    && pending.deadline.lock().unwrap().observe(sequence, phase)
-                {
-                    pending.deadline_changed.send_replace(());
-                }
+                && pending.deadline.lock().unwrap().observe(sequence, phase)
+            {
+                pending.deadline_changed.send_replace(());
             }
             let _ = pending.delivery.send(Delivery::Event(event));
         }

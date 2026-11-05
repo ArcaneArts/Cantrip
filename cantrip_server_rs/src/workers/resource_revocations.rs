@@ -221,12 +221,10 @@ pub(super) fn start(service: Arc<WorkerService>) {
                                 }
                                 if let Ok(scope) =
                                     serde_json::from_str::<serde_json::Value>(&payload)
-                                {
-                                    if let (Some(owner), Some(worker)) =
+                                    && let (Some(owner), Some(worker)) =
                                         (scope["ownerId"].as_str(), scope["workerId"].as_str())
-                                    {
-                                        wake(service.clone(), owner, worker);
-                                    }
+                                {
+                                    wake(service.clone(), owner, worker);
                                 }
                             }
                             Ok(_) => {}
@@ -241,10 +239,10 @@ pub(super) fn start(service: Arc<WorkerService>) {
                 }
                 Err(error) => Err(error),
             };
-            if failures == 0 {
-                if let Err(error) = &result {
-                    report(None, error);
-                }
+            if failures == 0
+                && let Err(error) = &result
+            {
+                report(None, error);
             }
             failures = failures.saturating_add(1);
             tokio::select! {

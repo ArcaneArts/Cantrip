@@ -354,7 +354,10 @@ impl Engine {
     }
 
     pub(crate) fn extract_runtime_to(runtime_dir: &Path) -> Result<(), Error> {
-        if runtime_dir.join(".extracted").exists() {
+        // Packaged or retained assets need not have our cache marker, and can
+        // be read-only. Let initdb/backend initialization actually use them;
+        // missing or unusable executables then report their real operation error.
+        if runtime_dir.is_dir() {
             return Ok(());
         }
         let staging = runtime_dir.with_file_name(format!(
@@ -367,12 +370,12 @@ impl Engine {
         let mut archive = tar::Archive::new(crate::RUNTIME_TAR);
         archive.unpack(&staging)?;
         std::fs::write(staging.join(".extracted"), b"")?;
-        if std::fs::rename(&staging, runtime_dir).is_err() {
+        if let Err(error) = std::fs::rename(&staging, runtime_dir) {
             let _ = std::fs::remove_dir_all(&staging);
-            if !runtime_dir.join(".extracted").exists() {
-                return Err(Error::Boot(
-                    "runtime extraction race lost and target invalid".into(),
-                ));
+            // Another process may have published the runtime. Its marker is
+            // not an initialization requirement either.
+            if !runtime_dir.is_dir() {
+                return Err(error.into());
             }
         }
         Ok(())
