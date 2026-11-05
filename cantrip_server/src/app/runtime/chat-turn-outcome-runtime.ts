@@ -95,7 +95,7 @@ export function createChatTurnOutcomeRuntime({
             chatId: notification.chatId,
             workerId,
             taskInferenceInputOperationId: goal.receipt.operationId,
-            status: notification.outcome.ok ? "completed" : "failed",
+            status: goal.terminal.ok ? "completed" : "failed",
           },
           "Recovered Task Goal input outcome from worker",
         );

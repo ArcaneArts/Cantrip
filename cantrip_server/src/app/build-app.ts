@@ -1033,6 +1033,7 @@ export async function buildApp({
   });
 
   const taskRouteRuntime = installTaskRouteRuntime(app, {
+    synchronizeScheduledTaskGoal: taskGoalRuntime.synchronizeScheduledTaskGoal,
     reconcileTaskGoalDispatch,
     appendLiveTaskMessage,
     applicationOwnerId,

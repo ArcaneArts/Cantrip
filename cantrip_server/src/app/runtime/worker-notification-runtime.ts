@@ -1,3 +1,4 @@
+import { TaskDispatchConflictError } from "../../db/task-dispatch.js";
 import {
   codeGraphProjectStatusSchema,
   gitManagedOperationWorkerStateSchema,
@@ -679,27 +680,60 @@ export function createWorkerNotificationRuntime({
         },
         "Received durable agent turn outcome",
       );
+      // A Goal terminal receipt remains durable work after its live RPC
+      // completes. Persist before delayed recovery, then independently project
+      // native metadata without the live RPC's suppression key.
+      let goalTerminal = false;
+      if (notification.taskInferenceInputOperationId) {
+        try {
+          goalTerminal = Boolean(
+            await repository.tasks.inferenceInputs.goals.applyOutcome(
+              ownerId,
+              workerId,
+              notification,
+              { recordOnly: true },
+            ),
+          );
+        } catch (error) {
+          if (error instanceof TaskDispatchConflictError) return;
+          // Keep the actual notification's delayed recovery after a failed
+          // persistence attempt; a live RPC cannot suppress that retry.
+          goalTerminal = true;
+          app.log.warn(
+            {
+              err: error,
+              chatId: notification.chatId,
+              workerId,
+              event: "task.goal.terminal-persistence-deferred",
+            },
+            "Goal terminal persistence will retry through outcome recovery",
+          );
+        }
+      }
       const key = chatTurnOutcomeRecoveryKey(
         workerId,
         notification.chatId,
         notification.clientMessageId,
         notification.taskInferenceInputOperationId,
       );
-      const scheduled = chatTurnOutcomeRecoveryScheduler.schedule(key, () => {
-        void runAsOwner(ownerId, () =>
-          recoverChatTurnOutcome(ownerId, workerId, notification),
-        ).catch((error) => {
-          app.log.error(
-            {
-              chatId: notification.chatId,
-              clientMessageId: notification.clientMessageId,
-              err: error,
-              workerId,
-            },
-            "Could not recover a completed agent turn",
-          );
-        });
-      });
+      const scheduled = chatTurnOutcomeRecoveryScheduler.schedule(
+        goalTerminal ? `${key}:goal-terminal-projection` : key,
+        () => {
+          void runAsOwner(ownerId, () =>
+            recoverChatTurnOutcome(ownerId, workerId, notification),
+          ).catch((error) => {
+            app.log.error(
+              {
+                chatId: notification.chatId,
+                clientMessageId: notification.clientMessageId,
+                err: error,
+                workerId,
+              },
+              "Could not recover a completed agent turn",
+            );
+          });
+        },
+      );
       if (!scheduled) {
         app.log.debug(
           {

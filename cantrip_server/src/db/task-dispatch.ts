@@ -151,7 +151,8 @@ export function taskDispatchSchedulerPlan(
 ): TaskDispatchSchedulerPlan {
   return {
     reconcileUnstartedClaims: owner.hasClaimed,
-    reconcileStartedLeases: owner.hasClaimed || owner.hasRunning,
+    reconcileStartedLeases:
+      owner.hasClaimed || owner.hasRunning || owner.hasPaused,
     resumePaused: owner.hasPaused,
     claimQueued: owner.hasQueued,
   };

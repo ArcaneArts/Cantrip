@@ -153,6 +153,13 @@ export interface TaskRouteRuntimeDependencies {
     cycleId: string,
     expected?: import("@cantrip/protocol").TaskDispatchFence,
   ) => void;
+  synchronizeScheduledTaskGoal: (
+    chatId: string,
+    lease: import("@cantrip/protocol").TaskDispatchFence,
+    failed: boolean,
+    error?: unknown,
+    receipt?: import("@cantrip/protocol").TaskInferenceInputReceipt,
+  ) => Promise<void>;
   reconcileTaskGoalDispatch: (
     task: TaskOpaqueSummary,
     state: TaskOpaqueSummary["state"],

@@ -17,6 +17,7 @@ interface Dependencies {
     | "continueTaskGoalInWorktree"
     | "retainTaskGoalLease"
     | "reconcileTaskGoalDispatch"
+    | "synchronizeScheduledTaskGoal"
     | "resumeChatAutomation"
   >;
   publish(chatId: string, projectId: string): void;
@@ -67,7 +68,7 @@ export function createTaskExecutionRecovery({
   async function run(chatId: string, resume: boolean, automatic: boolean) {
     const owner = ownerId();
     let context = await repository.getChatExecutionContext(owner, chatId);
-    const task = await repository.tasks.get(owner, chatId);
+    let task = await repository.tasks.get(owner, chatId);
     if (
       !context ||
       context.contextKind !== "project" ||
@@ -76,6 +77,31 @@ export function createTaskExecutionRecovery({
       !task.implementationStartedAt
     )
       return false;
+    const terminal = await repository.tasks.inferenceInputs.goals.terminal(
+      owner,
+      chatId,
+    );
+    if (terminal) {
+      await goals.synchronizeScheduledTaskGoal(
+        chatId,
+        terminal.receipt.dispatch,
+        !terminal.terminal.ok,
+        undefined,
+        terminal.receipt,
+      );
+      if (!resume) return true;
+      // Explicit Resume survives a concurrent passive terminal projection.
+      context = await repository.getChatExecutionContext(owner, chatId);
+      task = await repository.tasks.get(owner, chatId);
+      if (
+        !context ||
+        context.contextKind !== "project" ||
+        context.experience !== "task" ||
+        !task?.planGoalEnabled ||
+        !task.implementationStartedAt
+      )
+        return false;
+    }
     // An accepted Goal input owns the next turn. Do not invent a Resume
     // message while its controller or canonical no-dispatch recovery owns it.
     if (await repository.tasks.inferenceInputs.goals.pending(owner, chatId)) {
@@ -334,7 +360,7 @@ export function createTaskExecutionRecovery({
     for (const cycle of cycles) {
       if (
         cycle.operationKind !== "finalize" ||
-        !["running", "expired", "failed"].includes(cycle.state) ||
+        !["running", "paused", "expired", "failed"].includes(cycle.state) ||
         !cycle.codexThreadId ||
         Date.now() - (observedAt.get(cycle.chatId) ?? 0) < 30_000
       )

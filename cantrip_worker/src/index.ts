@@ -6559,6 +6559,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 chatId: command.chatId,
                 context: {
                   ...command.taskContext,
+                  ...(execution?.status === "running"
+                    ? { runtimeFailure: undefined }
+                    : {}),
                   chatStatus:
                     execution?.status ?? command.taskContext.chatStatus,
                 },

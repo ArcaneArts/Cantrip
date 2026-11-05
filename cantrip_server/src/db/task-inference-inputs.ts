@@ -1,3 +1,4 @@
+import type { TaskFailureKind } from "@cantrip/protocol/tasks";
 import { randomUUID } from "node:crypto";
 import { TaskGoalInferenceInputRepository } from "./task-goal-inference-inputs.js";
 import {
@@ -37,6 +38,16 @@ export interface TaskInferenceInputState {
   attemptCountBefore: number;
   /** A positive terminal worker failure, not a transport observation timeout. */
   failedBeforeDispatch?: boolean;
+  /** Bounded terminal receipt metadata for the existing Goal input. It is not
+   * a prompt queue, and cannot authorize a replacement native execution. */
+  terminal?: {
+    ok: boolean;
+    failureKind: TaskFailureKind | null;
+    observedAt: string;
+    projectedAt: string | null;
+    threadId: string | null;
+    turnId: string | null;
+  };
 }
 
 function stale(): never {

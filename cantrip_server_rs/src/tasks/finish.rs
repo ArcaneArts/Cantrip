@@ -436,7 +436,11 @@ impl Repository {
                             tx,
                             &owner,
                             &chat,
-                            &text(&guard["lease"]["operationId"])?,
+                            &text(if guard["kind"] == "leased" {
+                                &guard["lease"]["operationId"]
+                            } else {
+                                &guard["operationId"]
+                            })?,
                             guard,
                             true,
                         )

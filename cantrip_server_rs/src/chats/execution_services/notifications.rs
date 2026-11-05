@@ -18,7 +18,11 @@ impl Service {
                             if notification["type"] == "inference.status" {
                                 service.inference_status(&owner, &worker_id, &notification);
                             } else if notification["type"] == "chat.turn.outcome" {
-                                service.receive_outcome(owner, worker_id.clone(), notification);
+                                let worker = worker_id.clone();
+                                return async move {
+                                    service.receive_outcome(owner, worker, notification).await
+                                }
+                                .boxed();
                             } else if notification["type"] == "chat.thread.changed" {
                                 service.thread_sync.notification(
                                     owner,
@@ -33,19 +37,56 @@ impl Service {
             });
     }
 
-    fn receive_outcome(&self, owner: String, worker: String, notification: Arc<Value>) {
+    async fn receive_outcome(
+        &self,
+        owner: String,
+        worker: String,
+        notification: Arc<Value>,
+    ) -> anyhow::Result<()> {
         let context = json!({"chatId":notification["chatId"],"clientMessageId":notification["clientMessageId"],"executionLaneId":notification["executionLaneId"],"outcome":if notification["outcome"]["ok"]==true {"completed"} else {"failed"},"workerId":worker});
         (self.logger)(LogCall::event(
             "info",
             "Received durable agent turn outcome",
             context,
         ));
-        let key = recovery::scheduler::attempt_key(
+        let mut key = recovery::scheduler::attempt_key(
             &json!(worker),
             &notification["chatId"],
             &notification["clientMessageId"],
             notification.get("taskInferenceInputOperationId"),
         );
+        let mut goal_projection = false;
+        if notification.get("taskInferenceInputOperationId").is_some() {
+            match self
+                .outcomes
+                .persist_goal_terminal(&owner, &worker, &notification)
+                .await
+            {
+                Ok(true) => goal_projection = true,
+                Ok(false) => {}
+                Err(error)
+                    if crate::operations::shared_failure::downcast_ref::<
+                        crate::task_dispatch::Conflict,
+                    >(&error)
+                    .is_some() =>
+                {
+                    return Ok(());
+                }
+                Err(error) => {
+                    goal_projection = true;
+                    (self.logger)(LogCall::event(
+                        "warn",
+                        "Goal terminal persistence will retry through outcome recovery",
+                        json!({"event":"task.goal.terminal-persistence-deferred","chatId":notification["chatId"],"workerId":worker,"err":logging::error_details(&error)}),
+                    ));
+                }
+            }
+        }
+        if goal_projection {
+            let mut units = key.units().to_vec();
+            units.extend(":goal-terminal-projection".encode_utf16());
+            key = crate::wire::JsString::new(units);
+        }
         let (outcomes, logger, note, observed_worker) = (
             self.outcomes.clone(),
             self.logger.clone(),
@@ -64,5 +105,6 @@ impl Service {
                 json!({"chatId":notification["chatId"],"clientMessageId":notification["clientMessageId"],"workerId":worker}),
             ));
         }
+        Ok(())
     }
 }

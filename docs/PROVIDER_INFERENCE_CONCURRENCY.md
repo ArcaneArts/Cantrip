@@ -927,3 +927,65 @@ ran. Runtime behavior remains unverified. No persisted schema or transported
 protocol fields changed. Expired Goal-input projection, autonomous checkpoint
 recovery, current-generation abandoned preparations, ambiguous transport-failure
 callbacks and the final timing/bounded-state/entry-point audit remain required.
+
+### Goal input terminal recovery after lease expiry
+
+The continuing Goal and the physical input that started/resumed it have separate
+settlement. Both servers now persist bounded terminal metadata on that existing
+Goal input: outcome category, observed native thread/turn when known, observation
+time and projection completion time. The protected response and marker commit
+through the existing message/dispatch writers. No prompt body is copied into a
+second queue and the original receipt is not rewritten as a new execution.
+
+The internal terminal-persistence guard now supports Goal inputs. It requires the
+same latest dispatch, exact original input/dispatch identity, worker/placement and
+lane activation. The original control token/owner can save history after a normal
+pause or terminal dispatch settlement; one committed lease expiry is also
+recognized. Cancellation, defer/requeue, newer control claims, replaced inputs,
+changed placement/lane activation and archival revoke that authority. It grants
+no inference, renews no lease and releases no worker ticket.
+
+Worker outcome notifications record the protected response/terminal marker
+without prematurely finishing an ordinary live RPC's lane. That preserves its
+normal queued-message continuation. Goal metadata projection uses a distinct
+recovery key, so successful live RPC completion cannot suppress it. A failed
+initial database write retains the actual notification's delayed recovery
+attempt. This is not a new notification acknowledgement/delivery guarantee; the
+existing worker transport's delivery and restart limits still need the final
+lifecycle audit.
+
+Projection performs an actual native Goal and execution read. An old dispatched
+turn error cannot relabel a Goal which has since continued. Only a positively
+proven unforwarded startup failure can supply startup failure context, and a
+currently running native execution overrides that captured failure. Missing Goal
+metadata alone is not failure. The exact receipt, native thread, lane activation
+and Task row revision fence the subsequent write. Captured placement revision,
+Chat/project pause flags and native thread are checked again during projection
+and dispatch settlement; stale observations are discarded.
+Actual terminal Goal state, retry classification/clearing, dispatch settlement and
+projection completion then commit under that authority. A metadata RPC failure
+leaves the terminal marker pending instead of failing inference or spending a
+retry. No new model turn or objective is started by projection.
+
+The existing retained-Task recovery loop also visits paused dispatches and consumes
+pending terminal markers before checkpoint/resume work. A crash after the marker
+or Task projection can therefore finish this metadata transition without another
+worker notification. Explicit Resume reloads current state after projection and
+keeps the user's intent. A cancelled, proven unforwarded input under pause intent
+returns its original protected message to the existing paused dispatch; it is not
+left owned by an ended controller and is not replaced with a new Resume prompt.
+
+Source acceptance review traced normal live completion versus delayed outcome,
+late arrival after lease expiry, duplicate/conflicting receipts, protected-result
+failure, crash between recording/projection/dispatch settlement, failed metadata
+reads, newer native/input/lane ownership, pause before forwarding and explicit
+Resume racing passive projection. Node and Rust use the same phases and fences.
+Direct formatting and `git diff --check` were used. No tests, typechecks, builds,
+benchmarks, native/helper execution, computer-use testing or hosted validation
+ran; runtime behavior is unverified. These are internal JSON metadata/type
+changes, with no persisted column migration or transported protocol fields.
+
+The full goal still requires autonomous checkpoint/control authority, legacy
+observation authority, current-generation abandoned preparations, transport/outcome
+delivery and restart reconciliation, and the final timing/bounded-state/inference
+entry-point audit. This milestone does not claim those paths complete.

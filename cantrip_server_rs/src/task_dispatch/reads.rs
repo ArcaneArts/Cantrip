@@ -26,5 +26,5 @@ impl Repository {
     }
 }
 pub fn scheduler_plan(owner: &Value) -> Value {
-    json!({"reconcileUnstartedClaims":owner["hasClaimed"],"reconcileStartedLeases":owner["hasClaimed"]==true || owner["hasRunning"]==true,"resumePaused":owner["hasPaused"],"claimQueued":owner["hasQueued"]})
+    json!({"reconcileUnstartedClaims":owner["hasClaimed"],"reconcileStartedLeases":owner["hasClaimed"]==true || owner["hasRunning"]==true || owner["hasPaused"]==true,"resumePaused":owner["hasPaused"],"claimQueued":owner["hasQueued"]})
 }

@@ -67,6 +67,15 @@ impl Service {
         {
             anyhow::bail!("Encrypted Goal metadata is invalid.");
         }
+        if options.observe_execution
+            && options
+                .dispatch_guard
+                .as_ref()
+                .is_some_and(|g| g["kind"] == "outcome")
+            && !truthy(result.get("execution"))
+        {
+            anyhow::bail!("Task Goal execution observation was not returned.");
+        }
         if (!truthy(result.get("goal")) && options.runtime_failure.is_none())
             || options.observation_only
         {
@@ -88,6 +97,10 @@ impl Service {
                 if error
                     .downcast_ref::<tasks::Conflict>()
                     .is_none_or(|e| e.code != "stale-version")
+                    || options
+                        .dispatch_guard
+                        .as_ref()
+                        .is_some_and(|g| g["kind"] == "outcome")
                     || options.message.is_some()
                     || options.activate
                 {
