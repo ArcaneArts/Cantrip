@@ -60,6 +60,10 @@ export function codexStartupExitMessage(
   return `Codex app-server exited before listening (${status})${diagnostic ? `: ${diagnostic}` : "."}`;
 }
 
+/** The request may still be executing. A deadline or transport observation
+ * cannot establish that native preparation or inference has finished. */
+export class CodexRpcObservationError extends Error {}
+
 /** A received native JSON-RPC rejection, distinct from uncertain transport loss. */
 export class CodexNativeRpcError extends Error {
   constructor(

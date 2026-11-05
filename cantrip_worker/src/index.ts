@@ -329,6 +329,7 @@ import { RemoteSurfaceWorkerLinkAdapter } from "./remote-surface-worker-link-ada
 import { WorkerObservationHub } from "./worker-observation-worker-link-adapter.js";
 import { LocalNativeInferenceOwnership } from "./native-inference-ownership.js";
 import { WorkerInferenceAdmission } from "./inference-admission.js";
+import { CodexRpcObservationError } from "./codex/rpc-protocol.js";
 import {
   withInferenceCommand,
   inferenceCommandResource,
@@ -7036,13 +7037,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "chat.goal.recover": {
         if (
           command.source.threadId !== command.threadId ||
-          command.session.chatId !== command.chatId
+          command.session.chatId !== command.chatId ||
+          (command.recovery &&
+            !isDeepStrictEqual(command.recovery.source, command.source))
         )
           throw new Error("Goal recovery belongs to another managed session.");
         const key = JSON.stringify([
           nativeNamespaceScope(),
           command.chatId,
           command.source,
+          command.recovery?.orderEpoch ?? 0,
+          command.provider.id,
+          command.model.routeId,
+          command.provider.accountId ?? null,
         ]);
         const pending = managedGoalRecoveries.get(key);
         if (pending) return pending;
@@ -7069,7 +7076,25 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               ?.get(`${command.chatId}:${command.threadId}`)
               ?.adapter.goalRecoveryAdmission(command.source);
           if (owned) return admitted(owned);
-          const prepared = await prepareManagedMutation(command, provider());
+          const preparation = command.recovery
+            ? inferenceAdmissionForWorker().beginGoalRecoveryPreparation({
+                chatId: command.chatId,
+                providerId: provider().id,
+                recovery: command.recovery,
+              })
+            : undefined;
+          let prepared: Awaited<ReturnType<typeof prepareManagedMutation>>;
+          try {
+            prepared = await prepareManagedMutation(command, provider());
+          } catch (error) {
+            // A native deadline or lost connection is not a completed failure.
+            // It must keep the conservative restoration boundary intact.
+            if (error instanceof CodexRpcObservationError)
+              preparation?.unconfirmed();
+            else preparation?.failed();
+            throw error;
+          }
+          preparation?.succeeded();
           if (!prepared)
             throw new Error("Goal recovery has no prepared session.");
           const { runtime, threadId } = prepared;

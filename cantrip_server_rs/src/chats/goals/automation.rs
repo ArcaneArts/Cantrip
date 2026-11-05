@@ -58,6 +58,7 @@ impl Service {
             .await?;
         managed["type"] = json!("chat.goal.recover");
         managed["source"] = recovery["source"].clone();
+        managed["recovery"] = snapshot["goalRecovery"].clone();
         managed["chatId"] = json!(chat);
         managed["cwd"] = context["cwd"].clone();
         managed["subagentDefaults"] = managed["subagentDefaults"].clone();

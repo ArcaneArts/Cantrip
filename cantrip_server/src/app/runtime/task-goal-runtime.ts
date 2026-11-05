@@ -1144,6 +1144,7 @@ export function createTaskGoalRuntime({
           ...managed,
           type: "chat.goal.recover",
           source: recovery.source,
+          recovery: snapshot.goalRecovery!,
           chatId,
           cwd: context.cwd,
           threadId: managed.threadId!,

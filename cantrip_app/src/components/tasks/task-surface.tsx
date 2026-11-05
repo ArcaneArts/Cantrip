@@ -729,13 +729,15 @@ export function TaskSurface({
               {task.data.dispatch?.eligibilityCode ===
               "provider-transfer-pending"
                 ? "Changing queued provider"
-                : inferenceQueue.data
-                  ? "Queued for provider capacity"
-                  : activityQueued
-                    ? "Task queued"
-                    : task.data.state === "finalizing"
-                      ? "Finalizing Task"
-                      : "Planning Task"}
+                : inferenceQueue.data?.recovering
+                  ? "Waiting for runtime recovery"
+                  : inferenceQueue.data
+                    ? "Queued for provider capacity"
+                    : activityQueued
+                      ? "Task queued"
+                      : task.data.state === "finalizing"
+                        ? "Finalizing Task"
+                        : "Planning Task"}
             </p>
             <p className="truncate text-xs text-muted-foreground">
               Read-only investigation · round {task.data.planningRound}

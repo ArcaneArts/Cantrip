@@ -193,6 +193,7 @@ async fn reconcile(
                 .unwrap_or(0.0);
     result["disposition"] = json!(if same_episode { "requeued" } else { "retired" });
     result["goalInputNotDispatched"] = json!(true);
+    result["goalRecovery"] = marker.clone();
     Ok(result)
 }
 

@@ -530,6 +530,7 @@ export async function reconcileUnstartedGoal(
             ? "requeued"
             : "retired",
         goalInputNotDispatched: true,
+        goalRecovery: marker,
       };
     });
   } catch (error) {

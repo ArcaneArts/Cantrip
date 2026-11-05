@@ -130,6 +130,8 @@ export function taskImplementationStatusDescription(
   if (label === "Reconnecting")
     return "Worker disconnected; execution status is not yet confirmed.";
   if (label === "Queued") return "Waiting to run with the selected model.";
+  if (label === "Recovering")
+    return "Waiting for runtime preparation to recover automatically.";
   if (label === "Needs approval") return "Waiting for your approval.";
   return task.planGoalEnabled
     ? "Waiting for implementation status; completion has not been confirmed."
@@ -352,7 +354,9 @@ export function TaskImplementationDashboard({
   const statusLabel =
     inferenceQueue.data &&
     ["Running", "Starting"].includes(executionStatusLabel)
-      ? "Queued"
+      ? inferenceQueue.data.recovering
+        ? "Recovering"
+        : "Queued"
       : executionStatusLabel;
   const showResume =
     statusLabel === "Paused" &&
@@ -376,7 +380,9 @@ export function TaskImplementationDashboard({
   const showStop =
     active &&
     !chat.automationPaused &&
-    ["Running", "Needs approval", "Starting", "Queued"].includes(statusLabel);
+    ["Running", "Needs approval", "Starting", "Queued", "Recovering"].includes(
+      statusLabel,
+    );
   const placement = dashboard.data?.placement;
   const directFolder = placement?.kind === "folder";
 
