@@ -7,6 +7,52 @@ keep the limit optional so updates from older clients preserve it. Provider
 summaries and resolved model runtimes carry the configuration through both the
 Node and Rust server implementations.
 
+## Canonical lifetimes for private native scopes
+
+Patch `0067` adds `thread/managedExecution/inferenceClaim`. It consults the actual
+connection-owned Core gate and exact pending thread, turn, physical scope and
+begin-request ID. It does not load a UI thread, inspect a capability cache, resolve
+the pending gate, invoke a model, or reserve a provider slot. Closed or absent
+requests return explicit non-authority. A still-pending request can be confirmed
+idempotently. The worker invokes the actual operation and requires a matching
+transport incarnation; the worker and native runtime must be upgraded together.
+
+Before a private scope creates a ticket, positive native confirmation allows the
+worker runtime to issue an opaque lifetime handle. Both worker admission layers
+retain exact redelivery through that handle in WeakMaps. Active tickets still
+have strong runtime ownership, but released lifetime-backed tickets leave the
+process-wide completed maps. A caller retaining its lifetime receives the same
+released handle; a closed lifetime that never acquired cannot acquire later.
+A different runtime, operation, provider or input cannot borrow the handle.
+
+The native entry owns its lifetime until exact private finish, accepted begin
+denial, exact pending-begin cancellation or confirmed process fencing. A stale
+begin notification cannot mint another ticket after recent-completion history
+has compacted: Core's actual pending authority is gone. A late confirmation
+cannot enqueue after cancellation because the existing pending controller is
+installed first and checked before lifetime creation. Native operations include
+the begin-request ID in their physical acquisition identity. Bare private-native
+IDs cannot bypass lifetime ownership.
+
+Explicit non-authority drops a rejected confirmation entry without settling any
+root reservation. Ambiguous replies retain the existing conservative settlement
+rules. Late native cancellation matches the retained original begin ID even after
+its short-lived RPC waiter is gone; a resume cancellation cannot settle the
+begin's admitted scope. An unconfirmed notification cannot release a captured
+root reservation. A root's physical binding is installed only after positive
+confirmation. An older confirmation cannot overwrite a newer binding or mutate
+settled failure evidence. Shared roots retain their existing ticket.
+
+This bounds completed private-scope ticket state without an eviction window,
+Bloom filter, new prompt queue, or another durable receipt ledger. Managed outer
+turns, standalone titles and helper commands still use their legacy operation-ID
+records until their own canonical source lifetimes are integrated. This milestone
+does not claim to finish the full bounded-retention requirement.
+
+Source review, direct formatting, mechanical patch authoring and `git diff --check`
+only. No native patch helper, native execution, schema-generation build, tests,
+typechecks, benchmarks, hosted validation or computer-use checks were run.
+
 ## Queued Task overview timing
 
 The Task overview uses the same selected worker queue observation for its notice,

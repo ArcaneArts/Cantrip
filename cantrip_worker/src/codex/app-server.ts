@@ -1776,12 +1776,10 @@ export class CodexAppServer implements CodexRuntime {
     string,
     {
       controller: AbortController;
-      attemptId: string;
       threadId: string;
       turnId: string;
       runnerGeneration: string;
       scopeId: string;
-      phase: "begin" | "begin-independent" | "suspend" | "resume";
     }
   >();
   #child: ChildProcessWithoutNullStreams | null = null;
@@ -6697,14 +6695,17 @@ export class CodexAppServer implements CodexRuntime {
       ) {
         pending.controller.abort();
         inference.cancelNativeWait(base.threadId, base.turnId, scopeId);
-        if (pending.phase === "begin" || pending.phase === "begin-independent")
-          inference.rejectNativeBegin(
-            base.threadId,
-            base.turnId,
-            scopeId,
-            pending.attemptId,
-          );
       }
+      // A native cancellation can arrive after a timed-out resolve waiter was
+      // retired. The exact original begin ID remains authoritative in the entry;
+      // a resume's different request ID cannot retire its admitted scope.
+      if (requestId)
+        inference.rejectNativeBegin(
+          base.threadId,
+          base.turnId,
+          scopeId,
+          requestId,
+        );
       return;
     }
     if (phase === "finish") {
@@ -6728,7 +6729,6 @@ export class CodexAppServer implements CodexRuntime {
     const pending = {
       ...base,
       scopeId,
-      phase,
       controller: new AbortController(),
     };
     this.#nativeInferenceWaits.set(base.attemptId, pending);
@@ -6740,6 +6740,23 @@ export class CodexAppServer implements CodexRuntime {
         await inference.enterNative({
           ...base,
           gateAttemptId: base.attemptId,
+          confirmOwnership: async () => {
+            this.assertManagedExecutionTransport(transport);
+            const result = await this.#rpcRequests.request(
+              "thread/managedExecution/inferenceClaim",
+              {
+                threadId: base.threadId,
+                turnId: base.turnId,
+                scopeId,
+                runnerGeneration: base.runnerGeneration,
+                attemptId: base.attemptId,
+              },
+              CODEX_RPC_TIMEOUT_MS,
+            );
+            this.assertManagedExecutionTransport(transport);
+            return z.object({ claimed: z.boolean() }).strict().parse(result)
+              .claimed;
+          },
           scopeId,
           rootThreadId,
           chatId: this.#managedThreadOverlays.get(rootThreadId ?? base.threadId)

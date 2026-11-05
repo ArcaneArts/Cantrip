@@ -664,3 +664,14 @@ including 16 Goal cases. Fifteen accounting tests, 27 Goal backend tests and the
 SQLite continuation-hold test passed. Final native acceptance used the development
 profile; optimized product and complete worker-tree acceptance remain pending.
 Resource recovery and worker/server/client adoption remain required work.
+
+Patch `0067` adds the private `thread/managedExecution/inferenceClaim` operation.
+It confirms the exact live pending inference gate on its owning connection,
+including child scopes, without granting provider capacity or consuming the gate.
+The worker uses that authority to retire completed private-scope ticket records
+through opaque operation lifetimes, while preserving exact redelivery for held
+handles. Stale requests cannot originate another ticket after cache compaction.
+The worker and native runtime require a paired update. This milestone used source
+review, direct formatting, mechanical patch authoring and diff checks only; no
+native helper, patch application verification, tests, builds or computer-use
+validation was run. Legacy outer-turn/helper retention remains separate work.
