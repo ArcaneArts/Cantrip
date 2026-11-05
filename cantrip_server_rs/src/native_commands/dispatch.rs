@@ -38,6 +38,8 @@ async fn dispatch(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Va
         None,
         if row["kind"] == "attach" {
             Access::Attach
+        } else if row["kind"] == "control" || row["kind"] == "reply" {
+            Access::Control
         } else {
             Access::Write
         },
