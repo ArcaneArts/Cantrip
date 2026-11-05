@@ -7,6 +7,39 @@ keep the limit optional so updates from older clients preserve it. Provider
 summaries and resolved model runtimes carry the configuration through both the
 Node and Rust server implementations.
 
+## Canonical lifetimes for managed outer turns
+
+Managed terminal inputs and autonomous cycles already use the canonical native
+command admission. The command client rejects `replayed` or non-accepted grants
+before constructing an execution owner. That exact owner now supplies an immutable
+inference source with its operation generation, current-activation check, actual
+native transport binding, and existing release promise.
+
+Before preparing its native turn, the runtime obtains a single lifetime for that
+source through a WeakMap. Repeated preparation by the same current owner returns
+the same lifetime and ticket. A released or replaced owner cannot mint a new
+lifetime; canonical command admission prevents an old command from constructing
+another owner. Source release promptly cancels a waiting/granted reservation only
+when no model request has ever begun. Already running, suspended and resuming turns
+still require actual native settlement. The current owner is checked again after
+capacity arrives, before preparing or forwarding another native input.
+
+Released outer-turn records now leave both strong inference registries. The
+current canonical owner may retain its lifetime until protected publication and
+lane cleanup finish; no completed-owner registry or extra durable metadata is
+introduced. Native child/private-scope gates continue to bind or acquire through
+the existing worker service. This does not change FIFO order, cycle fairness,
+control channels, or worker/server ownership.
+
+GUI `runTurn` preparation, direct Task inputs, standalone titles, and other helper
+commands still retain their legacy operation-ID records until their own canonical
+source lifetimes are connected. This milestone does not treat an arbitrary old
+receipt, timer, or cache miss as authorization to mint a fresh identity.
+
+Validation used source review, direct formatting and `git diff --check` only.
+No tests, builds, typechecks, benchmarks, native execution, hosted checks or
+computer-use validation were run.
+
 ## Canonical lifetimes for private native scopes
 
 Patch `0067` adds `thread/managedExecution/inferenceClaim`. It consults the actual

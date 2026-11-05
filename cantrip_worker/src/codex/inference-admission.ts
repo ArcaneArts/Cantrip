@@ -10,6 +10,7 @@ import type {
   InferenceLease,
   InferenceRuntime,
   InferenceOperationLifetime,
+  InferenceOperationSource,
   InferenceTicket,
   WorkerInferenceAdmission,
 } from "../inference-admission.js";
@@ -125,6 +126,10 @@ export class CodexInferenceAdmission {
     InferenceOperationLifetime,
     { identity: string; result: Promise<CodexInferenceExecution> }
   >();
+  private readonly sourceLifetimes = new WeakMap<
+    InferenceOperationSource,
+    InferenceOperationLifetime
+  >();
   private exited = false;
   private retirement: Promise<void> | null = null;
 
@@ -134,6 +139,28 @@ export class CodexInferenceAdmission {
 
   get generation(): string {
     return this.runtime.generation;
+  }
+
+  lifetimeForSource(
+    source: InferenceOperationSource,
+  ): InferenceOperationLifetime {
+    source.assertCurrent();
+    const previous = this.sourceLifetimes.get(source);
+    if (previous) {
+      if (previous.operationId !== source.operationId)
+        throw new Error(
+          "Canonical inference source changed operation identity.",
+        );
+      return previous;
+    }
+    const lifetime = this.runtime.createOperationLifetime(source.operationId);
+    this.sourceLifetimes.set(source, lifetime);
+    // Closing source authority does not cancel or settle native inference.
+    void source.released.then(
+      () => lifetime.close(),
+      () => lifetime.close(),
+    );
+    return lifetime;
   }
 
   acquire(input: Request): Promise<CodexInferenceExecution> {

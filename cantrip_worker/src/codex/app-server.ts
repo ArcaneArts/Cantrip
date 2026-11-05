@@ -2778,10 +2778,24 @@ export class CodexAppServer implements CodexRuntime {
   async prepareAdmittedNativeExecution(
     options: PrepareAdmittedNativeExecutionOptions,
   ): Promise<AdmittedNativeExecution> {
-    if (this.inferenceAdmission && !this.#inference)
+    const admission = this.#inference;
+    if (this.inferenceAdmission && !admission)
       throw new Error("The native inference process is no longer connected.");
-    const inference = await this.#inference?.acquire({
+    if (
+      options.inferenceSource &&
+      (!options.inferenceSource.nativeTransportGeneration ||
+        options.inferenceSource.nativeTransportGeneration !==
+          this.transportGeneration)
+    )
+      throw new Error(
+        "The canonical inference source belongs to another native transport.",
+      );
+    const lifetime = options.inferenceSource
+      ? admission?.lifetimeForSource(options.inferenceSource)
+      : undefined;
+    const inference = await admission?.acquire({
       operationId: options.operationGeneration,
+      lifetime,
       purpose: "turn",
       provider: options.provider,
       chatId: options.chatId,
@@ -2792,6 +2806,7 @@ export class CodexAppServer implements CodexRuntime {
       recoveryKey: options.recoveryKey,
     });
     try {
+      options.inferenceSource?.assertCurrent();
       return await this.prepareInferenceExecution(options, inference);
     } catch (error) {
       inference?.notDispatched();
