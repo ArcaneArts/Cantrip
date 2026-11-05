@@ -2049,3 +2049,28 @@ direct formatting and `git diff --check` are the only validation for this
 milestone. No tests, builds, typechecks, benchmarks, native/helper execution,
 hosted validation or computer-use testing were run. Already-forwarded/private
 native Goal-cycle transfers and the final lifecycle audit remain separate work.
+
+## Goal admission before native turn creation
+
+Managed autonomous Goal cycles acquire worker capacity inside the existing
+`ManagedNativeCommandSession.beforeForward` path, before Core is allowed to
+create their native turn. The later private inference gate joins that same
+reservation. Accounting only the private gate's wait misses the earlier wait
+when another operation already occupies the provider pool.
+
+Patch `0074` puts the existing thread-owned `InferenceQueueClock` guard around
+the actual `ManagedExecutionGate.request_with_goal_epoch` future. Goal live
+progress and elapsed-usage budgets therefore exclude admission waiting before
+turn creation as well as private inference admission and resumption waits.
+The guard ends before Core submits the admitted input. Success, refusal and
+cancellation all drop it, and overlapping guards use the clock's existing union
+semantics. This adds no timer, queue, grant or completed-request registry.
+Goal turn creation and failure/continuation accounting keep their existing
+authority; the patch never fabricates a turn or an execution result.
+
+The native patch was authored and reviewed against the tracked admission and
+clock patches. It was not applied or executed. Validation is source review,
+documentation formatting and `git diff --check` only. No tests, builds,
+typechecks, benchmarks, native/helper execution, hosted validation or
+computer-use testing were run. Runtime and supported-platform behavior remain
+unverified.

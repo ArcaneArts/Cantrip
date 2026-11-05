@@ -1,0 +1,31 @@
+diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+--- a/codex-rs/core/src/codex_thread.rs
++++ b/codex-rs/core/src/codex_thread.rs
+@@ -773,14 +773,24 @@ impl CodexThread {
+-            let attempt_id = gate
+-                .request_with_goal_epoch(
++            let attempt_id = {
++                // The owning worker acquires its provider ticket before allowing
++                // this autonomous input. No native turn exists during that wait;
++                // excluding only run_turn's later private gate misses it.
++                let clock = self
++                    .thread_extension_data()
++                    .get_or_init::<codex_extension_api::InferenceQueueClock>(
++                        codex_extension_api::InferenceQueueClock::default,
++                    );
++                let _queue_wait = clock.waiting();
++                gate.request_with_goal_epoch(
+                     self.session.thread_id(),
+                     turn_id.clone(),
+                     request.start.turn_trigger.clone().unwrap(),
+                     snapshot,
+                     goal_epoch,
+                 )
+                 .await
+-                .map_err(CodexErr::InvalidRequest)?;
++                .map_err(CodexErr::InvalidRequest)?
++            };
+             let result = self
+                 .io
+                 .submit_turn_input_with_id(request, mode, turn_id)
+                 .await;
