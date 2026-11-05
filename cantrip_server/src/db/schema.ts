@@ -1,6 +1,7 @@
 import type { CantripOsRunRoots, TunnelWireSummary } from "@cantrip/protocol";
 import type { TaskInferenceInputState } from "./task-inference-inputs.js";
 export { projectAlerts, chatGoalObservations } from "./schema-alerts.js";
+export { inferenceResourceRevocations } from "./schema-inference-resource-revocations.js";
 export {
   projectSourceIdentities,
   cantripOsInstances,

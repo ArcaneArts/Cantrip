@@ -44,6 +44,7 @@ pub struct WorkerService {
     pub shutdown: watch::Sender<bool>,
     presence: Mutex<HashMap<String, String>>,
     offline: Mutex<HashMap<String, AbortHandle>>,
+    pub(super) inference_revocations: super::resource_revocations::Pending,
     limits: Mutex<RequestLimiters>,
 }
 impl WorkerService {
@@ -63,7 +64,7 @@ impl WorkerService {
             relay_quotas.clone(),
             config,
         );
-        Arc::new(Self {
+        let service = Arc::new(Self {
             repository: WorkerRepository::new(database),
             bridge,
             commands,
@@ -80,13 +81,16 @@ impl WorkerService {
             shutdown: watch::channel(false).0,
             presence: Mutex::new(HashMap::new()),
             offline: Mutex::new(HashMap::new()),
+            inference_revocations: Mutex::new(HashMap::new()),
             limits: Mutex::new(RequestLimiters {
                 api: SlidingWindow::new(config.api_rate_limit_per_minute as usize),
                 pairing: SlidingWindow::new(config.pairing_rate_limit_per_minute as usize),
                 websocket: SlidingWindow::new(config.websocket_handshake_rate_per_minute as usize),
                 upload: SlidingWindow::new(config.upload_rate_limit_per_minute as usize),
             }),
-        })
+        });
+        super::resource_revocations::start(service.clone());
+        service
     }
     pub fn invalidate(&self, owner: &str, resource: &'static str, id: &str) {
         let event = Invalidation {

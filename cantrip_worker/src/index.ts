@@ -3449,6 +3449,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "inference.status":
         return inferenceAdmissionForWorker().snapshot();
       case "inference.revoke": {
+        const scope = nativeNamespaceScope();
+        if (command.ownerId !== scope.ownerId)
+          throw new Error(
+            "The resource revocation belongs to another worker owner.",
+          );
         const admission = inferenceAdmissionForWorker();
         const operationIds = revokeInferenceCommands(
           nativeNamespaceScope(),
@@ -3496,7 +3501,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         admission.wakeRecovery();
         // This ACK means local ownership is sealed and interruption is retained.
         // It is not evidence that a physical execution's ticket can be freed.
-        return { revoked: true };
+        return {
+          revoked: true,
+          ownerId: scope.ownerId,
+          workerId: scope.workerId,
+        };
       }
       case "inference.configure": {
         const admission = inferenceAdmissionForWorker();

@@ -11,6 +11,7 @@ mod offline;
 pub(crate) mod output;
 pub mod repository;
 pub mod request;
+pub(crate) mod resource_revocations;
 mod rows;
 pub mod service;
 

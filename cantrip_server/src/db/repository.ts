@@ -1,4 +1,5 @@
 import { ProjectAlertRepository } from "./repository/project-alerts.js";
+import { InferenceResourceRevocationRepository } from "./repository/inference-resource-revocations.js";
 import { CantripOsRepository } from "./repository/cantrip-os.js";
 import { AgentChatDeliveryRepository } from "./repository/agent-chat-delivery.js";
 import { NativeRuntimeHandoffRepository } from "./repository/native-runtime-handoffs.js";
@@ -300,6 +301,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   }
 
   readonly alerts: ProjectAlertRepository;
+  readonly inferenceRevocations: InferenceResourceRevocationRepository;
   readonly cantripOs: CantripOsRepository;
   readonly accounts: AccountRepository;
   readonly accountResourceUsage: AccountResourceUsageRepository;
@@ -372,6 +374,9 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     // finish moving out of this repository. Provider and MCP payloads never
     // use this server key.
     void secretVault;
+    this.inferenceRevocations = new InferenceResourceRevocationRepository(
+      database,
+    );
     this.cantripOs = new CantripOsRepository(database);
     this.alerts = new ProjectAlertRepository(database, () =>
       this.expireAgentInteractionRequests(),
