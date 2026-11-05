@@ -154,6 +154,46 @@ impl Service {
             }
             Err(error) => return Err(error),
         }
+        match self
+            .tasks
+            .recover_finalization_goal_outcome(owner, worker, n)
+            .await
+        {
+            Ok(Some(finalizer)) => {
+                if finalizer["state"] == "queued" {
+                    self.dependencies
+                        .live
+                        .publish_persisted_message(
+                            owner,
+                            &finalizer["message"],
+                            MessageKind::Task,
+                            Some(&finalizer["chat"]),
+                        )
+                        .await;
+                    self.publish_task(owner, text(&n["chatId"])?, &finalizer["chat"]);
+                    self.dependencies.live.publish_invalidation(
+                        owner,
+                        text(&n["chatId"])?,
+                        "agent-interaction",
+                        Some(&finalizer["chat"]),
+                    );
+                    self.dependencies.live.publish_boundary(
+                        owner,
+                        text(&n["chatId"])?,
+                        &finalizer["chat"]["projectId"],
+                        Some(&finalizer["chat"]),
+                    );
+                    (self.dependencies.queue_tick)();
+                    self.log("info","Recovered finalization returned Goal startup to its canonical dispatch",json!({"event":"task.goal.finalization-recovered","subsystem":"task-scheduler","chatId":n["chatId"],"cycleId":n["taskDispatchFence"]["cycleId"],"workerId":worker}));
+                }
+                return Ok(());
+            }
+            Ok(None) => {}
+            Err(error) if downcast_ref::<task_dispatch::Conflict>(&error).is_some() => {
+                return Ok(());
+            }
+            Err(error) => return Err(error),
+        }
         let (chat, lane) = (text(&n["chatId"])?, text(&n["executionLaneId"])?);
         let context = self.lanes.recovery_context(owner, chat, lane).await?;
         let logical = if truthy(n.get("nativeLogicalRoot")) {

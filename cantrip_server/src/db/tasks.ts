@@ -35,6 +35,8 @@ import { TaskInferenceInputRepository } from "./task-inference-inputs.js";
 import type { ChatExecutionLaneRepository } from "./repository/chat-execution-lanes.js";
 import type { MessageWriteRepository } from "./repository/message-writes.js";
 import { detachProjectTab, projectTabKey } from "./tab-layouts.js";
+import { recoverFinalizationGoalOutcome } from "./task-finalization-goal-outcomes.js";
+import type { WorkerNotification } from "@cantrip/protocol";
 
 type TaskDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type TaskRow = typeof schema.tasks.$inferSelect;
@@ -237,13 +239,39 @@ export class TaskRepository {
   readonly inferenceInputs: TaskInferenceInputRepository;
   constructor(
     private readonly database: TaskDatabase,
-    lanes?: ChatExecutionLaneRepository,
-    messages?: MessageWriteRepository,
+    private readonly lanes?: ChatExecutionLaneRepository,
+    private readonly messages?: MessageWriteRepository,
   ) {
     this.inferenceInputs = new TaskInferenceInputRepository(
       database,
       lanes,
       messages,
+    );
+  }
+
+  recoverFinalizationGoalOutcome(
+    owner: string,
+    worker: string,
+    notification: Extract<WorkerNotification, { type: "chat.turn.outcome" }>,
+  ) {
+    return recoverFinalizationGoalOutcome(
+      {
+        database: this.database,
+        lanes: this.lanes,
+        messages: this.messages,
+        complete: (tx, result, turn, guard) =>
+          new TaskRepository(tx).completeOperation(
+            owner,
+            notification.chatId,
+            result.operationId,
+            result,
+            turn,
+            guard,
+          ),
+      },
+      owner,
+      worker,
+      notification,
     );
   }
 

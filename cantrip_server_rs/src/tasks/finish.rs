@@ -1,4 +1,79 @@
 use super::*;
+pub(super) async fn complete_operation_in(
+    tx: &Transaction<'_>,
+    owner: &str,
+    chat: &str,
+    operation: &str,
+    result: &Value,
+    turn: Option<&str>,
+    guard: Option<&Value>,
+) -> Result<Option<Value>> {
+    if let Some(guard) = guard {
+        dispatch_fence::assert(tx, owner, chat, operation, guard, false).await?;
+    }
+    let Some(round) = locked_round(tx, chat, operation).await? else {
+        return Ok(None);
+    };
+    if !policy::same_operation(result, &round["relay_request"])
+        || result["chatId"] != chat
+        || result["operationId"] != operation
+        || result["classification"]["kind"] != round["kind"]
+        || result["classification"]["ordinal"] != round["ordinal"]
+    {
+        return conflict(
+            "idempotency-conflict",
+            "The encrypted Task result does not match its operation.",
+        );
+    }
+    let Some(task) = locked_task(tx, chat).await? else {
+        return Ok(None);
+    };
+    if truthy(round.get("relay_result")) {
+        if round["relay_result"]["fingerprint"] != result["fingerprint"] {
+            return conflict(
+                "idempotency-conflict",
+                "A different encrypted result already completed this operation.",
+            );
+        }
+        return context(&task, &round).map(Some);
+    }
+    if task["active_operation_id"] != operation || task["planning_round"] != round["ordinal"] {
+        return conflict(
+            "idempotency-conflict",
+            "A newer Task operation superseded this result.",
+        );
+    }
+    let now = now();
+    let mut fields = round_columns(&result["classification"], &result["protectedResult"]);
+    fields["relay_result"] = result.clone();
+    fields["failure_task"] = result["goal"]
+        .get("failureTask")
+        .filter(|v| !v.is_null())
+        .unwrap_or(&round["failure_task"])
+        .clone();
+    fields["turn_id"] = json!(turn);
+    fields["completed_at"] = now.clone();
+    let updated_round = update(tx, Table::Round, operation, &fields, None)
+        .await?
+        .context("Task round completion returned no row")?;
+    let updated_task = if round["kind"] != "finalize" {
+        let mut fields = task_columns(&result["task"]);
+        fields["active_operation_id"] = Value::Null;
+        fields["completed_at"] = if result["task"]["classification"]["state"] == "complete" {
+            now.clone()
+        } else {
+            Value::Null
+        };
+        fields["row_version"] = increment(&task["row_version"]);
+        fields["updated_at"] = now;
+        update(tx, Table::Task, chat, &fields, None)
+            .await?
+            .context("Task completion returned no row")?
+    } else {
+        task
+    };
+    context(&updated_task, &updated_round).map(Some)
+}
 impl Repository {
     pub async fn complete_operation(
         &self,
@@ -46,75 +121,16 @@ impl Repository {
         self.database
             .transaction(|tx| {
                 Box::pin(async move {
-                    if let Some(guard) = &guard {
-                        dispatch_fence::assert(tx, &owner, &chat, &operation, guard, false).await?;
-                    }
-                    let Some(round) = locked_round(tx, &chat, &operation).await? else {
-                        return Ok(None);
-                    };
-                    if !policy::same_operation(&result, &round["relay_request"])
-                        || result["chatId"] != chat
-                        || result["operationId"] != operation
-                        || result["classification"]["kind"] != round["kind"]
-                        || result["classification"]["ordinal"] != round["ordinal"]
-                    {
-                        return conflict(
-                            "idempotency-conflict",
-                            "The encrypted Task result does not match its operation.",
-                        );
-                    }
-                    let Some(task) = locked_task(tx, &chat).await? else {
-                        return Ok(None);
-                    };
-                    if truthy(round.get("relay_result")) {
-                        if round["relay_result"]["fingerprint"] != result["fingerprint"] {
-                            return conflict(
-                                "idempotency-conflict",
-                                "A different encrypted result already completed this operation.",
-                            );
-                        }
-                        return context(&task, &round).map(Some);
-                    }
-                    if task["active_operation_id"] != operation
-                        || task["planning_round"] != round["ordinal"]
-                    {
-                        return conflict(
-                            "idempotency-conflict",
-                            "A newer Task operation superseded this result.",
-                        );
-                    }
-                    let now = now();
-                    let mut fields =
-                        round_columns(&result["classification"], &result["protectedResult"]);
-                    fields["relay_result"] = result.clone();
-                    fields["failure_task"] = result["goal"]
-                        .get("failureTask")
-                        .filter(|v| !v.is_null())
-                        .unwrap_or(&round["failure_task"])
-                        .clone();
-                    fields["turn_id"] = json!(turn);
-                    fields["completed_at"] = now.clone();
-                    let updated_round = update(tx, Table::Round, &operation, &fields, None)
-                        .await?
-                        .context("Task round completion returned no row")?;
-                    let updated_task = if round["kind"] != "finalize" {
-                        let mut fields = task_columns(&result["task"]);
-                        fields["active_operation_id"] = Value::Null;
-                        fields["completed_at"] =
-                            if result["task"]["classification"]["state"] == "complete" {
-                                now.clone()
-                            } else {
-                                Value::Null
-                            };
-                        fields["row_version"] = increment(&task["row_version"]);
-                        fields["updated_at"] = now;
-                        update(tx, Table::Task, &chat, &fields, None)
-                            .await?
-                            .context("Task completion returned no row")?
-                    } else {
-                        task
-                    };
-                    context(&updated_task, &updated_round).map(Some)
+                    complete_operation_in(
+                        tx,
+                        &owner,
+                        &chat,
+                        &operation,
+                        &result,
+                        turn.as_deref(),
+                        guard.as_ref(),
+                    )
+                    .await
                 })
             })
             .await

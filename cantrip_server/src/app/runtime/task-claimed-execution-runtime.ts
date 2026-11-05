@@ -227,12 +227,13 @@ export function createTaskClaimedExecutionRuntime(
         if (!task) throw new Error("The claimed Task no longer exists.");
 
         const launchClaimedGoal = async (operationId: string) => {
-          const guard =
-            await repository.tasks.inferenceInputs.goals.launchGuard(
-              ownerId,
-              context.chatId,
-              claim.lease,
-            );
+          const guard = await repository.tasks.inferenceInputs.goals
+            .launchGuard(ownerId, context.chatId, claim.lease)
+            .catch((error) => {
+              if (error instanceof TaskDispatchConflictError) return null;
+              throw error;
+            });
+          if (!guard) return;
           try {
             await retainTaskGoalLease(claim.lease);
             const goalTurnOptions = scheduledTaskGoalTurnOptions(claim.lease);
