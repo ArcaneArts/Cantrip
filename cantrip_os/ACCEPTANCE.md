@@ -2319,3 +2319,40 @@ Actual product service tests passed after migration 263 and the intervening main
 migration were applied to the backed-up private QA database. The paired database
 comparison was repeated after renumbering: 311 cases / 146 snapshots on each
 engine and all five PostgreSQL mutation races passed again.
+
+## Phase 4: native executor build preparation repair (2026-11-05)
+
+A fresh default OCI build failed before compiling its executor because patch
+`0069-goal-inference-wait-clock.patch` used context-free/minimal-context hunks
+that the normal ordered `git apply` path rejected. The actual source preparation
+uses those same normal apply options; this was a reproducible build failure.
+
+The patch was regenerated with ordinary three-line context against the reviewed
+series through 0068. Applying the refreshed patch with the standard options
+produces byte-identical contents for all nine resulting Rust files, including
+the new queue-clock module. No runtime behavior or source verification policy
+was changed. Ordered verification of Codex 0.166.0, 9191 source files and 70
+patches passed. The initial failure and source-hash comparison are retained in
+local Phase 4 build evidence.
+
+The default ARM64 OCI build then completed, including a full native executor
+compile (25m49s) without a cached-runtime override. Image
+`cantrip-os-phase4-stream:dev` booted in a disposable container with an actual
+4294967296-byte memory limit and no OOM kill. The personal X11 desktop was
+available, and packages reported workspace 0.3.0, executor 0.9.0 and remote 0.8.0.
+The image contains htop, nano, Python 3, Chromium and IceWM. Codex's own browser
+opened its passwordless desktop, launched xterm from the menu and ran htop with
+normal remote key events. The screenshot is retained locally under
+`artifacts/phase4-executor-build/fresh-desktop.png`; htop's host-kernel memory
+view is not the container memory-limit measurement.
+
+The real native executor integration test passed in 9.83s against that fresh
+image: files/processes, resumable sessions without command replay, independent
+workspace lifetimes, owned detached-child cleanup and stale/wrong-owner rejection.
+The complete destructive remote-package acceptance also passed on the fresh
+image, including physical capture/input/clipboard, generation and guardian
+retirement, disable/removal, upgrade/purge/reinstall, retained workspace/desktop
+state and unknown-state preservation. The standard root check was attempted and
+still stops at unchanged application line budgets (1516/1500 and 2216/1999).
+This checkpoint repairs build preparation and refreshes Docker evidence; stream
+comparison and fresh ISO/installed-system acceptance remain in progress.
