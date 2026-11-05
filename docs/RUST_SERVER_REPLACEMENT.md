@@ -108,7 +108,7 @@ WorkerConnection but supplies Git replies; full-worker/native product and
 supported-platform acceptance remain required. Node remains the default server
 and the worker remains Node.
 
-Current Main integration supplies the missing OS recovery result fixtures for all
+The frozen `20001aa43` integration supplies OS recovery result fixtures for all
 five result kinds. All 633 base roots have valid Source samples (2,121 samples),
 and all 643 existing fixture arrays retain identical serialized JSON. Fresh base
 and independent Run manifests equal Source. Fifty Rust library tests and five
@@ -124,6 +124,52 @@ Node fixture gateway. Both peers exercise all eight capture queries through
 actual HTTP before the worktree cases. The database regression retains its owner
 and project scope assertions. This repairs evidence collection without claiming
 successful native Task/Goal execution.
+
+Integration with `50e2760be` repeats all nine worktree MCP profiles successfully:
+918 paired cases, 1,836 responses, 1,854 audit rows, 18 dropped sockets and 18
+restarts. The live Task snapshot now includes `chats` and `managed_queue_states`
+alongside its original eight tables. Both implementations retain an unknown
+suspension record and the canonical Goal-recovery marker through the real HTTP
+SQL gateway, before explicit disposable-fixture cleanup. Owner and project
+isolation remain covered by the database regression.
+
+All 648 current base roots have valid Source samples (2,208 samples). New samples
+include Goal-recovery source/admission/fencing/withdrawal, queue marker defaults,
+negative-dispatch ownership challenges and queued handoff state. The four worker
+continuity kinds accompany all five OS recovery outcomes. The refreshed outgoing
+corpus retains all 299 prior command inputs and all 1,156 alternative input cases,
+adding `chat.goal.recover` and one enclosing alternative. Exact reachable graphs
+retain 609 earlier roots; 15 roots are new and 24 changed. Another 627 existing
+fixture arrays retain identical serialized JSON. Base and independent Run
+manifests equal the authoritative current Source definitions.
+A native streaming parser passes 142,724 complete Source value, issue and exact
+error-message comparisons over all 38 changed or added non-worker roots. The
+outgoing-worker envelope separately passes all 300 command fixtures, 86
+boundary cases and 242,426 mutations, executing all 100 authoritative
+refinement callbacks. Strict all-target Clippy passes
+with warnings treated as errors. All 50 rebuilt Rust library tests and five
+focused OS/MCP contract and binding tests pass.
+A focused PGlite/anonymous Run-MCP regression retains 113 paired HTTP cases
+through the shared MCP error adapter.
+
+The current integration repairs actual Rust compile failures in nested native
+JSON construction and preserves weak session references by iterating the existing
+Codex runtime registry. Ordinary worker admissions retain the absent options
+argument; autonomous Goal admission still requests its explicit continuation
+option, now asserted by the existing test. All 1,114 protocol tests, 46 focused
+worker tests and 46 Task-authority/suspension database tests pass. Server, worker
+and app typechecks pass. These checks do not establish successful full native
+Task/Goal execution.
+
+The frozen broad Node server run exits with 122 failed, 1,571 passed and 133
+skipped tests; many failures are migration/setup timeouts. The frozen worker run
+has 13 failed, 2,741 passed and 235 skipped tests. A focused timing rerun passes
+five of seven cases, retaining GitHub lifecycle and encrypted-history timeout
+failures. These broad failures have not all been reproduced on a clean matching
+baseline and are not treated as passing. The current root `pnpm check` stops at
+unchanged Source line budgets (`build-app.ts` 1,519/1,500 and
+`chat-turn-runtime.ts` 2,230/1,999). Their source and checker bytes match integrated
+Main. Full product, supported-platform and replacement acceptance remain active.
 
 The Run configuration MCP milestone adds twelve operations to the Rust registry,
 bringing the supported set to twenty-eight. It reuses native definition, secret,

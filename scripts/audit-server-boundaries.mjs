@@ -110,7 +110,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "c01cedeb5ad07aa7eeee81033073509e4be8826ed45621e68200d85a2c5c61b9",
   applicationRoutes:
-    "7be11cb4f3c62bd1823f4b4edb6d3a2311963d35ab913231c32d6ead2b8f6a84",
+    "f15e0198b428cf14d381532a7fce481a82c66a617c6cd2ae60de79c07c7b8929",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -118,7 +118,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
   workerCommands:
-    "af2bfaea3e0271cdfa6524411b9353e92105af612333c2648764a4c0a2a8a1b5",
+    "f969b38a6d8847725852fbd8b0e9b2a4b8f5c9b33dfe3847ecb580e145aa0847",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -3468,6 +3468,12 @@ function durableTableContentInventory(schemaText) {
 }
 
 function applicationRouteContentClassification(route) {
+  if (route.path === "/api/internal/native-commands/goal-recovery-fence")
+    return {
+      classification: "minimized-operational-metadata",
+      rationale:
+        "Authenticated owner/worker/process generation fences an exact canonical Goal source and admission identity, with a second connection check after the transaction; no objective, prompt, credentials or new inference capacity.",
+    };
   if (
     route.path === "/api/internal/native-commands/inference-resource-authorize"
   )
@@ -3693,6 +3699,12 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (command === "chat.goal.recover")
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "Owner-bound canonical Goal source, session and runtime configuration retain protected provider/MCP envelopes. The worker rechecks the source marker and actual native Goal, then uses canonical FIFO admission; no copied plaintext objective or prompt is sent through the server.",
+    };
   if (command === "inference.revoke")
     return {
       classification: "minimized-operational-metadata",

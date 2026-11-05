@@ -381,20 +381,36 @@ export function osDispatchFixtures() {
     ["first-observation", null, id],
     ["unavailable", id, null],
     ["identity-changed", id, null],
-  ].map(([kind, previousRuntimeGeneration, observedRuntimeGeneration]) => ({
-    instance: {
-      ...fixtures.cantripOsRunSourceSchema[0].instance,
-      status: observedRuntimeGeneration ? "connected" : "unknown",
-    },
-    workspaces: observedRuntimeGeneration
-      ? [fixtures.cantripOsRunSourceSchema[0].workspace]
-      : [],
-    recovery: {
-      kind,
-      previousRuntimeGeneration,
-      observedRuntimeGeneration,
-      message: "Recovery fixture",
-    },
-  }));
+  ].flatMap(([kind, previousRuntimeGeneration, observedRuntimeGeneration]) =>
+    [
+      ["same-worker", id, id],
+      ["worker-restarted", id, "new-worker"],
+      ["first-observation", null, id],
+      ["unavailable", id, null],
+    ].map(
+      ([
+        workerContinuity,
+        previousWorkerProcessGeneration,
+        observedWorkerProcessGeneration,
+      ]) => ({
+        instance: {
+          ...fixtures.cantripOsRunSourceSchema[0].instance,
+          status: observedRuntimeGeneration ? "connected" : "unknown",
+        },
+        workspaces: observedRuntimeGeneration
+          ? [fixtures.cantripOsRunSourceSchema[0].workspace]
+          : [],
+        recovery: {
+          kind,
+          previousRuntimeGeneration,
+          observedRuntimeGeneration,
+          workerContinuity,
+          previousWorkerProcessGeneration,
+          observedWorkerProcessGeneration,
+          message: "Recovery fixture",
+        },
+      }),
+    ),
+  );
   return fixtures;
 }

@@ -1,3 +1,4 @@
+import { nativeGoalRecoveryWireFixtures } from "./native-goal-recovery-fixtures.mjs";
 export const autonomousAttempts = [
   {
     runnerGeneration: "runner",
@@ -211,5 +212,29 @@ export function nativeCommandWireFixtures(timestamp) {
       })),
     ),
   );
+  const recovery = nativeGoalRecoveryWireFixtures();
+  const goalRecovery = recovery.nativeGoalRecoverySourceSchema[0];
+  const workerGeneration =
+    recovery.nativeGoalRecoveryAdmissionSchema[0].workerGeneration;
+  const goalIntent = {
+    scope: "thread",
+    autonomousAttempt: {
+      ...autonomousAttempts[1],
+      goalEpoch: goalRecovery.goalEpoch,
+    },
+    goalRecovery,
+    workerGeneration,
+  };
+  fixtures.nativeCommandIntentSchema.push(goalIntent);
+  fixtures.nativeCommandAdmissionSchema.push({
+    ...fixtures.nativeCommandAdmissionSchema[0],
+    origin: "autonomous",
+    session: { ...session, threadId: goalRecovery.threadId },
+    intent: goalIntent,
+  });
+  fixtures.nativeCommandDispatchSchema.push({
+    ...fixtures.nativeCommandDispatchSchema[0],
+    workerGeneration,
+  });
   return fixtures;
 }

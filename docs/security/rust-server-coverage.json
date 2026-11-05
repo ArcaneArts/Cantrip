@@ -3,16 +3,16 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "c521495c3e0c35fe50c882a1ed8257b0e144b72c71dfd8edc5244d2b7f55e19f",
-    "baselineCommit": "20001aa4303856c49aac465019aa368a606e5fe4",
+    "sha256": "0c679466a4e3dc1c2eca48d160644ad680fe639e6b6eca946798f39bd436343d",
+    "baselineCommit": "50e2760be",
     "counts": {
-      "routes": 543,
-      "workerCommands": 299,
+      "routes": 544,
+      "workerCommands": 300,
       "durableTables": 116,
       "repositoryMethods": 367,
       "liveResources": 47
     },
-    "workingTreeNote": "Current integration reviews the one additional owner-scoped OS recovery route (543 routes,299 worker commands). Its attachment/runtime observations are public control metadata; provisioning intent remains endpoint protected. Every preexisting route content classification and other reviewed contract-set digest is unchanged. Full product/platform and replacement acceptance remain separate.",
+    "workingTreeNote": "Integration with50e2760be reviews one new authenticated Goal recovery fence and chat.goal.recover command. Existing content classifications and all other reviewed contract-set digests are unchanged. Declared table count remains116; current full native product/platform and replacement acceptance remain required.",
     "migrationBackedTableCount": 122
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
@@ -5241,6 +5241,20 @@
         ],
         "remaining": [
           "Source review, direct formatting and git diff --check only. Runtime, migration, race and supported-platform behavior are unverified; tests, builds, typechecks and native/helper execution remain prohibited."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/goal-recovery-fence",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+        "evidence": [
+          "scripts/server-rust/native-goal-recovery-fixtures.mjs",
+          "scripts/server-rust/inference-recovery-wire-fixtures.mjs"
+        ],
+        "remaining": [
+          "Wire-parser and build qualification does not establish actual Goal recovery fencing, runtime ownership, successful native Task/Goal completion or supported-platform acceptance.",
+          "Complete current full-worker and multi-instance failure/recovery acceptance before default cutover."
         ]
       }
     ]
@@ -12636,7 +12650,74 @@
         "Current-head supported-platform and full-worker native product acceptance, additional multi-worker/retirement/interruption cases, and full replacement requirements remain active.",
         "Twenty-one other canonical MCP operations and legacy CLI transport/acquire remain required. Actual native worker product, additional multi-worker/retirement/interruption acceptance and supported-platform packaging remain separate.",
         "Full replacement requirements, coordination, existing-data migrations/post-write rollback, performance, desktop/Winterhold rehearsal, default cutover and production Node server removal remain active."
-      ]
+      ],
+      "currentSourceIntegration": {
+        "base": "50e2760be",
+        "taskSnapshotTables": 10,
+        "taskSnapshotScope": "Owner/project-scoped chats, managed_queue_states and eight execution tables, in one repeatable-read read-only transaction. Raw unknown suspension and canonical Goal recovery markers are retained before explicit fixture cleanup.",
+        "fixtureRoots": 648,
+        "validSamples": 2208,
+        "reachableGraphs": {
+          "added": 15,
+          "changed": 24,
+          "unchanged": 609
+        },
+        "preservedFixtureArrays": 627,
+        "priorCommandInputsRetained": 299,
+        "currentCommands": 300,
+        "priorAlternativeCasesRetained": 1156,
+        "currentAlternativeCases": 1157,
+        "integrationRepairs": [
+          "Use explicit nested native JSON values in Goal admission/negative receipts.",
+          "Iterate existing codexRuntimes and read WeakMap sessions; preserve weak lifetimes.",
+          "Review additive chat.goal.recover order/count while retaining old protocol fingerprints."
+        ],
+        "nativeProductAcceptance": false,
+        "nativeWireDelta": {
+          "comparisons": 142724,
+          "roots": 38,
+          "outcomesAndExactErrorMessages": true,
+          "workerEnvelopeComparedSeparately": true
+        },
+        "strictAllTargetClippy": "passes with -D warnings",
+        "currentHttpMatrix": {
+          "databaseModes": ["pglite", "postgres", "bundled-postgres"],
+          "authModes": ["none", "password", "accounts"],
+          "pairs": 918,
+          "responses": 1836,
+          "auditRows": 1854,
+          "disconnects": 18,
+          "restarts": 18,
+          "allPassedLocally": true
+        },
+        "localChecks": {
+          "protocolTests": 1114,
+          "sourceAuthorityAndSuspensionTests": 46,
+          "workerSessionHandoffClientTests": 46,
+          "serverWorkerAppTypechecks": "pass"
+        },
+        "runMcpRegression": {
+          "database": "pglite",
+          "auth": "none",
+          "pairedCases": 113,
+          "actualHttp": true,
+          "actualWorkerConnection": true,
+          "fullNativeProduct": false
+        },
+        "nativeTests": {
+          "library": 50,
+          "focused": 5,
+          "allPassedLocally": true
+        },
+        "outgoingWorkerWire": {
+          "commands": 300,
+          "boundaries": 86,
+          "mutations": 242426,
+          "customRefinementsExecuted": 100,
+          "actualRawJsonPreserved": true,
+          "allPassedLocally": true
+        }
+      }
     }
   },
   "remainingAcceptance": [

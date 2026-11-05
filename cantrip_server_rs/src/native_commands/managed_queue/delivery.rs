@@ -37,10 +37,10 @@ impl QueueRepository {
             if !workers.is_empty() {
                 let worker = workers.remove(0);
                 let mut entry = json!({"ownerId":owner,"workerId":worker,"chatId":chat,"revision":row.get::<i32>(1)?});
-                if row.get::<bool>(4)? {
-                    if let Some(recovery) = row.get::<Option<String>>(3)? {
-                        entry["goalRecovery"] = serde_json::from_str(&recovery)?;
-                    }
+                if row.get::<bool>(4)?
+                    && let Some(recovery) = row.get::<Option<String>>(3)?
+                {
+                    entry["goalRecovery"] = serde_json::from_str(&recovery)?;
                 }
                 if !workers.is_empty() {
                     entry["additionalWorkerIds"] = Value::from_serialize(&workers);

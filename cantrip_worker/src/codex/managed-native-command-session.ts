@@ -1231,10 +1231,10 @@ export class ManagedNativeCommandSession {
             }
           : {}),
       },
-      operation.origin === "autonomous" &&
-        operation.autonomousAttempt?.goalEpoch
-        ? { continueUnobservedGoalAdmission: true }
-        : undefined,
+      ...(operation.origin === "autonomous" &&
+      operation.autonomousAttempt?.goalEpoch
+        ? ([{ continueUnobservedGoalAdmission: true }] as const)
+        : []),
     );
     if (grant.replayed && !grant.continuedAdmission)
       throw new Error(
