@@ -7,7 +7,11 @@ impl Service {
         prepared_runtime: Option<Value>,
     ) -> Result<()> {
         let mut launch_stage = "resolve-context";
+        let mut preparation_guard = None;
         let result:Result<()>=async {
+            if claim["cycle"]["operationKind"]=="finalize" {
+                preparation_guard=self.tasks.goal_preparation_guard(owner,&text(&claim["cycle"]["chatId"])?,&claim["lease"]).await?;
+            }
             let context=self.stage(claim,launch_stage,{
                 let (chats,owner,chat)=(self.chats.clone(),owner.to_owned(),text(&claim["cycle"]["chatId"])?);
                 async move {chats.execution_context(&owner,&chat).await}
@@ -96,7 +100,12 @@ impl Service {
                 return Ok(());
             }
             self.log("warn","Scheduled Task operation failed to start",json!({"event":"task.operation.launch-failed","subsystem":"task-scheduler","operation":"launch-operation","status":"failed","reasonCode":"preflight-failed","stage":launch_stage,"chatId":claim["cycle"]["chatId"],"cycleId":claim["cycle"]["id"],"serverVersion":crate::settings::quota::server_version(),"err":stage::error_details(&error)}));
-            self.finish_failure_one(owner, claim, Some(&error)).await?;
+            if let Some(guard) = preparation_guard {
+                self.finish_preparation_failure(owner, claim, &error, &guard)
+                    .await?;
+            } else {
+                self.finish_failure_one(owner, claim, Some(&error)).await?;
+            }
         }
         Ok(())
     }

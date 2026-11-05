@@ -88,6 +88,18 @@ pub(super) async fn assert(
                     && t["state"] != "complete"
                     && t["planning_round"] == r["ordinal"]
                     && (t["active_operation_id"].is_null() || t["active_operation_id"] == operation)
+                    && launch.get("preparation").is_none_or(|preparation| {
+                        !r["relay_result"].is_null()
+                            && t["state"] != "paused"
+                            && (cycle["goal_input"].is_null()
+                                || cycle["goal_input"]["deferred"] == true)
+                            && t["implementation_started_at"]
+                                .as_js_string()
+                                .and_then(crate::wire::date_milliseconds)
+                                == preparation["implementationStartedAt"]
+                                    .as_js_string()
+                                    .and_then(crate::wire::date_milliseconds)
+                    })
             });
         if !valid {
             return Err(crate::task_dispatch::Conflict::stale().into());

@@ -16,7 +16,13 @@ export type TaskOperationLeaseFence = {
   /** Goal setup captures its placement and prior input (null means none yet).
    * A newly prepared input owns its own terminal handling and cannot be failed
    * by that older launcher. Deferred prior inputs remain valid setup anchors. */
-  goalLaunch?: { inputOperationId: string | null; placementRevision: number };
+  goalLaunch?: {
+    inputOperationId: string | null;
+    placementRevision: number;
+    /** Read-only setup may fail before Goal launch. It cannot retire a Goal
+     * that acquired input ownership or advanced implementation meanwhile. */
+    preparation?: { implementationStartedAt: string | null };
+  };
 };
 export type TaskOperationDispatchFence =
   | TaskOperationLeaseFence
@@ -155,6 +161,16 @@ export async function assertTaskOperationDispatchFence(
         task.planningRound !== round.ordinal ||
         (task.activeOperationId !== null &&
           task.activeOperationId !== operationId)
+      )
+        fail();
+      const preparation = expected.goalLaunch.preparation;
+      if (
+        preparation &&
+        (!round?.relayResult ||
+          task?.state === "paused" ||
+          (cycle.goalInput !== null && !cycle.goalInput.deferred) ||
+          (task?.implementationStartedAt?.toISOString() ?? null) !==
+            preparation.implementationStartedAt)
       )
         fail();
     }

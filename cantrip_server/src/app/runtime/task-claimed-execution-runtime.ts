@@ -25,6 +25,7 @@ import {
 } from "../../tasks/launch-observation.js";
 import { TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS as DEFAULT_TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS } from "../shared/constants.js";
 import type { TaskRouteRuntimeDependencies } from "./task-route-types.js";
+import type { TaskOperationLeaseFence } from "../../db/task-operation-fence.js";
 
 export type TaskClaimedExecutionDependencies = Pick<
   TaskRouteRuntimeDependencies,
@@ -63,11 +64,55 @@ export function createTaskClaimedExecutionRuntime(
   const TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS =
     dependencies.launchPreflightTimeoutMs ??
     DEFAULT_TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS;
+  const finishGoalLaunchFailure = async (
+    ownerId: string,
+    claim: ClaimedTaskDispatch,
+    error: unknown,
+    guard: TaskOperationLeaseFence,
+  ) => {
+    let persistenceError: unknown;
+    try {
+      await failTaskGoalLaunch(
+        claim.cycle.chatId,
+        claim.cycle.operationId,
+        error,
+        guard,
+      );
+    } catch (failure) {
+      if (failure instanceof TaskDispatchConflictError) return;
+      persistenceError = failure;
+    }
+    try {
+      await repository.taskRetries.settleDispatchFailure(
+        ownerId,
+        claim.cycle.chatId,
+        claim.lease,
+        classifyTaskFailure(error),
+        undefined,
+        guard,
+      );
+    } catch (failure) {
+      if (failure instanceof TaskDispatchConflictError) return;
+      throw failure;
+    }
+    releaseTaskGoalLease(claim.lease.cycleId, claim.lease);
+    publishChatInvalidation(claim.cycle.chatId, "task", null, {
+      experience: "task",
+      projectId: claim.projectId,
+    });
+    queueTaskScheduleTick();
+    if (persistenceError) throw persistenceError;
+  };
   const finishClaimedTaskFailure = async (
     ownerId: string,
     claim: ClaimedTaskDispatch,
     failure?: unknown,
+    preparationGuard?: TaskOperationLeaseFence | null,
   ): Promise<void> => {
+    if (preparationGuard) {
+      await finishGoalLaunchFailure(ownerId, claim, failure, preparationGuard);
+      return;
+    }
     let cleanupError: unknown = null;
     try {
       await repository.tasks.inferenceInputs.recordFailure(
@@ -152,7 +197,15 @@ export function createTaskClaimedExecutionRuntime(
   ): Promise<void> => {
     await runAsOwner(ownerId, async () => {
       let launchStage: TaskLaunchStage = "resolve-context";
+      let preparationGuard: TaskOperationLeaseFence | null = null;
       try {
+        if (claim.cycle.operationKind === "finalize")
+          preparationGuard =
+            await repository.tasks.inferenceInputs.goals.preparationGuard(
+              ownerId,
+              claim.cycle.chatId,
+              claim.lease,
+            );
         const context = await observeTaskLaunchStage(
           app.log,
           claim.cycle,
@@ -244,35 +297,7 @@ export function createTaskClaimedExecutionRuntime(
             });
           } catch (error) {
             if (error instanceof TaskDispatchConflictError) return;
-            let persistenceError: unknown;
-            try {
-              await failTaskGoalLaunch(
-                context.chatId,
-                operationId,
-                error,
-                guard,
-              );
-            } catch (failure) {
-              if (failure instanceof TaskDispatchConflictError) return;
-              persistenceError = failure;
-            }
-            try {
-              await repository.taskRetries.settleDispatchFailure(
-                ownerId,
-                context.chatId,
-                claim.lease,
-                classifyTaskFailure(error),
-                undefined,
-                guard,
-              );
-            } catch (failure) {
-              if (failure instanceof TaskDispatchConflictError) return;
-              throw failure;
-            }
-            releaseTaskGoalLease(claim.lease.cycleId, claim.lease);
-            publishChatInvalidation(context.chatId, "task", null, context);
-            queueTaskScheduleTick();
-            if (persistenceError) throw persistenceError;
+            await finishGoalLaunchFailure(ownerId, claim, error, guard);
           }
         };
         if (prior?.relayResult) {
@@ -497,7 +522,7 @@ export function createTaskClaimedExecutionRuntime(
           },
           "Scheduled Task operation failed to start",
         );
-        await finishClaimedTaskFailure(ownerId, claim, error);
+        await finishClaimedTaskFailure(ownerId, claim, error, preparationGuard);
       }
     });
   };

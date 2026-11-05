@@ -120,6 +120,55 @@ impl Service {
                 .await
         })
     }
+    async fn finish_preparation_failure(
+        &self,
+        owner: &str,
+        claim: &Value,
+        failure: &anyhow::Error,
+        guard: &Value,
+    ) -> Result<()> {
+        let chat = text(&claim["cycle"]["chatId"])?;
+        let operation = text(&claim["cycle"]["operationId"])?;
+        let persisted = self
+            .tasks
+            .fail_operation_guarded(owner, &chat, &operation, None, Some(guard))
+            .await;
+        if persisted
+            .as_ref()
+            .err()
+            .is_some_and(|e| downcast_ref::<task_dispatch::Conflict>(e).is_some())
+        {
+            return Ok(());
+        }
+        if let Err(error) = self
+            .retries
+            .settle_dispatch_failure_guarded(
+                owner,
+                &chat,
+                &claim["lease"],
+                tasks::failure_kind::for_error(failure),
+                None,
+                Some(guard),
+            )
+            .await
+        {
+            if downcast_ref::<task_dispatch::Conflict>(&error).is_some() {
+                return Ok(());
+            }
+            return Err(error);
+        }
+        self.dependencies.goals.release_lease(&claim["lease"]);
+        self.publish(
+            owner,
+            &chat,
+            Some(&json!({"experience":"task","projectId":claim["projectId"]})),
+        );
+        self.tick();
+        self.log("warn", "Task Goal startup failed; the finalized plan is retained for retry",
+            json!({"event":"task.goal.start-failed","subsystem":"task-scheduler","operation":"start-goal","status":"failed","reasonCode":"task-goal-start-failed","chatId":chat,"operationId":operation}));
+        persisted?;
+        Ok(())
+    }
     async fn finish_failure_one(
         &self,
         owner: &str,
