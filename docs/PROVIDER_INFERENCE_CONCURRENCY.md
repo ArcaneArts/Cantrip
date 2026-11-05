@@ -1388,3 +1388,49 @@ No tests, builds, typechecks, benchmarks, native execution or computer-use
 validation ran. Captured non-Goal Task-round disk delivery and historical-input
 retirement still require their integration; this terminal receipt makes a
 committed response distinguishable from a transport acknowledgement.
+
+## Captured Task round outcomes
+
+The existing worker response outbox now captures receipt-bearing direct,
+planning and finalization rounds as well as Goal inputs. Its legacy private
+file/endpoint names are preserved so pending files remain discoverable. The
+version-one envelope carries `inputKind`, defaulting to Goal for older files.
+It persists the existing protected response before ordinary response publication
+and captures the original server/account/worker scope at command admission.
+There is no new prompt storage or input queue.
+
+Round delivery uses the shared terminal transaction and acknowledges only its
+positive, digest-matched commit evidence. A lost acknowledgement is idempotent,
+including after finalization queued Goal startup or a Task advanced. The current
+control snapshot is captured under the existing owner/round locks separately
+from the original physical input receipt. Fresh control can project an actual
+result for the unchanged input after pause/expiry/control takeover; it cannot
+launch input, renew a lease or release provider capacity. Latest cycle, immutable
+input, current Task/round, exact lane activation and placement checks still apply.
+Cancellation, replacement inputs and newer cycles cannot be projected as current.
+
+An archived or definitively superseded round can instead save its protected
+assistant response and bounded `historyOnly` terminal evidence. This path never
+changes Task, lane, dispatch, queue, retry, recency or native authority. A still
+current but uncertain operation retains its worker file. Actual canonical
+input/round deletion or a validated replacement receipt permits explicit
+retirement. A failed, deferred input may also retire its negative result when
+its exact worker receipt has positive no-forward evidence, all attempts were
+enforced, and no attempt was ever dispatched; its canonical prompt remains queued
+for Resume. The same negative-result retirement applies to Goal inputs.
+
+Committed message publication uses the existing live service. Live publication
+or follow-up failure cannot turn a committed response into a missing database
+acknowledgement. Pending result files are removed only after a matching commit or
+retirement receipt and retain no completed-file ledger. Migration 0260 validates
+the optional historical marker and was not executed. Old servers that cannot
+acknowledge the new envelope leave files pending until upgraded.
+
+Source review covered live/recovery races, original versus current control,
+matching/conflicting duplicates, pause/expiry/cancel, archive/new Task rounds,
+receipt replacement, deleted inputs, no-forward deferral and lost acknowledgements.
+Direct formatting, mechanical protocol export and `git diff --check` ran. No
+tests, builds, typechecks, benchmarks, native execution, migration execution or
+computer-use validation ran. Before-capture native checkpoint recovery, ordinary
+Chat history coverage, canonical timing and bounded-runtime retention still need
+the final goal audit; this milestone covers captured Task response delivery.

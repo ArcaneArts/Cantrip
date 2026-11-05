@@ -622,7 +622,7 @@
     "executionTargetResourceKindSchema": 897,
     "executionTargetSchema": 865,
     "taskGoalOutcomeDeliverySchema": 10450,
-    "taskGoalOutcomeCommitSchema": 10457,
+    "taskGoalOutcomeCommitSchema": 10459,
     "workerChatTurnOutcomeNotificationSchema": 1963
   },
   "nodes": [
@@ -62194,16 +62194,25 @@
       "name": "taskGoalOutcomeDeliverySchema",
       "shape": {
         "version": 10451,
-        "deliveryId": 10452,
-        "serverId": 10453,
-        "ownerId": 10454,
-        "workerId": 10455,
+        "inputKind": 10452,
+        "deliveryId": 10454,
+        "serverId": 10455,
+        "ownerId": 10456,
+        "workerId": 10457,
         "notification": 1963
       },
-      "catchall": 10456,
+      "catchall": 10458,
       "checks": []
     },
     { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 10453,
+      "defaultValue": "goal",
+      "checks": []
+    },
+    { "type": "enum", "values": ["round", "goal"], "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -62233,18 +62242,18 @@
     {
       "type": "union",
       "name": "taskGoalOutcomeCommitSchema",
-      "options": [10458, 10463],
+      "options": [10460, 10465],
       "discriminator": "committed",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "deliveryId": 10459,
-        "taskInferenceInputOperationId": 10460,
-        "committed": 10461
+        "deliveryId": 10461,
+        "taskInferenceInputOperationId": 10462,
+        "committed": 10463
       },
-      "catchall": 10462,
+      "catchall": 10464,
       "checks": []
     },
     {
@@ -62278,12 +62287,12 @@
     {
       "type": "object",
       "shape": {
-        "deliveryId": 10459,
-        "taskInferenceInputOperationId": 10460,
-        "committed": 10464,
-        "retiredReason": 10465
+        "deliveryId": 10461,
+        "taskInferenceInputOperationId": 10462,
+        "committed": 10466,
+        "retiredReason": 10467
       },
-      "catchall": 10467,
+      "catchall": 10469,
       "checks": []
     },
     { "type": "literal", "values": [false], "checks": [] },
@@ -62291,12 +62300,16 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 10466,
+      "innerType": 10468,
       "checks": []
     },
     {
       "type": "enum",
-      "values": ["canonical-input-deleted", "canonical-input-replaced"],
+      "values": [
+        "canonical-input-deleted",
+        "canonical-input-replaced",
+        "canonical-input-deferred"
+      ],
       "checks": []
     },
     { "type": "never", "checks": [] }

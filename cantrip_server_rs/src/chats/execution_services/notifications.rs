@@ -3,6 +3,40 @@ use crate::operations::logging::{self, LogCall};
 use futures::FutureExt;
 
 impl Service {
+    pub(crate) async fn receive_committed_outcome(
+        &self,
+        owner: String,
+        worker: String,
+        notification: Arc<Value>,
+    ) {
+        let context = json!({"event":"task.outcome.follow-up-pending","workerId":worker,"chatId":notification["chatId"]});
+        if let Err(error) = self.receive_outcome(owner, worker, notification).await {
+            let mut context = context;
+            context["err"] = crate::operations::logging::error_details(&error);
+            (self.logger)(crate::operations::logging::LogCall::event(
+                "warn",
+                "Task outcome is committed; live follow-up remains pending",
+                context,
+            ));
+        }
+    }
+
+    pub(crate) async fn publish_task_outcome_message(
+        &self,
+        owner: &str,
+        message: &Value,
+        routing: &Value,
+    ) {
+        self.outcome_live
+            .publish_persisted_message(
+                owner,
+                message,
+                crate::chats::message_queries::MessageKind::Task,
+                Some(routing),
+            )
+            .await;
+    }
+
     pub fn worker_connected(self: &Arc<Self>, worker: &str) {
         self.subscriptions
             .lock()

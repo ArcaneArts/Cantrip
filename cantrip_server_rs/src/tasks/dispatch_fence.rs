@@ -87,6 +87,10 @@ pub(super) async fn assert(
         expected
             .get("goalProjection")
             .and_then(|p| p.get("control"))
+    } else if outcome {
+        expected
+            .get("roundProjection")
+            .and_then(|p| p.get("control"))
     } else {
         None
     };
@@ -111,10 +115,11 @@ pub(super) async fn assert(
         if let Some(control) = projection_control {
             cycle["state"] == control["state"]
                 && cycle["lease_owner"] == control["leaseOwner"]
-                && matches!(
+                && (matches!(
                     cycle["state"].as_str(),
                     Some("claimed" | "running" | "paused" | "expired" | "succeeded" | "failed")
-                )
+                ) || (cycle["state"] == "queued"
+                    && expected.get("inferenceInputOperationId").is_some()))
         } else {
             expired_outcome
                 || ((matches!(cycle["state"].as_str(), Some("claimed" | "running"))

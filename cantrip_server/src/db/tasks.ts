@@ -1,3 +1,8 @@
+import { TaskDispatchConflictError } from "./task-dispatch.js";
+import {
+  persistHistoricalRoundOutcome,
+  roundOutcomeRetirement,
+} from "./task-round-input-history.js";
 import {
   taskEncryptedOperationStartSchema,
   taskOpaqueContentSchema,
@@ -256,6 +261,42 @@ export class TaskRepository {
       lanes,
       messages,
     );
+  }
+
+  async deliverRoundOutcome(
+    owner: string,
+    worker: string,
+    notification: Extract<WorkerNotification, { type: "chat.turn.outcome" }>,
+  ) {
+    try {
+      const result = await this.recoverRoundOutcome(
+        owner,
+        worker,
+        notification,
+      );
+      if (result?.terminal?.projectedAt) return result;
+    } catch (error) {
+      if (
+        !(error instanceof TaskDispatchConflictError) &&
+        !(error instanceof TaskConflictError)
+      )
+        throw error;
+    }
+    return persistHistoricalRoundOutcome(
+      this.database,
+      this.messages,
+      owner,
+      worker,
+      notification,
+    );
+  }
+
+  roundOutcomeRetirement(
+    owner: string,
+    worker: string,
+    notification: Extract<WorkerNotification, { type: "chat.turn.outcome" }>,
+  ) {
+    return roundOutcomeRetirement(this.database, owner, worker, notification);
   }
 
   recoverRoundOutcome(

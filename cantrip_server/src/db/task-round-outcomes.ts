@@ -159,13 +159,6 @@ export async function recoverRoundOutcome(
         terminal,
       };
     }
-    await assertTaskOperationDispatchFence(
-      tx,
-      owner,
-      n.chatId,
-      round.id,
-      guard,
-    );
     const [cycle] = await tx
       .select()
       .from(schema.taskDispatchCycles)
@@ -174,6 +167,21 @@ export async function recoverRoundOutcome(
       .limit(1);
     // assertTaskOperationDispatchFence also requires this to be the latest cycle.
     if (!cycle || cycle.operationKind !== round.kind) stale();
+    if (guard.kind !== "outcome" || !guard.inferenceInputOperationId) stale();
+    guard.roundProjection = {
+      control: {
+        fencingToken: cycle.fencingToken,
+        leaseOwner: cycle.leaseOwner,
+        state: cycle.state,
+      },
+    };
+    await assertTaskOperationDispatchFence(
+      tx,
+      owner,
+      n.chatId,
+      round.id,
+      guard,
+    );
     await tx.execute(projectChatExecutionLock(owner, n.chatId));
     const [placement] = await tx
       .select({ chat: schema.chats, project: schema.projects })
@@ -211,7 +219,12 @@ export async function recoverRoundOutcome(
       cycle.goalInput ||
       (round.kind === "finalize" && task.implementationStartedAt)
     )
-      return { state: "owned" as const, message: null, chat };
+      return {
+        state: "owned" as const,
+        message: null,
+        chat,
+        terminal: undefined,
+      };
     if (
       task.activeOperationId !== round.id &&
       !(round.relayResult && task.activeOperationId === null)
@@ -219,7 +232,12 @@ export async function recoverRoundOutcome(
       stale();
     // A contradictory failed redelivery cannot erase a completed round.
     if (round.relayResult && !result)
-      return { state: "owned" as const, message: null, chat };
+      return {
+        state: "owned" as const,
+        message: null,
+        chat,
+        terminal: undefined,
+      };
     const goalStartup = result !== null && round.kind === "finalize";
     if (goalStartup && !task.planGoalEnabled) stale();
     const [lane] = await tx

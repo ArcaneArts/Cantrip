@@ -118,30 +118,70 @@ export function installInternalNativeCommandRoutes(
           // This transaction validates the original physical receipt and saves
           // the protected response/terminal marker, including historical input.
           // No current worker generation is required to deliver an older fact.
-          committed = await repository.tasks.inferenceInputs.goals.applyOutcome(
-            authentication.ownerId,
-            input.workerId,
-            note,
-            { recordOnly: true },
-          );
+          committed =
+            input.inputKind === "round"
+              ? await repository.tasks.deliverRoundOutcome(
+                  authentication.ownerId,
+                  input.workerId,
+                  note,
+                )
+              : await repository.tasks.inferenceInputs.goals.applyOutcome(
+                  authentication.ownerId,
+                  input.workerId,
+                  note,
+                  { recordOnly: true },
+                );
         } catch (error) {
           if (error instanceof TaskDispatchConflictError) conflict = error;
           else throw error;
         }
         const retiredReason = committed
           ? null
-          : await repository.tasks.inferenceInputs.goals.outcomeRetirementReason(
-              authentication.ownerId,
-              note,
+          : input.inputKind === "round"
+            ? await repository.tasks.roundOutcomeRetirement(
+                authentication.ownerId,
+                input.workerId,
+                note,
+              )
+            : await repository.tasks.inferenceInputs.goals.outcomeRetirementReason(
+                authentication.ownerId,
+                note,
+                input.workerId,
+              );
+        if (committed?.message) {
+          try {
+            live.publishTaskMessage(committed.message, committed.chat);
+          } catch (error) {
+            app.log.warn(
+              {
+                err: error,
+                workerId: input.workerId,
+                event: "task.outcome.publication-pending",
+              },
+              "Task outcome is committed; live publication remains pending",
             );
+          }
+        }
         if (conflict && !retiredReason)
           return reply.code(409).send({ code: "stale-task-input" });
-        if (committed)
-          await dependencies.onGoalOutcomeCommitted?.(
-            authentication.ownerId,
-            input.workerId,
-            note,
-          );
+        if (committed) {
+          try {
+            await dependencies.onGoalOutcomeCommitted?.(
+              authentication.ownerId,
+              input.workerId,
+              note,
+            );
+          } catch (error) {
+            app.log.warn(
+              {
+                err: error,
+                workerId: input.workerId,
+                event: "task.outcome.follow-up-pending",
+              },
+              "Task outcome is committed; live follow-up remains pending",
+            );
+          }
+        }
         return taskGoalOutcomeCommitSchema.parse({
           deliveryId: input.deliveryId,
           taskInferenceInputOperationId: note.taskInferenceInputOperationId,

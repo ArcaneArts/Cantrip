@@ -183,7 +183,7 @@ export class NativeCommandClient {
         input.notification.taskInferenceInputOperationId
     )
       throw new Error(
-        "Goal outcome has no matching canonical commit or retirement receipt.",
+        "Task outcome has no matching canonical commit or retirement receipt.",
       );
   }
 

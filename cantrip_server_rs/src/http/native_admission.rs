@@ -62,39 +62,54 @@ async fn apply(
         // Captured facts can outlive a worker generation. The transaction
         // validates exact original input authority, not current observer liveness.
         let tasks = crate::tasks::Repository::new(service.repository.database.clone());
-        let committed = tasks
-            .apply_goal_input_outcome(&owner, input["workerId"].as_str().unwrap(), note, true)
-            .await;
-        let (committed, conflict) = match committed {
-            Ok(result) => (result.is_some(), None),
-            Err(error)
-                if error
-                    .downcast_ref::<crate::task_dispatch::Conflict>()
-                    .is_some() =>
-            {
-                (false, Some(error))
-            }
+        let captured = if input["inputKind"] == "round" {
+            tasks
+                .deliver_round_outcome(&owner, input["workerId"].as_str().unwrap(), note)
+                .await
+        } else {
+            tasks
+                .apply_goal_input_outcome(&owner, input["workerId"].as_str().unwrap(), note, true)
+                .await
+        };
+        let (captured, conflict) = match captured {
+            Ok(result) => (result, None),
+            Err(error) if error.is::<crate::task_dispatch::Conflict>() => (None, Some(error)),
             Err(error) => return Err(error),
         };
+        let committed = captured.is_some();
         let retired = if committed {
             None
+        } else if input["inputKind"] == "round" {
+            tasks
+                .round_outcome_retirement(&owner, input["workerId"].as_str().unwrap(), note)
+                .await?
         } else {
-            tasks.goal_outcome_retirement(&owner, note).await?
+            tasks
+                .goal_outcome_retirement(&owner, note, input["workerId"].as_str().unwrap())
+                .await?
         };
         if retired.is_none()
             && let Some(error) = conflict
         {
             return Err(error);
         }
+        if let Some(captured) = &captured
+            && !captured["message"].is_null()
+        {
+            service
+                .execution
+                .publish_task_outcome_message(&owner, &captured["message"], &captured["chat"])
+                .await;
+        }
         if committed {
             service
                 .execution
-                .receive_outcome(
+                .receive_committed_outcome(
                     owner.clone(),
                     input["workerId"].as_str().unwrap().to_owned(),
                     Arc::new(note.clone()),
                 )
-                .await?;
+                .await;
         }
         let mut receipt = json!({"deliveryId":input["deliveryId"],"taskInferenceInputOperationId":note["taskInferenceInputOperationId"],"committed":committed});
         if let Some(reason) = retired {

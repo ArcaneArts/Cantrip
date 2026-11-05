@@ -28,7 +28,7 @@ impl Repository {
                 relay::parse_result(&round["relay_request"],&n["outcome"]["result"]["structuredResult"]).ok()
             } else {None};
             let goal_startup=result.is_some() && round["kind"]=="finalize";
-            let guard=json!({"kind":"outcome","cycleId":f["cycleId"],"operationId":f["operationId"],
+            let mut guard=json!({"kind":"outcome","cycleId":f["cycleId"],"operationId":f["operationId"],
                 "leaseOwner":f["leaseOwner"],"fencingToken":f["fencingToken"],"inferenceInputOperationId":n["taskInferenceInputOperationId"]});
             let input=&round["inference_input"];let r=&input["receipt"];
             if input.is_null()
@@ -48,10 +48,11 @@ impl Repository {
                 if authorization["experience"]!="task" {return Ok(None);}
                 return Ok(Some(json!({"state":"owned","message":Value::Null,"chat":authorization,"terminal":terminal})));
             }
-            dispatch_fence::assert(tx,&owner,&chat,&operation,&guard,false).await?;
             let id=text(&f["cycleId"])?;
             let c=one(Executor::Transaction(tx),"SELECT to_jsonb(c)::text FROM task_dispatch_cycles c WHERE c.id=$1 LIMIT 1 FOR UPDATE",&[&id]).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?;
             if c["operation_kind"]!=round["kind"] {return stale();}
+            guard["roundProjection"]=json!({"control":json!({"fencingToken":c["fencing_token"],"leaseOwner":c["lease_owner"],"state":c["state"]})});
+            dispatch_fence::assert(tx,&owner,&chat,&operation,&guard,false).await?;
             tx.query("WITH p AS MATERIALIZED (SELECT projects.id FROM projects JOIN chats ON chats.project_id=projects.id WHERE projects.owner_id=$1 AND chats.id=$2 FOR UPDATE OF projects) SELECT chats.id FROM p JOIN chats ON chats.project_id=p.id WHERE chats.id=$2 FOR UPDATE OF chats",&[&owner,&chat]).await?;
             let placement=one(Executor::Transaction(tx),"SELECT jsonb_build_object('chat',to_jsonb(c),'project',to_jsonb(p))::text FROM chats c JOIN projects p ON p.id=c.project_id AND p.owner_id=$1 WHERE c.id=$2 LIMIT 1 FOR UPDATE OF c,p",&[&owner,&chat]).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?;
             let task=locked_task(tx,&chat).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?;

@@ -216,14 +216,15 @@ impl Repository {
             })
             .await
     }
-    /// Retires delivery authority only on positive canonical deletion or
-    /// replacement. Archive, timeout and missing notifications are not evidence.
+    /// Retires delivery on deletion/replacement or a proven no-forward deferred
+    /// failure. Archive, timeout and missing notifications are not evidence.
     pub async fn goal_outcome_retirement(
         &self,
         owner: &str,
         n: &Value,
+        worker: &str,
     ) -> Result<Option<&'static str>> {
-        let (owner, n) = (owner.to_owned(), n.clone());
+        let (owner, n, worker) = (owner.to_owned(), n.clone(), worker.to_owned());
         self.database.transaction(|tx|Box::pin(async move {
             let chat=text(&n["chatId"])?;
             tx.query("WITH p AS MATERIALIZED (SELECT projects.id FROM projects JOIN chats ON chats.project_id=projects.id WHERE projects.owner_id=$1 AND chats.id=$2 FOR UPDATE OF projects) SELECT chats.id FROM p JOIN chats ON chats.project_id=p.id WHERE chats.id=$2 FOR UPDATE OF chats",&[&owner,&chat]).await?;
@@ -233,6 +234,12 @@ impl Repository {
                 && receipt["kind"]=="goal" && receipt["chatId"]==n["chatId"] && receipt["clientMessageId"]==n["clientMessageId"]
                 && receipt["operationId"]!=n["taskInferenceInputOperationId"] {
                 return Ok(Some("canonical-input-replaced"));
+            }
+            if let Ok(receipt)=parse("taskInferenceInputReceiptSchema",&row["state"]["receipt"])
+                && n["outcome"]["ok"]==false && row["state"]["deferred"]==true && row["state"]["accepted"]==true && row["state"]["allAttemptsEnforced"]==true && row["state"].get("firstDispatchedOperationId").is_some_and(Value::is_null)
+                && (row["state"]["failedBeforeDispatch"]==true || (n["outcome"]["inference"]["disposition"]=="input-not-dispatched" && n["outcome"]["inference"]["operationId"]==receipt["operationId"] && n["outcome"]["inference"]["providerId"]==receipt["providerId"] && n["outcome"]["inference"]["chatId"]==receipt["chatId"] && n["outcome"]["inference"]["messageId"]==receipt["clientMessageId"]))
+                && receipt["operationId"]==n["taskInferenceInputOperationId"] && receipt["workerId"]==worker.as_str() && receipt["clientMessageId"]==n["clientMessageId"] {
+                return Ok(Some("canonical-input-deferred"));
             }
             Ok(None)
         })).await

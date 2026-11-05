@@ -3823,6 +3823,10 @@ export const taskPlanningRounds = pgTable(
       table.startedAt,
     ),
     check(
+      "task_round_history_receipt_check",
+      sql`${table.inferenceInput}->'terminal'->'historyOnly' IS NULL OR jsonb_typeof(${table.inferenceInput}->'terminal'->'historyOnly') = 'boolean'`,
+    ),
+    check(
       "task_round_outcome_receipt_check",
       sql`${table.inferenceInput}->'terminal'->'outcomeDigest' IS NULL OR COALESCE((
         jsonb_typeof(${table.inferenceInput}->'terminal'->'outcomeDigest') = 'string'

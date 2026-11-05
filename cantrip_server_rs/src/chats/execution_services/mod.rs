@@ -75,6 +75,7 @@ pub struct Service {
     subscriptions: Mutex<HashMap<String, NotificationSubscription>>,
     inference_revisions: Mutex<HashMap<String, (String, u64)>>,
     inference_live: Arc<LiveService>,
+    outcome_live: Arc<Live>,
     inference_server_id: String,
 }
 
@@ -240,6 +241,7 @@ impl Service {
             subscriptions: Mutex::default(),
             inference_revisions: Mutex::default(),
             inference_live: d.application_live.clone(),
+            outcome_live: d.live.clone(),
             inference_server_id: d.server_id.clone(),
         })
     }
