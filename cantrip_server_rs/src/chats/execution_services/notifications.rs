@@ -40,10 +40,11 @@ impl Service {
             "Received durable agent turn outcome",
             context,
         ));
-        let key = recovery::scheduler::key(
+        let key = recovery::scheduler::attempt_key(
             &json!(worker),
             &notification["chatId"],
             &notification["clientMessageId"],
+            notification.get("taskInferenceInputOperationId"),
         );
         let (outcomes, logger, note, observed_worker) = (
             self.outcomes.clone(),

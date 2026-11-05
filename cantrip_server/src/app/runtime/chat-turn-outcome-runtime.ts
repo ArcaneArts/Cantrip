@@ -155,6 +155,14 @@ export function createChatTurnOutcomeRuntime({
           )
         : null;
     const taskDispatchFence = notification.taskDispatchFence;
+    const outcomeFence = taskDispatchFence
+      ? {
+          kind: "leased" as const,
+          lease: taskDispatchFence,
+          inferenceInputOperationId:
+            notification.taskInferenceInputOperationId ?? null,
+        }
+      : undefined;
     if (taskDispatchFence) {
       if (
         !taskOperation ||
@@ -203,9 +211,7 @@ export function createChatTurnOutcomeRuntime({
               taskOperation.round.id,
               relayResult,
               notification.outcome.result.turnId ?? null,
-              taskDispatchFence
-                ? { kind: "leased", lease: taskDispatchFence }
-                : undefined,
+              outcomeFence,
             );
             if (taskOperation.round.kind === "finalize") {
               recoveredFinalizationOperationId = taskOperation.round.id;
@@ -240,9 +246,7 @@ export function createChatTurnOutcomeRuntime({
               notification.chatId,
               taskOperation.round.id,
               undefined,
-              taskDispatchFence
-                ? { kind: "leased", lease: taskDispatchFence }
-                : undefined,
+              outcomeFence,
             );
             publishChatInvalidation(
               notification.chatId,
@@ -258,9 +262,7 @@ export function createChatTurnOutcomeRuntime({
             notification.chatId,
             taskOperation.round.id,
             undefined,
-            taskDispatchFence
-              ? { kind: "leased", lease: taskDispatchFence }
-              : undefined,
+            outcomeFence,
           );
           publishChatInvalidation(
             notification.chatId,

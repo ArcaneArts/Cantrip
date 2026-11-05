@@ -126,6 +126,14 @@ impl Continuation for Service {
             &turn.user_message["id"],
         ));
     }
+    fn cancel_attempt_outcome_recovery(&self, turn: &PreparedTurn, task_input: Option<&Value>) {
+        self.dependencies.outcomes.settle(&scheduler::attempt_key(
+            &turn.execution["workerId"],
+            &turn.execution["chatId"],
+            &turn.user_message["id"],
+            task_input,
+        ));
+    }
     fn continue_worktree(&self, turn: Arc<PreparedTurn>) -> BoxFuture<'static, Result<bool>> {
         match text(&turn.execution["chatId"]) {
             Ok(chat) => self.continue_worktree_transition(&turn.owner, &chat),

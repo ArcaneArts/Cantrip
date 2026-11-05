@@ -377,6 +377,7 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
       contextKind: chatContextKindSchema.default("project"),
       worktreeId: z.string().min(1).nullable(),
       scratchRootId: z.string().min(1).nullable().default(null),
+      taskInferenceInputOperationId: z.uuid().optional(),
       taskDispatchFence: taskDispatchWorkerLeaseSchema
         .omit({ leaseExpiresAt: true })
         .optional(),

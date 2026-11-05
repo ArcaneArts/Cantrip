@@ -22,6 +22,9 @@ use tokio::sync::oneshot;
 
 pub trait Continuation: Send + Sync {
     fn cancel_outcome_recovery(&self, turn: &PreparedTurn);
+    fn cancel_attempt_outcome_recovery(&self, turn: &PreparedTurn, _task_input: Option<&Value>) {
+        self.cancel_outcome_recovery(turn);
+    }
     fn continue_worktree(&self, turn: Arc<PreparedTurn>) -> BoxFuture<'static, Result<bool>>;
     fn dispatch_queue(&self, turn: Arc<PreparedTurn>) -> BoxFuture<'static, Result<()>>;
 }

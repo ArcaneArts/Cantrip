@@ -314,7 +314,12 @@ impl Runtime {
         let raw = receive
             .await
             .context("The owned worker turn stopped unexpectedly.")??;
-        self.dependencies.continuation.cancel_outcome_recovery(turn);
+        self.dependencies
+            .continuation
+            .cancel_attempt_outcome_recovery(
+                turn,
+                sink.task_input_operation.lock().unwrap().as_ref(),
+            );
         let result = crate::settings::parse_response("agentTurnResultSchema", raw.as_ref())?;
         self.complete(sink, index, began, hooks, result).await
     }
@@ -408,7 +413,12 @@ impl Runtime {
             state.quota_followups_scheduled = true;
         }
         if retry {
-            self.dependencies.continuation.cancel_outcome_recovery(turn);
+            self.dependencies
+                .continuation
+                .cancel_attempt_outcome_recovery(
+                    turn,
+                    sink.task_input_operation.lock().unwrap().as_ref(),
+                );
             self.dependencies.routing.set_cooldown(
                 &runtime,
                 Some((self.dependencies.events.clock)() as f64 + 60_000.0),
