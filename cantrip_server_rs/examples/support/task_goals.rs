@@ -328,6 +328,7 @@ pub async fn run(
                                 activate: input["activate"] == true,
                                 runtime_failure: input.get("runtimeFailure").cloned(),
                                 observation_only: input["observationOnly"] == true,
+                                dispatch_guard: None,
                             },
                         )
                         .await?

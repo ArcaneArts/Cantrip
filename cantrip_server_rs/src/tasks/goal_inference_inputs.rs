@@ -141,11 +141,11 @@ impl Repository {
             if !c["goal_input"].is_null() && c["goal_input"]["deferred"]!=true {return stale();}
             tx.query("WITH p AS MATERIALIZED (SELECT projects.id FROM projects JOIN chats ON chats.project_id=projects.id WHERE projects.owner_id=$1 AND chats.id=$2 FOR UPDATE OF projects) SELECT chats.id FROM p JOIN chats ON chats.project_id=p.id WHERE chats.id=$2 FOR UPDATE OF chats",&[&owner,&chat]).await?;
             let placement=one(Executor::Transaction(tx),"SELECT jsonb_build_object('chat',to_jsonb(c),'task',to_jsonb(t))::text FROM chats c JOIN tasks t ON t.chat_id=c.id WHERE c.id=$1 LIMIT 1 FOR UPDATE OF c,t",&[&chat]).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?;
-            let guard=json!({"kind":"leased","lease":lease,"goalLaunch":{
+            let guard=json!({"kind":"leased","lease":lease,"goalLaunch":json!({
                 "inputOperationId":c["goal_input"].get("receipt").and_then(|r|r.get("operationId")).unwrap_or(&Value::Null),
                 "placementRevision":placement["chat"]["placement_revision"],
-                "preparation":{"implementationStartedAt":placement["task"]["implementation_started_at"]}
-            }});
+                "preparation":json!({"implementationStartedAt":placement["task"]["implementation_started_at"]})
+            })});
             dispatch_fence::assert(tx,&owner,&chat,&operation,&guard,false).await?;
             Ok(Some(guard))
         })).await

@@ -1,6 +1,7 @@
 pub mod catalog;
 mod context;
 mod lifecycle;
+pub(crate) mod mcp_queries;
 mod observations;
 mod reads;
 mod resolve;
@@ -14,18 +15,18 @@ use crate::{
 };
 use anyhow::Result;
 use futures::FutureExt;
+pub(crate) use reads::StoredTargetValidationError;
 pub(crate) use reads::worktree as worktree_summary;
 use reads::{Kind, Reads};
 use std::sync::Arc;
 
 pub struct TargetRepository {
     database: Arc<Database>,
+    mcp_errors: bool,
 }
 impl TargetRepository {
     pub async fn worktrees(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
-        Reads::new(self.database.clone())
-            .worktrees(owner, project)
-            .await
+        self.reads().worktrees(owner, project).await
     }
     pub async fn ready_worktree(
         &self,
@@ -33,27 +34,40 @@ impl TargetRepository {
         project: &str,
         id: &Value,
     ) -> Result<Option<Value>> {
-        Reads::new(self.database.clone())
+        self.reads()
             .primary(owner, project, id)
             .await
             .map_err(terminal_error)
     }
     pub async fn remote_execution_context(&self, owner: &str, id: &Value) -> Result<Option<Value>> {
-        Reads::new(self.database.clone())
-            .remote_execution_context(owner, id)
-            .await
+        self.reads().remote_execution_context(owner, id).await
     }
     pub async fn terminals(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
-        Reads::new(self.database.clone())
+        self.reads()
             .resources(Kind::Terminal, owner, project)
             .await
             .map_err(terminal_error)
     }
     pub async fn worker(&self, owner: &str, id: &Value) -> Result<Option<Value>> {
-        Reads::new(self.database.clone()).worker(owner, id).await
+        self.reads().worker(owner, id).await
     }
     pub fn new(database: Arc<Database>) -> Self {
-        Self { database }
+        Self {
+            database,
+            mcp_errors: false,
+        }
+    }
+    pub(crate) fn for_mcp(database: Arc<Database>) -> Self {
+        Self {
+            database,
+            mcp_errors: true,
+        }
+    }
+    fn reads(&self) -> Reads {
+        Reads {
+            database: self.database.clone(),
+            mcp_errors: self.mcp_errors,
+        }
     }
     pub async fn catalog(
         &self,
@@ -62,7 +76,7 @@ impl TargetRepository {
         connected: Connected<'_>,
     ) -> Result<Option<Value>> {
         let projects = ProjectRepository::new(self.database.clone())?;
-        let reads = Reads::new(self.database.clone());
+        let reads = self.reads();
         // Run all collaborators before deciding whether the project exists.
         // In particular, invalid owned worker/resource data must retain its
         // actual mapper error, even when another read returns no project.

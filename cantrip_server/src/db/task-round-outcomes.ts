@@ -154,12 +154,16 @@ export async function recoverRoundOutcome(
       task.planningRound !== round.ordinal
     )
       stale();
+    // The ownership guard above establishes the Task routing shape.
+    const chat = placement.chat as typeof placement.chat & {
+      experience: "task";
+    };
     // A live launcher may already own implementation. Never replay its kickoff.
     if (
       cycle.goalInput ||
       (round.kind === "finalize" && task.implementationStartedAt)
     )
-      return { state: "owned" as const, message: null, chat: placement.chat };
+      return { state: "owned" as const, message: null, chat };
     if (
       task.activeOperationId !== round.id &&
       !(round.relayResult && task.activeOperationId === null)
@@ -167,7 +171,7 @@ export async function recoverRoundOutcome(
       stale();
     // A contradictory failed redelivery cannot erase a completed round.
     if (round.relayResult && !result)
-      return { state: "owned" as const, message: null, chat: placement.chat };
+      return { state: "owned" as const, message: null, chat };
     const goalStartup = result !== null && round.kind === "finalize";
     if (goalStartup && !task.planGoalEnabled) stale();
     const [lane] = await tx
@@ -289,7 +293,7 @@ export async function recoverRoundOutcome(
       return {
         state: "settled" as const,
         message,
-        chat: placement.chat,
+        chat,
         ok: result !== null,
       };
     }
@@ -318,7 +322,7 @@ export async function recoverRoundOutcome(
         updatedAt: now,
       })
       .where(eq(schema.taskDispatchCycles.id, cycle.id));
-    return { state: "queued" as const, message, chat: placement.chat };
+    return { state: "queued" as const, message, chat };
   });
 }
 

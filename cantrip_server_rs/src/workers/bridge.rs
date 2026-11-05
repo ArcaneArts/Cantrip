@@ -50,7 +50,7 @@ pub struct CommandError {
     /// Preserve schema failures separately from worker/callback failures for
     /// the HTTP/domain layer. Application HTTP errors redact internal details.
     pub encoding_error: Option<Arc<wire::ValidationError>>,
-    pub inference: Option<Value>,
+    pub inference: Option<Box<Value>>,
 }
 impl CommandError {
     fn unavailable(message: String) -> Self {
@@ -460,7 +460,7 @@ impl WorkerBridge {
                 request_id: Some(id.to_owned()),
                 encoding_error: None,
                 inference: if pending.command == "chat.turn" {
-                    response["error"].get("inference").cloned()
+                    response["error"].get("inference").cloned().map(Box::new)
                 } else {
                     None
                 },

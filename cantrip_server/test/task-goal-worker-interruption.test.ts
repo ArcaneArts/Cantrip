@@ -1,6 +1,10 @@
 import type { TaskOpaqueSummary } from "@cantrip/protocol/tasks";
 import { describe, expect, it, vi } from "vitest";
-import { modelConfigurationSchema, type ChatMessage } from "@cantrip/protocol";
+import {
+  modelConfigurationSchema,
+  taskInferenceInputReceiptSchema,
+  type ChatMessage,
+} from "@cantrip/protocol";
 import {
   createChatTurnRuntime,
   type ChatTurnRuntimeDependencies,
@@ -156,7 +160,10 @@ describe("Task Goal worker interruption", () => {
               pauseAutomation: true,
               expectedActivatedAt: context.executionLaneActivatedAt,
             }
-          : { pauseAutomation: false },
+          : {
+              pauseAutomation: false,
+              expectedActivatedAt: context.executionLaneActivatedAt,
+            },
       );
       expect(dispatch).toHaveBeenCalledTimes(workerLost ? 0 : 1);
       expect(afterTurnFailed).toHaveBeenCalledTimes(ownsLane ? 1 : 0);
@@ -209,6 +216,35 @@ describe("Task Goal worker interruption", () => {
     const pause = vi.fn();
     const settle = vi.fn();
     const request = vi.fn();
+    const userMessage = {
+      id: "goal-input",
+      mode: "goal",
+      content: [],
+    } as unknown as ChatMessage;
+    const receipt = taskInferenceInputReceiptSchema.parse({
+      operationId: "55555555-5555-4555-8555-555555555555",
+      kind: "goal",
+      chatId: context.chatId,
+      clientMessageId: userMessage.id,
+      workerId: context.workerId,
+      worktreeId: context.worktreeId,
+      executionLaneId: context.executionLaneId,
+      executionLaneActivatedAt: context.executionLaneActivatedAt,
+      providerId: "provider",
+      modelRouteId: "route",
+      providerAccountId: null,
+      dispatch: {
+        cycleId: lease.cycleId,
+        operationId: lease.operationId,
+        leaseOwner: lease.leaseOwner,
+        fencingToken: lease.fencingToken,
+      },
+    });
+    const receiptForTurn = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(receipt);
+    const pauseInput = vi.fn();
     const deps = {
       applicationOwnerId: () => "owner",
       bridge: { request },
@@ -216,7 +252,10 @@ describe("Task Goal worker interruption", () => {
         getChatExecutionContext: vi
           .fn()
           .mockResolvedValue({ ...context, automationPaused: true }),
-        tasks: { get: vi.fn().mockResolvedValue({}) },
+        tasks: {
+          get: vi.fn().mockResolvedValue({}),
+          inferenceInputs: { goals: { receiptForTurn, pause: pauseInput } },
+        },
         taskDispatch: { pause, settle },
       },
       publishChatInvalidation: vi.fn(),
@@ -227,11 +266,30 @@ describe("Task Goal worker interruption", () => {
       await runtime.scheduledTaskGoalTurnOptions(lease).afterTurnFailed({
         execution: context,
         error: new WorkerUnavailableError("Worker disconnected."),
+        userMessage,
       });
-      expect(pause).toHaveBeenCalledWith(lease, {
-        threadId: "native-thread",
-        turnId: null,
+      expect(pauseInput).not.toHaveBeenCalled();
+      await runtime.scheduledTaskGoalTurnOptions(lease).afterTurnFailed({
+        execution: context,
+        error: new WorkerUnavailableError("Worker disconnected."),
+        userMessage,
       });
+      expect(receiptForTurn).toHaveBeenCalledWith(
+        "owner",
+        context.chatId,
+        lease,
+        {
+          clientMessageId: userMessage.id,
+          executionLaneId: context.executionLaneId,
+          executionLaneActivatedAt: context.executionLaneActivatedAt,
+        },
+      );
+      expect(pauseInput).toHaveBeenCalledExactlyOnceWith(
+        "owner",
+        receipt,
+        "native-thread",
+      );
+      expect(pause).not.toHaveBeenCalled();
       expect(settle).not.toHaveBeenCalled();
       expect(request).not.toHaveBeenCalled();
     } finally {

@@ -232,7 +232,7 @@ export async function runRuntimeAdmissionCases({
     `UPDATE run_configuration_runtimes SET state='running' WHERE id='${runtime}'`,
   );
   await seed(
-    `UPDATE project_worktrees SET worker_id='beta' WHERE id='${worktree}'`,
+    `UPDATE project_worktrees SET project_source_id='github-beta',worker_id='beta',is_primary=false WHERE id='${worktree}'`,
   );
   await run(
     "runtime active worker binding survives placement change",
@@ -242,7 +242,7 @@ export async function runRuntimeAdmissionCases({
     },
   );
   await seed(
-    `UPDATE project_worktrees SET worker_id='alpha',lifecycle_state='missing' WHERE id='${worktree}'`,
+    `UPDATE project_worktrees SET project_source_id='github-alpha',worker_id='alpha',is_primary=true,lifecycle_state='missing' WHERE id='${worktree}'`,
   );
   await run("runtime rejects nonready placement", input("start"), {
     error:

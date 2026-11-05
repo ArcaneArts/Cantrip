@@ -600,6 +600,7 @@ const endpointProviderExports = [
 
 // Reviewed native recovery identities/results and additive timing metadata.
 const inferenceRecoveryExports = [
+  "inferenceFailureEvidenceSchema",
   "inferenceJournalIdentitySchema",
   "inferenceJournalRecordSchema",
   "inferenceNeverStarted",

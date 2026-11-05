@@ -193,6 +193,16 @@ async fn execute_operation(service: &Arc<AuthService>, owner: &str, call: &Value
         )
         .await;
     }
+    if operation.starts_with("target.") {
+        return super::agent_targets::execute(
+            service,
+            owner,
+            &context,
+            operation,
+            &call["request"]["arguments"],
+        )
+        .await;
+    }
     if context["contextKind"] != "project" {
         return Err(OperationError::new(403, "invalid", "Alerts require a project Chat.").into());
     }

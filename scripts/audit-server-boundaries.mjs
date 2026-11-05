@@ -118,7 +118,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
   workerCommands:
-    "b0105664cac6d59bf9ea24587ec40e801beaa4088f22e8fad2037256e6b8777a",
+    "79cd849b898ae92aa159bb1646e9787b9325f03ae16a8d1286ad27aad1576fb8",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -3665,6 +3665,12 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (command === "surface.desktop.os-prepare")
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale:
+        "server-derived owner/project/source and generation-bound Linux execution capture; the worker verifies that authority and returns only the desktop generation, while native target state and pixels remain endpoint-protected",
+    };
   if (command === "inference.status")
     return {
       classification: "minimized-operational-metadata",
