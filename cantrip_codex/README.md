@@ -603,3 +603,22 @@ reference the server's original protected message and existing dispatch cycle;
 the journal stores no prompt content. This patch changes no public native RPC or
 precomputed schema archive. Source review, direct formatting, mechanical patch
 generation and diff checks were used; no native execution or tests were run.
+
+Patch `0064` preserves a durable suspension during ordinary runtime shutdown and
+App Server input EOF. It fences resumption readiness and detaches the held task
+before normal cancellation can record a terminal turn. Task cancellation/joining
+and security-lease release are shared with the upstream suspension handoff.
+The continuation stays committed while process-local resources are released.
+SessionEnd hooks are skipped for suspended teardown; ordinary completion and
+Stop retain their existing hook and terminal behavior. This does not change the
+checkpoint format or grant execution authority. The existing intercepted-stream
+unit fixture supplies the unmanaged inference argument introduced by `0062` so
+native test-target compilation can validate the current series.
+The legacy `turn/interrupt` operation also stops a cold held turn through its
+existing durable cancellation path. Loaded history preserves the held turn's
+unfinished lifecycle while reporting the idle thread's actual status. This keeps
+native TUI reattachment from falsely displaying an interruption.
+The normal 65-patch macOS ARM64 release build and all 12 native suspension/shared
+pause cases passed, including two physical TUI cold-resumption cases.
+Product recovery, Goal/resource continuation and complete worker-tree acceptance
+remain required work.

@@ -8,7 +8,8 @@ connects native capture and original-ID restoration through experimental native
 operations. Patch `0053` adds stored inspection, explicit attachment holds and
 terminal-history-based retirement of unreadable records. Patch `0061` retains
 continuations through resumption preparation and binds controls to their native
-turn and generation. Cantrip's current
+turn and generation. Patch `0064` preserves a held continuation through native
+runtime teardown and transport EOF. Cantrip's current
 product pause remains an in-memory execution gate until the worker/server/client
 integration is delivered. Do not treat the
 existing product acknowledgement as a process-termination guarantee.
@@ -205,16 +206,31 @@ an ordinary new turn after explicit Stop. No supported path may
 duplicate TurnStarted, accepted input, completed tools or
 history items, retain old execution authorization, or advance merely on attach.
 
-Worker teardown and native transport EOF must remain distinct from explicit
-Stop. Ordinary native shutdown currently aborts an active task and records a
-terminal turn event. Integrating durable pause must preserve its confirmed
-continuation through that teardown, including when the worker exits before its
-Codex child. Forced native termination alone does not validate this path.
-A real-process characterization of the 60-patch lifecycle candidate reproduced
-the gap with both history formats: closing App Server stdin after durable pause
-confirmation left an `invalidated` checkpoint with no continuation, and a fresh
-process reported no suspension. Preserving this shutdown path remains required
-before product adoption.
+Worker teardown and native transport EOF remain distinct from explicit Stop.
+Patch `0064` detaches a held regular task before ordinary runtime cancellation,
+fences pending resumption readiness, and cancels and joins its live task without
+turn-terminal callbacks. The task releases its security execution lease; normal
+runtime cleanup still closes command, code-mode and MCP resources and unregisters
+thread services. Process-local pending input is cleared only after the task
+stops; the committed continuation retains its accepted input.
+
+SessionEnd hooks do not run for a held suspension because their commands could
+perform side effects or change the saved history boundary. Ordinary completed,
+stopped and non-suspended shutdown retains its existing SessionEnd behavior.
+Explicit Stop still commits terminal history and invalidates the checkpoint.
+An expected cold suspension remains held during teardown even when its checkpoint
+is missing or unreadable; teardown does not substitute execution for recovery.
+The existing `turn/interrupt` Stop operation commits cancellation for a cold held
+turn even though it has no live task. Public history retains the unfinished turn's
+stored lifecycle during a hold, with the thread remaining idle until execution
+is actually admitted. Native TUI attachment therefore must not render a false
+interruption or launch a replacement turn.
+
+The pre-fix 62-patch runtime reproduced the EOF gap in both history formats:
+closing App Server stdin after durable confirmation left an `invalidated`
+checkpoint with no continuation. A real trusted SessionEnd hook also executed
+during that suspended shutdown. Native EOF validation and complete worker-tree
+restart acceptance are separate requirements; neither substitutes for the other.
 
 Inspect PTYs, yielded commands, MCP sessions, code-mode state, waiters and native
 subagents. A parent boundary does not prove those resources are durable. Restore
@@ -349,3 +365,44 @@ These tests establish the native milestone only. They do not kill and recover a
 complete Cantrip worker/server deployment, validate the product Paused indicator,
 or establish the remaining resource and terminal-error policies. Those remain
 required before the feature can be declared complete.
+
+The shutdown fixture expands the durable cases to paginated and legacy history
+under both forced process-tree termination and actual App Server stdin EOF.
+It also closes the owner while fresh inference admission is withheld, then
+requires a new owner and scope and rejects the abandoned grant. Missing, corrupt
+and incompatible expected suspensions are shut down and attached again before
+repair, preserving their explicit hold and actual recovery error.
+
+A real SessionEnd command is discovered and trusted through the native hook
+APIs. Its output file must remain absent during suspended teardown, while
+ordinary completed and active non-suspended EOF controls must execute it. The
+active control must retain its normal interrupted history and no suspension.
+These controls distinguish continuation preservation from globally disabling
+hooks or ordinary cancellation. The expanded matrix passed against the normal
+65-patch release bundle on macOS ARM64.
+
+The physical native TUI fixture creates its original input through a real PTY,
+completes a side-effecting command, accepts steering, and kills the TUI and native
+owner immediately after durable confirmation. It attaches a new owner and PTY
+without provider traffic, requires idle thread status and the same unfinished
+turn, then explicitly resumes. It checks restored settings, input and tool output,
+single tool execution and TurnStarted, and preservation of each format's actual
+public history projection. The previous runtime reproduced the false interruption
+in both history formats. This fixture exercises the native component; it does not
+replace whole-worker product acceptance.
+
+The shutdown milestone's core test-target compilation passed on macOS ARM64
+against its 64-patch candidate, including the response-stream fixture's updated
+inference argument. The complete 65-patch candidate's App Server library check
+also passed after the cold Stop and public history fixes. These checks compile
+code; they do not execute native restart scenarios or establish whole-worker
+recovery.
+
+The normal 65-patch release build and all 12 native acceptance cases passed on
+macOS ARM64: four durable shutdown cases (both history formats under forced tree
+termination and stdin EOF), two physical TUI cold-resumption cases, and six shared
+GUI/TUI live pause cases. The runtime verifier checked the current patch fingerprint
+and packaged artifacts. Original native thread and turn IDs survived the tested
+native process-tree termination, without duplicate TurnStarted, accepted input,
+completed side effects or tool output. This remains component acceptance rather
+than the complete worker/server/client restart guarantee.
