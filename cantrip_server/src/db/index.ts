@@ -1,4 +1,5 @@
 import { PROJECT_ALERT_CHANNEL } from "./repository/project-alerts.js";
+import { INFERENCE_RESOURCE_REVOCATION_CHANNEL } from "./repository/inference-resource-revocations.js";
 import { mkdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -188,6 +189,10 @@ async function openPglite(
       throw new PgliteMigrationError(error);
     }
     const repository = new ServerRepository(database, secretVault);
+    const stopInferenceRevocations = await client.listen(
+      INFERENCE_RESOURCE_REVOCATION_CHANNEL,
+      (payload) => repository.inferenceRevocations.receive(payload),
+    );
     const stopAuthorityNotifications = await client.listen(
       COMPUTER_USE_AUTHORITY_CHANNEL,
       (payload) => repository.receiveComputerUseAuthorityNotification(payload),
@@ -222,6 +227,7 @@ async function openPglite(
       async close() {
         try {
           await Promise.all([
+            stopInferenceRevocations(),
             stopAuthorityNotifications(),
             stopAlertNotifications(),
           ]);
@@ -255,6 +261,11 @@ async function connectPostgres(
       await database.execute(sql`select 1`);
       await migratePostgres(database, { migrationsFolder });
       const repository = new ServerRepository(database, secretVault);
+      const inferenceRevocations = await client.listen(
+        INFERENCE_RESOURCE_REVOCATION_CHANNEL,
+        (payload) => repository.inferenceRevocations.receive(payload),
+        () => repository.inferenceRevocations.receive(""),
+      );
       // postgres-js owns a dedicated LISTEN connection and reconnects it; no
       // request transaction connection is borrowed or retained here.
       const authorityNotifications = await client.listen(
@@ -293,6 +304,7 @@ async function connectPostgres(
         async close() {
           try {
             await Promise.all([
+              inferenceRevocations.unlisten(),
               authorityNotifications.unlisten(),
               alertNotifications.unlisten(),
             ]);

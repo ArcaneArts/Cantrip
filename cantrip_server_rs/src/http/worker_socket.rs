@@ -282,6 +282,7 @@ async fn run(
         return;
     }
     state.invalidate(&owner, "worker-availability", &worker);
+    crate::workers::resource_revocations::wake(state.clone(), &owner, &worker);
     drop(
         service
             .provider_accounts

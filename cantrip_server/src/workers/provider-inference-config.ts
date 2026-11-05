@@ -18,8 +18,8 @@ interface Delivery {
   timer: ReturnType<typeof setTimeout> | null;
 }
 
-/** Only undelivered settings are retained. There is no semaphore or prompt queue here. */
-class ConfigurationDelivery {
+/** Only undelivered worker metadata is retained. There is no semaphore or prompt queue here. */
+class InferenceMetadataDelivery {
   private pending = new Map<string, Delivery>();
   private closed = false;
 
@@ -101,14 +101,25 @@ class ConfigurationDelivery {
   }
 }
 
-const deliveries = new WeakMap<object, ConfigurationDelivery>();
-function deliveryFor(bridge: object): ConfigurationDelivery {
+const deliveries = new WeakMap<object, InferenceMetadataDelivery>();
+function deliveryFor(bridge: object): InferenceMetadataDelivery {
   let delivery = deliveries.get(bridge);
   if (!delivery) {
-    delivery = new ConfigurationDelivery();
+    delivery = new InferenceMetadataDelivery();
     deliveries.set(bridge, delivery);
   }
   return delivery;
+}
+
+/** Shares the existing coalesced retry/shutdown owner with provider settings. */
+export function scheduleInferenceMetadataDelivery(
+  bridge: object,
+  key: string,
+  run: () => Promise<void>,
+  report: Reporter,
+  workerId?: string,
+): void {
+  deliveryFor(bridge).schedule(key, run, report, workerId);
 }
 const defaultReporter: Reporter = (error, workerId) =>
   serverLogger.event(

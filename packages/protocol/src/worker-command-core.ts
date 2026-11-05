@@ -55,6 +55,7 @@ export const workerCoreCommandSchemas = [
   z
     .object({
       type: z.literal("inference.revoke"),
+      ownerId: z.string().min(1).max(200),
       target: z.discriminatedUnion("kind", [
         z
           .object({

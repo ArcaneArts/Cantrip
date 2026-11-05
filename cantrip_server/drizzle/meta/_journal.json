@@ -1835,6 +1835,13 @@
       "when": 1793871723896,
       "tag": "0261_inference_command_timing",
       "breakpoints": true
+    },
+    {
+      "idx": 262,
+      "version": "7",
+      "when": 1793871723897,
+      "tag": "0262_inference_resource_revocations",
+      "breakpoints": true
     }
   ]
 }

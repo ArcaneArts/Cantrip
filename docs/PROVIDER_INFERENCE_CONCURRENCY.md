@@ -1735,8 +1735,44 @@ title preparation still drains its existing bounded native request before releas
 A revocation acknowledgement means local owners are sealed and cancellation is
 retained; it does not mean physical settlement has already occurred.
 
-This worker boundary is a delivery prerequisite. Durable server-side delivery
-from Task/project deletion, including offline workers and helpers dispatched
-after resource deletion, remains the next integration milestone. Formatting,
-mechanical protocol export and source review were performed; no tests, builds,
-typechecks, benchmarks, native/helper validation or computer-use checks ran.
+## Durable resource-removal delivery
+
+Migration `0262` captures chat, Task and project removal in database triggers,
+including projects deleted through workspace cascades. Project deletion captures
+the current chat IDs while holding the actual parent row's deletion lock, in
+batches of at most 1,000. Cascading chat deletion uses that project capture;
+ordinary chat/Task deletion records its own target. Account deletion does not
+create deliveries for an owner that has already been removed.
+
+The outbox contains only target IDs and the owner/worker destination. It has no
+project/chat foreign key and survives their deletion, with no copied prompts,
+titles or provider credentials. Every currently registered worker belonging to
+the owner is targeted, including earlier execution placements. Worker/account
+removal cascades pending metadata; acknowledged entries are deleted rather than
+kept as completed history.
+
+Both servers subscribe to committed database notifications, recover pending
+worker scopes on startup, wake existing delivery on worker reconnect, and rescan
+after the PostgreSQL notification connection is restored. Rust also rescans after
+a lagged receiver. Actual failed control requests retry with backoff. No model
+catalog, availability check, polling UI or server-owned ticket grant participates.
+The Node service shares the existing metadata retry/shutdown owner with provider
+configuration; Rust retains one retry owner per pending worker and cancels it on
+server shutdown. Retrying a row read keeps its existing PGlite subscription.
+
+The worker checks the command's intended owner against its authenticated scope.
+Both servers verify the owner/worker acknowledgement before deleting that exact
+outbox row. Lost acknowledgements and competing server deliveries can repeat
+revocation safely. The acknowledgement seals local sources and retains actual
+interruption; running inference still releases only on physical settlement or
+fencing. Deployment requires the updated server and worker contract together.
+
+Fresh helper commands issued after resource deletion still require a separate
+actual resource-authorization boundary; active-command revocation alone cannot
+reject a newly issued command. That remaining integration must not be replaced
+with a completed-resource UUID cache.
+
+This migration and delivery code were source-reviewed and formatted without
+executing the migration or application. Mechanical protocol export and
+`git diff --check` were performed. No tests, builds, typechecks, benchmarks,
+native/helper validation, hosted checks or computer-use checks ran.

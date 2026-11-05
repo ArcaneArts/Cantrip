@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
+  installInferenceResourceRevocationDelivery,
+  synchronizeInferenceResourceRevocations,
+} from "../../workers/inference-resource-revocations.js";
+import {
   closeProviderInferenceDelivery,
   synchronizeProviderInference,
 } from "../../workers/provider-inference-config.js";
@@ -80,6 +84,7 @@ export interface InternalWorkerWebsocketRouteDependencies {
     | "getWorkerOwnerId"
     | "getWorker"
     | "readProviderInferenceCatalog"
+    | "inferenceRevocations"
   >;
   resumeNativeRuntimeHandoffsForWorker: (
     ownerId: string,
@@ -135,6 +140,10 @@ export function installInternalWorkerWebsocketRoute(
     workspaceRepositoryDiscoveryJobExecutor,
   }: InternalWorkerWebsocketRouteDependencies,
 ): () => Promise<void> {
+  const stopInferenceRevocations = installInferenceResourceRevocationDelivery(
+    repository,
+    bridge,
+  );
   const pendingAuthentications = new Set<Promise<void>>();
   app.get<{
     Querystring: { connectionGeneration?: string; workerId?: string };
@@ -345,6 +354,12 @@ export function installInternalWorkerWebsocketRoute(
           workerProcessGeneration: resolvedWorkerProcessGeneration,
         });
         catalogWorkers.set(workerId, workerAuth.ownerId);
+        synchronizeInferenceResourceRevocations(
+          repository,
+          bridge,
+          workerAuth.ownerId,
+          workerId,
+        );
         void synchronizeProviderInference(
           repository,
           bridge,
@@ -487,6 +502,7 @@ export function installInternalWorkerWebsocketRoute(
     },
   );
   return async () => {
+    stopInferenceRevocations();
     await Promise.all(pendingAuthentications);
     await closeProviderInferenceDelivery(bridge);
   };
