@@ -1609,9 +1609,10 @@ Linux formatting, strict all-target Clippy and all 86 library tests passed.
 
 The full Worker suite passed 2,686 tests with 153 skips and one timeout in the
 existing encrypted-history batch test. That case passed alone at its unchanged
-timeout; the original parallel-run failure is retained. All 1,054 protocol tests
-passed after adding the two reviewed desktop-placement exports to the existing
-compatibility list. Server and Worker TypeScript checks passed.
+timeout; the original parallel-run failure is retained. All 1,090 protocol tests
+passed, including captured authority dispatch and identity-mismatch rejection.
+The reviewed desktop-placement exports are included in the compatibility list.
+Server and Worker TypeScript checks passed.
 
 The fresh ARM64 image `cantrip-os-phase4-product:dev` includes remote 0.2.0 and
 the existing workspace/executor packages, with a 4 GiB limit and only the three
@@ -1624,6 +1625,21 @@ existing named data volumes. Its image identity is
 | AMD64                | 1507004 | `c13e86d3e97204eb2b40dfc0ac8532387e91ab8ccdafb677883d6fc5494eb471` |
 
 Required `pnpm check` still stops at the existing server decomposition budgets:
-`build-app.ts` 1503/1500 and `chat-turn-runtime.ts` 2103/1999. A refreshed ISO,
+`build-app.ts` 1503/1500 and `chat-turn-runtime.ts` 2122/1999. A refreshed ISO,
 clipboard APIs, integrated streaming/takeover and managed SSH/SFTP/VNC/TCP remain
 required for Phase 4 completion.
+
+Actual product acceptance exposed two additional Phase 3 exclusions: ordinary
+chat dispatch omitted Linux CUA authority, and native turn resolution returned
+no execution for every Linux environment. Both exclusions are removed. Worker
+command validation now checks the complete captured desktop identity and
+execution scope in TypeScript and Rust. A Linux native-lifetime regression
+checks root/child resolution, wrong identities and cancellation; its four-suite
+run passed all 58 tests.
+
+A real Local Qwen product turn then called `cantrip_cua/js`, attached the assigned
+X11 display and returned an actual 1440×900 PNG. The first call used invalid
+top-level `return`; the model corrected its script and succeeded. The session
+reported the captured chat, Worker, native thread and turn. Host Cantrip-window
+access remained disabled. Browser navigation and a native GUI file task are
+being exercised separately; this capture is not full Phase 4 acceptance.
