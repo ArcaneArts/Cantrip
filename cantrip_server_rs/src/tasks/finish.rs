@@ -74,6 +74,99 @@ pub(super) async fn complete_operation_in(
     };
     context(&updated_task, &updated_round).map(Some)
 }
+pub(super) async fn fail_operation_in(
+    tx: &Transaction<'_>,
+    owner: &str,
+    chat: &str,
+    operation: &str,
+    failure: Option<&Value>,
+    guard: Option<&Value>,
+) -> Result<Option<Value>> {
+    if let Some(guard) = guard {
+        dispatch_fence::assert(tx, owner, chat, operation, guard, false).await?;
+    }
+    let Some(round) = locked_round(tx, chat, operation).await? else {
+        return Ok(None);
+    };
+    let Some(task) = locked_task(tx, chat).await? else {
+        return Ok(None);
+    };
+    let failure = if let Some(failure) = failure {
+        let failure = parse("taskOpaqueContentSchema", failure)?;
+        let c = &failure["classification"];
+        let expected = round["relay_result"].get("task");
+        let matches = expected.is_some_and(|expected| {
+            [
+                "planAuthorship",
+                "hasPlan",
+                "hasQuestions",
+                "hasFinalPlan",
+                "hasGoalPrompt",
+            ]
+            .iter()
+            .all(|k| c[*k] == expected["classification"][*k])
+                && failure["protectedContent"]["keyRevision"]
+                    == expected["protectedContent"]["keyRevision"]
+        });
+        if round["kind"] != "finalize"
+            || !matches
+            || c["state"] != "failed"
+            || c["stableStateBeforeFailure"] != "review"
+            || !c["activeOperationKind"].is_null()
+            || c["planningRound"] != round["ordinal"]
+            || !c["lastError"]["code"]
+                .as_str()
+                .and_then(|code| code.strip_prefix("task-goal-start-"))
+                .is_some_and(|kind| {
+                    matches!(
+                        kind,
+                        "failed"
+                            | "timeout"
+                            | "capacity"
+                            | "rate-limit"
+                            | "connection"
+                            | "needs-input"
+                            | "configuration"
+                            | "usage-limit"
+                            | "budget-limit"
+                    )
+                })
+            || c["lastError"].get("operationKind") != Some(&json!("finalize"))
+        {
+            return conflict(
+                "idempotency-conflict",
+                "The encrypted Goal startup failure does not match finalization.",
+            );
+        }
+        Some(failure)
+    } else {
+        None
+    };
+    if task["state"] == "failed" && task["planning_round"] == round["ordinal"] {
+        return context(&task, &round).map(Some);
+    }
+    let now = now();
+    let mut fields = round_columns(
+        &round["failure_round"]["classification"],
+        &round["failure_round"]["protectedContent"],
+    );
+    fields["completed_at"] = now.clone();
+    let updated_round = update(tx, Table::Round, operation, &fields, None)
+        .await?
+        .context("Task round failure returned no row")?;
+    let updated_task = if task["planning_round"] == round["ordinal"] {
+        let mut fields = task_columns(failure.as_ref().unwrap_or(&round["failure_task"]));
+        fields["active_operation_id"] = Value::Null;
+        fields["row_version"] = increment(&task["row_version"]);
+        fields["updated_at"] = now;
+        update(tx, Table::Task, chat, &fields, None)
+            .await?
+            .context("Task failure returned no row")?
+    } else {
+        task
+    };
+    context(&updated_task, &updated_round).map(Some)
+}
 impl Repository {
     pub async fn complete_operation(
         &self,
@@ -250,91 +343,15 @@ impl Repository {
         self.database
             .transaction(|tx| {
                 Box::pin(async move {
-                    if let Some(guard) = &guard {
-                        dispatch_fence::assert(tx, &owner, &chat, &operation, guard, false).await?;
-                    }
-                    let Some(round) = locked_round(tx, &chat, &operation).await? else {
-                        return Ok(None);
-                    };
-                    let Some(task) = locked_task(tx, &chat).await? else {
-                        return Ok(None);
-                    };
-                    let failure = if let Some(failure) = failure {
-                        let failure = parse("taskOpaqueContentSchema", &failure)?;
-                        let c = &failure["classification"];
-                        let expected = round["relay_result"].get("task");
-                        let matches = expected.is_some_and(|expected| {
-                            [
-                                "planAuthorship",
-                                "hasPlan",
-                                "hasQuestions",
-                                "hasFinalPlan",
-                                "hasGoalPrompt",
-                            ]
-                            .iter()
-                            .all(|k| c[*k] == expected["classification"][*k])
-                                && failure["protectedContent"]["keyRevision"]
-                                    == expected["protectedContent"]["keyRevision"]
-                        });
-                        if round["kind"] != "finalize"
-                            || !matches
-                            || c["state"] != "failed"
-                            || c["stableStateBeforeFailure"] != "review"
-                            || !c["activeOperationKind"].is_null()
-                            || c["planningRound"] != round["ordinal"]
-                            || !c["lastError"]["code"]
-                                .as_str()
-                                .and_then(|code| code.strip_prefix("task-goal-start-"))
-                                .is_some_and(|kind| {
-                                    matches!(
-                                        kind,
-                                        "failed"
-                                            | "timeout"
-                                            | "capacity"
-                                            | "rate-limit"
-                                            | "connection"
-                                            | "needs-input"
-                                            | "configuration"
-                                            | "usage-limit"
-                                            | "budget-limit"
-                                    )
-                                })
-                            || c["lastError"].get("operationKind") != Some(&json!("finalize"))
-                        {
-                            return conflict(
-                                "idempotency-conflict",
-                                "The encrypted Goal startup failure does not match finalization.",
-                            );
-                        }
-                        Some(failure)
-                    } else {
-                        None
-                    };
-                    if task["state"] == "failed" && task["planning_round"] == round["ordinal"] {
-                        return context(&task, &round).map(Some);
-                    }
-                    let now = now();
-                    let mut fields = round_columns(
-                        &round["failure_round"]["classification"],
-                        &round["failure_round"]["protectedContent"],
-                    );
-                    fields["completed_at"] = now.clone();
-                    let updated_round = update(tx, Table::Round, &operation, &fields, None)
-                        .await?
-                        .context("Task round failure returned no row")?;
-                    let updated_task = if task["planning_round"] == round["ordinal"] {
-                        let mut fields =
-                            task_columns(failure.as_ref().unwrap_or(&round["failure_task"]));
-                        fields["active_operation_id"] = Value::Null;
-                        fields["row_version"] = increment(&task["row_version"]);
-                        fields["updated_at"] = now;
-                        update(tx, Table::Task, &chat, &fields, None)
-                            .await?
-                            .context("Task failure returned no row")?
-                    } else {
-                        task
-                    };
-                    context(&updated_task, &updated_round).map(Some)
+                    fail_operation_in(
+                        tx,
+                        &owner,
+                        &chat,
+                        &operation,
+                        failure.as_ref(),
+                        guard.as_ref(),
+                    )
+                    .await
                 })
             })
             .await

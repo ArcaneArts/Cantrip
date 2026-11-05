@@ -17,6 +17,7 @@ import * as schema from "./schema.js";
 import {
   assertTaskOperationDispatchFence,
   type TaskOperationLeaseFence,
+  type TaskOperationDispatchFence,
 } from "./task-operation-fence.js";
 import {
   TaskDispatchConflictError,
@@ -86,7 +87,7 @@ export class TaskRetryRepository {
     ) =>
       | { record: TaskRetryRecord | null; result: T }
       | Promise<{ record: TaskRetryRecord | null; result: T }>,
-    dispatchFence?: TaskOperationLeaseFence,
+    dispatchFence?: TaskOperationDispatchFence,
   ) {
     return this.database.transaction(async (transaction) => {
       if (dispatchFence)
@@ -94,7 +95,9 @@ export class TaskRetryRepository {
           transaction,
           ownerId,
           chatId,
-          dispatchFence.lease.operationId,
+          dispatchFence.kind === "leased"
+            ? dispatchFence.lease.operationId
+            : dispatchFence.operationId,
           dispatchFence,
           true,
         );
@@ -155,7 +158,7 @@ export class TaskRetryRepository {
     key: string,
     kind: TaskFailureKind,
     now = Date.now(),
-    dispatchFence?: TaskOperationLeaseFence,
+    dispatchFence?: TaskOperationDispatchFence,
   ) {
     return this.mutate(
       ownerId,
@@ -253,7 +256,7 @@ export class TaskRetryRepository {
   async clearPending(
     ownerId: string,
     chatId: string,
-    dispatchFence?: TaskOperationLeaseFence,
+    dispatchFence?: TaskOperationDispatchFence,
   ) {
     return this.mutate(
       ownerId,

@@ -102,11 +102,12 @@ export function createTaskSchedulerRuntime(
                 publishChatInvalidation(cycle.chatId, "task");
                 continue;
               }
-              await repository.tasks.failOperation(
+              // Expiry revokes dispatch authority; it does not prove that the
+              // native input stopped or failed. Ambiguous execution stays for
+              // actual outcome/checkpoint reconciliation without automatic replay.
+              await repository.tasks.failConfirmedExpiredRound(
                 ownerId,
                 cycle.chatId,
-                cycle.operationId,
-                undefined,
                 {
                   kind: "expired",
                   cycleId: cycle.id,

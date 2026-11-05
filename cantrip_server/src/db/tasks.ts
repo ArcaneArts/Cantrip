@@ -35,7 +35,10 @@ import { TaskInferenceInputRepository } from "./task-inference-inputs.js";
 import type { ChatExecutionLaneRepository } from "./repository/chat-execution-lanes.js";
 import type { MessageWriteRepository } from "./repository/message-writes.js";
 import { detachProjectTab, projectTabKey } from "./tab-layouts.js";
-import { recoverFinalizationGoalOutcome } from "./task-finalization-goal-outcomes.js";
+import {
+  recoverRoundOutcome,
+  failConfirmedExpiredRound,
+} from "./task-round-outcomes.js";
 import type { WorkerNotification } from "@cantrip/protocol";
 
 type TaskDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
@@ -249,12 +252,12 @@ export class TaskRepository {
     );
   }
 
-  recoverFinalizationGoalOutcome(
+  recoverRoundOutcome(
     owner: string,
     worker: string,
     notification: Extract<WorkerNotification, { type: "chat.turn.outcome" }>,
   ) {
-    return recoverFinalizationGoalOutcome(
+    return recoverRoundOutcome(
       {
         database: this.database,
         lanes: this.lanes,
@@ -268,10 +271,41 @@ export class TaskRepository {
             turn,
             guard,
           ),
+        fail: (tx, guard) =>
+          new TaskRepository(tx).failOperation(
+            owner,
+            notification.chatId,
+            notification.taskDispatchFence!.operationId,
+            undefined,
+            guard,
+          ),
       },
       owner,
       worker,
       notification,
+    );
+  }
+
+  failConfirmedExpiredRound(
+    owner: string,
+    chat: string,
+    guard: Extract<TaskOperationDispatchFence, { kind: "expired" }>,
+  ) {
+    return failConfirmedExpiredRound(
+      {
+        database: this.database,
+        fail: (tx, expected) =>
+          new TaskRepository(tx).failOperation(
+            owner,
+            chat,
+            guard.operationId,
+            undefined,
+            expected,
+          ),
+      },
+      owner,
+      chat,
+      guard,
     );
   }
 
@@ -907,7 +941,7 @@ export class TaskRepository {
     operationId: string,
     rawResult: TaskOperationRelayResult,
     turnId: string | null,
-    dispatchFence?: TaskOperationLeaseFence,
+    dispatchFence?: TaskOperationDispatchFence,
   ): Promise<TaskOperationContext | null> {
     const result = taskOperationRelayResultSchema.parse(rawResult);
     if (!(await this.get(ownerId, chatId))) return null;

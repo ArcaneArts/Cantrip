@@ -11,7 +11,8 @@ pub(super) async fn assert(
 ) -> Result<()> {
     let leased = expected["kind"] == "leased";
     let fence = if leased { &expected["lease"] } else { expected };
-    if (!leased && expected["kind"] != "expired")
+    let outcome = expected["kind"] == "outcome";
+    if (!leased && !outcome && expected["kind"] != "expired")
         || fence["operationId"] != operation
         || !lock_user(tx, owner).await?
     {
@@ -32,9 +33,19 @@ pub(super) async fn assert(
     let Some(cycle) = cycle else {
         return Err(crate::task_dispatch::Conflict::stale().into());
     };
+    let expired_outcome = outcome
+        && cycle["state"] == "expired"
+        && cycle["fencing_token"].as_i64()
+            == fence["fencingToken"]
+                .as_i64()
+                .and_then(|n| n.checked_add(1));
     let current = latest.as_ref().and_then(|v| v.get("id")) == cycle.get("id")
-        && cycle["fencing_token"] == fence["fencingToken"];
-    let valid = if leased {
+        && (cycle["fencing_token"] == fence["fencingToken"] || expired_outcome);
+    let valid = if outcome {
+        expired_outcome
+            || (matches!(cycle["state"].as_str(), Some("claimed" | "running"))
+                && cycle["lease_owner"] == fence["leaseOwner"])
+    } else if leased {
         let valid_state = if association {
             // Binding history may trail a fast completion. It never revives or
             // settles work, and the exact owner/fence/latest cycle still match.
@@ -55,6 +66,24 @@ pub(super) async fn assert(
     };
     if !current || !valid {
         return Err(crate::task_dispatch::Conflict::stale().into());
+    }
+    if outcome {
+        let round=one(Executor::Transaction(tx),"SELECT to_jsonb(r)::text FROM task_planning_rounds r WHERE r.id=$1 AND r.chat_id=$2 LIMIT 1 FOR UPDATE",&[&operation,&chat]).await?;
+        let valid = round.as_ref().is_some_and(|round| {
+            let input = &round["inference_input"];
+            let receipt = &input["receipt"];
+            !input.is_null()
+                && input["deferred"] != true
+                && receipt["kind"] != "goal"
+                && receipt["operationId"] == expected["inferenceInputOperationId"]
+                && receipt["dispatch"]["cycleId"] == fence["cycleId"]
+                && receipt["dispatch"]["operationId"] == fence["operationId"]
+                && receipt["dispatch"]["fencingToken"] == fence["fencingToken"]
+                && receipt["dispatch"]["leaseOwner"] == fence["leaseOwner"]
+        });
+        if !valid {
+            return Err(crate::task_dispatch::Conflict::stale().into());
+        }
     }
     if leased && let Some(launch) = expected.get("goalLaunch") {
         let current = cycle["goal_input"]

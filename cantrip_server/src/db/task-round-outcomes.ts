@@ -11,10 +11,12 @@ import type { MessageWriteRepository } from "./repository/message-writes.js";
 import { projectChatExecutionLock } from "./repository/chat-execution-lock.js";
 import {
   assertTaskOperationDispatchFence,
-  type TaskOperationLeaseFence,
+  type TaskOperationDispatchFence,
 } from "./task-operation-fence.js";
 import { TaskDispatchConflictError } from "./task-dispatch.js";
 import { parseTaskOperationRelayResult } from "../tasks/encrypted-relay.js";
+import { TaskRetryRepository } from "./task-retries.js";
+import { classifyTaskFailure } from "../tasks/automatic-retry.js";
 
 type Outcome = Extract<WorkerNotification, { type: "chat.turn.outcome" }>;
 interface Dependencies {
@@ -25,37 +27,36 @@ interface Dependencies {
     tx: RepositoryTransaction,
     result: TaskOperationRelayResult,
     turnId: string | null,
-    guard: TaskOperationLeaseFence,
+    guard: TaskOperationDispatchFence,
+  ): Promise<unknown>;
+  fail(
+    tx: RepositoryTransaction,
+    guard: TaskOperationDispatchFence,
   ): Promise<unknown>;
 }
 function stale(): never {
   throw new TaskDispatchConflictError(
-    "The finalized Task Goal was replaced or revoked.",
+    "The Task outcome receipt was replaced or revoked.",
     "stale-lease",
   );
 }
 
-/** A completed finalizer is durable Goal startup work, not a completed Goal.
- * Commit its protected history and return the SAME canonical cycle to dispatch.
- * No provider ticket is granted/released here and no prompt is copied. */
-export async function recoverFinalizationGoalOutcome(
+/** A worker terminal receipt settles its exact round even after lease expiry.
+ * Finalization remains durable Goal startup on the SAME dispatch cycle.
+ * This authority never grants inference or releases worker provider capacity. */
+export async function recoverRoundOutcome(
   dependencies: Dependencies,
   owner: string,
   worker: string,
   n: Outcome,
 ) {
   const fence = n.taskDispatchFence;
-  if (
-    !n.outcome.ok ||
-    n.contextKind !== "project" ||
-    !fence ||
-    !n.taskInferenceInputOperationId
-  )
+  if (n.contextKind !== "project" || !fence || !n.taskInferenceInputOperationId)
     return null;
-  const outcome = n.outcome.result;
-  const guard: TaskOperationLeaseFence = {
-    kind: "leased",
-    lease: fence,
+  const outcome = n.outcome.ok ? n.outcome.result : null;
+  const guard: TaskOperationDispatchFence = {
+    kind: "outcome",
+    ...fence,
     inferenceInputOperationId: n.taskInferenceInputOperationId,
   };
   return dependencies.database.transaction(async (tx) => {
@@ -79,17 +80,18 @@ export async function recoverFinalizationGoalOutcome(
       )
       .for("update")
       .limit(1);
-    if (!round || round.kind !== "finalize") return null;
-    let result: TaskOperationRelayResult;
-    try {
-      result = parseTaskOperationRelayResult(
-        outcome.structuredResult,
-        round.relayRequest,
-      );
-    } catch {
-      return null;
-    } // Existing invalid-result handling owns this failure.
-    if (!result.goal) return null;
+    if (!round) return null;
+    let result: TaskOperationRelayResult | null = null;
+    if (outcome) {
+      try {
+        result = parseTaskOperationRelayResult(
+          outcome.structuredResult,
+          round.relayRequest,
+        );
+      } catch {
+        /* A terminal invalid result follows the canonical failure path. */
+      }
+    }
     await assertTaskOperationDispatchFence(
       tx,
       owner,
@@ -104,14 +106,13 @@ export async function recoverFinalizationGoalOutcome(
       .for("update")
       .limit(1);
     // assertTaskOperationDispatchFence also requires this to be the latest cycle.
-    if (!cycle || cycle.operationKind !== "finalize") stale();
+    if (!cycle || cycle.operationKind !== round.kind) stale();
     const input = round.inferenceInput;
     const receipt = input?.receipt;
     if (
       !input ||
-      !input.accepted ||
-      !input.dispatched ||
-      input.failedBeforeDispatch ||
+      (outcome !== null &&
+        (!input.accepted || !input.dispatched || input.failedBeforeDispatch)) ||
       !receipt ||
       receipt.kind === "goal" ||
       receipt.operationId !== n.taskInferenceInputOperationId ||
@@ -150,18 +151,25 @@ export async function recoverFinalizationGoalOutcome(
       placement.chat.experience !== "task" ||
       placement.chat.archivedAt ||
       !task ||
-      !task.planGoalEnabled ||
       task.planningRound !== round.ordinal
     )
       stale();
     // A live launcher may already own implementation. Never replay its kickoff.
-    if (cycle.goalInput || task.implementationStartedAt)
+    if (
+      cycle.goalInput ||
+      (round.kind === "finalize" && task.implementationStartedAt)
+    )
       return { state: "owned" as const, message: null, chat: placement.chat };
     if (
-      task.activeOperationId !== round.id ||
-      ["complete", "failed"].includes(task.state)
+      task.activeOperationId !== round.id &&
+      !(round.relayResult && task.activeOperationId === null)
     )
       stale();
+    // A contradictory failed redelivery cannot erase a completed round.
+    if (round.relayResult && !result)
+      return { state: "owned" as const, message: null, chat: placement.chat };
+    const goalStartup = result !== null && round.kind === "finalize";
+    if (goalStartup && !task.planGoalEnabled) stale();
     const [lane] = await tx
       .select()
       .from(schema.chatExecutionLanes)
@@ -184,37 +192,61 @@ export async function recoverFinalizationGoalOutcome(
       stale();
     if (!dependencies.messages || !dependencies.lanes)
       throw new Error(
-        "Finalizer recovery requires transactional history and lane ownership.",
+        "Task outcome recovery requires transactional history and lane ownership.",
       );
-    await dependencies.complete(tx, result, outcome.turnId ?? null, guard);
-    const message = await dependencies.messages
-      .inTransaction(tx)
-      .appendTaskMessage(owner, n.chatId, result.assistantMessage, {
-        executionLaneId: lane.id,
-        worktreeId: receipt.worktreeId,
-      });
-    if (!message) stale();
+    let message: Awaited<
+      ReturnType<MessageWriteRepository["appendTaskMessage"]>
+    > = null;
+    if (result && outcome) {
+      await dependencies.complete(tx, result, outcome.turnId ?? null, guard);
+      message = await dependencies.messages
+        .inTransaction(tx)
+        .appendTaskMessage(owner, n.chatId, result.assistantMessage, {
+          executionLaneId: lane.id,
+          worktreeId: receipt.worktreeId,
+        });
+      if (!message) stale();
+      if (!goalStartup)
+        await new TaskRetryRepository(tx).clearPending(owner, n.chatId, guard);
+      await tx
+        .update(schema.taskPlanningRounds)
+        .set({
+          executionLaneId: lane.id,
+          userMessageId: receipt.clientMessageId,
+          assistantMessageId: message.id,
+        })
+        .where(eq(schema.taskPlanningRounds.id, round.id));
+    } else {
+      await dependencies.fail(tx, guard);
+      await new TaskRetryRepository(tx).noteFailure(
+        owner,
+        n.chatId,
+        `dispatch:${fence.cycleId}:${fence.fencingToken}`,
+        classifyTaskFailure(
+          n.outcome.ok ? "Recovered Task result was invalid." : n.outcome.error,
+        ),
+        undefined,
+        guard,
+      );
+    }
     await tx
       .update(schema.taskPlanningRounds)
-      .set({
-        executionLaneId: lane.id,
-        userMessageId: receipt.clientMessageId,
-        assistantMessageId: message.id,
-      })
+      .set({ executionLaneId: lane.id, userMessageId: receipt.clientMessageId })
       .where(eq(schema.taskPlanningRounds.id, round.id));
+    if (outcome)
+      await dependencies.lanes
+        .inTransaction(tx)
+        .updateChatExecutionLaneRuntime(
+          n.chatId,
+          lane.id,
+          outcome.threadId,
+          "ready",
+        );
     await dependencies.lanes
       .inTransaction(tx)
-      .updateChatExecutionLaneRuntime(
-        n.chatId,
-        lane.id,
-        outcome.threadId,
-        "ready",
-      );
-    await dependencies.lanes
-      .inTransaction(tx)
-      .finishChatExecutionLane(n.chatId, lane.id, "idle", {
+      .finishChatExecutionLane(n.chatId, lane.id, result ? "idle" : "failed", {
         expectedActivatedAt: receipt.executionLaneActivatedAt,
-        markUnreadCompletion: false,
+        markUnreadCompletion: !goalStartup,
       });
     const now = new Date();
     await tx
@@ -240,8 +272,27 @@ export async function recoverFinalizationGoalOutcome(
     if (!active)
       await tx
         .update(schema.chats)
-        .set({ status: "idle", updatedAt: now })
+        .set({ status: result ? "idle" : "failed", updatedAt: now })
         .where(eq(schema.chats.id, n.chatId));
+    if (!goalStartup) {
+      await tx
+        .update(schema.taskDispatchCycles)
+        .set({
+          state: result ? "succeeded" : "failed",
+          turnId: outcome?.turnId ?? cycle.turnId,
+          codexThreadId: outcome?.threadId ?? cycle.codexThreadId,
+          completedAt: now,
+          eligibilityCode: null,
+          updatedAt: now,
+        })
+        .where(eq(schema.taskDispatchCycles.id, cycle.id));
+      return {
+        state: "settled" as const,
+        message,
+        chat: placement.chat,
+        ok: result !== null,
+      };
+    }
     const paused =
       placement.chat.automationPaused ||
       placement.project.taskSchedulingPaused ||
@@ -262,11 +313,81 @@ export async function recoverFinalizationGoalOutcome(
         completedAt: null,
         pausedAt: paused ? now : null,
         turnId: null,
-        codexThreadId: outcome.threadId,
+        codexThreadId: outcome!.threadId,
         eligibilityCode: null,
         updatedAt: now,
       })
       .where(eq(schema.taskDispatchCycles.id, cycle.id));
     return { state: "queued" as const, message, chat: placement.chat };
+  });
+}
+
+/** Lease expiry itself is not native settlement. Only the worker's previously
+ * authenticated, exact no-forward terminal failure marker can fail this round. */
+export async function failConfirmedExpiredRound(
+  dependencies: Pick<Dependencies, "database" | "fail">,
+  owner: string,
+  chat: string,
+  guard: Extract<TaskOperationDispatchFence, { kind: "expired" }>,
+) {
+  return dependencies.database.transaction(async (tx) => {
+    await assertTaskOperationDispatchFence(
+      tx,
+      owner,
+      chat,
+      guard.operationId,
+      guard,
+    );
+    const [cycle] = await tx
+      .select()
+      .from(schema.taskDispatchCycles)
+      .where(eq(schema.taskDispatchCycles.id, guard.cycleId))
+      .for("update")
+      .limit(1);
+    const [round] = await tx
+      .select()
+      .from(schema.taskPlanningRounds)
+      .where(
+        and(
+          eq(schema.taskPlanningRounds.id, guard.operationId),
+          eq(schema.taskPlanningRounds.chatId, chat),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    const input = round?.inferenceInput;
+    if (
+      !cycle ||
+      cycle.goalInput ||
+      !round ||
+      round.relayResult ||
+      !input ||
+      input.deferred ||
+      !input.failedBeforeDispatch ||
+      input.firstDispatchedOperationId !== null ||
+      input.receipt.dispatch.cycleId !== guard.cycleId ||
+      input.receipt.dispatch.operationId !== guard.operationId ||
+      input.receipt.dispatch.fencingToken + 1 !== guard.fencingToken
+    )
+      return false;
+    await tx.execute(projectChatExecutionLock(owner, chat));
+    const [placement] = await tx
+      .select({ chat: schema.chats, task: schema.tasks })
+      .from(schema.chats)
+      .innerJoin(schema.tasks, eq(schema.tasks.chatId, schema.chats.id))
+      .where(and(eq(schema.chats.id, chat), eq(schema.chats.ownerId, owner)))
+      .for("update")
+      .limit(1);
+    if (
+      !placement ||
+      placement.chat.archivedAt ||
+      placement.task.activeOperationId !== round.id ||
+      placement.task.planningRound !== round.ordinal ||
+      round.status !== "running" ||
+      ["failed", "complete"].includes(placement.task.state)
+    )
+      return false;
+    await dependencies.fail(tx, guard);
+    return true;
   });
 }

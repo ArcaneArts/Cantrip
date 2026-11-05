@@ -154,37 +154,35 @@ impl Service {
             }
             Err(error) => return Err(error),
         }
-        match self
-            .tasks
-            .recover_finalization_goal_outcome(owner, worker, n)
-            .await
-        {
-            Ok(Some(finalizer)) => {
-                if finalizer["state"] == "queued" {
-                    self.dependencies
-                        .live
-                        .publish_persisted_message(
-                            owner,
-                            &finalizer["message"],
-                            MessageKind::Task,
-                            Some(&finalizer["chat"]),
-                        )
-                        .await;
-                    self.publish_task(owner, text(&n["chatId"])?, &finalizer["chat"]);
+        match self.tasks.recover_round_outcome(owner, worker, n).await {
+            Ok(Some(round)) => {
+                if round["state"] != "owned" {
+                    if !round["message"].is_null() {
+                        self.dependencies
+                            .live
+                            .publish_persisted_message(
+                                owner,
+                                &round["message"],
+                                MessageKind::Task,
+                                Some(&round["chat"]),
+                            )
+                            .await;
+                    }
+                    self.publish_task(owner, text(&n["chatId"])?, &round["chat"]);
                     self.dependencies.live.publish_invalidation(
                         owner,
                         text(&n["chatId"])?,
                         "agent-interaction",
-                        Some(&finalizer["chat"]),
+                        Some(&round["chat"]),
                     );
                     self.dependencies.live.publish_boundary(
                         owner,
                         text(&n["chatId"])?,
-                        &finalizer["chat"]["projectId"],
-                        Some(&finalizer["chat"]),
+                        &round["chat"]["projectId"],
+                        Some(&round["chat"]),
                     );
                     (self.dependencies.queue_tick)();
-                    self.log("info","Recovered finalization returned Goal startup to its canonical dispatch",json!({"event":"task.goal.finalization-recovered","subsystem":"task-scheduler","chatId":n["chatId"],"cycleId":n["taskDispatchFence"]["cycleId"],"workerId":worker}));
+                    self.log("info","Recovered Task round from its exact terminal receipt",json!({"event":"task.round.outcome-recovered","subsystem":"task-scheduler","chatId":n["chatId"],"cycleId":n["taskDispatchFence"]["cycleId"],"workerId":worker,"status":if round["state"]=="queued"{"goal-startup-queued"}else if round["ok"]==true{"completed"}else{"failed"}}));
                 }
                 return Ok(());
             }

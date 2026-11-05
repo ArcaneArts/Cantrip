@@ -107,41 +107,47 @@ export function createChatTurnOutcomeRuntime({
       throw error;
     }
     try {
-      const finalizer = await repository.tasks.recoverFinalizationGoalOutcome(
+      const round = await repository.tasks.recoverRoundOutcome(
         ownerId,
         workerId,
         notification,
       );
-      if (finalizer) {
-        if (finalizer.state === "queued") {
-          publishTaskMessage(finalizer.message, finalizer.chat);
+      if (round) {
+        if (round.state !== "owned") {
+          if (round.message) publishTaskMessage(round.message, round.chat);
           publishChatInvalidation(
             notification.chatId,
             "task",
             null,
-            finalizer.chat,
+            round.chat,
           );
           publishChatInvalidation(
             notification.chatId,
             "agent-interaction",
             null,
-            finalizer.chat,
+            round.chat,
           );
           publishChatTurnBoundary(
             notification.chatId,
-            finalizer.chat.projectId,
-            finalizer.chat,
+            round.chat.projectId,
+            round.chat,
           );
           queueTaskScheduleTick();
           app.log.info(
             {
-              event: "task.goal.finalization-recovered",
+              event: "task.round.outcome-recovered",
               subsystem: "task-scheduler",
               chatId: notification.chatId,
               cycleId: notification.taskDispatchFence!.cycleId,
               workerId,
+              status:
+                round.state === "queued"
+                  ? "goal-startup-queued"
+                  : round.ok
+                    ? "completed"
+                    : "failed",
             },
-            "Recovered finalization returned Goal startup to its canonical dispatch",
+            "Recovered Task round from its exact terminal receipt",
           );
         }
         return;

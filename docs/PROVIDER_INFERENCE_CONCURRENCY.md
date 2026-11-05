@@ -870,3 +870,60 @@ No persisted schema or transported protocol field changed.
 
 The full goal still requires the unscheduled/legacy authority, autonomous
 checkpoint recovery, abandoned preparation and final lifecycle/accounting audits.
+
+### Expired Task round ownership and terminal recovery
+
+A dispatch lease is server mutation authority, not evidence that native
+execution has ended. Scheduler expiry now revokes that authority and leaves
+uncertain execution for outcome/checkpoint reconciliation. It does not turn a
+missing heartbeat into a failed Task or an automatic whole-input retry. Proven
+unstarted input still uses its existing durable deferral. The expiry-only failure
+path requires the worker's authenticated `failedBeforeDispatch` marker, no prior
+dispatched attempt, the exact receipt/expired cycle, and the same live Task round;
+Goal inputs, archived/replaced work and missing evidence cannot use it.
+
+Current receipt-bearing direct, planning and finalization outcomes now share a
+transactional round-recovery writer in both servers. Its private `outcome` guard
+accepts the exact original owner/fence while that cycle remains claimed/running,
+including a deadline that elapsed before the scheduler observed it. It also
+accepts precisely one committed expiry increment on that same latest cycle.
+The guard matches the saved, non-deferred input and its original dispatch.
+Cancellation, requeue, replacement receipts, later claims and newer cycles
+invalidate it. This guard authorizes terminal persistence only; it is never used
+for a launch, heartbeat, provider grant or provider release.
+
+The transaction additionally checks worker, input message, project placement,
+Task round/phase and exact lane activation. It uses the existing completion and
+failure writers, protected message idempotency, retry policies and lane ownership.
+It repairs missed execution association, saves known native thread/turn IDs,
+interrupts the ended lane's pending interactions, and settles the exact dispatch.
+Successful non-finalization clears pending retry state; failures record the
+bounded category under the original physical dispatch key. A contradictory
+failed redelivery cannot erase an already-completed round.
+
+Completed finalization remains intermediate work: the same cycle returns to
+queued/paused Goal startup, preserving FIFO age and compensating its claim count.
+The next scheduler claim uses the completed result rather than rerunning it.
+Already-owned Goal input or implementation cannot be reset by its old finalizer.
+A missing Goal objective is left to the real startup failure path, rather than
+being hidden by a prerequisite check.
+
+Source acceptance review covered outcomes before expiry observation, outcomes
+following its single fence increment, inactive-but-identical lanes, missed
+association, duplicate/contradictory delivery, newer claims/inputs/placements,
+protected-result failure, retry settlement, and finalizer-to-Goal startup. The
+transaction commits history, Task, retry and lane/dispatch changes together.
+No provider ticket is inferred free from any of these server states.
+
+Task HTTP admission was also traced: start/plan/continue/finalize/retry routes
+already delegate to the canonical dispatch queue in both servers. The old Node
+`beginEncryptedTaskOperation` function has no callers and is not a current
+execution bypass. Legacy outcomes lacking current input receipts still need
+separate authority reconciliation; they are not evidence of a live direct route.
+
+Direct formatting and `git diff --check` were used. No tests, typechecks, builds,
+benchmarks, native/helper execution, computer-use testing or hosted validation
+ran. Runtime behavior remains unverified. No persisted schema or transported
+protocol fields changed. Expired Goal-input projection, autonomous checkpoint
+recovery, current-generation abandoned preparations, ambiguous transport-failure
+callbacks and the final timing/bounded-state/entry-point audit remain required.

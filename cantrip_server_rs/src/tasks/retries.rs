@@ -29,6 +29,103 @@ enum Action {
 fn time(now: Option<f64>) -> f64 {
     now.unwrap_or_else(|| crate::auth::now().timestamp_millis() as f64)
 }
+async fn mutate_in(
+    tx: &Transaction<'_>,
+    owner: &str,
+    chat: &str,
+    action: Action,
+    fence: Option<(Value, f64)>,
+    guard: Option<Value>,
+) -> Result<Value> {
+    if let Some(guard) = &guard {
+        super::dispatch_fence::assert(
+            tx,
+            &owner,
+            &chat,
+            &text(if guard["kind"] == "leased" {
+                &guard["lease"]["operationId"]
+            } else {
+                &guard["operationId"]
+            })?,
+            guard,
+            true,
+        )
+        .await?;
+    }
+    tx.query(
+        "SELECT id FROM users WHERE id=$1 LIMIT 1 FOR UPDATE",
+        &[&owner],
+    )
+    .await?;
+    let row=one(Executor::Transaction(tx),"SELECT json_build_object('task',to_jsonb(t),'chat',to_jsonb(c),'project',to_jsonb(p))::text FROM tasks t JOIN chats c ON c.id=t.chat_id JOIN projects p ON p.id=c.project_id WHERE t.chat_id=$1 AND c.owner_id=$2 AND c.archived_at IS NULL LIMIT 1 FOR UPDATE",&[&chat,&owner]).await?;
+    let Some(row) = row else {
+        return if fence.is_some() {
+            Err(crate::task_dispatch::Conflict::stale().into())
+        } else {
+            Ok(Value::Null)
+        };
+    };
+    if let Some((fence, at)) = fence {
+        let cycle = text(&fence["cycleId"])?;
+        if tx.query("SELECT id FROM task_dispatch_cycles WHERE id=$1 AND owner_id=$2 AND chat_id=$3 LIMIT 1 FOR UPDATE", &[&cycle, &owner, &chat]).await?.is_empty() {
+                    return Err(crate::task_dispatch::Conflict::stale().into());
+                }
+        anyhow::ensure!(
+            at.is_finite() && at.abs() <= 8_640_000_000_000_000.0,
+            "Invalid time value"
+        );
+        let iso = crate::wire::date_iso_milliseconds(at as i64).context("Invalid time value")?;
+        crate::task_dispatch::Repository::settle_in(
+            Executor::Transaction(tx),
+            &fence,
+            "failed",
+            &json!({"now":iso}),
+        )
+        .await?;
+    }
+    let pending=!tx.query("SELECT id FROM agent_interaction_requests WHERE chat_id=$1 AND status='pending' LIMIT 1",&[&chat]).await?.is_empty();
+    let (record, result) = apply(&row, pending, action)?;
+    if record.stringify() != row["task"]["automatic_retry"].stringify() {
+        let record = (!record.is_null()).then(|| record.stringify());
+        tx.query(
+            "UPDATE tasks SET automatic_retry=$2::text::jsonb WHERE chat_id=$1",
+            &[&chat, &record],
+        )
+        .await?;
+    }
+    Ok(result)
+}
+
+pub(super) async fn note_failure_in(
+    tx: &Transaction<'_>,
+    owner: &str,
+    chat: &str,
+    key: &str,
+    kind: &str,
+    guard: &Value,
+) -> Result<Value> {
+    mutate_in(
+        tx,
+        owner,
+        chat,
+        Action::Note {
+            key: key.to_owned(),
+            kind: kind.to_owned(),
+            now: time(None),
+        },
+        None,
+        Some(guard.clone()),
+    )
+    .await
+}
+pub(super) async fn clear_pending_in(
+    tx: &Transaction<'_>,
+    owner: &str,
+    chat: &str,
+    guard: &Value,
+) -> Result<Value> {
+    mutate_in(tx, owner, chat, Action::Clear, None, Some(guard.clone())).await
+}
 impl Repository {
     pub fn new(database: Arc<Database>) -> Self {
         Self { database }
@@ -50,28 +147,11 @@ impl Repository {
         guard: Option<Value>,
     ) -> Result<Value> {
         let (owner, chat) = (owner.to_owned(), chat.to_owned());
-        self.database.transaction(|tx|Box::pin(async move {
-            if let Some(guard)=&guard {super::dispatch_fence::assert(tx,&owner,&chat,&text(&guard["lease"]["operationId"])?,guard,true).await?;}
-            tx.query("SELECT id FROM users WHERE id=$1 LIMIT 1 FOR UPDATE",&[&owner]).await?;
-            let row=one(Executor::Transaction(tx),"SELECT json_build_object('task',to_jsonb(t),'chat',to_jsonb(c),'project',to_jsonb(p))::text FROM tasks t JOIN chats c ON c.id=t.chat_id JOIN projects p ON p.id=c.project_id WHERE t.chat_id=$1 AND c.owner_id=$2 AND c.archived_at IS NULL LIMIT 1 FOR UPDATE",&[&chat,&owner]).await?;
-            let Some(row)=row else { return if fence.is_some() { Err(crate::task_dispatch::Conflict::stale().into()) } else { Ok(Value::Null) }; };
-            if let Some((fence, at)) = fence {
-                let cycle = text(&fence["cycleId"])?;
-                if tx.query("SELECT id FROM task_dispatch_cycles WHERE id=$1 AND owner_id=$2 AND chat_id=$3 LIMIT 1 FOR UPDATE", &[&cycle, &owner, &chat]).await?.is_empty() {
-                    return Err(crate::task_dispatch::Conflict::stale().into());
-                }
-                anyhow::ensure!(at.is_finite() && at.abs() <= 8_640_000_000_000_000.0, "Invalid time value");
-                let iso = crate::wire::date_iso_milliseconds(at as i64).context("Invalid time value")?;
-                crate::task_dispatch::Repository::settle_in(Executor::Transaction(tx), &fence, "failed", &json!({"now":iso})).await?;
-            }
-            let pending=!tx.query("SELECT id FROM agent_interaction_requests WHERE chat_id=$1 AND status='pending' LIMIT 1",&[&chat]).await?.is_empty();
-            let (record,result)=apply(&row,pending,action)?;
-            if record.stringify()!=row["task"]["automatic_retry"].stringify() {
-                let record=(!record.is_null()).then(||record.stringify());
-                tx.query("UPDATE tasks SET automatic_retry=$2::text::jsonb WHERE chat_id=$1",&[&chat,&record]).await?;
-            }
-            Ok(result)
-        })).await
+        self.database
+            .transaction(|tx| {
+                Box::pin(async move { mutate_in(tx, &owner, &chat, action, fence, guard).await })
+            })
+            .await
     }
     pub async fn note_failure(
         &self,
