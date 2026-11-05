@@ -2368,3 +2368,48 @@ it was not applied, checked or executed. No tests, builds, typechecks,
 benchmarks, native/helper execution, hosted validation or computer-use testing
 ran. Runtime and platform behavior remain unverified. The wider lifecycle and
 Task-private-cycle audit continues as part of the full concurrency goal.
+
+## Preparation failure during unused Goal recovery
+
+A restored unused Goal retains its journal ordinal while the replacement native
+session prepares. Previously, a preparation failure could leave that ticketless
+entry at the head of the provider queue, preventing all otherwise free slots
+from admitting other projects.
+
+The worker now tracks the actual preparation attempt against the canonical Goal
+source, provider, and ordering epoch. A completed preparation failure makes only
+that unused restoration temporarily ineligible. Its input and ordinal remain in
+the existing journal; no inference lease is released, native execution cancelled,
+or prompt replayed by this eligibility change. A subsequent successful
+preparation or actual canonical producer can adopt the retained position through
+the normal worker admission path. Repeated failed attempts retain ineligibility
+without repeatedly publishing an unchanged status. Ordinary eligible restored
+entries still prevent newer arrivals from bypassing them.
+
+Both servers include the canonical marker in recovery metadata and delivery.
+Matching an old Source alone is insufficient: worker preparation deduplication
+also distinguishes provider, model route, account, and ordering epoch. Late
+attempts cannot change another marker's eligibility. Preparation state is removed
+when the retained source is adopted or retired; only active preparations and
+matching pending recovery reads can retain it in memory. No prompt copy,
+server-side semaphore, extra durable queue, or new polling loop was added.
+
+Native RPC deadlines and connection loss have an explicit observation-error
+type. They do not establish a completed failure and cannot make an entry
+ineligible. Lost start/settlement acknowledgements retain their existing native
+ownership and fencing rules. The short Goal admission observer runs after this
+preparation boundary and does not control eligibility or execution lifetime.
+
+An ineligible preparation appears as `recovering` in worker status, without a
+provider queue position or an active/queued slot count. Chats and Task/Goal views
+show a runtime-recovery notice and retain their existing Stop/Cancel controls.
+The same status freezes Goal inference-clock extrapolation through the existing
+selected observation; wall-clock elapsed keeps its previous meaning. Provider
+settings show the recovering count separately from active and queued work.
+
+Validation: source review, direct formatting, mechanical protocol source export
+(648 roots, 10,743 nodes; Run export 11 roots, 453 nodes), and
+`git diff --check`. No tests, builds, typechecks, benchmarks, native/helper
+execution, hosted validation, or computer-use testing ran. Runtime/platform
+behavior remains unverified. The full concurrency goal's Task-private-cycle and
+remaining lifecycle audits continue.

@@ -22,6 +22,7 @@ import {
   inferenceNativeExecutionSchema,
   type InferenceNativeExecution,
   type NativeInferenceRecoveryResult,
+  type NativeGoalRecovery,
   type InferenceOperationStatus,
   type InferencePoolStatus,
   type InferenceTicketState,
@@ -181,6 +182,7 @@ export interface InferenceDiagnostic {
     | "resumed"
     | "released"
     | "recovery-requeued"
+    | "recovery-unavailable"
     | "recovery-retired"
     | "recovery-unresolved";
   workerId: string;
@@ -219,6 +221,42 @@ interface RestoredWaiter {
   goalInputNotDispatched: Set<string>;
   enqueuedAt: number;
   claimed: Ticket | null;
+  goalRecovery?: NativeGoalRecovery;
+}
+
+interface GoalRecoveryPreparation {
+  chatId: string;
+  providerId: string;
+  recovery: NativeGoalRecovery;
+  preparing: boolean;
+  unavailable: boolean;
+}
+
+function goalPreparationKey(
+  chatId: string,
+  providerId: string,
+  recovery: NativeGoalRecovery,
+): string {
+  const source = recovery.source;
+  return JSON.stringify([
+    chatId,
+    providerId,
+    source.operationId,
+    source.operationGeneration,
+    source.threadId,
+    source.goalEpoch,
+    recovery.orderEpoch ?? 0,
+  ]);
+}
+
+function goalPreparationEpisode(
+  chatId: string,
+  providerId: string,
+  threadId: string,
+  goalEpoch: string,
+  orderEpoch: number,
+): string {
+  return JSON.stringify([chatId, providerId, threadId, goalEpoch, orderEpoch]);
 }
 
 /**
@@ -247,6 +285,10 @@ export class WorkerInferenceAdmission {
   private recoveryInitialized = false;
   private readonly recoveryPending = new Map<string, string>();
   private readonly restored = new Map<string, RestoredWaiter>();
+  private readonly goalPreparations = new Map<
+    string,
+    GoalRecoveryPreparation
+  >();
   private readonly recoveryLifetime = new AbortController();
   private recoveryWork: Promise<void> | null = null;
   private recoveryAll = false;
@@ -294,6 +336,7 @@ export class WorkerInferenceAdmission {
       await this.journal?.flush();
       await this.nativeOwnership?.close();
       this.unrequestedSettlements.clear();
+      this.goalPreparations.clear();
     })();
     return this.closure;
   }
@@ -302,6 +345,118 @@ export class WorkerInferenceAdmission {
    * never contains inputs and is not a competing delivery queue. */
   recoverySnapshot(): readonly InferenceJournalRecord[] {
     return this.journal?.recoverySnapshot() ?? [];
+  }
+
+  /** Own only this real preparation attempt. Failure changes eligibility of a
+   * fenced, unused restoration, never the ownership of an actual execution. */
+  beginGoalRecoveryPreparation(input: {
+    chatId: string;
+    providerId: string;
+    recovery: NativeGoalRecovery;
+  }): { succeeded(): void; failed(): void; unconfirmed(): void } {
+    const key = goalPreparationKey(
+      input.chatId,
+      input.providerId,
+      input.recovery,
+    );
+    const previous = this.goalPreparations.get(key);
+    const state: GoalRecoveryPreparation = {
+      ...input,
+      preparing: true,
+      // A retry becomes eligible only after actual preparation succeeds.
+      unavailable: previous?.unavailable ?? false,
+    };
+    this.goalPreparations.set(key, state);
+    let ended = false;
+    const update = (succeeded: boolean) => {
+      if (ended || this.goalPreparations.get(key) !== state) return;
+      ended = true;
+      state.preparing = false;
+      const eligibilityChanged = succeeded
+        ? state.unavailable
+        : !state.unavailable;
+      if (succeeded) this.goalPreparations.delete(key);
+      else {
+        if (!state.unavailable)
+          for (const waiter of new Set(this.restored.values()))
+            if (this.goalPreparationFor(waiter) === state)
+              this.diagnoseRecovery(waiter.record, "recovery-unavailable");
+        state.unavailable = true;
+        this.pruneGoalPreparations();
+      }
+      if (!eligibilityChanged) return;
+      for (const pool of this.pools.values()) this.drain(pool);
+      this.changed();
+    };
+    return {
+      succeeded: () => update(true),
+      failed: () => update(false),
+      // Restore conservative FIFO eligibility after an ambiguous attempt.
+      unconfirmed: () => update(true),
+    };
+  }
+
+  private goalPreparationFor(waiter: RestoredWaiter) {
+    return waiter.goalRecovery && waiter.record.identity.chatId
+      ? this.goalPreparations.get(
+          goalPreparationKey(
+            waiter.record.identity.chatId,
+            waiter.record.identity.providerId,
+            waiter.goalRecovery,
+          ),
+        )
+      : undefined;
+  }
+
+  private pruneGoalPreparations(): void {
+    if (!this.goalPreparations.size) return;
+    const retained = new Set<string>();
+    for (const waiter of new Set(this.restored.values()))
+      if (waiter.goalRecovery && waiter.record.identity.chatId)
+        retained.add(
+          goalPreparationKey(
+            waiter.record.identity.chatId,
+            waiter.record.identity.providerId,
+            waiter.goalRecovery,
+          ),
+        );
+    const pending = new Set<string>();
+    for (const record of this.journal?.recoverySnapshot() ?? []) {
+      const recovery = record.identity.recovery;
+      if (
+        this.recoveryPending.has(record.key) &&
+        record.identity.chatId &&
+        recovery?.threadId &&
+        recovery.autonomousGoal
+      )
+        pending.add(
+          goalPreparationEpisode(
+            record.identity.chatId,
+            record.identity.providerId,
+            recovery.threadId,
+            recovery.autonomousGoal.goalEpoch,
+            recovery.autonomousGoal.orderEpoch ?? 0,
+          ),
+        );
+    }
+    for (const [key, state] of this.goalPreparations) {
+      if (state.preparing || retained.has(key)) continue;
+      // A real preparation may fail before its canonical metadata response
+      // reaches refreshRecovery. Keep that attempt only through the matching
+      // in-flight read; a retired/different source cannot inherit its failure.
+      if (
+        !pending.has(
+          goalPreparationEpisode(
+            state.chatId,
+            state.providerId,
+            state.recovery.source.threadId,
+            state.recovery.source.goalEpoch,
+            state.recovery.orderEpoch ?? 0,
+          ),
+        )
+      )
+        this.goalPreparations.delete(key);
+    }
   }
   /** Join the actual keeper owner; takeover fences surviving prior processes. */
   async confirmNativeOwnership(): Promise<void> {
@@ -662,6 +817,13 @@ export class WorkerInferenceAdmission {
     for (const pool of this.pools.values()) {
       const queued = this.queueEntries(pool);
       const suspended = [...pool.suspended];
+      const unavailable = [...new Set(this.restored.values())].filter(
+        (waiter) =>
+          !pool.disabled &&
+          waiter.record.identity.providerId === pool.configuration.providerId &&
+          this.goalPreparationFor(waiter)?.unavailable &&
+          (!waiter.claimed || waiter.claimed.state === "released"),
+      );
       pools.push({
         ...pool.configuration,
         activeCount: pool.active.size,
@@ -671,21 +833,9 @@ export class WorkerInferenceAdmission {
           ...queued.map((entry, index) =>
             entry.ticket
               ? this.status(entry.ticket, index + 1)
-              : {
-                  purpose: "turn" as const,
-                  operationId: entry.waiter!.record.identity.operationId,
-                  runtimeGeneration:
-                    entry.waiter!.record.identity.runtimeGeneration,
-                  providerId: pool.configuration.providerId,
-                  chatId: entry.waiter!.record.identity.chatId,
-                  projectId: entry.waiter!.record.identity.projectId,
-                  state: "waiting" as const,
-                  queuePosition: index + 1,
-                  enqueuedAt: entry.waiter!.enqueuedAt,
-                  grantedAt: null,
-                  startedAt: null,
-                },
+              : this.restoredStatus(entry.waiter!, index + 1),
           ),
+          ...unavailable.map((waiter) => this.restoredStatus(waiter, null)),
           ...suspended.map((ticket) => this.status(ticket)),
         ],
       });
@@ -697,6 +847,25 @@ export class WorkerInferenceAdmission {
       ...(this.catalogRevision === null
         ? {}
         : { providerCatalogRevision: this.catalogRevision }),
+    };
+  }
+
+  private restoredStatus(
+    waiter: RestoredWaiter,
+    queuePosition: number | null,
+  ): InferenceOperationStatus {
+    return {
+      purpose: "turn",
+      operationId: waiter.record.identity.operationId,
+      runtimeGeneration: waiter.record.identity.runtimeGeneration,
+      providerId: waiter.record.identity.providerId,
+      chatId: waiter.record.identity.chatId,
+      projectId: waiter.record.identity.projectId,
+      state: queuePosition === null ? "recovering" : "waiting",
+      queuePosition,
+      enqueuedAt: waiter.enqueuedAt,
+      grantedAt: null,
+      startedAt: null,
     };
   }
 
@@ -1428,6 +1597,7 @@ export class WorkerInferenceAdmission {
     for (const waiter of new Set(this.restored.values())) {
       if (
         waiter.record.identity.providerId !== pool.configuration.providerId ||
+        this.goalPreparationFor(waiter)?.unavailable ||
         (waiter.claimed && waiter.claimed.state !== "released")
       )
         continue;
@@ -1579,6 +1749,23 @@ export class WorkerInferenceAdmission {
                   this.diagnoseRecovery(record, "recovery-retired");
                 }
               } else if (result.disposition === "requeued") {
+                const goal = record.identity.recovery?.autonomousGoal;
+                if (
+                  result.goalRecovery &&
+                  (!goal ||
+                    result.goalInputNotDispatched !== true ||
+                    result.goalRecovery.source.threadId !==
+                      record.identity.recovery?.threadId ||
+                    result.goalRecovery.source.goalEpoch !== goal.goalEpoch ||
+                    (result.goalRecovery.orderEpoch ?? 0) !==
+                      (goal.orderEpoch ?? 0) ||
+                    (result.goalRecovery.providerId ??
+                      record.identity.providerId) !==
+                      record.identity.providerId)
+                )
+                  throw new Error(
+                    "Recovery returned another unused Goal cycle.",
+                  );
                 if (
                   !this.pools.has(record.identity.providerId) &&
                   (this.catalogRevision === null ||
@@ -1598,7 +1785,7 @@ export class WorkerInferenceAdmission {
                         waiter.record.identity.recovery,
                       ) === logicalIdentity,
                   );
-                  const waiter = previous ?? {
+                  const waiter: RestoredWaiter = previous ?? {
                     record,
                     records: [],
                     taskInputNotDispatched: new Set<string>(),
@@ -1622,6 +1809,9 @@ export class WorkerInferenceAdmission {
                   this.restored.set(record.key, waiter);
                   this.diagnoseRecovery(record, "recovery-requeued");
                 }
+                const waiter = this.restored.get(record.key)!;
+                if (result.goalRecovery)
+                  waiter.goalRecovery = result.goalRecovery;
               } else {
                 // Uncertain input is not eligible for whole-prompt replay. Keep
                 // its evidence for canonical runtime reconciliation, not a slot.
@@ -1652,6 +1842,7 @@ export class WorkerInferenceAdmission {
         }),
       );
       for (const pool of this.pools.values()) this.drain(pool);
+      this.pruneGoalPreparations();
       this.changed();
     } while (!this.closing && (this.recoveryAll || this.recoveryChats.size));
     if (failed) this.scheduleRecoveryRetry();
@@ -1798,6 +1989,7 @@ export class WorkerInferenceAdmission {
       waiter.record = waiter.records.reduce((a, b) =>
         a.order < b.order ? a : b,
       );
+    this.pruneGoalPreparations();
   }
 
   private changed(): void {

@@ -27,16 +27,20 @@ export function useChatInferenceQueue({
           const operation = pool.operations.find(
             (operation) =>
               operation.chatId === chatId &&
-              operation.state === "waiting" &&
+              (operation.state === "waiting" ||
+                operation.state === "recovering") &&
               (operation.purpose === "turn" || operation.purpose === "label"),
           );
-          if (operation?.queuePosition)
+          if (operation?.queuePosition || operation?.state === "recovering")
             return {
               providerId: pool.providerId,
               queuePosition: operation.queuePosition,
               activeCount: pool.activeCount,
               limit: pool.maxConcurrentInference,
               purpose: operation.purpose,
+              ...(operation.state === "recovering"
+                ? { recovering: true as const }
+                : {}),
             };
         }
         return null;
@@ -78,11 +82,22 @@ export function InferenceQueueNotice({
     >
       <Clock3 className="size-3.5 shrink-0" />
       <span className="min-w-0 flex-1">
-        Queued · #{queue.queuePosition}
-        {provider ? ` for ${provider.name}` : " for provider capacity"} ·{" "}
-        {queue.activeCount} of {queue.limit} slots in use. Starts automatically
-        when capacity is available.
-        {queue.purpose === "label" ? " Waiting for chat naming." : ""}
+        {queue.recovering ? (
+          <>
+            Waiting for runtime recovery
+            {provider ? ` for ${provider.name}` : ""}. Preparation could not
+            finish; recovery will retry automatically.
+          </>
+        ) : (
+          <>
+            Queued · #{queue.queuePosition}
+            {provider
+              ? ` for ${provider.name}`
+              : " for provider capacity"} · {queue.activeCount} of {queue.limit}{" "}
+            slots in use. Starts automatically when capacity is available.
+            {queue.purpose === "label" ? " Waiting for chat naming." : ""}
+          </>
+        )}
       </span>
       {onCancel ? (
         <Button
@@ -92,7 +107,7 @@ export function InferenceQueueNotice({
           disabled={cancelPending}
           onClick={onCancel}
         >
-          Cancel queued turn
+          {queue.recovering ? "Cancel pending turn" : "Cancel queued turn"}
         </Button>
       ) : null}
     </div>

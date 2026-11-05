@@ -1,6 +1,9 @@
 import { workerLogger } from "../logger.js";
 import { readableCodexProviderError } from "./provider-errors.js";
-import { CodexNativeRpcError } from "./rpc-protocol.js";
+import {
+  CodexNativeRpcError,
+  CodexRpcObservationError,
+} from "./rpc-protocol.js";
 import type { PendingRpcRequest, RpcMessage } from "./runtime-types.js";
 import type { CodexRuntimeDiagnostic } from "./runtime.js";
 
@@ -69,7 +72,9 @@ export class CodexRpcRequests {
             durationMs: Date.now() - startedAtMs,
           },
         );
-        reject(new Error(`Codex request ${method} timed out.`));
+        reject(
+          new CodexRpcObservationError(`Codex request ${method} timed out.`),
+        );
       }, timeoutMs);
       this.#pending.set(id, {
         method,
@@ -193,7 +198,9 @@ export class CodexRpcRequests {
   rejectAll(error: Error): void {
     for (const pending of this.#pending.values()) {
       clearTimeout(pending.timeout);
-      pending.reject(error);
+      pending.reject(
+        new CodexRpcObservationError(error.message, { cause: error }),
+      );
     }
     this.#pending.clear();
     this.#privateInferenceRequests.clear();

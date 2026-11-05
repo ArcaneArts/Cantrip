@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { taskInferenceInputReceiptSchema } from "./task-inference-input.js";
-import { nativeGoalRecoveryAdmissionSchema } from "./native-goal-recovery.js";
+import {
+  nativeGoalRecoveryAdmissionSchema,
+  nativeGoalRecoverySchema,
+} from "./native-goal-recovery.js";
 
 /** Admission metadata only: inputs remain in their existing encrypted queues. */
 const identifier = z
@@ -124,6 +127,9 @@ export const nativeInferenceRecoveryResultSchema = z
     taskInputNotDispatched: z.boolean().optional(),
     /** Canonical pre-start Goal dispatch was revoked under its chat lock. */
     goalInputNotDispatched: z.boolean().optional(),
+    /** Current canonical unused cycle, never a provider grant. Allows worker
+     * preparation eligibility to follow this exact source and ordering epoch. */
+    goalRecovery: nativeGoalRecoverySchema.optional(),
     goalOwnershipChallenge: nativeGoalRecoveryAdmissionSchema.optional(),
   })
   .strict();
