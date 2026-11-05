@@ -47,6 +47,36 @@ tests, builds, typechecks, benchmarks, native execution or computer-use validati
 were run; direct formatting, mechanical protocol export and diff review do not
 establish exercised runtime behavior.
 
+## Durable native execution correlation
+
+The worker now awaits a `bindNative` journal acknowledgment at Core's existing
+private inference-begin boundary. The keeper binds one exact native thread,
+turn and physical scope to that ticket's worker/runtime generation. A duplicate
+binding is idempotent; a changed binding or released grant is rejected. The
+original operation/provider/input identity and FIFO ordinal stay unchanged.
+The optional `nativeExecution` field survives retirement and restart snapshots
+alongside the existing settlement facts. It carries no prompt or response body.
+
+Root inference uses its existing ticket, including when naming has already run
+serially under it. Autonomous cycles, children and independent helpers bind
+their own grants. Cancellation/retirement is checked again after durable writes;
+a late acknowledgment cannot begin execution. A root whose first binding fails
+has not been allowed into that native scope and still waits for actual turn
+completion or process fencing. A new independent operation denied before its
+model dispatch can settle its unused reservation. Once a begin has been allowed,
+the existing private finish/physical process boundaries remain authoritative.
+
+This supplies durable physical identity for checkpoint reconciliation; a binding
+alone proves neither that a model ran nor that input can be replayed. It does not
+add a semaphore, new input queue, completed-event registry or public native RPC.
+The current worker and native keeper must be deployed together; older unbound
+records remain readable. Actual native checkpoint/terminal reconciliation,
+unresolved result retirement, remaining Chat/Task-round durable outcomes and the
+final timing/bounded-state/inference-path audit remain unfinished. Source review,
+direct formatting, mechanical source patch/contract generation and diff checks
+were performed. Native execution, patch verification, tests, builds, benchmarks,
+typechecks and computer-use validation were not run.
+
 `WorkerInferenceAdmission` belongs to one server/owner/worker generation. Its
 provider pools are outside the project, account, model, and native-runtime maps.
 Runtime envelopes update the shared pool with their revision; stale revisions

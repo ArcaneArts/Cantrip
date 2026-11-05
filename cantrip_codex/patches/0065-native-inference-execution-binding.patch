@@ -1,0 +1,105 @@
+diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/cantrip_inference_journal.rs
+--- a/codex-rs/cli/src/cantrip_inference_journal.rs
++++ b/codex-rs/cli/src/cantrip_inference_journal.rs
+@@ -83,6 +83,30 @@
+     Released,
+ }
+ 
++/// Physical correlation only; a bound begin is not proof that inference ran.
++#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++struct NativeExecution {
++    thread_id: String,
++    turn_id: String,
++    scope_id: String,
++}
++
++impl NativeExecution {
++    fn validate(&self) -> anyhow::Result<()> {
++        anyhow::ensure!(
++            !self.thread_id.is_empty()
++                && self.thread_id.chars().count() <= 4096
++                && !self.turn_id.is_empty()
++                && self.turn_id.chars().count() <= 4096
++                && !self.scope_id.is_empty()
++                && self.scope_id.chars().count() <= 4096,
++            "invalid native inference binding"
++        );
++        Ok(())
++    }
++}
++
+ #[derive(Clone, Deserialize, Serialize)]
+ #[serde(rename_all = "camelCase", deny_unknown_fields)]
+ struct Operation {
+@@ -93,6 +117,8 @@
+     order: u64,
+     revision: u64,
+     ever_granted: bool,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    native_execution: Option<NativeExecution>,
+     outcome: Option<String>,
+ }
+ 
+@@ -141,6 +167,10 @@
+     },
+     Forget {
+         previous: RecoveryReference,
++    },
++    BindNative {
++        key: String,
++        execution: NativeExecution,
+     },
+     Grant {
+         key: String,
+@@ -205,6 +235,10 @@
+                         operation.state != State::Granted || operation.ever_granted,
+                         "invalid admission grant evidence"
+                     );
++                    if let Some(execution) = &operation.native_execution {
++                        execution.validate()?;
++                        anyhow::ensure!(operation.ever_granted, "native binding has no grant");
++                    }
+                 }
+                 Ok(journal)
+             }
+@@ -289,6 +323,7 @@
+                     order,
+                     revision: order,
+                     ever_granted: false,
++                    native_execution: None,
+                     outcome: None,
+                 };
+                 let result = serde_json::to_value(&operation)?;
+@@ -409,6 +444,7 @@
+                     order,
+                     revision,
+                     ever_granted: false,
++                    native_execution: None,
+                     outcome: None,
+                 };
+                 let result = serde_json::to_value(&replacement)?;
+@@ -429,6 +465,23 @@
+                     self.operations.remove(&previous.key);
+                 }
+                 Ok(serde_json::json!({ "key": previous.key, "forgotten": true }))
++            }
++            Command::BindNative { key, execution } => {
++                execution.validate()?;
++                let operation = self.operation(&key, generation)?;
++                anyhow::ensure!(
++                    operation.state == State::Granted && operation.ever_granted,
++                    "native binding requires its current grant"
++                );
++                if let Some(previous) = &operation.native_execution {
++                    anyhow::ensure!(previous == &execution, "native execution binding changed");
++                    return Ok(serde_json::to_value(operation)?);
++                }
++                let revision = self.next()?;
++                let operation = self.operation(&key, generation)?;
++                operation.native_execution = Some(execution);
++                operation.revision = revision;
++                Ok(serde_json::to_value(operation)?)
+             }
+             Command::Grant { key } => {
+                 let revision = self.next()?;

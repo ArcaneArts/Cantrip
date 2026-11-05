@@ -622,3 +622,18 @@ The normal 65-patch macOS ARM64 release build and all 12 native suspension/share
 pause cases passed, including two physical TUI cold-resumption cases.
 Product recovery, Goal/resource continuation and complete worker-tree acceptance
 remain required work.
+
+Patch `0065` gives the existing inference keeper journal a private `bindNative`
+mutation. Core's private inference begin durably binds its exact thread, turn
+and physical scope to the current ticket before the worker can allow model
+execution. Root turns reuse their existing reservation, including a serial
+same-provider title; independent native operations bind their own tickets.
+The binding is immutable, idempotent, generation-owned, and preserves the FIFO
+ordinal. It is correlation metadata, not evidence of completion or permission
+to replay an input. A cancelled or retired grant cannot use a late write reply
+to start. The optional journal field preserves older unbound records. No public
+native RPC or precomputed schema archive changes. This patch requires its paired
+worker and keeper update. Source review, direct formatting, mechanical patch and
+protocol generation, and diff checks were performed; no native execution, patch
+verification helper, tests or builds were run. Checkpoint/result reconciliation
+and the remaining inference lifecycle audit are still required.

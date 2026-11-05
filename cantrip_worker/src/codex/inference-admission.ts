@@ -418,11 +418,23 @@ export class CodexInferenceAdmission {
   }
 
   private async admitNative(input: NativeRequest): Promise<void> {
-    if (this.findNative(input.threadId, input.turnId, input.scopeId)) {
+    const binding = {
+      threadId: input.threadId,
+      turnId: input.turnId,
+      scopeId: input.scopeId,
+    };
+    const existing = this.findNative(
+      input.threadId,
+      input.turnId,
+      input.scopeId,
+    );
+    if (existing) {
       if (input.independent)
         throw new Error(
           "Independent inference cannot reuse an existing native turn.",
         );
+      await existing.lease!.bindNative(binding);
+      input.signal.throwIfAborted();
       return;
     }
     // Core's private begin can overtake the ordinary turn/started observer.
@@ -439,10 +451,22 @@ export class CodexInferenceAdmission {
         !operation.settled,
     );
     if (roots.length === 1) {
-      roots[0]!.observedStart = true;
-      roots[0]!.nativeBoundary = true;
-      roots[0]!.nativeScopeId = input.scopeId;
-      this.bindTurn(roots[0]!, input.turnId);
+      const operation = roots[0]!;
+      operation.observedStart = true;
+      operation.nativeBoundary = true;
+      operation.nativeScopeId = input.scopeId;
+      this.bindTurn(operation, input.turnId);
+      try {
+        await operation.lease!.bindNative(binding);
+        input.signal.throwIfAborted();
+      } catch (error) {
+        // No allow response has been sent. Native inference did not enter this
+        // scope; its actual turn completion can settle the dispatched root.
+        operation.nativeBoundary = false;
+        operation.nativeScopeId = null;
+        this.reconcile(operation);
+        throw error;
+      }
       return;
     }
     if (roots.length > 1)
@@ -470,6 +494,21 @@ export class CodexInferenceAdmission {
       recovery: { threadId: input.threadId, turnId: input.turnId },
       signal: input.signal,
     });
+    try {
+      const operation = this.findNative(
+        input.threadId,
+        input.turnId,
+        input.scopeId,
+      );
+      if (!operation?.lease)
+        throw new Error("Native inference lost its binding owner.");
+      await operation.lease.bindNative(binding);
+      input.signal.throwIfAborted();
+    } catch (error) {
+      // This newly acquired operation has not forwarded model execution yet.
+      execution.notDispatched();
+      throw error;
+    }
     execution.dispatched();
   }
 

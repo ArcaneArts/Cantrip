@@ -5,6 +5,7 @@ import {
   inferenceJournalRecordSchema as recordSchema,
   type InferenceRecoveryIdentity,
   type InferenceJournalRecord,
+  type InferenceNativeExecution,
 } from "@cantrip/protocol";
 export type {
   InferenceRecoveryIdentity,
@@ -58,6 +59,7 @@ export type InferenceJournalMutation =
       previous: InferenceRecoveryReference[];
     }
   | { action: "grant" | "requeue"; key: string }
+  | { action: "bindNative"; key: string; execution: InferenceNativeExecution }
   | {
       action: "release";
       key: string;
@@ -136,6 +138,12 @@ export class WorkerInferenceJournal {
   }
   requeue(key: string): Promise<InferenceJournalRecord> {
     return this.write({ action: "requeue", key });
+  }
+  bindNative(
+    key: string,
+    execution: InferenceNativeExecution,
+  ): Promise<InferenceJournalRecord> {
+    return this.write({ action: "bindNative", key, execution });
   }
   release(
     key: string,
@@ -331,6 +339,11 @@ export class WorkerInferenceJournal {
                   (record.state !== "granted" || !record.everGranted)) ||
                 (item.command.action === "requeue" &&
                   record.state !== "waiting") ||
+                (item.command.action === "bindNative" &&
+                  (record.state !== "granted" ||
+                    !record.everGranted ||
+                    JSON.stringify(record.nativeExecution) !==
+                      JSON.stringify(item.command.execution))) ||
                 (item.command.action === "release" &&
                   record.state !== "released")
               )
