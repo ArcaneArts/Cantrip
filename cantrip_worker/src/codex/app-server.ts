@@ -2791,7 +2791,13 @@ export class CodexAppServer implements CodexRuntime {
     source: InferenceOperationSource | undefined,
     admission: CodexInferenceAdmission | null,
   ): InferenceOperationLifetime | undefined {
-    if (!source) return undefined;
+    if (this.inferenceAdmission && !admission)
+      throw new Error("The native inference process is no longer connected.");
+    if (!source) {
+      if (admission)
+        throw new Error("Worker inference requires its live canonical source.");
+      return undefined;
+    }
     source.assertCurrent();
     const transportGeneration = this.transportGeneration;
     if (transportGeneration) source.bindNativeTransport?.(transportGeneration);

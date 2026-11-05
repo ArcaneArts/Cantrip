@@ -127,10 +127,6 @@ export class CodexInferenceAdmission {
   private readonly operations = new Set<Operation>();
   private readonly completed = new Set<string>();
   private readonly nativeEntries = new Map<string, NativeEntry>();
-  private readonly requests = new Map<
-    string,
-    { identity: string; result: Promise<CodexInferenceExecution> }
-  >();
   private readonly lifetimeRequests = new WeakMap<
     InferenceOperationLifetime,
     { identity: string; result: Promise<CodexInferenceExecution> }
@@ -184,14 +180,14 @@ export class CodexInferenceAdmission {
   }
 
   acquire(input: Request): Promise<CodexInferenceExecution> {
-    if (input.operationId.startsWith("native-inference:") && !input.lifetime)
+    const lifetime = input.lifetime;
+    if (!lifetime)
       return Promise.reject(
-        new Error("Private native inference requires its canonical lifetime."),
+        new Error("Inference requires its live canonical operation lifetime."),
       );
     if (
-      input.lifetime &&
-      (input.lifetime.runtimeGeneration !== this.generation ||
-        input.lifetime.operationId !== input.operationId)
+      lifetime.runtimeGeneration !== this.generation ||
+      lifetime.operationId !== input.operationId
     )
       return Promise.reject(
         new Error("Inference operation lifetime changed owner."),
@@ -209,9 +205,7 @@ export class CodexInferenceAdmission {
       input.recoveryKey ?? null,
       recoveryIdentity(input.recovery),
     ]);
-    const previous = input.lifetime
-      ? this.lifetimeRequests.get(input.lifetime)
-      : this.requests.get(input.operationId);
+    const previous = this.lifetimeRequests.get(lifetime);
     if (previous) {
       if (previous.identity !== identity)
         return Promise.reject(
@@ -220,15 +214,13 @@ export class CodexInferenceAdmission {
       return previous.result;
     }
     trackInferenceCommandOperation(input.operationId);
-    const result = this.acquireOperation(input);
-    if (input.lifetime)
-      this.lifetimeRequests.set(input.lifetime, { identity, result });
-    else this.requests.set(input.operationId, { identity, result });
+    const result = this.acquireOperation({ ...input, lifetime });
+    this.lifetimeRequests.set(lifetime, { identity, result });
     return result;
   }
 
   private async acquireOperation(
-    input: Request,
+    input: Request & { lifetime: InferenceOperationLifetime },
   ): Promise<CodexInferenceExecution> {
     if (this.exited)
       throw new Error("The native inference process has exited.");
@@ -516,7 +508,6 @@ export class CodexInferenceAdmission {
       this.completed.clear();
       for (const entry of this.nativeEntries.values()) entry.lifetime?.close();
       this.nativeEntries.clear();
-      this.requests.clear();
     });
     return this.retirement;
   }

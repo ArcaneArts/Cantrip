@@ -31,10 +31,10 @@ introduced. Native child/private-scope gates continue to bind or acquire through
 the existing worker service. This does not change FIFO order, cycle fairness,
 control channels, or worker/server ownership.
 
-GUI `runTurn` preparation, direct Task inputs, standalone titles, and other helper
-commands still retain their legacy operation-ID records until their own canonical
-source lifetimes are connected. This milestone does not treat an arbitrary old
-receipt, timer, or cache miss as authorization to mint a fresh identity.
+GUI preparation, direct Task inputs, standalone titles and other helper commands
+now use their canonical source lifetimes as well. Worker-native acquisition
+requires that live owner; an arbitrary receipt, timer, bare operation ID or cache
+miss cannot mint a replacement identity.
 
 Validation used source review, direct formatting and `git diff --check` only.
 No tests, builds, typechecks, benchmarks, native execution, hosted checks or
@@ -77,10 +77,9 @@ confirmation. An older confirmation cannot overwrite a newer binding or mutate
 settled failure evidence. Shared roots retain their existing ticket.
 
 This bounds completed private-scope ticket state without an eviction window,
-Bloom filter, new prompt queue, or another durable receipt ledger. Managed outer
-turns, standalone titles and helper commands still use their legacy operation-ID
-records until their own canonical source lifetimes are integrated. This milestone
-does not claim to finish the full bounded-retention requirement.
+Bloom filter, new prompt queue or another durable receipt ledger. Managed outer
+turns, standalone titles and helper commands use the same canonical lifetime
+rule; their old bare-ID fallback is no longer accepted for worker-owned inference.
 
 Source review, direct formatting, mechanical patch authoring and `git diff --check`
 only. No native patch helper, native execution, schema-generation build, tests,
@@ -1796,3 +1795,23 @@ This migration and delivery code were source-reviewed and formatted without
 executing the migration or application. Mechanical protocol export and
 `git diff --check` were performed. No tests, builds, typechecks, benchmarks,
 native/helper validation, hosted checks or computer-use checks ran.
+
+## Required canonical lifetimes
+
+All worker admission requests require a lifetime issued by their actual runtime.
+The worker-native adapter rejects missing lifetimes, and the connected runtime
+rejects missing canonical sources before acquisition. Current GUI, direct Task,
+native private-scope and command-issued helper owners supply those handles.
+Older clients may still omit provider settings, but an older server that cannot
+supply canonical execution/command authority is not an inference fallback.
+
+Only active tickets remain in the runtime's strong operation registry. Released
+tickets and their exact results remain reachable through the owning lifetime's
+WeakMap entry while that owner is retained; closing the source prevents reuse.
+There is no process-lifetime completed operation-ID registry. Runtime replacement,
+cancellation, suspension and physical-settlement rules retain their prior meaning.
+
+The existing endpoint-isolation test fixture was updated to provide its five
+runtime-owned lifetime handles; it was not executed. Source review, direct
+formatting and git diff --check were performed. No tests, builds, typechecks,
+benchmarks, native/helper execution, hosted checks or computer-use validation ran.
