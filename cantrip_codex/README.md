@@ -482,3 +482,18 @@ Regular/foreground/speculative compaction clients use the binding, with an API
 for independently admitted model-client helpers. Memory extraction admission and
 stateless labeling's explicit drain path remain separate goal work. Source-only
 review and formatting were performed; no native binary was built or executed.
+
+Patch `0056` adds independent worker admission to parallel memory extraction and
+binds each helper to model-client transport ownership. The existing bounded local
+preparation queue renews every canonical job claim while waiting, including work
+not yet inside that local bound. Claim loss cancels only the matching operation;
+transient database errors cannot release inference capacity. Cancellation is
+reported as skipped work without consuming extraction retry budget. Abandoned
+claims use their existing lease-expiry recovery.
+
+Memory consolidation starts through the existing internal-child API with its
+actual parent, retaining the shared inference channel without rebinding that
+parent's root gate. Its ordinary native turn owns separate capacity, and existing
+consolidation heartbeats cover capacity waits. Only source review, direct Rust
+formatting, mechanical patch generation and diff checks were performed. No native
+binary, test, build, benchmark or computer-use validation ran.

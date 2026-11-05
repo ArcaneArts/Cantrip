@@ -92,8 +92,8 @@ settlement still use the original exact native operation identity.
 The native runtime and worker ship this boundary together. An older worker
 denies the new unsupported phase through the existing private resolver rather
 than letting an independent request execute without admission. This does not
-add a public protocol endpoint or another semaphore. Memory-extraction and
-transport-lifetime coverage remain part of the continuing helper audit.
+add a public protocol endpoint or another semaphore. Patches `0055` and `0056`
+cover the model-client transport and memory paths described below.
 
 Patch `0055` extends the native inference lifetime through actual response
 ownership. A regular turn, foreground compaction, or speculative compaction
@@ -129,9 +129,32 @@ not await release of its compound reservation before the response.
 
 This integrates regular and compaction model clients and exposes a session
 binding for independently admitted model-client helpers. Stateless label replies
-still need their explicit transport-drain integration, and memory extraction
-still needs independent admission plus its canonical job-lease lifecycle. No
-public RPC, prompt queue, status polling or completed-resource registry is added.
+still need their explicit transport-drain integration. No public RPC, prompt
+queue, status polling or completed-resource registry is added.
+
+Patch `0056` admits every parallel stage-one memory extraction independently on
+its actual owning thread's inference gate. It does not use root-input eligibility
+or borrow a parent turn's reservation. The raw model-client session binds that
+helper's transport lifetime before dispatch, so cancellation or abandoned output
+retains capacity until actual response cleanup. Normal unmanaged Codex sessions
+retain their existing behavior.
+
+All already-claimed extraction jobs renew their canonical SQLite ownership token
+while waiting for local preparation or worker provider admission. The existing
+local preparation bound remains; its backlog is also polled for coarse claim
+renewal. A matching running token extends its lease, preventing ordinary capacity
+waits from expiring the one-hour claim. An actual ownership mismatch cancels only
+that job's wait/response. A failed database observation is retried and cannot prove
+inference settlement. Parent-session termination and native admission cancellation
+are skipped work, rather than failed extraction retries. Abandoned canonical
+claims retain their existing lease-expiry recovery; the inference ticket follows
+actual transport settlement independently of that lease.
+
+Memory consolidation uses the existing internal-child session startup API with
+its real parent. This avoids rebinding the parent's connection gate to a new root
+and preserves its shared inference channel. The child acquires its own turn ticket;
+the existing consolidation lease heartbeat also runs while that turn waits for
+capacity. This adds no provider-availability probe, second input queue or app poll.
 
 Known dependency and user/approval waits can suspend their parent's reservation
 only after all parent sampling streams have stopped. Resumption rejoins FIFO before
