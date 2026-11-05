@@ -2676,3 +2676,50 @@ these successful short-output tests do not establish complete history after
 native eviction. Worker-incarnation classification, other admitted operations,
 backup/restore, lifecycle/upgrade preservation and final distribution acceptance
 also remain required before the full goal can be completed.
+
+## Phase 5: Worker continuity observation (2026-11-05)
+
+Explicit recovery now records the authenticated Worker's process generation
+separately from the guest runtime. The Server compares actual bridge identities
+before and after the read-only inspect request, and persists the last explicit
+observation for that attachment. Ordinary Refresh does not consume that baseline.
+A changing/unavailable bridge identity reports unavailable continuity without
+blocking the inspect request. Recovery updates compare both prior generations;
+this metadata does not replace captured execution authority.
+
+The Node HTTP/PGlite cases exercise initial observation, guest transport failure
+with the same Worker, an unavailable Worker connection, a new Worker on the same
+guest runtime, an intervening Refresh, missing/changing continuity metadata,
+persistence through a fresh repository and rejection of a stale Worker update.
+The native HTTP/PostgreSQL case reconnects real bridge Peers first with the same
+process generation and then a different one while retaining the fixture's guest
+runtime. It verifies the separate recovery states and persisted generations.
+These are product HTTP/authorization fixtures, not acceptance of a real remote
+Worker process restart. That end-to-end case remains required.
+
+The initial Node test had a duplicate local variable, then its historical schema
+fixture needed the new migration only in the case invoking today's repository.
+Both were fixed. Three Node suites passed (7 cases), followed by the final
+management case after message changes. App API tests (7 cases), App/Server type
+checking and formatting passed. Native contract oracles (2 cases) and the actual
+HTTP case passed after fixing a forwarding-channel leak in the test's cleanup;
+the earlier stalled run was terminated and its disposable database stopped.
+Before the rebase, the required root check stopped at existing Server file
+budgets (1516/1500 and 2230/1999). The separate repository decomposition check
+also reported existing `native-commands.ts` at 2113/2000. No guest package, Docker
+image or ISO changed in this cycle. Final rebased validation is recorded below.
+
+After rebasing onto `e28b9383d`, the continuity migration is `0268` (the two
+intervening merged changes own `0266` and `0267`). The final Node HTTP/database
+suites passed again (7 cases / 48.56s), and App/Server type checking passed.
+The native HTTP case passed on the pre-rebase feature source (14.23s), alongside
+both real protocol oracles (94.88s). Native validation of the rebased tree is
+blocked by three unchanged baseline syntax errors in managed Goal recovery:
+`native_commands/goal_recovery/admission.rs:64` and `receipts.rs:37,39`.
+Those files match `e28b9383d`; they were not changed by this CantripOS cycle.
+This is not recorded as a native pass on the rebased source.
+
+The rebased root check reports `build-app.ts` at 1519/1500 and
+`chat-turn-runtime.ts` at 2230/1999; the repository check reports
+`native-commands.ts` at 2143/2000. Those files are unchanged by this cycle.
+Formatting and diff checks passed on the final source.

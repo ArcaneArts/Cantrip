@@ -30,6 +30,14 @@ export const cantripOsRecoveryResultSchema = z
         ]),
         previousRuntimeGeneration: z.string().min(1).max(200).nullable(),
         observedRuntimeGeneration: z.string().min(1).max(200).nullable(),
+        workerContinuity: z.enum([
+          "same-worker",
+          "worker-restarted",
+          "first-observation",
+          "unavailable",
+        ]),
+        previousWorkerProcessGeneration: z.string().min(1).max(200).nullable(),
+        observedWorkerProcessGeneration: z.string().min(1).max(200).nullable(),
         message: z.string().min(1).max(4_000),
       })
       .strict(),

@@ -1,5 +1,6 @@
-use super::{InstanceObservation, checked, coordinator::Coordinator, text};
+use super::{Repository, checked, coordinator::Coordinator, summary, text};
 use anyhow::{Context, Result, ensure};
+use postgres_types::Json;
 use serde_json::{Value, json};
 
 impl Coordinator {
@@ -12,6 +13,9 @@ impl Coordinator {
                 && instance["runtimeGeneration"] == expected["runtimeGeneration"],
             "The selected OS attachment changed. Refresh the instance list before checking recovery."
         );
+        let worker = text(instance, "workerId")?;
+        let worker_identity = || self.recovery_worker_identity(owner, worker);
+        let before = worker_identity();
         let actual = self
             .inspect(
                 owner,
@@ -21,6 +25,17 @@ impl Coordinator {
             )
             .await
             .ok();
+        let after = worker_identity();
+        let observed_worker = before
+            .filter(|before| Some(before) == after.as_ref())
+            .map(|identity| identity.process_generation);
+        let previous_worker = attachment["workerProcessGeneration"].as_str();
+        let worker_continuity = match (previous_worker, observed_worker.as_deref()) {
+            (_, None) => "unavailable",
+            (None, Some(_)) => "first-observation",
+            (Some(previous), Some(actual)) if previous == actual => "same-worker",
+            _ => "worker-restarted",
+        };
         let matches = actual.as_ref().is_some_and(|actual| {
             actual["guestInstanceId"] == instance["guestInstanceId"]
                 && actual["attachment"]["ownerId"] == owner
@@ -48,6 +63,17 @@ impl Coordinator {
                 "The OS runtime changed. Verify retained project files, then create a new Linux agent or desktop view. Existing chats and old handles keep their original placement.",
             ),
         };
+        let worker_message = match worker_continuity {
+            "same-worker" => "The same Worker process was verified.",
+            "worker-restarted" => {
+                "The Worker process restarted. Observe previously admitted guest work before deciding whether to launch new work."
+            }
+            "first-observation" => {
+                "This is the first recorded Worker process observation for this attachment."
+            }
+            _ => "Worker process continuity could not be verified.",
+        };
+        let message = format!("{message} {worker_message}");
         let observed_runtime = actual
             .as_ref()
             .filter(|_| matches)
@@ -70,21 +96,18 @@ impl Coordinator {
         }
         let observed = self
             .repository
-            .observe_current(
+            .observe_recovery(
                 owner,
                 id,
-                text(instance, "attachmentGeneration")?,
-                InstanceObservation {
-                    status: if matches { "connected" } else { "unknown" },
-                    // Failure is not evidence that the last observed runtime vanished.
-                    runtime: if matches {
-                        observed_runtime.as_str()
-                    } else {
-                        instance["runtimeGeneration"].as_str()
-                    },
-                    error: if matches { None } else { Some(message) },
-                },
-                instance["runtimeGeneration"].as_str(),
+                &json!({
+                    "attachment": instance["attachmentGeneration"],
+                    "status": if matches { "connected" } else { "unknown" },
+                    "runtime": if matches { &observed_runtime } else { &instance["runtimeGeneration"] },
+                    "error": if matches { None } else { Some(message.as_str()) },
+                    "expectedRuntime": instance["runtimeGeneration"],
+                    "expectedWorker": previous_worker,
+                    "observedWorker": observed_worker,
+                }),
             )
             .await?;
         checked(
@@ -95,9 +118,27 @@ impl Coordinator {
                 "recovery": {
                     "kind": kind, "message": message,
                     "previousRuntimeGeneration": instance["runtimeGeneration"],
-                    "observedRuntimeGeneration": observed_runtime
+                    "observedRuntimeGeneration": observed_runtime,
+                    "workerContinuity": worker_continuity,
+                    "previousWorkerProcessGeneration": previous_worker,
+                    "observedWorkerProcessGeneration": observed_worker
                 }
             }),
+        )
+    }
+}
+
+impl Repository {
+    /// Compare both historical generations so a late observation cannot
+    /// overwrite a newer Worker recovery on an unchanged guest runtime.
+    async fn observe_recovery(&self, owner: &str, id: &str, observation: &Value) -> Result<Value> {
+        let observation = Json(observation);
+        let rows = self.rows("UPDATE cantrip_os_instances SET status=$3::jsonb->>'status', runtime_generation=$3::jsonb->>'runtime', last_error=$3::jsonb->>'error', worker_process_generation=COALESCE($3::jsonb->>'observedWorker',worker_process_generation), last_observed_at=now(), updated_at=now() WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3::jsonb->>'attachment' AND runtime_generation IS NOT DISTINCT FROM ($3::jsonb->>'expectedRuntime') AND worker_process_generation IS NOT DISTINCT FROM ($3::jsonb->>'expectedWorker') RETURNING to_jsonb(cantrip_os_instances)::text", &[&owner, &id, &observation]).await?;
+        summary(
+            rows.first()
+                .context("OS attachment changed before observation arrived.")?,
+            "instance",
+            None,
         )
     }
 }

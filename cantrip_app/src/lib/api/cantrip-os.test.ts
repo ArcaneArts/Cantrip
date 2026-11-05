@@ -222,6 +222,9 @@ it("checks recovery for the selected attachment without accepting a replacement 
       kind: "unavailable",
       previousRuntimeGeneration: "old-runtime",
       observedRuntimeGeneration: null,
+      workerContinuity: "unavailable",
+      previousWorkerProcessGeneration: null,
+      observedWorkerProcessGeneration: null,
       message: "The OS could not be verified.",
     },
   };

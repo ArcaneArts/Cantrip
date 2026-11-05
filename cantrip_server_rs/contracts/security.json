@@ -613,39 +613,39 @@
     "cantripOsInspectSchema": 10561,
     "cantripOsRecoveryRequestSchema": 10564,
     "cantripOsRecoveryResultSchema": 10569,
-    "cantripOsWorkspaceCreateSchema": 10596,
-    "cantripOsBindingCreateSchema": 10600,
-    "cantripOsProvisionSchema": 10617,
+    "cantripOsWorkspaceCreateSchema": 10601,
+    "cantripOsBindingCreateSchema": 10605,
+    "cantripOsProvisionSchema": 10622,
     "cantripOsGuestPathSchema": 2832,
-    "projectSourceLocationSchema": 10621,
+    "projectSourceLocationSchema": 10626,
     "cantripOsTransportSchema": 2844,
     "cantripOsDependencyOverlaySchema": 2834,
     "cantripOsDependencyOverlaysSchema": 2833,
-    "cantripOsAttachSchema": 10629,
+    "cantripOsAttachSchema": 10634,
     "cantripOsWorkspaceObservationSchema": 10517,
     "cantripOsInstanceSummarySchema": 10570,
     "cantripOsWorkspaceSummarySchema": 10582,
-    "cantripOsProjectSourceSummarySchema": 10634,
-    "cantripOsProjectWorktreeSummarySchema": 10641,
-    "cantripOsSourceBindingSummarySchema": 10643,
+    "cantripOsProjectSourceSummarySchema": 10639,
+    "cantripOsProjectWorktreeSummarySchema": 10646,
+    "cantripOsSourceBindingSummarySchema": 10648,
     "cantripOsRunDefinitionRequestSchema": 5939,
-    "cantripOsRunDefinitionApiSchema": 10655,
-    "cantripOsRunDefinitionResponseSchema": 10662,
-    "cantripOsRunPrimarySchema": 10663,
-    "cantripOsRunRootsSchema": 10671,
-    "cantripOsRunLaunchSchema": 10673,
+    "cantripOsRunDefinitionApiSchema": 10660,
+    "cantripOsRunDefinitionResponseSchema": 10667,
+    "cantripOsRunPrimarySchema": 10668,
+    "cantripOsRunRootsSchema": 10676,
+    "cantripOsRunLaunchSchema": 10678,
     "cantripOsRunCaptureSchema": 5977,
     "cantripOsRunSelectionSchema": 7163,
-    "cantripOsRunSourceSchema": 10675,
-    "desktopUpdateActiveWorkSummarySchema": 10679,
-    "providerConnectionTestResultSchema": 10684,
-    "workerProviderConnectionTestResultSchema": 10693,
+    "cantripOsRunSourceSchema": 10680,
+    "desktopUpdateActiveWorkSummarySchema": 10684,
+    "providerConnectionTestResultSchema": 10689,
+    "workerProviderConnectionTestResultSchema": 10698,
     "policyCliWireListResultSchema": 5404,
-    "policyCliWireReadResultSchema": 10696,
+    "policyCliWireReadResultSchema": 10701,
     "executionTargetResourceKindSchema": 1085,
     "executionTargetSchema": 1053,
-    "taskGoalOutcomeDeliverySchema": 10698,
-    "taskGoalOutcomeCommitSchema": 10707,
+    "taskGoalOutcomeDeliverySchema": 10703,
+    "taskGoalOutcomeCommitSchema": 10712,
     "workerChatTurnOutcomeNotificationSchema": 2168,
     "inferenceCommandTimingSchema": 1407
   },
@@ -62813,7 +62813,7 @@
       "type": "object",
       "name": "cantripOsRecoveryResultSchema",
       "shape": { "instance": 10570, "workspaces": 10581, "recovery": 10587 },
-      "catchall": 10595,
+      "catchall": 10600,
       "checks": []
     },
     {
@@ -62964,9 +62964,12 @@
         "kind": 10588,
         "previousRuntimeGeneration": 10589,
         "observedRuntimeGeneration": 10591,
-        "message": 10593
+        "workerContinuity": 10593,
+        "previousWorkerProcessGeneration": 10594,
+        "observedWorkerProcessGeneration": 10596,
+        "message": 10598
       },
-      "catchall": 10594,
+      "catchall": 10599,
       "checks": []
     },
     {
@@ -62997,6 +63000,32 @@
       ]
     },
     {
+      "type": "enum",
+      "values": [
+        "same-worker",
+        "worker-restarted",
+        "first-observation",
+        "unavailable"
+      ],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 10595, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 10597, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
       "type": "string",
       "checks": [
         { "check": "min_length", "minimum": 1, "when": "length" },
@@ -63008,8 +63037,8 @@
     {
       "type": "object",
       "name": "cantripOsWorkspaceCreateSchema",
-      "shape": { "guestWorkspaceId": 10597, "operationId": 10598 },
-      "catchall": 10599,
+      "shape": { "guestWorkspaceId": 10602, "operationId": 10603 },
+      "catchall": 10604,
       "checks": []
     },
     {
@@ -63041,19 +63070,19 @@
     {
       "type": "union",
       "name": "cantripOsBindingCreateSchema",
-      "options": [10601, 10606, 10611],
+      "options": [10606, 10611, 10616],
       "discriminator": "mode",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "mode": 10602,
-        "workspaceId": 10603,
-        "worktreeId": 10604,
+        "mode": 10607,
+        "workspaceId": 10608,
+        "worktreeId": 10609,
         "dependencyOverlays": 2833
       },
-      "catchall": 10605,
+      "catchall": 10610,
       "checks": []
     },
     { "type": "literal", "values": ["linked"], "checks": [] },
@@ -63086,8 +63115,8 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "mode": 10607, "workspaceId": 10608, "sourceKind": 10609 },
-      "catchall": 10610,
+      "shape": { "mode": 10612, "workspaceId": 10613, "sourceKind": 10614 },
+      "catchall": 10615,
       "checks": []
     },
     { "type": "literal", "values": ["linux-owned"], "checks": [] },
@@ -63109,12 +63138,12 @@
     {
       "type": "object",
       "shape": {
-        "mode": 10612,
-        "sourceBindingId": 10613,
-        "expectedRuntimeGeneration": 10614,
-        "operationId": 10615
+        "mode": 10617,
+        "sourceBindingId": 10618,
+        "expectedRuntimeGeneration": 10619,
+        "operationId": 10620
       },
-      "catchall": 10616,
+      "catchall": 10621,
       "checks": []
     },
     { "type": "literal", "values": ["linux-worktree"], "checks": [] },
@@ -63162,11 +63191,11 @@
       "type": "object",
       "name": "cantripOsProvisionSchema",
       "shape": {
-        "operationId": 10618,
-        "bindingGeneration": 10619,
+        "operationId": 10623,
+        "bindingGeneration": 10624,
         "protectedRequest": 4612
       },
-      "catchall": 10620,
+      "catchall": 10625,
       "checks": []
     },
     {
@@ -63199,14 +63228,14 @@
     {
       "type": "union",
       "name": "projectSourceLocationSchema",
-      "options": [10622, 10626],
+      "options": [10627, 10631],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 10623, "workerPath": 10624 },
-      "catchall": 10625,
+      "shape": { "kind": 10628, "workerPath": 10629 },
+      "catchall": 10630,
       "checks": []
     },
     { "type": "literal", "values": ["worker-local"], "checks": [] },
@@ -63218,12 +63247,12 @@
     {
       "type": "object",
       "shape": {
-        "kind": 10627,
+        "kind": 10632,
         "instanceId": 2847,
         "workspaceId": 2847,
         "guestPath": 2832
       },
-      "catchall": 10628,
+      "catchall": 10633,
       "checks": []
     },
     { "type": "literal", "values": ["cantrip-os"], "checks": [] },
@@ -63233,12 +63262,12 @@
       "name": "cantripOsAttachSchema",
       "shape": {
         "workerId": 2847,
-        "guestInstanceId": 10630,
-        "name": 10631,
+        "guestInstanceId": 10635,
+        "name": 10636,
         "transport": 2844,
-        "expectedAttachmentGeneration": 10632
+        "expectedAttachmentGeneration": 10637
       },
-      "catchall": 10633,
+      "catchall": 10638,
       "checks": []
     },
     {
@@ -63274,13 +63303,13 @@
         "instanceId": 2847,
         "workspaceId": 2847,
         "guestPath": 2832,
-        "ownershipKind": 10635,
-        "repositoryFingerprint": 10636,
-        "primaryWorktreeId": 10637,
-        "createdAt": 10638,
-        "updatedAt": 10639
+        "ownershipKind": 10640,
+        "repositoryFingerprint": 10641,
+        "primaryWorktreeId": 10642,
+        "createdAt": 10643,
+        "updatedAt": 10644
       },
-      "catchall": 10640,
+      "catchall": 10645,
       "checks": []
     },
     { "type": "enum", "values": ["cantrip", "user"], "checks": [] },
@@ -63338,7 +63367,7 @@
         "workspaceId": 2847,
         "guestPath": 2832
       },
-      "catchall": 10642,
+      "catchall": 10647,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -63354,23 +63383,23 @@
         "worktreeId": 2847,
         "instanceId": 2847,
         "workspaceId": 2847,
-        "mode": 10644,
-        "linkedWorkerPath": 10645,
+        "mode": 10649,
+        "linkedWorkerPath": 10650,
         "guestPath": 2832,
         "bindingGeneration": 2847,
-        "provisionedAttachmentGeneration": 10647,
-        "provisionedRuntimeGeneration": 10648,
-        "state": 10649,
-        "lastError": 10650,
+        "provisionedAttachmentGeneration": 10652,
+        "provisionedRuntimeGeneration": 10653,
+        "state": 10654,
+        "lastError": 10655,
         "dependencyOverlays": 2833,
-        "createdAt": 10652,
-        "updatedAt": 10653
+        "createdAt": 10657,
+        "updatedAt": 10658
       },
-      "catchall": 10654,
+      "catchall": 10659,
       "checks": []
     },
     { "type": "enum", "values": ["linked", "linux-owned"], "checks": [] },
-    { "type": "nullable", "innerType": 10646, "checks": [] },
+    { "type": "nullable", "innerType": 10651, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -63382,7 +63411,7 @@
       "values": ["provisioning", "ready", "failed", "unknown", "retired"],
       "checks": []
     },
-    { "type": "nullable", "innerType": 10651, "checks": [] },
+    { "type": "nullable", "innerType": 10656, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 4000, "when": "length" }]
@@ -63416,19 +63445,19 @@
       "type": "object",
       "name": "cantripOsRunDefinitionApiSchema",
       "shape": {
-        "bindingGeneration": 10656,
-        "attachmentGeneration": 10658,
-        "runtimeGeneration": 10660,
+        "bindingGeneration": 10661,
+        "attachmentGeneration": 10663,
+        "runtimeGeneration": 10665,
         "request": 5939
       },
-      "catchall": 10661,
+      "catchall": 10666,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 10657,
+      "innerType": 10662,
       "checks": []
     },
     {
@@ -63448,7 +63477,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 10659,
+      "innerType": 10664,
       "checks": []
     },
     {
@@ -63481,21 +63510,21 @@
     {
       "type": "object",
       "name": "cantripOsRunDefinitionResponseSchema",
-      "shape": { "source": 10663, "result": 10669 },
-      "catchall": 10670,
+      "shape": { "source": 10668, "result": 10674 },
+      "catchall": 10675,
       "checks": []
     },
     {
       "type": "object",
       "name": "cantripOsRunPrimarySchema",
       "shape": {
-        "bindingId": 10664,
-        "worktreeId": 10665,
-        "projectSourceId": 10666,
-        "runtimeGeneration": 10667,
+        "bindingId": 10669,
+        "worktreeId": 10670,
+        "projectSourceId": 10671,
+        "runtimeGeneration": 10672,
         "guestPath": 2832
       },
-      "catchall": 10668,
+      "catchall": 10673,
       "checks": []
     },
     {
@@ -63562,7 +63591,7 @@
       "type": "object",
       "name": "cantripOsRunRootsSchema",
       "shape": { "definitions": 2825, "target": 2825 },
-      "catchall": 10672,
+      "catchall": 10677,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -63575,7 +63604,7 @@
         "identity": 3894,
         "protectedSecrets": 3901
       },
-      "catchall": 10674,
+      "catchall": 10679,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -63583,13 +63612,13 @@
       "type": "object",
       "name": "cantripOsRunSourceSchema",
       "shape": {
-        "binding": 10643,
+        "binding": 10648,
         "instance": 10570,
         "workspace": 10582,
-        "target": 10676,
-        "available": 10677
+        "target": 10681,
+        "available": 10682
       },
-      "catchall": 10678,
+      "catchall": 10683,
       "checks": []
     },
     {
@@ -63612,10 +63641,10 @@
       "type": "object",
       "name": "desktopUpdateActiveWorkSummarySchema",
       "shape": {
-        "activeChats": 10680,
-        "queuedPrompts": 10681,
-        "terminalServices": 10682,
-        "backgroundJobs": 10683
+        "activeChats": 10685,
+        "queuedPrompts": 10686,
+        "terminalServices": 10687,
+        "backgroundJobs": 10688
       },
       "checks": []
     },
@@ -63655,12 +63684,12 @@
       "type": "object",
       "name": "providerConnectionTestResultSchema",
       "shape": {
-        "ok": 10685,
-        "stage": 10686,
-        "message": 10687,
-        "workerId": 10688,
-        "modelName": 10690,
-        "durationMs": 10692
+        "ok": 10690,
+        "stage": 10691,
+        "message": 10692,
+        "workerId": 10693,
+        "modelName": 10695,
+        "durationMs": 10697
       },
       "checks": []
     },
@@ -63687,12 +63716,12 @@
         { "check": "max_length", "maximum": 20000, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 10689, "checks": [] },
+    { "type": "nullable", "innerType": 10694, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 10691, "checks": [] },
+    { "type": "nullable", "innerType": 10696, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -63707,7 +63736,7 @@
     {
       "type": "object",
       "name": "workerProviderConnectionTestResultSchema",
-      "shape": { "accepted": 10694, "durationMs": 10695 },
+      "shape": { "accepted": 10699, "durationMs": 10700 },
       "checks": []
     },
     { "type": "literal", "values": [true], "checks": [] },
@@ -63722,7 +63751,7 @@
       "type": "object",
       "name": "policyCliWireReadResultSchema",
       "shape": { "policy": 6129 },
-      "catchall": 10697,
+      "catchall": 10702,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -63730,22 +63759,22 @@
       "type": "object",
       "name": "taskGoalOutcomeDeliverySchema",
       "shape": {
-        "version": 10699,
-        "inputKind": 10700,
-        "deliveryId": 10702,
-        "serverId": 10703,
-        "ownerId": 10704,
-        "workerId": 10705,
+        "version": 10704,
+        "inputKind": 10705,
+        "deliveryId": 10707,
+        "serverId": 10708,
+        "ownerId": 10709,
+        "workerId": 10710,
         "notification": 2168
       },
-      "catchall": 10706,
+      "catchall": 10711,
       "checks": []
     },
     { "type": "literal", "values": [1], "checks": [] },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 10701,
+      "innerType": 10706,
       "defaultValue": "goal",
       "checks": []
     },
@@ -63779,18 +63808,18 @@
     {
       "type": "union",
       "name": "taskGoalOutcomeCommitSchema",
-      "options": [10708, 10713],
+      "options": [10713, 10718],
       "discriminator": "committed",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "deliveryId": 10709,
-        "taskInferenceInputOperationId": 10710,
-        "committed": 10711
+        "deliveryId": 10714,
+        "taskInferenceInputOperationId": 10715,
+        "committed": 10716
       },
-      "catchall": 10712,
+      "catchall": 10717,
       "checks": []
     },
     {
@@ -63824,12 +63853,12 @@
     {
       "type": "object",
       "shape": {
-        "deliveryId": 10709,
-        "taskInferenceInputOperationId": 10710,
-        "committed": 10714,
-        "retiredReason": 10715
+        "deliveryId": 10714,
+        "taskInferenceInputOperationId": 10715,
+        "committed": 10719,
+        "retiredReason": 10720
       },
-      "catchall": 10717,
+      "catchall": 10722,
       "checks": []
     },
     { "type": "literal", "values": [false], "checks": [] },
@@ -63837,7 +63866,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 10716,
+      "innerType": 10721,
       "checks": []
     },
     {

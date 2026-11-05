@@ -31,7 +31,10 @@ import {
 } from "./cantrip-os-worktrees.js";
 import { resolveOsRunPrimary } from "./cantrip-os-run.js";
 
-const instance = (row: typeof schema.cantripOsInstances.$inferSelect) =>
+const instance = ({
+  workerProcessGeneration: _workerProcessGeneration,
+  ...row
+}: typeof schema.cantripOsInstances.$inferSelect) =>
   cantripOsInstanceSummarySchema.parse({
     ...row,
     createdAt: row.createdAt.toISOString(),
@@ -149,6 +152,7 @@ export class CantripOsRepository {
       ? {
           instance: instance(row),
           transport: cantripOsTransportSchema.parse(row.transport),
+          workerProcessGeneration: row.workerProcessGeneration,
         }
       : null;
   }
@@ -201,6 +205,7 @@ export class CantripOsRepository {
         name: input.name,
         status: "unknown" as const,
         runtimeGeneration: null,
+        workerProcessGeneration: null,
         lastError: null,
         lastObservedAt: null,
         updatedAt: new Date(),
@@ -233,8 +238,10 @@ export class CantripOsRepository {
       status: "connected" | "disconnected" | "unknown";
       runtimeGeneration: string | null;
       lastError: string | null;
+      workerProcessGeneration?: string | null;
     },
     expectedRuntimeGeneration?: string | null,
+    expectedWorkerProcessGeneration?: string | null,
   ) {
     const [row] = await this.database
       .update(schema.cantripOsInstances)
@@ -254,6 +261,14 @@ export class CantripOsRepository {
               : eq(
                   schema.cantripOsInstances.runtimeGeneration,
                   expectedRuntimeGeneration,
+                ),
+          expectedWorkerProcessGeneration === undefined
+            ? undefined
+            : expectedWorkerProcessGeneration === null
+              ? isNull(schema.cantripOsInstances.workerProcessGeneration)
+              : eq(
+                  schema.cantripOsInstances.workerProcessGeneration,
+                  expectedWorkerProcessGeneration,
                 ),
           eq(
             schema.cantripOsInstances.attachmentGeneration,

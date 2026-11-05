@@ -14,7 +14,7 @@ use std::{
     net::SocketAddr,
     path::PathBuf,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
@@ -74,12 +74,27 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     let project = id();
     database.query("INSERT INTO workers(id,owner_id,name,platform,architecture,started_at,last_seen_at) VALUES($1,$2,'Worker','linux','x64',now(),now())", &[&worker,&owner]).await?;
     database.query("INSERT INTO projects(id,owner_id,protected_label,origin_kind,folder_management,worktree_policy,git_capability,github_capability) VALUES($1,$2,'{}','managed-folder','external','direct',true,false)", &[&project,&owner]).await?;
-    let (peer, mut output) = Peer::new(Continuity {
+    let worker_generation = id();
+    let (peer, mut peer_output) = Peer::new(Continuity {
         owner: owner.clone(),
         credential: "fixture".into(),
-        process_generation: id(),
+        process_generation: worker_generation.clone(),
     });
     assert!(service.workers.bridge.attach(&worker, peer.clone(), None));
+    let response_peer = Arc::new(Mutex::new(peer));
+    let active_peer = response_peer.clone();
+    let (frames, mut output) = tokio::sync::mpsc::unbounded_channel();
+    let initial_frames = frames.clone();
+    tokio::spawn(async move {
+        while let Some(frame) = peer_output.recv().await {
+            if matches!(frame, Outgoing::Close(..)) {
+                break;
+            }
+            if initial_frames.send(frame).is_err() {
+                break;
+            }
+        }
+    });
     let provisions = Arc::new(AtomicUsize::new(0));
     let count = provisions.clone();
     let lose_run_reply = Arc::new(AtomicBool::new(false));
@@ -100,8 +115,9 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
         let mut runs = HashMap::<String, Value>::new();
         while let Some(frame) = output.recv().await {
             let Outgoing::Text(encoded) = frame else {
-                break;
+                continue;
             };
+            let peer = active_peer.lock().unwrap().clone();
             let request: Value = serde_json::from_str(&encoded)?;
             let command = &request["command"];
             let mode = observed_mode.load(Ordering::SeqCst);
@@ -351,7 +367,7 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     let mut expected = json!({"attachmentGeneration":attached["instance"]["attachmentGeneration"], "runtimeGeneration":attached["instance"]["runtimeGeneration"]});
     let invalid = client.post(&recovery_url).json(&json!({})).send().await?;
     assert_eq!(invalid.status(), 400);
-    for (mode, kind) in [
+    for (index, (mode, kind)) in [
         (0, "same-runtime"),
         (1, "unavailable"),
         (0, "same-runtime"),
@@ -359,13 +375,28 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
         (0, "same-runtime"),
         (3, "runtime-changed"),
         (0, "runtime-changed"),
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         recovery_mode.store(mode, Ordering::SeqCst);
         let response = client.post(&recovery_url).json(&expected).send().await?;
         let status = response.status();
         let result: Value = response.json().await?;
         assert_eq!(status, 200, "{result}");
         assert_eq!(result["recovery"]["kind"], kind);
+        assert_eq!(
+            result["recovery"]["workerContinuity"],
+            if index == 0 {
+                "first-observation"
+            } else {
+                "same-worker"
+            }
+        );
+        assert_eq!(
+            result["recovery"]["observedWorkerProcessGeneration"],
+            worker_generation
+        );
         assert_eq!(
             result["recovery"]["previousRuntimeGeneration"],
             expected["runtimeGeneration"]
@@ -384,6 +415,90 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
         );
         expected["runtimeGeneration"] = result["instance"]["runtimeGeneration"].clone();
     }
+    let reconnect = |generation: String| {
+        let (peer, mut incoming) = Peer::new(Continuity {
+            owner: owner.clone(),
+            credential: "fixture".into(),
+            process_generation: generation,
+        });
+        assert!(service.workers.bridge.attach(&worker, peer.clone(), None));
+        *response_peer.lock().unwrap() = peer;
+        let frames = frames.clone();
+        tokio::spawn(async move {
+            while let Some(frame) = incoming.recv().await {
+                if matches!(frame, Outgoing::Close(..)) {
+                    break;
+                }
+                if frames.send(frame).is_err() {
+                    break;
+                }
+            }
+        });
+    };
+    reconnect(worker_generation.clone());
+    let resumed: Value = client
+        .post(&recovery_url)
+        .json(&expected)
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(
+        resumed["recovery"]["workerContinuity"], "same-worker",
+        "{resumed}"
+    );
+    let replacement_worker = id();
+    reconnect(replacement_worker.clone());
+    assert_eq!(
+        client
+            .post(format!("{base}/api/cantrip-os/{instance}/refresh"))
+            .json(&json!({}))
+            .send()
+            .await?
+            .status(),
+        200
+    );
+    let restarted: Value = client
+        .post(&recovery_url)
+        .json(&expected)
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(restarted["recovery"]["kind"], "same-runtime", "{restarted}");
+    assert_eq!(
+        restarted["recovery"]["workerContinuity"],
+        "worker-restarted"
+    );
+    assert_eq!(
+        restarted["recovery"]["previousWorkerProcessGeneration"],
+        worker_generation
+    );
+    assert_eq!(
+        restarted["recovery"]["observedWorkerProcessGeneration"],
+        replacement_worker
+    );
+    assert!(
+        restarted["recovery"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Worker process restarted")
+    );
+    assert!(
+        restarted["instance"]
+            .get("workerProcessGeneration")
+            .is_none()
+    );
+    assert_eq!(
+        database
+            .query(
+                "SELECT worker_process_generation FROM cantrip_os_instances WHERE id=$1",
+                &[&instance]
+            )
+            .await?[0]
+            .get::<String>(0)?,
+        replacement_worker
+    );
     let mut stale = expected.clone();
     stale["attachmentGeneration"] = id().into();
     assert_eq!(
@@ -461,7 +576,11 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
             .await?
     );
     service.workers.close();
-    responder.await??;
+    drop(frames);
+    let closed = tokio::time::timeout(Duration::from_secs(10), responder)
+        .await
+        .context("Fixture Worker did not close its forwarding channels")?;
+    closed??;
     drop(client);
     let _ = stop.send(());
     server.await??;

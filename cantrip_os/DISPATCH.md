@@ -125,4 +125,20 @@ observation guards prevent an older generation from overwriting a newer one.
 Recovery does not attach another machine, restart a desktop, resume a command,
 repeat provisioning or change any captured chat/view placement. Changed runtimes
 require source verification and newly admitted targets through the existing
-workflow. Worker/session recovery is a separate Phase 5 implementation cycle.
+workflow.
+
+`recovery.workerContinuity` is an independent observation: `same-worker`,
+`worker-restarted`, `first-observation`, or `unavailable`. It compares the
+authenticated Worker's actual process generation on both sides of the inspect
+request with the last explicit recovery observation stored for this attachment.
+It does not infer restart from timestamps, a failed request, or a guest runtime
+change. Initial/legacy attachments have no Worker baseline until their first
+verified check. A changed connection during inspection leaves continuity
+unavailable while the actual inspect still runs.
+
+Previous and observed Worker process generations are returned with the recovery
+result. Ordinary Refresh does not consume this explicit recovery baseline.
+Worker and guest runtime changes can therefore be reported separately, including
+a new Worker with an unchanged guest runtime. Both historical generations fence
+the recovery update, so a late response cannot overwrite a newer Worker
+observation. This metadata does not grant execution authority or retarget chats.

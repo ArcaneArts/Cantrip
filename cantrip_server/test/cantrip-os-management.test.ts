@@ -48,6 +48,10 @@ it(
         loseResponse = true,
         offline = false;
       const guest = randomUUID();
+      let workerGeneration = randomUUID();
+      let workerOnline = true;
+      let workerIdentityAvailable = true;
+      let changeWorkerDuringInspection = false;
       let reportedGuest = guest;
       const records = new Map<string, unknown>();
       const commands: WorkerCommand[] = [];
@@ -106,11 +110,24 @@ it(
               : null,
         } as unknown as Pick<ServerRepository, "cantripOs" | "getWorker">,
         bridge: {
+          isConnected: () => workerOnline,
+          connectionIdentity: () =>
+            workerIdentityAvailable
+              ? {
+                  ownerId: "owner",
+                  credentialId: "fixture",
+                  workerProcessGeneration: workerGeneration,
+                }
+              : null,
           request: async (_worker, command) => {
             workerCommandSchema.parse(command);
             commands.push(command);
             switch (command.type) {
               case "cantrip-os.inspect":
+                if (changeWorkerDuringInspection) {
+                  workerGeneration = randomUUID();
+                  changeWorkerDuringInspection = false;
+                }
                 if (offline) throw new Error("Executor unavailable");
                 return observed();
               case "cantrip-os.attach":
@@ -211,14 +228,81 @@ it(
       ).toBe(409);
       expect((await post(recoveryPath, {})).statusCode).toBe(400);
       expect(commands).toHaveLength(beforeRecovery);
-      await recoverInstance("same-runtime");
+      expect((await recoverInstance("same-runtime")).recovery).toMatchObject({
+        workerContinuity: "first-observation",
+        previousWorkerProcessGeneration: null,
+        observedWorkerProcessGeneration: workerGeneration,
+      });
       offline = true;
       const missing = await recoverInstance("unavailable");
       expect(missing.instance.runtimeGeneration).toBe(runtime);
       expect(missing.instance.status).toBe("unknown");
       expect(missing.recovery.observedRuntimeGeneration).toBeNull();
+      expect(missing.recovery.workerContinuity).toBe("same-worker");
+      workerOnline = false;
+      const beforeOffline = commands.length;
+      expect((await recoverInstance("unavailable")).recovery).toMatchObject({
+        workerContinuity: "unavailable",
+        previousWorkerProcessGeneration: workerGeneration,
+        observedWorkerProcessGeneration: null,
+      });
+      expect(commands).toHaveLength(beforeOffline + 1);
+      workerOnline = true;
       offline = false;
-      await recoverInstance("same-runtime");
+      expect(
+        (await recoverInstance("same-runtime")).recovery.workerContinuity,
+      ).toBe("same-worker");
+      const previousWorker = workerGeneration;
+      workerGeneration = randomUUID();
+      expect(
+        (await post(`/api/cantrip-os/${instance.id}/refresh`)).statusCode,
+      ).toBe(200);
+      const workerRestarted = await recoverInstance("same-runtime");
+      expect(workerRestarted.recovery).toMatchObject({
+        workerContinuity: "worker-restarted",
+        previousWorkerProcessGeneration: previousWorker,
+        observedWorkerProcessGeneration: workerGeneration,
+      });
+      expect(workerRestarted.recovery.message).toContain(
+        "Worker process restarted",
+      );
+      const reloaded = new CantripOsRepository(
+        drizzle(database, { schema }) as RepositoryDatabase,
+      );
+      expect(
+        (await reloaded.attachment("owner", instance.id))
+          ?.workerProcessGeneration,
+      ).toBe(workerGeneration);
+      expect(workerRestarted.instance).not.toHaveProperty(
+        "workerProcessGeneration",
+      );
+      await expect(
+        repository.observe(
+          "owner",
+          instance.id,
+          instance.attachmentGeneration,
+          {
+            status: "unknown",
+            runtimeGeneration: runtime,
+            lastError: null,
+            workerProcessGeneration: previousWorker,
+          },
+          runtime,
+          previousWorker,
+        ),
+      ).rejects.toThrow("attachment changed");
+      workerIdentityAvailable = false;
+      expect(
+        (await recoverInstance("same-runtime")).recovery.workerContinuity,
+      ).toBe("unavailable");
+      workerIdentityAvailable = true;
+      changeWorkerDuringInspection = true;
+      expect(
+        (await recoverInstance("same-runtime")).recovery.workerContinuity,
+      ).toBe("unavailable");
+      expect(
+        (await recoverInstance("same-runtime")).recovery.workerContinuity,
+      ).toBe("worker-restarted");
       reportedGuest = randomUUID();
       const changed = await recoverInstance("identity-changed");
       expect(changed.instance.guestInstanceId).toBe(guest);
