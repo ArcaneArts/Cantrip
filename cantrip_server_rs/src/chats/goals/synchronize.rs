@@ -95,7 +95,7 @@ impl Service {
         self: &Arc<Self>,
         owner: &str,
         chat: &str,
-        lease: &Value,
+        _lease: &Value,
         receipt: &Value,
     ) -> Result<()> {
         let Some(pending) = self
@@ -118,7 +118,7 @@ impl Service {
             let observed=self.read_one(owner,&context,&task,Observation{
                 observe_execution:true,runtime_failure:failure,dispatch_guard:Some(pending["guard"].clone()),..Observation::default()
             }).await?;
-            if !truthy(observed.get("goal")) && !(pending["failedBeforeDispatch"]==true && observed["task"]["state"]=="failed") {return Ok(());}
+            if !(truthy(observed.get("goal")) || pending["failedBeforeDispatch"]==true && observed["task"]["state"]=="failed") {return Ok(());}
             let projection=&pending["guard"]["goalProjection"];
             let state=self.tasks.finish_goal_input_projection(owner,receipt,&observed["task"]["rowVersion"],projection,&observed["execution"]).await?;
             if matches!(state.as_str(),Some("complete"|"blocked"|"failed"|"paused")) {
