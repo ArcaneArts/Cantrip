@@ -1,6 +1,6 @@
 # Optional native desktop package
 
-`cantrip-os-remote` 0.6.0 supplies the Linux X11 `cantrip-cua` helper and a
+`cantrip-os-remote` 0.8.0 supplies the Linux X11 `cantrip-cua` helper and a
 workspace-bound protected stdio carrier. It depends on the existing workspace
 and executor packages. Removing it leaves those packages, ordinary desktops,
 and workspace files available. No Worker, conversation database, scheduler,
@@ -13,8 +13,8 @@ viewing through the existing encrypted Remote Desktop/WorkerLink path, sharing
 the same guest helper with agents. Viewing remains available after an agent
 retires, and closing a viewer does not stop the desktop. **Take control** obtains
 an exclusive guest CUA lease; **Return to agent** releases human input before
-fresh agent calls can continue. Managed SSH/SFTP/VNC/TCP access requires the
-following Phase 4 cycles. The
+fresh agent calls can continue. Managed SSH/SFTP, VNC and TCP routes are available
+in Cantrip's combined tunnel list; VNC uses this same human-control lease. The
 independent local workspace viewer continues to work.
 
 From the repository root:
@@ -101,7 +101,7 @@ The Worker uses `remoteControl` and `remoteCommand` from its OS connection modul
 Local Docker uses non-TTY root `docker exec -i`; installed systems use strict
 host-verified SSH with passwordless sudo and agent forwarding disabled. Private
 SSH keys remain on the Worker. This protected administrative carrier is distinct
-from the managed SSH/SFTP product feature still being implemented.
+from the managed SSH/SFTP product endpoint described below.
 
 The root-only control socket lives under `/run/cantrip-os-remote`. Each connection
 has a root lifetime guardian; the native helper runs with the assigned workspace
@@ -171,8 +171,8 @@ grant, rather than a new durable placement or a guest-side scheduler.
 ## Protected service carrier (0.6.0)
 
 The package also carries SSH/SFTP, VNC and guest-loopback TCP streams over the
-same root-only administrative transport. This is the guest foundation; the
-Cantrip-managed tunnel UI and authorization adapter are a subsequent cycle.
+same root-only administrative transport. The managed tunnel UI and authorization
+adapter described below consume these protected service connections.
 No public SSH listener or replacement system SSH configuration is installed.
 
 ```sh
@@ -310,3 +310,53 @@ SSH transport JSON. The tests exercise real RFB 3.8 pixels, native agent/VNC
 handoff, physical held-input cleanup, other-workspace independence and actual
 remote-manager replacement. Use disposable fixtures: the replacement test
 restarts their remote-access service.
+
+
+## Guest listener carrier (0.8.0)
+
+The package can also bind an explicit guest-loopback TCP listener for forwarding
+back to a selected Worker-host service. This is the carrier foundation; its
+saved-route product controls are the next milestone. It does not establish an
+automatic Host route or depend on `host.docker.internal`.
+
+```sh
+sudo cantrip-remote service-info work --service '{"kind":"listen","port":3000}'
+```
+
+Use the returned exact descriptor with `service-connect`, a fresh connection
+UUID and the established readiness receipt. The listener binds only
+`127.0.0.1` inside CantripOS. It observes the workspace account/runtime without
+starting a desktop. Port collisions fail; address reuse permits immediate
+stop/start after closed connections. The external Worker's `OsReverseForward`
+connects each accepted client to its explicitly selected Host loopback target.
+The guest never receives that Host destination or model credentials.
+
+One protected stream multiplexes at most 16 TCP clients. Frames have an eight-byte
+big-endian prefix (JSON-header length and binary-payload length), at most a
+1024-byte strict JSON header and a 64 KiB binary payload. Connection IDs increase
+without reuse for that listener. `open`/`accepted` establish independent 64 KiB
+credit windows; `data` consumes credit and `credit` restores it only as the
+receiving socket drains. Each direction's total queued carrier data is bounded
+at 2 MiB. `fin` preserves per-client TCP half-close and its reply; `close` retires
+only that connection. Invalid frames terminate the listener carrier.
+
+The outer multiplexed carrier closes on either EOF. Its per-client FIN frames
+retain TCP half-close without leaving Docker's exec process waiting forever for
+stdin after the remote listener has gone away. Existing ordinary TCP/SSH
+carriers retain their duplex half-close behavior. The root lifetime guardian
+retires listeners and clients on manager death, disable, attachment/runtime
+retirement or carrier loss. Workspace files and the ordinary desktop remain.
+
+Package upgrade/removal clears only this package's generated Python bytecode.
+The CLI suppresses new bytecode writes. This prevents equal-size source changes
+with reproducible timestamps from executing a previous version's cached code;
+it does not clear retained preferences, host identity, diagnostics or files.
+
+```sh
+CANTRIP_OS_CUA_TEST_CONTAINER=<disposable-container> \
+  pnpm --filter @cantrip/worker exec vitest run test/os-reverse-forward.integration.test.ts --maxWorkers=1
+```
+
+Use the existing SSH transport JSON through `CANTRIP_OS_CUA_TEST_TRANSPORT` for
+an installed fixture. The test restarts/kills/disables that fixture's remote
+manager and restores it. It is not a test against a personal OS instance.

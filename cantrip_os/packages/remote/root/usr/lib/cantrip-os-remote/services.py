@@ -17,10 +17,10 @@ HERE = Path(__file__).parent
 def service_spec(value):
     if value in ({"kind": "ssh"}, {"kind": "vnc"}):
         return dict(value)
-    if isinstance(value, dict) and set(value) == {"kind", "port"} and value["kind"] == "tcp" and \
+    if isinstance(value, dict) and set(value) == {"kind", "port"} and value["kind"] in ("tcp", "listen") and \
             type(value["port"]) is int and 1 <= value["port"] <= 65535:
         return dict(value)
-    raise ValueError("Select SSH, VNC, or a guest loopback TCP port")
+    raise ValueError("Select SSH, VNC, or a guest loopback TCP connection/listener")
 
 
 def public_key(value):

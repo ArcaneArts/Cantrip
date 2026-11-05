@@ -43,7 +43,10 @@ auth = Path(ready + ".keys")
 try:
     record = verify()
     kind = context["service"]["kind"]
-    if kind == "ssh":
+    if kind == "listen":
+        from listener import pump
+        pump(context["service"]["port"], ready, lambda: stopping)
+    elif kind == "ssh":
         Path("/run/sshd").mkdir(mode=0o755, exist_ok=True)
         auth.write_text(public_key(configuration["public_key"]) + "\n")
         auth.chmod(0o600)
@@ -82,6 +85,8 @@ try:
         connection.connect(record["vnc_socket"])
     else:
         connection = socket.create_connection(("127.0.0.1", context["service"]["port"]), timeout=10)
+    if kind == "listen":
+        sys.exit(0)
     verify()
     Path(ready).write_text('{"ready":true}\n')
     stream_pump(sys.stdin.fileno(), sys.stdout.fileno(), connection.fileno(), connection.fileno(),

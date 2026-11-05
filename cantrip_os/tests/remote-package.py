@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 """Destructive acceptance for an explicitly disposable, attached CantripOS."""
 import argparse
+import py_compile
+import re
 import ctypes
 import json
 import os
@@ -297,6 +299,7 @@ sentinel.write_text("remote package retained workspace data\n")
 command("cantrip-remote", "disable")
 assert remote("status")["enabled"] is False
 command("dpkg", "-r", "cantrip-os-remote")
+assert not Path("/usr/lib/cantrip-os-remote/__pycache__").exists()
 assert sentinel.read_text() == "remote package retained workspace data\n"
 assert pointer.mask() >= 0 and second.mask() == second_mask
 command("dpkg", "-i", args.package)
@@ -305,8 +308,26 @@ command("cantrip-remote", "enable")
 assert remote("status")["service"] == "running"
 print("PASS disable/remove/reinstall preserves preference, data and desktops", flush=True)
 
+# Reproduce an equal-size/equal-mtime old pyc, as reproducible package builds can.
+module = Path("/usr/lib/cantrip-os-remote/context.py")
+original, metadata = module.read_bytes(), module.stat()
+expected_version = re.search(rb'^VERSION = "([^"]+)"', original, re.M).group(1)
+fake_version = b"x" * len(expected_version)
+try:
+    module.write_bytes(original.replace(b'VERSION = "' + expected_version + b'"',
+                                        b'VERSION = "' + fake_version + b'"', 1))
+    os.utime(module, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
+    py_compile.compile(str(module), doraise=True, invalidation_mode=py_compile.PycInvalidationMode.TIMESTAMP)
+finally:
+    module.write_bytes(original)
+    os.utime(module, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
+probe = command("python3", "-c", "import sys;sys.path.insert(0,'/usr/lib/cantrip-os-remote');import context;print(context.VERSION)")
+assert probe.stdout.strip().encode() == fake_version
 command("dpkg", "-i", args.package)
 wait(lambda: remote("status")["service"] == "running")
+assert remote("status")["version"].encode() == expected_version
+assert not Path("/usr/lib/cantrip-os-remote/__pycache__").exists()
+print("PASS running upgrade invalidates actual stale timestamp bytecode", flush=True)
 command("cantrip-remote", "disable")
 state = Path(json.loads(Path("/etc/cantrip-os/remote.json").read_text())["state_dir"])
 settings = state / "settings.json"

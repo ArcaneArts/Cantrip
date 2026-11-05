@@ -1,5 +1,12 @@
 #!/bin/sh
 set -eu
+case "$1" in
+    remove|purge)
+        if [ -d /usr/lib/cantrip-os-remote ]; then
+            find /usr/lib/cantrip-os-remote -type d -name __pycache__ -prune -exec rm -rf -- {} +
+        fi
+        ;;
+esac
 if [ "$1" = purge ]; then
     deb-systemd-helper purge cantrip-os-remote.service >/dev/null
 fi
