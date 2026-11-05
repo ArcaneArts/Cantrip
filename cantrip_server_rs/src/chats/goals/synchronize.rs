@@ -91,6 +91,58 @@ impl Service {
                 .await
         })
     }
+    async fn synchronize_terminal_one(
+        self: &Arc<Self>,
+        owner: &str,
+        chat: &str,
+        lease: &Value,
+        receipt: &Value,
+    ) -> Result<()> {
+        let Some(pending) = self
+            .tasks
+            .goal_input_terminal(owner, chat, Some(receipt))
+            .await?
+        else {
+            return Ok(());
+        };
+        let result: Result<()> = async {
+            let context=self.chats.execution_context(owner,chat).await?;
+            let task=self.tasks.get(owner,chat).await?;
+            let (Some(context),Some(task))=(context.filter(|c|c["experience"]=="task"),task) else{return Ok(());};
+            if !pending["terminal"]["threadId"].is_null() && pending["terminal"]["threadId"]!=context["threadId"] {return Ok(());}
+
+            // Actual native lifecycle outranks an older dispatched turn's error.
+            // Only a proven unforwarded input supplies startup failure context.
+            let failure=(pending["failedBeforeDispatch"]==true && !pending["terminal"]["failureKind"].is_null())
+                .then(||json!({"kind":pending["terminal"]["failureKind"],"occurredAt":pending["terminal"]["observedAt"]}));
+            let observed=self.read_one(owner,&context,&task,Observation{
+                observe_execution:true,runtime_failure:failure,dispatch_guard:Some(pending["guard"].clone()),..Observation::default()
+            }).await?;
+            if !truthy(observed.get("goal")) && !(pending["failedBeforeDispatch"]==true && observed["task"]["state"]=="failed") {return Ok(());}
+            let state=self.tasks.finish_goal_input_projection(owner,receipt,&observed["task"]["rowVersion"],pending["guard"].get("goalProjection")).await?;
+            if matches!(state.as_str(),Some("complete"|"blocked"|"failed"|"paused")){self.release_lease(lease);}
+            else {self.reconcile_one(owner,&task,&state).await?;}
+            self.publish(owner,chat,"task",Some(&context));
+            self.publish(owner,chat,"agent-interaction",Some(&context));
+            (self.dependencies.queue_tick)();
+            Ok(())
+        }.await;
+        match result {
+            Err(error)
+                if crate::operations::shared_failure::downcast_ref::<task_dispatch::Conflict>(
+                    &error,
+                )
+                .is_some()
+                    || crate::operations::shared_failure::downcast_ref::<tasks::Conflict>(
+                        &error,
+                    )
+                    .is_some_and(|e| e.code == "stale-version") =>
+            {
+                Ok(())
+            }
+            other => other,
+        }
+    }
     async fn synchronize_one(
         self: &Arc<Self>,
         owner: &str,
@@ -100,6 +152,11 @@ impl Service {
         error: Option<Arc<anyhow::Error>>,
         receipt: Option<&Value>,
     ) -> Result<()> {
+        if let Some(receipt) = receipt {
+            return self
+                .synchronize_terminal_one(owner, chat, lease, receipt)
+                .await;
+        }
         let mut guard = json!({"kind":"leased","lease":lease});
         if let Some(receipt) = receipt {
             guard["goalInferenceInputOperationId"] = receipt["operationId"].clone();

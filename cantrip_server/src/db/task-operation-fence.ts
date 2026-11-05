@@ -1,3 +1,4 @@
+import type { TaskInferenceInputReceipt } from "@cantrip/protocol";
 import type { TaskDispatchFence } from "@cantrip/protocol/task-scheduling";
 import { and, desc, eq } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
@@ -32,16 +33,95 @@ export type TaskOperationDispatchFence =
       operationId: string;
       fencingToken: number;
     }
+  | TaskOperationOutcomeFence;
+
+export interface TaskGoalProjectionFence {
+  placementRevision: number;
+  automationPaused: boolean;
+  taskSchedulingPaused: boolean;
+  threadId: string | null;
+}
+
+export type TaskOperationOutcomeFence = {
+  /** A positive worker terminal receipt authorizes persistence after expiry.
+   * It never grants new inference, resumes work, or renews a dispatch lease. */
+  kind: "outcome";
+  cycleId: string;
+  operationId: string;
+  fencingToken: number;
+  leaseOwner: string;
+} & (
   | {
-      /** Only for a positively received worker terminal outcome. It can settle
-       * the exact old receipt after one lease expiry, never authorize inference. */
-      kind: "outcome";
-      cycleId: string;
-      operationId: string;
-      fencingToken: number;
-      leaseOwner: string;
       inferenceInputOperationId: string;
-    };
+      goalInferenceInputOperationId?: never;
+      goalProjection?: never;
+    }
+  | {
+      goalInferenceInputOperationId: string;
+      inferenceInputOperationId?: never;
+      goalProjection?: TaskGoalProjectionFence;
+    }
+);
+
+async function assertGoalPlacement(
+  transaction: PgDatabase<PgQueryResultHKT, typeof schema>,
+  ownerId: string,
+  chatId: string,
+  receipt: TaskInferenceInputReceipt,
+  fail: () => never,
+  projection?: TaskGoalProjectionFence,
+) {
+  await transaction.execute(projectChatExecutionLock(ownerId, chatId));
+  const [chat] = await transaction
+    .select()
+    .from(schema.chats)
+    .where(eq(schema.chats.id, chatId))
+    .for("update")
+    .limit(1);
+  const [lane] = await transaction
+    .select()
+    .from(schema.chatExecutionLanes)
+    .where(
+      and(
+        eq(schema.chatExecutionLanes.id, receipt.executionLaneId),
+        eq(schema.chatExecutionLanes.chatId, chatId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (
+    !chat ||
+    chat.archivedAt ||
+    chat.activeWorkerId !== receipt.workerId ||
+    chat.activeWorktreeId !== receipt.worktreeId ||
+    !lane ||
+    lane.activatedAt?.toISOString() !== receipt.executionLaneActivatedAt ||
+    lane.workerId !== receipt.workerId ||
+    lane.worktreeId !== receipt.worktreeId
+  )
+    fail();
+  if (projection) {
+    const [project] = await transaction
+      .select({ paused: schema.projects.taskSchedulingPaused })
+      .from(schema.projects)
+      .where(
+        and(
+          eq(schema.projects.id, chat!.projectId!),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (
+      !project ||
+      chat!.placementRevision !== projection.placementRevision ||
+      chat!.automationPaused !== projection.automationPaused ||
+      project.paused !== projection.taskSchedulingPaused ||
+      lane!.codexThreadId !== projection.threadId
+    )
+      fail();
+  }
+}
 
 /** Lock actual dispatch authority in the transaction that writes its round.
  * A successful heartbeat before this transaction cannot fence a later write. */
@@ -110,35 +190,56 @@ export async function assertTaskOperationDispatchFence(
   if (expected.kind === "outcome") {
     if (
       !expiredOutcome &&
-      (!["claimed", "running"].includes(cycle.state) ||
+      (![
+        "claimed",
+        "running",
+        ...(expected.goalInferenceInputOperationId
+          ? ["paused", "succeeded", "failed"]
+          : []),
+      ].includes(cycle.state) ||
         cycle.leaseOwner !== expected.leaseOwner)
     )
       fail();
-    const [round] = await transaction
-      .select({ input: schema.taskPlanningRounds.inferenceInput })
-      .from(schema.taskPlanningRounds)
-      .where(
-        and(
-          eq(schema.taskPlanningRounds.id, operationId),
-          eq(schema.taskPlanningRounds.chatId, chatId),
-        ),
-      )
-      .for("update")
-      .limit(1);
-    const input = round?.input;
+    const goal = expected.goalInferenceInputOperationId !== undefined;
+    const [round] = goal
+      ? []
+      : await transaction
+          .select({ input: schema.taskPlanningRounds.inferenceInput })
+          .from(schema.taskPlanningRounds)
+          .where(
+            and(
+              eq(schema.taskPlanningRounds.id, operationId),
+              eq(schema.taskPlanningRounds.chatId, chatId),
+            ),
+          )
+          .for("update")
+          .limit(1);
+    const input = goal ? cycle.goalInput : round?.input;
     const receipt = input?.receipt;
     if (
       !input ||
       input.deferred ||
       !receipt ||
-      receipt.kind === "goal" ||
-      receipt.operationId !== expected.inferenceInputOperationId ||
+      (receipt.kind === "goal") !== goal ||
+      receipt.operationId !==
+        (goal
+          ? expected.goalInferenceInputOperationId
+          : expected.inferenceInputOperationId) ||
       receipt.dispatch.cycleId !== expected.cycleId ||
       receipt.dispatch.operationId !== expected.operationId ||
       receipt.dispatch.fencingToken !== expected.fencingToken ||
       receipt.dispatch.leaseOwner !== expected.leaseOwner
     )
       fail();
+    if (goal && receipt)
+      await assertGoalPlacement(
+        transaction,
+        ownerId,
+        chatId,
+        receipt,
+        fail,
+        expected.goalProjection,
+      );
   } else if (expected.kind === "expired") {
     if (cycle.state !== "expired") fail();
   } else {
@@ -234,36 +335,13 @@ export async function assertTaskOperationDispatchFence(
       )
         fail();
       if (!input) return fail();
-      const receipt = input.receipt;
-      await transaction.execute(projectChatExecutionLock(ownerId, chatId));
-      const [chat] = await transaction
-        .select()
-        .from(schema.chats)
-        .where(eq(schema.chats.id, chatId))
-        .for("update")
-        .limit(1);
-      const [lane] = await transaction
-        .select()
-        .from(schema.chatExecutionLanes)
-        .where(
-          and(
-            eq(schema.chatExecutionLanes.id, receipt.executionLaneId),
-            eq(schema.chatExecutionLanes.chatId, chatId),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      if (
-        !chat ||
-        chat.archivedAt ||
-        chat.activeWorkerId !== receipt.workerId ||
-        chat.activeWorktreeId !== receipt.worktreeId ||
-        !lane ||
-        lane.activatedAt?.toISOString() !== receipt.executionLaneActivatedAt ||
-        lane.workerId !== receipt.workerId ||
-        lane.worktreeId !== receipt.worktreeId
-      )
-        fail();
+      await assertGoalPlacement(
+        transaction,
+        ownerId,
+        chatId,
+        input.receipt,
+        fail,
+      );
     }
     if (expected.inferenceInputOperationId !== undefined) {
       // Receipt replacement/defer holds this same owner/cycle lock. Validate

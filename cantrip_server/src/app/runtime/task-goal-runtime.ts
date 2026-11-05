@@ -53,7 +53,10 @@ import type { LimitedWorkerCommandBus } from "../../workers/limited-command-bus.
 import { GOAL_RESUME_PROMPT } from "../shared/constants.js";
 import type { createChatRecoveryRuntime } from "./chat-recovery-runtime.js";
 import type { BeginChatTurn } from "./chat-turn-runtime.js";
-import type { TaskOperationLeaseFence } from "../../db/task-operation-fence.js";
+import type {
+  TaskOperationDispatchFence,
+  TaskOperationLeaseFence,
+} from "../../db/task-operation-fence.js";
 import type { createLiveMutationRuntime } from "./live-mutation-runtime.js";
 import type { createModelRoutingRuntime } from "./model-routing-runtime.js";
 
@@ -777,7 +780,7 @@ export function createTaskGoalRuntime({
     activateGoal = false,
     runtimeFailure?: TaskGoalSyncContext["runtimeFailure"],
     observationOnly = false,
-    dispatchFence?: TaskOperationLeaseFence,
+    dispatchFence?: TaskOperationDispatchFence,
   ) => {
     if (!context.threadId) {
       return { goal: null, message: null, task };
@@ -816,6 +819,12 @@ export function createTaskGoalRuntime({
     ) {
       throw new Error("Encrypted Goal metadata is invalid.");
     }
+    if (
+      dispatchFence?.kind === "outcome" &&
+      observeExecution &&
+      !result.execution
+    )
+      throw new Error("Task Goal execution observation was not returned.");
     // No native Goal is a valid observation (e.g. an older handoff lost it),
     // not corrupt ciphertext and not evidence that this Task completed.
     if ((!result.goal && !runtimeFailure) || observationOnly)
@@ -832,6 +841,7 @@ export function createTaskGoalRuntime({
       if (
         !(error instanceof TaskConflictError) ||
         error.code !== "stale-version" ||
+        dispatchFence?.kind === "outcome" ||
         message ||
         activateGoal
       )
@@ -859,12 +869,77 @@ export function createTaskGoalRuntime({
     turnError?: unknown,
     receipt?: TaskInferenceInputReceipt,
   ) => {
+    if (receipt) {
+      const pending = await repository.tasks.inferenceInputs.goals.terminal(
+        applicationOwnerId(),
+        chatId,
+        receipt,
+      );
+      if (!pending) return; // A live transport failure is not a native terminal receipt.
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        chatId,
+      );
+      const task = await repository.tasks.get(applicationOwnerId(), chatId);
+      if (
+        !context ||
+        context.experience !== "task" ||
+        !task ||
+        (pending.terminal.threadId &&
+          pending.terminal.threadId !== context.threadId)
+      )
+        return;
+      try {
+        // Read actual native lifecycle. An older dispatched turn's failure must
+        // not relabel a Goal that has since continued. A proven unforwarded
+        // input alone can carry its precise startup failure into this read.
+        const failure =
+          pending.failedBeforeDispatch && pending.terminal.failureKind
+            ? {
+                kind: pending.terminal.failureKind,
+                occurredAt: pending.terminal.observedAt,
+              }
+            : undefined;
+        const observed = await readEncryptedTaskGoal(
+          context,
+          task,
+          null,
+          true,
+          false,
+          failure,
+          false,
+          pending.guard,
+        );
+        if (!observed.goal && !(failure && observed.task.state === "failed"))
+          return;
+        const state =
+          await repository.tasks.inferenceInputs.goals.finishProjection(
+            applicationOwnerId(),
+            receipt,
+            observed.task.rowVersion,
+            pending.guard.goalProjection,
+          );
+        if (["complete", "blocked", "failed", "paused"].includes(state))
+          releaseTaskGoalLease(lease.cycleId, lease);
+        else await reconcileTaskGoalDispatch(task, state);
+        publishChatInvalidation(chatId, "task", null, context);
+        publishChatInvalidation(chatId, "agent-interaction", null, context);
+        queueTaskScheduleTick();
+      } catch (error) {
+        if (
+          error instanceof TaskDispatchConflictError ||
+          (error instanceof TaskConflictError && error.code === "stale-version")
+        )
+          return;
+        // The input's terminal marker remains on its canonical dispatch for
+        // recovery. A metadata/transport failure cannot settle inference again.
+        throw error;
+      }
+      return;
+    }
     const guard: TaskOperationLeaseFence = {
       kind: "leased",
       lease,
-      ...(receipt
-        ? { goalInferenceInputOperationId: receipt.operationId }
-        : {}),
     };
     const context = await repository.getChatExecutionContext(
       applicationOwnerId(),
@@ -877,19 +952,10 @@ export function createTaskGoalRuntime({
       taskGoalWorkerInterrupted(context.experience, "goal", turnError)
     ) {
       try {
-        if (receipt)
-          await repository.tasks.inferenceInputs.goals.pause(
-            applicationOwnerId(),
-            receipt,
-            context.threadId,
-          );
-        else
-          await repository.taskDispatch.pause(lease, {
-            threadId: context.threadId,
-            // The lost worker cannot attest that the previous native turn survived.
-            // Resume the Goal from history, not an assumed resident turn.
-            turnId: null,
-          });
+        await repository.taskDispatch.pause(lease, {
+          threadId: context.threadId,
+          turnId: null,
+        });
         releaseTaskGoalLease(lease.cycleId, lease);
       } catch (error) {
         if (error instanceof TaskDispatchConflictError) return;
@@ -920,9 +986,7 @@ export function createTaskGoalRuntime({
         await repository.taskRetries.noteFailure(
           applicationOwnerId(),
           chatId,
-          receipt
-            ? `goal-input:${receipt.operationId}`
-            : `goal:${context.threadId}:${failure.occurredAt}`,
+          `goal:${context.threadId}:${failure.occurredAt}`,
           classifyTaskFailure(observed.task.lastError?.code ?? failure.kind),
           undefined,
           guard,

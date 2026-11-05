@@ -4,6 +4,12 @@ use super::*;
 fn stale<T>() -> Result<T> {
     Err(crate::task_dispatch::Conflict::stale().into())
 }
+fn outcome_guard(r: &Value) -> Value {
+    let mut guard = r["dispatch"].clone();
+    guard["kind"] = json!("outcome");
+    guard["goalInferenceInputOperationId"] = r["operationId"].clone();
+    guard
+}
 async fn cycle(
     tx: &Transaction<'_>,
     owner: &str,
@@ -185,6 +191,7 @@ impl Repository {
         owner: &str,
         worker: &str,
         n: &Value,
+        record_only: bool,
     ) -> Result<Option<Value>> {
         if !truthy(n.get("taskDispatchFence")) || !truthy(n.get("taskInferenceInputOperationId")) {
             return Ok(None);
@@ -197,26 +204,110 @@ impl Repository {
             let Some(c)=c else{return Ok(None);};
             let s=&c["goal_input"];let r=&s["receipt"];
             if s.is_null() || r["operationId"]!=n["taskInferenceInputOperationId"] {return Ok(None);}
-            if s["deferred"]==true || r["workerId"]!=worker.as_str()
+            if s["deferred"]==true || (n["outcome"]["ok"]==true && (s["accepted"]!=true || s["dispatched"]!=true || s["failedBeforeDispatch"]==true)) || r["workerId"]!=worker.as_str()
                 || r["clientMessageId"]!=n["clientMessageId"] || r["executionLaneId"]!=n["executionLaneId"]
-                || r["worktreeId"]!=n["worktreeId"] || r["dispatch"]["operationId"]!=f["operationId"]
+                || r["worktreeId"]!=n["worktreeId"] || r["dispatch"]["cycleId"]!=f["cycleId"] || r["dispatch"]["operationId"]!=f["operationId"]
                 || r["dispatch"]["fencingToken"]!=f["fencingToken"] || r["dispatch"]["leaseOwner"]!=f["leaseOwner"] {return stale();}
             dispatch_fence::assert(tx,&owner,&chat,&text(&f["operationId"])?,
-                &json!({"kind":"leased","lease":f,"goalInferenceInputOperationId":r["operationId"]}),true).await?;
+                &outcome_guard(r),true).await?;
             let row=context(tx,&owner,r,true,true).await?;
-            let ok=n["outcome"]["ok"]==true;
-            let saved=if ok {
-                let result=parse("taskMessageRelayResultSchema",&n["outcome"]["result"]["structuredResult"])?;
-                let m=&result["message"];
-                anyhow::ensure!(m["classification"]["role"]=="assistant" && m["idempotencyKey"]==format!("assistant:{}",text(&r["clientMessageId"])?),"Task Goal outcome does not match its canonical response.");
-                Some(crate::chats::message_writes::append_task_with(Executor::Transaction(tx),&owner,&chat,m,
+            let response_key=format!("assistant:{}",text(&r["clientMessageId"])?);
+            let message=if n["outcome"]["ok"]==true {
+                parse("taskMessageRelayResultSchema",&n["outcome"]["result"]["structuredResult"]).ok()
+                    .filter(|result|result["message"]["idempotencyKey"]==response_key.as_str())
+                    .map(|result|result["message"].clone())
+            } else {None};
+            let ok=n["outcome"]["ok"]==true && message.is_some();
+            let failure=if ok {Value::Null} else {
+                let error=if n["outcome"]["ok"]==true {json!({"message":"Task Goal outcome omitted its canonical protected response."})}else{json!({"message":n["outcome"]["error"]})};
+                json!(super::failure_kind::classify(&error))
+            };
+            if !s["terminal"].is_null() && (s["terminal"]["ok"]!=ok || s["terminal"]["failureKind"]!=failure) {return stale();}
+            let terminal=if !s["terminal"].is_null() {s["terminal"].clone()} else {json!({"ok":ok,"failureKind":failure,"observedAt":now(),"projectedAt":Value::Null,
+                "threadId":if n["outcome"]["ok"]==true{n["outcome"]["result"]["threadId"].clone()}else{row["lane"]["codex_thread_id"].clone()},
+                "turnId":if n["outcome"]["ok"]==true{n["outcome"]["result"]["turnId"].clone()}else{n["outcome"]["inference"]["turnId"].clone()}})};
+            let saved=if let Some(message)=message {
+                Some(crate::chats::message_writes::append_task_with(Executor::Transaction(tx),&owner,&chat,&message,
                     Some(&json!({"executionLaneId":r["executionLaneId"],"worktreeId":r["worktreeId"]}))).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?)
             }else{None};
+            if s["terminal"].is_null() {let mut state=s.clone();state["terminal"]=terminal.clone();write(tx,&text(&c["id"])?,&state).await?;}
+            if !ok && s["accepted"]==true && s["allAttemptsEnforced"]==true && s["firstDispatchedOperationId"].is_null()
+                && s["failedBeforeDispatch"]!=true && (row["chat"]["automation_paused"]==true || row["project"]["task_scheduling_paused"]==true || row["task"]["state"]=="paused") {
+                let mut state=s.clone();state["terminal"]=terminal.clone();defer_locked(tx,&owner,&c,&state).await?;
+                return Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":true,"chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})));
+            }
+            if record_only {return Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":false,"chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})));}
             let lane=text(&r["executionLaneId"])?;
-            if ok {crate::chats::execution_lanes::update_runtime_in_transaction(tx,&chat,&lane,n["outcome"]["result"]["threadId"].as_str(),"ready").await?;}
+            if n["outcome"]["ok"]==true {crate::chats::execution_lanes::update_runtime_in_transaction(tx,&chat,&lane,n["outcome"]["result"]["threadId"].as_str(),"ready").await?;}
             let finished=crate::chats::execution_lanes::finish_in_transaction(tx,&chat,&lane,if ok{"idle"}else{"failed"},
                 &json!({"expectedActivatedAt":r["executionLaneActivatedAt"]})).await?;
-            Ok(Some(json!({"receipt":r,"message":saved,"finished":finished,"chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})))
+            let at=crate::auth::now();
+            tx.query("UPDATE agent_interaction_requests SET status='interrupted',resolved_at=$1,updated_at=$1 WHERE chat_id=$2 AND execution_lane_id=$3 AND status='pending'",&[&at,&chat,&lane]).await?;
+            Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":finished,"chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})))
+        })).await
+    }
+    pub async fn goal_input_terminal(
+        &self,
+        owner: &str,
+        chat: &str,
+        expected: Option<&Value>,
+    ) -> Result<Option<Value>> {
+        let (owner, chat, expected) = (owner.to_owned(), chat.to_owned(), expected.cloned());
+        let result=self.database.transaction(|tx|Box::pin(async move {
+            let c=cycle(tx,&owner,&chat,expected.as_ref().and_then(|r|r["dispatch"]["cycleId"].as_str())).await?;
+            let Some(c)=c else{return Ok(None);};
+            let s=&c["goal_input"];let r=&s["receipt"];
+            if s["terminal"].is_null() || !s["terminal"]["projectedAt"].is_null() || s["deferred"]==true {return Ok(None);}
+            if let Some(expected)=expected {
+                if parse("taskInferenceInputReceiptSchema",&expected)?!=parse("taskInferenceInputReceiptSchema",r)? {return Ok(None);}
+            }
+            let mut guard=outcome_guard(r);
+            dispatch_fence::assert(tx,&owner,&chat,&text(&guard["operationId"])?,&guard,false).await?;
+            let row=context(tx,&owner,r,true,true).await?;
+            if !s["terminal"]["threadId"].is_null() && row["lane"]["codex_thread_id"]!=s["terminal"]["threadId"] {return stale();}
+            guard["goalProjection"]=json!({"placementRevision":row["chat"]["placement_revision"],"automationPaused":row["chat"]["automation_paused"],
+                "taskSchedulingPaused":row["project"]["task_scheduling_paused"],"threadId":row["lane"]["codex_thread_id"]});
+            Ok(Some(json!({"receipt":r,"terminal":s["terminal"],"guard":guard,
+                "failedBeforeDispatch":s["failedBeforeDispatch"]==true && s["firstDispatchedOperationId"].is_null()})))
+        })).await;
+        match result {
+            Err(e) if e.downcast_ref::<crate::task_dispatch::Conflict>().is_some() => Ok(None),
+            other => other,
+        }
+    }
+
+    pub async fn finish_goal_input_projection(
+        &self,
+        owner: &str,
+        r: &Value,
+        version: &Value,
+        projection: Option<&Value>,
+    ) -> Result<Value> {
+        let (owner, r, version) = (owner.to_owned(), r.clone(), version.clone());
+        let projection = projection.cloned();
+        self.database.transaction(|tx|Box::pin(async move {
+            let chat=text(&r["chatId"])?;let mut guard=outcome_guard(&r);
+            if let Some(projection)=projection {guard["goalProjection"]=projection;}
+            dispatch_fence::assert(tx,&owner,&chat,&text(&guard["operationId"])?,&guard,false).await?;
+            let c=cycle(tx,&owner,&chat,Some(&text(&r["dispatch"]["cycleId"])?)).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?;
+            let s=&c["goal_input"];
+            if s["terminal"].is_null() || s["deferred"]==true {return stale();}
+            let row=context(tx,&owner,&r,true,true).await?;
+            let task=&row["task"];
+            if task["row_version"]!=version || (!s["terminal"]["threadId"].is_null() && row["lane"]["codex_thread_id"]!=s["terminal"]["threadId"]) {return stale();}
+            if task["state"]=="failed" {
+                super::retries::note_failure_in(tx,&owner,&chat,&format!("goal-input:{}",text(&r["operationId"])?),
+                    super::failure_kind::classify(&task["last_error"]["code"]),&guard).await?;
+            }else if matches!(task["state"].as_str(),Some("complete"|"blocked")) {
+                super::retries::clear_pending_in(tx,&owner,&chat,&guard).await?;
+            }
+            let mut state=s.clone();state["terminal"]["projectedAt"]=now();
+            let id=text(&c["id"])?;write(tx,&id,&state).await?;
+            if matches!(task["state"].as_str(),Some("complete"|"blocked"|"failed")) {
+                let at=crate::auth::now();
+                tx.query("UPDATE task_dispatch_cycles SET state=$2,completed_at=$3,eligibility_code=NULL,updated_at=$3 WHERE id=$1",&[&id,&if task["state"]=="failed"{"failed"}else{"succeeded"},&at]).await?;
+            }
+            Ok(task["state"].clone())
         })).await
     }
     pub async fn goal_input_receipt_for_turn(

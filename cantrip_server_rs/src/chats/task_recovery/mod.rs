@@ -110,7 +110,7 @@ impl Service {
                 if cycle["operationKind"] != "finalize"
                     || !matches!(
                         cycle["state"].as_str(),
-                        Some("running" | "expired" | "failed")
+                        Some("running" | "paused" | "expired" | "failed")
                     )
                     || !truthy(cycle.get("codexThreadId"))
                 {

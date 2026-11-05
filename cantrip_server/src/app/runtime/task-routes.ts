@@ -121,6 +121,7 @@ export function installTaskRouteRuntime(
       retainTaskGoalLease,
       resumeChatAutomation,
       reconcileTaskGoalDispatch: dependencies.reconcileTaskGoalDispatch,
+      synchronizeScheduledTaskGoal: dependencies.synchronizeScheduledTaskGoal,
     },
     publish: (chatId, projectId) => {
       publishChatSummary(chatId, projectId);

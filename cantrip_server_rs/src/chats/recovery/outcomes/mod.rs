@@ -84,6 +84,20 @@ impl Service {
         self.operations
             .run(async move { this.run(&owner, &worker, &notification).await })
     }
+    /// Persist Goal terminal evidence before delayed metadata recovery,
+    /// independently of whether the live command already completed.
+    pub async fn persist_goal_terminal(
+        &self,
+        owner: &str,
+        worker: &str,
+        n: &Value,
+    ) -> Result<bool> {
+        Ok(self
+            .tasks
+            .apply_goal_input_outcome(owner, worker, n, true)
+            .await?
+            .is_some())
+    }
     pub async fn drained(&self) {
         self.operations.drained().await;
         self.dependencies.goals.drained().await;
@@ -106,7 +120,11 @@ impl Service {
                 .record_inference_failure(owner, worker, proof)
                 .await?;
         }
-        match self.tasks.apply_goal_input_outcome(owner, worker, n).await {
+        match self
+            .tasks
+            .apply_goal_input_outcome(owner, worker, n, false)
+            .await
+        {
             Ok(Some(goal)) => {
                 if !goal["message"].is_null() {
                     self.dependencies
@@ -144,7 +162,7 @@ impl Service {
                         Some(&goal["receipt"]),
                     )
                     .await?;
-                self.log("info","Recovered Task Goal input outcome from worker",json!({"event":"chat.turn.outcome-recovered","subsystem":"chat-execution","chatId":n["chatId"],"workerId":worker,"taskInferenceInputOperationId":goal["receipt"]["operationId"],"status":if n["outcome"]["ok"]==true{"completed"}else{"failed"}}));
+                self.log("info","Recovered Task Goal input outcome from worker",json!({"event":"chat.turn.outcome-recovered","subsystem":"chat-execution","chatId":n["chatId"],"workerId":worker,"taskInferenceInputOperationId":goal["receipt"]["operationId"],"status":if goal["terminal"]["ok"]==true{"completed"}else{"failed"}}));
                 (self.dependencies.queue_tick)();
                 return Ok(());
             }

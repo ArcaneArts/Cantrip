@@ -9,7 +9,7 @@ impl Service {
     ) -> Result<bool> {
         let context = self.chats.execution_context(owner, chat).await?;
         let task = self.tasks.get(owner, chat).await?;
-        let (Some(mut context), Some(task)) = (
+        let (Some(mut context), Some(mut task)) = (
             context.filter(|c| c["contextKind"] == "project" && c["experience"] == "task"),
             task.filter(|t| {
                 truthy(t.get("planGoalEnabled")) && truthy(t.get("implementationStartedAt"))
@@ -18,6 +18,33 @@ impl Service {
             return Ok(false);
         };
         let goals = &self.dependencies.goals;
+        if let Some(terminal) = self.tasks.goal_input_terminal(owner, chat, None).await? {
+            goals
+                .synchronize_goal_input(
+                    owner,
+                    chat,
+                    &terminal["receipt"]["dispatch"],
+                    terminal["terminal"]["ok"] != true,
+                    None,
+                    Some(&terminal["receipt"]),
+                )
+                .await?;
+            if !resume {
+                return Ok(true);
+            }
+            let current = self.chats.execution_context(owner, chat).await?;
+            let updated = self.tasks.get(owner, chat).await?;
+            let (Some(current), Some(updated)) = (
+                current.filter(|c| c["contextKind"] == "project" && c["experience"] == "task"),
+                updated.filter(|t| {
+                    truthy(t.get("planGoalEnabled")) && truthy(t.get("implementationStartedAt"))
+                }),
+            ) else {
+                return Ok(false);
+            };
+            context = current;
+            task = updated;
+        }
         if self
             .tasks
             .pending_goal_inference_input(owner, chat, None)

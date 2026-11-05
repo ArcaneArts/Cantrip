@@ -1,3 +1,4 @@
+import type { TaskMessageOpaqueContent } from "@cantrip/protocol/tasks";
 import { randomUUID } from "node:crypto";
 import {
   taskInferenceInputReceiptSchema,
@@ -23,12 +24,29 @@ import {
   assertTaskOperationDispatchFence,
   type TaskOperationDispatchFence,
   type TaskOperationLeaseFence,
+  type TaskOperationOutcomeFence,
+  type TaskGoalProjectionFence,
 } from "./task-operation-fence.js";
 import {
   TaskDispatchConflictError,
   TaskDispatchRepository,
 } from "./task-dispatch.js";
 import type { TaskInferenceInputState } from "./task-inference-inputs.js";
+import { TaskRetryRepository } from "./task-retries.js";
+import { classifyTaskFailure } from "../tasks/automatic-retry.js";
+
+function outcomeGuard(
+  receipt: TaskInferenceInputReceipt,
+): Extract<
+  TaskOperationOutcomeFence,
+  { goalInferenceInputOperationId: string }
+> {
+  return {
+    kind: "outcome",
+    ...receipt.dispatch,
+    goalInferenceInputOperationId: receipt.operationId,
+  };
+}
 
 function stale(): never {
   throw new TaskDispatchConflictError(
@@ -705,6 +723,7 @@ export class TaskGoalInferenceInputRepository {
     owner: string,
     worker: string,
     notification: Extract<WorkerNotification, { type: "chat.turn.outcome" }>,
+    options: { recordOnly?: boolean } = {},
   ) {
     const fence = notification.taskDispatchFence;
     if (!fence || !notification.taskInferenceInputOperationId) return null;
@@ -724,10 +743,15 @@ export class TaskGoalInferenceInputRepository {
       const receipt = state.receipt;
       if (
         state.deferred ||
+        (notification.outcome.ok &&
+          (!state.accepted ||
+            !state.dispatched ||
+            state.failedBeforeDispatch)) ||
         receipt.workerId !== worker ||
         receipt.clientMessageId !== notification.clientMessageId ||
         receipt.executionLaneId !== notification.executionLaneId ||
         receipt.worktreeId !== notification.worktreeId ||
+        receipt.dispatch.cycleId !== fence.cycleId ||
         receipt.dispatch.operationId !== fence.operationId ||
         receipt.dispatch.fencingToken !== fence.fencingToken ||
         receipt.dispatch.leaseOwner !== fence.leaseOwner
@@ -738,11 +762,7 @@ export class TaskGoalInferenceInputRepository {
         owner,
         receipt.chatId,
         fence.operationId,
-        {
-          kind: "leased",
-          lease: fence,
-          goalInferenceInputOperationId: receipt.operationId,
-        },
+        outcomeGuard(receipt),
         true,
       );
       const context = await this.context(tx, owner, receipt, { settled: true });
@@ -750,19 +770,43 @@ export class TaskGoalInferenceInputRepository {
         throw new Error(
           "Task Goal outcomes require transactional history and lane ownership.",
         );
-      const message = notification.outcome.ok
-        ? taskMessageRelayResultSchema.parse(
+      let message: TaskMessageOpaqueContent | null = null;
+      if (notification.outcome.ok) {
+        try {
+          message = taskMessageRelayResultSchema.parse(
             notification.outcome.result.structuredResult,
-          ).message
-        : null;
+          ).message;
+          if (message.idempotencyKey !== `assistant:${receipt.clientMessageId}`)
+            message = null;
+        } catch {
+          /* The actual terminal receipt remains useful for recovery. */
+        }
+      }
+      const ok = notification.outcome.ok && message !== null;
+      const failureKind = ok
+        ? null
+        : classifyTaskFailure(
+            notification.outcome.ok
+              ? "Task Goal outcome omitted its canonical protected response."
+              : notification.outcome.error,
+          );
       if (
-        message &&
-        (message.classification.role !== "assistant" ||
-          message.idempotencyKey !== `assistant:${receipt.clientMessageId}`)
+        state.terminal &&
+        (state.terminal.ok !== ok || state.terminal.failureKind !== failureKind)
       )
-        throw new Error(
-          "Task Goal outcome does not match its canonical response.",
-        );
+        stale();
+      const terminal = state.terminal ?? {
+        ok,
+        failureKind,
+        observedAt: new Date().toISOString(),
+        projectedAt: null,
+        threadId: notification.outcome.ok
+          ? notification.outcome.result.threadId
+          : (context.lane?.codexThreadId ?? null),
+        turnId: notification.outcome.ok
+          ? (notification.outcome.result.turnId ?? null)
+          : (notification.outcome.inference?.turnId ?? null),
+      };
       const saved = message
         ? await this.messages
             .inTransaction(tx)
@@ -772,6 +816,40 @@ export class TaskGoalInferenceInputRepository {
             })
         : null;
       if (message && !saved) stale();
+      if (!state.terminal)
+        await tx
+          .update(schema.taskDispatchCycles)
+          .set({ goalInput: { ...state, terminal } })
+          .where(eq(schema.taskDispatchCycles.id, cycle!.id));
+      if (
+        !ok &&
+        state.accepted &&
+        state.allAttemptsEnforced &&
+        state.firstDispatchedOperationId === null &&
+        !state.failedBeforeDispatch &&
+        (context.chat.automationPaused ||
+          context.project.taskSchedulingPaused ||
+          context.task.state === "paused")
+      ) {
+        // The exact cancelled owner ended without forwarding input. Preserve
+        // its canonical body for Resume; no dead controller owns it anymore.
+        await this.deferLocked(tx, owner, cycle!, { ...state, terminal });
+        return {
+          receipt,
+          terminal,
+          message: saved,
+          finished: true,
+          chat: context.chat,
+        };
+      }
+      if (options.recordOnly)
+        return {
+          receipt,
+          terminal,
+          message: saved,
+          finished: false,
+          chat: context.chat,
+        };
       if (notification.outcome.ok)
         await this.lanes
           .inTransaction(tx)
@@ -786,10 +864,169 @@ export class TaskGoalInferenceInputRepository {
         .finishChatExecutionLane(
           receipt.chatId,
           receipt.executionLaneId,
-          notification.outcome.ok ? "idle" : "failed",
+          ok ? "idle" : "failed",
           { expectedActivatedAt: receipt.executionLaneActivatedAt },
         );
-      return { receipt, message: saved, finished, chat: context.chat };
+      await tx
+        .update(schema.agentInteractionRequests)
+        .set({
+          status: "interrupted",
+          resolvedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.agentInteractionRequests.chatId, receipt.chatId),
+            eq(
+              schema.agentInteractionRequests.executionLaneId,
+              receipt.executionLaneId,
+            ),
+            eq(schema.agentInteractionRequests.status, "pending"),
+          ),
+        );
+      return {
+        receipt,
+        terminal,
+        message: saved,
+        finished,
+        chat: context.chat,
+      };
+    });
+  }
+
+  async terminal(
+    owner: string,
+    chat: string,
+    expected?: TaskInferenceInputReceipt,
+  ) {
+    return this.database
+      .transaction(async (tx) => {
+        const cycle = await this.cycle(
+          tx,
+          owner,
+          chat,
+          expected?.dispatch.cycleId,
+        );
+        const state = cycle?.goalInput;
+        if (
+          !state?.terminal ||
+          state.terminal.projectedAt ||
+          state.deferred ||
+          (expected &&
+            JSON.stringify(taskInferenceInputReceiptSchema.parse(expected)) !==
+              JSON.stringify(
+                taskInferenceInputReceiptSchema.parse(state.receipt),
+              ))
+        )
+          return null;
+        const guard = outcomeGuard(state.receipt);
+        await assertTaskOperationDispatchFence(
+          tx,
+          owner,
+          chat,
+          guard.operationId,
+          guard,
+        );
+        const c = await this.context(tx, owner, state.receipt, {
+          settled: true,
+        });
+        if (
+          state.terminal.threadId &&
+          c.lane?.codexThreadId !== state.terminal.threadId
+        )
+          stale();
+        guard.goalProjection = {
+          placementRevision: c.chat.placementRevision,
+          automationPaused: c.chat.automationPaused,
+          taskSchedulingPaused: c.project.taskSchedulingPaused,
+          threadId: c.lane?.codexThreadId ?? null,
+        };
+        return {
+          receipt: state.receipt,
+          terminal: state.terminal,
+          guard,
+          failedBeforeDispatch:
+            state.failedBeforeDispatch === true &&
+            state.firstDispatchedOperationId === null,
+        };
+      })
+      .catch((error) => {
+        if (error instanceof TaskDispatchConflictError) return null;
+        throw error;
+      });
+  }
+
+  /** Commit the actual native Goal projection under the old physical receipt.
+   * It cannot renew that receipt, create a new cycle or free provider capacity. */
+  async finishProjection(
+    owner: string,
+    receipt: TaskInferenceInputReceipt,
+    rowVersion: number,
+    projection?: TaskGoalProjectionFence,
+  ) {
+    return this.database.transaction(async (tx) => {
+      const guard = outcomeGuard(receipt);
+      guard.goalProjection = projection;
+      await assertTaskOperationDispatchFence(
+        tx,
+        owner,
+        receipt.chatId,
+        guard.operationId,
+        guard,
+      );
+      const cycle = await this.cycle(
+        tx,
+        owner,
+        receipt.chatId,
+        receipt.dispatch.cycleId,
+      );
+      const state = cycle?.goalInput;
+      if (!cycle || !state?.terminal || state.deferred) stale();
+      const c = await this.context(tx, owner, receipt, { settled: true });
+      if (
+        c.task.rowVersion !== rowVersion ||
+        (state.terminal.threadId &&
+          c.lane?.codexThreadId !== state.terminal.threadId)
+      )
+        stale();
+      if (c.task.state === "failed") {
+        await new TaskRetryRepository(tx).noteFailure(
+          owner,
+          receipt.chatId,
+          `goal-input:${receipt.operationId}`,
+          classifyTaskFailure(c.task.lastError?.code ?? "runtime"),
+          undefined,
+          guard,
+        );
+      } else if (["complete", "blocked"].includes(c.task.state)) {
+        await new TaskRetryRepository(tx).clearPending(
+          owner,
+          receipt.chatId,
+          guard,
+        );
+      }
+      const now = new Date();
+      await tx
+        .update(schema.taskDispatchCycles)
+        .set({
+          goalInput: {
+            ...state,
+            terminal: { ...state.terminal, projectedAt: now.toISOString() },
+          },
+          ...(["complete", "blocked", "failed"].includes(c.task.state)
+            ? {
+                state:
+                  c.task.state === "failed"
+                    ? ("failed" as const)
+                    : ("succeeded" as const),
+                completedAt: now,
+                eligibilityCode: null,
+                updatedAt: now,
+              }
+            : {}),
+        })
+        .where(eq(schema.taskDispatchCycles.id, cycle.id));
+      return c.task.state;
     });
   }
 

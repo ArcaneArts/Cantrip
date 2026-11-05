@@ -1284,7 +1284,7 @@ export class TaskRepository {
     ownerId: string,
     chatId: string,
     input: { rowVersion: number; task: TaskOpaqueContent },
-    dispatchFence?: TaskOperationLeaseFence,
+    dispatchFence?: TaskOperationDispatchFence,
   ): Promise<TaskOpaqueSummary | null> {
     const next = taskOpaqueContentSchema.parse(input.task);
     if (!(await this.get(ownerId, chatId))) return null;
@@ -1294,7 +1294,9 @@ export class TaskRepository {
           transaction,
           ownerId,
           chatId,
-          dispatchFence.lease.operationId,
+          dispatchFence.kind === "leased"
+            ? dispatchFence.lease.operationId
+            : dispatchFence.operationId,
           dispatchFence,
           true,
         );

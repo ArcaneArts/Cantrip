@@ -1,6 +1,56 @@
 //! Actual dispatch ownership is locked in the round mutation transaction.
 use super::*;
 
+async fn assert_goal_placement(
+    tx: &Transaction<'_>,
+    owner: &str,
+    chat: &str,
+    r: &Value,
+    projection: Option<&Value>,
+) -> Result<()> {
+    tx.query("WITH p AS MATERIALIZED (SELECT projects.id FROM projects JOIN chats ON chats.project_id=projects.id WHERE projects.owner_id=$1 AND chats.id=$2 FOR UPDATE OF projects) SELECT chats.id FROM p JOIN chats ON chats.project_id=p.id WHERE chats.id=$2 FOR UPDATE OF chats",&[&owner,&chat]).await?;
+    let placement = one(
+        Executor::Transaction(tx),
+        "SELECT to_jsonb(c)::text FROM chats c WHERE c.id=$1 LIMIT 1 FOR UPDATE",
+        &[&chat],
+    )
+    .await?;
+    let lane=one(Executor::Transaction(tx),"SELECT to_jsonb(l)::text FROM chat_execution_lanes l WHERE l.chat_id=$1 AND l.id=$2 LIMIT 1 FOR UPDATE",&[&chat,&text(&r["executionLaneId"])?]).await?;
+    if !placement.as_ref().is_some_and(|c| {
+        c["archived_at"].is_null()
+            && c["active_worker_id"] == r["workerId"]
+            && c["active_worktree_id"] == r["worktreeId"]
+    }) || !lane.as_ref().is_some_and(|l| {
+        l["worker_id"] == r["workerId"]
+            && l["worktree_id"] == r["worktreeId"]
+            && l["activated_at"]
+                .as_js_string()
+                .and_then(crate::wire::date_milliseconds)
+                == r["executionLaneActivatedAt"]
+                    .as_js_string()
+                    .and_then(crate::wire::date_milliseconds)
+    }) {
+        return Err(crate::task_dispatch::Conflict::stale().into());
+    }
+
+    if let Some(projection) = projection {
+        let chat_row = placement.as_ref().context("Task projection placement")?;
+        let project=one(Executor::Transaction(tx),"SELECT to_jsonb(p)::text FROM projects p WHERE p.id=$1 AND p.owner_id=$2 LIMIT 1 FOR UPDATE",&[&text(&chat_row["project_id"])?,&owner]).await?;
+        if !project
+            .as_ref()
+            .is_some_and(|p| p["task_scheduling_paused"] == projection["taskSchedulingPaused"])
+            || chat_row["placement_revision"] != projection["placementRevision"]
+            || chat_row["automation_paused"] != projection["automationPaused"]
+            || lane
+                .as_ref()
+                .is_none_or(|l| l["codex_thread_id"] != projection["threadId"])
+        {
+            return Err(crate::task_dispatch::Conflict::stale().into());
+        }
+    }
+    Ok(())
+}
+
 pub(super) async fn assert(
     tx: &Transaction<'_>,
     owner: &str,
@@ -43,7 +93,12 @@ pub(super) async fn assert(
         && (cycle["fencing_token"] == fence["fencingToken"] || expired_outcome);
     let valid = if outcome {
         expired_outcome
-            || (matches!(cycle["state"].as_str(), Some("claimed" | "running"))
+            || ((matches!(cycle["state"].as_str(), Some("claimed" | "running"))
+                || (expected.get("goalInferenceInputOperationId").is_some()
+                    && matches!(
+                        cycle["state"].as_str(),
+                        Some("paused" | "succeeded" | "failed")
+                    )))
                 && cycle["lease_owner"] == fence["leaseOwner"])
     } else if leased {
         let valid_state = if association {
@@ -68,21 +123,38 @@ pub(super) async fn assert(
         return Err(crate::task_dispatch::Conflict::stale().into());
     }
     if outcome {
-        let round=one(Executor::Transaction(tx),"SELECT to_jsonb(r)::text FROM task_planning_rounds r WHERE r.id=$1 AND r.chat_id=$2 LIMIT 1 FOR UPDATE",&[&operation,&chat]).await?;
-        let valid = round.as_ref().is_some_and(|round| {
-            let input = &round["inference_input"];
-            let receipt = &input["receipt"];
-            !input.is_null()
-                && input["deferred"] != true
-                && receipt["kind"] != "goal"
-                && receipt["operationId"] == expected["inferenceInputOperationId"]
-                && receipt["dispatch"]["cycleId"] == fence["cycleId"]
-                && receipt["dispatch"]["operationId"] == fence["operationId"]
-                && receipt["dispatch"]["fencingToken"] == fence["fencingToken"]
-                && receipt["dispatch"]["leaseOwner"] == fence["leaseOwner"]
-        });
-        if !valid {
-            return Err(crate::task_dispatch::Conflict::stale().into());
+        if let Some(attempt) = expected.get("goalInferenceInputOperationId") {
+            let input = &cycle["goal_input"];
+            let r = &input["receipt"];
+            if input.is_null()
+                || input["deferred"] == true
+                || r["kind"] != "goal"
+                || r["operationId"] != *attempt
+                || r["dispatch"]["cycleId"] != fence["cycleId"]
+                || r["dispatch"]["operationId"] != fence["operationId"]
+                || r["dispatch"]["fencingToken"] != fence["fencingToken"]
+                || r["dispatch"]["leaseOwner"] != fence["leaseOwner"]
+            {
+                return Err(crate::task_dispatch::Conflict::stale().into());
+            }
+            assert_goal_placement(tx, owner, chat, r, expected.get("goalProjection")).await?;
+        } else {
+            let round=one(Executor::Transaction(tx),"SELECT to_jsonb(r)::text FROM task_planning_rounds r WHERE r.id=$1 AND r.chat_id=$2 LIMIT 1 FOR UPDATE",&[&operation,&chat]).await?;
+            let valid = round.as_ref().is_some_and(|round| {
+                let input = &round["inference_input"];
+                let receipt = &input["receipt"];
+                !input.is_null()
+                    && input["deferred"] != true
+                    && receipt["kind"] != "goal"
+                    && receipt["operationId"] == expected["inferenceInputOperationId"]
+                    && receipt["dispatch"]["cycleId"] == fence["cycleId"]
+                    && receipt["dispatch"]["operationId"] == fence["operationId"]
+                    && receipt["dispatch"]["fencingToken"] == fence["fencingToken"]
+                    && receipt["dispatch"]["leaseOwner"] == fence["leaseOwner"]
+            });
+            if !valid {
+                return Err(crate::task_dispatch::Conflict::stale().into());
+            }
         }
     }
     if leased && let Some(launch) = expected.get("goalLaunch") {
@@ -144,31 +216,7 @@ pub(super) async fn assert(
         {
             return Err(crate::task_dispatch::Conflict::stale().into());
         }
-        let r = &input["receipt"];
-        tx.query("WITH p AS MATERIALIZED (SELECT projects.id FROM projects JOIN chats ON chats.project_id=projects.id WHERE projects.owner_id=$1 AND chats.id=$2 FOR UPDATE OF projects) SELECT chats.id FROM p JOIN chats ON chats.project_id=p.id WHERE chats.id=$2 FOR UPDATE OF chats",&[&owner,&chat]).await?;
-        let placement = one(
-            Executor::Transaction(tx),
-            "SELECT to_jsonb(c)::text FROM chats c WHERE c.id=$1 LIMIT 1 FOR UPDATE",
-            &[&chat],
-        )
-        .await?;
-        let lane=one(Executor::Transaction(tx),"SELECT to_jsonb(l)::text FROM chat_execution_lanes l WHERE l.chat_id=$1 AND l.id=$2 LIMIT 1 FOR UPDATE",&[&chat,&text(&r["executionLaneId"])?]).await?;
-        if !placement.as_ref().is_some_and(|c| {
-            c["archived_at"].is_null()
-                && c["active_worker_id"] == r["workerId"]
-                && c["active_worktree_id"] == r["worktreeId"]
-        }) || !lane.as_ref().is_some_and(|l| {
-            l["worker_id"] == r["workerId"]
-                && l["worktree_id"] == r["worktreeId"]
-                && l["activated_at"]
-                    .as_js_string()
-                    .and_then(crate::wire::date_milliseconds)
-                    == r["executionLaneActivatedAt"]
-                        .as_js_string()
-                        .and_then(crate::wire::date_milliseconds)
-        }) {
-            return Err(crate::task_dispatch::Conflict::stale().into());
-        }
+        assert_goal_placement(tx, owner, chat, &input["receipt"], None).await?;
     }
     if leased && let Some(attempt) = expected.get("inferenceInputOperationId") {
         // Receipt prepare/defer uses this same owner/cycle lock. Match inside
