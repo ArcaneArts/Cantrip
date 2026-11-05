@@ -20,12 +20,17 @@ interface Operation {
   preparing: boolean;
   preparationEnded?: () => void;
   observedStart: boolean;
+  nativeBoundary: boolean;
   settled: boolean;
   ticket: InferenceTicket;
   lease: InferenceLease | null;
+  settlement: Promise<void>;
+  resolveSettlement(): void;
 }
 
 export interface CodexInferenceExecution {
+  /** Confirmed release, including native response teardown or process fencing. */
+  settled(): Promise<void>;
   bindThread(threadId: string): void;
   bindTurn(turnId: string): void;
   /** Immediately before forwarding the exact native request. */
@@ -141,6 +146,10 @@ export class CodexInferenceAdmission {
       recoveryKey: input.recoveryKey,
       recovery: input.recovery,
     });
+    let resolveSettlement!: () => void;
+    const settlement = new Promise<void>((resolve) => {
+      resolveSettlement = resolve;
+    });
     const operation: Operation = {
       operationId: input.operationId,
       chatId: input.chatId ?? null,
@@ -150,9 +159,12 @@ export class CodexInferenceAdmission {
       leaseStarted: false,
       preparing: false,
       observedStart: false,
+      nativeBoundary: false,
       settled: false,
       ticket,
       lease: null,
+      settlement,
+      resolveSettlement,
     };
     this.operations.add(operation);
     try {
@@ -160,10 +172,14 @@ export class CodexInferenceAdmission {
       if (this.exited || operation.settled || operation.lease.signal.aborted)
         throw new Error("The native inference admission was cancelled.");
     } catch (error) {
+      // Nothing was forwarded before this acquisition returned to its owner.
+      operation.settled = true;
       this.operations.delete(operation);
+      operation.resolveSettlement();
       throw error;
     }
     return {
+      settled: () => operation.settlement,
       bindThread: (threadId) => {
         if (operation.threadId && operation.threadId !== threadId)
           throw new Error(
@@ -290,6 +306,7 @@ export class CodexInferenceAdmission {
     this.retirement = this.runtime.exited().then(() => {
       for (const operation of this.operations) {
         operation.settled = true;
+        operation.resolveSettlement();
         operation.preparationEnded?.();
       }
       this.operations.clear();
@@ -319,6 +336,10 @@ export class CodexInferenceAdmission {
     const operation = this.findNative(input.threadId, input.turnId);
     if (!operation?.lease || operation.ticket.status().state !== "running")
       throw new Error("Native inference has no running grant.");
+    // Core's private finish follows its actual response-task teardown. A UI
+    // turn/completed event may arrive before those tasks have fully stopped.
+    operation.nativeBoundary = true;
+    operation.observedStart = true;
   }
 
   private async admitNative(input: NativeRequest): Promise<void> {
@@ -405,6 +426,7 @@ export class CodexInferenceAdmission {
     operation.ticket.cancel();
     operation.settled = true;
     this.operations.delete(operation);
+    operation.resolveSettlement();
   }
 
   private findNative(threadId: string, turnId: string): Operation | undefined {
@@ -473,6 +495,7 @@ export class CodexInferenceAdmission {
 
   private reconcile(operation: Operation): void {
     if (
+      !operation.nativeBoundary &&
       operation.threadId &&
       operation.turnId &&
       this.completed.has(JSON.stringify([operation.threadId, operation.turnId]))
@@ -492,5 +515,6 @@ export class CodexInferenceAdmission {
         new Error("Native execution settled before admission."),
       );
     this.operations.delete(operation);
+    operation.resolveSettlement();
   }
 }

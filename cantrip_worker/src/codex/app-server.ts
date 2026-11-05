@@ -2753,6 +2753,7 @@ export class CodexAppServer implements CodexRuntime {
       return await this.prepareInferenceExecution(options, inference);
     } catch (error) {
       inference?.notDispatched();
+      await inference?.settled();
       throw error;
     }
   }
@@ -2794,9 +2795,12 @@ export class CodexAppServer implements CodexRuntime {
       clearTurnInspectionTelemetry(active);
       active.reject(error);
     };
-    const result = completion.then((value) =>
-      agentTurnResultSchema.parse(value),
-    );
+    const result = completion
+      .then((value) => agentTurnResultSchema.parse(value))
+      .finally(async () => {
+        inference?.notDispatched();
+        await inference?.settled();
+      });
     // Forwarding can fail before the caller installs its completion observer.
     void result.catch(() => {});
     return {
@@ -2880,6 +2884,7 @@ export class CodexAppServer implements CodexRuntime {
       // After forwarding, only a native terminal receipt or actual process exit
       // may release capacity. A rejected observer promise is not that evidence.
       inference?.notDispatched();
+      await inference?.settled();
     }
   }
 
@@ -3118,6 +3123,7 @@ export class CodexAppServer implements CodexRuntime {
       return await this.executeAgentOperation(options, inference);
     } finally {
       inference?.notDispatched();
+      await inference?.settled();
     }
   }
 
@@ -5148,6 +5154,7 @@ export class CodexAppServer implements CodexRuntime {
       });
     } finally {
       inference?.notDispatched();
+      await inference?.settled();
     }
   }
 

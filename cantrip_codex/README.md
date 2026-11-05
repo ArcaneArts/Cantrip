@@ -467,3 +467,18 @@ worker accepts `begin-independent`; older workers deny that unsupported private
 phase. Memory extraction and response transport ownership remain audit work.
 Only source review, formatting and diff checks were performed; no native binary
 was built or executed.
+
+Patch `0055` retains inference ownership through actual HTTP dispatch/body tasks
+and WebSocket response cleanup. Managed model clients serialize their requests
+through transport teardown. Ending or suspending a turn cannot release its
+ticket while a retained response task can still run; native `finish` follows
+that cleanup. Cancellation retires failed WebSocket pumps by aborting and joining
+them. The worker distinguishes this private settlement from earlier UI turn
+completion and treats private entry as positive native-start evidence.
+SDK outcomes await the corresponding confirmed ticket release before retry or
+provider transition; this does not block native control-frame delivery.
+
+Regular/foreground/speculative compaction clients use the binding, with an API
+for independently admitted model-client helpers. Memory extraction admission and
+stateless labeling's explicit drain path remain separate goal work. Source-only
+review and formatting were performed; no native binary was built or executed.

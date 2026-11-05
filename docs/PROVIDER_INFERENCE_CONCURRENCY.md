@@ -58,7 +58,7 @@ ticket independently of later workspace reconciliation and UI publication. A
 continuation must acquire again through the same provider queue.
 
 Native ticket correlation lives separately from UI execution tracking. Actual
-turn IDs and terminal notifications settle tickets; a native rejection before
+turn IDs and private native settlement notifications settle tickets; a native rejection before
 an observed start releases the unused reservation. A disconnected socket cancels
 unforwarded work but retains dispatched holders until actual process exit. The
 captured process-exit hook remains valid after socket or child-handle replacement.
@@ -94,6 +94,44 @@ denies the new unsupported phase through the existing private resolver rather
 than letting an independent request execute without admission. This does not
 add a public protocol endpoint or another semaphore. Memory-extraction and
 transport-lifetime coverage remain part of the continuing helper audit.
+
+Patch `0055` extends the native inference lifetime through actual response
+ownership. A regular turn, foreground compaction, or speculative compaction
+attaches its exact inference owner to the model client. Per-request resources
+retain that owner through HTTP dispatch before headers and the spawned response
+body task, or the WebSocket response task. A native cancellation closes the owned
+IO. A failed WebSocket pump is aborted and joined before ownership is released;
+a cancellation deadline alone is not evidence of its termination. The owned
+dispatch preserves the request trace context and does not duplicate its payload.
+
+Requests within one admitted turn remain sequential through actual transport
+teardown, including retries. A native parent cannot suspend until both sampling
+and its retained response tasks have stopped. Ending the turn prevents another
+request from starting under that owner; private `finish` is emitted once the
+remaining response resources settle. Mutex-protected ownership makes dispatch
+retention and turn termination linearizable. These are lifetime resources for
+one already-admitted operation, not additional provider tickets or a native
+provider semaphore.
+
+The worker records entry through the private boundary as positive native start
+evidence. For those operations, a later UI `turn/completed` observation cannot
+release capacity ahead of the private `finish`. A contradictory start-RPC error
+also cannot override that evidence. Operations that never entered Core retain
+their existing proven-preparation/terminal handling, and actual process fencing
+remains the fallback when private ownership observations are lost.
+
+Execution handles expose a settlement promise resolved by confirmed release,
+proven cancellation before dispatch, or completed runtime fencing. Turn, helper,
+standalone-label and admitted-native completion paths await that promise before
+returning control for a retry or provider transition. Native control-frame
+processing remains independent of those waits. A shared first-turn title does
+not await release of its compound reservation before the response.
+
+This integrates regular and compaction model clients and exposes a session
+binding for independently admitted model-client helpers. Stateless label replies
+still need their explicit transport-drain integration, and memory extraction
+still needs independent admission plus its canonical job-lease lifecycle. No
+public RPC, prompt queue, status polling or completed-resource registry is added.
 
 Known dependency and user/approval waits can suspend their parent's reservation
 only after all parent sampling streams have stopped. Resumption rejoins FIFO before

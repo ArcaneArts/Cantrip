@@ -1,0 +1,732 @@
+diff --git a/codex-rs/codex-api/Cargo.toml b/codex-rs/codex-api/Cargo.toml
+--- a/codex-rs/codex-api/Cargo.toml
++++ b/codex-rs/codex-api/Cargo.toml
+@@ -27,7 +27,7 @@
+ tracing = { workspace = true }
+ eventsource-stream = { workspace = true }
+ regex-lite = { workspace = true }
+-tokio-util = { workspace = true, features = ["codec", "io"] }
++tokio-util = { workspace = true, features = ["codec", "io", "rt"] }
+ url = { workspace = true }
+ uuid = { workspace = true }
+ 
+diff --git a/codex-rs/codex-api/src/endpoint/responses.rs b/codex-rs/codex-api/src/endpoint/responses.rs
+--- a/codex-rs/codex-api/src/endpoint/responses.rs
++++ b/codex-rs/codex-api/src/endpoint/responses.rs
+@@ -1,3 +1,4 @@
++use crate::RequestLifetime;
+ use crate::auth::SharedAuthProvider;
+ use crate::common::ResponseStream;
+ use crate::common::ResponsesApiRequest;
+@@ -8,7 +9,7 @@
+ use crate::requests::headers::build_session_headers;
+ use crate::requests::headers::insert_header;
+ use crate::requests::headers::subagent_header;
+-use crate::sse::spawn_response_stream;
++use crate::sse::spawn_response_stream_owned;
+ use crate::telemetry::SseTelemetry;
+ use codex_client::EncodedJsonBody;
+ use codex_client::HttpTransport;
+@@ -21,6 +22,7 @@
+ use serde_json::Value;
+ use std::sync::Arc;
+ use std::sync::OnceLock;
++use tracing::Instrument;
+ use tracing::instrument;
+ 
+ pub struct ResponsesClient<T: HttpTransport> {
+@@ -72,6 +74,42 @@
+         request: ResponsesApiRequest,
+         options: ResponsesOptions,
+     ) -> Result<ResponseStream, ApiError> {
++        self.stream_request_impl(request, options, None).await
++    }
++
++    /// Dispatch owns admission even if the observing caller disappears before
++    /// HTTP headers arrive. An abandoned response closes its actual body task.
++    pub async fn stream_request_owned(
++        self: Arc<Self>,
++        request: ResponsesApiRequest,
++        options: ResponsesOptions,
++        lifetime: RequestLifetime,
++    ) -> Result<ResponseStream, ApiError>
++    where
++        T: 'static,
++    {
++        let (send, receive) = tokio::sync::oneshot::channel();
++        tokio::spawn(async move {
++            let cancellation = lifetime.cancellation();
++            let _ownership = lifetime.clone();
++            let response = tokio::select! {
++                biased;
++                _ = cancellation.cancelled() => Err(ApiError::Stream("request cancelled".into())),
++                response = self.stream_request_impl(request, options, Some(lifetime)) => response,
++            };
++            let _ = send.send(response);
++        }.instrument(tracing::Span::current()));
++        receive
++            .await
++            .map_err(|_| ApiError::Stream("request dispatch ended".into()))?
++    }
++
++    async fn stream_request_impl(
++        &self,
++        request: ResponsesApiRequest,
++        options: ResponsesOptions,
++        lifetime: Option<RequestLifetime>,
++    ) -> Result<ResponseStream, ApiError> {
+         let ResponsesOptions {
+             session_id,
+             thread_id,
+@@ -92,7 +130,7 @@
+             insert_header(&mut headers, "x-openai-subagent", &subagent);
+         }
+ 
+-        self.stream_encoded(body, headers, compression, turn_state)
++        self.stream_encoded(body, headers, compression, turn_state, lifetime)
+             .await
+     }
+ 
+@@ -116,7 +154,7 @@
+     ) -> Result<ResponseStream, ApiError> {
+         let body = EncodedJsonBody::encode(&body)
+             .map_err(|e| ApiError::Stream(format!("failed to encode responses request: {e}")))?;
+-        self.stream_encoded(body, extra_headers, compression, turn_state)
++        self.stream_encoded(body, extra_headers, compression, turn_state, None)
+             .await
+     }
+ 
+@@ -126,6 +164,7 @@
+         extra_headers: HeaderMap,
+         compression: Compression,
+         turn_state: Option<Arc<OnceLock<String>>>,
++        lifetime: Option<RequestLifetime>,
+     ) -> Result<ResponseStream, ApiError> {
+         let request_compression = match compression {
+             Compression::None => RequestCompression::None,
+@@ -149,11 +188,12 @@
+             )
+             .await?;
+ 
+-        Ok(spawn_response_stream(
++        Ok(spawn_response_stream_owned(
+             stream_response,
+             self.session.provider().stream_idle_timeout,
+             self.sse_telemetry.clone(),
+             turn_state,
++            lifetime,
+         ))
+     }
+ }
+diff --git a/codex-rs/codex-api/src/endpoint/responses_websocket.rs b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
+--- a/codex-rs/codex-api/src/endpoint/responses_websocket.rs
++++ b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
+@@ -1,4 +1,5 @@
+ use crate::RESPONSES_PATH;
++use crate::RequestLifetime;
+ use crate::auth::SharedAuthProvider;
+ use crate::common::ResponseEvent;
+ use crate::common::ResponseInterrupt;
+@@ -168,6 +169,15 @@
+     }
+ }
+ 
++impl WsStream {
++    async fn retire(mut self) {
++        self.pump_task.abort();
++        // Aborting requests cancellation; joining confirms the actual socket
++        // pump can no longer run before its inference owner is released.
++        let _ = (&mut self.pump_task).await;
++    }
++}
++
+ const X_CODEX_TURN_STATE_HEADER: &str = "x-codex-turn-state";
+ const X_MODELS_ETAG_HEADER: &str = "x-models-etag";
+ const X_REASONING_INCLUDED_HEADER: &str = "x-reasoning-included";
+@@ -256,6 +266,17 @@
+         request: ResponsesWsRequest<'_>,
+         connection_reused: bool,
+         turn_state: Option<Arc<OnceLock<String>>>,
++    ) -> Result<ResponseStream, ApiError> {
++        self.stream_request_with_lifetime(request, connection_reused, turn_state, None)
++            .await
++    }
++
++    pub async fn stream_request_with_lifetime(
++        &self,
++        request: ResponsesWsRequest<'_>,
++        connection_reused: bool,
++        turn_state: Option<Arc<OnceLock<String>>>,
++        lifetime: Option<RequestLifetime>,
+     ) -> Result<ResponseStream, ApiError> {
+         let (tx_event, rx_event) =
+             mpsc::channel::<std::result::Result<ResponseEvent, ApiError>>(1600);
+@@ -299,6 +320,8 @@
+                 reason = "the guard serializes exclusive use of the websocket stream for the lifetime of the response stream"
+             )]
+             async move {
++                let cancellation = lifetime.as_ref().map(RequestLifetime::cancellation).unwrap_or_default();
++                let _ownership = lifetime;
+                 if let Some(model) = server_model {
+                     let _ = tx_event.send(Ok(ResponseEvent::ServerModel(model))).await;
+                 }
+@@ -327,6 +350,7 @@
+                 let mut guard = tokio::select! {
+                     biased;
+                     _ = tx_event.closed() => return,
++                    _ = cancellation.cancelled() => return,
+                     () = &mut interrupt_timeout => {
+                         let _ = tx_event.send(Err(ApiError::Stream(
+                             "timed out draining interrupted response".into(),
+@@ -349,34 +373,43 @@
+                         return;
+                     };
+ 
+-                    tokio::select! {
+-                        biased;
+-                        result = run_websocket_response_stream(
+-                            ws_stream,
+-                            tx_event.clone(),
+-                            request_text,
+-                            idle_timeout,
+-                            telemetry,
+-                            turn_state.as_deref(),
+-                            &timing_log_context,
+-                            interrupt.clone(),
+-                            &mut completion,
+-                        ) => result,
+-                        () = &mut interrupt_timeout => Err(ApiError::Stream(
+-                            "timed out draining interrupted response".into(),
+-                        )),
+-                        _ = tx_event.closed() => Err(ApiError::Stream(
+-                            "response event consumer dropped".to_string(),
+-                        )),
+-                    }
++                    std::panic::AssertUnwindSafe(async {
++                        tokio::select! {
++                            biased;
++                            result = run_websocket_response_stream(
++                                ws_stream,
++                                tx_event.clone(),
++                                request_text,
++                                idle_timeout,
++                                telemetry,
++                                turn_state.as_deref(),
++                                &timing_log_context,
++                                interrupt.clone(),
++                                &mut completion,
++                            ) => result,
++                            () = &mut interrupt_timeout => Err(ApiError::Stream(
++                                "timed out draining interrupted response".into(),
++                            )),
++                            _ = tx_event.closed() => Err(ApiError::Stream(
++                                "response event consumer dropped".to_string(),
++                            )),
++                            _ = cancellation.cancelled() => Err(ApiError::Stream("request cancelled".into())),
++                        }
++                    })
++                    .catch_unwind()
++                    .await
++                    .unwrap_or_else(|_| Err(ApiError::Stream("response transport panicked".into())))
+                 };
+ 
+                 if let Err(err) = result {
+-                    // A terminal stream error should reach the caller immediately. Waiting for a
+-                    // graceful close handshake here can stall indefinitely and mask the error.
++                    // Retire the actual socket pump before reporting settlement.
++                    // This aborts and joins local IO; it does not await a remote close handshake.
+                     let failed_stream = guard.take();
+                     drop(guard);
+-                    drop(failed_stream);
++                    if let Some(failed_stream) = failed_stream {
++                        failed_stream.retire().await;
++                    }
++                    drop(_ownership);
+                     // Failed cancellation retires the socket while preserving any received
+                     // completion and its usage for the abandoned classifier's cleanup.
+                     let event = completion.map_or_else(|| Err(err), Ok);
+@@ -385,6 +418,7 @@
+                     // The handshake is finished. Consumer backpressure must not let the
+                     // interruption deadline discard completion or its usage accounting.
+                     drop(guard);
++                    drop(_ownership);
+                     let _ = tx_event.send(Ok(completed)).await;
+                 }
+             }
+diff --git a/codex-rs/codex-api/src/lib.rs b/codex-rs/codex-api/src/lib.rs
+--- a/codex-rs/codex-api/src/lib.rs
++++ b/codex-rs/codex-api/src/lib.rs
+@@ -8,6 +8,7 @@
+ pub(crate) mod images;
+ pub(crate) mod provider;
+ pub(crate) mod rate_limits;
++mod request_lifetime;
+ pub(crate) mod requests;
+ mod responses_headers;
+ pub(crate) mod safety_buffering;
+@@ -17,6 +18,7 @@
+ 
+ /// Path of the Responses endpoint, relative to a provider's base URL.
+ pub const RESPONSES_PATH: &str = "/responses";
++pub use request_lifetime::RequestLifetime;
+ 
+ pub use crate::requests::headers::build_session_headers;
+ pub use codex_client::RequestTelemetry;
+diff --git a/codex-rs/codex-api/src/request_lifetime.rs b/codex-rs/codex-api/src/request_lifetime.rs
+new file mode 100644
+--- /dev/null
++++ b/codex-rs/codex-api/src/request_lifetime.rs
+@@ -0,0 +1,23 @@
++//! An opaque owner retained by actual request dispatch and response tasks.
++use std::any::Any;
++use std::sync::Arc;
++use tokio_util::sync::CancellationToken;
++
++#[derive(Clone)]
++pub struct RequestLifetime {
++    _owner: Arc<dyn Any + Send + Sync>,
++    cancellation: CancellationToken,
++}
++
++impl RequestLifetime {
++    pub fn new<T: Any + Send + Sync>(owner: Arc<T>, cancellation: CancellationToken) -> Self {
++        Self {
++            _owner: owner,
++            cancellation,
++        }
++    }
++
++    pub fn cancellation(&self) -> CancellationToken {
++        self.cancellation.clone()
++    }
++}
+diff --git a/codex-rs/codex-api/src/sse/mod.rs b/codex-rs/codex-api/src/sse/mod.rs
+--- a/codex-rs/codex-api/src/sse/mod.rs
++++ b/codex-rs/codex-api/src/sse/mod.rs
+@@ -4,3 +4,4 @@
+ pub(crate) use responses::ResponsesStreamEvent;
+ pub(crate) use responses::process_responses_event;
+ pub use responses::spawn_response_stream;
++pub(crate) use responses::spawn_response_stream_owned;
+diff --git a/codex-rs/codex-api/src/sse/responses.rs b/codex-rs/codex-api/src/sse/responses.rs
+--- a/codex-rs/codex-api/src/sse/responses.rs
++++ b/codex-rs/codex-api/src/sse/responses.rs
+@@ -42,6 +42,16 @@
+     telemetry: Option<Arc<dyn SseTelemetry>>,
+     turn_state: Option<Arc<OnceLock<String>>>,
+ ) -> ResponseStream {
++    spawn_response_stream_owned(stream_response, idle_timeout, telemetry, turn_state, None)
++}
++
++pub(crate) fn spawn_response_stream_owned(
++    stream_response: StreamResponse,
++    idle_timeout: Duration,
++    telemetry: Option<Arc<dyn SseTelemetry>>,
++    turn_state: Option<Arc<OnceLock<String>>>,
++    lifetime: Option<crate::RequestLifetime>,
++) -> ResponseStream {
+     let rate_limit_snapshots = parse_all_rate_limits(&stream_response.headers);
+     let models_etag = stream_response
+         .headers
+@@ -74,6 +84,13 @@
+     }
+     let (tx_event, rx_event) = mpsc::channel::<Result<ResponseEvent, ApiError>>(1600);
+     tokio::spawn(async move {
++        let cancellation = lifetime
++            .as_ref()
++            .map(crate::RequestLifetime::cancellation)
++            .unwrap_or_default();
++        // Construct ownership before the body future so teardown drops the
++        // actual HTTP body before releasing the request's admission resource.
++        let _ownership = lifetime;
+         if let Some(model) = server_model {
+             let _ = tx_event.send(Ok(ResponseEvent::ServerModel(model))).await;
+         }
+@@ -88,14 +105,18 @@
+                 .send(Ok(ResponseEvent::ServerReasoningIncluded(true)))
+                 .await;
+         }
+-        process_sse_with_treatment(
++        let response = process_sse_with_treatment(
+             stream_response.bytes,
+             tx_event,
+             idle_timeout,
+             telemetry,
+             safety_buffering_treatment,
+-        )
+-        .await;
++        );
++        tokio::select! {
++            biased;
++            _ = cancellation.cancelled() => {},
++            _ = response => {},
++        }
+     });
+ 
+     ResponseStream {
+diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
+--- a/codex-rs/core/src/client.rs
++++ b/codex-rs/core/src/client.rs
+@@ -325,6 +325,7 @@
+ /// contract and can cause routing bugs.
+ pub struct ModelClientSession {
+     client: ModelClient,
++    inference: Option<Arc<crate::managed_inference::ManagedInferenceTurn>>,
+     websocket_session: WebsocketSession,
+     /// Turn state for sticky routing.
+     ///
+@@ -343,6 +344,7 @@
+ /// Executes HTTP Responses requests without owning a turn's WebSocket state.
+ pub(crate) struct ResponsesHttpExecutor<'a> {
+     client: &'a ModelClient,
++    inference: Option<Arc<crate::managed_inference::ManagedInferenceTurn>>,
+ }
+ 
+ #[derive(Debug, Clone)]
+@@ -751,6 +753,7 @@
+         }
+         ModelClientSession {
+             client: self.clone(),
++            inference: None,
+             websocket_session,
+             turn_state: Arc::new(OnceLock::new()),
+         }
+@@ -1574,6 +1577,13 @@
+ }
+ 
+ impl ModelClientSession {
++    pub(crate) fn set_inference_owner(
++        &mut self,
++        inference: Arc<crate::managed_inference::ManagedInferenceTurn>,
++    ) {
++        self.inference = Some(inference);
++    }
++
+     pub(crate) fn inference_tools_changed(&self, tools: &Arc<[ToolSpec]>) -> bool {
+         let previous = self
+             .client
+@@ -1588,7 +1598,18 @@
+ 
+ impl<'a> ResponsesHttpExecutor<'a> {
+     pub(crate) fn new(client: &'a ModelClient) -> Self {
+-        Self { client }
++        Self {
++            client,
++            inference: None,
++        }
++    }
++
++    pub(crate) fn with_inference(
++        mut self,
++        inference: Option<Arc<crate::managed_inference::ManagedInferenceTurn>>,
++    ) -> Self {
++        self.inference = inference;
++        self
+     }
+ 
+     #[allow(clippy::too_many_arguments)]
+@@ -2045,7 +2066,14 @@
+                 client_setup.api_auth,
+             )
+             .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
+-            let stream_result = client.stream_request(request, options).await;
++            let stream_result = if let Some(inference) = &self.inference {
++                let lifetime = inference.request_lifetime().await?;
++                Arc::new(client)
++                    .stream_request_owned(request, options, lifetime)
++                    .await
++            } else {
++                client.stream_request(request, options).await
++            };
+ 
+             match stream_result {
+                 Ok(stream) => {
+@@ -2368,11 +2396,16 @@
+                     ),
+                 ],
+             );
++            let lifetime = match &self.inference {
++                Some(inference) if !warmup => Some(inference.request_lifetime().await?),
++                _ => None,
++            };
+             let stream_result = websocket_connection
+-                .stream_request(
++                .stream_request_with_lifetime(
+                     ws_request,
+                     self.websocket_session.connection_reused(),
+                     Some(Arc::clone(&self.turn_state)),
++                    lifetime,
+                 )
+                 .await;
+             if let Some(original_item_ids) = original_item_ids {
+@@ -2554,6 +2587,7 @@
+                 }
+ 
+                 ResponsesHttpExecutor::new(&self.client)
++                    .with_inference(self.inference.clone())
+                     .stream_responses_http(
+                         &self.turn_state,
+                         /*expected_auth_owner*/ None,
+diff --git a/codex-rs/core/src/compact.rs b/codex-rs/core/src/compact.rs
+--- a/codex-rs/core/src/compact.rs
++++ b/codex-rs/core/src/compact.rs
+@@ -834,7 +834,10 @@
+         .extension_data
+         .get::<crate::managed_inference::ManagedInferenceTurn>()
+     {
+-        Some(inference) => Some(inference.sampling().await?),
++        Some(inference) => {
++            inference.bind_session(client_session);
++            Some(inference.sampling().await?)
++        }
+         None => None,
+     };
+     let mut includes_reasoning = turn_context.model_info().use_responses_lite;
+diff --git a/codex-rs/core/src/compact_remote_v2.rs b/codex-rs/core/src/compact_remote_v2.rs
+--- a/codex-rs/core/src/compact_remote_v2.rs
++++ b/codex-rs/core/src/compact_remote_v2.rs
+@@ -315,7 +315,12 @@
+             let trace = InferenceTraceContext::disabled();
+             // Replay the routing token without letting this request change foreground routing.
+             let turn_state = Arc::new(turn_state.map(OnceLock::from).unwrap_or_default());
+-            let http_executor = ResponsesHttpExecutor::new(&sess.services.model_client);
++            let http_executor = ResponsesHttpExecutor::new(&sess.services.model_client)
++                .with_inference(
++                    _inference_lifetime
++                        .as_ref()
++                        .map(|lifetime| Arc::clone(&lifetime.0)),
++                );
+             let stream = tokio::select! {
+                 biased;
+                 _ = cancellation.cancelled() => return Err(CodexErr::TurnAborted),
+@@ -339,7 +344,10 @@
+         .extension_data
+         .get::<crate::managed_inference::ManagedInferenceTurn>()
+     {
+-        Some(inference) => Some(inference.sampling().await?),
++        Some(inference) => {
++            inference.bind_session(client_session);
++            Some(inference.sampling().await?)
++        }
+         None => None,
+     };
+     let settings = &turn_context.initial_settings;
+diff --git a/codex-rs/core/src/managed_inference.rs b/codex-rs/core/src/managed_inference.rs
+--- a/codex-rs/core/src/managed_inference.rs
++++ b/codex-rs/core/src/managed_inference.rs
+@@ -4,10 +4,10 @@
+ use codex_protocol::ThreadId;
+ use codex_protocol::error::{CodexErr, Result as CodexResult};
+ use std::sync::{
+-    Arc,
++    Arc, Mutex as StdMutex, PoisonError,
+     atomic::{AtomicBool, AtomicUsize, Ordering},
+ };
+-use tokio::sync::Mutex;
++use tokio::sync::{Mutex, Notify};
+ use tokio_util::sync::CancellationToken;
+ 
+ pub(crate) struct ManagedInferenceTurn {
+@@ -15,19 +15,70 @@
+     thread_id: ThreadId,
+     turn_id: String,
+     cancellation: CancellationToken,
++    transport_cancellation: CancellationToken,
+     held: Mutex<bool>,
+     sampling: AtomicUsize,
+     waits: AtomicUsize,
+     finished: AtomicBool,
++    transports: StdMutex<TransportState>,
++    transport_changed: Notify,
++}
++
++#[derive(Default)]
++struct TransportState {
++    active: usize,
++    settled: bool,
++}
++
++struct InferenceTransport(Arc<ManagedInferenceTurn>);
++impl Drop for InferenceTransport {
++    fn drop(&mut self) {
++        let settled = {
++            let mut state = self
++                .0
++                .transports
++                .lock()
++                .unwrap_or_else(PoisonError::into_inner);
++            state.active -= 1;
++            if state.active == 0 && self.0.finished.load(Ordering::SeqCst) && !state.settled {
++                state.settled = true;
++                true
++            } else {
++                false
++            }
++        };
++        self.0.transport_changed.notify_waiters();
++        if settled {
++            self.0.notify_finished();
++        } else {
++            self.0.maybe_suspend();
++        }
++    }
+ }
+ 
+ pub(crate) struct InferenceLifetime(pub Arc<ManagedInferenceTurn>);
+ impl Drop for InferenceLifetime {
+     fn drop(&mut self) {
+-        if !self.0.finished.swap(true, Ordering::SeqCst) {
+-            self.0
+-                .gate
+-                .notify_inference(self.0.thread_id, &self.0.turn_id, "finish", None);
++        let settled = {
++            let mut state = self
++                .0
++                .transports
++                .lock()
++                .unwrap_or_else(PoisonError::into_inner);
++            if self.0.finished.swap(true, Ordering::SeqCst) {
++                return;
++            }
++            if state.active == 0 {
++                state.settled = true;
++                true
++            } else {
++                false
++            }
++        };
++        self.0.transport_cancellation.cancel();
++        self.0.transport_changed.notify_waiters();
++        if settled {
++            self.0.notify_finished();
+         }
+     }
+ }
+@@ -64,15 +115,19 @@
+         cancellation: CancellationToken,
+         independent: bool,
+     ) -> CodexResult<InferenceLifetime> {
++        let transport_cancellation = cancellation.child_token();
+         let turn = Arc::new(Self {
+             gate,
+             thread_id,
+             turn_id,
+             cancellation,
++            transport_cancellation,
+             held: Mutex::new(false),
+             sampling: AtomicUsize::new(0),
+             waits: AtomicUsize::new(0),
+             finished: AtomicBool::new(false),
++            transports: StdMutex::new(TransportState::default()),
++            transport_changed: Notify::new(),
+         });
+         // Own cleanup before awaiting the grant: cancellation can win after
+         // the worker grants but before Core receives that exact reply.
+@@ -126,6 +181,27 @@
+         // Tool output can overlap a model stream. Only the last actual sampling
+         // activity may expose a suspension boundary to the worker.
+         if *held && self.sampling.load(Ordering::SeqCst) == 0 {
++            // A dropped Core stream only signals its response mapper. Wait for
++            // the actual dispatch/body/socket tasks to settle before yielding.
++            loop {
++                let changed = self.transport_changed.notified();
++                if self
++                    .transports
++                    .lock()
++                    .unwrap_or_else(PoisonError::into_inner)
++                    .active
++                    == 0
++                {
++                    break;
++                }
++                tokio::select! {
++                    _ = changed => {},
++                    _ = self.cancellation.cancelled() => return Err(CodexErr::TurnAborted),
++                }
++            }
++            if self.finished.load(Ordering::SeqCst) {
++                return Ok(());
++            }
+             self.phase("suspend").await?;
+             *held = false;
+         }
+@@ -149,6 +225,51 @@
+         self.waits.fetch_add(1, Ordering::SeqCst);
+         self.maybe_suspend();
+         InferenceWait(Arc::clone(self))
++    }
++
++    pub(crate) fn bind_session(self: &Arc<Self>, session: &mut crate::client::ModelClientSession) {
++        session.set_inference_owner(Arc::clone(self));
++    }
++
++    pub(crate) async fn request_lifetime(
++        self: &Arc<Self>,
++    ) -> CodexResult<codex_api::RequestLifetime> {
++        let held = self.held.lock().await;
++        if !*held || self.cancellation.is_cancelled() {
++            return Err(CodexErr::TurnAborted);
++        }
++        loop {
++            let changed = self.transport_changed.notified();
++            {
++                let mut state = self
++                    .transports
++                    .lock()
++                    .unwrap_or_else(PoisonError::into_inner);
++                // Linearize dispatch with lifetime Drop. Retries on this turn
++                // remain sequential through actual transport teardown; a
++                // concurrent helper must own a separate worker admission.
++                if self.finished.load(Ordering::SeqCst) || self.cancellation.is_cancelled() {
++                    return Err(CodexErr::TurnAborted);
++                }
++                if state.active == 0 {
++                    state.active = 1;
++                    break;
++                }
++            }
++            tokio::select! {
++                _ = changed => {},
++                _ = self.cancellation.cancelled() => return Err(CodexErr::TurnAborted),
++            }
++        }
++        Ok(codex_api::RequestLifetime::new(
++            Arc::new(InferenceTransport(Arc::clone(self))),
++            self.transport_cancellation.clone(),
++        ))
++    }
++
++    fn notify_finished(&self) {
++        self.gate
++            .notify_inference(self.thread_id, &self.turn_id, "finish", None);
+     }
+ 
+     fn maybe_suspend(self: &Arc<Self>) {
+@@ -180,6 +301,12 @@
+ /// must retain this through transport cancellation/draining, not just early output.
+ pub struct IndependentInference {
+     _lifetime: InferenceLifetime,
++}
++
++impl IndependentInference {
++    pub fn bind_session(&self, session: &mut crate::client::ModelClientSession) {
++        self._lifetime.0.bind_session(session);
++    }
+ }
+ 
+ /// Core supplies identity and lifetime; the worker remains the admission authority.
+diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
+--- a/codex-rs/core/src/session/turn.rs
++++ b/codex-rs/core/src/session/turn.rs
+@@ -2849,7 +2849,10 @@
+         .extension_data
+         .get::<crate::managed_inference::ManagedInferenceTurn>()
+     {
+-        Some(inference) => Some(inference.sampling().await?),
++        Some(inference) => {
++            inference.bind_session(client_session);
++            Some(inference.sampling().await?)
++        }
+         None => None,
+     };
+     feedback_tags!(
