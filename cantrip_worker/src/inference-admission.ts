@@ -37,6 +37,7 @@ export interface InferenceOperationLifetime {
   readonly [operationLifetimeBrand]: true;
   readonly operationId: string;
   readonly runtimeGeneration: string;
+  assertCurrent(): void;
   close(): void;
 }
 
@@ -57,6 +58,9 @@ interface OperationLifetimeState {
   operationId: string;
   closed: boolean;
   ticket?: Ticket;
+  rejection?: Error;
+  withdrawal?: Promise<InferenceJournalRecord>;
+  withdrawalIdentity?: string;
 }
 
 export interface InferenceRequest {
@@ -104,6 +108,12 @@ export interface InferenceRuntime {
   readonly generation: string;
   prepareNativeLaunch(): Promise<NodeJS.ProcessEnv>;
   request(input: InferenceRequest): InferenceTicket;
+  /** Seal an actual source before it has requested capacity. No slot is taken. */
+  withdrawBeforeRequest(
+    input: InferenceRequest,
+    reason: Error,
+    settled: Promise<void>,
+  ): Promise<InferenceJournalRecord>;
   /** Call only with positive canonical live-operation authority. */
   createOperationLifetime(operationId: string): InferenceOperationLifetime;
   /** Retire only after the associated runtime is confirmed unable to execute. */
@@ -217,6 +227,9 @@ interface RestoredWaiter {
 export class WorkerInferenceAdmission {
   private readonly pools = new Map<string, Pool>();
   private readonly runtimes = new Set<Runtime>();
+  /** Only live cross-provider preparations whose response source was sealed.
+   * Recovery reads must join their actual settlement even if that source exits. */
+  private readonly unrequestedSettlements = new Map<string, Promise<void>>();
   private readonly listeners = new Set<
     (status: WorkerInferenceStatus) => void
   >();
@@ -276,6 +289,7 @@ export class WorkerInferenceAdmission {
       await this.recoveryWork?.catch(() => {});
       await this.journal?.flush();
       await this.nativeOwnership?.close();
+      this.unrequestedSettlements.clear();
     })();
     return this.closure;
   }
@@ -312,6 +326,12 @@ export class WorkerInferenceAdmission {
       )
     )
       return null;
+    // On restart, the keeper's actual takeover fences all prior native runtimes
+    // before permitting snapshot reads. In this worker, retain the live label's
+    // settlement independently of the response runtime or source registry.
+    await Promise.all(
+      records.map((record) => this.unrequestedSettlements.get(record.key)),
+    );
     return records.reduce((latest, record) =>
       record.revision > latest.revision ? record : latest,
     );
@@ -329,6 +349,7 @@ export class WorkerInferenceAdmission {
       throw new Error(
         "Withdrawal retirement requires exact no-start evidence.",
       );
+    await this.unrequestedSettlements.get(record.key);
     await this.journal.forget(record);
   }
 
@@ -562,6 +583,8 @@ export class WorkerInferenceAdmission {
           return environment ?? {};
         },
         request: (input) => this.request(runtime, input),
+        withdrawBeforeRequest: (input, reason, settled) =>
+          this.withdrawBeforeRequest(runtime, input, reason, settled),
         createOperationLifetime: (operationId) => {
           if (
             this.closing ||
@@ -575,6 +598,20 @@ export class WorkerInferenceAdmission {
             [operationLifetimeBrand]: true as const,
             operationId,
             runtimeGeneration: runtime.generation,
+            assertCurrent: () => {
+              if (state.closed)
+                throw (
+                  state.rejection ??
+                  new Error("The canonical inference operation has closed.")
+                );
+              if (
+                this.closing ||
+                runtime.retiring ||
+                runtime.retired ||
+                !runtime.prepared
+              )
+                throw new Error("The inference runtime is not live.");
+            },
             close: () => {
               if (state.closed) return;
               state.closed = true;
@@ -653,6 +690,80 @@ export class WorkerInferenceAdmission {
     };
   }
 
+  private withdrawBeforeRequest(
+    runtime: Runtime,
+    input: InferenceRequest,
+    reason: Error,
+    settled: Promise<void>,
+  ): Promise<InferenceJournalRecord> {
+    const lifetime = runtime.lifetimes.get(input.lifetime);
+    const identity = {
+      operationId: input.operationId,
+      providerId: input.providerId,
+      runtimeGeneration: runtime.generation,
+      recoveryKey: input.recoveryKey ?? null,
+      recovery: input.recovery ?? null,
+      chatId: input.chatId ?? null,
+      projectId: input.projectId ?? null,
+    };
+    const signature = JSON.stringify([
+      identity.operationId,
+      identity.providerId,
+      identity.runtimeGeneration,
+      identity.recoveryKey,
+      recoveryIdentity(identity.recovery),
+      identity.chatId,
+      identity.projectId,
+    ]);
+    if (lifetime?.withdrawal) {
+      if (lifetime.withdrawalIdentity !== signature)
+        throw new Error(
+          "The unrequested withdrawal changed its canonical identity.",
+        );
+      return lifetime.withdrawal;
+    }
+    if (
+      !this.journal ||
+      this.closing ||
+      runtime.retiring ||
+      runtime.retired ||
+      !runtime.prepared ||
+      !this.runtimes.has(runtime) ||
+      !lifetime ||
+      lifetime.operationId !== input.operationId ||
+      lifetime.closed ||
+      lifetime.ticket ||
+      runtime.records.has(input.operationId)
+    )
+      throw new UnstartedInferenceUnavailableError(
+        "The source is no longer an unrequested live operation.",
+      );
+    input.signal?.throwIfAborted();
+    // Seal before any await. A label completing concurrently cannot acquire
+    // the response ticket after this point. This never joins a provider queue.
+    lifetime.closed = true;
+    lifetime.rejection = reason;
+    lifetime.withdrawalIdentity = signature;
+    const journal = this.journal;
+    const key = journal.key(runtime.generation, input.operationId);
+    this.unrequestedSettlements.set(key, settled);
+    void settled.then(
+      () => {
+        if (this.unrequestedSettlements.get(key) === settled)
+          this.unrequestedSettlements.delete(key);
+      },
+      (error) => this.reportJournalError(error),
+    );
+    lifetime.withdrawal = journal
+      .sealUnstarted(key, identity)
+      .then(async (record) => {
+        await settled;
+        return record;
+      });
+    void lifetime.withdrawal.catch(() => {});
+    return lifetime.withdrawal;
+  }
+
   private request(runtime: Runtime, input: InferenceRequest): InferenceTicket {
     if (
       this.closing ||
@@ -692,7 +803,10 @@ export class WorkerInferenceAdmission {
       return previous.handle;
     }
     if (lifetime.closed)
-      throw new Error("The canonical inference operation has closed.");
+      throw (
+        lifetime.rejection ??
+        new Error("The canonical inference operation has closed.")
+      );
     // Old envelopes omit configuration. They establish the default only if this
     // provider has not already received a newer authoritative configuration.
     if (!this.pools.has(input.providerId))

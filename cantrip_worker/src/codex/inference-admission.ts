@@ -100,6 +100,14 @@ interface NativeEntry {
   operation?: Operation;
 }
 
+interface BeforeAcquirePreparation {
+  input: Request & { lifetime: InferenceOperationLifetime };
+  controller: AbortController;
+  finished: Promise<void>;
+  reason?: Error;
+  withdrawal?: Promise<InferenceJournalRecord>;
+}
+
 interface NativeRequest {
   /** The live Core gate request, distinct from its physical inference scope. */
   gateAttemptId: string;
@@ -145,6 +153,10 @@ export class CodexInferenceAdmission {
     InferenceOperationLifetime,
     Operation
   >();
+  private readonly beforeAcquire = new WeakMap<
+    InferenceOperationLifetime,
+    BeforeAcquirePreparation
+  >();
   private exited = false;
   private retirement: Promise<void> | null = null;
 
@@ -189,11 +201,63 @@ export class CodexInferenceAdmission {
     return lifetime;
   }
 
+  /** An alternate-provider label owns its own ticket. Retain the response's
+   * actual source boundary without reserving response capacity meanwhile. */
+  async prepareBeforeAcquire<T>(
+    input: Request,
+    action: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    const lifetime = input.lifetime;
+    if (
+      this.exited ||
+      !lifetime ||
+      lifetime.runtimeGeneration !== this.generation ||
+      lifetime.operationId !== input.operationId ||
+      input.nativeScopeId ||
+      input.expectedTurnId ||
+      this.lifetimeRequests.has(lifetime) ||
+      this.beforeAcquire.has(lifetime)
+    )
+      throw new Error(
+        "The canonical source cannot enter pre-acquisition preparation.",
+      );
+    lifetime.assertCurrent();
+    input.signal?.throwIfAborted();
+    let finish!: () => void;
+    const preparation: BeforeAcquirePreparation = {
+      input: { ...input, lifetime },
+      controller: new AbortController(),
+      finished: new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+    };
+    this.beforeAcquire.set(lifetime, preparation);
+    const signal = input.signal
+      ? AbortSignal.any([input.signal, preparation.controller.signal])
+      : preparation.controller.signal;
+    try {
+      const result = await action(signal);
+      if (preparation.reason) throw preparation.reason;
+      return result;
+    } catch (error) {
+      throw preparation.reason ?? error;
+    } finally {
+      this.beforeAcquire.delete(lifetime);
+      finish();
+    }
+  }
+
   acquire(input: Request): Promise<CodexInferenceExecution> {
     const lifetime = input.lifetime;
     if (!lifetime)
       return Promise.reject(
         new Error("Inference requires its live canonical operation lifetime."),
+      );
+    if (this.beforeAcquire.has(lifetime))
+      return Promise.reject(
+        new Error(
+          "The canonical source is still preparing before acquisition.",
+        ),
       );
     if (
       lifetime.runtimeGeneration !== this.generation ||
@@ -443,6 +507,38 @@ export class CodexInferenceAdmission {
   ): Promise<InferenceJournalRecord> {
     const lifetime = this.sourceLifetimes.get(source);
     const operation = lifetime && this.lifetimeOperations.get(lifetime);
+    const preparation = lifetime && this.beforeAcquire.get(lifetime);
+    if (!operation && preparation) {
+      if (preparation.withdrawal) return preparation.withdrawal;
+      source.assertCurrent();
+      const input = preparation.input;
+      const withdrawn =
+        reason ?? new Error("The unrequested response was withdrawn.");
+      // The service seals the lifetime synchronously. Only then cancel the
+      // independent label; it still owns its slot until native settlement.
+      const proof = this.runtime.withdrawBeforeRequest(
+        {
+          operationId: input.operationId,
+          lifetime: input.lifetime,
+          purpose: input.purpose,
+          providerId: input.provider.id,
+          providerCreationRevision:
+            input.provider.inferenceCatalogCreatedRevision,
+          chatId: input.chatId,
+          projectId: input.projectId,
+          recoveryKey: input.recoveryKey,
+          recovery: input.recovery,
+          signal: input.signal,
+        },
+        withdrawn,
+        preparation.finished,
+      );
+      preparation.reason = withdrawn;
+      preparation.controller.abort(withdrawn);
+      preparation.withdrawal = proof;
+      void preparation.withdrawal.catch(() => {});
+      return preparation.withdrawal;
+    }
     if (!operation)
       throw new UnstartedInferenceUnavailableError(
         "This source does not own an inference reservation.",

@@ -53,6 +53,11 @@ const snapshotSchema = z
 export type InferenceJournalMutation =
   | { action: "enqueue"; key: string; identity: z.infer<typeof identitySchema> }
   | {
+      action: "sealUnstarted";
+      key: string;
+      identity: z.infer<typeof identitySchema>;
+    }
+  | {
       action: "adopt";
       key: string;
       identity: z.infer<typeof identitySchema>;
@@ -138,6 +143,17 @@ export class WorkerInferenceJournal {
   ): Promise<InferenceJournalRecord> {
     return this.write({
       action: "enqueue",
+      key,
+      identity: identitySchema.parse(identity),
+    });
+  }
+  /** One atomic keeper mutation; never inserts a waiting or granted record. */
+  sealUnstarted(
+    key: string,
+    identity: z.infer<typeof identitySchema>,
+  ): Promise<InferenceJournalRecord> {
+    return this.write({
+      action: "sealUnstarted",
       key,
       identity: identitySchema.parse(identity),
     });
@@ -344,6 +360,11 @@ export class WorkerInferenceJournal {
                   "Inference journal returned another operation's acknowledgement.",
                 );
               if (
+                (item.command.action === "sealUnstarted" &&
+                  (record.state !== "released" ||
+                    record.everGranted ||
+                    record.nativeExecution ||
+                    record.outcome !== "never-started")) ||
                 (item.command.action === "grant" &&
                   (record.state !== "granted" || !record.everGranted)) ||
                 (item.command.action === "requeue" &&
@@ -361,7 +382,8 @@ export class WorkerInferenceJournal {
                 );
               if (
                 item.command.action === "enqueue" ||
-                item.command.action === "adopt"
+                item.command.action === "adopt" ||
+                item.command.action === "sealUnstarted"
               ) {
                 const expected = item.command.identity;
                 const actual = record.identity;
