@@ -8,10 +8,10 @@ import type {
 type Phase = "waiting" | "preparing" | "running";
 const commands = new AsyncLocalStorage<InferenceCommand>();
 
-/** Correlates timing with its existing worker request, without owning admission. */
-class InferenceCommand {
+/** One exclusive clock for a command, or for one provider within that command. */
+class InferencePhaseClock {
   private readonly operations = new Map<symbol, InferenceTicketState>();
-  private phase: Phase = "preparing";
+  state: Phase = "preparing";
   private timingPhase: keyof Omit<InferenceCommandTiming, "complete"> =
     "preparationMs";
   private changedAt = performance.now();
@@ -21,6 +21,64 @@ class InferenceCommand {
     executionMs: 0,
     suspendedMs: 0,
   };
+
+  constructor(private readonly activeOnly = false) {}
+
+  clear(): void {
+    this.operations.clear();
+  }
+
+  observe(identity: symbol, state: InferenceTicketState): boolean {
+    this.account();
+    if (state === "released") this.operations.delete(identity);
+    else this.operations.set(identity, state);
+    const states = [...this.operations.values()];
+    const phase: Phase = states.some(
+      (value) => value === "running" || value === "cancelling",
+    )
+      ? "running"
+      : states.length > 0 &&
+          states.every((value) => value === "waiting" || value === "suspended")
+        ? "waiting"
+        : "preparing";
+    const timingPhase =
+      phase === "running"
+        ? "executionMs"
+        : phase === "preparing"
+          ? "preparationMs"
+          : states.every((value) => value === "suspended")
+            ? "suspendedMs"
+            : "queueWaitMs";
+    const changed = phase !== this.state || timingPhase !== this.timingPhase;
+    this.state = phase;
+    this.timingPhase = timingPhase;
+    return changed;
+  }
+
+  private account(): void {
+    const now = performance.now();
+    if (!this.activeOnly || this.operations.size > 0)
+      this.durations[this.timingPhase] += Math.max(0, now - this.changedAt);
+    this.changedAt = now;
+  }
+
+  snapshot(final: boolean): InferenceCommandTiming {
+    this.account();
+    return {
+      queueWaitMs: Math.floor(this.durations.queueWaitMs),
+      preparationMs: Math.floor(this.durations.preparationMs),
+      executionMs: Math.floor(this.durations.executionMs),
+      suspendedMs: Math.floor(this.durations.suspendedMs),
+      // A closed command may still have an execution being reconciled.
+      complete: final && this.operations.size === 0,
+    };
+  }
+}
+
+/** Correlates timing with its existing worker request, without owning admission. */
+class InferenceCommand {
+  private readonly clock = new InferencePhaseClock();
+  private readonly providers = new Map<string, InferencePhaseClock>();
   private sequence = 0;
   private closed = false;
   private admitted = false;
@@ -41,63 +99,37 @@ class InferenceCommand {
     };
   }
 
-  observe(): ((state: InferenceTicketState) => void) | undefined {
+  observe(
+    providerId?: string,
+  ): ((state: InferenceTicketState) => void) | undefined {
     if (this.closed) return undefined;
     this.observed = true;
     const identity = Symbol();
+    let providerClock = providerId ? this.providers.get(providerId) : undefined;
+    if (providerId && !providerClock) {
+      providerClock = new InferencePhaseClock(true);
+      this.providers.set(providerId, providerClock);
+    }
     return (state) => {
       if (this.closed) return;
-      if (state === "released") this.operations.delete(identity);
-      else this.operations.set(identity, state);
-      const states = [...this.operations.values()];
-      const phase: Phase = states.some(
-        (value) => value === "running" || value === "cancelling",
-      )
-        ? "running"
-        : states.length > 0 &&
-            states.every(
-              (value) => value === "waiting" || value === "suspended",
-            )
-          ? "waiting"
-          : "preparing";
-      const timingPhase =
-        phase === "running"
-          ? "executionMs"
-          : phase === "preparing"
-            ? "preparationMs"
-            : states.every((value) => value === "suspended")
-              ? "suspendedMs"
-              : "queueWaitMs";
-      if (phase === this.phase && timingPhase === this.timingPhase) return;
-      this.account();
-      this.phase = phase;
-      this.timingPhase = timingPhase;
-      this.report();
+      const changed = this.clock.observe(identity, state);
+      const providerChanged = providerClock?.observe(identity, state);
+      if (changed || providerChanged) this.report();
     };
   }
 
-  private account(): void {
-    const now = performance.now();
-    this.durations[this.timingPhase] += Math.max(0, now - this.changedAt);
-    this.changedAt = now;
-  }
-
-  private report(complete = false, admitted = false): void {
-    this.account();
-    const timing: InferenceCommandTiming = {
-      queueWaitMs: Math.floor(this.durations.queueWaitMs),
-      preparationMs: Math.floor(this.durations.preparationMs),
-      executionMs: Math.floor(this.durations.executionMs),
-      suspendedMs: Math.floor(this.durations.suspendedMs),
-      complete,
-    };
+  private report(final = false, admitted = false): void {
     // Reporting never owns or mutates admission, including when delivery fails.
     try {
       this.emit({
         type: "inference.command-state",
         sequence: this.sequence++,
-        state: this.phase,
-        timing,
+        state: this.clock.state,
+        timing: this.clock.snapshot(final),
+        providerTimings: [...this.providers].map(([providerId, clock]) => ({
+          providerId,
+          timing: clock.snapshot(final),
+        })),
         ...(admitted ? { admitted: true } : {}),
       });
     } catch {}
@@ -105,17 +137,18 @@ class InferenceCommand {
 
   close(): void {
     if (this.closed) return;
-    // A command can fail while native settlement is still being reconciled.
-    // Do not advertise that partial observation as a completed turn sample.
-    if (this.observed) this.report(this.operations.size === 0);
+    if (this.observed) this.report(true);
     this.closed = true;
-    this.operations.clear();
+    this.clock.clear();
+    for (const clock of this.providers.values()) clock.clear();
+    this.providers.clear();
   }
 }
 
-export function observeInferenceCommand():
-  ((state: InferenceTicketState) => void) | undefined {
-  return commands.getStore()?.observe();
+export function observeInferenceCommand(
+  providerId?: string,
+): ((state: InferenceTicketState) => void) | undefined {
+  return commands.getStore()?.observe(providerId);
 }
 
 export function observeInferenceCommandAdmission(): (() => void) | undefined {

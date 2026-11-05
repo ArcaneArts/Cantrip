@@ -14,6 +14,7 @@ import {
   type RemoteSurfaceFrameHeader,
   type TunnelDataPlaneFrameHeader,
   type InferenceCommandTiming,
+  type InferenceProviderCommandTiming,
   type WorkerCommand,
   type WorkerEvent,
   type WorkerNotification,
@@ -126,7 +127,11 @@ export interface WorkerCommandBusStats {
 
 export interface WorkerRequestOptions {
   onEvent?(event: WorkerEvent): Promise<void> | void;
-  onInferenceTiming?(timing: InferenceCommandTiming, sequence: number): void;
+  onInferenceTiming?(
+    timing: InferenceCommandTiming,
+    sequence: number,
+    providerTimings?: readonly InferenceProviderCommandTiming[],
+  ): void;
   ownerId?: string;
   timeoutMs?: number | null;
   /** Internal relay hop only; domain consumers do not observe clock-control events. */
@@ -494,7 +499,11 @@ export class WorkerBridge implements WorkerCommandBus {
       pending.deadline.observe(event.sequence, event.state);
       if (event.timing) {
         try {
-          pending.onInferenceTiming?.(event.timing, event.sequence);
+          pending.onInferenceTiming?.(
+            event.timing,
+            event.sequence,
+            event.providerTimings,
+          );
         } catch {}
       }
       if (!pending.forwardInferenceTiming && event.admitted !== true) return;

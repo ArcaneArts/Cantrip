@@ -1,5 +1,6 @@
 import {
   inferenceCommandTimingSchema,
+  inferenceProviderCommandTimingSchema,
   workerInferenceStatusSchema,
 } from "./inference-admission.js";
 import { inferenceFailureEvidenceSchema } from "./inference-failure.js";
@@ -247,6 +248,10 @@ export const workerEventSchema = z.discriminatedUnion("type", [
       /** The correlated operation is durably owned by worker admission. */
       admitted: z.literal(true).optional(),
       timing: inferenceCommandTimingSchema.optional(),
+      providerTimings: z
+        .array(inferenceProviderCommandTimingSchema)
+        .max(10_000)
+        .optional(),
     })
     .strict(),
   z
