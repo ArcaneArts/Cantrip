@@ -13,6 +13,8 @@ import {
 } from "./tunnel-data-protection.js";
 import type { TunnelTcpDestinationAdapter } from "./tunnel-tcp-adapter.js";
 import type { WorkerEncryptionService } from "./worker-encryption.js";
+import type { OsTunnelServices } from "./os-executor/tunnel-services.js";
+import type { TunnelStreamSocket } from "./tunnel-tcp-adapter.js";
 
 type FrameEmitter = (
   header: TunnelDataPlaneFrameHeader,
@@ -66,6 +68,7 @@ export class TunnelDestinationRouter {
     private readonly projectShares: ProjectShareManager,
     private readonly encryption: WorkerEncryptionService,
     private readonly workerId: string,
+    private readonly osServices?: OsTunnelServices,
   ) {}
 
   setFrameEmitter(emit: FrameEmitter, waitForCapacity: CapacityWaiter): void {
@@ -219,6 +222,36 @@ export class TunnelDestinationRouter {
       }
       reasonCode = "target-kind-mismatch";
       if (
+        Boolean(this.osServices?.isGuest(header.attachmentId)) !==
+        (content.destination.kind === "worker-os-tcp")
+      )
+        throw new Error(
+          "The tunnel's canonical Host/guest destination does not match its encrypted record.",
+        );
+      if (
+        content.destination.kind === "worker-os-tcp" &&
+        header.target.targetKind === "tcp"
+      ) {
+        reasonCode = "tcp-target-handoff-failed";
+        const socket = await this.osServices!.open(
+          header.attachmentId,
+          header.tunnelId,
+          header.target.protectedRecord,
+          content,
+        );
+        this.#handoffProtectedConnect(
+          key,
+          generation,
+          header,
+          payload,
+          content.dataProtection,
+          diagnostics,
+          undefined,
+          socket,
+        );
+        return;
+      }
+      if (
         content.destination.kind === "worker-tcp" &&
         header.target.targetKind === "tcp"
       ) {
@@ -331,14 +364,19 @@ export class TunnelDestinationRouter {
     configuration: TunnelDataProtectionConfiguration,
     diagnostics: TunnelDiagnosticContext,
     onConnected?: (remotePort: number) => void,
+    prepared?: TunnelStreamSocket,
   ): void {
-    if (!this.#isPendingProtection(key, generation)) return;
+    if (!this.#isPendingProtection(key, generation)) {
+      prepared?.destroy();
+      return;
+    }
     this.#protections.set(key, {
       configuration,
       diagnosticTraceId: diagnostics.diagnosticTraceId,
       targetKind: "tcp",
     });
-    this.tcp.handleFrame(header, payload, onConnected);
+    if (prepared) this.tcp.connectPrepared(header, prepared);
+    else this.tcp.handleFrame(header, payload, onConnected);
     this.#finishPendingProtection(key, generation);
   }
 

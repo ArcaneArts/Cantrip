@@ -226,3 +226,33 @@ sudo python3 remote-services.py --workspace cua-a --other-workspace cua-b
 The test uses real SSH/SFTP clients, a binary TCP server, VNC 3.8 negotiation,
 actual process pidfds and service retirement. It does not substitute direct
 guest ports for the protected carrier.
+
+## Managed TCP readiness (0.7.0)
+
+`service-connect --notify-ready` writes one fixed
+`CANTRIP_OS_SERVICE_READY <connection UUID>` line to stderr after the actual guest
+connection succeeds. Binary stdin/stdout is unchanged. Cantrip's Worker waits
+for this receipt before accepting a managed TCP stream; a refused port reports
+the real connection failure. Ordinary administrative callers may omit the flag.
+
+Cantrip's tunnel configuration now offers captured Linux workspaces alongside
+Host destinations. The Server admits the source and pins a hash of the observed
+service descriptor for that attachment. The Worker retains it through the
+signed WorkerLink grant, decrypts and compares the saved destination, and opens
+the exact guest stream. The existing encrypted tunnel data plane, bounded
+credits and duplex half-close carry its bytes. No Host loopback proxy substitutes
+for a guest connection. See the product workflow for setup and restart behavior.
+
+Actual transport acceptance runs with either fixture mechanism from above:
+
+```sh
+CANTRIP_OS_CUA_TEST_CONTAINER=disposable-container \
+  pnpm --dir cantrip_worker exec vitest run test/os-tunnels.integration.test.ts --maxWorkers=2
+```
+
+The opt-in app test `src/lib/os-tunnel.product.integration.test.ts` additionally
+uses a disposable private Server/Worker profile, its existing recovery artifact,
+and saved encrypted Host/Linux routes. It exercises actual API admission,
+WorkerLink grants and relay traffic. Keep that artifact private; this test never
+installs account keys or model credentials in the guest. Its two same-port
+services return different proof text so Host substitution fails visibly.

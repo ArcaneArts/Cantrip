@@ -315,6 +315,7 @@ import {
 import { TunnelTcpDestinationAdapter } from "./tunnel-tcp-adapter.js";
 import { TunnelDestinationRouter } from "./tunnel-destination-router.js";
 import { TunnelWorkerLinkAdapter } from "./tunnel-worker-link-adapter.js";
+import { OsTunnelServices } from "./os-executor/tunnel-services.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
 import { RemoteSurfaceWorkerLinkAdapter } from "./remote-surface-worker-link-adapter.js";
 import { WorkerObservationHub } from "./worker-observation-worker-link-adapter.js";
@@ -957,11 +958,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const pausedChats = new Set<string>();
   const projectShares = new ProjectShareManager();
   const tunnelTcpDestination = new TunnelTcpDestinationAdapter();
+  const osTunnelServices = new OsTunnelServices(
+    workerEncryption,
+    config.workerId,
+  );
   const tunnelDestinations = new TunnelDestinationRouter(
     tunnelTcpDestination,
     projectShares,
     workerEncryption,
     config.workerId,
+    osTunnelServices,
   );
   const skillManager = new SkillManager(config.dataDirectory);
   const remoteSurfaces = new RemoteSurfaceManager({
@@ -1119,6 +1125,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   );
   const tunnelWorkerLinkAdapter = new TunnelWorkerLinkAdapter(
     tunnelDestinations,
+    osTunnelServices,
   );
   workerLinkGateway.registerAdapter(tunnelWorkerLinkAdapter);
   const providerAuthObserver = new ProviderAuthObserver({
@@ -4882,6 +4889,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "terminal.service.restart":
         terminals.restartService(command.terminalId);
         return { accepted: true };
+      case "surface.tunnel.os-prepare":
+        return osTunnelServices.prepare(command);
       case "surface.attach":
       case "surface.detach":
       case "surface.configure":
@@ -7030,6 +7039,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       );
       managedGuiPreparations.disconnect();
       tunnelDestinations.disconnect();
+      void osTunnelServices.disconnect();
       directBroker.revokeAll();
       void workerLinkGateway.revokeAll("endpoint-disconnected");
       computerUseAgents.disconnect();
@@ -7049,6 +7059,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         else entry.publisher.wake();
       }
       osComputerUseServices.reconnect();
+      osTunnelServices.reconnect();
       providerAuthObserver.reemitAll();
     },
     {
@@ -7313,6 +7324,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       computerUsePreviewsClosed,
       computerUseAgentsClosed,
       osComputerUseServices.close(),
+      osTunnelServices.disconnect(),
     ]);
     requestRuntimeRestart = null;
     process.off("SIGINT", handleSigint);

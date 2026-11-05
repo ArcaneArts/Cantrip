@@ -52,6 +52,7 @@ import {
 import { errorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
 import { SettingsSearchField } from "./settings-controls";
+import { getCantripOsRunSources } from "@/lib/api/cantrip-os";
 
 const protocols: Array<{ label: string; value: TunnelProtocolHint }> = [
   { value: "tcp", label: "TCP" },
@@ -66,6 +67,7 @@ const inputClass =
   "h-9 w-full rounded-md border bg-background px-3 text-sm outline-none ring-ring focus:ring-2";
 
 interface TunnelDraft {
+  osSource: TunnelSummary["osSource"] | null;
   description: string;
   host: "127.0.0.1" | "localhost" | "::1";
   name: string;
@@ -77,6 +79,7 @@ interface TunnelDraft {
 
 function emptyDraft(projectId: string | null): TunnelDraft {
   return {
+    osSource: null,
     description: "",
     host: "127.0.0.1",
     name: "",
@@ -88,18 +91,36 @@ function emptyDraft(projectId: string | null): TunnelDraft {
 }
 
 function draftFor(tunnel: TunnelSummary): TunnelDraft {
-  if (tunnel.destination.kind !== "worker-tcp") {
+  if (
+    tunnel.destination.kind !== "worker-tcp" &&
+    tunnel.destination.kind !== "worker-os-tcp"
+  ) {
     return emptyDraft(tunnel.projectId);
   }
   return {
+    osSource:
+      tunnel.destination.kind === "worker-os-tcp"
+        ? tunnel.destination.source
+        : null,
     description: tunnel.description ?? "",
-    host: tunnel.destination.host,
+    host:
+      tunnel.destination.kind === "worker-tcp"
+        ? tunnel.destination.host
+        : "127.0.0.1",
     name: tunnel.name,
     port: String(tunnel.destination.port),
     projectId: tunnel.projectId ?? "",
     protocolHint: tunnel.protocolHint,
     workerId: tunnel.destination.workerId,
   };
+}
+
+function destinationLabel(destination: TunnelSummary["destination"]) {
+  if (destination.kind === "worker-os-tcp")
+    return `CantripOS · :${destination.port} · ${destination.source.worktreeId.slice(0, 8)}`;
+  return destination.kind === "worker-tcp"
+    ? `${destination.host}:${destination.port}`
+    : `${destination.adapter}:${destination.resourceId}`;
 }
 
 export function tunnelLocalUrl(
@@ -139,9 +160,7 @@ export function tunnelMatchesSearch(
     tunnel.projectId ? projects.get(tunnel.projectId) : "unspecified",
     destination.workerId,
     workers.get(destination.workerId),
-    destination.kind === "worker-tcp"
-      ? `${destination.host}:${destination.port}`
-      : `${destination.adapter}:${destination.resourceId}`,
+    destinationLabel(destination),
     tunnel.managedBy?.kind,
   ];
   return values.some((value) => value?.toLowerCase().includes(search));
@@ -261,19 +280,20 @@ function TunnelRows({
                 </div>
                 <p className="mt-1 truncate pl-6 font-mono text-[10px] text-muted-foreground">
                   {worker?.name ?? destination.workerId} ·{" "}
-                  {destination.kind === "worker-tcp"
-                    ? `${destination.host}:${destination.port}`
-                    : `${destination.adapter}:${destination.resourceId}`}
+                  {destinationLabel(destination)}
                 </p>
               </div>
               <div className="min-w-0 text-xs text-muted-foreground">
                 <span className="lg:hidden">Project · </span>
-                <span className="truncate">
+                <span className="block truncate">
                   {projectLabel(tunnel, projects)}
                 </span>
               </div>
               <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                 <Badge variant="secondary">{tunnel.protocolHint}</Badge>
+                {destination.kind === "worker-os-tcp" ? (
+                  <Badge variant="outline">CantripOS</Badge>
+                ) : null}
                 <Badge variant="outline">{managementLabel(tunnel)}</Badge>
               </div>
               <div className="min-w-0 text-xs">
@@ -436,6 +456,33 @@ export function TunnelSettings({
   const [draft, setDraft] = useState<TunnelDraft>(() =>
     emptyDraft(project?.id ?? null),
   );
+  const osSources = useQuery({
+    enabled: editorOpen && Boolean(draft.projectId),
+    queryKey: ["cantrip-os-tunnel-sources", draft.projectId],
+    queryFn: () => getCantripOsRunSources(draft.projectId),
+  });
+  const destinationCount =
+    (workers.data?.length ?? 0) +
+    (osSources.data?.length ?? 0) +
+    (draft.osSource &&
+    !(osSources.data ?? []).some(
+      (source) => source.binding.id === draft.osSource?.bindingId,
+    )
+      ? 1
+      : 0);
+  useEffect(() => {
+    if (
+      editorOpen &&
+      !editing &&
+      !draft.workerId &&
+      workers.data?.length === 1
+    ) {
+      const workerId = workers.data[0]!.workerId;
+      setDraft((current) =>
+        current.workerId ? current : { ...current, workerId },
+      );
+    }
+  }, [editorOpen, editing, draft.workerId, workers.data]);
   const [deleteTarget, setDeleteTarget] = useState<TunnelSummary | null>(null);
   const [startTarget, setStartTarget] = useState<TunnelSummary | null>(null);
   const [preferredPort, setPreferredPort] = useState("");
@@ -478,12 +525,19 @@ export function TunnelSettings({
         description: draft.description.trim() || null,
         projectId: draft.projectId || null,
         protocolHint: draft.protocolHint,
-        destination: {
-          kind: "worker-tcp" as const,
-          workerId: draft.workerId,
-          host: draft.host,
-          port,
-        },
+        destination: draft.osSource
+          ? {
+              kind: "worker-os-tcp" as const,
+              workerId: draft.workerId,
+              port,
+              source: draft.osSource,
+            }
+          : {
+              kind: "worker-tcp" as const,
+              workerId: draft.workerId,
+              host: draft.host,
+              port,
+            },
       };
       return editing
         ? updateTunnel(editing.id, common satisfies TunnelUserUpdate)
@@ -572,7 +626,10 @@ export function TunnelSettings({
 
   const openCreate = () => {
     setEditing(null);
-    setDraft(emptyDraft(project?.id ?? null));
+    setDraft({
+      ...emptyDraft(project?.id ?? null),
+      workerId: workers.data?.length === 1 ? workers.data[0]!.workerId : "",
+    });
     setEditorOpen(true);
   };
   const openEdit = (tunnel: TunnelSummary) => {
@@ -617,8 +674,8 @@ export function TunnelSettings({
             {project ? "Project tunnels" : "Tunnels"}
           </h2>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Saved and feature-managed routes through Cantrip. Project selection
-            is organizational; every destination worker is selected explicitly.
+            Saved and feature-managed routes through Cantrip. Each tunnel keeps
+            its selected Host or CantripOS destination.
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -772,8 +829,8 @@ export function TunnelSettings({
                 {editing ? "Edit tunnel" : "New tunnel"}
               </DialogTitle>
               <DialogDescription>
-                Project is only an organizational label. Choose the destination
-                worker and port independently.
+                Choose a Host service or a CantripOS workspace, then enter its
+                port.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -802,6 +859,7 @@ export function TunnelSettings({
                     setDraft((current) => ({
                       ...current,
                       projectId: event.target.value,
+                      osSource: null,
                     }))
                   }
                 >
@@ -814,28 +872,87 @@ export function TunnelSettings({
                 </NativeSelect>
               </label>
               <label className="grid gap-1.5 text-sm">
-                <span className="font-medium">Destination worker</span>
-                <NativeSelect
-                  className={inputClass}
-                  required
-                  value={draft.workerId}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      workerId: event.target.value,
-                    }))
-                  }
-                >
-                  <option value="" disabled>
-                    Select a worker
-                  </option>
-                  {(workers.data ?? []).map((worker) => (
-                    <option key={worker.workerId} value={worker.workerId}>
-                      {worker.name}
-                      {worker.online ? "" : " (offline)"}
+                <span className="font-medium">Destination</span>
+                {destinationCount === 1 && draft.workerId && !draft.osSource ? (
+                  <span className="flex h-9 items-center text-sm">
+                    {workerRecords.get(draft.workerId)?.name ?? draft.workerId}{" "}
+                    · Host
+                  </span>
+                ) : (
+                  <NativeSelect
+                    className={inputClass}
+                    required
+                    value={
+                      draft.osSource
+                        ? `os:${draft.osSource.bindingId}`
+                        : draft.workerId
+                          ? `host:${draft.workerId}`
+                          : ""
+                    }
+                    onChange={(event) => {
+                      const selected = event.target.value;
+                      const source = (osSources.data ?? []).find(
+                        (source) => `os:${source.binding.id}` === selected,
+                      );
+                      setDraft((current) =>
+                        source && source.instance.runtimeGeneration
+                          ? {
+                              ...current,
+                              workerId: source.instance.workerId,
+                              osSource: {
+                                bindingId: source.binding.id,
+                                worktreeId: source.binding.worktreeId,
+                                bindingGeneration:
+                                  source.binding.bindingGeneration,
+                                attachmentGeneration:
+                                  source.instance.attachmentGeneration,
+                                runtimeGeneration:
+                                  source.instance.runtimeGeneration,
+                              },
+                            }
+                          : {
+                              ...current,
+                              workerId: selected.replace(/^host:/, ""),
+                              osSource: null,
+                            },
+                      );
+                    }}
+                  >
+                    <option value="" disabled>
+                      Select a destination
                     </option>
-                  ))}
-                </NativeSelect>
+                    {(workers.data ?? []).map((worker) => (
+                      <option
+                        key={worker.workerId}
+                        value={`host:${worker.workerId}`}
+                      >
+                        {worker.name} · Host
+                        {worker.online ? "" : " (offline)"}
+                      </option>
+                    ))}
+                    {(osSources.data ?? []).map((source) => (
+                      <option
+                        key={source.binding.id}
+                        value={`os:${source.binding.id}`}
+                        disabled={!source.instance.runtimeGeneration}
+                      >
+                        CantripOS · {source.instance.name} /{" "}
+                        {source.workspace.guestWorkspaceId} ·{" "}
+                        {source.binding.worktreeId.slice(0, 8)}
+                      </option>
+                    ))}
+                    {draft.osSource &&
+                    !(osSources.data ?? []).some(
+                      (source) =>
+                        source.binding.id === draft.osSource?.bindingId,
+                    ) ? (
+                      <option value={`os:${draft.osSource.bindingId}`}>
+                        CantripOS · captured source{" "}
+                        {draft.osSource.worktreeId.slice(0, 8)}
+                      </option>
+                    ) : null}
+                  </NativeSelect>
+                )}
               </label>
               <label className="grid gap-1.5 text-sm">
                 <span className="font-medium">Protocol</span>
@@ -856,23 +973,29 @@ export function TunnelSettings({
                   ))}
                 </NativeSelect>
               </label>
-              <label className="grid gap-1.5 text-sm">
-                <span className="font-medium">Worker host</span>
-                <NativeSelect
-                  className={inputClass}
-                  value={draft.host}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      host: event.target.value as TunnelDraft["host"],
-                    }))
-                  }
-                >
-                  <option value="127.0.0.1">127.0.0.1</option>
-                  <option value="localhost">localhost</option>
-                  <option value="::1">::1</option>
-                </NativeSelect>
-              </label>
+              {!draft.osSource ? (
+                <label className="grid gap-1.5 text-sm">
+                  <span className="font-medium">Worker host</span>
+                  <NativeSelect
+                    className={inputClass}
+                    value={draft.host}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        host: event.target.value as TunnelDraft["host"],
+                      }))
+                    }
+                  >
+                    <option value="127.0.0.1">127.0.0.1</option>
+                    <option value="localhost">localhost</option>
+                    <option value="::1">::1</option>
+                  </NativeSelect>
+                </label>
+              ) : (
+                <p className="self-end pb-2 text-xs text-muted-foreground">
+                  Connects to this workspace's Linux loopback address.
+                </p>
+              )}
               <label className="grid gap-1.5 text-sm">
                 <span className="font-medium">Destination port</span>
                 <input

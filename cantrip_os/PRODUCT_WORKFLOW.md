@@ -277,3 +277,34 @@ The Server resolves definition Primary within that source and workspace.
 Retain the same operation UUID and request after an uncertain write. The client
 and Worker retain this admission for observation rather than starting another
 mutation. A changed source epoch fails before dispatch.
+
+## Forward a Linux development service
+
+With remote package 0.7.0 installed, start the service in the intended Linux
+workspace, for example `python -m http.server 3000 --bind 127.0.0.1` in its
+captured Linux terminal. The service does not require a running desktop.
+
+Open **Project Settings → Tunnels → New tunnel**. Choose the intended
+**CantripOS** workspace/checkout as this tunnel's destination, enter port `3000`,
+and save. Host and Linux routes share one list; Linux rows carry a CantripOS
+badge. Each route keeps its own destination rather than following a global
+Host/Linux selection.
+
+In the Cantrip desktop app, start that tunnel to attach a local loopback port.
+Use its displayed endpoint to open the development service; Stop disconnects
+that device's attachment. Browser clients can manage definitions but do not
+create local OS listeners.
+
+A saved Linux route captures its binding, worktree and attachment/runtime
+generations. Its port and data protection remain encrypted. The Server resolves
+current canonical authority and the Worker opens the guest service through the
+optional package. No guest port is published on the Docker host for this path.
+A stale source fails without trying the same port on Host or another workspace.
+An attachment also pins the remote-service generation: after remote support is
+restarted, Stop and explicitly start a fresh attachment. After the OS runtime
+changes, explicitly select the current workspace when editing a stopped route.
+
+This milestone covers TCP/HTTP service forwarding. Managed SSH/SFTP and VNC
+connections and explicit forwarding from Guest to Host are subsequent Phase 4
+milestones; the administrative package carriers alone do not provide those
+product workflows.

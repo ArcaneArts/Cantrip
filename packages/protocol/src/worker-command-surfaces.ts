@@ -1,4 +1,5 @@
 import { cantripOsExecutionSchema } from "./worker-command-cantrip-os.js";
+import { protectedTunnelContentRecordSchema } from "./tunnel-content.js";
 import { z } from "zod";
 import {
   managedSessionContextSchema,
@@ -37,6 +38,26 @@ import {
 } from "./worker-runtime-support.js";
 
 export const workerSurfaceCommandSchemas = [
+  z
+    .strictObject({
+      type: z.literal("surface.tunnel.os-prepare"),
+      serverId: z.string().min(1).max(2_000),
+      projectId: z.string().min(1),
+      tunnelId: z.uuid(),
+      attachmentId: z.uuid(),
+      grantId: z.uuid(),
+      expiresAt: z.iso.datetime(),
+      expectedIdentity: z
+        .string()
+        .regex(/^[a-f0-9]{64}$/)
+        .nullable(),
+      protectedRecord: protectedTunnelContentRecordSchema,
+      osExecution: cantripOsExecutionSchema,
+    })
+    .refine(
+      (command) => command.projectId === command.osExecution.scope.projectId,
+      { message: "The OS tunnel must match its canonical project source." },
+    ),
   z
     .strictObject({
       type: z.literal("surface.desktop.os-prepare"),

@@ -517,6 +517,7 @@ const agentChatExports = [
 ].sort();
 
 const cantripOsExports = [
+  "tunnelOsPrepareResultSchema",
   "cantripOsDesktopPlacement",
   "cantripOsDesktopPlacementSchema",
   "cantripOsRunDefinitionRequestSchema",
@@ -600,6 +601,10 @@ const endpointProviderExports = [
 
 // Reviewed native recovery identities/results and additive timing metadata.
 const inferenceRecoveryExports = [
+  "TASK_GOAL_OUTCOME_MAX_BYTES",
+  "inferenceNativeExecutionSchema",
+  "taskGoalOutcomeCommitSchema",
+  "taskGoalOutcomeDeliverySchema",
   "inferenceFailureEvidenceSchema",
   "inferenceJournalIdentitySchema",
   "inferenceJournalRecordSchema",
@@ -799,14 +804,18 @@ describe("protocol public surface compatibility", () => {
     const advertisedCommandTypes = workerCommandSchema.options.map(
       (option) => option.shape.type.value,
     );
-    // Reviewed additive desktop preparation leaves every legacy order/fingerprint intact.
+    // Reviewed additive OS preparation leaves every legacy order/fingerprint intact.
     expect(
       advertisedCommandTypes.filter(
-        (type) => type === "surface.desktop.os-prepare",
+        (type) =>
+          type === "surface.desktop.os-prepare" ||
+          type === "surface.tunnel.os-prepare",
       ),
-    ).toEqual(["surface.desktop.os-prepare"]);
+    ).toEqual(["surface.tunnel.os-prepare", "surface.desktop.os-prepare"]);
     const inferenceStatusCommandTypes = advertisedCommandTypes.filter(
-      (type) => type !== "surface.desktop.os-prepare",
+      (type) =>
+        type !== "surface.desktop.os-prepare" &&
+        type !== "surface.tunnel.os-prepare",
     );
     expect(inferenceStatusCommandTypes).toHaveLength(295);
     expect(inferenceStatusCommandTypes[6]).toBe("inference.status");

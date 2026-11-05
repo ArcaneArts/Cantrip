@@ -280,6 +280,7 @@ export const contractRoots = [
   "surfaceStreamWireRequestSchema",
   "surfaceStreamWireResponseSchema",
   "tunnelUserWireCreateSchema",
+  "tunnelOsPrepareResultSchema",
   "tunnelUserWireUpdateSchema",
   "tunnelWireSummarySchema",
   "tunnelWireListSchema",
@@ -1043,6 +1044,7 @@ registerChecks(protocol.browserServiceSchema.shape.url, [
   "browser-service-http-url",
 ]);
 registerChecks(protocol.tunnelUserWireCreateSchema, [
+  "tunnel-os-source",
   "tunnel-create-operation",
   "tunnel-create-revision",
 ]);

@@ -8,6 +8,7 @@ import {
   encryptedChatCreateSchema,
   cantripOsSourceReceiptSchema,
   cantripOsDesktopPlacement,
+  tunnelUserWireCreateSchema,
 } from "@cantrip/protocol";
 import { ServerRepository } from "../src/db/repository.js";
 import { computerUsePreviewAuthority } from "../src/app/routes/computer-use-preview.js";
@@ -103,6 +104,108 @@ it("captures an OS binding before native preparation and preserves lane identity
         }),
       },
     );
+    const tunnelId = randomUUID();
+    const tunnelInput = tunnelUserWireCreateSchema.parse({
+      id: tunnelId,
+      projectId: "project",
+      protocolHint: "tcp",
+      destination: {
+        kind: "worker-adapter",
+        workerId: "worker",
+        adapter: "cantrip-os",
+        resourceId: tunnelId,
+      },
+      osSource: {
+        bindingId: binding.id,
+        worktreeId: binding.worktreeId,
+        bindingGeneration: binding.bindingGeneration,
+        attachmentGeneration: attached.attachmentGeneration,
+        runtimeGeneration: generation,
+      },
+      protectedRecord: {
+        operationId: tunnelId,
+        revision: 1,
+        protectedContent: {
+          formatVersion: 1,
+          domain: "tunnel-content",
+          keyRevision: 1,
+          envelope: {
+            version: 1,
+            algorithm: "AES-256-GCM",
+            keyRevision: 1,
+            nonce: "AAAAAAAAAAAAAAAA",
+            ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+          },
+        },
+      },
+    });
+    const tunnel = await repository.tunnels.createUserTunnel(
+      "owner",
+      tunnelInput,
+    );
+    expect(tunnel?.osSource).toEqual(tunnelInput.osSource);
+    const lease = {
+      clientId: "guest-client",
+      expiresAt: new Date(Date.now() + 120_000),
+      secretExpiresAt: new Date(Date.now() + 120_000),
+      secretHash: "a".repeat(64),
+    };
+    const attachment = await repository.tunnels.createDesktopTunnelAttachment(
+      "owner",
+      tunnelId,
+      lease,
+    );
+    const authorization = (await repository.tunnels.getDesktopTunnelAttachment(
+      "owner",
+      attachment!.attachmentId,
+    ))!;
+    expect(authorization).toMatchObject({
+      osSource: tunnelInput.osSource,
+      osServiceIdentity: null,
+    });
+    expect(
+      await repository.tunnels.resolveOsExecution(authorization),
+    ).toMatchObject({
+      scope: { bindingId: binding.id, runtimeGeneration: generation },
+    });
+    expect(
+      await repository.tunnels.pinOsServiceIdentity(
+        authorization,
+        "a".repeat(64),
+      ),
+    ).toBe(true);
+    expect(
+      await repository.tunnels.pinOsServiceIdentity(
+        authorization,
+        "b".repeat(64),
+      ),
+    ).toBe(false);
+    expect(
+      await repository.tunnels.getDesktopTunnelAttachment(
+        "other",
+        attachment!.attachmentId,
+      ),
+    ).toBeNull();
+    await repository.tunnels.createDesktopTunnelAttachment(
+      "owner",
+      tunnelId,
+      lease,
+    );
+    expect(
+      await repository.tunnels.getDesktopTunnelAttachment(
+        "owner",
+        attachment!.attachmentId,
+      ),
+    ).toMatchObject({ osServiceIdentity: "a".repeat(64) });
+    await expect(
+      repository.tunnels.createUserTunnel("other", tunnelInput),
+    ).rejects.toThrow();
+    await expect(
+      repository.tunnels.createUserTunnel("owner", {
+        ...tunnelInput,
+        osSource: { ...tunnelInput.osSource!, runtimeGeneration: randomUUID() },
+      }),
+    ).rejects.toThrow(/unavailable|changed/);
     const input = encryptedChatCreateSchema.parse({
       ...protectedChatFields(),
       attachToTabLayout: false,
@@ -439,6 +542,9 @@ it("captures an OS binding before native preparation and preserves lane identity
       { status: "connected", runtimeGeneration: randomUUID(), lastError: null },
       generation,
     );
+    await expect(
+      repository.tunnels.resolveOsExecution(authorization),
+    ).rejects.toThrow(/unavailable or changed/);
     await expect(
       repository.getChatExecutionContext("owner", input.id),
     ).rejects.toThrow(/unavailable or changed/);

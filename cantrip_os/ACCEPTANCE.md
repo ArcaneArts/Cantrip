@@ -1959,3 +1959,88 @@ local `phase4-access` artifacts.
 Managed product SSH/SFTP/VNC/TCP routes, explicit guest-to-Host forwarding,
 comparative stream/resource measurements and refreshed Docker/ISO acceptance
 remain necessary before Phase 4 is complete.
+
+## Phase 4: managed Linux TCP product checkpoint (2026-11-05)
+
+Remote 0.7.0 and the existing tunnel product now carry services in an explicitly
+captured Linux workspace. The same list includes Host routes and Linux routes
+with a CantripOS badge. A per-route destination captures binding/worktree and
+binding, attachment and runtime generations. The Server resolves execution
+through canonical OS ownership and pins a hash of the actual guest descriptor.
+The protected record retains the private port; browser frames cannot supply
+administrative transports or replace the captured destination.
+
+The Worker connects through the package's protected root carrier and waits for
+an actual readiness receipt before accepting a stream. Its signed grant retains
+a guest-only marker even during retirement. Existing encrypted tunnel frames,
+credit limits and half-close are reused, without a temporary Host TCP proxy.
+Package restart changes the pinned descriptor; explicit Stop/Start is required
+rather than silently following another remote-service generation.
+
+The actual App API/WorkerLink/Worker/package path passed in a disposable private
+PostgreSQL product profile. A Host HTTP server and a Linux HTTP server listened
+on the same port (51458). The Host route returned a distinct shadow response;
+the Linux route returned its own proof file and never the Host response. Saved
+records were opened with the profile's existing endpoint keys on Host; no key or
+model credential was copied to Linux. The test uses the production WorkerLink
+client and real relay carrier. Codex's in-app browser created both definitions
+and verified the combined list. It truthfully disables local port listeners in
+the browser; this is not a claim that Native desktop listener UI was exercised.
+The opt-in test source is `cantrip_app/src/lib/os-tunnel.product.integration.test.ts`.
+
+Both ARM64 Docker and the installed emulated AMD64 guest passed two real
+Worker/package integration cases. They transferred more than 1 MiB, received
+the complete binary reply after request EOF, and exercised encrypted endpoint
+records and frames. An authentic encrypted Host destination substituted on a
+signed Linux channel was rejected without calling the Host connector, including
+after guest preparation retirement while that channel still existed. Revoking
+an unopened preparation and a wrong service-identity pin were also rejected.
+These acceptance durations are not stream benchmarks.
+
+Both Native PGlite and PostgreSQL repository tests passed with the new Linux
+route assertions: source capture, canonical execution, wrong-owner/stale-source
+rejection, legacy secret-path rejection, service-identity compare-and-set and
+credential rotation retaining that pin. The first Native PGlite attempt failed
+because its default extracted-runtime cache was invalid; a dedicated fresh
+runtime directory passed the same real test. Native protocol comparison passed
+four cases across the tunnel and OS contract suites, including the fourteen
+new wire vectors. An initial test used an unexported native schema root; it was
+corrected to the actual Worker request envelope, without changing production
+validation to accommodate the test.
+
+Focused local regressions passed: Protocol 8 tests, Worker tunnel suites 45,
+Server control plane/source capture/project share 25, App tunnel/UI suites 16,
+and OS scripts 7. Actual App `tsc -b` and Worker typechecks passed. Native Server
+build and repository/contract checks passed. Strict all-target Native Clippy
+failed on unchanged Goal synchronization/input lints; Server TypeScript failed
+on unchanged Task Goal `project_worktrees` references (also present in Primary).
+Required `pnpm check` stopped at unchanged decomposition budgets (1514/1500 and
+2199/1999). These failures are recorded, not counted as passing checks.
+
+| Package            | Bytes   | SHA-256                                                            |
+| ------------------ | ------- | ------------------------------------------------------------------ |
+| ARM64 remote 0.7.0 | 1838536 | `724e9c0b25df274ecba9b343c5a351dcccefdd1acbcbb356a6a63a06db9e9968` |
+| AMD64 remote 0.7.0 | 2088268 | `3676b9a4f4f8bdd73f81017d7d93eb4e60e608e6e558e3f049cd10c9f58b1feb` |
+
+Both packages built and were installed on their real guest fixtures; the private
+product guest was upgraded to 0.7.0 with workspace/desktop data retained. The
+full destructive package lifecycle suite passed in the preceding 0.6.0 milestone;
+this cycle's 0.7.0 delta is the optional readiness receipt, tested through the
+actual binary streams. Refreshed image/ISO lifecycle acceptance remains pending.
+Named logs, both packages and the product screenshot are retained in ignored
+local artifacts. Full Phase 4 remains active: managed SSH/SFTP/VNC, explicit
+Guest-to-Host forwarding, comparative stream/resource measurements and final
+Docker/ISO live/install/diskboot acceptance remain required.
+
+Rebase follow-up: Main had taken migration 256 for Task Goal message receipts.
+This milestone now uses 257; both fresh Native repository databases and the
+actual product test passed again on the rebased source. The disposable product
+database was backed up before reconciling its earlier development migration.
+The protocol export baseline now explicitly reviews Main's four added inference
+and Goal outcome exports while retaining the old fingerprint. App typechecking
+passed again. Worker typechecking, which passed before rebase, now reports one
+unchanged Main error at `transport.ts:963` (missing logging `subsystem`); the
+new OS forwarding code reports no type errors. Native compilation also reports
+Main's unused Goal `lease` warning. Rebased strict Clippy failed on that warning
+and the same two Goal lints; rebased `pnpm check` reports 1515/1500 and 2199/1999.
+These upstream diagnostics remain visible.

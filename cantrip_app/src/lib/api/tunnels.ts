@@ -26,6 +26,7 @@ import { clientEncryption } from "@/lib/client-encryption";
 import { getActiveServerUrl } from "@/lib/server-connections";
 import { ensureEndpointContentWorkerEncryption } from "@/lib/endpoint-content-worker-encryption";
 import { getWorkers } from "./worker-wire";
+import { tunnelPublicDestinationEndpoint } from "@cantrip/protocol/tunnel-content";
 
 export async function getTunnels(projectId?: string) {
   const tunnels = tunnelWireListSchema.parse(
@@ -97,10 +98,10 @@ export async function createTunnel(input: TunnelUserCreate) {
         id,
         projectId: parsed.projectId,
         protocolHint: parsed.protocolHint,
-        destination: {
-          kind: parsed.destination.kind,
-          workerId: parsed.destination.workerId,
-        },
+        destination: tunnelPublicDestinationEndpoint(parsed.destination, id),
+        ...(parsed.destination.kind === "worker-os-tcp"
+          ? { osSource: parsed.destination.source }
+          : {}),
         protectedRecord,
       }),
     ),
@@ -125,7 +126,10 @@ export async function updateTunnel(tunnelId: string, input: TunnelUserUpdate) {
   });
   const current = await openTunnelSummary(currentWire);
   const destination = parsed.destination ?? current.destination;
-  if (destination.kind !== "worker-tcp") {
+  if (
+    destination.kind !== "worker-tcp" &&
+    destination.kind !== "worker-os-tcp"
+  ) {
     throw new Error("User tunnels require a worker TCP destination.");
   }
   await ensureTunnelWorker(destination.workerId);
@@ -160,10 +164,12 @@ export async function updateTunnel(tunnelId: string, input: TunnelUserUpdate) {
             ? {}
             : {
                 destination: {
-                  kind: destination.kind,
-                  workerId: destination.workerId,
+                  ...tunnelPublicDestinationEndpoint(destination, tunnelId),
                 },
               }),
+          ...(destination.kind === "worker-os-tcp"
+            ? { osSource: destination.source }
+            : {}),
           protectedRecord,
         }),
       ),

@@ -236,4 +236,44 @@ describe("tunnel settings", () => {
     expect(markup).toContain("Managed by browser");
     expect(markup).toContain("Local port attachments are available");
   });
+
+  it("shows Host and captured Linux routes together and searches the Linux destination", () => {
+    const source = {
+      bindingId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      worktreeId: "worktree-linux",
+      bindingGeneration: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      attachmentGeneration: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      runtimeGeneration: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    };
+    const host = tunnel("host", { name: "Host preview" });
+    const linux = tunnel("linux", {
+      name: "Linux preview",
+      osSource: source,
+      destination: {
+        kind: "worker-os-tcp",
+        workerId: "worker-1",
+        port: 3_000,
+        source,
+      },
+    });
+    expect(tunnelMatchesSearch(linux, "cantripos", new Map(), new Map())).toBe(
+      true,
+    );
+    expect(tunnelMatchesSearch(linux, "3000", new Map(), new Map())).toBe(true);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    client.setQueryData(["tunnels"], [host, linux]);
+    client.setQueryData(["projects"], []);
+    client.setQueryData(["workers"], []);
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TunnelSettings />
+      </QueryClientProvider>,
+    );
+    expect(markup).toContain("Host preview");
+    expect(markup).toContain("Linux preview");
+    expect(markup).toContain("CantripOS");
+    expect(markup).toContain(":3000");
+  });
 });

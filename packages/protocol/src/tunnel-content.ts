@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { endpointContentOpaqueSchema } from "./endpoint-content.js";
+import { cantripOsTcpDestinationSchema } from "./cantrip-os-tunnels.js";
 
 const tunnelContentIdSchema = z.string().trim().min(1).max(200);
 const tunnelContentHostSchema = z.enum(["127.0.0.1", "localhost", "::1"]);
@@ -42,6 +43,7 @@ export const tunnelContentSourceEndpointSchema = z.discriminatedUnion("kind", [
 export const tunnelContentDestinationEndpointSchema = z.discriminatedUnion(
   "kind",
   [
+    cantripOsTcpDestinationSchema,
     z
       .object({
         kind: z.literal("worker-tcp"),
@@ -135,7 +137,7 @@ export const tunnelPublicDestinationEndpointSchema = z.discriminatedUnion(
       .object({
         kind: z.literal("worker-adapter"),
         workerId: tunnelContentIdSchema,
-        adapter: z.enum(["project-share"]),
+        adapter: z.enum(["project-share", "cantrip-os"]),
         resourceId: tunnelContentIdSchema,
       })
       .strict(),
@@ -153,7 +155,20 @@ export function tunnelPublicSourceEndpoint(
 
 export function tunnelPublicDestinationEndpoint(
   destination: TunnelContentDestinationEndpoint,
+  tunnelId?: string,
 ): TunnelPublicDestinationEndpoint {
+  if (destination.kind === "worker-os-tcp") {
+    if (!tunnelId)
+      throw new Error(
+        "OS tunnel destinations require their canonical tunnel ID.",
+      );
+    return {
+      kind: "worker-adapter",
+      workerId: destination.workerId,
+      adapter: "cantrip-os",
+      resourceId: tunnelId,
+    };
+  }
   if (destination.kind === "worker-tcp") {
     return { kind: destination.kind, workerId: destination.workerId };
   }
