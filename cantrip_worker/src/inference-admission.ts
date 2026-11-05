@@ -94,6 +94,9 @@ export interface InferenceTicket {
   readonly ready: Promise<InferenceLease>;
   status(): InferenceOperationStatus;
   cancel(reason?: Error): void;
+  /** Seal this exact unused reservation before returning durable no-start
+   * evidence. This is not permission to replay its canonical input. */
+  withdrawUnstarted(): Promise<InferenceJournalRecord>;
 }
 
 export interface InferenceRuntime {
@@ -152,6 +155,8 @@ interface Ticket {
   durableQueueReady: boolean;
   nativeExecution: InferenceNativeExecution | null;
   nativeBinding: Promise<void> | null;
+  releaseReceipt: Promise<InferenceJournalRecord> | null;
+  withdrawal: Promise<InferenceJournalRecord> | null;
 }
 
 export interface InferenceDiagnostic {
@@ -693,10 +698,13 @@ export class WorkerInferenceAdmission {
       durableQueueReady: !this.journal,
       nativeExecution: null,
       nativeBinding: null,
+      releaseReceipt: null,
+      withdrawal: null,
       handle: {
         ready,
         status: () => this.status(ticket),
         cancel: (reason) => this.cancel(ticket, reason),
+        withdrawUnstarted: () => this.withdrawUnstarted(ticket),
       },
       lease: {
         id: randomUUID(),
@@ -845,6 +853,53 @@ export class WorkerInferenceAdmission {
     ticket.controller.abort(reason);
   }
 
+  private withdrawUnstarted(ticket: Ticket): Promise<InferenceJournalRecord> {
+    if (ticket.withdrawal) return ticket.withdrawal;
+    if (
+      !this.journal ||
+      !ticket.journalKey ||
+      !["waiting", "granted"].includes(ticket.state) ||
+      ticket.startedAt !== null ||
+      ticket.nativeExecution ||
+      ticket.recoveryPending
+    )
+      throw new Error(
+        "Only an unused, durably owned inference reservation can be withdrawn.",
+      );
+    // No await separates the state check from cancellation. A pending grant ACK
+    // cannot revive this reservation, and a previously resolved ready promise
+    // cannot start it after its lease signal is aborted.
+    this.cancel(
+      ticket,
+      new Error("Unstarted inference reservation withdrawn."),
+    );
+    ticket.withdrawal = ticket.releaseReceipt!.then((record) => {
+      if (
+        record.key !== ticket.journalKey ||
+        record.workerGeneration !== this.scope.workerGeneration ||
+        record.identity.runtimeGeneration !== ticket.runtime.generation ||
+        record.identity.operationId !== ticket.input.operationId ||
+        record.identity.providerId !== ticket.input.providerId ||
+        recoveryIdentity(record.identity.recovery) !==
+          recoveryIdentity(ticket.input.recovery) ||
+        record.identity.recoveryKey !== (ticket.input.recoveryKey ?? null) ||
+        record.identity.chatId !== (ticket.input.chatId ?? null) ||
+        record.identity.projectId !== (ticket.input.projectId ?? null) ||
+        record.state !== "released" ||
+        record.outcome !== "never-started" ||
+        record.nativeExecution
+      )
+        throw new Error(
+          "Inference withdrawal did not receive its exact durable no-start receipt.",
+        );
+      return record;
+    });
+    // A lost journal acknowledgement leaves the operation sealed, without
+    // inventing proof. Retrying this same owner observes the same result.
+    void ticket.withdrawal.catch(() => {});
+    return ticket.withdrawal;
+  }
+
   private suspend(ticket: Ticket): void {
     if (ticket.state === "suspended") return;
     if (ticket.state !== "running" && ticket.state !== "cancelling")
@@ -923,10 +978,12 @@ export class WorkerInferenceAdmission {
   private release(ticket: Ticket, outcome: InferenceSettlement): void {
     this.transition(ticket, "released");
     this.diagnose(ticket, "released", outcome);
-    if (this.journal && ticket.journalKey)
-      void this.journal
-        .release(ticket.journalKey, outcome)
-        .catch((error) => this.reportJournalError(error));
+    if (this.journal && ticket.journalKey) {
+      ticket.releaseReceipt = this.journal.release(ticket.journalKey, outcome);
+      void ticket.releaseReceipt.catch((error) =>
+        this.reportJournalError(error),
+      );
+    }
     ticket.observe?.(ticket.state);
     ticket.observe = undefined;
     ticket.admitted = undefined;

@@ -4,6 +4,7 @@ import type {
 } from "@cantrip/protocol";
 import {
   recoveryIdentity,
+  type InferenceJournalRecord,
   type InferenceRecoveryIdentity,
 } from "../inference-journal.js";
 import type {
@@ -37,6 +38,7 @@ interface Operation {
   lease: InferenceLease | null;
   settlement: Promise<void>;
   resolveSettlement(): void;
+  withdrawal?: Promise<InferenceJournalRecord>;
 }
 
 export interface CodexInferenceExecution {
@@ -134,6 +136,10 @@ export class CodexInferenceAdmission {
   private readonly sourceLifetimes = new WeakMap<
     InferenceOperationSource,
     InferenceOperationLifetime
+  >();
+  private readonly lifetimeOperations = new WeakMap<
+    InferenceOperationLifetime,
+    Operation
   >();
   private exited = false;
   private retirement: Promise<void> | null = null;
@@ -264,6 +270,7 @@ export class CodexInferenceAdmission {
       resolveSettlement,
     };
     this.operations.add(operation);
+    this.lifetimeOperations.set(input.lifetime, operation);
     try {
       operation.lease = await ticket.ready;
       if (this.exited || operation.settled || operation.lease.signal.aborted)
@@ -408,6 +415,32 @@ export class CodexInferenceAdmission {
         }
       },
     };
+  }
+
+  /** A route transition must retain the actual canonical source, not select an
+   * operation from a chat's UI status. Native gates and resumed turns have
+   * already forwarded input and cannot use this no-replay boundary. */
+  withdrawUnstarted(
+    source: InferenceOperationSource,
+  ): Promise<InferenceJournalRecord> {
+    const lifetime = this.sourceLifetimes.get(source);
+    const operation = lifetime && this.lifetimeOperations.get(lifetime);
+    if (!operation)
+      throw new Error("This source does not own an inference reservation.");
+    if (operation.withdrawal) return operation.withdrawal;
+    source.assertCurrent();
+    if (
+      this.exited ||
+      operation.settled ||
+      operation.dispatched ||
+      operation.leaseStarted ||
+      operation.preparing ||
+      operation.nativeBoundary
+    )
+      throw new Error("The canonical input is no longer unforwarded.");
+    operation.withdrawal = operation.ticket.withdrawUnstarted();
+    this.settle(operation, "never-started");
+    return operation.withdrawal;
   }
 
   /** Only queued/unforwarded work is cancelled here; running work needs native Stop. */
