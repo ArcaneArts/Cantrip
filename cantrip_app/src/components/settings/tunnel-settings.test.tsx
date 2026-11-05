@@ -256,6 +256,18 @@ describe("tunnel settings", () => {
         source,
       },
     });
+    const vnc = tunnel("vnc", {
+      name: "Linux desktop",
+      osSource: source,
+      destination: { kind: "worker-os-vnc", workerId: "worker-1", source },
+    });
+    expect(tunnelMatchesSearch(vnc, "vnc", new Map(), new Map())).toBe(true);
+    expect(
+      tunnelLocalUrl(vnc, {
+        localHost: "127.0.0.1",
+        localPort: 45900,
+      } as DesktopTunnelForwardSummary),
+    ).toBeNull();
     expect(tunnelMatchesSearch(linux, "cantripos", new Map(), new Map())).toBe(
       true,
     );
@@ -263,7 +275,7 @@ describe("tunnel settings", () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    client.setQueryData(["tunnels"], [host, linux]);
+    client.setQueryData(["tunnels"], [host, linux, vnc]);
     client.setQueryData(["projects"], []);
     client.setQueryData(["workers"], []);
     const markup = renderToStaticMarkup(
@@ -273,6 +285,8 @@ describe("tunnel settings", () => {
     );
     expect(markup).toContain("Host preview");
     expect(markup).toContain("Linux preview");
+    expect(markup).toContain("Linux desktop");
+    expect(markup).toContain("VNC");
     expect(markup).toContain("CantripOS");
     expect(markup).toContain(":3000");
   });

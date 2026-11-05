@@ -30,7 +30,9 @@ export interface Descriptor {
   home: string;
   user: string;
   remote_generation: string;
-  service: { kind: "tcp"; port: number } | { kind: "ssh" };
+  service: { kind: "tcp"; port: number } | { kind: "ssh" } | { kind: "vnc" };
+  display?: number;
+  desktop_generation?: string;
   ssh_host_key?: string;
 }
 async function encryption(directory: string, descriptor: Descriptor) {
@@ -99,7 +101,8 @@ export async function protectedOsTunnel(
   descriptor: Descriptor,
   destination:
     | { kind: "worker-os-tcp"; port: number }
-    | { kind: "worker-os-ssh"; publicKey: string },
+    | { kind: "worker-os-ssh"; publicKey: string }
+    | { kind: "worker-os-vnc" },
 ) {
   const worker = await encryption(directory, descriptor);
   const tunnelId = randomUUID(),

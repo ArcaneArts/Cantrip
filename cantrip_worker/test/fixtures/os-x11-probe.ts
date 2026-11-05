@@ -9,7 +9,7 @@ export function probeX11(
   transport: OsExecutorTransport,
   display: number,
   held?: boolean,
-): Promise<{ mask: number; x: number; y: number }> {
+): Promise<{ mask: number; x: number; y: number; shift: boolean }> {
   if (!Number.isSafeInteger(display) || display < 0)
     throw new Error("Invalid fixture display.");
   const command = remoteCommand(transport, []);
@@ -24,6 +24,9 @@ l.XDefaultRootWindow.restype=ctypes.c_ulong
 l.XDefaultRootWindow.argtypes=[ctypes.c_void_p]
 l.XQueryPointer.argtypes=[ctypes.c_void_p,ctypes.c_ulong]+[ctypes.c_void_p]*7
 l.XCloseDisplay.argtypes=[ctypes.c_void_p]
+l.XQueryKeymap.argtypes=[ctypes.c_void_p,ctypes.c_void_p]
+l.XKeysymToKeycode.argtypes=[ctypes.c_void_p,ctypes.c_ulong]
+l.XKeysymToKeycode.restype=ctypes.c_ubyte
 d=l.XOpenDisplay(b':${display}')
 assert d
 r=l.XDefaultRootWindow(d)
@@ -35,7 +38,9 @@ try:
   points=[ctypes.c_int() for _ in range(4)]
   mask=ctypes.c_uint()
   assert l.XQueryPointer(d,r,*[ctypes.byref(v) for v in windows+points],ctypes.byref(mask))
-  result={'mask':mask.value,'x':points[0].value,'y':points[1].value}
+  keys=ctypes.create_string_buffer(32); l.XQueryKeymap(d,keys)
+  key=l.XKeysymToKeycode(d,65505)
+  result={'mask':mask.value,'x':points[0].value,'y':points[1].value,'shift':bool(keys.raw[key//8]&(1<<(key%8)))}
   if expected is None or bool(mask.value&256)==expected or time.monotonic()>=deadline: break
   time.sleep(.02)
  print(json.dumps(result))

@@ -1,8 +1,9 @@
 # CantripOS
 
 - Status: Phase 3 execution and source ownership implemented and exercised in Docker
-  and an installed VM. Linux computer use and managed remote access are next.
-- Updated: 2026-11-04.
+  and an installed VM. Phase 4 Linux computer use, integrated human control and
+  managed SSH/SFTP/VNC/TCP are implemented; final Phase 4 acceptance is in progress.
+- Updated: 2026-11-05.
 - Scope: a customized, bootable Linux distribution for one Cantrip owner's
   agents, also distributed as a directly runnable Docker image.
 
@@ -26,8 +27,9 @@ The native Linux capture/input backend and optional
 checkpoints. Normal agent/preview routing selects the captured Linux display,
 including clipboard and resizing. An integrated source-bound desktop view now
 shares that helper over WorkerLink, including exclusive human takeover. Remote
-0.6.0 adds protected guest SSH/SFTP/VNC/TCP carriers. Their managed product
-routes and explicit guest-to-Host forwarding are still in progress.
+0.7.0 supplies protected guest SSH/SFTP/VNC/TCP carriers and managed product
+routes. Explicit guest-to-Host forwarding and final distribution/stream
+acceptance remain in progress.
 
 ## Optional package architecture
 
@@ -736,8 +738,8 @@ immutable capture before acquiring the guest service. The MCP client and
 credentials stay on the Worker. Actual packaged SDK tests exercise turn
 authorization and routing without a Host Cantrip-window grant or Host launch.
 Real-provider evidence is recorded separately. The remaining Phase 4 work
-includes stream-candidate comparison, managed VNC, explicit Guest-to-Host
-forwarding and refreshed ISO acceptance.
+includes stream-candidate comparison, explicit Guest-to-Host forwarding and
+refreshed ISO acceptance.
 
 Remote 0.3.0 adds scoped plain-text clipboard access and Unicode paste, actual
 Linux pointer motion and live resizing through supported RandR modes. These
@@ -778,5 +780,11 @@ SSH/SFTP with one saved public key, an exact workspace account and the actual
 host key. The Native client retains an independent temporary public host pin
 for that forward and supplies strict SSH/SFTP commands. Client private keys stay
 outside the guest; no global SSH configuration or public guest SSH listener is
-installed. Managed VNC, explicit Guest-to-Host forwarding and remaining
-acceptance are still required.
+installed. Managed VNC uses the same captured source and pins its running desktop
+as part of the service identity. Connecting a VNC client acquires the existing
+exclusive human-control lease: agent input is canceled and released before
+admission, another controller is refused, and unrelated workspaces continue.
+Disconnect/Stop returns control only after confirmed guest cleanup or an actually
+observed replacement epoch; uncertainty keeps the old lease blocked. The Native
+app exposes a loopback host/port for an ordinary VNC client. Explicit Guest-to-Host
+forwarding and remaining acceptance are still required.

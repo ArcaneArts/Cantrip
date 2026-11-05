@@ -145,7 +145,8 @@ function publicEndpointsMatch(
     ) === JSON.stringify(wire.destination) &&
     JSON.stringify(
       content.destination.kind === "worker-os-tcp" ||
-        content.destination.kind === "worker-os-ssh"
+        content.destination.kind === "worker-os-ssh" ||
+        content.destination.kind === "worker-os-vnc"
         ? content.destination.source
         : undefined,
     ) === JSON.stringify(wire.osSource)

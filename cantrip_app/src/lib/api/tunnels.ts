@@ -100,7 +100,8 @@ export async function createTunnel(input: TunnelUserCreate) {
         protocolHint: parsed.protocolHint,
         destination: tunnelPublicDestinationEndpoint(parsed.destination, id),
         ...(parsed.destination.kind === "worker-os-tcp" ||
-        parsed.destination.kind === "worker-os-ssh"
+        parsed.destination.kind === "worker-os-ssh" ||
+        parsed.destination.kind === "worker-os-vnc"
           ? { osSource: parsed.destination.source }
           : {}),
         protectedRecord,
@@ -130,9 +131,12 @@ export async function updateTunnel(tunnelId: string, input: TunnelUserUpdate) {
   if (
     destination.kind !== "worker-tcp" &&
     destination.kind !== "worker-os-tcp" &&
-    destination.kind !== "worker-os-ssh"
+    destination.kind !== "worker-os-ssh" &&
+    destination.kind !== "worker-os-vnc"
   ) {
-    throw new Error("User tunnels require a worker TCP destination.");
+    throw new Error(
+      "User tunnels require a Host or CantripOS service destination.",
+    );
   }
   await ensureTunnelWorker(destination.workerId);
   const protectedRecord = await protectTunnelContentRecord({
@@ -170,7 +174,8 @@ export async function updateTunnel(tunnelId: string, input: TunnelUserUpdate) {
                 },
               }),
           ...(destination.kind === "worker-os-tcp" ||
-          destination.kind === "worker-os-ssh"
+          destination.kind === "worker-os-ssh" ||
+          destination.kind === "worker-os-vnc"
             ? { osSource: destination.source }
             : {}),
           protectedRecord,

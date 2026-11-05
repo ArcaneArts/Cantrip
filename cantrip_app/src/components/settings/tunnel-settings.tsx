@@ -1,7 +1,8 @@
+import { TunnelVncDetails } from "./tunnel-vnc";
 import { TunnelTcpFields, tunnelInputClass as inputClass } from "./tunnel-tcp";
 import {
   TunnelSshDetails,
-  TunnelSshFields,
+  TunnelLinuxServiceFields,
   publicKeyWithoutComment,
 } from "./tunnel-ssh";
 import type {
@@ -61,7 +62,7 @@ import { SettingsSearchField } from "./settings-controls";
 import { getCantripOsRunSources } from "@/lib/api/cantrip-os";
 
 interface TunnelDraft {
-  service: "tcp" | "ssh";
+  service: "tcp" | "ssh" | "vnc";
   publicKey: string;
   osSource: TunnelSummary["osSource"] | null;
   description: string;
@@ -92,19 +93,26 @@ function draftFor(tunnel: TunnelSummary): TunnelDraft {
   if (
     tunnel.destination.kind !== "worker-tcp" &&
     tunnel.destination.kind !== "worker-os-tcp" &&
-    tunnel.destination.kind !== "worker-os-ssh"
+    tunnel.destination.kind !== "worker-os-ssh" &&
+    tunnel.destination.kind !== "worker-os-vnc"
   ) {
     return emptyDraft(tunnel.projectId);
   }
   return {
-    service: tunnel.destination.kind === "worker-os-ssh" ? "ssh" : "tcp",
+    service:
+      tunnel.destination.kind === "worker-os-ssh"
+        ? "ssh"
+        : tunnel.destination.kind === "worker-os-vnc"
+          ? "vnc"
+          : "tcp",
     publicKey:
       tunnel.destination.kind === "worker-os-ssh"
         ? tunnel.destination.publicKey
         : "",
     osSource:
       tunnel.destination.kind === "worker-os-tcp" ||
-      tunnel.destination.kind === "worker-os-ssh"
+      tunnel.destination.kind === "worker-os-ssh" ||
+      tunnel.destination.kind === "worker-os-vnc"
         ? tunnel.destination.source
         : null,
     description: tunnel.description ?? "",
@@ -114,7 +122,8 @@ function draftFor(tunnel: TunnelSummary): TunnelDraft {
         : "127.0.0.1",
     name: tunnel.name,
     port:
-      tunnel.destination.kind === "worker-os-ssh"
+      tunnel.destination.kind === "worker-os-ssh" ||
+      tunnel.destination.kind === "worker-os-vnc"
         ? ""
         : String(tunnel.destination.port),
     projectId: tunnel.projectId ?? "",
@@ -124,6 +133,8 @@ function draftFor(tunnel: TunnelSummary): TunnelDraft {
 }
 
 function destinationLabel(destination: TunnelSummary["destination"]) {
+  if (destination.kind === "worker-os-vnc")
+    return `CantripOS · VNC · ${destination.source.worktreeId.slice(0, 8)}`;
   if (destination.kind === "worker-os-ssh")
     return `CantripOS · SSH / SFTP · ${destination.source.worktreeId.slice(0, 8)}`;
   if (destination.kind === "worker-os-tcp")
@@ -137,7 +148,12 @@ export function tunnelLocalUrl(
   tunnel: TunnelSummary,
   attachment: DesktopTunnelForwardSummary | undefined,
 ): string | null {
-  if (!attachment) return null;
+  if (
+    !attachment ||
+    tunnel.destination.kind === "worker-os-vnc" ||
+    tunnel.destination.kind === "worker-os-ssh"
+  )
+    return null;
   const scheme =
     tunnel.protocolHint === "https" || tunnel.protocolHint === "https-websocket"
       ? "https"
@@ -303,10 +319,13 @@ function TunnelRows({
                 <Badge variant="secondary">
                   {destination.kind === "worker-os-ssh"
                     ? "SSH / SFTP"
-                    : tunnel.protocolHint}
+                    : destination.kind === "worker-os-vnc"
+                      ? "VNC"
+                      : tunnel.protocolHint}
                 </Badge>
                 {destination.kind === "worker-os-tcp" ||
-                destination.kind === "worker-os-ssh" ? (
+                destination.kind === "worker-os-ssh" ||
+                destination.kind === "worker-os-vnc" ? (
                   <Badge variant="outline">CantripOS</Badge>
                 ) : null}
                 <Badge variant="outline">{managementLabel(tunnel)}</Badge>
@@ -333,6 +352,9 @@ function TunnelRows({
               <div className="flex items-center justify-end gap-0.5">
                 {local?.ssh ? (
                   <TunnelSshDetails forward={local} name={tunnel.name} />
+                ) : null}
+                {local && destination.kind === "worker-os-vnc" ? (
+                  <TunnelVncDetails forward={local} name={tunnel.name} />
                 ) : null}
                 {localUrl ? (
                   <>
@@ -536,7 +558,7 @@ export function TunnelSettings({
     mutationFn: async () => {
       const port = Number(draft.port);
       if (
-        !(draft.osSource && draft.service === "ssh") &&
+        !(draft.osSource && draft.service !== "tcp") &&
         (!Number.isInteger(port) || port < 1 || port > 65_535)
       ) {
         throw new Error("Enter a destination port between 1 and 65535.");
@@ -546,30 +568,36 @@ export function TunnelSettings({
         description: draft.description.trim() || null,
         projectId: draft.projectId || null,
         protocolHint:
-          draft.osSource && draft.service === "ssh"
+          draft.osSource && draft.service !== "tcp"
             ? ("tcp" as const)
             : draft.protocolHint,
         destination:
-          draft.osSource && draft.service === "ssh"
+          draft.osSource && draft.service === "vnc"
             ? {
-                kind: "worker-os-ssh" as const,
+                kind: "worker-os-vnc" as const,
                 workerId: draft.workerId,
                 source: draft.osSource,
-                publicKey: publicKeyWithoutComment(draft.publicKey),
               }
-            : draft.osSource
+            : draft.osSource && draft.service === "ssh"
               ? {
-                  kind: "worker-os-tcp" as const,
+                  kind: "worker-os-ssh" as const,
                   workerId: draft.workerId,
-                  port,
                   source: draft.osSource,
+                  publicKey: publicKeyWithoutComment(draft.publicKey),
                 }
-              : {
-                  kind: "worker-tcp" as const,
-                  workerId: draft.workerId,
-                  host: draft.host,
-                  port,
-                },
+              : draft.osSource
+                ? {
+                    kind: "worker-os-tcp" as const,
+                    workerId: draft.workerId,
+                    port,
+                    source: draft.osSource,
+                  }
+                : {
+                    kind: "worker-tcp" as const,
+                    workerId: draft.workerId,
+                    host: draft.host,
+                    port,
+                  },
       };
       return editing
         ? updateTunnel(editing.id, common satisfies TunnelUserUpdate)
@@ -988,7 +1016,7 @@ export function TunnelSettings({
                 )}
               </label>
               {draft.osSource ? (
-                <TunnelSshFields
+                <TunnelLinuxServiceFields
                   service={draft.service}
                   publicKey={draft.publicKey}
                   onChange={(value) =>
@@ -996,7 +1024,7 @@ export function TunnelSettings({
                   }
                 />
               ) : null}
-              {!(draft.osSource && draft.service === "ssh") ? (
+              {!(draft.osSource && draft.service !== "tcp") ? (
                 <>
                   <TunnelTcpFields
                     value={draft}

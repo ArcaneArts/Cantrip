@@ -158,3 +158,27 @@ it("keeps an SSH public key encrypted and excludes private keys and key options"
     }).success,
   ).toBe(false);
 });
+
+it("binds VNC to the canonical workspace rather than a supplied host, port or display", () => {
+  const vnc = { kind: "worker-os-vnc" as const, workerId: "worker", source };
+  const input = {
+    name: "Assigned desktop",
+    projectId: "project",
+    protocolHint: "tcp",
+    destination: vnc,
+  };
+  expect(tunnelUserCreateSchema.parse(input).destination).toEqual(vnc);
+  expect(tunnelPublicDestinationEndpoint(vnc, id)).toEqual(wire.destination);
+  for (const override of [
+    { port: 5900 },
+    { host: "127.0.0.1" },
+    { display: 0 },
+    { desktopGeneration: "a".repeat(64) },
+  ])
+    expect(
+      tunnelUserCreateSchema.safeParse({
+        ...input,
+        destination: { ...vnc, ...override },
+      }).success,
+    ).toBe(false);
+});

@@ -18,14 +18,14 @@ export function publicKeyWithoutComment(value: string) {
     : line;
 }
 
-export function TunnelSshFields({
+export function TunnelLinuxServiceFields({
   service,
   publicKey,
   onChange,
 }: {
-  service: "tcp" | "ssh";
+  service: "tcp" | "ssh" | "vnc";
   publicKey: string;
-  onChange(value: { service: "tcp" | "ssh"; publicKey: string }): void;
+  onChange(value: { service: "tcp" | "ssh" | "vnc"; publicKey: string }): void;
 }) {
   return (
     <>
@@ -36,15 +36,22 @@ export function TunnelSshFields({
           value={service}
           onChange={(event) =>
             onChange({
-              service: event.target.value as "tcp" | "ssh",
+              service: event.target.value as "tcp" | "ssh" | "vnc",
               publicKey,
             })
           }
         >
           <option value="tcp">Development service (TCP/HTTP)</option>
           <option value="ssh">SSH / SFTP</option>
+          <option value="vnc">VNC desktop</option>
         </NativeSelect>
       </label>
+      {service === "vnc" ? (
+        <p className="text-xs text-muted-foreground sm:col-span-2">
+          Open this workspace's assigned desktop before starting VNC. The agent
+          pauses while a VNC client controls it.
+        </p>
+      ) : null}
       {service === "ssh" ? (
         <label className="grid gap-1.5 text-sm sm:col-span-2">
           <span className="font-medium">SSH public key</span>
