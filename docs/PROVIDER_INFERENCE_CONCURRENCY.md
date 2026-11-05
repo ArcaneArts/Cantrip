@@ -1767,10 +1767,30 @@ revocation safely. The acknowledgement seals local sources and retains actual
 interruption; running inference still releases only on physical settlement or
 fencing. Deployment requires the updated server and worker contract together.
 
-Fresh helper commands issued after resource deletion still require a separate
-actual resource-authorization boundary; active-command revocation alone cannot
-reject a newly issued command. That remaining integration must not be replaced
-with a completed-resource UUID cache.
+Standalone labeling and generated Git assistance authorize their actual resource
+through the internal worker API before competing for a provider ticket. They
+repeat that authorization after capacity waiting, immediately before model
+dispatch. A fresh command issued after deletion is rejected without starting
+inference; a resource deleted or archived during the queue wait is rejected at
+dispatch. The lookup uses the current owned chat/project and worker rows, without
+model catalogs, worktree readiness or socket-availability checks.
+
+Both servers check the authenticated server/owner and bound worker process
+generation before and after the primary lookup. The worker checks the complete
+returned scope and its actual command cancellation signal. Its command owner is
+registered before asynchronous preparation, so deletion can also abort a delayed
+authorization reply. No authorization result is cached. An authorization failure
+seals that command's unused inference sources; choosing another provider cannot
+restore resource authority. This adds no server ticket grant, prompt queue,
+resource lease table or completed-resource UUID cache.
+
+The callback belongs to the existing worker command lifetime. Same-provider
+initial titles continue using their already-admitted response ticket; different
+initial-label providers retain their existing sequential ownership. Catalog
+reads, filesystem operations and provider connection checks do not acquire a
+resource authorization callback. Reversible chat archival does not permanently
+revoke a native registration; active-turn archival still uses its existing Stop
+requirement, and standalone helpers cannot start against an archived row.
 
 This migration and delivery code were source-reviewed and formatted without
 executing the migration or application. Mechanical protocol export and

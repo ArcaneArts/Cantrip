@@ -127,6 +127,7 @@ class InferenceCommand {
   private readonly operations = new Set<string>();
   private readonly cancellation = new AbortController();
   readonly signal: AbortSignal;
+  private resourceAuthorization?: () => Promise<unknown>;
 
   constructor(
     private readonly emit: (event: WorkerEvent) => void,
@@ -146,10 +147,36 @@ class InferenceCommand {
     this.operations.add(operationId);
   }
 
-  revoke(): string[] {
-    this.cancellation.abort(new Error("The owning resource was removed."));
+  revoke(
+    reason: unknown = new Error("The owning resource was removed."),
+  ): string[] {
+    this.cancellation.abort(reason);
     for (const source of this.sources) source.close();
     return [...this.operations];
+  }
+
+  authorizeResourceWith(authorize: () => Promise<unknown>): void {
+    this.signal.throwIfAborted();
+    if (this.closed || this.resourceAuthorization)
+      throw new Error(
+        "The inference command's resource authorization is already sealed.",
+      );
+    this.resourceAuthorization = authorize;
+  }
+
+  async authorizeResource(): Promise<void> {
+    if (this.closed)
+      throw new Error("The owning worker inference command has ended.");
+    this.signal.throwIfAborted();
+    try {
+      await this.resourceAuthorization?.();
+    } catch (error) {
+      // Resource authorization is independent of a model route. A fallback
+      // provider cannot restore authority to this same obsolete command.
+      this.revoke(error);
+      throw error;
+    }
+    this.signal.throwIfAborted();
   }
 
   claimSource(signal?: AbortSignal): ClaimedInferenceSource | undefined {
@@ -218,6 +245,7 @@ class InferenceCommand {
     this.closed = true;
     for (const source of this.sources) source.close();
     this.sources.clear();
+    this.resourceAuthorization = undefined;
     this.operations.clear();
     this.clock.clear();
     for (const clock of this.providers.values()) clock.clear();
@@ -243,6 +271,19 @@ export function claimInferenceCommandSource(signal?: AbortSignal) {
 
 export function inferenceCommandSignal(): AbortSignal | undefined {
   return commands.getStore()?.signal;
+}
+
+export function registerInferenceResourceAuthorization(
+  authorize: () => Promise<unknown>,
+): void {
+  const command = commands.getStore();
+  if (!command)
+    throw new Error("Resource inference requires its owning worker command.");
+  command.authorizeResourceWith(authorize);
+}
+
+export async function authorizeInferenceCommandResource(): Promise<void> {
+  await commands.getStore()?.authorizeResource();
 }
 
 /** Records actual admission calls, including legacy helper identities. It does

@@ -14,6 +14,7 @@ import { startChatCompletionsAdapter } from "./chat-completions-adapter.js";
 import {
   claimInferenceCommandSource,
   inferenceCommandSignal,
+  authorizeInferenceCommandResource,
   withoutInferenceCommand,
 } from "../inference-command.js";
 import { CodexAuthRecovery } from "./auth-recovery.js";
@@ -3392,6 +3393,7 @@ export class CodexAppServer implements CodexRuntime {
     this.registerRootExecution(activeTurn);
     let response: TurnStartResponse;
     try {
+      await authorizeInferenceCommandResource();
       inference?.dispatched();
       response = (await this.request("turn/start", {
         threadId,
@@ -5443,6 +5445,8 @@ export class CodexAppServer implements CodexRuntime {
         signal:
           owner?.source.signal ?? options.signal ?? inferenceCommandSignal(),
       });
+      owner?.source.assertCurrent();
+      await authorizeInferenceCommandResource();
       owner?.source.assertCurrent();
       return await this.runInitialLabelInference({
         ...options,

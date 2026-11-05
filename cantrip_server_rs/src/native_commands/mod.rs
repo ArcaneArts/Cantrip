@@ -7,6 +7,7 @@ mod control;
 mod dispatch;
 mod event_context;
 pub mod events;
+mod inference_resources;
 mod logical_completions;
 mod logical_inputs;
 pub mod managed_queue;

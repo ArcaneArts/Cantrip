@@ -47,6 +47,37 @@ async fn apply(
     input: Value,
     phase: String,
 ) -> Result<Value> {
+    if phase == "inference-resource-authorize" {
+        let worker = input["workerId"].as_str().unwrap();
+        let current = || {
+            service.server_id.as_str() == input["serverId"].as_str().unwrap()
+                && input["ownerId"] == owner.as_str()
+                && service
+                    .workers
+                    .bridge
+                    .connection_identity(worker)
+                    .is_some_and(|identity| {
+                        identity.owner == owner
+                            && Some(identity.process_generation.as_str())
+                                == input["workerGeneration"].as_str()
+                    })
+        };
+        // The bound process identity survives reconnect grace. Availability and
+        // provider catalogs are not authority for this actual resource lookup.
+        if !current() {
+            return Err(CommandError::new("stale-worker-generation", None, 409).into());
+        }
+        let result = Repository::new(service.repository.database.clone())
+            .authorize_inference_resource(&owner, &input)
+            .await?;
+        if !current() {
+            return Err(CommandError::new("stale-worker-generation", None, 409).into());
+        }
+        return crate::settings::parse_response(
+            "nativeInferenceResourceAuthorizationResultSchema",
+            Some(&result),
+        );
+    }
     if phase == "task-goal-outcome" {
         if input["serverId"].as_str() != Some(service.server_id.as_str())
             || input["ownerId"].as_str() != Some(owner.as_str())
@@ -267,6 +298,7 @@ async fn handle(
             "settings-evidence" => "nativeSettingsEvidenceSchema",
             "receipt" => "nativeCommandSettlementSchema",
             "inference-recovery" => "nativeInferenceRecoverySchema",
+            "inference-resource-authorize" => "nativeInferenceResourceAuthorizationSchema",
             "task-input-dispatch" => "taskInferenceInputDispatchSchema",
             "task-goal-outcome" => "taskGoalOutcomeDeliverySchema",
             _ => "nativeCommandDispatchSchema",
@@ -281,6 +313,7 @@ async fn handle(
                     "task-input-dispatch" => "invalid-task-input-dispatch",
                     "task-goal-outcome" => "invalid-task-goal-outcome",
                     "inference-recovery" => "invalid-inference-recovery",
+                    "inference-resource-authorize" => "invalid-inference-resource",
                     _ => "invalid-native-command",
                 },
             );
@@ -333,6 +366,10 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         .route("/api/internal/native-commands/dispatch", post(handle))
         .route("/api/internal/native-commands/continue", post(handle))
         .route("/api/internal/native-commands/receipt", post(handle))
+        .route(
+            "/api/internal/native-commands/inference-resource-authorize",
+            post(handle),
+        )
         .route(
             "/api/internal/native-commands/task-input-dispatch",
             post(handle),

@@ -5,6 +5,8 @@ import {
 import { isNativeTransportClosure } from "./native-transport-evidence.js";
 import { reconcileNativeThreadObservation } from "./native-thread-observation.js";
 import { NativeCommandRecoveryRepository } from "./native-command-recovery.js";
+import { authorizeNativeInferenceResource } from "./native-inference-resources.js";
+import type { NativeInferenceResourceAuthorization } from "@cantrip/protocol";
 import {
   nativeCommandContext,
   readNativeCommand,
@@ -234,6 +236,12 @@ export class NativeCommandRepository {
       transaction: RepositoryTransaction,
     ) => ServerRepository,
   ) {}
+  authorizeInferenceResource(
+    ownerId: string,
+    input: NativeInferenceResourceAuthorization,
+  ) {
+    return authorizeNativeInferenceResource(this.database, ownerId, input);
+  }
   reconcileThreadObservation(
     ownerId: string,
     expected: ChatExecutionContext,
