@@ -782,3 +782,18 @@ returns an explicit unsupported error; completing its state transfer is the next
 native dependency. Unsupported providers never report empty state.
 See [the suspension contract](../docs/DURABLE_TURN_SUSPENSION.md) for resource
 limits, live controls, compatibility and the outstanding product integration.
+
+## Default framed CodeMode continuation
+
+Patch `0073` implements finalized-state transfer for the default framed-stdio
+provider, using negotiated `stored-state-v2` controls and actual completion and
+forwarding-producer joins. A fresh live lease stays separate from the saved
+public cell namespace, so late replies and retries preserve cell identities.
+The gRPC path retains the same recovery behavior. Export never replaces a dead
+host with empty state; only explicit import can recover it.
+
+Native contract `0.166.0/cantrip-suspension-v8` uses CodeMode state format 2.
+Native counters are decimal strings on the wire to avoid JavaScript JSON number
+rounding. Earlier formats require their matching runtime and remain preserved
+for inspection or Stop. Full worker/server/client recovery and optimized product
+acceptance remain outstanding; see [the suspension contract](../docs/DURABLE_TURN_SUSPENSION.md).

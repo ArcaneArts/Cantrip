@@ -347,3 +347,13 @@ runtime for Resume. The production gRPC CodeMode host supports explicit state
 export/import; unsupported providers and older hosts return an error, without
 empty-state fallback, prompt replay or a replacement turn. This does not establish
 the outstanding whole-worker/server/client recovery guarantee.
+
+Patch `0073` advances the native suspension contract to
+`0.166.0/cantrip-suspension-v8`. CodeMode state format 2 represents native cell
+counters as canonical decimal strings, preserving exact identities through the
+worker's JavaScript JSON bridge. Framed-stdio providers now negotiate
+`stored-state-v2` and support the same explicit transfer as gRPC providers.
+Missing capabilities, old formats and malformed identities fail explicitly;
+earlier checkpoints require their matching runtime for Resume and remain
+inspectable/stoppable. The protected resource and encryption envelope versions
+remain 2 and 1 respectively. Complete product recovery is still outstanding.

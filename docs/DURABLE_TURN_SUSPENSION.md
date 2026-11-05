@@ -9,7 +9,8 @@ operations. Patch `0053` adds stored inspection, explicit attachment holds and
 terminal-history-based retirement of unreadable records. Patch `0061` retains
 continuations through resumption preparation and binds controls to their native
 turn and generation. Patch `0064` preserves a held continuation through native
-runtime teardown and transport EOF. Cantrip's current
+runtime teardown and transport EOF. Patches `0072` and `0073` retain finalized
+CodeMode data through both gRPC and the default framed-stdio transport. Cantrip's current
 product pause remains an in-memory execution gate until the worker/server/client
 integration is delivered. Do not treat the
 existing product acknowledgement as a process-termination guarantee.
@@ -588,3 +589,61 @@ The repository check stops at the existing server file budgets; its later stages
 did not run. Worker typecheck still reports seven existing errors in unrelated
 inference-source, chat-ID and logging code. Optimized production and other
 platform validation remain outstanding.
+
+### Default framed-stdio CodeMode continuation
+
+Patch `0073` adds the same data-only state transfer to Core's default local
+CodeMode provider. It does not require changing the transport feature flag.
+Framed peers negotiate `stored-state-v2`; older hosts that omit that capability
+receive no new control frames and return an explicit unsupported error while
+ordinary live execution remains available.
+
+The live transport lease retains its fresh session identity. The client's
+session registry separately retains the saved public cell namespace, and each
+observation keeps its admitted namespace. Successful import commits that mapping
+before replying to its caller, including when a reply is lost or the caller
+cancels. Identical import remains retryable before execution. Export uses the
+existing host only; explicit, freshly authorized Resume may replace a lost host
+and import without evaluating source or invoking tools. Both the actual runtime
+producers and final framed cell-forwarding producers finish before capture ACK.
+Stop does not wait for the state-admission lock.
+
+This milestone uses native checkpoint contract
+`0.166.0/cantrip-suspension-v8` and CodeMode state format 2. The cell counter and
+public generation are canonical decimal strings on the wire, retaining their
+complete native integer range through the worker's JavaScript JSON/encryption
+boundary. Ordinary stored JSON values keep their existing semantics. Native
+contracts and CodeMode formats from earlier milestones remain preserved and
+require their matching runtime for Resume; unsupported data never causes empty
+state, prompt replay or a replacement turn. Protected resource-data format 2
+and the encryption envelope remain unchanged.
+
+Whole-worker/server/client recovery, MCP and native child policies, other input
+producers and final optimized product acceptance remain required. This native
+resource milestone does not change the current product pause guarantee.
+
+The normal 74-patch macOS ARM64 development build passed all 66 native
+acceptance cases. Both history formats now exercise full repeated cold recovery
+through both transports; neither transport uses the earlier refusal-only case.
+The cases verify original thread/turn identities, unique input/history/start
+lifecycle and external effects, fresh grant repair, concurrent Resume, inert
+attachment, helper-only termination and exact decimal cell counters.
+
+The same prepared source passed 264 Rust cases: 77 client, 44 protocol, 90
+runtime, 37 host-library, 12 real framed-stdio and four real gRPC cases. The
+framed cases include hard-killed helpers, fresh and surviving providers, public
+namespaces distinct from fresh lease identities, active-cell refusal and
+counter exhaustion. Protocol fault cases cover a canceled import with a late
+successful reply, retry against the original lease, foreign-session replies and
+older-host capabilities. Fourteen worker crypto/control cases passed, including
+large exact identities through the actual encrypted JSON bridge. Native and
+focused repository formatting and diff checks passed.
+
+These results use patch fingerprint
+`636068ce867f83431b9ca44545ec849981540c5b0eb67ea18242682a02d99072`;
+all 16 changed native files match the actual normal prepared source. The broad
+repository check remains stopped at existing server file budgets, and worker
+typecheck reports seven pre-existing errors in untouched production code.
+Later repository-check stages, optimized production and Linux/Windows validation
+are not claimed. Complete worker/server/client process-tree recovery remains
+unproven and required.
