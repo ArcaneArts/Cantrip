@@ -172,6 +172,24 @@ reservation through cleanup and then continues serially; another provider is
 released before response admission. No new ticket, thread, prompt queue or RPC
 shape is introduced for this drain scope.
 
+Patch `0058` assigns a fresh private scope UUID to every native inference lifetime.
+Logical thread/turn IDs can be reused by a restored continuation; they cannot
+identify a physical execution on their own. Begin, suspension, FIFO resumption,
+cancellation and finish carry that scope. The worker binds an unbound dispatched
+root reservation to one scope, while a different scope receives independent
+admission. Helper operation/recovery identities include the scope as well.
+
+A late finish or cancellation matches only the old scope, including pending
+control requests, and cannot release or abort its replacement. Logical UI
+completion cached before a new dispatch cannot settle that unforwarded attempt.
+After private binding, UI completion remains separate from transport settlement.
+The worker echoes the scope with each positive resolver acknowledgement; Core
+checks it against the actual pending request. A mismatched older peer denies
+admission through the existing resolver instead of running with unscoped release.
+These fields use the existing private control payload and opaque generation
+string; no public protocol shape or additional semaphore is introduced. Wiring
+canonical restored-continuation recovery remains separate work.
+
 Known dependency and user/approval waits can suspend their parent's reservation
 only after all parent sampling streams have stopped. Resumption rejoins FIFO before
 another model request. Ordinary tool round trips retain their reservation. Native

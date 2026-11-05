@@ -1756,6 +1756,7 @@ export class CodexAppServer implements CodexRuntime {
       threadId: string;
       turnId: string;
       runnerGeneration: string;
+      scopeId: string;
     }
   >();
   #child: ChildProcessWithoutNullStreams | null = null;
@@ -6505,6 +6506,7 @@ export class CodexAppServer implements CodexRuntime {
             "finish",
             "cancel",
           ]),
+          scopeId: z.string().uuid(),
           requestId: z.string().nullable().optional(),
           rootThreadId: z.string().nullable().optional(),
         }),
@@ -6514,7 +6516,7 @@ export class CodexAppServer implements CodexRuntime {
       await deny();
       return;
     }
-    const { phase, requestId, rootThreadId } = payload.data.input;
+    const { phase, scopeId, requestId, rootThreadId } = payload.data.input;
     if (phase === "cancel") {
       const pending = requestId
         ? this.#nativeInferenceWaits.get(requestId)
@@ -6523,10 +6525,11 @@ export class CodexAppServer implements CodexRuntime {
         pending &&
         pending.threadId === base.threadId &&
         pending.turnId === base.turnId &&
+        pending.scopeId === scopeId &&
         pending.runnerGeneration === base.runnerGeneration
       ) {
         pending.controller.abort();
-        inference.cancelNativeWait(base.threadId, base.turnId);
+        inference.cancelNativeWait(base.threadId, base.turnId, scopeId);
       }
       return;
     }
@@ -6534,14 +6537,16 @@ export class CodexAppServer implements CodexRuntime {
       for (const pending of this.#nativeInferenceWaits.values())
         if (
           pending.threadId === base.threadId &&
-          pending.turnId === base.turnId
+          pending.turnId === base.turnId &&
+          pending.scopeId === scopeId &&
+          pending.runnerGeneration === base.runnerGeneration
         )
           pending.controller.abort();
-      inference.finishNative(base.threadId, base.turnId);
+      inference.finishNative(base.threadId, base.turnId, scopeId);
       return;
     }
     if (this.#nativeInferenceWaits.has(base.attemptId)) return;
-    const pending = { ...base, controller: new AbortController() };
+    const pending = { ...base, scopeId, controller: new AbortController() };
     this.#nativeInferenceWaits.set(base.attemptId, pending);
     try {
       if (phase === "begin" || phase === "begin-independent") {
@@ -6550,19 +6555,20 @@ export class CodexAppServer implements CodexRuntime {
           throw new Error("Native inference has no configured provider.");
         await inference.enterNative({
           ...base,
+          scopeId,
           rootThreadId,
           independent: phase === "begin-independent",
           provider,
           signal: pending.controller.signal,
         });
       } else if (phase === "suspend")
-        inference.suspendNative(base.threadId, base.turnId);
-      else await inference.resumeNative(base.threadId, base.turnId);
+        inference.suspendNative(base.threadId, base.turnId, scopeId);
+      else await inference.resumeNative(base.threadId, base.turnId, scopeId);
       pending.controller.signal.throwIfAborted();
       await this.resolveManagedExecution(
         {
           ...base,
-          operationGeneration: `inference:${base.attemptId}`,
+          operationGeneration: `inference:${scopeId}:${base.attemptId}`,
           allow: true,
         },
         transport,
