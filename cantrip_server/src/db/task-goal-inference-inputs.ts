@@ -274,7 +274,14 @@ export class TaskGoalInferenceInputRepository {
           lane.worktreeId !== receipt.worktreeId))
     )
       stale();
-    return { ...placement, round, message, lane };
+    return {
+      ...placement,
+      // The existing guard above establishes this Task-only routing shape.
+      chat: placement.chat as typeof placement.chat & { experience: "task" },
+      round,
+      message,
+      lane,
+    };
   }
 
   async prepare(

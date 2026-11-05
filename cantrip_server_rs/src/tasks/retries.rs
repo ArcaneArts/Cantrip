@@ -40,8 +40,8 @@ async fn mutate_in(
     if let Some(guard) = &guard {
         super::dispatch_fence::assert(
             tx,
-            &owner,
-            &chat,
+            owner,
+            chat,
             &text(if guard["kind"] == "leased" {
                 &guard["lease"]["operationId"]
             } else {

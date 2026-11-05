@@ -14,6 +14,7 @@ impl Reads {
         if kind == "chat" {
             return self.chat_context(owner, id).await;
         }
+        let raw_id = id;
         let id = sql_text(id)?;
         let (table, join) = match kind {
             "terminal" => ("terminals", ""),
@@ -27,7 +28,12 @@ impl Reads {
         let query = format!(
             "SELECT to_jsonb(r)::text,w.id FROM {table} r INNER JOIN projects p ON p.id=r.project_id AND p.owner_id=$2 INNER JOIN project_worktrees w ON w.id=r.worktree_id{join} WHERE r.id=$1 LIMIT 1"
         );
-        let rows = self.database.query(&query, &[&id, &owner]).await?;
+        let result = self.database.query(&query, &[&id, &owner]).await;
+        let rows = if self.mcp_errors {
+            super::mcp_queries::context(result, kind, owner, raw_id)?
+        } else {
+            result?
+        };
         let Some(row) = rows.first() else {
             return Ok(None);
         };
@@ -42,9 +48,16 @@ impl Reads {
         )))
     }
     async fn chat_context(&self, owner: &str, id: &Value) -> Result<Option<Value>> {
-        let id = sql_text(id)?;
+        let encoded = sql_text(id)?;
         let repository = crate::chats::Repository::new(self.database.clone());
-        Ok(repository.execution_context(owner, &id).await?.map(|chat| {
+        let current = if self.mcp_errors {
+            repository
+                .execution_context_for_mcp(owner, &encoded, id)
+                .await
+        } else {
+            repository.execution_context(owner, &encoded).await
+        };
+        Ok(current?.map(|chat| {
             context(
                 chat["projectId"].clone(),
                 chat["workerId"].clone(),
@@ -59,8 +72,14 @@ impl Reads {
             .map(|context| context["surface"].clone()))
     }
     pub async fn remote_execution_context(&self, owner: &str, id: &Value) -> Result<Option<Value>> {
+        let raw_id = id;
         let id = sql_text(id)?;
-        let rows=self.database.query("SELECT to_jsonb(r)::text,b.protected_label::text,b.protected_state::text,b.state_revision,v.protected_label::text,w.remote_surface_capabilities::text FROM remote_surfaces r INNER JOIN projects p ON p.id=r.project_id AND p.owner_id=$2 LEFT JOIN browsers b ON b.id=r.id LEFT JOIN project_views v ON v.id=r.id INNER JOIN workers w ON w.id=r.worker_id AND w.owner_id=$2 WHERE r.id=$1 LIMIT 1",&[&id,&owner]).await?;
+        let result=self.database.query("SELECT to_jsonb(r)::text,b.protected_label::text,b.protected_state::text,b.state_revision,v.protected_label::text,w.remote_surface_capabilities::text FROM remote_surfaces r INNER JOIN projects p ON p.id=r.project_id AND p.owner_id=$2 LEFT JOIN browsers b ON b.id=r.id LEFT JOIN project_views v ON v.id=r.id INNER JOIN workers w ON w.id=r.worker_id AND w.owner_id=$2 WHERE r.id=$1 LIMIT 1",&[&id,&owner]).await;
+        let rows = if self.mcp_errors {
+            super::mcp_queries::context(result, "remote", owner, raw_id)?
+        } else {
+            result?
+        };
         let Some(row) = rows.first() else {
             return Ok(None);
         };
@@ -92,12 +111,25 @@ impl Reads {
         ])))
     }
     pub async fn browser_owned(&self, owner: &str, id: &Value) -> Result<bool> {
-        let id = sql_text(id)?;
-        Ok(!self.database.query("SELECT b.id FROM browsers b INNER JOIN projects p ON p.id=b.project_id AND p.owner_id=$2 WHERE b.id=$1 LIMIT 1",&[&id,&owner]).await?.is_empty())
+        let encoded = sql_text(id)?;
+        let result = self.database.query("SELECT b.id FROM browsers b INNER JOIN projects p ON p.id=b.project_id AND p.owner_id=$2 WHERE b.id=$1 LIMIT 1",&[&encoded,&owner]).await;
+        let rows = if self.mcp_errors {
+            super::mcp_queries::context(result, "browser", owner, id)?
+        } else {
+            result?
+        };
+        Ok(!rows.is_empty())
     }
     pub async fn desktop_context(&self, owner: &str, id: &Value) -> Result<Option<Value>> {
-        let id = sql_text(id)?;
-        self.database.query("SELECT to_jsonb(v)::text,to_jsonb(r)::text FROM project_views v INNER JOIN projects p ON p.id=v.project_id AND p.owner_id=$2 INNER JOIN remote_surfaces r ON r.id=v.id WHERE v.id=$1 AND v.kind='remote-desktop' AND r.kind='desktop' LIMIT 1",&[&id,&owner]).await?.first()
-            .map(|row|reads::desktop(&parse(row.get(0)?)?,&parse(row.get(1)?)?)).transpose()
+        let encoded = sql_text(id)?;
+        let result = self.database.query("SELECT to_jsonb(v)::text,to_jsonb(r)::text FROM project_views v INNER JOIN projects p ON p.id=v.project_id AND p.owner_id=$2 INNER JOIN remote_surfaces r ON r.id=v.id WHERE v.id=$1 AND v.kind='remote-desktop' AND r.kind='desktop' LIMIT 1",&[&encoded,&owner]).await;
+        let rows = if self.mcp_errors {
+            super::mcp_queries::context(result, "desktop", owner, id)?
+        } else {
+            result?
+        };
+        rows.first()
+            .map(|row| reads::desktop(&parse(row.get(0)?)?, &parse(row.get(1)?)?))
+            .transpose()
     }
 }

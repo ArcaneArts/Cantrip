@@ -19,5 +19,5 @@ pub(crate) fn evidence(error: &anyhow::Error) -> Option<&Value> {
         return None;
     }
     // The bridge attaches this validated field only to actual chat.turn replies.
-    command.inference.as_ref()
+    command.inference.as_deref()
 }

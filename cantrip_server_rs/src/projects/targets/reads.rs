@@ -7,6 +7,15 @@ use crate::{
 use anyhow::{Context, Result};
 use std::sync::Arc;
 
+#[derive(Debug)]
+pub(crate) struct StoredTargetValidationError;
+impl std::fmt::Display for StoredTargetValidationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Invalid stored chat wire summary")
+    }
+}
+impl std::error::Error for StoredTargetValidationError {}
+
 pub(super) fn copy(v: &Value, key: &str) -> Value {
     v.get(key).cloned().unwrap_or(Value::Null)
 }
@@ -47,6 +56,7 @@ pub(super) fn sql_text(id: &Value) -> Result<String> {
 }
 pub(super) struct Reads {
     pub database: Arc<Database>,
+    pub mcp_errors: bool,
 }
 #[derive(Clone, Copy)]
 pub(super) enum Kind {
@@ -58,16 +68,36 @@ pub(super) enum Kind {
 }
 impl Reads {
     pub fn new(database: Arc<Database>) -> Self {
-        Self { database }
+        Self {
+            database,
+            mcp_errors: false,
+        }
     }
     pub async fn workers(&self, owner: &str) -> Result<Vec<Value>> {
         self.database.query("SELECT to_jsonb(w)::text FROM workers w WHERE owner_id=$1 AND unlinked_at IS NULL ORDER BY name ASC",&[&owner]).await?.iter()
             .map(|row|worker(&parse(row.get(0)?)?)).collect()
     }
     pub async fn worker(&self, owner: &str, id: &Value) -> Result<Option<Value>> {
-        let id = sql_text(id)?;
-        self.database.query("SELECT to_jsonb(w)::text FROM workers w WHERE id=$1 AND owner_id=$2 AND unlinked_at IS NULL LIMIT 1",&[&id,&owner]).await?.first()
-            .map(|row|worker(&parse(row.get(0)?)?)).transpose()
+        let encoded = sql_text(id)?;
+        let result = self.database.query("SELECT to_jsonb(w)::text FROM workers w WHERE id=$1 AND owner_id=$2 AND unlinked_at IS NULL LIMIT 1",&[&encoded,&owner]).await;
+        // Preserve the Source ORM diagnostic only after this actual query fails.
+        // Parameters retain JS UTF-16 identity even though PostgreSQL binds UTF-8.
+        let rows = if self.mcp_errors {
+            crate::database::query_error::context(
+                result,
+                crate::chats::mcp_read_queries::sql("worker"),
+                &[
+                    id.clone(),
+                    crate::wire::value::json!(owner),
+                    crate::wire::value::json!(1),
+                ],
+            )?
+        } else {
+            result?
+        };
+        rows.first()
+            .map(|row| worker(&parse(row.get(0)?)?))
+            .transpose()
     }
     pub async fn worktrees(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
         self.database.query("SELECT to_jsonb(w)::text FROM project_worktrees w INNER JOIN project_sources s ON s.id=w.project_source_id INNER JOIN projects p ON p.id=s.project_id AND p.owner_id=$1 WHERE p.id=$2 AND s.removed_at IS NULL ORDER BY w.is_primary DESC,w.name ASC",&[&owner,&project]).await?.iter()
@@ -289,7 +319,7 @@ pub(super) fn resource(kind: Kind, raw: &Value) -> Result<Value> {
     dates(&mut result, raw)?;
     if matches!(kind, Kind::Chat) {
         return wire::parse("chatWireSummarySchema", Some(&result))
-            .map_err(|_| anyhow::anyhow!("Invalid stored chat wire summary"));
+            .map_err(|_| anyhow::Error::new(StoredTargetValidationError));
     }
     Ok(result)
 }

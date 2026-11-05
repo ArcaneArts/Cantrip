@@ -18,6 +18,80 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The execution-target MCP milestone integrates `2d68134ec`. Rust advertises
+sixteen operations, including `target.list` and `target.inspect`. These reuse
+the native owned catalog and placement services, retaining Source filtering,
+JavaScript trimming, pagination defaults and limits, unavailable resources,
+browser state revisions, read-only grants and safe read-binding transitions.
+Stored Chat validation runs before filters; the other opaque projections retain
+Source's pass-through behavior. Actual database failures retain Source SQL,
+original UTF-16 parameters and MCP classification. Public query execution and
+the stored-Chat error's existing display text remain unchanged.
+
+Local real HTTP and authenticated WorkerConnection comparisons pass 117 cases
+per peer/profile on all three stores and all three authentication modes:
+1,053 pairs, 2,106 calls/audit records and eighteen actual server restarts.
+The fixtures exercise actual invalid database text parameters, corrupted owned
+and foreign records, a 2,000-target catalog, encrypted labels and retained
+browser revisions. Concurrent browser/desktop lookups may expose either failing
+Source statement; both raw outcomes are retained and checked against captured
+Source SQL and every original parameter before comparison. Independent account
+IDs are normalized only after verifying the actual owner in each diagnostic.
+These target suites use controlled worker transport and do not establish full
+worker product acceptance.
+
+Two named contract exports reuse existing nodes. All 617 integrated Source root
+references and all 10,411 ordered nodes remain unchanged, with 619 roots total.
+The incoming inference evidence export is explicitly reviewed in the existing
+public-surface test; its prior fingerprint and positive assertions remain.
+Strict all-target Clippy passes after retaining the Goal predicates' exact
+short-circuit order, boxing the optional inference error payload without
+changing its contents or cloning semantics, and keeping the legacy observation
+fixture's unguarded behavior explicit.
+
+All three package typechecks, 1,100 protocol tests and 37 focused Source
+executor/binding/Goal tests pass. Incoming Goal callback annotations now retain
+the actual user message, and the existing Task guard's narrowed routing type is
+preserved without changing runtime values. Goal fixtures assert the current
+launch guard, physical input receipt and lane activation fence, including no
+pause for an unrecognized turn. Public repository comparisons pass 431 cases on
+each store, plus 62 descriptor-builder cases. Their placement-change fixture now
+moves worker and source together while retaining the active-runtime binding
+rejection assertion. The integrated Goal preparation guard now constructs its
+nested native JSON explicitly, round-outcome routing retains the Task type
+established by its guard, and retry argument references satisfy strict Clippy.
+The reviewed inventory adds only `surface.desktop.os-prepare`: server-derived
+Linux execution identities return a desktop generation, while private target
+state and pixels remain endpoint protected. The inventory now has 296 worker
+commands and 256 migrations; prior classifications remain unchanged.
+
+Separately, the pinned native runtime for baseline `067906537` has 62 verified
+patch files through `0061`, digest
+`69a8c39407fe460dee6cc92bd0229e2bdbf5ff6456547ccc0bffd214ced7e412`.
+The unchanged browser/full-worker/native Task scenario passes against both
+servers on PGlite: eleven steps per peer, seven actual MCP calls and four worker
+exits with code zero per peer. The browser decrypts the actual native child
+answer; server/worker restart retains the exact transcript without duplicate
+model inference. The original shutdown assertions and deadlines remain. This is
+that pinned baseline's evidence; newer Task/Goal input patches, other databases,
+supported platforms and full replacement still require qualification.
+
+Run target verification locally:
+
+```sh
+node --import tsx scripts/server-rust/agent-target-http-compatibility.mjs --database pglite --report /tmp/mcp-target.json
+node --import tsx scripts/server-rust/mcp-target-query-manifest.mjs
+node scripts/server-rust/cargo.mjs test --test mcp_target_contracts --test mcp_operation_contracts --test worker_bridge --test worker_command_budgets
+```
+
+Repeat the HTTP suite with `postgres` and `bundled-postgres`. Retained startup
+failures hit Node's existing 60-second deadline before any MCP calls; subsequent
+full comparisons passed without changing deadlines. The repository decomposition
+check still fails on the unchanged Node `native-commands.ts`: 2,049 lines against
+its 2,000-line budget. The same check was executed on an extracted `dd0ba7161`
+baseline and reproduced the failure with identical source bytes. This milestone
+does not claim a green broad `pnpm check`.
+
 The context and policy MCP milestone integrates `b5ea4ba84`. Rust now
 advertises fourteen operations, adding `context.compact`, `policy.list` and
 `policy.read`. Compaction retains Source's current-turn authorization result;

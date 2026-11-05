@@ -617,7 +617,9 @@
     "providerConnectionTestResultSchema": 10397,
     "workerProviderConnectionTestResultSchema": 10406,
     "policyCliWireListResultSchema": 5162,
-    "policyCliWireReadResultSchema": 10409
+    "policyCliWireReadResultSchema": 10409,
+    "executionTargetResourceKindSchema": 892,
+    "executionTargetSchema": 860
   },
   "nodes": [
     {

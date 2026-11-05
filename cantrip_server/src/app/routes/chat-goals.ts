@@ -54,10 +54,12 @@ interface GoalResumeTurnInput {
 interface GoalResumeTurnOptions {
   afterTurnCompleted?: (input: {
     execution: ChatExecutionContext;
+    userMessage: ChatMessage;
   }) => Promise<void>;
   afterTurnFailed?: (input: {
     execution: ChatExecutionContext;
     error: unknown;
+    userMessage: ChatMessage;
   }) => Promise<void>;
   encryptedTaskMessages?: {
     userMessage: TaskMessageOpaqueContent;

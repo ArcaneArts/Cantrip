@@ -101,6 +101,16 @@ function fixture() {
     createdAt: 1,
     updatedAt: 2,
   };
+  const launchGuard = {
+    kind: "leased",
+    lease: {
+      cycleId: task.dispatch!.id,
+      operationId: task.dispatch!.operationId,
+      leaseOwner: task.dispatch!.leaseOwner,
+      fencingToken: task.dispatch!.fencingToken,
+    },
+    goalLaunch: { inputOperationId: null, placementRevision: 1 },
+  };
   const request = vi.fn(async (worker: string, command: { type: string }) => {
     if (command.type === "task.message.protect") return userMessage;
     return { goal, task: opaque, message: null };
@@ -110,6 +120,12 @@ function fixture() {
     updateChatRuntime: vi.fn(async () => {}),
     getPendingChatWorktreeTransition: vi.fn(async () => null as unknown),
     tasks: {
+      inferenceInputs: {
+        goals: {
+          launchGuard: vi.fn(async () => launchGuard),
+          settleLaunchFailure: vi.fn(async () => ({})),
+        },
+      },
       get: vi.fn(async () => task),
       syncImplementationState: vi.fn(async () => task),
       getOperationContext: vi.fn(async () => ({
@@ -152,6 +168,7 @@ function fixture() {
     request,
     beginTurn,
     sourceGoal,
+    launchGuard,
   };
 }
 
@@ -185,6 +202,7 @@ describe("encrypted Task Goal observation and handoff", () => {
       "owner",
       "chat",
       { rowVersion: 1, task: failed },
+      undefined,
     );
   });
   it("accepts an absent Goal without synchronizing or inventing completion", async () => {
@@ -276,6 +294,12 @@ describe("encrypted Task Goal observation and handoff", () => {
         }),
       );
       expect(f.repository.tasks.syncImplementationState).toHaveBeenCalledOnce();
+      expect(f.repository.tasks.syncImplementationState).toHaveBeenCalledWith(
+        "owner",
+        "chat",
+        expect.anything(),
+        f.launchGuard,
+      );
     } finally {
       f.goals.close();
     }
@@ -313,10 +337,10 @@ describe("encrypted Task Goal observation and handoff", () => {
         }),
       ).rejects.toThrow("Worker offline");
       expect(f.beginTurn).not.toHaveBeenCalled();
-      expect(f.repository.taskDispatch.settle).toHaveBeenCalledWith(
-        expect.anything(),
-        "failed",
-      );
+      expect(
+        f.repository.tasks.inferenceInputs.goals.settleLaunchFailure,
+      ).toHaveBeenCalledWith("owner", "chat", f.launchGuard);
+      expect(f.repository.taskDispatch.settle).not.toHaveBeenCalled();
     } finally {
       f.goals.close();
     }

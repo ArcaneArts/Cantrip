@@ -262,19 +262,17 @@ impl Service {
                     c["round"]["kind"] == "finalize" && truthy(c["relayResult"].get("goal"))
                 })
                 .context("The finalized Task objective is not available.")?;
-            if let Some(lease) = options.dispatch_lease.clone() {
-                if let Some(execution) = this.chats.execution_context(&owner, &chat).await? {
-                    if this
-                        .resume_pending_goal_input(&owner, &execution, &lease, &mut options)
-                        .await?
-                    {
-                        return this
-                            .tasks
-                            .get(&owner, &chat)
-                            .await?
-                            .context("Task Chat source not found.");
-                    }
-                }
+            if let Some(lease) = options.dispatch_lease.clone()
+                && let Some(execution) = this.chats.execution_context(&owner, &chat).await?
+                && this
+                    .resume_pending_goal_input(&owner, &execution, &lease, &mut options)
+                    .await?
+            {
+                return this
+                    .tasks
+                    .get(&owner, &chat)
+                    .await?
+                    .context("Task Chat source not found.");
             }
             let key = format!("task-goal:{operation}");
             let existing = this

@@ -38,6 +38,14 @@ impl OperationError {
         if let Some(error) = cause.downcast_ref::<Self>() {
             return Self::new(error.status, error.code, error.message.clone());
         }
+        if let Some(error) = cause.downcast_ref::<crate::projects::placement::Unavailable>() {
+            let offline = matches!(error.code, "worker-offline" | "capability-unavailable");
+            return Self::new(
+                if offline { 503 } else { 409 },
+                if offline { "unavailable" } else { "conflict" },
+                error.message.clone(),
+            );
+        }
         if let Some(error) = cause.downcast_ref::<crate::chats::agent_delivery::DeliveryError>() {
             let (status, code) = match error {
                 crate::chats::agent_delivery::DeliveryError::ReceiverUnavailable => {
@@ -51,6 +59,7 @@ impl OperationError {
             .downcast_ref::<crate::settings::ResponseValidationError>()
             .is_some()
             || cause.is::<crate::policies::StoredPolicyValidationError>()
+            || cause.is::<crate::projects::targets::StoredTargetValidationError>()
         {
             return Self::validation();
         }
