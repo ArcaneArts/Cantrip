@@ -3,6 +3,7 @@ import {
   settingsSnapshot,
   resolvedAttribution,
 } from "./native-settings-fixtures.mjs";
+import { autonomousAttempts } from "./native-command-wire-fixtures.mjs";
 export const handoffOperation = "77777777-7777-4777-8777-000000000077";
 export function handoffPrepared(extra = {}) {
   return {
@@ -47,7 +48,24 @@ export function nativeHandoffWireFixtures(timestamp) {
     chatId: "chat",
     operationId: handoffOperation,
   };
-  return {
+  const queuedStates = [false, true].flatMap((withdrawn) =>
+    autonomousAttempts.map((autonomousAttempt) => ({
+      ...state,
+      phase: "preparing",
+      binding: null,
+      prepared: null,
+      queuedSource: {
+        operationId: "queued-goal",
+        operationGeneration: "queued-generation",
+        withdrawn,
+        autonomousAttempt,
+        ...(withdrawn
+          ? { retargetedPrompt: { id: "prompt", revision: 0 } }
+          : {}),
+      },
+    })),
+  );
+  const fixtures = {
     nativeRuntimeHandoffRequestSchema: [request],
     nativeRuntimeHandoffPreparedSchema: [
       prepared,
@@ -57,6 +75,7 @@ export function nativeHandoffWireFixtures(timestamp) {
     nativeRuntimeHandoffStateSchema: [
       state,
       { ...state, phase: "preparing", binding: null, prepared: null },
+      ...queuedStates,
     ],
     nativeRuntimeHandoffInventorySchema: [
       {
@@ -65,6 +84,12 @@ export function nativeHandoffWireFixtures(timestamp) {
         latest: state,
         providers: [],
       },
+      ...queuedStates.map((latest) => ({
+        chatId: "chat",
+        binding: settingsBinding,
+        latest,
+        providers: [],
+      })),
     ],
     nativeRuntimeHandoffWorkerRequestSchema: [
       { ...worker, action: "read" },
@@ -127,4 +152,11 @@ export function nativeHandoffWireFixtures(timestamp) {
       },
     ],
   };
+  fixtures.nativeRuntimeHandoffConfigurationSchema.push(
+    ...queuedStates.map((state) => ({
+      ...fixtures.nativeRuntimeHandoffConfigurationSchema[0],
+      state,
+    })),
+  );
+  return fixtures;
 }

@@ -50,6 +50,20 @@ samples. The updated corpus preserves all 298 prior command inputs and 1,154
 alternative cases. Rust integration fixes retain JavaScript-string dispatch keys,
 use an explicitly typed empty provider array and convert settlement validation
 through the existing response error adapter.
+The complete base suite passes 631,962 comparisons across 629 roots, both
+manifest checks and 69,648 JSON round trips. Its separate outgoing-worker suite
+passes 299 complete commands, 86 boundary cases and 241,601 mutations, executing
+all 100 authoritative refinement callbacks.
+
+The subsequent integration with `9a384ee0a` supplies native Goal attempt samples
+through admission, managed queues and queued handoff state/configuration. All
+631 roots have valid Source samples. A fresh native parser passes 59,894
+comparisons over the seven changed roots and one new root. Exact reachable-graph
+comparison and fixture digests retain the other 623 roots, including the
+outgoing-worker envelope; the wire interpreter source is byte-identical across
+this integration. This preserves the earlier full-corpus evidence without
+claiming another full run for the newer source. Typechecks, builds, protocol
+tests and all 31 database regressions pass after integration.
 
 The full-worker folder harness accepts `--task-diagnostics` to select its
 development SQL fixture executable. On a Task failure it captures eight scoped

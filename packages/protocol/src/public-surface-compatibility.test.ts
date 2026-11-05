@@ -630,6 +630,7 @@ const desktopIoExports = [
 const nativeResourceAndTimingExports = [
   "inferenceCommandTimingSchema",
   "inferenceProviderCommandTimingSchema",
+  "nativeAutonomousAttemptSchema",
   "nativeInferenceResourceAuthorizationResultSchema",
   "nativeInferenceResourceAuthorizationSchema",
   "nativeRuntimeHandoffQueuedSourceSchema",
