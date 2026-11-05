@@ -19,6 +19,10 @@ import {
   nativeCommandEventSchema,
   nativePendingRequestSchema,
   type NativeCommandAdmission,
+  type NativeCommandAdmissionResult,
+  type NativeGoalRecoveryFence,
+  nativeGoalRecoveryFenceSchema,
+  nativeGoalRecoveryFenceResultSchema,
   type NativeCommandReceipt,
   type NativeCommandDispatch,
   type NativeCommandContinuation,
@@ -40,10 +44,12 @@ import {
 } from "@cantrip/protocol";
 import { z } from "zod";
 import { CantripServerRequestError } from "./cli-client.js";
+import { setTimeout as delay } from "node:timers/promises";
 
 export interface NativeCommandClientOptions {
   serverUrl: string;
   workerId: string;
+  workerGeneration?: string;
   token(): string;
   fetch?: typeof fetch;
 }
@@ -51,6 +57,23 @@ export interface NativeCommandClientOptions {
 /** Short admission transactions only; never hold a request open for a model turn. */
 export class NativeCommandClient {
   constructor(private readonly options: NativeCommandClientOptions) {}
+
+  async fenceGoalRecoveryAdmission(
+    input: Omit<NativeGoalRecoveryFence, "workerId">,
+    signal?: AbortSignal,
+  ) {
+    return this.post(
+      "goal-recovery-fence",
+      nativeGoalRecoveryFenceSchema.parse({
+        ...input,
+        workerId: this.options.workerId,
+      }),
+      nativeGoalRecoveryFenceResultSchema,
+      signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
+        : AbortSignal.timeout(15_000),
+    );
+  }
 
   private async post<T>(
     action: string,
@@ -240,17 +263,65 @@ export class NativeCommandClient {
     return result;
   }
 
-  async admit(input: Omit<NativeCommandAdmission, "workerId">) {
-    const result = await this.post(
-      "admit",
-      nativeCommandAdmissionSchema.parse({
-        ...input,
-        workerId: this.options.workerId,
-      }),
-      nativeCommandAdmissionResultSchema,
-    );
-    this.correlate(result.receipt, input);
-    return result;
+  async admit(
+    input: Omit<NativeCommandAdmission, "workerId">,
+    options?: { continueUnobservedGoalAdmission: true },
+  ): Promise<NativeCommandAdmissionResult & { continuedAdmission?: boolean }> {
+    const body = nativeCommandAdmissionSchema.parse({
+      ...input,
+      intent: {
+        ...input.intent,
+        ...(input.origin === "autonomous" && this.options.workerGeneration
+          ? { workerGeneration: this.options.workerGeneration }
+          : {}),
+      },
+      workerId: this.options.workerId,
+    });
+    const recoverUnobserved =
+      options?.continueUnobservedGoalAdmission === true &&
+      input.origin === "autonomous" &&
+      Boolean(input.intent.autonomousAttempt?.goalEpoch);
+    let retried = false;
+    let retryDelay = 1000;
+    for (;;) {
+      let result;
+      try {
+        result = await this.post(
+          "admit",
+          body,
+          nativeCommandAdmissionResultSchema,
+          recoverUnobserved ? AbortSignal.timeout(15_000) : undefined,
+        );
+      } catch (error) {
+        if (
+          !recoverUnobserved ||
+          (error instanceof CantripServerRequestError &&
+            error.status < 500 &&
+            error.status !== 408 &&
+            error.status !== 429)
+        )
+          throw error;
+        // This invocation has never forwarded native input. Resolve its exact
+        // immutable admission, even after native cancellation, so the caller
+        // can settle that receipt. Cancellation is checked before forwarding;
+        // cancelling this metadata retry would strand an accepted marker.
+        retried = true;
+        await delay(retryDelay, undefined, { ref: false });
+        retryDelay = Math.min(retryDelay * 2, 30_000);
+        continue;
+      }
+      this.correlate(result.receipt, input);
+      return {
+        ...result,
+        // Only a response lost inside THIS invocation can continue acceptance.
+        // Dispatched, replaced or settled commands still cannot be replayed.
+        continuedAdmission:
+          retried &&
+          result.replayed &&
+          result.receipt.status === "accepted" &&
+          result.execution !== null,
+      };
+    }
   }
 
   async dispatch(input: Omit<NativeCommandDispatch, "workerId">) {
@@ -258,6 +329,9 @@ export class NativeCommandClient {
       "dispatch",
       nativeCommandDispatchSchema.parse({
         ...input,
+        ...(this.options.workerGeneration
+          ? { workerGeneration: this.options.workerGeneration }
+          : {}),
         workerId: this.options.workerId,
       }),
       nativeCommandAdmissionResultSchema,

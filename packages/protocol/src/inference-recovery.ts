@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { taskInferenceInputReceiptSchema } from "./task-inference-input.js";
+import { nativeGoalRecoveryAdmissionSchema } from "./native-goal-recovery.js";
 
 /** Admission metadata only: inputs remain in their existing encrypted queues. */
 const identifier = z
@@ -96,6 +97,9 @@ export const nativeInferenceRecoverySchema = z
     workerId: identifier,
     workerGeneration: z.uuid(),
     record: inferenceJournalRecordSchema,
+    /** Echo only after reading the actual keeper again for this admission.
+     * An older logical alias must not revoke a newer reconstructed source. */
+    expectedGoalAdmission: nativeGoalRecoveryAdmissionSchema.optional(),
   })
   .strict();
 
@@ -107,6 +111,9 @@ export const nativeInferenceRecoveryResultSchema = z
     /** Canonical Task input authority was revoked before forwarding. A title
      * can have used the old reservation without consuming this Task input. */
     taskInputNotDispatched: z.boolean().optional(),
+    /** Canonical pre-start Goal dispatch was revoked under its chat lock. */
+    goalInputNotDispatched: z.boolean().optional(),
+    goalOwnershipChallenge: nativeGoalRecoveryAdmissionSchema.optional(),
   })
   .strict();
 

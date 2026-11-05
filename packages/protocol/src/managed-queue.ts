@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { nativeGoalRecoverySchema } from "./native-goal-recovery.js";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
 import { queuedPromptOpaqueContentSchema } from "./communication-content.js";
 import { encryptedQueuedPromptSchema } from "./chat-runtime.js";
@@ -54,6 +55,7 @@ export const managedQueueSnapshotSchema = z
   .object({
     revision,
     paused: z.boolean(),
+    goalRecovery: nativeGoalRecoverySchema.nullable().default(null),
     items: z.array(encryptedQueuedPromptSchema),
     claims: z.array(managedQueueClaimSchema).default([]),
     pendingImports: z.array(managedQueuePendingImportSchema).default([]),

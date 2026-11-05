@@ -1,7 +1,7 @@
 //! Owner-scoped admission around the worker transport. Admitted work owns its
 //! lifetime, including when its HTTP caller stops awaiting the result.
 use super::{
-    bridge::{BridgeStats, CommandError, EventHandler, WorkerBridge},
+    bridge::{BridgeStats, CommandError, Continuity, EventHandler, WorkerBridge},
     limits::{ActiveLimit, SlidingWindow},
     repository::WorkerRepository,
 };
@@ -29,6 +29,9 @@ pub type CommandOutcome = Result<Option<Value>, CommandError>;
 pub trait CommandDelegate: Send + Sync {
     fn stats(&self) -> BridgeStats;
     fn is_connected(&self, worker: &str) -> bool;
+    fn connection_identity(&self, _worker: &str) -> Option<Continuity> {
+        None
+    }
     fn request(
         self: Arc<Self>,
         owner: String,
@@ -39,6 +42,9 @@ pub trait CommandDelegate: Send + Sync {
     ) -> BoxFuture<'static, CommandOutcome>;
 }
 impl CommandDelegate for WorkerBridge {
+    fn connection_identity(&self, worker: &str) -> Option<Continuity> {
+        WorkerBridge::connection_identity(self, worker)
+    }
     fn is_connected(&self, worker: &str) -> bool {
         WorkerBridge::is_connected(self, worker)
     }
@@ -160,6 +166,7 @@ fn is_execution_control(command: &Value) -> bool {
             | "chat.settings.read"
             | "chat.queue.prepare"
             | "chat.automation.resume"
+            | "chat.goal.recover"
             | "agent.interaction.respond"
             | "agent.interaction.respond.protected"
             | "agent.interaction.cancel"
@@ -356,6 +363,9 @@ impl LimitedCommandBus {
     }
     pub fn is_connected(&self, worker: &str) -> bool {
         self.delegate.is_connected(worker)
+    }
+    pub fn connection_identity(&self, worker: &str) -> Option<Continuity> {
+        self.delegate.connection_identity(worker)
     }
     fn log_limit(&self, worker: &Value, command: &Value, reason: &str) {
         eprintln!(

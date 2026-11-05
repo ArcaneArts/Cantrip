@@ -148,7 +148,10 @@ async fn apply(
         }
         return crate::settings::parse_response("taskGoalOutcomeCommitSchema", Some(&receipt));
     }
-    if phase == "inference-recovery" || phase == "task-input-dispatch" {
+    if matches!(
+        phase.as_str(),
+        "inference-recovery" | "task-input-dispatch" | "goal-recovery-fence"
+    ) {
         let worker = input["workerId"].as_str().unwrap();
         let current = || {
             service.server_id.as_str() == input["serverId"].as_str().unwrap()
@@ -161,13 +164,15 @@ async fn apply(
                             && Some(identity.process_generation.as_str())
                                 == input["workerGeneration"].as_str()
                     })
-                && service.workers.bridge.is_connected(worker)
+                && (phase == "goal-recovery-fence" || service.workers.bridge.is_connected(worker))
         };
         if !current() {
             return Err(CommandError::new("stale-worker-generation", None, 409).into());
         }
         let repo = Repository::new(service.repository.database.clone());
-        let result = if phase == "task-input-dispatch" {
+        let result = if phase == "goal-recovery-fence" {
+            repo.fence_goal_recovery_admission(&owner, &input).await?
+        } else if phase == "task-input-dispatch" {
             crate::tasks::Repository::new(service.repository.database.clone())
                 .dispatch_inference_input(
                     &owner,
@@ -207,6 +212,8 @@ async fn apply(
         return crate::settings::parse_response(
             if phase == "task-input-dispatch" {
                 "taskInferenceInputDispatchResultSchema"
+            } else if phase == "goal-recovery-fence" {
+                "nativeGoalRecoveryFenceResultSchema"
             } else {
                 "nativeInferenceRecoveryResultSchema"
             },
@@ -217,6 +224,27 @@ async fn apply(
         return service.execution.receipts.settle(&owner, &input).await;
     }
     let repo = Repository::new(service.repository.database.clone());
+    if phase == "admit" || phase == "dispatch" {
+        let generation = if phase == "admit" {
+            input["intent"].get("workerGeneration")
+        } else {
+            input.get("workerGeneration")
+        };
+        if let Some(generation) = generation.filter(|v| !v.is_null()) {
+            let worker = input["workerId"].as_str().unwrap();
+            if !service
+                .workers
+                .bridge
+                .connection_identity(worker)
+                .is_some_and(|identity| {
+                    identity.owner == owner
+                        && Some(identity.process_generation.as_str()) == generation.as_str()
+                })
+            {
+                return Err(CommandError::new("stale-worker-generation", None, 409).into());
+            }
+        }
+    }
     if phase == "continue" {
         return authority(
             &service,
@@ -298,6 +326,7 @@ async fn handle(
             "settings-evidence" => "nativeSettingsEvidenceSchema",
             "receipt" => "nativeCommandSettlementSchema",
             "inference-recovery" => "nativeInferenceRecoverySchema",
+            "goal-recovery-fence" => "nativeGoalRecoveryFenceSchema",
             "inference-resource-authorize" => "nativeInferenceResourceAuthorizationSchema",
             "task-input-dispatch" => "taskInferenceInputDispatchSchema",
             "task-goal-outcome" => "taskGoalOutcomeDeliverySchema",
@@ -313,6 +342,7 @@ async fn handle(
                     "task-input-dispatch" => "invalid-task-input-dispatch",
                     "task-goal-outcome" => "invalid-task-goal-outcome",
                     "inference-recovery" => "invalid-inference-recovery",
+                    "goal-recovery-fence" => "invalid-goal-recovery-fence",
                     "inference-resource-authorize" => "invalid-inference-resource",
                     _ => "invalid-native-command",
                 },
@@ -366,6 +396,10 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         .route("/api/internal/native-commands/dispatch", post(handle))
         .route("/api/internal/native-commands/continue", post(handle))
         .route("/api/internal/native-commands/receipt", post(handle))
+        .route(
+            "/api/internal/native-commands/goal-recovery-fence",
+            post(handle),
+        )
         .route(
             "/api/internal/native-commands/inference-resource-authorize",
             post(handle),

@@ -41,7 +41,9 @@ export async function wakeManagedQueueAutonomy(options: {
   );
   if (
     options.snapshot.paused ||
-    (eligibleManagedQueueItem(options.snapshot) && !awaitingGoal) ||
+    (eligibleManagedQueueItem(options.snapshot) &&
+      !awaitingGoal &&
+      !options.snapshot.goalRecovery) ||
     !options.runner
   )
     return;

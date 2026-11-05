@@ -82,6 +82,7 @@ pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
             Ok(())
         }),
         None,
+        None,
         Arc::new(move |error| {
             errors.lock().unwrap().push(Value::from_serialize(
                 &json!({"kind":"error","message":error.to_string()}),

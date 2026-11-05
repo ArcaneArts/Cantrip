@@ -25,6 +25,9 @@ async fn claim_item(
         }
         return claim_value(&existing);
     }
+    if super::super::goal_recovery::read(tx, chat).await?.is_some() {
+        return reject("canonical-goal-recovery-pending");
+    }
     let row = raw_one(
         tx,
         "SELECT to_jsonb(p)::text FROM queued_prompts p WHERE id=$1 AND chat_id=$2",
@@ -52,7 +55,7 @@ async fn claim_next(tx: &Transaction<'_>, owner: &str, chat: &str) -> Result<Opt
     }
     if tx
         .query(
-            &format!("SELECT c.id FROM chats c WHERE c.id=$1 AND {NO_PERMISSION} AND {NO_HANDOFF}"),
+            &format!("SELECT c.id FROM chats c WHERE c.id=$1 AND {NO_PERMISSION} AND {NO_HANDOFF} AND NOT EXISTS (SELECT 1 FROM managed_queue_states s WHERE s.chat_id=c.id AND s.goal_recovery IS NOT NULL)"),
             &[&chat],
         )
         .await?

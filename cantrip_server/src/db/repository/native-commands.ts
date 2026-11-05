@@ -70,6 +70,14 @@ import {
 
 type CommandRow = typeof schema.nativeCommands.$inferSelect;
 import { NativeCommandError } from "./native-command-errors.js";
+import {
+  assertGoalRecoveryAdmission,
+  recordGoalRecoveryAdmission,
+  dispatchGoalRecovery,
+  reconcileUnstartedGoal,
+  settleGoalRecoveryBeforeDispatch,
+  fenceGoalRecoveryAdmission,
+} from "./native-goal-recovery.js";
 export { NativeCommandError } from "./native-command-errors.js";
 export interface NativeCommandAdmissionResult {
   receipt: NativeCommandReceipt;
@@ -536,6 +544,7 @@ export class NativeCommandRepository {
               `autonomous:${attempt.runnerGeneration}`)
         )
           throw new NativeCommandError("invalid-autonomous-attempt");
+        await assertGoalRecoveryAdmission(tx, input);
         if (input.goalQueueHandoff) {
           const handoff = input.goalQueueHandoff;
           if (input.origin !== "autonomous" || input.method !== "turn/start")
@@ -627,7 +636,7 @@ export class NativeCommandRepository {
               ),
             )
             .limit(1);
-          if ((queued || claimed) && !goalClaim)
+          if (((queued && !input.intent.goalRecovery) || claimed) && !goalClaim)
             throw new NativeCommandError("canonical-queue-pending");
         }
         if (queueClaim) {
@@ -839,6 +848,7 @@ export class NativeCommandRepository {
         "recording native admission",
       );
       await admitNativeSettingsState(tx, inserted);
+      await recordGoalRecoveryAdmission(tx, input, inserted);
       if (consumeReply && initial.status === "accepted") {
         await tx
           .update(schema.nativePendingRequests)
@@ -939,7 +949,20 @@ export class NativeCommandRepository {
     ownerId: string,
     input: Parameters<typeof reconcileUnstartedGui>[3],
   ) {
-    return reconcileUnstartedGui(this.database, this.lanes, ownerId, input);
+    return input.record.identity.recovery?.autonomousGoal
+      ? reconcileUnstartedGoal(this.database, this.lanes, ownerId, input)
+      : reconcileUnstartedGui(this.database, this.lanes, ownerId, input);
+  }
+  fenceGoalRecoveryAdmission(
+    ownerId: string,
+    input: Parameters<typeof fenceGoalRecoveryAdmission>[3],
+  ) {
+    return fenceGoalRecoveryAdmission(
+      this.database,
+      this.lanes,
+      ownerId,
+      input,
+    );
   }
   finishLogicalGui(
     ...args: Parameters<NativeLogicalInputRepository["finishLogicalGui"]>
@@ -1233,6 +1256,7 @@ export class NativeCommandRepository {
       }
       if (intent.resumeAutonomy || row.method === "turn/pause")
         await queueStateChanged(tx, row.chatId);
+      await dispatchGoalRecovery(tx, row, input.workerGeneration);
       const updated = firstOrThrow(
         await tx
           .update(schema.nativeCommands)
@@ -2043,6 +2067,11 @@ export class NativeCommandRepository {
         "settling native command",
       );
       await settleNativeSettingsTransport(tx, updated);
+      const goalBeforeDispatch = await settleGoalRecoveryBeforeDispatch(
+        tx,
+        updated,
+        current,
+      );
       if (
         input.executionComplete &&
         row.kind === "start" &&
@@ -2062,7 +2091,7 @@ export class NativeCommandRepository {
             .finishChatExecutionLane(
               row.chatId,
               row.executionLaneId,
-              input.deferred
+              input.deferred || goalBeforeDispatch
                 ? "idle"
                 : (input.executionStatus ??
                     (input.status === "applied" ? "idle" : "failed")),
@@ -2072,7 +2101,7 @@ export class NativeCommandRepository {
             .set({ active: false })
             .where(eq(schema.nativeCommandActivations.chatId, row.chatId));
         } else if (
-          input.deferred &&
+          (input.deferred || goalBeforeDispatch) &&
           activation?.generation === row.activationGeneration
         ) {
           // Administrative retirement can mark this attempt failed before its
@@ -2090,12 +2119,13 @@ export class NativeCommandRepository {
             );
         }
       }
-      await settleQueueClaim(
-        tx,
-        updated,
-        input.reconciliation?.nativeTurnId ?? null,
-        input.goalEpoch,
-      );
+      if (!goalBeforeDispatch)
+        await settleQueueClaim(
+          tx,
+          updated,
+          input.reconciliation?.nativeTurnId ?? null,
+          input.goalEpoch,
+        );
       return {
         ...receipt(updated),
         ...(input.deferred

@@ -215,6 +215,9 @@ impl Repository {
     /// Current replacement worker only, after native scope takeover fenced the
     /// previous generation. Inputs remain in the canonical encrypted queue.
     pub async fn reconcile_inference(&self, owner: &str, input: &Value) -> Result<Value> {
+        if truthy(input["record"]["identity"]["recovery"].get("autonomousGoal")) {
+            return self.reconcile_goal(owner, input).await;
+        }
         let record = &input["record"];
         let identity = &record["identity"]["recovery"];
         let unresolved = json!({"key":record["key"],"chatId":record["identity"]["chatId"],"disposition":"unresolved"});

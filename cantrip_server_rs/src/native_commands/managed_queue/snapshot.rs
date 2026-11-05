@@ -26,7 +26,7 @@ pub(super) async fn snapshot(tx: &Transaction<'_>, owner: &str, chat: &str) -> R
     let imports=rows.iter().map(|r|{let r:Value=serde_json::from_str(&r.get::<String>(0)?)?;Ok(json!({"importId":r["record"]["id"],"nativeItemId":r["record"]["native_item_id"],"status":r["record"]["status"],"prompt":super::super::queued_prompt::encrypted(&r["prompt"])?}))}).collect::<Result<Vec<_>>>()?;
     parse(
         "managedQueueSnapshotSchema",
-        &json!({"revision":state.get("revision").cloned().unwrap_or(json!(0)),"paused":truthy(current.get("automation_paused"))||truthy(current.get("managed_autonomy_stopped")),"items":items,"claims":claims,"pendingImports":imports}),
+        &json!({"revision":state.get("revision").cloned().unwrap_or(json!(0)),"paused":truthy(current.get("automation_paused"))||truthy(current.get("managed_autonomy_stopped")),"goalRecovery":state["goal_recovery"],"items":items,"claims":claims,"pendingImports":imports}),
     )
 }
 pub(in crate::native_commands) async fn owned_snapshot(

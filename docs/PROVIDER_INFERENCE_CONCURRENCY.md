@@ -2251,3 +2251,47 @@ their old evidence. Worker typecheck passes. These metadata checks do not
 establish the outstanding canonical reconciliation and whole-worker recovery
 paths. The combined runtime's acceptance evidence and fingerprint are recorded
 in the [durable suspension guide](DURABLE_TURN_SUSPENSION.md#mcp-clients-and-held-startup).
+
+## Canonical recovery of unused managed Goal cycles
+
+Managed Goal recovery now has a canonical delivery marker on the existing queue
+state. It contains the original native source and, while admitted, its exact
+physical command and worker generation. It contains no prompt copy, provider
+capacity, or FIFO ordinal. The worker journal remains the admission authority.
+
+After actual keeper takeover, both server implementations can retire an unused
+Goal source, retain its applied setter and first-cycle claim, and request a
+native wake using the original thread and Goal epoch. Recovery reads the native
+Goal rather than replaying `thread/goal/set`. It prepares the full current managed
+session configuration. Later pending messages cannot overtake the retained
+cycle. A recovery control receipt acknowledges source ownership before the
+provider wait, so its short timeout does not own or cancel that execution.
+
+Dispatch clears the exact marker atomically, after worker journal adoption.
+This also covers a replacement that crashed between canonical admission and its
+first journal write: the next worker first reads the real keeper, then asks to
+retire that exact old marker admission. A stale marker or worker generation
+cannot revoke a newer source. Same-invocation admission acknowledgement retries
+reuse the immutable metadata request and never replay native input.
+
+A negative pre-dispatch receipt reserves recovery before generic claim
+settlement. Its child remains attached until physical completion; partial
+receipts cannot reject the original setter's claim. Recovery metadata stays
+separate from immutable results. A same-worker retry waits for its preceding
+source's physical and canonical settlement before competing for capacity again.
+Patch `0077` permits exact, physically released Goal journal references to retain
+FIFO order within a worker generation only with canonical no-dispatch authority.
+Already bound, private, suspended and message-backed turns remain separate.
+
+Pause retains the marker, while Stop and archive clear it. Pending permission
+changes and runtime transfers defer recovery. Their real eligibility transitions
+advance the existing queue revision, without adding a polling loop. A confirmed
+native withdrawal clears only its own marker admission before destination wake.
+
+Validation for this integration is source review, direct formatting, mechanical
+protocol export (647 roots, 10,718 nodes; Run export remains 11 roots, 453 nodes),
+and `git diff --check`. No tests, builds, typechecks, benchmarks, native/helper
+execution, patch application/checks, hosted validation or computer-use testing
+ran for this work. Runtime and platform behavior remain unverified. The broader
+Task-private-cycle, provider-route, cancellation and restart lifecycle audits
+continue as part of the full concurrency goal.

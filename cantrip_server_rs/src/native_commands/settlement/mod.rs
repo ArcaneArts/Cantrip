@@ -142,13 +142,17 @@ async fn settle(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Valu
     }
     let updated = state.persist(tx).await?;
     settings_persistence::settle_transport(tx, &updated).await?;
-    state.finish(tx).boxed().await?;
+    let goal_before_dispatch =
+        super::goal_recovery::settle_before_dispatch(tx, &updated, &state.current).await?;
+    state.finish(tx, goal_before_dispatch).boxed().await?;
     let turn = input["reconciliation"]
         .get("nativeTurnId")
         .filter(|v| !v.is_null())
         .map(text)
         .transpose()?;
-    queue::settle(tx, &updated, turn.as_deref(), input.get("goalEpoch")).await?;
+    if !goal_before_dispatch {
+        queue::settle(tx, &updated, turn.as_deref(), input.get("goalEpoch")).await?;
+    }
     response(tx, owner, input, &updated, &chat).await
 }
 impl Repository {

@@ -822,6 +822,7 @@ export async function buildApp({
     retainTaskGoalLease,
     resumeChatAutomation,
     scheduledTaskGoalTurnOptions,
+    recoverManagedGoal,
     startGoalTurn,
     taskContentFromSummary,
     taskDispatchCycleLease,
@@ -1312,6 +1313,8 @@ export async function buildApp({
     bridge,
     dispatch: (ownerId, chatId) =>
       runAsOwner(ownerId, () => dispatchNextQueuedPrompt(chatId)),
+    recoverGoal: (ownerId, chatId, recovery) =>
+      runAsOwner(ownerId, () => recoverManagedGoal(chatId, recovery)),
     publish: (ownerId, chatId) =>
       runAsOwner(ownerId, () => publishChatInvalidation(chatId, "chat-queue")),
     onError: (error) =>

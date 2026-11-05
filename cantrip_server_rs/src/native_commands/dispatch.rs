@@ -198,6 +198,7 @@ async fn dispatch(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Va
     if truthy(intent.get("resumeAutonomy")) || row["method"] == "turn/pause" {
         queue::changed(tx, &chat).await?;
     }
+    super::goal_recovery::dispatch(tx, &row, &input["workerGeneration"]).await?;
     let settings = row["method"] == "thread/settings/update"
         && truthy(intent.get("nativeSettingsOperationId"));
     let application=json!({"nativeOperationId":intent["nativeSettingsOperationId"],"submissionId":Value::Null,"status":"pending","evidenceCount":0}).stringify();

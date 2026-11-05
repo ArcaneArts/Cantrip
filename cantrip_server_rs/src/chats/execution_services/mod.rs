@@ -198,6 +198,12 @@ impl Service {
                 let recovery = turns.recovery.clone();
                 Arc::new(move |owner, chat| recovery.dispatch(&owner, &chat))
             }),
+            Some({
+                let goals = turns.goals.clone();
+                Arc::new(move |owner, chat, recovery| {
+                    goals.recover_managed_goal(&owner, &chat, &recovery)
+                })
+            }),
             {
                 let logger = d.logger.clone();
                 Arc::new(move |error| {

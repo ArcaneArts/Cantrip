@@ -395,6 +395,7 @@ const chatFileReferencesExports = [
 const managedWorkerCommands = [
   "chat.account-defaults",
   "chat.automation.resume",
+  "chat.goal.recover",
   "chat.native-control",
   "chat.native-logical.cancel",
   "chat.native-logical.complete",
@@ -619,6 +620,12 @@ const endpointProviderExports = [
 
 // Reviewed native recovery identities/results and additive timing metadata.
 const inferenceRecoveryExports = [
+  "nativeGoalRecoveryAdmissionSchema",
+  "nativeGoalRecoveryFenceResultSchema",
+  "nativeGoalRecoveryFenceSchema",
+  "nativeGoalRecoveryReceiptSchema",
+  "nativeGoalRecoverySchema",
+  "nativeGoalRecoverySourceSchema",
   "TASK_GOAL_OUTCOME_MAX_BYTES",
   "inferenceNativeExecutionSchema",
   "taskGoalOutcomeCommitSchema",

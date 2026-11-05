@@ -1,5 +1,9 @@
 import { toEncryptedQueuedPrompt } from "./queued-prompts.js";
 import { retainManagedQueueInput } from "./managed-queue-input-snapshot.js";
+import {
+  confirmGoalRecoveryReceipt,
+  readGoalRecovery,
+} from "./native-goal-recovery.js";
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -13,6 +17,7 @@ import {
   type ManagedQueueMutation,
   type NativeCommandAdmission,
   type NativeCommandSession,
+  type NativeGoalRecoveryReceipt,
 } from "@cantrip/protocol";
 import type { ServerRepository } from "../repository.js";
 import * as schema from "../schema.js";
@@ -137,6 +142,7 @@ export class ManagedQueueRepository {
           eq(schema.chats.managedAutonomyStopped, false),
           noPendingPermission(schema.chats.id),
           noPendingHandoff(schema.chats.id),
+          sql`NOT EXISTS (SELECT 1 FROM managed_queue_states s WHERE s.chat_id = ${schema.chats.id} AND s.goal_recovery IS NOT NULL)`,
           sql`((${schema.queuedPrompts.state} = 'pending' AND ${schema.queuedPrompts.frozen} = false AND NOT EXISTS (SELECT 1 FROM managed_queue_claims c WHERE c.prompt_id = ${schema.queuedPrompts.id} AND c.prompt_revision = ${schema.queuedPrompts.revision} AND c.status = 'rejected')) OR (${schema.queuedPrompts.state} = 'claimed' AND EXISTS (SELECT 1 FROM managed_queue_claims c WHERE c.prompt_id = ${schema.queuedPrompts.id} AND c.status = 'claimed' AND c.operation_id IS NULL)))`,
         ),
       );
@@ -146,6 +152,7 @@ export class ManagedQueueRepository {
       .select({
         state: schema.managedQueueStates,
         ownerId: schema.chats.ownerId,
+        goalEligible: sql<boolean>`${noPendingPermission(schema.chats.id)} AND ${noPendingHandoff(schema.chats.id)}`,
       })
       .from(schema.managedQueueStates)
       .innerJoin(
@@ -188,6 +195,9 @@ export class ManagedQueueRepository {
           workerId,
           chatId: row.state.chatId,
           revision: row.state.revision,
+          ...(row.state.goalRecovery && row.goalEligible
+            ? { goalRecovery: row.state.goalRecovery }
+            : {}),
           ...(workerIds.length ? { additionalWorkerIds: workerIds } : {}),
           ...(!context ? { recoveryOnly: true } : {}),
         });
@@ -212,6 +222,16 @@ export class ManagedQueueRepository {
           sql`${schema.managedQueueStates.revision} >= ${revision}`,
         ),
       );
+  }
+  async confirmGoalRecovery(
+    ownerId: string,
+    chatId: string,
+    receipt: NativeGoalRecoveryReceipt,
+  ) {
+    await this.database.transaction(async (tx) => {
+      await this.lock(tx, ownerId, chatId);
+      await confirmGoalRecoveryReceipt(tx, ownerId, chatId, receipt);
+    });
   }
   async deferNotification(chatId: string) {
     await this.database
@@ -316,6 +336,7 @@ export class ManagedQueueRepository {
     return managedQueueSnapshotSchema.parse({
       revision: state?.revision ?? 0,
       paused: Boolean(chat?.automationPaused || chat?.managedAutonomyStopped),
+      goalRecovery: state?.goalRecovery ?? null,
       items,
       claims: claims.map(claimValue),
       pendingImports: imports.map(({ record, prompt }) => ({
@@ -645,6 +666,8 @@ export class ManagedQueueRepository {
               })
               .where(eq(schema.queuedPrompts.id, prompt.id));
           else {
+            if (await readGoalRecovery(tx, chatId))
+              throw new NativeCommandError("canonical-goal-recovery-pending");
             const [chat] = await tx
               .select()
               .from(schema.chats)
@@ -734,6 +757,8 @@ export class ManagedQueueRepository {
           throw new NativeCommandError("queue-claim-conflict");
         return claimValue(existing);
       }
+      if (await readGoalRecovery(tx, chatId))
+        throw new NativeCommandError("canonical-goal-recovery-pending");
       const [prompt] = await tx
         .select()
         .from(schema.queuedPrompts)
@@ -774,6 +799,7 @@ export class ManagedQueueRepository {
             eq(schema.chats.id, chatId),
             noPendingPermission(chatId),
             noPendingHandoff(chatId),
+            sql`NOT EXISTS (SELECT 1 FROM managed_queue_states s WHERE s.chat_id = ${chatId} AND s.goal_recovery IS NOT NULL)`,
           ),
         );
       if (!eligible) return null;
