@@ -1944,6 +1944,19 @@ route/account, reply and permission checks. They do not bypass native inference
 admission or release running capacity without actual settlement. A prepared
 destination and retired generations remain ineligible for these controls.
 
+Native runner callback retention follows actual pending attempts. An acknowledged
+runner bind retires its predecessor; it can no longer admit requests. Its exact
+decline callbacks remain available until each observed attempt either emits its
+actual `turn/started` event or finishes delivery of its decline. A bind timeout
+does not establish retirement. Retries of the same generation preserve bounded
+request deduplication and the original callback for each still-pending attempt.
+An exact native decline also cancels the corresponding admission if it was still
+waiting to send its operation generation to native. Retirement alone does not
+abort a possibly consumed turn. Runtime exit clears current and detached pending
+registrations. Retired generations with no outstanding attempt retain no handler,
+attempt, timer, or completed-result ledger; this metadata cleanup never releases
+an inference ticket or substitutes for native settlement.
+
 The canonical queue can accept additions and update, remove or reorder pending
 items during transfer. Only the trusted canonical mutation path gets this
 metadata access; direct native mutations do not. Claimed inputs retain their

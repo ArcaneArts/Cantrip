@@ -1,4 +1,5 @@
 import { CodexInteractions } from "./interactions.js";
+import { ManagedExecutionGates } from "./managed-execution-gates.js";
 import { setTimeout as retryDelay } from "node:timers/promises";
 import type { NativeResourceProtection } from "../native-resource-protection.js";
 import { handleNativeResourceProtection } from "./native-resource-control.js";
@@ -1706,15 +1707,7 @@ export class CodexAppServer implements CodexRuntime {
       transportGeneration: string | null;
     }
   >();
-  readonly #managedExecutionGateHandlers = new Map<
-    string,
-    {
-      handler: ManagedExecutionGateHandler;
-      controller: AbortController;
-      transportGeneration: string | null;
-      observedAttempts: Set<string>;
-    }
-  >();
+  readonly #managedExecutionGateHandlers = new ManagedExecutionGates();
   readonly #managedNativeCommandDispatchers = new Map<
     string,
     ManagedNativeCommandDispatcher
@@ -1930,27 +1923,15 @@ export class CodexAppServer implements CodexRuntime {
     runnerGeneration: string,
     handler: ManagedExecutionGateHandler | null,
   ): AbortSignal | null {
-    this.#managedExecutionGateHandlers
-      .get(runnerGeneration)
-      ?.controller.abort();
-    if (handler)
-      this.#managedExecutionGateHandlers.set(runnerGeneration, {
-        handler,
-        controller: new AbortController(),
-        transportGeneration: this.transportGeneration,
-        observedAttempts: new Set(),
-      });
-    else this.#managedExecutionGateHandlers.delete(runnerGeneration);
-    return (
-      this.#managedExecutionGateHandlers.get(runnerGeneration)?.controller
-        .signal ?? null
+    return this.#managedExecutionGateHandlers.set(
+      runnerGeneration,
+      handler,
+      this.transportGeneration,
     );
   }
 
   private clearManagedExecutionGateHandlers(): void {
     this.#managedQueueResumers.clear();
-    for (const entry of this.#managedExecutionGateHandlers.values())
-      entry.controller.abort();
     this.#managedExecutionGateHandlers.clear();
   }
 
@@ -2139,6 +2120,14 @@ export class CodexAppServer implements CodexRuntime {
     });
     this.assertManagedExecutionTransport(expectedTransportGeneration);
     const bound = z.object({ bound: z.literal(true) }).parse(result);
+    if (
+      params.expectedRunnerGeneration &&
+      params.expectedRunnerGeneration !== params.runnerGeneration
+    )
+      this.#managedExecutionGateHandlers.retire(
+        params.expectedRunnerGeneration,
+        expectedTransportGeneration,
+      );
     const retained = this.#managedThreadOverlays.get(params.threadId);
     if (retained?.epoch === this.#preparationEpoch) {
       retained.options.executionGate = {
@@ -7179,6 +7168,10 @@ export class CodexAppServer implements CodexRuntime {
     > = null;
     if (message.method === "turn/started") {
       const params = message.params as TurnStartedParams;
+      this.#managedExecutionGateHandlers.consumed(
+        params.threadId,
+        params.turn.id,
+      );
       this.#executions.observeComputerUseTurnStart(
         params.threadId,
         params.turn.id,
@@ -7605,9 +7598,13 @@ export class CodexAppServer implements CodexRuntime {
       });
       const parsed = base.safeParse(message.params);
       if (!parsed.success) return;
-      const entry = this.#managedExecutionGateHandlers.get(
-        parsed.data.runnerGeneration,
-      );
+      const pending =
+        message.method === "thread/managedExecution/declined"
+          ? this.#managedExecutionGateHandlers.pending(parsed.data)
+          : undefined;
+      const entry =
+        pending?.entry ??
+        this.#managedExecutionGateHandlers.get(parsed.data.runnerGeneration);
       const transport = this.transportGeneration;
       if (
         !transport ||
@@ -7631,25 +7628,23 @@ export class CodexAppServer implements CodexRuntime {
           ).catch((error) => entry?.handler.failed(error));
           return;
         }
-        if (entry) {
-          if (entry.observedAttempts.has(request.data.attemptId)) return;
-          entry.observedAttempts.add(request.data.attemptId);
-          if (entry.observedAttempts.size > 1000)
-            entry.observedAttempts.delete(
-              entry.observedAttempts.values().next().value!,
-            );
-        }
-        const task = entry
-          ? Promise.resolve().then(() => {
-              entry.controller.signal.throwIfAborted();
-              return entry.handler.requested(
-                request.data,
-                entry.controller.signal,
+        const attempt = entry
+          ? this.#managedExecutionGateHandlers.begin(entry, request.data)
+          : undefined;
+        if (entry && !attempt) return;
+        const task =
+          entry && attempt
+            ? Promise.resolve().then(() => {
+                const signal = AbortSignal.any([
+                  entry.controller.signal,
+                  attempt.controller.signal,
+                ]);
+                signal.throwIfAborted();
+                return entry.handler.requested(request.data, signal);
+              })
+            : Promise.reject(
+                new Error("No managed runner owns this native attempt."),
               );
-            })
-          : Promise.reject(
-              new Error("No managed runner owns this native attempt."),
-            );
         void task.catch(async (error) => {
           entry?.handler.failed(error);
           try {
@@ -7661,7 +7656,7 @@ export class CodexAppServer implements CodexRuntime {
             entry?.handler.failed(failure);
           }
         });
-      } else if (entry) {
+      } else if (pending && entry) {
         const declined = base
           .extend({
             operationGeneration: z.string().nullable(),
@@ -7674,7 +7669,8 @@ export class CodexAppServer implements CodexRuntime {
         }
         void Promise.resolve()
           .then(() => entry.handler.declined(declined.data))
-          .catch((error) => entry.handler.failed(error));
+          .catch((error) => entry.handler.failed(error))
+          .finally(() => this.#managedExecutionGateHandlers.declined(pending));
       }
       return;
     }
