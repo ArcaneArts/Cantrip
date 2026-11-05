@@ -175,6 +175,7 @@ import {
   cantripMcpHostInvocation,
   cuaMcpHostInvocation,
   managedCuaMcpServer,
+  managedCuaMcpHttpServer,
   managedCantripMcpServer,
   managedCantripMcpHttpServer,
   mergeManagedMcpServers,
@@ -335,6 +336,7 @@ import { OsFileOperations } from "./os-executor/files.js";
 import { OsRunDefinitionOperations } from "./os-executor/run-definitions.js";
 import { OsNativeEnvironment } from "./os-executor/native-environment.js";
 import { OsAgentPlacements } from "./os-executor/agent-placements.js";
+import { OsCuaServices } from "./os-executor/computer-use.js";
 import type { CantripOsExecution } from "@cantrip/protocol";
 import { prepareOsSourceCommand } from "./os-executor/protected-source.js";
 import { handleWorkerLinkCommand } from "./commands/worker-link.js";
@@ -615,6 +617,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   });
   const computerUseAgents = new CuaAgentCoordinator({
     service: computerUse,
+    acquireService: (authority, signal) =>
+      osComputerUseServices.acquire(authority, signal),
     approvals: computerUseApprovals,
     events: computerUseAgentEvents,
     identity: () => ({
@@ -646,6 +650,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerId: config.workerId,
     encryption: workerEncryption,
     service: computerUse,
+    acquireService: (authority, signal) =>
+      osComputerUseServices.acquire(authority, signal),
     approvals: computerUseApprovals,
   });
   const workerLinkGateway = new WorkerLinkGateway({
@@ -1362,7 +1368,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     const cantripAttachment = effectiveAttachment
       ? (() => {
           const commonClaims = {
-            computerUse: !osPlacement && computerUseEnabled,
+            computerUse: computerUseEnabled,
             ownerId: workerEncryption.ownerId(),
             chatId: effectiveAttachment.chatId,
             workerId: effectiveAttachment.workerId,
@@ -1425,12 +1431,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     return mergeManagedMcpServers(userServers, [
       managedCodeGraph,
       managedCantrip,
-      !osPlacement && computerUseEnabled && cantripAttachment
-        ? managedCuaMcpServer(
-            cuaMcpHostInvocation(),
-            cantripAttachment.connectionPath,
-            cantripAttachment.connection.bindingId,
-          )
+      computerUseEnabled && cantripAttachment
+        ? osPlacement
+          ? managedCuaMcpHttpServer(cantripAttachment.connection)
+          : managedCuaMcpServer(
+              cuaMcpHostInvocation(),
+              cantripAttachment.connectionPath,
+              cantripAttachment.connection.bindingId,
+            )
         : null,
     ]);
   };
@@ -1676,6 +1684,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   };
   const handoffStaging = new ManagedRuntimeHandoffStaging<CodexAppServer>();
   const osAgentPlacements = new OsAgentPlacements(config.dataDirectory);
+  const osComputerUseServices = new OsCuaServices({
+    workerId: config.workerId,
+    host: computerUse,
+    placements: osAgentPlacements,
+  });
   const runtimeFor = (
     command: {
       threadId?: string | null;
@@ -6388,7 +6401,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         computerUseAgents.cancelChat(command.chatId);
         computerUsePreviews.cancelChat(command.chatId);
         computerUseApprovals.revokeChat(command.chatId);
-        computerUse.cancelChat(command.chatId, command.threadId);
+        osComputerUseServices.cancelChat(command.chatId, command.threadId);
         return interruptChatAcrossRuntimes(
           codexRuntimes.values(),
           command.chatId,
@@ -6800,7 +6813,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           computerUseApprovals.revokeThread(command.threadId);
         if (command.threadId) {
           computerUseAgents.cancelThread(command.threadId);
-          computerUse.cancelThread(command.threadId);
+          osComputerUseServices.cancelThread(command.threadId);
         }
         if (command.discard && command.threadId) {
           await runtimeFor({
@@ -6968,7 +6981,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       void workerLinkGateway.revokeAll("endpoint-disconnected");
       computerUseAgents.disconnect();
       computerUsePreviews.disconnect();
-      computerUse.disconnect();
+      osComputerUseServices.disconnect();
       computerUseApprovals.disconnect();
     },
     undefined,
@@ -6982,7 +6995,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           observeManagedSettings(chatId, entry.runtime, entry.threadId);
         else entry.publisher.wake();
       }
-      computerUse.reconnect();
+      osComputerUseServices.reconnect();
       providerAuthObserver.reemitAll();
     },
     {
@@ -7235,10 +7248,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       searxngRuntime.close(),
       codegraphRuntime?.close(),
     ]);
-    computerUseAgents.close();
-    computerUsePreviews.close();
+    const computerUseAgentsClosed = computerUseAgents.close();
+    const computerUsePreviewsClosed = computerUsePreviews.close();
     computerUseApprovals.close();
-    const computerUseClosed = computerUse.close();
+    const computerUseClosed = Promise.all([
+      computerUsePreviewsClosed,
+      computerUseAgentsClosed,
+      osComputerUseServices.close(),
+    ]);
     requestRuntimeRestart = null;
     process.off("SIGINT", handleSigint);
     process.off("SIGTERM", handleSigterm);

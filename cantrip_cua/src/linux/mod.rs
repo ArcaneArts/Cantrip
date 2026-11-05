@@ -137,6 +137,9 @@ impl X11Backend {
     }
 }
 impl CaptureBackend for X11Backend {
+    fn protects_host_displays(&self) -> bool {
+        false
+    }
     fn name(&self) -> &'static str {
         "linux-x11"
     }

@@ -75,9 +75,7 @@ pub async fn resolve(
         "CantripOS execution placement is unavailable or changed; no host fallback was attempted."
     );
     let execution = execution_for_source(owner, &source, p)?;
-    Ok(Some(
-        json!({"cwd":b["guestPath"],"osExecution":execution,"computerUseEnabled":false}),
-    ))
+    Ok(Some(json!({"cwd":b["guestPath"],"osExecution":execution})))
 }
 
 pub(crate) fn execution_for_source(owner: &str, source: &Value, p: &Value) -> Result<Value> {

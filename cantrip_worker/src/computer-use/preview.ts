@@ -25,7 +25,11 @@ import {
   CuaAuthorizationError,
   handleComputerUseOperation,
 } from "./handler.js";
-import { CantripCuaService, CuaServiceError } from "./service.js";
+import {
+  CantripCuaService,
+  CuaServiceError,
+  type CuaServiceLease,
+} from "./service.js";
 import { waitBeforeCuaSend } from "./cancellation.js";
 import { CuaProcessError } from "./errors.js";
 import type { CuaAgentCoordinator } from "./agent.js";
@@ -47,11 +51,18 @@ interface Preview {
   sessionId: string | null;
   sessionQueue: Promise<void>;
   queuedOpens: number;
+  lease: CuaServiceLease | null;
+  acquisition: Promise<CuaServiceLease> | null;
+  calls: Set<Promise<unknown>>;
 }
 export interface CuaPreviewCoordinatorOptions {
   workerId: string;
   encryption: WorkerEndpointEncryptionService & { serverIdentity(): string };
   service: CantripCuaService;
+  acquireService?: (
+    authority: CuaPreviewAuthority,
+    signal: AbortSignal,
+  ) => Promise<CuaServiceLease>;
   approvals: CuaApprovalManager;
   agentObservations?: Pick<
     CuaAgentCoordinator,
@@ -72,6 +83,7 @@ export class CuaPreviewCoordinator {
   private previews = new Map<string, Preview>();
   private byChat = new Map<string, Preview>();
   private closed = false;
+  private retirements = new Set<Promise<void>>();
   constructor(private readonly options: CuaPreviewCoordinatorOptions) {}
 
   status() {
@@ -107,6 +119,11 @@ export class CuaPreviewCoordinator {
       sessionId: null,
       sessionQueue: Promise.resolve(),
       queuedOpens: 0,
+      lease: this.options.acquireService
+        ? null
+        : { service: this.options.service, release: async () => {} },
+      acquisition: null,
+      calls: new Set(),
       scope: {
         ownerId: authority.ownerId,
         serverId: authority.serverId,
@@ -138,9 +155,10 @@ export class CuaPreviewCoordinator {
       command.executionLaneId !== null
     )
       throw new CuaAuthorizationError("ownership-mismatch");
-    return handleComputerUseOperation(command, emit, {
+    const work = handleComputerUseOperation(command, emit, {
       workerId: this.options.workerId,
-      service: this.options.service,
+      service: preview.lease?.service ?? null,
+      resolveService: () => this.service(preview),
       encryption: this.options.encryption,
       publishActivity: this.options.publishActivity
         ? (activity) => this.publishActivity(preview, activity, emit)
@@ -208,6 +226,32 @@ export class CuaPreviewCoordinator {
         throw new CuaAuthorizationError("approval-required");
       },
     });
+    preview.calls.add(work);
+    try {
+      return await work;
+    } finally {
+      preview.calls.delete(work);
+    }
+  }
+
+  private service(preview: Preview): Promise<CantripCuaService> {
+    if (preview.controller.signal.aborted)
+      throw new CuaAuthorizationError("execution-unavailable");
+    if (preview.lease) return Promise.resolve(preview.lease.service);
+    if (!preview.acquisition) {
+      const work = this.options.acquireService!(
+        preview.authority,
+        preview.controller.signal,
+      ).then((lease) => {
+        preview.lease = lease;
+        return lease;
+      });
+      preview.acquisition = work;
+      void work.catch(() => {
+        if (preview.acquisition === work) preview.acquisition = null;
+      });
+    }
+    return preview.acquisition.then((lease) => lease.service);
   }
 
   async answer(command: WorkerComputerUseApprovalResponseCommand) {
@@ -246,7 +290,8 @@ export class CuaPreviewCoordinator {
     let session = null;
     try {
       session = preview.sessionId
-        ? this.options.service.state(preview.scope, preview.sessionId)
+        ? (preview.lease?.service.state(preview.scope, preview.sessionId) ??
+          null)
         : null;
     } catch {}
     this.revokeChatPreview(preview);
@@ -327,6 +372,7 @@ export class CuaPreviewCoordinator {
   close() {
     this.closed = true;
     this.disconnect();
+    return Promise.allSettled([...this.retirements]).then(() => {});
   }
 
   private resolve(binding: CuaPreviewBinding) {
@@ -361,20 +407,11 @@ export class CuaPreviewCoordinator {
       if (active.aborted) throw new CuaProcessError("cancelled", "not-sent");
       // Full owner/server/worker/chat/task/thread/turn checks remain inside the
       // service. Reattach validates the actual target and preserves its cursor.
+      const service = preview.lease?.service;
+      if (!service) throw new CuaServiceError("unavailable");
       if (preview.sessionId)
-        return this.options.service.attach(
-          scope,
-          preview.sessionId,
-          target,
-          active,
-          true,
-        );
-      const session = await this.options.service.open(
-        scope,
-        target,
-        active,
-        true,
-      );
+        return service.attach(scope, preview.sessionId, target, active, true);
+      const session = await service.open(scope, target, active, true);
       // Stop may race an already-resolved native operation. Its service-level
       // cancellation has invalidated that handle; never repopulate a closed lease.
       if (active.aborted) throw new CuaProcessError("cancelled", "unknown");
@@ -418,7 +455,18 @@ export class CuaPreviewCoordinator {
     this.byChat.delete(preview.scope.chatId);
     preview.controller.abort();
     this.options.approvals.revokeContext(preview.controller.signal);
-    this.options.service.cancelScope(preview.scope);
+    preview.lease?.service.cancelScope(preview.scope);
+    const cleanup = (async () => {
+      await Promise.allSettled([...preview.calls]);
+      await preview.acquisition?.catch(() => {});
+      const lease = preview.lease;
+      preview.lease = null;
+      await lease?.release();
+    })();
+    this.retirements.add(cleanup);
+    void cleanup
+      .finally(() => this.retirements.delete(cleanup))
+      .catch(() => {});
   }
   /** Explicit Stop, trusted policy/placement revocation and chat interruption
    * remain chat-wide. Ordinary preview cleanup must not own agent lifetimes. */
@@ -426,6 +474,6 @@ export class CuaPreviewCoordinator {
     this.options.onRevokeChat?.(preview.scope.chatId);
     this.remove(preview);
     this.options.approvals.revokeChat(preview.scope.chatId);
-    this.options.service.cancelChat(preview.scope.chatId);
+    preview.lease?.service.cancelChat(preview.scope.chatId);
   }
 }

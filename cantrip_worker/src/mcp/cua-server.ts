@@ -3,6 +3,7 @@ import {
   CUA_START_GUIDANCE,
   CUA_INPUT_GUIDANCE,
   CUA_SCRIPT_GUIDANCE,
+  CUA_LINUX_GUIDANCE,
 } from "./cua-guidance.js";
 import { cantripVersion } from "@cantrip/version";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -42,10 +43,15 @@ function executionMetadata(meta: Record<string, unknown> | undefined) {
   };
 }
 
-export function createCuaMcpServer(gateway: CuaMcpGateway) {
+export function createCuaMcpServer(
+  gateway: CuaMcpGateway,
+  environment?: "linux-desktop",
+) {
+  const instructions =
+    environment === "linux-desktop" ? CUA_LINUX_GUIDANCE : CUA_MCP_INSTRUCTIONS;
   const server = new McpServer(
     { name: "cantrip_cua", version: cantripVersion.version },
-    { instructions: CUA_MCP_INSTRUCTIONS },
+    { instructions },
   );
   const invoke = async (
     operation: "js" | "js_reset",
@@ -81,7 +87,7 @@ export function createCuaMcpServer(gateway: CuaMcpGateway) {
   server.registerTool(
     "js",
     {
-      description: CUA_MCP_INSTRUCTIONS,
+      description: instructions,
       inputSchema: z.strictObject({ script: cuaMcpScriptSchema }),
       annotations: {
         readOnlyHint: false,

@@ -1,15 +1,16 @@
 # Optional native desktop package
 
-`cantrip-os-remote` 0.1.0 supplies the Linux X11 `cantrip-cua` helper and a
+`cantrip-os-remote` 0.2.0 supplies the Linux X11 `cantrip-cua` helper and a
 workspace-bound protected stdio carrier. It depends on the existing workspace
 and executor packages. Removing it leaves those packages, ordinary desktops,
 and workspace files available. No Worker, conversation database, scheduler,
 or model-provider credentials are installed in the guest.
 
-This is the Phase 4 package/carrier foundation. Real-agent admission, integrated
-Remote Desktop/takeover, clipboard APIs and managed SSH/SFTP/VNC/TCP access still
-require the following Phase 4 cycles. The independent local workspace viewer
-continues to work.
+The Worker routes normal agent CUA and human previews to their captured Linux
+placement. The MCP client, turn authorization and provider credentials stay on
+the Worker. Integrated Remote Desktop/takeover, clipboard APIs and managed
+SSH/SFTP/VNC/TCP access require the following Phase 4 cycles. The independent
+local workspace viewer continues to work.
 
 From the repository root:
 
@@ -44,10 +45,21 @@ sudo apt remove cantrip-os-remote
 `open` deliberately opens the selected workspace desktop. `show` only observes
 it. Both return the canonical instance, owner/Worker attachment, executor-manager
 generation, workspace account/display, desktop generation and remote-service
-generation. `connect WORKSPACE --expect '<exact descriptor JSON>'` validates that
-complete descriptor before forwarding binary CUA frames. It does not start a
-replacement desktop or discover another display. `close` retires that workspace's
-CUA connection; it does not stop its desktop or independent shell processes.
+generation. The Worker supplies `open --expect-placement '<captured placement>'`
+so an outdated placement cannot start a desktop. `connect WORKSPACE --expect
+'<exact descriptor JSON>' --connection-id UUID` validates the complete descriptor
+before forwarding binary CUA frames. It does not start a replacement desktop or
+discover another display. The Worker's scoped `close` includes that descriptor
+and connection ID, so delayed cleanup cannot close a newer connection.
+Administrative `close WORKSPACE` deliberately retires that workspace's CUA
+connection; neither form stops its desktop or independent shell processes.
+
+New Linux agents inherit the account's computer-use policy. Once enabled, discover
+`cantrip_cua/js` and follow its Linux instructions: inventory the assigned display,
+attach its exact ID/generation, then use screenshots and input. Launch applications
+with `cantrip-desktop` through the ordinary Linux shell. Full-display access to
+this explicit guest target does not require the Host Cantrip-window grant. A
+missing package or stale placement reports an error without selecting Host.
 
 The Worker uses `remoteControl` and `remoteCommand` from its OS connection module.
 Local Docker uses non-TTY root `docker exec -i`; installed systems use strict
@@ -94,6 +106,7 @@ CANTRIP_OS_CUA_TEST_CONTAINER=disposable-container \
 ```
 
 For an installed guest set `CANTRIP_OS_CUA_TEST_TRANSPORT` to a Worker-local JSON
-transport file using the existing SSH transport fields. These tests explicitly
-authorize their disposable display; they do not claim real-agent product
-permission admission. See the acceptance record for executed results.
+transport file using the existing SSH transport fields. The second case exercises
+the real packaged SDK through HTTP MCP, turn authorization and placement routing,
+and asserts that the Host helper never launches. Its admitted turn is a fixture;
+real-provider product acceptance is recorded separately in the acceptance guide.

@@ -1,14 +1,23 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CantripMcpConnectionDocument } from "@cantrip/protocol";
-import { invokeCantripMcpBrokerOperation } from "./connection.js";
+import {
+  invokeCantripMcpBrokerOperation,
+  invokeCuaMcpBrokerOperation,
+} from "./connection.js";
 import { createCantripMcpServer } from "./server.js";
+import { createCuaMcpServer } from "./cua-server.js";
 import type { CantripMcpProfile } from "./profile.js";
 
-/** The broker authenticates each request before creating this stateless MCP
- * transport. Tool calls enter the existing authenticated, lane-bound broker;
- * disconnect/reconnect never replays a mutation. */
-export async function serveCantripMcpHttp(
+interface HttpMcpServer {
+  connect(transport: Transport): Promise<void>;
+  close(): Promise<void>;
+}
+
+/** Every request is authenticated by the broker before an inert MCP server is
+ * created. Both MCP surfaces retain their existing lane/turn authorization. */
+export function serveCantripMcpHttp(
   request: IncomingMessage,
   response: ServerResponse,
   options: {
@@ -17,17 +26,43 @@ export async function serveCantripMcpHttp(
     allowedToolNames: readonly string[];
   },
 ): Promise<void> {
+  return serveMcpHttp(request, response, () =>
+    createCantripMcpServer(
+      (operation, signal) =>
+        invokeCantripMcpBrokerOperation(options.connection, operation, signal),
+      options.profile,
+      options.allowedToolNames,
+    ),
+  );
+}
+
+/** The native client and broker stay on the Worker, including their credential.
+ * No worker-local stdio executable or connection file is needed in Linux. */
+export function serveCuaMcpHttp(
+  request: IncomingMessage,
+  response: ServerResponse,
+  connection: CantripMcpConnectionDocument,
+): Promise<void> {
+  return serveMcpHttp(request, response, () =>
+    createCuaMcpServer(
+      (operation, signal) =>
+        invokeCuaMcpBrokerOperation(connection, operation, signal),
+      "linux-desktop",
+    ),
+  );
+}
+
+async function serveMcpHttp(
+  request: IncomingMessage,
+  response: ServerResponse,
+  create: () => HttpMcpServer,
+): Promise<void> {
   if (request.method !== "POST") {
     response.writeHead(405, { Allow: "POST" });
     response.end();
     return;
   }
-  const server = createCantripMcpServer(
-    (operation, signal) =>
-      invokeCantripMcpBrokerOperation(options.connection, operation, signal),
-    options.profile,
-    options.allowedToolNames,
-  );
+  const server = create();
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,

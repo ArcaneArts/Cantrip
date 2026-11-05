@@ -1574,3 +1574,56 @@ Docker/ISO inclusion and source watching are wired. A refreshed ISO containing
 this package has not yet been built or installed. Phase 4 remains in progress:
 real-agent routing, clipboard APIs, integrated streaming/takeover, managed
 SSH/SFTP/VNC/TCP and final distribution acceptance are still required.
+
+## Phase 4: captured agent CUA routing checkpoint (2026-11-04)
+
+Remote package 0.2.0 adds expected-placement validation before opening a desktop
+and connection-scoped cleanup. The Worker now routes normal agent CUA and
+encrypted previews to the Server-authorized, immutably captured Linux placement.
+HTTP MCP and provider credentials stay on the Worker. Guest full-display access
+does not require the Host Cantrip-window grant. Saved agent observations remain
+readable without starting a desktop/helper.
+
+Both ARM64 Docker and the installed AMD64 VM passed the expanded package lifecycle
+harness. Delayed cleanup from an old connection could not stop a new connection
+or release its held X button. An incorrect expected runtime could not start a
+stopped desktop. Previous capture, process/service death, two-display separation,
+disable/remove/purge/reinstall and data-retention checks also passed.
+
+Both architectures passed two actual packaged Worker integration cases. The
+second uses the real `cantrip_cua/js` SDK, HTTP MCP client/broker, coordinator,
+fresh-authority callback and captured-placement registry. It inventories and
+attaches the expected X11 desktop, clicks, sends Escape, captures a valid PNG and
+checks session state. The Host helper launch count remained zero; no
+`allowCantripApp` grant was supplied. The root connection was gone after the last
+lease released. ARM64 took 1.28 seconds for both cases; the emulated AMD64 VM took
+6.67 seconds. These are deterministic admitted-turn fixtures, distinct from a
+real-provider product conversation.
+
+The TypeScript/PGlite captured-chat tests passed, including inheritance of enabled
+CUA policy and identity-only authority projection. Native Rust Server projection,
+17,122 contract cases and repository tests passed. Repository behavior was tested
+against actual PGlite and an owned ephemeral PostgreSQL 17 process. Worker
+TypeScript and focused routing/authorization/preview/MCP tests passed. Native
+Linux formatting, strict all-target Clippy and all 86 library tests passed.
+
+The full Worker suite passed 2,686 tests with 153 skips and one timeout in the
+existing encrypted-history batch test. That case passed alone at its unchanged
+timeout; the original parallel-run failure is retained. All 1,054 protocol tests
+passed after adding the two reviewed desktop-placement exports to the existing
+compatibility list. Server and Worker TypeScript checks passed.
+
+The fresh ARM64 image `cantrip-os-phase4-product:dev` includes remote 0.2.0 and
+the existing workspace/executor packages, with a 4 GiB limit and only the three
+existing named data volumes. Its image identity is
+`sha256:481c21e10ce39db62099f1e10b3e198f26ee3e5503b4e2522ad3150203f0b223`.
+
+| Package architecture | Bytes   | SHA-256                                                            |
+| -------------------- | ------- | ------------------------------------------------------------------ |
+| ARM64                | 1314124 | `3185f443eb4b378348bccfebdd295a932757af066deb4500c629fc8edb53c2ed` |
+| AMD64                | 1507004 | `c13e86d3e97204eb2b40dfc0ac8532387e91ab8ccdafb677883d6fc5494eb471` |
+
+Required `pnpm check` still stops at the existing server decomposition budgets:
+`build-app.ts` 1503/1500 and `chat-turn-runtime.ts` 2103/1999. A refreshed ISO,
+clipboard APIs, integrated streaming/takeover and managed SSH/SFTP/VNC/TCP remain
+required for Phase 4 completion.

@@ -468,7 +468,7 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
     );
     assert_eq!(
         context["computerUseEnabled"],
-        cantrip_server::wire::Value::Bool(false)
+        cantrip_server::wire::Value::Bool(true)
     );
     let lanes = cantrip_server::chats::execution_lanes::LaneRepository::new(database.clone());
     let lane = lanes

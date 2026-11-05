@@ -55,8 +55,25 @@ an existing chat is not implemented. A failed or disconnected OS never selects a
 host directory as a fallback.
 
 The workspace selector URL opens its independent desktop. Shell execution does
-not require starting that desktop. Cantrip's integrated desktop transport and
-Linux computer use remain later work.
+not require starting that desktop. The optional remote package now supplies Linux
+computer use; Cantrip's integrated desktop transport remains in progress.
+
+## Agent computer use
+
+Enable **Settings → Computer Use → Enable computer use**, then start a new turn
+in a current Linux agent. Its normal `cantrip_cua/js` tool opens the assigned
+workspace desktop on first use. Follow the tool's Linux instructions to inventory
+and attach that display, capture it and dispatch input. Launch Chromium, Mousepad
+or other applications with `cantrip-desktop` in the ordinary Linux shell.
+
+The chat keeps its captured source and workspace. Opening a viewer does not
+retarget it. The Worker shares one native connection for that desktop across
+authorized agent/preview scopes, releasing the carrier after the last scope.
+Stopping an agent releases its held input; an independent shell keeps running.
+The Host Cantrip-window grant is unnecessary for the explicitly assigned Linux
+display. Missing remote support, changed generations or revoked policy fail
+without opening the Host desktop. Clipboard APIs and integrated human takeover
+are still being implemented.
 
 ## Files and editor
 

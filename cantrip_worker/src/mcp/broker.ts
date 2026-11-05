@@ -1,4 +1,4 @@
-import { serveCantripMcpHttp } from "./http-server.js";
+import { serveCantripMcpHttp, serveCuaMcpHttp } from "./http-server.js";
 import { cantripMcpToolNamesForOperations } from "@cantrip/protocol";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import {
@@ -639,6 +639,20 @@ export class CantripMcpBroker {
         requestUrl.pathname,
       );
       const mcp = /^\/v1\/mcp\/([0-9a-f-]+)$/u.exec(requestUrl.pathname);
+      const cua = /^\/v1\/cua-mcp\/([0-9a-f-]+)$/u.exec(requestUrl.pathname);
+      if (cua) {
+        const stored = this.bindingFor(cua[1]!, request.headers.authorization);
+        if (!stored) {
+          sendJson(response, 401, { error: "Unauthorized" });
+          return;
+        }
+        if (!stored.computerUse) {
+          sendJson(response, 403, { error: "Computer use is not enabled." });
+          return;
+        }
+        void serveCuaMcpHttp(request, response, stored.connection);
+        return;
+      }
       if (mcp) {
         const stored = this.bindingFor(mcp[1]!, request.headers.authorization);
         if (!stored) {

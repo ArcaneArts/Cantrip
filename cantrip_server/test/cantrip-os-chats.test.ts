@@ -7,8 +7,10 @@ import { expect, it } from "vitest";
 import {
   encryptedChatCreateSchema,
   cantripOsSourceReceiptSchema,
+  cantripOsDesktopPlacement,
 } from "@cantrip/protocol";
 import { ServerRepository } from "../src/db/repository.js";
+import { computerUsePreviewAuthority } from "../src/app/routes/computer-use-preview.js";
 import type { RepositoryDatabase } from "../src/db/repository/database.js";
 import type { SecretVault } from "../src/security/secret-vault.js";
 import * as schema from "../src/db/schema.js";
@@ -242,7 +244,7 @@ it("captures an OS binding before native preparation and preserves lane identity
     const context = await repository.getChatExecutionContext("owner", input.id);
     expect(context).toMatchObject({
       cwd: binding.guestPath,
-      computerUseEnabled: false,
+      computerUseEnabled: true,
       osExecution: {
         kind: "cantrip-os",
         scope: {
@@ -253,6 +255,18 @@ it("captures an OS binding before native preparation and preserves lane identity
         },
       },
     });
+    const desktopAuthority = computerUsePreviewAuthority({
+      ownerId: "owner",
+      serverId: "server",
+      context: context!,
+    });
+    expect(desktopAuthority.osPlacement).toEqual(
+      cantripOsDesktopPlacement(context!.osExecution!),
+    );
+    expect(desktopAuthority.cantripAppAllowed).toBe(false);
+    expect(JSON.stringify(desktopAuthority)).not.toContain(binding.guestPath);
+    expect(desktopAuthority.osPlacement).not.toHaveProperty("transport");
+    expect(desktopAuthority.osPlacement).not.toHaveProperty("homeGuestPath");
     expect(
       (
         await db.query(

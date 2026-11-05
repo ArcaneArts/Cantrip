@@ -124,6 +124,10 @@ function session(scope: CuaScope): CuaSession {
 function fixture(
   actualBinary?: string,
   publishActivity?: CuaPreviewCoordinatorOptions["publishActivity"],
+  backend: Pick<
+    CuaPreviewCoordinatorOptions,
+    "acquireService" | "agentObservations"
+  > = {},
 ) {
   const encryption = {
     ownerId: vi.fn(() => "owner"),
@@ -152,6 +156,7 @@ function fixture(
     approvals,
     encryption,
     publishActivity,
+    ...backend,
   });
   const cancelChat = vi.spyOn(service, "cancelChat");
   const cancelScope = vi.spyOn(service, "cancelScope");
@@ -1327,3 +1332,67 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
     });
   },
 );
+
+it("routes an authorized preview to its leased backend and reads saved observations without starting it", async () => {
+  const guest = new CantripCuaService({
+    workerId: "worker",
+    launch: () => {
+      throw new Error("No native process");
+    },
+  });
+  const release = vi.fn(async () => {});
+  const acquire = vi.fn(async () => ({ service: guest, release }));
+  const f = fixture(undefined, undefined, {
+    acquireService: acquire,
+    agentObservations: {
+      listObservations: () => ({ sources: [] }),
+      readObservation: () => {
+        throw new Error("No retained image");
+      },
+    },
+  });
+  const current = {
+    ...authority,
+    profile: {
+      selectedId: ":yolo",
+      effectiveId: ":yolo",
+      forcedByWorktreePolicy: false,
+      usesDefault: false,
+    },
+  };
+  const lease = f.coordinator.open(current);
+  const saved = await execute(
+    f,
+    { operation: "agent.sources.list" },
+    lease,
+    current,
+  );
+  expect(saved.result).toMatchObject({ status: "ok", data: { sources: [] } });
+  expect(acquire).not.toHaveBeenCalled();
+  const capture = vi
+    .spyOn(guest, "capabilities")
+    .mockResolvedValue({ ...capabilities, backend: "linux-x11" });
+  const host = vi.spyOn(f.service, "capabilities");
+  const result = await execute(
+    f,
+    { operation: "capabilities.get" },
+    lease,
+    current,
+  );
+  expect(result.result).toMatchObject({
+    status: "ok",
+    data: { backend: "linux-x11" },
+  });
+  expect(capture).toHaveBeenCalledTimes(1);
+  expect(host).not.toHaveBeenCalled();
+  expect(f.launch).not.toHaveBeenCalled();
+  f.coordinator.stop({
+    ownerId: "owner",
+    serverId: "server",
+    chatId: "chat",
+    leaseId: lease.leaseId,
+  });
+  await f.coordinator.close();
+  expect(release).toHaveBeenCalledTimes(1);
+  await guest.close();
+});

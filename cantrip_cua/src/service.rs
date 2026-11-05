@@ -348,7 +348,7 @@ impl<B: CaptureBackend> CuaService<B> {
         use crate::target::{DenialReason, TargetAccess, TargetKind};
         let reason = if allowed {
             None
-        } else if target.kind == TargetKind::Monitor {
+        } else if target.kind == TargetKind::Monitor && self.backend.protects_host_displays() {
             Some(DenialReason::DisplayMayIncludeCantrip)
         } else if self.backend.is_cantrip_application(target)? {
             Some(DenialReason::CantripAppProtected)

@@ -12,6 +12,7 @@ import struct
 import stat
 import subprocess
 import time
+import uuid
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--package", required=True)
@@ -46,7 +47,9 @@ def wait(predicate):
 class Native:
     def __init__(self, context):
         self.context = context
-        self.child = subprocess.Popen(["cantrip-remote", "connect", context["workspace_id"], "--expect", json.dumps(context)],
+        self.connection_id = str(uuid.uuid4())
+        self.child = subprocess.Popen(["cantrip-remote", "connect", context["workspace_id"], "--expect", json.dumps(context),
+                                       "--connection-id", self.connection_id],
                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.sequence = 0
         inventory = self.call({"operation": "targets.list", "allowCantripApp": True})[0]["targets"]
@@ -154,6 +157,23 @@ wait(lambda: not remote("status")["connections"])
 assert second.mask() == second_mask
 print("PASS actual capture, EOF releases held button, other display unaffected", flush=True)
 
+retired = Native(context)
+retired.hold()
+wait(lambda: pointer.mask() & 256)
+command("cantrip-remote", "close", args.workspace, "--expect", json.dumps(context), "--connection-id", retired.connection_id)
+retired.child.wait(timeout=25)
+wait(lambda: not pointer.mask() & 256)
+replacement_connection = Native(context)
+replacement_connection.hold()
+wait(lambda: pointer.mask() & 256)
+late = command("cantrip-remote", "close", args.workspace, "--expect", json.dumps(context), "--connection-id", retired.connection_id, check=False)
+assert late.returncode != 0 and "generation mismatch" in late.stderr
+assert pointer.mask() & 256
+replacement_connection.close()
+wait(lambda: not pointer.mask() & 256)
+wait(lambda: not remote("status")["connections"])
+print("PASS exact connection retirement and late cleanup cannot stop its replacement", flush=True)
+
 second_connection = Native(context)
 second_connection.hold()
 wait(lambda: pointer.mask() & 256)
@@ -192,7 +212,12 @@ try:
     wait(lambda: not remote("status")["connections"])
     assert shell.poll() is None
     assert second.mask() == second_mask
-    context = remote("open", args.workspace)
+    expected = {key: new_context[key] for key in ("instance_id", "generation", "owner_id", "worker_id", "workspace_id", "uid", "gid", "home")}
+    wrong = {**expected, "generation": str(uuid.uuid4())}
+    denied = command("cantrip-remote", "open", args.workspace, "--expect-placement", json.dumps(wrong), check=False)
+    assert denied.returncode != 0 and "generation mismatch" in denied.stderr
+    assert json.loads(command("cantrip-workspaces", "show", args.workspace).stdout)["status"] == "stopped"
+    context = remote("open", args.workspace, "--expect-placement", json.dumps(expected))
     assert context["desktop_generation"] != new_context["desktop_generation"]
     stale = command("cantrip-remote", "connect", args.workspace, "--expect", json.dumps(new_context), check=False)
     assert stale.returncode != 0 and "generation mismatch" in stale.stderr

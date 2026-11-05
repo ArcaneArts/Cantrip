@@ -97,6 +97,11 @@ export interface CantripCuaServiceOptions {
   launch?: typeof launchCuaTransport;
 }
 
+export interface CuaServiceLease {
+  service: CantripCuaService;
+  release(): Promise<void>;
+}
+
 /** Sole worker owner. Callers supply an already-authorized, server-derived scope.
  * This pass deliberately exposes no network/MCP entry point or permission bypass.
  * Constructor/status/idle shutdown do not launch or inspect the native helper. */

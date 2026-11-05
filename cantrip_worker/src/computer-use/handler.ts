@@ -47,7 +47,8 @@ export class CuaAuthorizationError extends Error {
 
 export interface ComputerUseHandlerDependencies {
   workerId: string;
-  service: CantripCuaService;
+  service: CantripCuaService | null;
+  resolveService?: () => Promise<CantripCuaService>;
   /** Preview leases may reuse their one owned session; agent scopes use the
    * ordinary service path. Called only after scope and permission validation. */
   openSession?: CantripCuaService["open"];
@@ -66,7 +67,7 @@ export interface ComputerUseHandlerDependencies {
     scope: CuaScope;
     executionLaneId: string | null;
     /** Trusted owner aborts on interruption, relocation, permission revocation,
-     * or disconnect, including authorization pending outside service. */
+     * or disconnect, including authorization pending outside native(). */
     signal: AbortSignal;
   }>;
   /** Mandatory policy seam. The caller cannot substitute an always-allow default. */
@@ -87,7 +88,12 @@ export async function handleComputerUseOperation(
   dependencies: ComputerUseHandlerDependencies,
   signal?: AbortSignal,
 ) {
-  const { encryption, service } = dependencies;
+  const { encryption } = dependencies;
+  let service = dependencies.service;
+  const native = () => {
+    if (!service) throw new CuaServiceError("unavailable");
+    return service;
+  };
   // This identity comes from the worker's granted encryption context. A server
   // cannot relabel an existing registration through public routing fields.
   if (command.serverId !== encryption.serverIdentity()) {
@@ -143,7 +149,7 @@ export async function handleComputerUseOperation(
     activityAction = action;
     if (dependencies.publishActivity && "sessionId" in action) {
       try {
-        beforeSession = service.state(scope, action.sessionId);
+        beforeSession = service?.state(scope, action.sessionId) ?? null;
       } catch {}
     }
     if (action.operation !== "session.close") {
@@ -155,6 +161,20 @@ export async function handleComputerUseOperation(
     }
     if (signal?.aborted && action.operation !== "session.close")
       throw new CuaProcessError("cancelled", "not-sent");
+    if (
+      action.operation !== "agent.sources.list" &&
+      action.operation !== "agent.observation.get"
+    ) {
+      // Closing an unopened preview must not start a desktop or helper.
+      if (!service && action.operation === "session.close")
+        throw new CuaServiceError("session-not-found");
+      if (!service && dependencies.resolveService)
+        service = await waitBeforeCuaSend(
+          dependencies.resolveService(),
+          signal,
+        );
+      native();
+    }
     let data: Extract<ComputerUseResultContent, { status: "ok" }>["data"];
     switch (action.operation) {
       case "agent.sources.list":
@@ -182,26 +202,26 @@ export async function handleComputerUseOperation(
         break;
       }
       case "capabilities.get":
-        data = await service.capabilities(scope, signal);
+        data = await native().capabilities(scope, signal);
         break;
       case "targets.list":
         // This encrypted endpoint is the authenticated human preview lease.
         // Agent JavaScript uses the separate server-derived application policy.
-        data = await service.inventory(scope, signal, action.after, true);
+        data = await native().inventory(scope, signal, action.after, true);
         break;
       case "session.open":
         data = {
           session: await (dependencies.openSession
             ? dependencies.openSession(scope, target(action), signal)
-            : service.open(scope, target(action), signal, true)),
+            : native().open(scope, target(action), signal, true)),
         };
         break;
       case "session.state":
-        data = { session: service.state(scope, action.sessionId) };
+        data = { session: native().state(scope, action.sessionId) };
         break;
       case "target.attach":
         data = {
-          session: await service.attach(
+          session: await native().attach(
             scope,
             action.sessionId,
             target(action),
@@ -212,12 +232,12 @@ export async function handleComputerUseOperation(
         break;
       case "target.detach":
         data = {
-          session: await service.detach(scope, action.sessionId, signal),
+          session: await native().detach(scope, action.sessionId, signal),
         };
         break;
       case "cursor.configure":
         data = {
-          session: await service.configure(
+          session: await native().configure(
             scope,
             action.sessionId,
             target(action),
@@ -228,7 +248,7 @@ export async function handleComputerUseOperation(
         break;
       case "cursor.move":
         data = {
-          session: await service.move(
+          session: await native().move(
             scope,
             action.sessionId,
             target(action),
@@ -238,7 +258,7 @@ export async function handleComputerUseOperation(
         };
         break;
       case "input.perform":
-        data = await service.perform(
+        data = await native().perform(
           scope,
           action.sessionId,
           target(action),
@@ -247,7 +267,7 @@ export async function handleComputerUseOperation(
         );
         break;
       case "input.click":
-        data = await service.click(
+        data = await native().click(
           scope,
           action.sessionId,
           target(action),
@@ -258,7 +278,7 @@ export async function handleComputerUseOperation(
         );
         break;
       case "controls.inspect":
-        data = await service.controls(
+        data = await native().controls(
           scope,
           action.sessionId,
           target(action),
@@ -267,7 +287,7 @@ export async function handleComputerUseOperation(
         );
         break;
       case "input.press":
-        data = await service.press(
+        data = await native().press(
           scope,
           action.sessionId,
           target(action),
@@ -276,7 +296,7 @@ export async function handleComputerUseOperation(
         );
         break;
       case "observation.snapshot": {
-        const snapshot = await service.snapshot(
+        const snapshot = await native().snapshot(
           scope,
           action.sessionId,
           target(action),
@@ -287,7 +307,7 @@ export async function handleComputerUseOperation(
         break;
       }
       case "session.close":
-        service.stopSession(scope, action.sessionId);
+        native().stopSession(scope, action.sessionId);
         data = { closed: true };
         break;
     }

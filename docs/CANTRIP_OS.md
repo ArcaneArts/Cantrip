@@ -23,8 +23,9 @@ links. The ordinary personal desktop remains usable without that package.
 The separate executor package now connects these workspaces to the owning worker.
 The native Linux capture/input backend and optional
 [`cantrip-os-remote`](../cantrip_os/packages/remote/README.md) carrier are Phase 4
-checkpoints. Real-agent routing, clipboard APIs, integrated remote desktop and
-managed service access are still in progress.
+checkpoints. Normal agent/preview routing now selects the captured Linux display;
+clipboard APIs, integrated remote desktop and managed service access are still
+in progress.
 
 ## Optional package architecture
 
@@ -94,10 +95,10 @@ Public Docker/ISO scripts include the optional executor by default.
 integration packages. An explicit executor selection wins. The ordinary Debian/
 IceWM desktop remains usable without either package. Host-only MCP Run/worktree/
 task-creation adapters are unavailable in Linux sessions; use the source-aware
-product workflows. Linux computer use, integrated desktop transport, general
-SSH/SFTP/TCP services, cloud provisioning, mirroring and backups remain later
-phases. The tested matrix and provider/platform limitations are recorded rather
-than implied to work on untested hardware.
+product workflows. Phase 4 adds Linux computer use. Integrated desktop transport,
+general SSH/SFTP/TCP services, cloud provisioning, mirroring and backups remain
+in progress or later phases. The tested matrix and provider/platform limitations
+are recorded rather than implied to work on untested hardware.
 
 The canonical model keeps `project_sources.absolute_path` worker-local. A shared
 source identity preserves worktree IDs and leases, while Linux-owned source
@@ -722,13 +723,16 @@ See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 
 ## Phase 4 package checkpoint
 
-The optional `cantrip-os-remote` 0.1.0 package runs the first-party Linux CUA
+The optional `cantrip-os-remote` 0.2.0 package runs the first-party Linux CUA
 helper as the selected workspace account behind a protected root carrier.
 Docker and ISO scripts include it with the executor edition by default;
 `CANTRIP_OS_REMOTE=0` omits it. Its retained state uses a namespace inside the
 existing workspace volume. Removing it leaves execution and desktops available.
 
-The existing Worker CUA service has been exercised against actual packaged
-Linux capture/input. This is not yet real-agent admission or integrated viewing.
-The remaining Phase 4 work includes agent routing, clipboard, measured streaming,
-human takeover, managed SSH/SFTP/VNC/TCP and refreshed ISO acceptance.
+Normal agent CUA and previews resolve Server-owned placement and the Worker's
+immutable capture before acquiring the guest service. The MCP client and
+credentials stay on the Worker. Actual packaged SDK tests exercise turn
+authorization and routing without a Host Cantrip-window grant or Host launch.
+Real-provider evidence is recorded separately. The remaining Phase 4 work
+includes clipboard, measured streaming, human takeover, managed SSH/SFTP/VNC/TCP
+and refreshed ISO acceptance.
