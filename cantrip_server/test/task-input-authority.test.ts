@@ -319,8 +319,8 @@ it("captures live Task evidence in one read-only snapshot scoped to its owner an
       for (const statement of statements) await tx.exec(statement);
       const values = [];
       for (const statement of queries) {
-        const result = await tx.query<{ state: string }>(statement);
-        values.push(JSON.parse(result.rows[0]!.state));
+        const result = await tx.query<{ result: string }>(statement);
+        values.push(JSON.parse(result.rows[0]!.result));
       }
       return values;
     });

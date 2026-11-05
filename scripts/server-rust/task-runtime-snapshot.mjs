@@ -17,7 +17,7 @@ export async function captureTaskRuntimeState({ ownerId, projectId, query }) {
     ["SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"],
     tables.map(
       (table) =>
-        `SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.chat_id,to_jsonb(r)->>'id'),'[]'::jsonb)::text AS state FROM ${table} r JOIN chats c ON c.id=r.chat_id WHERE c.owner_id=${literal(ownerId)} AND c.project_id=${literal(projectId)}`,
+        `SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.chat_id,to_jsonb(r)->>'id'),'[]'::jsonb)::text AS result FROM ${table} r JOIN chats c ON c.id=r.chat_id WHERE c.owner_id=${literal(ownerId)} AND c.project_id=${literal(projectId)}`,
     ),
   );
   if (values.length !== tables.length)

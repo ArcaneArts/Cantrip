@@ -36,6 +36,40 @@ impl LaneRepository {
         kind: &str,
         purpose: &str,
     ) -> Result<Option<Value>> {
+        self.schedule_transition_inner(owner, chat, expected_lane, target, kind, purpose, None)
+            .await
+    }
+    pub(crate) async fn schedule_mcp_transition(
+        &self,
+        owner: &str,
+        chat: &str,
+        expected_lane: &Value,
+        target: &Value,
+        kind: &str,
+        purpose: &Value,
+    ) -> Result<Option<Value>> {
+        self.schedule_transition_inner(
+            owner,
+            chat,
+            expected_lane,
+            target,
+            kind,
+            &text(purpose)?,
+            Some(purpose.clone()),
+        )
+        .await
+    }
+    #[allow(clippy::too_many_arguments)]
+    async fn schedule_transition_inner(
+        &self,
+        owner: &str,
+        chat: &str,
+        expected_lane: &Value,
+        target: &Value,
+        kind: &str,
+        purpose: &str,
+        purpose_wire: Option<Value>,
+    ) -> Result<Option<Value>> {
         let Some(current) = super::super::Repository::execution_context_with(
             Executor::Database(&self.database),
             owner,
@@ -119,10 +153,13 @@ impl LaneRepository {
             let exclusive=!truthy(tree.get("isPrimary"));let runtime_id=text(&runtime["id"])?;let thread=optional(&runtime["codex_thread_id"])?;
             if lane.is_some(){
                 let now=crate::auth::now();
-                query(ex,"UPDATE chat_execution_lanes SET acquiring_actor='agent',exclusive=$1,purpose=$2,state='delivering',transition_kind=$3,runtime_session_id=$4,codex_thread_id=$5,updated_at=$6 WHERE id=$7",&[&exclusive,&purpose,&kind,&runtime_id,&thread,&now,&lane_id],&[json!(exclusive),json!(purpose),json!(kind),json!(runtime_id),json!(thread),json!(crate::auth::iso(now)),json!(lane_id)]).await?;
+                let result=query(ex,"UPDATE chat_execution_lanes SET acquiring_actor='agent',exclusive=$1,purpose=$2,state='delivering',transition_kind=$3,runtime_session_id=$4,codex_thread_id=$5,updated_at=$6 WHERE id=$7",&[&exclusive,&purpose,&kind,&runtime_id,&thread,&now,&lane_id],&[json!(exclusive),json!(purpose),json!(kind),json!(runtime_id),json!(thread),json!(crate::auth::iso(now)),json!(lane_id)]).await;
+                if let Some(purpose)=purpose_wire.as_ref() {super::mcp_queries::context(result,"update",&json!({"id":lane_id,"acquiring_actor":"agent","exclusive":exclusive,"purpose":purpose,"state":"delivering","runtime_session_id":runtime_id,"codex_thread_id":thread,"transition_kind":kind,"updated_at":crate::auth::iso(now)}))?;}else{result?;}
             }else{
                 let head=optional(&tree["head"])?;
-                query(ex,"INSERT INTO chat_execution_lanes(id,chat_id,worktree_id,worker_id,acquiring_actor,exclusive,purpose,state,transition_kind,starting_head,runtime_session_id,codex_thread_id) VALUES($1,$2,$3,$4,'agent',$5,$6,'delivering',$7,$8,$9,$10) RETURNING id",&[&lane_id,&chat,&id,&worker,&exclusive,&purpose,&kind,&head,&runtime_id,&thread],&[json!(lane_id),json!(chat),json!(id),json!(worker),json!(exclusive),json!(purpose),json!(kind),json!(head),json!(runtime_id),json!(thread)]).await?.first().ok_or_else(||anyhow::anyhow!("Database returned no row after scheduling a worktree transition."))?;
+                let result=query(ex,"INSERT INTO chat_execution_lanes(id,chat_id,worktree_id,worker_id,acquiring_actor,exclusive,purpose,state,transition_kind,starting_head,runtime_session_id,codex_thread_id) VALUES($1,$2,$3,$4,'agent',$5,$6,'delivering',$7,$8,$9,$10) RETURNING id",&[&lane_id,&chat,&id,&worker,&exclusive,&purpose,&kind,&head,&runtime_id,&thread],&[json!(lane_id),json!(chat),json!(id),json!(worker),json!(exclusive),json!(purpose),json!(kind),json!(head),json!(runtime_id),json!(thread)]).await;
+                let rows=if let Some(purpose)=purpose_wire.as_ref(){super::mcp_queries::context(result,"insert",&json!({"id":lane_id,"chat_id":chat,"worktree_id":id,"worker_id":worker,"acquiring_actor":"agent","exclusive":exclusive,"purpose":purpose,"state":"delivering","transition_kind":kind,"starting_head":head,"runtime_session_id":runtime_id,"codex_thread_id":thread}))?}else{result?};
+                rows.first().ok_or_else(||anyhow::anyhow!("Database returned no row after scheduling a worktree transition."))?;
             }
             let root=json!({"id":tree["id"],"branch":tree["branch"],"detached":tree["detached"],"worker_id":target["workerId"]});
             branch_leases::acquire(tx,&text(&current["projectId"])?,&chat,&lane_id,&root).await?;

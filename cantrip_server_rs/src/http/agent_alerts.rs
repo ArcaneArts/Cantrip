@@ -213,6 +213,16 @@ async fn execute_operation(service: &Arc<AuthService>, owner: &str, call: &Value
         )
         .await;
     }
+    if operation.starts_with("worktree.") {
+        return super::agent_worktrees::execute(
+            service,
+            owner,
+            &context,
+            operation,
+            &call["request"]["arguments"],
+        )
+        .await;
+    }
     if context["contextKind"] != "project" {
         return Err(OperationError::new(403, "invalid", "Alerts require a project Chat.").into());
     }
@@ -348,7 +358,16 @@ async fn handle_operation(
                 result,
             )
             .await;
-            Ok(error.response())
+            if let Some(mutation) =
+                cause.downcast_ref::<crate::projects::worktrees::MutationError>()
+            {
+                Ok(json_response(
+                    StatusCode::from_u16(error.status).expect("MCP mutation status"),
+                    mutation.failure.clone(),
+                ))
+            } else {
+                Ok(error.response())
+            }
         }
     }
 }

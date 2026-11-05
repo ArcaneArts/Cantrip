@@ -79,6 +79,52 @@ include this SQL endpoint. A thirty-first database regression exercises the
 actual queries and rejects other owner/project scopes. This evidence-capture
 test does not establish successful native Task or Goal execution.
 
+The worktree MCP port implements six advertised operations: list, status, create,
+switch, release and remove. Rust now advertises 34 of Source's 55 MCP operations.
+`worktree.acquire` belongs to the shared legacy CLI executor and is rejected by
+the MCP allowlist, including when a binding explicitly grants it. Legacy CLI
+transport and its acquisition behavior remain separate required work.
+
+The worktree handlers retain Source argument order, history visibility, pagination
+caps, status truncation, UTF16 summaries, capability/permission guards and durable
+lane scheduling. Agent removal uses serialized Run retirement, worker removal
+and inventory reconciliation. The MCP result retains the worker's full removal
+inventory; its retained database row becomes missing, matching Source's MCP
+behavior. The public removal route separately records a removed state.
+Actual failed transition writes retain captured Source ORM diagnostics and the
+original JavaScript parameters. No configuration is rejected before attempting
+the real SQL operation. A NUL-purpose regression verifies the entire transaction
+rolls back its earlier pending-lane suspension. Generated error clocks are
+bounded and all SQL/parameter text is checked before comparison normalization.
+
+Local integrated qualification passes 102 MCP cases per peer across all three
+stores and all three authentication modes: 918 pairs, 1,836 responses, 18 actual
+socket disconnects, 1,854 matching audit rows and 18 server restarts. Each dropped
+socket closes after worker admission and its removal completes once. All peers
+fence the old execution after restart. NUL-purpose coverage retains unpaired
+UTF16, literal replacement characters and comma-containing parameters through
+real SQL failure and rollback. The controlled worker uses production
+WorkerConnection but supplies Git replies; full-worker/native product and
+supported-platform acceptance remain required. Node remains the default server
+and the worker remains Node.
+
+Current Main integration supplies the missing OS recovery result fixtures for all
+five result kinds. All 633 base roots have valid Source samples (2,121 samples),
+and all 643 existing fixture arrays retain identical serialized JSON. Fresh base
+and independent Run manifests equal Source. Fifty Rust library tests and five
+focused OS/MCP contract/binding tests pass. The two published OS recovery schemas
+are explicitly included in the export review while preserving all existing
+fingerprints. The reviewed inventory adds only the owner-scoped OS recovery
+route: 543 routes, 299 worker commands, 116 declared tables and 367 repository
+methods. All previous route classifications and other reviewed contract digests
+remain unchanged.
+
+The live Task evidence helper now returns the `result` SQL column required by the
+Node fixture gateway. Both peers exercise all eight capture queries through
+actual HTTP before the worktree cases. The database regression retains its owner
+and project scope assertions. This repairs evidence collection without claiming
+successful native Task/Goal execution.
+
 The Run configuration MCP milestone adds twelve operations to the Rust registry,
 bringing the supported set to twenty-eight. It reuses native definition, secret,
 lifecycle and encrypted-output services. Reads validate the exact worker used

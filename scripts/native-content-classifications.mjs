@@ -50,6 +50,7 @@ export function nativeRouteContentClassification({ path }) {
       "/api/cantrip-os",
       "/api/cantrip-os/inspect",
       "/api/cantrip-os/attach",
+      "/api/cantrip-os/:instanceId/recovery",
       "/api/cantrip-os/:instanceId/refresh",
       "/api/cantrip-os/:instanceId/workspaces",
       "/api/projects/:projectId/cantrip-os/bindings",
