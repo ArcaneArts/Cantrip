@@ -37,14 +37,16 @@ impl Service {
             for cycle in expired {
                 if let Err(error) = self
                     .tasks
-                    .fail_operation(
+                    .fail_operation_fenced(
                         &owner_id,
                         &text(&cycle["chatId"])?,
                         &text(&cycle["operationId"])?,
                         None,
+                        &json!({"kind":"expired","cycleId":cycle["id"],"operationId":cycle["operationId"],"fencingToken":cycle["fencingToken"]}),
                     )
                     .await
                 {
+                    if error.downcast_ref::<task_dispatch::Conflict>().is_some() { continue; }
                     self.log("error", "Could not reconcile an expired started Task lease", json!({"chatId":cycle["chatId"],"cycleId":cycle["id"],"err":logging::error_details(&error),"event":"task.scheduler.started-lease-reconcile-failed","subsystem":"task-scheduler","operation":"reconcile-leases","status":"failed"}));
                 }
                 self.dependencies.live.publish_invalidation(

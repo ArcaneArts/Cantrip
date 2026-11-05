@@ -83,9 +83,12 @@ export function createTaskClaimedExecutionRuntime(
             ownerId,
             claim.cycle.chatId,
             claim.cycle.operationId,
+            undefined,
+            { kind: "leased", lease: claim.lease },
           );
         }
       } catch (error) {
+        if (error instanceof TaskDispatchConflictError) throw error;
         cleanupError = error;
         app.log.error(
           {
@@ -358,6 +361,7 @@ export function createTaskClaimedExecutionRuntime(
                             request.operationId,
                             relayResult,
                             result.turnId ?? null,
+                            { kind: "leased", lease: claim.lease },
                           );
                         if (!completed) {
                           throw new Error(
@@ -428,10 +432,12 @@ export function createTaskClaimedExecutionRuntime(
                 executionLaneId: userMessage.executionLaneId!,
                 userMessageId: userMessage.id,
               },
+              { kind: "leased", lease: claim.lease },
             ),
           { timeoutMs: TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS },
         );
       } catch (error) {
+        if (error instanceof TaskDispatchConflictError) return;
         if (
           launchStage === "begin-turn" &&
           error instanceof ExecutionLaneBusyError

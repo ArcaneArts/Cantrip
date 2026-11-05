@@ -17,66 +17,81 @@ impl Service {
         let mut ok = reported_ok;
         let mut finalized = None;
         if let Some(operation) = operation {
-            let operation_id = text(&operation["round"]["id"])?;
-            if reported_ok {
-                let completed: Result<()> = async {
-                    let relay = tasks::relay::parse_result(
-                        &operation["relayRequest"],
-                        &result["structuredResult"],
-                    )?;
-                    self.tasks
-                        .complete_operation(
-                            owner,
-                            chat,
-                            operation_id,
-                            &relay,
-                            result["turnId"].as_str(),
-                        )
-                        .await?;
-                    if operation["round"]["kind"] == "finalize" {
-                        finalized = Some(operation_id);
+            let guard = fence.map(|lease| json!({"kind":"leased","lease":lease}));
+            let applied: Result<()> = async {
+                let operation_id = text(&operation["round"]["id"])?;
+                if reported_ok {
+                    let completed: Result<()> = async {
+                        let relay = tasks::relay::parse_result(
+                            &operation["relayRequest"],
+                            &result["structuredResult"],
+                        )?;
+                        self.tasks
+                            .complete_operation_guarded(
+                                owner,
+                                chat,
+                                operation_id,
+                                &relay,
+                                result["turnId"].as_str(),
+                                guard.as_ref(),
+                            )
+                            .await?;
+                        if operation["round"]["kind"] == "finalize" {
+                            finalized = Some(operation_id);
+                        }
+                        let assistant = self
+                            .dependencies
+                            .live
+                            .write_message(
+                                owner,
+                                chat,
+                                &relay["assistantMessage"],
+                                MessageOptions {
+                                    attribution: Some(&attribution),
+                                    kind: MessageKind::Task,
+                                    upsert: false,
+                                    routing: Some(&context["chat"]),
+                                },
+                            )
+                            .await?
+                            .context("Task Chat was not found.")?;
+                        self.tasks
+                            .attach_operation_assistant_message(
+                                owner,
+                                chat,
+                                operation_id,
+                                text(&assistant["id"])?,
+                            )
+                            .await?;
+                        self.publish_task(owner, chat, &context["chat"]);
+                        Ok(())
                     }
-                    let assistant = self
-                        .dependencies
-                        .live
-                        .write_message(
-                            owner,
-                            chat,
-                            &relay["assistantMessage"],
-                            MessageOptions {
-                                attribution: Some(&attribution),
-                                kind: MessageKind::Task,
-                                upsert: false,
-                                routing: Some(&context["chat"]),
-                            },
-                        )
-                        .await?
-                        .context("Task Chat was not found.")?;
-                    self.tasks
-                        .attach_operation_assistant_message(
-                            owner,
-                            chat,
-                            operation_id,
-                            text(&assistant["id"])?,
-                        )
-                        .await?;
-                    self.publish_task(owner, chat, &context["chat"]);
-                    Ok(())
-                }
-                .await;
-                if completed.is_err() {
+                    .await;
+                    if let Err(error) = completed {
+                        if downcast_ref::<task_dispatch::Conflict>(&error).is_some() {
+                            return Err(error);
+                        }
+                        ok = false;
+                        self.tasks
+                            .fail_operation_guarded(owner, chat, operation_id, None, guard.as_ref())
+                            .await?;
+                        self.publish_task(owner, chat, &context["chat"]);
+                    }
+                } else {
                     ok = false;
                     self.tasks
-                        .fail_operation(owner, chat, operation_id, None)
+                        .fail_operation_guarded(owner, chat, operation_id, None, guard.as_ref())
                         .await?;
                     self.publish_task(owner, chat, &context["chat"]);
                 }
-            } else {
-                ok = false;
-                self.tasks
-                    .fail_operation(owner, chat, operation_id, None)
-                    .await?;
-                self.publish_task(owner, chat, &context["chat"]);
+                Ok(())
+            }
+            .await;
+            if let Err(error) = applied {
+                if downcast_ref::<task_dispatch::Conflict>(&error).is_some() {
+                    return Ok(());
+                }
+                return Err(error);
             }
         }
         if let Some(fence) = fence {

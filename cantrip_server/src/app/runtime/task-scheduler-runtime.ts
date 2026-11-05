@@ -2,7 +2,10 @@
 // compatibility corpus. Timer startup and global shutdown retain their caller.
 import type { FastifyInstance } from "fastify";
 import { cantripVersion } from "@cantrip/version";
-import { taskDispatchSchedulerPlan } from "../../db/task-dispatch.js";
+import {
+  taskDispatchSchedulerPlan,
+  TaskDispatchConflictError,
+} from "../../db/task-dispatch.js";
 import type { TaskRouteRuntimeDependencies } from "./task-route-types.js";
 import type { createTaskAutomaticRetry } from "./task-automatic-retry.js";
 import type { createTaskExecutionRecovery } from "./task-execution-recovery.js";
@@ -87,8 +90,16 @@ export function createTaskSchedulerRuntime(
                 ownerId,
                 cycle.chatId,
                 cycle.operationId,
+                undefined,
+                {
+                  kind: "expired",
+                  cycleId: cycle.id,
+                  operationId: cycle.operationId,
+                  fencingToken: cycle.fencingToken,
+                },
               );
             } catch (error) {
+              if (error instanceof TaskDispatchConflictError) continue;
               app.log.error(
                 {
                   chatId: cycle.chatId,

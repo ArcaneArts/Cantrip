@@ -94,6 +94,32 @@ impl Repository {
         self.get_operation_context(owner, chat, &json!({"operationId":operation}))
             .await
     }
+    pub(crate) async fn attach_operation_execution_fenced(
+        &self,
+        owner: &str,
+        chat: &str,
+        operation: &str,
+        input: &Value,
+        lease: &Value,
+    ) -> Result<Option<Value>> {
+        if self.get(owner, chat).await?.is_none() {
+            return Ok(None);
+        }
+        let (owner, chat, operation, input, lease) = (
+            owner.to_owned(),
+            chat.to_owned(),
+            operation.to_owned(),
+            input.clone(),
+            lease.clone(),
+        );
+        self.database.transaction(|tx| Box::pin(async move {
+            dispatch_fence::assert(tx, &owner, &chat, &operation, &json!({"kind":"leased","lease":lease}), true).await?;
+            let Some(_round) = locked_round(tx, &chat, &operation).await? else { return Ok(None); };
+            let Some(task) = locked_task(tx, &chat).await? else { return Ok(None); };
+            let updated = update(tx, Table::Round, &operation, &json!({"execution_lane_id":input["executionLaneId"],"user_message_id":input["userMessageId"]}), None).await?.context("Task execution association returned no row")?;
+            context(&task, &updated).map(Some)
+        })).await
+    }
     pub async fn attach_operation_assistant_message(
         &self,
         owner: &str,

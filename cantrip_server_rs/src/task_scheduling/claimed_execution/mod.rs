@@ -137,10 +137,11 @@ impl Service {
             let persist:Result<()>=async {
                 let operation_context=self.tasks.get_operation_context(owner,&chat,&json!({"operationId":operation})).await?;
                 completed=operation_context.as_ref().is_some_and(|v|truthy(v.get("relayResult")));
-                if operation_context.is_some() && !completed { self.tasks.fail_operation(owner,&chat,&operation,None).await?; }
+                if operation_context.is_some() && !completed { self.tasks.fail_operation_fenced(owner,&chat,&operation,None,&json!({"kind":"leased","lease":claim["lease"]})).await?; }
                 Ok(())
             }.await;
             if let Err(error)=persist {
+                if downcast_ref::<task_dispatch::Conflict>(&error).is_some() { return Err(error); }
                 self.log("error","Could not persist the failed Task operation",json!({"event":"task.operation.failure-persistence-failed","subsystem":"task-scheduler","operation":"settle-failed-operation","status":"failed","chatId":chat,"cycleId":claim["cycle"]["id"],"err":stage::error_details(&error)}));
                 cleanup_error=Some(error);
             }
