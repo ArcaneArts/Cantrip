@@ -314,6 +314,18 @@ describe.each(["round", "goal"] as const)(
 
 it("captures live Task evidence in one read-only snapshot scoped to its owner and project", async () => {
   const f = await input("round");
+  const unsupportedSuspension = {
+    version: 99,
+    phase: "future-suspension",
+    opaque: { retained: true },
+  };
+  await database
+    .update(schema.chats)
+    .set({
+      automationPaused: true,
+      nativeSuspensionState: unsupportedSuspension,
+    })
+    .where(eq(schema.chats.id, f.chat));
   const query = (statements: string[], queries: string[]) =>
     client.transaction(async (tx) => {
       for (const statement of statements) await tx.exec(statement);
@@ -340,7 +352,16 @@ it("captures live Task evidence in one read-only snapshot scoped to its owner an
       }),
     ]),
   );
-  expect(Object.keys(snapshot.rows)).toHaveLength(8);
+  expect(Object.keys(snapshot.rows)).toHaveLength(9);
+  expect(snapshot.rows.chats).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: f.chat,
+        automation_paused: true,
+        native_suspension_state: unsupportedSuspension,
+      }),
+    ]),
+  );
   for (const scope of [
     { ownerId: randomUUID(), projectId: project },
     { ownerId: owner, projectId: randomUUID() },

@@ -239,21 +239,43 @@ try {
           result.snapshots.push({ name, rows: snapshot });
           return body;
         };
+        const unsupportedSuspension = {
+          version: 99,
+          phase: "future-suspension",
+          opaque: { retained: true },
+        };
+        await h.fixture.sql([
+          `UPDATE chats SET automation_paused=true,native_suspension_state=${json(unsupportedSuspension)} WHERE id=${literal(chat)}`,
+        ]);
         const taskSnapshot = await captureTaskRuntimeState({
           ownerId: h.owner,
           projectId: project,
           query: (statements, queries) => h.fixture.sql(statements, queries),
         });
-        assert.equal(Object.keys(taskSnapshot.rows).length, 8);
+        assert.equal(Object.keys(taskSnapshot.rows).length, 9);
+        assert.deepEqual(
+          taskSnapshot.rows.chats.find((row) => row.id === chat)
+            ?.native_suspension_state,
+          unsupportedSuspension,
+        );
+        assert.equal(
+          taskSnapshot.rows.chats.find((row) => row.id === chat)
+            ?.automation_paused,
+          true,
+        );
         assert.ok(
           taskSnapshot.rows.chat_runtime_sessions.some(
             (row) => row.id === "settings-runtime",
           ),
         );
         result.liveTaskSnapshotProtocolProof = {
-          eightTablesCaptured: true,
+          operationalTablesCaptured: 9,
+          unknownSuspensionBytesRetained: true,
           existingRuntimeRetained: true,
         };
+        await h.fixture.sql([
+          `UPDATE chats SET native_suspension_state=NULL,automation_paused=false WHERE id=${literal(chat)}`,
+        ]);
         assert.equal(
           (await call("initial list", "list")).data.worktrees.length,
           3,
