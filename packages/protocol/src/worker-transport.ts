@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { workerCommandSchema } from "./worker-commands.js";
+import { inferenceFailureEvidenceSchema } from "./inference-failure.js";
 
 export const PROJECT_SOURCE_UNAVAILABLE_CODE = "project-source-unavailable";
 
@@ -67,6 +68,7 @@ export const workerResponseEnvelopeSchema = z.discriminatedUnion("ok", [
     error: z.object({
       code: workerCommandErrorCodeSchema.optional(),
       message: z.string().min(1),
+      inference: inferenceFailureEvidenceSchema.optional(),
     }),
   }),
 ]);

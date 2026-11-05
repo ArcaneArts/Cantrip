@@ -169,6 +169,7 @@ async fn worker_contract_failure_keeps_its_source_error_class() {
         unavailable: false,
         request_id: None,
         encoding_error: Some(cantrip_server::wire::ValidationError::Invalid(vec![]).into()),
+        inference: None,
     };
     assert!(
         observer

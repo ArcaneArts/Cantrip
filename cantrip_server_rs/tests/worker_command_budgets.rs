@@ -39,6 +39,7 @@ fn unavailable(message: String) -> CommandError {
         unavailable: true,
         request_id: None,
         encoding_error: None,
+        inference: None,
     }
 }
 fn failure(error: CommandFailure) -> Value {
@@ -314,6 +315,7 @@ impl Fixture {
                                     unavailable: false,
                                     request_id: None,
                                     encoding_error: None,
+                                    inference: None,
                                 });
                             }
                             Ok(())

@@ -13,6 +13,31 @@ impl Drop for Heartbeat {
         self.0.take();
     }
 }
+fn worker_failure_allows_retry(
+    error: &anyhow::Error,
+    turn: &PreparedTurn,
+    runtime: &Value,
+) -> bool {
+    let command = error
+        .downcast_ref::<CommandFailure>()
+        .and_then(|v| match v {
+            CommandFailure::Bridge(v) => Some(v),
+            _ => None,
+        })
+        .or_else(|| error.downcast_ref::<crate::workers::bridge::CommandError>());
+    let Some(command) = command else {
+        return false;
+    };
+    let Some(proof) = &command.inference else {
+        return false;
+    };
+    !command.unavailable
+        && command.request_id.is_some()
+        && command.code.as_deref() != Some("worker-command-timeout")
+        && proof["chatId"] == turn.execution["chatId"]
+        && proof["messageId"] == turn.user_message["id"]
+        && proof["providerId"] == runtime["provider"]["id"]
+}
 impl Runtime {
     pub(super) fn heartbeat(self: &Arc<Self>, turn: Arc<PreparedTurn>) -> Heartbeat {
         let Some(lease) = turn
@@ -327,7 +352,7 @@ impl Runtime {
                     .await?["status"]
                     == "accepted"
             } else {
-                true
+                worker_failure_allows_retry(error, turn, &runtime)
             }
         } else {
             false

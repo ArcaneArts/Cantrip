@@ -54,6 +54,7 @@ impl CommandDelegate for Control {
                 code: None,
                 unavailable: false,
                 encoding_error: None,
+                inference: None,
                 request_id: None,
             };
             if self.input["failCommand"] == kind {

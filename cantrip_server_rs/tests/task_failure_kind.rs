@@ -44,6 +44,7 @@ fn command_failure_keeps_explicit_category_through_shared_error() {
         unavailable: false,
         request_id: None,
         encoding_error: None,
+        inference: None,
     })
     .into();
     assert_eq!(failure_kind::for_error(&error), "capacity");

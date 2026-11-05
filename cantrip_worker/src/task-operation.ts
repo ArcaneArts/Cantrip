@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { copyInferenceFailure } from "./inference-failure.js";
 
 import {
   clearSensitiveBytes,
@@ -84,8 +85,11 @@ export function protectedTaskRuntimeError(
   scope: "turn" | "operation" = "turn",
 ) {
   const kind = taskFailureKindForError(error);
-  return new Error(
-    `Encrypted Task ${scope} failed${kind === "runtime" ? "." : `: task-${kind}.`}`,
+  return copyInferenceFailure(
+    error,
+    new Error(
+      `Encrypted Task ${scope} failed${kind === "runtime" ? "." : `: task-${kind}.`}`,
+    ),
   );
 }
 

@@ -512,6 +512,7 @@ impl LimitedCommandBus {
                             unavailable: false,
                             request_id: None,
                             encoding_error: None,
+                            inference: None,
                         });
                     }
                     // Private admission/clock events never enter domain streams.
@@ -548,6 +549,7 @@ impl LimitedCommandBus {
                 unavailable: true,
                 request_id: None,
                 encoding_error: None,
+                inference: None,
             })
         };
         let result = match delegated {

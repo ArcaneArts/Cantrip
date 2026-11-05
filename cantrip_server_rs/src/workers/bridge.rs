@@ -50,6 +50,7 @@ pub struct CommandError {
     /// Preserve schema failures separately from worker/callback failures for
     /// the HTTP/domain layer. Application HTTP errors redact internal details.
     pub encoding_error: Option<Arc<wire::ValidationError>>,
+    pub inference: Option<Value>,
 }
 impl CommandError {
     fn unavailable(message: String) -> Self {
@@ -59,6 +60,7 @@ impl CommandError {
             unavailable: true,
             request_id: None,
             encoding_error: None,
+            inference: None,
         }
     }
     fn command(message: String, code: &str, request: &str) -> Self {
@@ -68,6 +70,7 @@ impl CommandError {
             unavailable: false,
             request_id: Some(request.to_owned()),
             encoding_error: None,
+            inference: None,
         }
     }
 }
@@ -456,6 +459,11 @@ impl WorkerBridge {
                 unavailable: false,
                 request_id: Some(id.to_owned()),
                 encoding_error: None,
+                inference: if pending.command == "chat.turn" {
+                    response["error"].get("inference").cloned()
+                } else {
+                    None
+                },
             })
         };
         let _ = pending.delivery.send(Delivery::Response(result));
@@ -576,6 +584,7 @@ impl WorkerBridge {
                         unavailable: false,
                         request_id: None,
                         encoding_error: Some(Arc::new(error)),
+                        inference: None,
                     }
                 })?;
             let encoded = envelope.stringify();

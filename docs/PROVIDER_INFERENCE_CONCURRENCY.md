@@ -551,3 +551,51 @@ completed feature; source integration is not evidence of exercised runtime behav
 
 Local review is restricted to source inspection, formatting, and diff checks by
 the goal's explicit no-testing instruction. Runtime behavior remains unexecuted.
+
+## Failed attempts and route transitions
+
+Both servers require worker execution evidence before automatically replaying a
+non-GUI `chat.turn` on another route. Error text and absent streamed activity
+still classify the eligible failure, but cannot prove that an input did not run.
+An observer timeout or disconnect carries no execution proof. Managed GUI turns
+retain their canonical accepted-input requirement; this metadata does not replace
+that input authority. Existing account-switch policy remains in force.
+
+Native patch `0062` observes errors and output at the real model-stream boundary,
+before Core/tool consumption, across every sequential request in one physical
+scope. Metadata is excluded; any output or completed model request prevents
+failure-before-output proof for that scope. The private finish notification
+reports the flag only after existing transport ownership settles. The worker
+requires its exact runtime, thread, turn and scope match. A rejected native start
+cannot settle an operation that already entered the private Core boundary.
+
+A typed worker response distinguishes input never forwarded from a settled model
+failure before output. The former also covers positively unforwarded preparation
+failures before a runtime exists. Neither disposition is inferred from a missing
+turn-start event. The failure proof is bound to the actual root chat, message and
+provider, and the correlated response request. Encrypted Task error redaction and
+authenticated server coordination retain only these opaque identities; prompt or
+credential content is not added to the wire. Per-execution error carriers avoid
+sharing one chat's proof through a cached startup rejection. Their metadata has
+the error's garbage-collected lifetime rather than a completed-error registry.
+
+The SDK also requires every preceding whole-input attempt to have positive proof
+before its overload or invalid-compaction retry. A later unstarted failure cannot
+make an earlier uncertain attempt safe to repeat. It waits for actual ticket
+settlement before propagating evidence or starting another attempt. Cancellation
+does not mint replay evidence. Older native runtimes without the optional private
+flag cannot provide model failure-before-output proof; ambiguity is preserved.
+
+This is local dispatch/output evidence, not exactly-once provider execution. It
+does not clear canonical Task receipts, replay historical tools, replace native
+checkpoint recovery, or change a durable outcome's physical-attempt authority.
+Task Goal kickoff/resume, current-generation abandoned preparation, checkpoint
+reconciliation and canonical timing integration remain separate required work.
+
+Source acceptance review for this increment: a quota/model failure before any
+output can retain proof through worker settlement and protected Task redaction;
+a tool/output event followed by a later failure cannot. A server timeout, stale
+scope finish, uncertain earlier SDK attempt or cancelled owner cannot authorize
+replay. A real pre-forward preparation rejection can report unforwarded input.
+Neither case grants capacity on the server or releases an unsettled ticket. No
+tests, builds, benchmarks or computer-use validation were run for this increment.

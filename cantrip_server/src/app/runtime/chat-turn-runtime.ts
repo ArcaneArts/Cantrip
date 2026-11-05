@@ -10,6 +10,7 @@ import {
   labelingRoutes,
 } from "../../chats/automatic-labeling.js";
 import { canAutomaticallySwitchProviderAccount } from "../../models/chatgpt-account-routing.js";
+import { workerFailureAllowsRetry } from "../../chats/inference-failure.js";
 import { clearAgentInteraction } from "./clear-agent-interaction.js";
 
 import { protectChatInput } from "./protect-chat-input.js";
@@ -1984,15 +1985,21 @@ export function createChatTurnRuntime({
               !execution.osExecution &&
               !workerInterrupted &&
               canAutomaticallySwitchProviderAccount(runtime) &&
-              (!nativeCommandReceipt ||
-                (
-                  await repository.nativeCommands.get(
-                    ownerId,
-                    execution.workerId,
-                    nativeCommandReceipt.operationId,
-                    nativeCommandReceipt.operationGeneration,
-                  )
-                ).status === "accepted") &&
+              (nativeCommandReceipt
+                ? (
+                    await repository.nativeCommands.get(
+                      ownerId,
+                      execution.workerId,
+                      nativeCommandReceipt.operationId,
+                      nativeCommandReceipt.operationGeneration,
+                    )
+                  ).status === "accepted"
+                : workerFailureAllowsRetry(error, {
+                    workerId: execution.workerId,
+                    chatId: execution.chatId,
+                    messageId: userMessage.id,
+                    providerId: runtime.provider.id,
+                  })) &&
               (terminalReasonCode === "serverOverloaded" ||
                 (!attemptActivity && canFailOverRoute(error))) &&
               index < runtimes.length - 1;

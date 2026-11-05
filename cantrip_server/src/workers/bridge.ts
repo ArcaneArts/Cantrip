@@ -149,12 +149,15 @@ export interface WorkerCommandErrorContext {
   operation?: WorkerCommand["type"];
   requestId?: string;
   workerId?: string;
+  inference?: import("@cantrip/protocol").InferenceFailureEvidence;
 }
 
 export class WorkerCommandError extends Error {
   readonly operation: WorkerCommand["type"] | undefined;
   readonly requestId: string | undefined;
   readonly workerId: string | undefined;
+  readonly inference:
+    import("@cantrip/protocol").InferenceFailureEvidence | undefined;
 
   constructor(
     message: string,
@@ -166,6 +169,7 @@ export class WorkerCommandError extends Error {
     this.operation = context.operation;
     this.requestId = context.requestId;
     this.workerId = context.workerId;
+    this.inference = context.inference;
   }
 }
 
@@ -556,6 +560,7 @@ export class WorkerBridge implements WorkerCommandBus {
                 operation: pending.commandType,
                 requestId: response.requestId,
                 workerId,
+                inference: response.error.inference,
               },
             ),
           );

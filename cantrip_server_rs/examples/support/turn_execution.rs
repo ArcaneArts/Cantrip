@@ -130,12 +130,12 @@ impl CommandDelegate for Control {
         async move {
             let (label_index,pause_index)={let mut commands=self.commands.lock().unwrap();commands.push(json!({"worker":worker,"command":command,"timeoutMs":timeout.map(|v|v.as_millis() as u64)}));(commands.iter().filter(|c|c["command"]["type"]=="label.generate").count().saturating_sub(1),commands.iter().filter(|c|matches!(c["command"]["type"].as_str(),Some("chat.pause.set"|"chat.native-control"))).count().saturating_sub(1))};
             if command["type"]=="chat.goal.get" && (self.input["holdGoal"]==true || self.input["holdGoalChats"].as_array().is_some_and(|chats|chats.contains(&command["chatId"]))) { self.gate.wait().await; }
-            let failure=|message:String,code:Option<String>,unavailable:bool|CommandError {message:message.into(),code,unavailable,request_id:None,encoding_error:None};
+            let failure=|message:String,code:Option<String>,unavailable:bool|CommandError {message:message.into(),code,unavailable,request_id:None,encoding_error:None,inference:None};
             if self.input.get("failCommand")==command.get("type") {return Err(failure("Controlled recovery worker failure".into(),None,false));}
             match command["type"].as_str().unwrap_or("") {
                 "chat.pause.set"|"chat.native-control"=>super::automation_pause::reply(self.database.clone(),&self.input,&owner,&worker,&command,super::automation_pause::Peer{index:pause_index,trace:self.peer_trace.clone(),gate:self.gate.clone()}).await.map(Some).map_err(|error| {
                     let message=error.downcast_ref::<super::automation_pause::PeerMessage>().map(|e|e.0.clone()).unwrap_or_else(||error.to_string().into());
-                    CommandError{message,code:None,unavailable:false,request_id:None,encoding_error:None}
+                    CommandError{message,code:None,unavailable:false,request_id:None,encoding_error:None,inference:None}
                 }),
                 "task.operation.prepare"=>{
                     if self.input["holdPrepareChats"].as_array().is_some_and(|chats|chats.contains(&command["task"]["chatId"])) {self.gate.wait().await;}
@@ -159,7 +159,7 @@ impl CommandDelegate for Control {
                         let envelope=json!({"kind":"event","requestId":"77777777-7777-4777-8777-000000000001","event":event});
                         let event=wire::parse("workerServerEnvelopeSchema",Some(&envelope)).map_err(|e|{
                             let message=match &e {wire::ValidationError::Invalid(issues)=>Value::Array(issues.clone()).stringify_pretty(),_=>"Worker event validation failed".into()};
-                            CommandError{message:message.into(),code:None,unavailable:false,request_id:None,encoding_error:Some(Arc::new(e))}
+                            CommandError{message:message.into(),code:None,unavailable:false,request_id:None,encoding_error:Some(Arc::new(e)),inference:None}
                         })?["event"].clone();
                         let Some(handler)=&on_event else{return Err(failure("Missing stream event handler".into(),None,false));};
                         handler(event).await?;
