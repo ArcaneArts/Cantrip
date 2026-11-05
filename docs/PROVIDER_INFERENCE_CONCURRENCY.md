@@ -7,6 +7,46 @@ keep the limit optional so updates from older clients preserve it. Provider
 summaries and resolved model runtimes carry the configuration through both the
 Node and Rust server implementations.
 
+## Durable delivery of explicit Task Goal outcomes
+
+Settled `chat.turn` responses carrying a Goal input receipt now enter a worker-local
+response outbox before the ordinary command response is published. The immutable
+file contains the existing protected response and original physical receipt
+identifiers, never another prompt body. Its directory is scoped by stable server,
+owner and worker identity rather than the current process generation. File data
+is flushed before publication; directory-entry power-loss durability follows the
+existing history writer and is POSIX-only.
+
+The worker delivers pending files through the authenticated native-command HTTP
+path. Both servers validate the owning server/account/worker and the exact
+canonical Goal input before committing its protected history and terminal marker.
+The response acknowledges that committed transaction and echoes the delivery and
+physical input identities. The worker removes the file only after this matching
+acknowledgment. A lost response is retried idempotently, including after worker
+restart; a socket send or scheduled recovery callback is not commit evidence.
+Delivery also schedules the existing Goal metadata recovery, independently of the
+live RPC's suppression key. A stale generation can deliver captured history but
+cannot gain execution or current Task projection authority through this endpoint.
+
+The scanner reads one response at a time and deletes acknowledged files without
+retaining completed-result tombstones. Unresolved files are retained. Actual
+delivery failures use bounded backoff; an empty directory has no polling timer.
+Reconnect and new results wake delivery. Authentication rejection stops this
+delivery lifetime. A failed local write retries before response publication;
+storage failure cannot turn a successful execution into a contradictory model
+failure or release/reacquire inference capacity. Protected responses use a
+dedicated 32 MiB HTTP body allowance in both servers, including base64 expansion.
+
+This milestone covers captured explicit Task Goal outcomes. A crash before that
+capture still requires native checkpoint/terminal reconciliation. Ordinary Chat
+and Task-round outcome transport, explicit retirement of permanently stale
+pending outcome files, current-generation abandoned preparation, canonical timing
+integration and the final bounded-runtime/inference-path audit remain unfinished.
+Older servers without the commit endpoint cannot acknowledge these files. No
+tests, builds, typechecks, benchmarks, native execution or computer-use validation
+were run; direct formatting, mechanical protocol export and diff review do not
+establish exercised runtime behavior.
+
 `WorkerInferenceAdmission` belongs to one server/owner/worker generation. Its
 provider pools are outside the project, account, model, and native-runtime maps.
 Runtime envelopes update the shared pool with their revision; stale revisions

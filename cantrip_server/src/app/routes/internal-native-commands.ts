@@ -15,6 +15,10 @@ import {
   nativeInferenceRecoveryResultSchema,
   taskInferenceInputDispatchSchema,
   taskInferenceInputDispatchResultSchema,
+  taskGoalOutcomeDeliverySchema,
+  taskGoalOutcomeCommitSchema,
+  TASK_GOAL_OUTCOME_MAX_BYTES,
+  type WorkerNotification,
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 import type { ServerConfig } from "../../config.js";
@@ -55,6 +59,11 @@ export function installInternalNativeCommandRoutes(
     >;
     dispatchNextQueuedPrompt: (chatId: string) => Promise<void>;
     queueTaskScheduleTick?: () => void;
+    onGoalOutcomeCommitted?: (
+      ownerId: string,
+      workerId: string,
+      notification: Extract<WorkerNotification, { type: "chat.turn.outcome" }>,
+    ) => Promise<void>;
   },
 ): void {
   const { repository, config, serverId, runAsOwner, live } = dependencies;
@@ -77,6 +86,62 @@ export function installInternalNativeCommandRoutes(
           }
         : null,
   });
+  app.post(
+    "/api/internal/native-commands/task-goal-outcome",
+    { logLevel: "warn", bodyLimit: TASK_GOAL_OUTCOME_MAX_BYTES },
+    async (request, reply) => {
+      const parsed = taskGoalOutcomeDeliverySchema.safeParse(request.body);
+      if (!parsed.success)
+        return reply.code(400).send({ code: "invalid-task-goal-outcome" });
+      const input = parsed.data;
+      const authentication = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        input.workerId,
+        "worker:agent-tools",
+      );
+      if (!authentication)
+        return reply.code(401).send({ code: "unauthorized" });
+      if (
+        input.serverId !== serverId ||
+        input.ownerId !== authentication.ownerId
+      )
+        return reply.code(409).send({ code: "stale-outcome-scope" });
+      const note = input.notification;
+      if (!note.taskInferenceInputOperationId || !note.taskDispatchFence)
+        return reply.code(400).send({ code: "invalid-task-goal-outcome" });
+      return runAsOwner(authentication.ownerId, async () => {
+        let committed;
+        try {
+          // This transaction validates the original physical receipt and saves
+          // the protected response/terminal marker, including historical input.
+          // No current worker generation is required to deliver an older fact.
+          committed = await repository.tasks.inferenceInputs.goals.applyOutcome(
+            authentication.ownerId,
+            input.workerId,
+            note,
+            { recordOnly: true },
+          );
+        } catch (error) {
+          if (error instanceof TaskDispatchConflictError)
+            return reply.code(409).send({ code: "stale-task-input" });
+          throw error;
+        }
+        if (committed)
+          await dependencies.onGoalOutcomeCommitted?.(
+            authentication.ownerId,
+            input.workerId,
+            note,
+          );
+        return taskGoalOutcomeCommitSchema.parse({
+          deliveryId: input.deliveryId,
+          taskInferenceInputOperationId: note.taskInferenceInputOperationId,
+          committed: Boolean(committed),
+        });
+      });
+    },
+  );
   app.post(
     "/api/internal/native-commands/task-input-dispatch",
     { logLevel: "warn" },

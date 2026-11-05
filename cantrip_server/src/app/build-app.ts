@@ -1320,6 +1320,7 @@ export async function buildApp({
   app.addHook("onClose", async () => managedQueueDelivery.stop());
   const nativeRuntimeHandoffs = installManagedNativeRoutes(app, {
     applicationOwnerId,
+    onGoalOutcomeCommitted: workerNotificationRuntime.handleWorkerNotification,
     routePairsForConfiguration,
     bridge,
     config,

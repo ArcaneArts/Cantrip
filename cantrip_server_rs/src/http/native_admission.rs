@@ -47,6 +47,41 @@ async fn apply(
     input: Value,
     phase: String,
 ) -> Result<Value> {
+    if phase == "task-goal-outcome" {
+        if input["serverId"].as_str() != Some(service.server_id.as_str())
+            || input["ownerId"].as_str() != Some(owner.as_str())
+        {
+            return Err(CommandError::new("stale-outcome-scope", None, 409).into());
+        }
+        let note = &input["notification"];
+        if note["taskInferenceInputOperationId"].as_str().is_none()
+            || note["taskDispatchFence"].as_object().is_none()
+        {
+            return Err(CommandError::new("invalid-task-goal-outcome", None, 400).into());
+        }
+        // Captured facts can outlive a worker generation. The transaction
+        // validates exact original input authority, not current observer liveness.
+        let committed = crate::tasks::Repository::new(service.repository.database.clone())
+            .apply_goal_input_outcome(&owner, input["workerId"].as_str().unwrap(), note, true)
+            .await?
+            .is_some();
+        if committed {
+            service
+                .execution
+                .receive_outcome(
+                    owner.clone(),
+                    input["workerId"].as_str().unwrap().to_owned(),
+                    Arc::new(note.clone()),
+                )
+                .await?;
+        }
+        return crate::settings::parse_response(
+            "taskGoalOutcomeCommitSchema",
+            Some(
+                &json!({"deliveryId":input["deliveryId"],"taskInferenceInputOperationId":note["taskInferenceInputOperationId"],"committed":committed}),
+            ),
+        );
+    }
     if phase == "inference-recovery" || phase == "task-input-dispatch" {
         let worker = input["workerId"].as_str().unwrap();
         let current = || {
@@ -180,7 +215,13 @@ async fn handle(
 ) -> Response {
     let phase = request.uri().path().rsplit('/').next().unwrap().to_owned();
     let authorization = middleware::value(request.headers(), "authorization");
-    let body = match body::parse_js(request, service.config.api_body_limit_bytes).await {
+    // Match TASK_GOAL_OUTCOME_MAX_BYTES: protected 16 MiB responses expand in base64.
+    let limit = if phase == "task-goal-outcome" {
+        32 * 1_024 * 1_024
+    } else {
+        service.config.api_body_limit_bytes
+    };
+    let body = match body::parse_js(request, limit).await {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -192,6 +233,7 @@ async fn handle(
             "receipt" => "nativeCommandSettlementSchema",
             "inference-recovery" => "nativeInferenceRecoverySchema",
             "task-input-dispatch" => "taskInferenceInputDispatchSchema",
+            "task-goal-outcome" => "taskGoalOutcomeDeliverySchema",
             _ => "nativeCommandDispatchSchema",
         },
         body.as_ref(),
@@ -202,6 +244,7 @@ async fn handle(
                 400,
                 match phase.as_str() {
                     "task-input-dispatch" => "invalid-task-input-dispatch",
+                    "task-goal-outcome" => "invalid-task-goal-outcome",
                     "inference-recovery" => "invalid-inference-recovery",
                     _ => "invalid-native-command",
                 },
@@ -257,6 +300,10 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         .route("/api/internal/native-commands/receipt", post(handle))
         .route(
             "/api/internal/native-commands/task-input-dispatch",
+            post(handle),
+        )
+        .route(
+            "/api/internal/native-commands/task-goal-outcome",
             post(handle),
         )
         .route(
