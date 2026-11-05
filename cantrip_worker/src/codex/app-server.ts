@@ -1776,10 +1776,12 @@ export class CodexAppServer implements CodexRuntime {
     string,
     {
       controller: AbortController;
+      attemptId: string;
       threadId: string;
       turnId: string;
       runnerGeneration: string;
       scopeId: string;
+      phase: "begin" | "begin-independent" | "suspend" | "resume";
     }
   >();
   #child: ChildProcessWithoutNullStreams | null = null;
@@ -6695,6 +6697,13 @@ export class CodexAppServer implements CodexRuntime {
       ) {
         pending.controller.abort();
         inference.cancelNativeWait(base.threadId, base.turnId, scopeId);
+        if (pending.phase === "begin" || pending.phase === "begin-independent")
+          inference.rejectNativeBegin(
+            base.threadId,
+            base.turnId,
+            scopeId,
+            pending.attemptId,
+          );
       }
       return;
     }
@@ -6716,7 +6725,12 @@ export class CodexAppServer implements CodexRuntime {
       return;
     }
     if (this.#nativeInferenceWaits.has(base.attemptId)) return;
-    const pending = { ...base, scopeId, controller: new AbortController() };
+    const pending = {
+      ...base,
+      scopeId,
+      phase,
+      controller: new AbortController(),
+    };
     this.#nativeInferenceWaits.set(base.attemptId, pending);
     try {
       if (phase === "begin" || phase === "begin-independent") {
@@ -6725,6 +6739,7 @@ export class CodexAppServer implements CodexRuntime {
           throw new Error("Native inference has no configured provider.");
         await inference.enterNative({
           ...base,
+          gateAttemptId: base.attemptId,
           scopeId,
           rootThreadId,
           chatId: this.#managedThreadOverlays.get(rootThreadId ?? base.threadId)
@@ -6746,9 +6761,19 @@ export class CodexAppServer implements CodexRuntime {
         transport,
       );
     } catch (error) {
-      // An uncertain resolver reply is not proof that Core did not resume.
-      // Retain running capacity until Core's exact finish or process exit.
-      await deny().catch(() => {});
+      // A positive negative-resolve ACK consumes this exact pending gate;
+      // Core cannot subsequently allow it. A failed/uncertain ACK proves no
+      // settlement. Denied resumes still own their previously admitted scope.
+      try {
+        await deny();
+        if (phase === "begin" || phase === "begin-independent")
+          inference.rejectNativeBegin(
+            base.threadId,
+            base.turnId,
+            scopeId,
+            base.attemptId,
+          );
+      } catch {}
       throw error;
     } finally {
       if (this.#nativeInferenceWaits.get(base.attemptId) === pending)
