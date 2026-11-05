@@ -2,7 +2,7 @@ import { queueStateChanged } from "./native-command-queue.js";
 import { assertNativeRuntimeWritable } from "./native-runtime-handoff-guard.js";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { nativeRuntimeHandoffInventory } from "./native-runtime-handoff-inventory.js";
 import {
   nativeRuntimeHandoffRequestSchema,
@@ -20,10 +20,14 @@ import { NativeCommandError } from "./native-command-errors.js";
 import { ChatRuntimeContextRepository } from "./chat-runtime-context.js";
 import { NativeSettingsStateRepository } from "./native-settings-persistence.js";
 import { bindNativeSettingsRead } from "./native-settings-state.js";
-import type { ChatExecutionLaneRepository } from "./chat-execution-lanes.js";
+import type {
+  ChatExecutionContext,
+  ChatExecutionLaneRepository,
+} from "./chat-execution-lanes.js";
 import {
   reserveHandoffQueuedSource,
   confirmHandoffQueuedSource,
+  retargetStandaloneHandoffInput,
 } from "./native-handoff-queued-source.js";
 
 type Row = typeof schema.nativeRuntimeHandoffs.$inferSelect;
@@ -96,6 +100,87 @@ export class NativeRuntimeHandoffRepository {
       chatId,
       latest ? await this.get(ownerId, chatId, latest.operationId) : null,
     );
+  }
+  /** Configured routing affinity for an exact transferred queue revision. This
+   * never grants capacity and cannot change later per-message choices. */
+  async queuedStandaloneTransfer(
+    ownerId: string,
+    context: ChatExecutionContext,
+    claimId: string | undefined,
+    modelId: string,
+  ): Promise<{ reasoningEffort?: string | null } | null> {
+    if (
+      context.contextKind !== "standalone" ||
+      !claimId ||
+      !context.modelRouteId
+    )
+      return null;
+    const [handoff] = await this.database
+      .select({
+        reasoningKnown: sql<boolean>`${schema.nativeRuntimeHandoffs.prepared} ? 'reasoningEffort'`,
+        reasoningEffort: sql<
+          string | null
+        >`${schema.nativeRuntimeHandoffs.prepared}->>'reasoningEffort'`,
+      })
+      .from(schema.nativeRuntimeHandoffs)
+      .innerJoin(
+        schema.modelRoutes,
+        eq(
+          schema.modelRoutes.id,
+          schema.nativeRuntimeHandoffs.targetModelRouteId,
+        ),
+      )
+      .innerJoin(
+        schema.managedQueueClaims,
+        and(
+          eq(
+            schema.managedQueueClaims.chatId,
+            schema.nativeRuntimeHandoffs.chatId,
+          ),
+          sql`${schema.managedQueueClaims.promptId} = ${schema.nativeRuntimeHandoffs.queuedSource}->'retargetedPrompt'->>'id'`,
+          sql`${schema.managedQueueClaims.promptRevision}::text = ${schema.nativeRuntimeHandoffs.queuedSource}->'retargetedPrompt'->>'revision'`,
+        ),
+      )
+      .innerJoin(
+        schema.nativeSettingsStates,
+        and(
+          eq(
+            schema.nativeSettingsStates.chatId,
+            schema.nativeRuntimeHandoffs.chatId,
+          ),
+          sql`${schema.nativeSettingsStates.state}->'binding'->>'bindingId' = ${schema.nativeRuntimeHandoffs.binding}->>'bindingId'`,
+        ),
+      )
+      .where(
+        and(
+          eq(schema.nativeRuntimeHandoffs.ownerId, ownerId),
+          eq(schema.nativeRuntimeHandoffs.chatId, context.chatId),
+          eq(schema.nativeRuntimeHandoffs.workerId, context.workerId),
+          eq(schema.nativeRuntimeHandoffs.phase, "completed"),
+          eq(
+            schema.nativeRuntimeHandoffs.targetModelRouteId,
+            context.modelRouteId,
+          ),
+          context.providerAccountId === null
+            ? isNull(schema.nativeRuntimeHandoffs.targetProviderAccountId)
+            : eq(
+                schema.nativeRuntimeHandoffs.targetProviderAccountId,
+                context.providerAccountId,
+              ),
+          eq(schema.modelRoutes.modelId, modelId),
+          sql`${schema.nativeRuntimeHandoffs.source}->>'contextKind' = 'standalone'`,
+          sql`${schema.nativeRuntimeHandoffs.source}->>'threadId' = ${context.threadId}`,
+          eq(schema.managedQueueClaims.id, claimId),
+        ),
+      )
+      .limit(1);
+    return handoff
+      ? {
+          reasoningEffort: handoff.reasoningKnown
+            ? handoff.reasoningEffort
+            : undefined,
+        }
+      : null;
   }
   async get(ownerId: string, chatId: string, operationId: string) {
     const [row] = await this.database
@@ -446,9 +531,21 @@ export class NativeRuntimeHandoffRepository {
         .update(schema.nativeSettingsStates)
         .set({ state: next, updatedAt: new Date() })
         .where(eq(schema.nativeSettingsStates.chatId, row.chatId));
+      const retargetedPrompt =
+        row.source.contextKind === "standalone" && row.queuedSource
+          ? await retargetStandaloneHandoffInput(
+              tx,
+              row.chatId,
+              row.queuedSource,
+              target.modelId,
+            )
+          : undefined;
       return this.update(tx, row, {
         phase: "committed",
         binding,
+        ...(retargetedPrompt
+          ? { queuedSource: { ...row.queuedSource!, retargetedPrompt } }
+          : {}),
         retiredRuntimeGenerations: [
           ...new Set([
             ...row.retiredRuntimeGenerations,
@@ -762,11 +859,12 @@ export class NativeRuntimeHandoffRepository {
     if (
       !context ||
       context.experience !== "agent" ||
-      context.contextKind !== "project" ||
       context.workerId !== source.workerId ||
       context.contextKind !== source.contextKind ||
       context.projectId !== source.projectId ||
-      context.worktreeId !== source.placementId ||
+      (context.contextKind === "project"
+        ? context.worktreeId
+        : context.scratchRootId) !== source.placementId ||
       context.threadId !== source.threadId ||
       context.modelRouteId !== source.modelRouteId ||
       context.providerAccountId !== source.providerAccountId

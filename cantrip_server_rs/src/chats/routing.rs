@@ -344,7 +344,7 @@ impl ModelRouting {
         roots: Option<&[Value]>,
     ) -> Result<Vec<Value>> {
         let worker = text(context, "workerId")?;
-        if !(self.connected)(&worker) {
+        if roots.is_none() && !(self.connected)(&worker) {
             return reasoning::resolve_pairs(configuration, &[], &[], Some(false));
         }
         if !truthy(configuration.get("modelId")) {
@@ -390,7 +390,7 @@ impl ModelRouting {
                 ));
             }
         }
-        let roots = match roots {
+        let mut roots = match roots {
             Some(roots) => roots.to_vec(),
             None => self
                 .available_runtimes(owner, context, &text(configuration, "modelId")?)
@@ -406,6 +406,21 @@ impl ModelRouting {
                     )
                 })?,
         };
+        if context["contextKind"] == "standalone"
+            && truthy(context.get("modelRouteId"))
+            && let Some(index) = roots.iter().position(|runtime| {
+                runtime.get("routeId") == context.get("modelRouteId")
+                    && runtime["provider"]
+                        .get("accountId")
+                        .filter(|v| !v.is_null())
+                        .unwrap_or(&Value::Null)
+                        == &context["providerAccountId"]
+            })
+            && index > 0
+        {
+            let selected = roots.remove(index);
+            roots.insert(0, selected);
+        }
         let mut subagents = Vec::new();
         if truthy(configuration.get("customSubagentModel"))
             && truthy(configuration.get("subagentModelId"))

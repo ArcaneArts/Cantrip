@@ -198,6 +198,34 @@ pub(super) async fn confirm(
     .await
 }
 
+pub(super) async fn retarget(
+    tx: &Transaction<'_>,
+    chat: &str,
+    queued: &Value,
+    model: &Value,
+) -> Result<Option<Value>> {
+    let operation = text(&queued["operationId"])?;
+    let generation = text(&queued["operationGeneration"])?;
+    let item=one(Executor::Transaction(tx),"SELECT to_jsonb(p)::text FROM managed_queue_claims c INNER JOIN queued_prompts p ON p.id=c.prompt_id WHERE c.chat_id=$1 AND c.operation_id=$2 AND c.operation_generation=$3 AND c.status='deferred' AND p.chat_id=$1 AND p.state='pending' AND p.revision=c.prompt_revision LIMIT 1", &[&chat,&operation,&generation]).await?;
+    let Some(item) = item else { return Ok(None) };
+    let mut opaque = item["opaque_content"].clone();
+    if !opaque.is_null() {
+        opaque["modelId"] = model.clone();
+        opaque = parse("queuedPromptOpaqueContentSchema", &opaque)?;
+    }
+    let opaque_json = if opaque.is_null() {
+        None
+    } else {
+        Some(opaque.stringify())
+    };
+    let rows=tx.query("UPDATE queued_prompts SET model_id=$1,opaque_content=$2::text::jsonb,revision=revision+1,updated_at=$3 WHERE id=$4 RETURNING revision", &[&text(model)?,&opaque_json,&crate::auth::now(),&text(&item["id"])?]).await?;
+    let revision = rows
+        .first()
+        .context("Transferred prompt revision")?
+        .get::<i32>(0)?;
+    Ok(Some(json!({"id":item["id"],"revision":revision})))
+}
+
 pub(super) async fn decline(tx: &Transaction<'_>, owner: &str, row: Value) -> Result<Value> {
     if row["phase"] == "cancelled" {
         return Ok(row);

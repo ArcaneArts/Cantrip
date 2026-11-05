@@ -58,19 +58,27 @@ export class ManagedRuntimeHandoffPublication {
           : (state.binding ?? state.source).runtimeGeneration)
     )
       throw new Error("Canonical handoff prepared another runtime or thread.");
-    const { model, provider } = staged.configuration;
-    const upstreamUrl = await prepared.runtime.remoteEndpoint(model, provider, {
-      subagentDefaults: prepared.subagentDefaults,
-      executionProfile: prepared.executionProfile,
-    });
-    const gateway = await prepared.gateway(upstreamUrl);
-    await this.dependencies.terminals.retargetManagedCodex(state.chatId, {
-      threadId: prepared.threadId,
-      remoteUrl: gateway.url,
-      model,
-      provider,
-      codexHome: prepared.codexHome,
-    });
+    // Standalone Chats keep their restricted runtime and have no linked console
+    // surface. Publishing a provider transfer must not create one for them.
+    if (state.source.contextKind === "project") {
+      const { model, provider } = staged.configuration;
+      const upstreamUrl = await prepared.runtime.remoteEndpoint(
+        model,
+        provider,
+        {
+          subagentDefaults: prepared.subagentDefaults,
+          executionProfile: prepared.executionProfile,
+        },
+      );
+      const gateway = await prepared.gateway(upstreamUrl);
+      await this.dependencies.terminals.retargetManagedCodex(state.chatId, {
+        threadId: prepared.threadId,
+        remoteUrl: gateway.url,
+        model,
+        provider,
+        codexHome: prepared.codexHome,
+      });
+    }
     prepared.activate();
     obsolete.delete(prepared.runtime);
     for (const runtime of obsolete) {

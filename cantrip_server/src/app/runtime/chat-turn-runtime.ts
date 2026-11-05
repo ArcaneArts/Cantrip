@@ -193,13 +193,22 @@ export function createChatTurnRuntime({
     );
     const { requestedReasoningEffort, turnModelConfiguration } =
       chatTurnModelConfiguration(context, input, modelId);
+    const queuedTransfer =
+      await repository.nativeRuntimeHandoffs.queuedStandaloneTransfer(
+        ownerId,
+        context,
+        options.managedQueueClaim?.id,
+        modelId,
+      );
+    if (queuedTransfer?.reasoningEffort !== undefined)
+      turnModelConfiguration.reasoningEffort = queuedTransfer.reasoningEffort;
     // A managed turn inherits the native session's settings. Re-resolving its
     // bootstrap model can choose another route/account, discard the canonical
     // thread, and invalidate the admission issued for this very submission.
     const boundRuntime =
       context.threadId &&
       context.modelRouteId &&
-      managedConsoleSessionContext(context)
+      (managedConsoleSessionContext(context) || queuedTransfer)
         ? await boundManagedRuntime(ownerId, context, repository)
         : null;
     const routePairs = await observeTaskTurnBootstrapStage(

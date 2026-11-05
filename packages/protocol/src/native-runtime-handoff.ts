@@ -12,6 +12,12 @@ export const nativeRuntimeHandoffQueuedSourceSchema = z
     operationId: id,
     operationGeneration: id,
     withdrawn: z.boolean(),
+    // Standalone inputs retain per-message model choices. Only this exact
+    // transferred revision inherits the explicitly selected provider route.
+    retargetedPrompt: z
+      .object({ id, revision: z.number().int().nonnegative() })
+      .strict()
+      .optional(),
   })
   .strict();
 export type NativeRuntimeHandoffQueuedSource = z.infer<

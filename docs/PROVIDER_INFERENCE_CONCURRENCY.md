@@ -1878,12 +1878,50 @@ acknowledgement wait suspends the command deadline without inventing another
 provider ticket, and deferred attempt telemetry closes without a failed turn or
 inference time attributed to its capacity wait.
 
-This integration covers the existing project-agent GUI handoff lifecycle. It
+This integration covers the managed GUI handoff lifecycle. It
 does not establish provider transfer for an already-forwarded native autonomous
-cycle, suspended turn, direct Task input, standalone Chat or a response whose
+cycle, suspended turn, direct Task input or a response whose
 alternate-provider title is still waiting before the response reservation exists.
 Those lifecycle paths must not reuse this original-GUI no-input proof.
 
 Validation was source review, direct formatting, mechanical protocol export and
 `git diff --check`. No tests, builds, typechecks, benchmarks, native/helper
 execution, hosted checks or computer-use validation ran.
+
+## Standalone Chat provider transfers
+
+Standalone agent Chats use the same canonical native GUI admission and no-start
+withdrawal proof as project agents. Their model dialog exposes the existing
+provider/account transfer alongside their per-message model settings. Closing
+the dialog retains the exact pending request identity, including an uncertain
+begin response. The existing model picker remains responsible for later
+per-message choices. Unsaved user edits prevent beginning a competing transfer;
+automatic reasoning normalization does not count as a user edit.
+
+After confirmed withdrawal, transfer commit changes the model selection of only
+the original deferred input, provided its canonical revision is still unchanged.
+The encrypted text, attachments, native input, pending-message header and queue
+position remain intact. Removed inputs are not restored, and edits or later
+queued messages keep their own choices. The handoff records the new revision on
+its existing queued-source metadata rather than introducing another receipt or
+prompt queue.
+
+That exact transferred revision uses the completed handoff's configured route,
+account and confirmed reasoning when it resumes. The affinity also requires the
+handoff's current canonical settings binding, so an older completed transfer
+cannot override a replacement binding. Ordinary later messages prefer the
+current route/account only when it remains among their eligible candidates;
+other model choices and existing provider/account fallbacks remain available.
+An exact configured route proceeds to the actual worker request instead of
+being rejected by a cached connectivity flag.
+
+Both servers resolve handoff configuration without ensuring or mutating a native
+thread. The worker owns preparation and publication. Standalone transfers retain
+the `standalone-chat` runtime and `standalone-web` MCP profile, omit linked-console
+gateway publication, and do not enable project-only console capabilities.
+Destination execution still queues through its provider's ordinary worker pool,
+after the original reservation and source are settled.
+
+Source review, direct formatting, mechanical protocol export and
+`git diff --check` only. No tests, builds, typechecks, benchmarks, native/helper
+execution, hosted checks or computer-use validation were run.

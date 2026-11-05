@@ -3359,13 +3359,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               }),
             }
           : null;
+        const executionProfile =
+          options.session.contextKind === "standalone"
+            ? ("standalone-chat" as const)
+            : ("ide" as const);
         const runtime = runtimeFor(
           {
             ...options,
             provider,
             subagentDefaults,
             chatId: state.chatId,
-            executionProfile: "ide",
+            executionProfile,
           },
           side === "destination" ? state.operationId : undefined,
         );
@@ -3390,7 +3394,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             ...options,
             provider,
             subagentDefaults,
-            executionProfile: "ide",
+            executionProfile,
             canonicalHistory: true,
             executionGate: runner.configuration,
             mcpServers: await agentMcpServers(
@@ -3401,7 +3405,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 workerId: config.workerId,
                 permissionProfileId: options.permissionProfileId,
               },
-              "ide",
+              options.session.contextKind === "standalone"
+                ? "standalone-web"
+                : "ide",
               options.session.computerUseEnabled,
             ),
           },

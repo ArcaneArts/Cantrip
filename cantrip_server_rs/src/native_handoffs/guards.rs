@@ -3,12 +3,15 @@ pub(super) async fn assert_source(tx: &Transaction<'_>, owner: &str, source: &Va
     let current = context::execution(tx, owner, &text(&source["chatId"])?).await?;
     let valid = current.as_ref().is_some_and(|c| {
         c["experience"] == "agent"
-            && c["contextKind"] == "project"
+            && (if c["contextKind"] == "project" {
+                c.get("worktreeId")
+            } else {
+                c.get("scratchRootId")
+            }) == source.get("placementId")
             && [
                 ("workerId", "workerId"),
                 ("contextKind", "contextKind"),
                 ("projectId", "projectId"),
-                ("worktreeId", "placementId"),
                 ("threadId", "threadId"),
                 ("modelRouteId", "modelRouteId"),
                 ("providerAccountId", "providerAccountId"),

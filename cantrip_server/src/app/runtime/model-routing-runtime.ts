@@ -223,7 +223,7 @@ export function createModelRoutingRuntime({
     configuration: ModelConfiguration,
     rootRuntimes?: ModelRuntime[],
   ): Promise<ResolvedModelRoutePair[]> => {
-    if (!bridge.isConnected(context.workerId)) {
+    if (rootRuntimes === undefined && !bridge.isConnected(context.workerId)) {
       return resolveModelRoutePairs({
         configuration,
         rootRuntimes: [],
@@ -271,6 +271,19 @@ export function createModelRoutingRuntime({
       });
     }
 
+    if (context.contextKind === "standalone" && context.modelRouteId) {
+      const selected = availableRoots.findIndex(
+        (runtime) =>
+          runtime.routeId === context.modelRouteId &&
+          (runtime.provider.accountId ?? null) === context.providerAccountId,
+      );
+      if (selected > 0)
+        availableRoots = [
+          availableRoots[selected]!,
+          ...availableRoots.slice(0, selected),
+          ...availableRoots.slice(selected + 1),
+        ];
+    }
     let availableSubagents: ModelRuntime[] | undefined;
     if (configuration.customSubagentModel) {
       if (!configuration.subagentModelId) {
@@ -377,7 +390,7 @@ export function createModelRoutingRuntime({
     runtime: ModelRuntime,
   ): boolean =>
     runtime.routeId === context.modelRouteId &&
-    runtime.provider.accountId === context.providerAccountId;
+    (runtime.provider.accountId ?? null) === context.providerAccountId;
 
   const recordRuntimeTokenUsage = async (
     sourceKey: string,

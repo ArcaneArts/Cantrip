@@ -116,7 +116,7 @@ impl ManagedConsole {
         }
         self.prepare_turn(owner, context, runtime).await
     }
-    pub async fn prepare_turn(
+    pub async fn configuration(
         &self,
         owner: &str,
         context: &Value,
@@ -164,6 +164,18 @@ impl ManagedConsole {
         if let Some(session) = turn_session_context(context) {
             fields["session"] = session;
         }
+        Ok(fields)
+    }
+    pub async fn prepare_turn(
+        &self,
+        owner: &str,
+        context: &Value,
+        runtime: &Value,
+    ) -> Result<Value> {
+        let mut fields = self.configuration(owner, context, runtime).await?;
+        let worker = text(context, "workerId")?;
+        let model = fields["model"].clone();
+        let provider = fields["provider"].clone();
         let mut thread = context["threadId"].clone();
         if !truthy(Some(&thread)) || context["contextKind"] == "standalone" {
             let mut command = fields.clone();
@@ -184,7 +196,7 @@ impl ManagedConsole {
             thread = returned.unwrap().clone();
             let chat = text(context, "chatId")?;
             self.repository
-                .select_model(owner, &chat, &text(&root["model"], "id")?, None)
+                .select_model(owner, &chat, &text(&model, "id")?, None)
                 .await?;
             // Keep the two source transactions distinct. A canonical binding
             // failure must prevent terminal.open after model selection commits.
@@ -196,9 +208,9 @@ impl ManagedConsole {
                     thread: thread
                         .as_js_string()
                         .map(|value| value.lossy().into_owned()),
-                    route: text(root, "routeId")?,
+                    route: text(&model, "routeId")?,
                     status: "ready".into(),
-                    provider_account: root["provider"]
+                    provider_account: provider
                         .get("accountId")
                         .map(|v| v.as_str().map(str::to_owned)),
                     scratch_root: context["scratchRootId"].as_str().map(str::to_owned),
