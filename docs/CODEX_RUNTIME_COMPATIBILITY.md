@@ -330,3 +330,10 @@ before decoding a continuation. Cantrip's existing product pause acknowledgement
 still describes the live in-memory boundary until worker/server/client adoption.
 The contract, remaining milestones, and evidence boundary are documented in
 [the durable suspension guide](DURABLE_TURN_SUSPENSION.md).
+
+Patch `0061` advances the experimental continuation contract to
+`0.166.0/cantrip-suspension-v3`. Resumption preparation retains its payload and
+keeps the confirmed capture identity stable across lifecycle writes and retry.
+An earlier suspended runtime remains preserved with a clear compatibility error;
+explicit Stop can retire it. Product adoption and complete process-tree restart
+acceptance remain required before the product pause acknowledgement changes.

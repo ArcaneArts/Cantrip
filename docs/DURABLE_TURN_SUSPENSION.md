@@ -6,7 +6,9 @@ This feature is being implemented in sequential, independently merged milestones
 The checkpoint storage foundation is implemented in patch `0048`; patch `0051`
 connects native capture and original-ID restoration through experimental native
 operations. Patch `0053` adds stored inspection, explicit attachment holds and
-terminal-history-based retirement of unreadable records. Cantrip's current
+terminal-history-based retirement of unreadable records. Patch `0061` retains
+continuations through resumption preparation and binds controls to their native
+turn and generation. Cantrip's current
 product pause remains an in-memory execution gate until the worker/server/client
 integration is delivered. Do not treat the
 existing product acknowledgement as a process-termination guarantee.
@@ -86,8 +88,13 @@ failure after replacement can leave the new record installed: callers must read
 actual state before retrying and must not acknowledge successful suspension on
 an error. Uncommitted temporary files are not recovery candidates.
 
-Lifecycle states are `suspended`, `consumed`, and `invalidated`. Settlement drops
-the continuation and retains a tombstone. A settled checkpoint ID cannot be
+Lifecycle states are `suspended`, `resuming`, `consumed`, and `invalidated`.
+Resumption preparation advances the store revision and retains the continuation
+in `resuming`. A failed directory sync after replacement can leave that record
+installed; a fresh owner can retry the same confirmed suspension while its
+native history still matches. Actual execution beyond the boundary makes the
+older snapshot stale. Settlement drops the continuation and retains a tombstone.
+A settled checkpoint ID cannot be
 reopened. A later suspension uses a new checkpoint ID and revision. Unsupported
 formats, incompatible suspended runtimes, and corrupt records remain on disk and
 return explicit errors. Settled records do not block later runtime upgrades.
@@ -143,7 +150,15 @@ Execution records after the bound prefix also invalidate an older checkpoint,
 even if they still name the same unfinished turn.
 
 The current native continuation contract is
-`0.166.0/cantrip-suspension-v2`. Original initial, next-step and already-pinned
+`0.166.0/cantrip-suspension-v3`. The confirmed capture revision is stored inside
+the continuation and remains stable across preparation retries. The store's
+physical revision still advances for each committed lifecycle write and supplies
+its compare-and-replace fencing. Native control descriptors identify the capture;
+they do not turn a newer lifecycle write into a replacement checkpoint.
+Earlier suspended contracts produce an explicit compatibility error and retain
+their bytes; Stop can still retire them using committed native history.
+
+Original initial, next-step and already-pinned
 pending-step settings are restored under the fresh runtime's constraints and
 environment requirements. Changing future thread defaults while a turn is
 suspended does not change that turn's captured settings. The restoration marker
@@ -157,6 +172,14 @@ lifecycle. Extension-owned continuation bookkeeping remains a separate milestone
 It reconstructs fresh runtime handles, acquires fresh inference admission, and
 waits for restoration readiness before acknowledging resumption. It does not
 submit the original user prompt or emit another native TurnStarted event.
+New model-visible world-state records are deferred until execution admission.
+Failed preparation preserves unfinished-turn metadata without reporting a new
+running lifecycle. Readiness and live gate changes belong to the same control
+generation; a superseded operation cannot release a later pause.
+Re-pausing a restoration waiting for inference admission cancels its fresh
+reservation and reconfirms the saved boundary. A later Resume obtains fresh
+admission; Stop can instead terminate the original turn without a provider grant.
+The legacy Resume control also restores a cold suspension under its original ID.
 Completed or cancelled speculative compaction requests are drained before
 checkpoint capture; their usage is charged and their transport is not saved.
 
@@ -181,6 +204,17 @@ Extend terminal invalidation to all resource and Goal lifecycle cases, including
 an ordinary new turn after explicit Stop. No supported path may
 duplicate TurnStarted, accepted input, completed tools or
 history items, retain old execution authorization, or advance merely on attach.
+
+Worker teardown and native transport EOF must remain distinct from explicit
+Stop. Ordinary native shutdown currently aborts an active task and records a
+terminal turn event. Integrating durable pause must preserve its confirmed
+continuation through that teardown, including when the worker exits before its
+Codex child. Forced native termination alone does not validate this path.
+A real-process characterization of the 60-patch lifecycle candidate reproduced
+the gap with both history formats: closing App Server stdin after durable pause
+confirmation left an `invalidated` checkpoint with no continuation, and a fresh
+process reported no suspension. Preserving this shutdown path remains required
+before product adoption.
 
 Inspect PTYs, yielded commands, MCP sessions, code-mode state, waiters and native
 subagents. A parent boundary does not prove those resources are durable. Restore
@@ -255,7 +289,8 @@ CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" 
   test/native-durable-suspension.test.ts test/native-shared-pause.test.ts
 ```
 
-On macOS ARM64, the release bundle built from all 53 patches passed eight tests:
+For the checkpoint/recovery milestone on macOS ARM64, the release bundle built
+from all 53 patches passed eight tests:
 two durable-continuation cases and six existing GUI/native-TUI shared-pause
 cases. The durable fixture verifies the bundle's actual artifact hashes and
 current patch fingerprint before starting isolated native processes against a
@@ -280,6 +315,35 @@ A Unix FIFO holds an older turn's actual checkpoint read while a later turn
 reaches durable pause; the later turn must still reject input after cleanup
 finishes. This interleaving reproduced acceptance of steering after a durable
 acknowledgement before the cleanup fix in patch `0053`.
+
+For the lifecycle milestone, the normal macOS ARM64 release build applied all
+62 patches and the updated eight-test matrix passed. Actual artifact hashes,
+the current ordered patch fingerprint and the generated protocol were verified.
+Both history formats now also force a directory-sync failure after atomic
+checkpoint replacement. The installed `resuming` record retains its continuation
+and confirmed capture identity; permission repair permits live retry and a retry
+in another fresh process. No extra provider request or false running status is
+allowed during failed preparation. These permission-failure cases require the
+native process's directory read access to be denied by the operating system.
+
+A separate FIFO interleaving blocks an older Resume in actual checkpoint I/O
+while a newer Pause is requested. The older Resume must fail, the newer Pause
+must commit, and no provider request may escape the gate. This reproduced a
+successful older Resume in both history formats before the control-generation
+fix in patch `0061`.
+
+The fixture also installs a real managed profile and holds fresh native inference
+admission after cold restoration. Re-pause cancels that reservation without
+ending the original turn; repeated Pause confirms the same stored boundary.
+Retry creates a fresh inference scope, rejects the old correctly scoped grant,
+and continues the original turn only after its own matching grant. The next
+provider request contains the original input and completed tool result once.
+Another durable pause and forced restart require another fresh scope. Stop
+while admission is pending commits one terminal event without a provider grant;
+duplicate Stop, another restart, history inspection and ordinary new work verify
+that the stopped continuation cannot reopen. Both completed tool effects and the
+original TurnStarted remain unique. Linux and Windows execution of this expanded
+matrix remain unverified.
 
 These tests establish the native milestone only. They do not kill and recover a
 complete Cantrip worker/server deployment, validate the product Paused indicator,

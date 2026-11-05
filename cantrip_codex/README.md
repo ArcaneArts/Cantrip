@@ -534,10 +534,15 @@ inference owner even when it does not manage input. Existing full managed runner
 keep their behavior. Task permission selection and existing child defaults are
 preserved by the worker's separate preparation intent.
 
-The optional native configuration field and its checked-in TypeScript/JSON and
-precomputed export representations were updated mechanically from source. Source
-review, direct formatting, patch generation and diff checks were used. No native
-schema generator, runtime, tests, build or computer-use validation was run.
+The optional native configuration field is reflected in the checked-in
+TypeScript/JSON and precomputed exports. Lifecycle integration found that the
+original binary patch used snapshot bases from an older patch series, preventing
+the normal build from applying it. Both compressed snapshots were regenerated
+with the actual Rust schema generator against the preceding reviewed patches,
+and the binary patch now names those actual bases. All earlier exported paths
+remain present; the only schema change is the optional `inferenceOnly` field.
+The checked-in JSON fixtures were aligned with the generator's newline format.
+Both generator modes and all four schema fixture/export comparisons passed.
 
 Patch `0060` retains explicit Task input receipt metadata in the lifetime
 keeper's admission journal. The canonical encrypted round remains on the server;
@@ -554,3 +559,22 @@ remain unchanged. This changes only the private CLI journal, not native public
 RPC or precomputed schema exports. Only source review, direct formatting,
 mechanical patch generation and diff checks were performed; no native execution,
 tests or builds were run.
+
+Patch `0061` retains the original continuation through resumption preparation,
+including an actual directory-sync failure after atomic replacement. Its
+`0.166.0/cantrip-suspension-v3` contract keeps the confirmed capture identity
+stable while physical store revisions advance. A prepared record grants no
+execution authority; explicit Resume still requires fresh admission.
+
+Turn-bound controls and readiness acknowledgements share a control generation.
+A newer Pause fences an older Resume before checkpoint I/O, failed preparation
+releases only its own reservation, and Stop confirms native terminal history.
+Cold restoration also works through the legacy Resume control without another
+TurnStarted event. Observer running status follows successful admission.
+The normal macOS ARM64 release build of all 62 patches and the eight native
+pause fixtures passed, including both history formats and actual scoped
+admission handshakes. The existing live-pause unit fixture now supplies the
+turn context and boundary snapshot required by native checkpoint capture.
+Product pause adoption, Goal/resource continuation and complete worker restart
+acceptance remain separate required work. See
+[durable turn suspension](../docs/DURABLE_TURN_SUSPENSION.md).
