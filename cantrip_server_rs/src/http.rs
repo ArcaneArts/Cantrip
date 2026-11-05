@@ -16,6 +16,7 @@ mod agent_alerts;
 mod agent_chat_send;
 mod agent_chats;
 mod agent_interactions;
+mod agent_metadata;
 mod agent_operations;
 mod agent_tasks;
 mod audit;

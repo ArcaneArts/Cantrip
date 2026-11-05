@@ -614,7 +614,9 @@
     "cantripOsRunSourceSchema": 10344,
     "desktopUpdateActiveWorkSummarySchema": 10348,
     "providerConnectionTestResultSchema": 10353,
-    "workerProviderConnectionTestResultSchema": 10362
+    "workerProviderConnectionTestResultSchema": 10362,
+    "policyCliWireListResultSchema": 5118,
+    "policyCliWireReadResultSchema": 10365
   },
   "nodes": [
     {
@@ -61460,6 +61462,14 @@
         { "check": "number_format", "format": "safeint", "abort": false },
         { "check": "greater_than", "value": 0, "inclusive": true }
       ]
-    }
+    },
+    {
+      "type": "object",
+      "name": "policyCliWireReadResultSchema",
+      "shape": { "policy": 5833 },
+      "catchall": 10366,
+      "checks": []
+    },
+    { "type": "never", "checks": [] }
   ]
 }

@@ -151,6 +151,35 @@ export async function runAdmissionCases(h) {
     requestOwner: otherOwner,
     code: "chat-not-found",
   });
+  // Source #2534 intentionally gives standalone Agent input the same native
+  // ownership path as IDE input. Verify the scratch lane and retain a rejected
+  // standalone case for the server-selected runtime's GUI-origin restriction.
+  const standaloneSession = {
+    chatId: standalone,
+    contextKind: "standalone",
+    projectId: null,
+    placementId: scratch,
+  };
+  await reset();
+  const standaloneStart = await observe(
+    "standalone Agent input owns its scratch lane",
+    command({ session: standaloneSession }),
+  );
+  for (const result of standaloneStart) {
+    assert.equal(result.receipt.startsExecution, true);
+    assert.equal(result.execution.contextKind, "standalone");
+    assert.equal(result.execution.scratchRootId, scratch);
+    assert.equal(result.execution.worktreeId, null);
+    assert.equal(result.execution.projectId, null);
+  }
+  for (const state of await snapshot("standalone input ownership is durable")) {
+    assert.equal(state.commands[0].identity.placementId, scratch);
+    assert.equal(state.lanes.length, 1);
+    assert.equal(state.lanes[0].scratch_root_id, scratch);
+    assert.equal(state.lanes[0].worktree_id, null);
+    assert.equal(state.runtimes[0].scratch_root_id, scratch);
+    assert.equal(state.activations[0].chat_id, standalone);
+  }
   for (const [name, input, code, options] of [
     [
       "Task session",
@@ -158,16 +187,24 @@ export async function runAdmissionCases(h) {
       "managed-session-ineligible",
     ],
     [
-      "standalone session",
+      "standalone selected runtime requires GUI origin",
       command({
+        origin: "terminal",
         session: {
-          chatId: standalone,
-          contextKind: "standalone",
-          projectId: null,
-          placementId: scratch,
+          ...standaloneSession,
+          threadId: "standalone-thread",
+          runtimeGeneration: "standalone-runtime",
+          connectionId: "standalone-connection",
         },
       }),
       "managed-session-ineligible",
+      {
+        standaloneRuntime: {
+          threadId: null,
+          modelRouteId: "standalone-route",
+          providerAccountId: null,
+        },
+      },
     ],
     [
       "input revision",

@@ -116,9 +116,9 @@ export async function runManagedQueueCases(h) {
       "managed-session-ineligible",
     ],
     [
-      "standalone queue",
+      "standalone queue rejects a stale project binding",
       { ...read, session: { ...read.session, chatId: h.standalone } },
-      "managed-session-ineligible",
+      "stale-queue-session",
     ],
   ])
     await assertUnchanged(name, () =>

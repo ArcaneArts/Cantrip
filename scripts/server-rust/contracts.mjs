@@ -636,6 +636,8 @@ export const contractRoots = [
   "desktopUpdateActiveWorkSummarySchema",
   "providerConnectionTestResultSchema",
   "workerProviderConnectionTestResultSchema",
+  "policyCliWireListResultSchema",
+  "policyCliWireReadResultSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.

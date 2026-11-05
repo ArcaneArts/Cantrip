@@ -84,9 +84,17 @@ fn summary(row: &Row, workspaces: i64, projects: i64, detail: bool) -> Result<Va
 }
 fn output(schema: &str, value: Value) -> Result<Value> {
     let parsed = crate::wire::parse(schema, Some(&crate::wire::Value::from_serialize(&value)))
-        .map_err(|_| anyhow::anyhow!("Stored policy record violates its protocol contract."))?;
+        .map_err(|_| StoredPolicyValidationError)?;
     Ok(serde_json::from_str(&parsed.stringify())?)
 }
+#[derive(Debug)]
+pub struct StoredPolicyValidationError;
+impl std::fmt::Display for StoredPolicyValidationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Stored policy record violates its protocol contract.")
+    }
+}
+impl std::error::Error for StoredPolicyValidationError {}
 async fn insert(
     tx: &Transaction<'_>,
     owner: &str,
@@ -130,10 +138,35 @@ fn scope_tables(workspace: bool) -> (&'static str, &'static str, &'static str) {
 #[derive(Clone)]
 pub struct PolicyRepository {
     pub database: Arc<Database>,
+    mcp_errors: bool,
 }
 impl PolicyRepository {
     pub fn new(database: Arc<Database>) -> Self {
-        Self { database }
+        Self {
+            database,
+            mcp_errors: false,
+        }
+    }
+    pub fn for_mcp(database: Arc<Database>) -> Self {
+        Self {
+            database,
+            mcp_errors: true,
+        }
+    }
+    async fn effective_query(
+        &self,
+        sql: &str,
+        params: crate::database::Parameters<'_>,
+        name: &str,
+        owner: &str,
+        project: &str,
+    ) -> Result<Vec<Row>> {
+        let result = self.database.query(sql, params).await;
+        if self.mcp_errors && result.is_err() {
+            super::mcp_queries::context(result, name, owner, project)
+        } else {
+            result
+        }
     }
     async fn query(
         &self,
@@ -472,10 +505,12 @@ impl PolicyRepository {
     pub async fn resolve_effective(&self, owner: &str, project: &str) -> Result<Option<Value>> {
         self.ensure_owner(owner).await?;
         if self
-            .database
-            .query(
+            .effective_query(
                 "SELECT id FROM projects WHERE owner_id=$1 AND id=$2 LIMIT 1",
                 &[&owner, &project],
+                "project",
+                owner,
+                project,
             )
             .await?
             .is_empty()
@@ -489,9 +524,9 @@ impl PolicyRepository {
         let project_params: crate::database::Parameters<'_> = &[&project];
         let both: crate::database::Parameters<'_> = &[&owner, &project];
         let (policies,direct,workspaces)=tokio::try_join!(
-            self.database.query(&sql,owner_params),
-            self.database.query("SELECT policy_id FROM project_policy_assignments WHERE project_id=$1", project_params),
-            self.database.query("SELECT a.policy_id,w.id FROM workspace_policy_assignments a INNER JOIN project_workspaces w ON w.id=a.workspace_id AND w.owner_id=$1 INNER JOIN project_workspace_memberships m ON m.workspace_id=w.id AND m.project_id=$2 ORDER BY w.position,w.created_at", both)
+            self.effective_query(&sql,owner_params,"eligible",owner,project),
+            self.effective_query("SELECT policy_id FROM project_policy_assignments WHERE project_id=$1", project_params,"direct",owner,project),
+            self.effective_query("SELECT a.policy_id,w.id FROM workspace_policy_assignments a INNER JOIN project_workspaces w ON w.id=a.workspace_id AND w.owner_id=$1 INNER JOIN project_workspace_memberships m ON m.workspace_id=w.id AND m.project_id=$2 ORDER BY w.position,w.created_at", both,"workspace",owner,project)
         )?;
         let direct = direct
             .iter()
