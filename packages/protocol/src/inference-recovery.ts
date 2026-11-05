@@ -19,6 +19,9 @@ export const inferenceRecoveryIdentitySchema = z
     messageId: identifier.nullable().optional(),
     threadId: identifier.nullable().optional(),
     turnId: identifier.nullable().optional(),
+    // An actual managed pre-start Goal attempt. Private inference waits and
+    // already-started/suspended turns must not acquire this replay identity.
+    autonomousGoal: z.object({ goalEpoch: identifier }).strict().optional(),
     taskInput: taskInferenceInputReceiptSchema.nullable().optional(),
   })
   .strict();

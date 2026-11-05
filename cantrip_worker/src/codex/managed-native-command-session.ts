@@ -1258,6 +1258,15 @@ export class ManagedNativeCommandSession {
                   commandGeneration: grant.receipt.operationGeneration,
                   threadId: session.threadId,
                   turnId: operation.expectedTurnId,
+                  ...(operation.origin === "autonomous" &&
+                  operation.method === "turn/start" &&
+                  operation.autonomousAttempt?.goalEpoch
+                    ? {
+                        autonomousGoal: {
+                          goalEpoch: operation.autonomousAttempt.goalEpoch,
+                        },
+                      }
+                    : {}),
                 },
                 threadId: session.threadId!,
                 expectedTurnId: operation.expectedTurnId,

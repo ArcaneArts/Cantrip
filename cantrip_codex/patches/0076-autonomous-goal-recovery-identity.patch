@@ -1,0 +1,86 @@
+diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/cantrip_inference_journal.rs
+--- a/codex-rs/cli/src/cantrip_inference_journal.rs
++++ b/codex-rs/cli/src/cantrip_inference_journal.rs
+@@ -38,9 +38,17 @@
+     thread_id: Option<String>,
+     turn_id: Option<String>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    autonomous_goal: Option<AutonomousGoal>,
+     #[serde(skip_serializing_if = "Option::is_none")]
+     task_input: Option<TaskInput>,
+ }
+ 
+ #[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+ #[serde(rename_all = "camelCase", deny_unknown_fields)]
++struct AutonomousGoal {
++    goal_epoch: String,
++}
++
++#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
+ struct TaskInput {
+@@ -393,12 +401,57 @@
++                    // A managed pre-start Goal has no GUI message ID. A
++                    // replaced attempt may retain its Goal's waiting ordinal,
++                    // but never replay a bound/private or partially used turn.
++                    let same_goal = old.native_execution.is_none()
++                        && identity
++                            .recovery
++                            .as_ref()
++                            .zip(old.identity.recovery.as_ref())
++                            .is_some_and(|(current, previous)| {
++                                current.message_id.is_none()
++                                    && previous.message_id.is_none()
++                                    && current.task_input.is_none()
++                                    && previous.task_input.is_none()
++                                    && current.command_id.as_ref().is_some_and(|id| !id.is_empty())
++                                    && previous
++                                        .command_id
++                                        .as_ref()
++                                        .is_some_and(|id| !id.is_empty())
++                                    && current.command_generation.as_deref()
++                                        == Some(identity.operation_id.as_str())
++                                    && previous.command_generation.as_deref()
++                                        == Some(old.identity.operation_id.as_str())
++                                    && current.thread_id.as_ref().is_some_and(|id| !id.is_empty())
++                                    && current.thread_id == previous.thread_id
++                                    && current.turn_id.as_ref().is_some_and(|id| !id.is_empty())
++                                    && previous.turn_id.as_ref().is_some_and(|id| !id.is_empty())
++                                    && current
++                                        .autonomous_goal
++                                        .as_ref()
++                                        .zip(previous.autonomous_goal.as_ref())
++                                        .is_some_and(|(goal, prior)| {
++                                            !goal.goal_epoch.is_empty()
++                                                && goal.goal_epoch == prior.goal_epoch
++                                        })
++                            });
++                    let same_message = message.is_some_and(|m| !m.is_empty())
++                        && message
++                            == old
++                                .identity
++                                .recovery
++                                .as_ref()
++                                .and_then(|r| r.message_id.as_ref())
++                        && identity
++                            .recovery
++                            .as_ref()
++                            .is_some_and(|r| r.autonomous_goal.is_none())
++                        && old
++                            .identity
++                            .recovery
++                            .as_ref()
++                            .is_some_and(|r| r.autonomous_goal.is_none());
+                     anyhow::ensure!(
+                         identity.chat_id.is_some()
+                             && identity.chat_id == old.identity.chat_id
+-                            && message.is_some_and(|m| !m.is_empty())
+-                            && message
+-                                == old
+-                                    .identity
+-                                    .recovery
+-                                    .as_ref()
+-                                    .and_then(|r| r.message_id.as_ref()),
++                            && (same_message || same_goal),
+                         "recovery changed canonical input"
+                     );
