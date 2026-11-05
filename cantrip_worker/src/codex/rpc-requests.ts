@@ -9,6 +9,7 @@ interface RpcRequestPorts {
   runtimeId(): string | null;
   secrets(): ReadonlySet<string>;
   isZai(): boolean;
+  isEndpoint?(): boolean;
   recordDiagnostic(
     diagnostic: Omit<CodexRuntimeDiagnostic, "id">,
     warning?: string,
@@ -163,6 +164,7 @@ export class CodexRpcRequests {
           readableCodexProviderError(message.error.message, {
             secrets: this.ports.secrets(),
             zai: this.ports.isZai(),
+            endpoint: this.ports.isEndpoint?.(),
           }),
           message.error,
           pending.method,

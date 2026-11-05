@@ -95,7 +95,7 @@ impl SettingsRepository {
         owner: &str,
         provider: &str,
     ) -> Result<Option<Value>> {
-        Ok(self.json_rows("SELECT to_jsonb(p) FROM model_providers p WHERE id=$1 AND owner_id=$2 LIMIT 1", &[&provider,&owner]).await?.first().map(|row| json!({"id":row["id"],"ownerId":row["owner_id"],"kind":row["kind"],"baseUrl":row["base_url"],"protectedApiKey":row["protected_api_key"]})))
+        Ok(self.json_rows("SELECT to_jsonb(p) FROM model_providers p WHERE id=$1 AND owner_id=$2 LIMIT 1", &[&provider,&owner]).await?.first().map(|row| json!({"id":row["id"],"ownerId":row["owner_id"],"kind":row["kind"],"baseUrl":row["base_url"],"protectedApiKey":row["protected_api_key"],"connectionRevision":row["connection_revision"]})))
     }
     pub async fn has_model_routes_for_provider(&self, owner: &str, provider: &str) -> Result<bool> {
         Ok(!self.database.query("SELECT r.id FROM model_routes r INNER JOIN model_profiles m ON m.id=r.model_id AND m.owner_id=$1 WHERE r.provider_id=$2 LIMIT 1", &[&owner,&provider]).await?.is_empty())

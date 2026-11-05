@@ -1772,6 +1772,13 @@
       "when": 1793816000002,
       "tag": "0252_task_inference_input_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 253,
+      "version": "7",
+      "when": 1793816000003,
+      "tag": "0253_provider_connection_revision",
+      "breakpoints": true
     }
   ]
 }

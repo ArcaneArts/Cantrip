@@ -4,7 +4,7 @@ use crate::wire::Value;
 
 pub(crate) use crate::database::query_error::{QueryError as SettingsQueryError, context};
 type QueryContext = (String, Vec<Value>);
-const PROVIDER_COLUMNS: &str = "\"id\", \"owner_id\", \"name\", \"kind\", \"base_url\", \"protected_api_key\", \"weekly_usage_reserve_percent\", \"max_concurrent_inference\", \"inference_config_revision\", \"created_at\", \"updated_at\"";
+const PROVIDER_COLUMNS: &str = "\"id\", \"owner_id\", \"name\", \"kind\", \"base_url\", \"connection_revision\", \"protected_api_key\", \"weekly_usage_reserve_percent\", \"max_concurrent_inference\", \"inference_config_revision\", \"created_at\", \"updated_at\"";
 pub(super) fn provider_insert(
     id: &str,
     owner: &str,
@@ -39,7 +39,7 @@ pub(super) fn provider_insert(
     let columns = PROVIDER_COLUMNS;
     (
         format!(
-            "insert into \"model_providers\" ({columns}) values ($1, $2, $3, $4, $5, {key}, ${}, ${}, default, default, default) returning {columns}",
+            "insert into \"model_providers\" ({columns}) values ($1, $2, $3, $4, $5, default, {key}, ${}, ${}, default, default, default) returning {columns}",
             parameters.len() - 1,
             parameters.len()
         ),

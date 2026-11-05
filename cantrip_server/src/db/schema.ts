@@ -540,6 +540,7 @@ export const modelProviders = pgTable(
     name: text("name").notNull(),
     kind: text("kind").notNull(),
     baseUrl: text("base_url").notNull(),
+    connectionRevision: integer("connection_revision").notNull().default(1),
     protectedApiKey:
       jsonb("protected_api_key").$type<ProtectedSecretEnvelope>(),
     weeklyUsageReservePercent: integer("weekly_usage_reserve_percent")

@@ -57,6 +57,20 @@ export function providerSetupDefaults(setup: ProviderSetupKind) {
   return providerSetupOptions.find(({ id }) => id === setup)!;
 }
 
+export function providerInstanceName(
+  name: string,
+  providers: readonly Pick<ModelProviderSummary, "name">[],
+) {
+  const names = new Set(
+    providers.map((provider) => provider.name.toLocaleLowerCase()),
+  );
+  if (!names.has(name.toLocaleLowerCase())) return name;
+  for (let number = 2; ; number++) {
+    const candidate = `${name} ${number}`;
+    if (!names.has(candidate.toLocaleLowerCase())) return candidate;
+  }
+}
+
 export function providerSetupUnavailableReason(
   kind: ModelProviderKind,
   providers: readonly Pick<ModelProviderSummary, "id" | "kind">[],

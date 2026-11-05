@@ -79,7 +79,7 @@ export function providerConnectionFailureMessage(
   // Classify locally and expose only bounded, known diagnostics.
   const normalized = detail.toLowerCase();
   const status = detail.match(
-    /(?:http(?:\/[\d.]+)?(?:\s+status)?|status)\s*[:=]?\s*(\d{3})/i,
+    /(?:http(?:\/[\d.]+)?(?:\s+status)?|status)(?:\s+code)?\s*[:=]?\s*(\d{3})/i,
   )?.[1];
   const reason = /econnrefused|connection refused/.test(normalized)
     ? "The connection was refused."

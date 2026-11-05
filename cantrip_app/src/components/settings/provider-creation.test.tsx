@@ -9,7 +9,11 @@ import type { ComponentProps, ReactNode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
-import { createModelProvider, updateModelProvider } from "@/lib/api";
+import {
+  createModelProvider,
+  updateModelProvider,
+  testModelProviderConnection,
+} from "@/lib/api";
 import type { ModelsSettings } from "./models-settings";
 import { SettingsPage } from "./settings-page";
 
@@ -18,6 +22,7 @@ vi.mock("@/lib/api", async (original) => ({
   getWorkers: vi.fn().mockResolvedValue([]),
   createModelProvider: vi.fn(),
   updateModelProvider: vi.fn(),
+  testModelProviderConnection: vi.fn(),
 }));
 vi.mock("@/components/ui/dialog", () => {
   const Pass = ({ children }: { children: ReactNode }) => <div>{children}</div>;
@@ -136,6 +141,58 @@ function typeSelect(view: TestRenderer.ReactTestRenderer) {
 }
 
 describe("provider dialog singleton protection", () => {
+  it("does not display a connection result from an older saved connection revision", async () => {
+    const settings = bundle(["ollama"]);
+    settings.providers[0]!.connectionRevision = 1;
+    const mounted = await mount(settings);
+    let finish!: (
+      result: Awaited<ReturnType<typeof testModelProviderConnection>>,
+    ) => void;
+    const pending = new Promise<
+      Awaited<ReturnType<typeof testModelProviderConnection>>
+    >((resolve) => {
+      finish = resolve;
+    });
+    vi.mocked(testModelProviderConnection).mockReturnValueOnce(pending);
+    try {
+      await act(async () => {
+        mounted.queryClient.setQueryData(
+          ["workers"],
+          [{ workerId: "worker", online: true, name: "Worker" }],
+        );
+      });
+      await click(mounted.view, "Edit ollama");
+      await click(mounted.view, "Test connection");
+      await act(async () => {
+        mounted.queryClient.setQueryData(["settings"], {
+          ...settings,
+          providers: [{ ...settings.providers[0]!, connectionRevision: 2 }],
+        });
+        finish({
+          ok: true,
+          stage: "completed",
+          message: "OLD_CONNECTION_SUCCESS",
+          workerId: "worker",
+          modelName: "model",
+          durationMs: 1,
+        });
+        await pending;
+      });
+      expect(JSON.stringify(mounted.view.toJSON())).not.toContain(
+        "OLD_CONNECTION_SUCCESS",
+      );
+    } finally {
+      finish({
+        ok: false,
+        stage: "provider-response",
+        message: "Finished",
+        workerId: "worker",
+        modelName: "model",
+        durationMs: 1,
+      });
+      await mounted.close();
+    }
+  });
   it.each(endpointProviderKinds)(
     "keeps %s repeatable and retains its kind when changing the address",
     async (kind) => {

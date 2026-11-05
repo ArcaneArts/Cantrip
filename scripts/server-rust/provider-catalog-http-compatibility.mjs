@@ -56,10 +56,11 @@ const catalog = (provider, query = "") =>
   `/api/settings/providers/${provider}/catalog${query}`;
 let postgresOwner, failure;
 try {
-  const executable = await buildRustServer(),
-    repositoryExecutable = await buildRustExample(
-      "settings-repository-fixture",
-    );
+  const executable =
+      process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer()),
+    repositoryExecutable =
+      process.env.CANTRIP_RUST_SETTINGS_REPOSITORY_BINARY ??
+      (await buildRustExample("settings-repository-fixture"));
   if (databaseMode !== "pglite")
     postgresOwner = await postgresFixture(path.join(root, "postgres"));
   for (const mode of ["accounts", "none"]) {
@@ -332,40 +333,48 @@ try {
             if (frame.command.type === "model.endpoint.catalog") {
               result.commands.push(frame.command);
               const second = frame.command.provider.id.endsWith("-b");
-              const state = endpointState.providers.get(
+              const configuration = endpointState.providers.get(
                 frame.command.provider.id,
               ) ?? {
                 loaded: second,
                 contextWindow: second ? 8192 : 4096,
                 fail: false,
               };
-              socket.send(
-                JSON.stringify({
-                  kind: "response",
-                  requestId: frame.requestId,
-                  ok: !state.fail,
-                  ...(state.fail
-                    ? {
-                        error: {
-                          code: "fixture-endpoint",
-                          message: "Controlled endpoint offline.",
-                        },
-                      }
-                    : {
-                        result: {
-                          models: [
-                            {
-                              ...endpointInventoryModel,
-                              nativeModelId: "shared-model",
-                              loaded: state.loaded,
-                              contextWindow: state.contextWindow,
-                            },
-                          ],
-                          observedAt: "2026-11-04T00:00:00.000Z",
-                        },
-                      }),
-                }),
-              );
+              const state = { ...configuration };
+              const reply = () =>
+                socket.send(
+                  JSON.stringify({
+                    kind: "response",
+                    requestId: frame.requestId,
+                    ok: !state.fail,
+                    ...(state.fail
+                      ? {
+                          error: {
+                            code: "fixture-endpoint",
+                            message: "Controlled endpoint offline.",
+                          },
+                        }
+                      : {
+                          result: {
+                            models: [
+                              {
+                                ...endpointInventoryModel,
+                                nativeModelId: "shared-model",
+                                loaded: state.loaded,
+                                contextWindow: state.contextWindow,
+                              },
+                            ],
+                            observedAt: "2026-11-04T00:00:00.000Z",
+                          },
+                        }),
+                  }),
+                );
+              if (configuration.pause) {
+                const pause = configuration.pause;
+                configuration.pause = undefined;
+                pause.release = reply;
+                pause.received();
+              } else reply();
               return true;
             }
             if (frame.command.type !== "model.ollama.catalog") return false;

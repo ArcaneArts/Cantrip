@@ -54,20 +54,24 @@ impl CatalogService {
         async move {
             let repository=&service.repository;
             let Some(runtime)=repository.get_provider_catalog_runtime(&owner,&provider).await? else{return Ok(None)};
+            let revision=runtime["connectionRevision"].as_i64().context("catalog connection revision")?;
+            let connection=json!({"ownerId":owner,"connectionRevision":revision});
             let base=runtime["baseUrl"].as_str().context("stored catalog URL")?;
             anyhow::ensure!(is_provider(runtime["kind"].as_str().context("stored provider kind")?,base),"Provider is not an OpenRouter-compatible provider.");
             // Source writes this before the refresh catch. A failure here must
             // escape without replacing the existing sync state with 'failed'.
-            repository.set_provider_catalog_sync_state(&provider,&json!({"scopeKey":GLOBAL_SCOPE,"status":"refreshing","errorCode":null,"refreshStartedAt":now()})).await?;
+            if !repository.set_provider_catalog_sync_state(&provider,&json!({"connection":connection,"scopeKey":GLOBAL_SCOPE,"status":"refreshing","errorCode":null,"refreshStartedAt":now()})).await? {
+                return repository.get_provider_model_catalog(&owner,&provider,false).await;
+            }
             let refresh:Result<bool>=async {
-                let key=format!("public:{}",url::Url::parse(base)?.origin().ascii_serialization());
+                let key=format!("public:{base}");
                 let read=service.cache.read(base,&key,force).await.map_err(|error|anyhow::Error::new((*error).clone()))?;
-                service.persist(&owner,&provider,&read.snapshot).await?;
-                let mut state=json!({"scopeKey":GLOBAL_SCOPE,"status":if read.served_stale{"stale"}else{"current"},"errorCode":null,"etag":read.snapshot.etag});
+                if !service.persist(&owner,&provider,Some(revision),&read.snapshot).await? { return Ok(false); }
+                let mut state=json!({"connection":connection,"scopeKey":GLOBAL_SCOPE,"status":if read.served_stale{"stale"}else{"current"},"errorCode":null,"etag":read.snapshot.etag});
                 if !read.served_stale {state["lastSuccessAt"]=json!(now());}
-                repository.set_provider_catalog_sync_state(&provider,&state).await?;
+                if !repository.set_provider_catalog_sync_state(&provider,&state).await? { return Ok(false); }
                 if let Some(background)=read.background_refresh {
-                    service.schedule(&owner,&provider,background);
+                    service.schedule(&owner,&provider,revision,background);
                 }
                 Ok(read.served_stale)
             }.await;
@@ -78,19 +82,28 @@ impl CatalogService {
                 Err(error)=>{
                     let existing=repository.get_provider_model_catalog(&owner,&provider,true).await?;
                     let has_models=existing.as_ref().is_some_and(|catalog|catalog["models"].as_array().is_some_and(|models|!models.is_empty()));
-                    repository.set_provider_catalog_sync_state(&provider,&json!({"scopeKey":GLOBAL_SCOPE,"status":if has_models{"stale"}else{"failed"},"errorCode":"openrouter-catalog-refresh-failed"})).await?;
+                    if !repository.set_provider_catalog_sync_state(&provider,&json!({"connection":connection,"scopeKey":GLOBAL_SCOPE,"status":if has_models{"stale"}else{"failed"},"errorCode":"openrouter-catalog-refresh-failed"})).await? {
+                        return repository.get_provider_model_catalog(&owner,&provider,false).await;
+                    }
                     if has_models {repository.get_provider_model_catalog(&owner,&provider,true).await}else{Err(error)}
                 }
             }
         }.boxed()
     }
-    async fn persist(&self, owner: &str, provider: &str, snapshot: &CatalogSnapshot) -> Result<()> {
+    async fn persist(
+        &self,
+        owner: &str,
+        provider: &str,
+        revision: Option<i64>,
+        snapshot: &CatalogSnapshot,
+    ) -> Result<bool> {
         let models: Vec<_> = snapshot.models.iter().map(normalize_model).collect();
         self.repository
             .reconcile_provider_model_catalog(
                 owner,
                 provider,
                 CatalogUpdate {
+                    connection_revision: revision,
                     availability_scope: GLOBAL_SCOPE.into(),
                     available: models
                         .iter()
@@ -109,10 +122,15 @@ impl CatalogService {
                     default_native_id: None,
                 },
             )
-            .await?;
-        Ok(())
+            .await
     }
-    fn schedule(self: &Arc<Self>, owner: &str, provider: &str, refresh: CatalogRefresh) {
+    fn schedule(
+        self: &Arc<Self>,
+        owner: &str,
+        provider: &str,
+        revision: i64,
+        refresh: CatalogRefresh,
+    ) {
         let mut background = self.background.lock().expect("catalog background lock");
         if background.active.contains_key(provider) {
             return;
@@ -146,7 +164,7 @@ impl CatalogService {
             .await;
             let result=match result {
                 Ok(())=>Ok(()),
-                Err(_)=>service.repository.set_provider_catalog_sync_state(&provider,&json!({"scopeKey":GLOBAL_SCOPE,"status":"stale","errorCode":"openrouter-background-refresh-failed"})).await.map_err(Arc::new),
+                Err(_)=>service.repository.set_provider_catalog_sync_state(&provider,&json!({"connection":{"ownerId":owner,"connectionRevision":revision},"scopeKey":GLOBAL_SCOPE,"status":"stale","errorCode":"openrouter-background-refresh-failed"})).await.map(|_| ()).map_err(Arc::new),
             };
             {
                 let mut background = service.background.lock().expect("catalog background lock");

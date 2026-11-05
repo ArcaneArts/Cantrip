@@ -181,6 +181,7 @@ pub(super) fn provider_summary(
             "weeklyUsageReservePercent",
             "maxConcurrentInference",
             "inferenceConfigRevision",
+            "connectionRevision",
         ],
     );
     output["hasApiKey"] = json!(!provider["protected_api_key"].is_null());

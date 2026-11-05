@@ -124,6 +124,10 @@ export class OllamaCatalogService {
     if (!isWorkerEndpointProviderKind(provider.kind)) {
       throw new Error("Provider does not use worker endpoint discovery.");
     }
+    const connection = {
+      ownerId,
+      connectionRevision: provider.connectionRevision,
+    };
     const scopeKey = ollamaWorkerScope(workerId);
     const existing = await this.#repository.getProviderModelCatalog(
       ownerId,
@@ -141,12 +145,18 @@ export class OllamaCatalogService {
       return existing;
     }
     if (!this.#bridge.isConnected(workerId)) {
-      await this.#repository.setProviderCatalogSyncState(providerId, {
-        scopeKey,
-        workerId,
-        status: "stale",
-        errorCode: "worker-offline",
-      });
+      const accepted = await this.#repository.setProviderCatalogSyncState(
+        providerId,
+        {
+          connection,
+          scopeKey,
+          workerId,
+          status: "stale",
+          errorCode: "worker-offline",
+        },
+      );
+      if (!accepted)
+        return this.#repository.getProviderModelCatalog(ownerId, providerId);
       if (existing && existing.models.length > 0) {
         return this.#repository.getProviderModelCatalog(
           ownerId,
@@ -157,13 +167,19 @@ export class OllamaCatalogService {
       throw new Error("Worker is offline.");
     }
 
-    await this.#repository.setProviderCatalogSyncState(providerId, {
-      scopeKey,
-      workerId,
-      status: "refreshing",
-      errorCode: null,
-      refreshStartedAt: new Date(),
-    });
+    const refreshing = await this.#repository.setProviderCatalogSyncState(
+      providerId,
+      {
+        connection,
+        scopeKey,
+        workerId,
+        status: "refreshing",
+        errorCode: null,
+        refreshStartedAt: new Date(),
+      },
+    );
+    if (!refreshing)
+      return this.#repository.getProviderModelCatalog(ownerId, providerId);
     try {
       const runtimeProvider = {
         ...provider,
@@ -193,10 +209,11 @@ export class OllamaCatalogService {
           : endpointModelInventorySchema
               .parse(result)
               .models.map(normalizeEndpointCatalogModel);
-      await this.#repository.reconcileProviderModelCatalog(
+      const accepted = await this.#repository.reconcileProviderModelCatalog(
         ownerId,
         providerId,
         {
+          connectionRevision: provider.connectionRevision,
           models,
           availabilityScope: scopeKey,
           availabilityWorkerId: workerId,
@@ -206,7 +223,10 @@ export class OllamaCatalogService {
           autoCreateLogicalModels: true,
         },
       );
+      if (!accepted)
+        return this.#repository.getProviderModelCatalog(ownerId, providerId);
       await this.#repository.setProviderCatalogSyncState(providerId, {
+        connection,
         scopeKey,
         workerId,
         status: "current",
@@ -215,15 +235,21 @@ export class OllamaCatalogService {
       });
       return this.#repository.getProviderModelCatalog(ownerId, providerId);
     } catch (error) {
-      await this.#repository.setProviderCatalogSyncState(providerId, {
-        scopeKey,
-        workerId,
-        status: existing?.models.length ? "stale" : "failed",
-        errorCode:
-          provider.kind === "ollama"
-            ? "ollama-catalog-refresh-failed"
-            : "endpoint-catalog-refresh-failed",
-      });
+      const accepted = await this.#repository.setProviderCatalogSyncState(
+        providerId,
+        {
+          connection,
+          scopeKey,
+          workerId,
+          status: existing?.models.length ? "stale" : "failed",
+          errorCode:
+            provider.kind === "ollama"
+              ? "ollama-catalog-refresh-failed"
+              : "endpoint-catalog-refresh-failed",
+        },
+      );
+      if (!accepted)
+        return this.#repository.getProviderModelCatalog(ownerId, providerId);
       if (existing && existing.models.length > 0) {
         return this.#repository.getProviderModelCatalog(
           ownerId,

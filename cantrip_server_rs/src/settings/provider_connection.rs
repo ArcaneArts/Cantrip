@@ -64,7 +64,7 @@ impl FailureStage {
         let status = STATUS
             .get_or_init(|| {
                 regress::Regex::with_flags(
-                    r"(?:http(?:\/[\d.]+)?(?:\s+status)?|status)\s*[:=]?\s*(\d{3})",
+                    r"(?:http(?:\/[\d.]+)?(?:\s+status)?|status)(?:\s+code)?\s*[:=]?\s*(\d{3})",
                     "i",
                 )
                 .expect("provider HTTP status diagnostic")

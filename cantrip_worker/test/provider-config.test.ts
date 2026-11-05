@@ -27,6 +27,21 @@ function provider(
 }
 
 describe("Codex provider configuration", () => {
+  it("uses an environment-backed endpoint key for authenticated Ollama while retaining the keyless builtin", () => {
+    const authenticated = codexProviderConfiguration(
+      provider("ollama", { apiKey: "ollama-secret" }),
+    );
+    expect(authenticated.arguments).toContain(
+      'model_provider="cantrip_runtime"',
+    );
+    expect(authenticated.arguments.join(" ")).not.toContain("ollama-secret");
+    expect(authenticated.environment).toEqual({
+      CANTRIP_PROVIDER_API_KEY: "ollama-secret",
+    });
+    expect(codexProviderConfiguration(provider("ollama")).arguments).toContain(
+      'model_provider="ollama"',
+    );
+  });
   it.each(nativeEndpointProviderKinds)(
     "uses a private Responses configuration for each %s instance",
     (kind) => {

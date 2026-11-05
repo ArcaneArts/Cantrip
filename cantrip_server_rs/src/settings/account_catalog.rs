@@ -71,6 +71,7 @@ impl SettingsRepository {
             owner,
             provider,
             CatalogUpdate {
+                connection_revision: None,
                 models: vec![],
                 availability_scope: scope.clone(),
                 available: Default::default(),
@@ -83,7 +84,7 @@ impl SettingsRepository {
         )
         .boxed()
         .await?;
-        self.set_provider_catalog_sync_state(provider,&json!({"scopeKey":scope,"workerId":null,"providerAccountId":account,"status":"current","errorCode":null,"lastSuccessAt":now()})).await
+        self.set_provider_catalog_sync_state(provider,&json!({"scopeKey":scope,"workerId":null,"providerAccountId":account,"status":"current","errorCode":null,"lastSuccessAt":now()})).await.map(|_| ())
     }
     pub(super) async fn get_account_provider_catalog(
         &self,
@@ -202,7 +203,7 @@ impl SettingsRepository {
                     models=super::grok::enrich_vision(&models,public_metadata.as_ref().expect("loaded public metadata"));
                 }
                 let visible:Vec<_>=inventory_models.iter().filter(|model|model["hidden"]!=true).collect();
-                self.reconcile_provider_model_catalog(owner,provider,CatalogUpdate {
+                self.reconcile_provider_model_catalog(owner,provider,CatalogUpdate { connection_revision: None,
                     available:models.iter().map(|model|model["nativeModelId"].as_js_string().expect("validated model ID").clone()).collect(),
                     auto_create_native_ids:Some(visible.iter().map(|model|model[family.id_key()].as_js_string().expect("validated model ID").clone()).collect()),
                     default_native_id:visible.iter().find(|model|model["isDefault"]==true).and_then(|model|model[family.id_key()].as_js_string()).map(|value|value.lossy().into_owned()),

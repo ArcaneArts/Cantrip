@@ -6,7 +6,7 @@ configured instance of that backend. The shared definitions in
 labels, and instance multiplicity. Settings and server account classification
 consume those definitions.
 
-Ollama and generic OpenAI-compatible endpoints are repeatable. Each instance
+All endpoint kinds, including Ollama and generic OpenAI-compatible, are repeatable. Each instance
 keeps its own name, URL, encrypted credential, concurrency limit, catalog, and
 model route references. Three Ollama servers can expose the same native model
 ID without sharing provider identity. ChatGPT and Grok retain one provider
@@ -37,6 +37,27 @@ for unauthenticated servers. Save the provider, refresh its catalog, or create
 a model with the server's exact model ID. A saved provider's connection test
 runs a small real inference request through the selected worker and bundled
 Codex; creating a provider itself does not require a reachable endpoint.
+
+New instances receive an unused default name, which you can edit. Saving selects
+the new provider tab; the selected tab is retained per server and signed-in user
+across reloads. Logical model IDs and ordered routes remain server-owned.
+
+Editing an endpoint or its encrypted key advances that instance's connection
+revision. Old catalog capabilities and reachability become stale, and late
+refreshes from the old connection cannot overwrite the new connection's catalog
+or status. Provider/model IDs, user visibility, default model selection, and
+routes survive. Client catalog caches and connection-test results follow the
+same revision. Names and concurrency edits do not invalidate connection metadata.
+Future executions use the new connection; existing running turns retain their
+established runtime. Deleting or editing one instance does not change its peers.
+
+Concurrency uses the existing provider pool on each authorized worker, shared
+across that worker's projects, models, helper requests, and runtime generations.
+Unrelated provider IDs have independent pools. A cancelled running request keeps
+its slot until execution has settled. The established limit is per worker;
+several workers accessing one LAN inference service do not constitute a global
+server-wide admission pool. Configure that service's own shared capacity as
+needed. See [provider concurrency](PROVIDER_INFERENCE_CONCURRENCY.md).
 
 Discovery uses `/models` under the configured API root. LM Studio's optional
 native `/api/v1/models` metadata adds loaded/installed state, actual context,
@@ -117,6 +138,9 @@ reverse-proxy paths, API-key authentication, and a keyless llama.cpp instance.
 It also exercises fragmented JSON tool arguments, worker-owned shell execution,
 tool-call IDs and results, and the following model continuation for each kind.
 Each kind also completes stateless auxiliary label inference with no tools.
+The same executable fixtures exercise HTTP authentication failure, failure after
+partial streaming output, operation-timeout cancellation, and user Stop, while
+checking that backend error bodies and keys do not escape into diagnostics.
 The MLX fixture verifies reasoning survives the next request, despite
 discovery being unavailable. Adapter fixtures cover cancellation, instance and
 credential isolation, HTTP/stream failures, truncation, structured output,
@@ -131,3 +155,43 @@ IDs, tenant isolation, and stale catalog recovery. Real backend/model smoke
 results and remaining environment-specific limitations must be reported
 separately; synthetic fixtures are not evidence that an installed backend
 was exercised.
+
+### Real backend smoke tests
+
+On Apple Silicon, with bundled Codex **0.166.0**, the following externally running
+services completed a worker-owned shell tool call that read a random fixture
+file, returned its exact contents, and then completed auxiliary label inference:
+
+| Backend   | Version            | Model and configuration                                                                                                                               | Result                                                        |
+| --------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Ollama    | `0.40.8`           | `gemma4:12b`, 11.9B Q4_K_M, worker loopback `:11434`                                                                                                  | Agent tool/result/continuation and auxiliary inference passed |
+| llama.cpp | `9430 (d48a56eff)` | Same Gemma4 12B Q4_K_M GGUF; `--ctx-size 8192 --parallel 1 --jinja --reasoning-budget 0 --cache-ram 0 --no-webui`, model alias `cantrip-gemma4-smoke` | Agent tool/result/continuation and auxiliary inference passed |
+
+The llama.cpp runs also exposed practical model latency limits: unrestricted
+reasoning with a 32768 context exceeded the smoke operation's 120-second bound.
+With context 8192 and reasoning budget 128, the agent passed but auxiliary
+inference exceeded its existing 25-second deadline. The zero-reasoning-budget
+configuration above passed both. These are measured model/configuration outcomes,
+not a promise that every compatible model fits Cantrip's inference deadlines.
+
+LM Studio/llmster, vLLM, Unsloth, LiteLLM, and MLX-LM have **not** been tested
+against real servers in this environment. MLX-LM's Python runtime was absent;
+the other services had no configured test endpoint. Their protocol wiring is
+covered by deterministic fixtures and the actual Codex runtime. GPU/platform,
+model template, and deployment-specific qualification remains necessary.
+
+To repeat the opt-in smoke test with an already-running engine and existing
+weights (the test installs and downloads nothing):
+
+```sh
+CANTRIP_CODEX_TEST_BINARY=/absolute/path/to/bundled/codex \
+CANTRIP_SMOKE_PROVIDER_KIND=ollama \
+CANTRIP_SMOKE_PROVIDER_URL=http://127.0.0.1:11434 \
+CANTRIP_SMOKE_MODEL=gemma4:12b \
+pnpm --filter @cantrip/worker exec vitest run test/real-endpoint-smoke.test.ts
+```
+
+Use any supported endpoint kind and its model alias. This harness uses an
+isolated temporary Codex home and an unauthenticated endpoint; authenticated
+connections are covered separately by local fixtures. Discovery is attempted
+but its failure never prevents the actual manually configured inference test.
