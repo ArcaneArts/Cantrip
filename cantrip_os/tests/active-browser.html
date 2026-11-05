@@ -1,0 +1,16 @@
+<!doctype html><meta charset="utf-8"><title>CantripOS active workload</title>
+<style>body{margin:0;background:#000;color:#ddd;font:16px monospace}canvas{display:block}pre{padding:12px}</style>
+<canvas width="1200" height="600"></canvas><pre id="status">Starting</pre>
+<script>
+const canvas=document.querySelector('canvas'),context=canvas.getContext('2d');
+let frames=0;
+setInterval(()=>{
+  frames++;
+  context.fillStyle='#000';context.fillRect(0,0,1200,600);
+  context.fillStyle='#ddd';context.font='16px monospace';
+  for(let line=0;line<24;line++)context.fillText(`CantripOS workspace editor | line ${line} | frame ${frames}`,12,24+line*23);
+  context.fillStyle='#999';context.fillRect((frames*7)%1100,560,100,30);
+  document.title=`CantripOS active frames ${frames}`;
+  document.querySelector('#status').textContent=`Actual rendered updates: ${frames}`;
+},33);
+</script>

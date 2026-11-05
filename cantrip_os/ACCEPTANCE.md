@@ -2356,3 +2356,86 @@ state and unknown-state preservation. The standard root check was attempted and
 still stops at unchanged application line budgets (1516/1500 and 2216/1999).
 This checkpoint repairs build preparation and refreshes Docker evidence; stream
 comparison and fresh ISO/installed-system acceptance remain in progress.
+
+## Phase 4: stream choice and active 4 GiB measurements (2026-11-05)
+
+The reproducible [stream/resource harnesses](STREAMING.md) ran against the fresh
+ARM64 OCI image from the executor-build checkpoint above, on an Apple M4 Max
+(16 logical CPUs). The OS had an actual 4294967296-byte cgroup limit, no swap
+allowance beyond that limit, and 1 GiB shared memory. A separate AMD64 ISO build
+was compiling on the host during these observations. These are local workload
+measurements, not isolated-host performance promises.
+
+The matched stream fixture kept the personal console and two workspace desktops.
+Both candidates viewed the same 1440×900 application, with 10-second static and
+motion windows. JPEG used the real production `OsDesktopSession`/native capture/
+Worker encoder at 15 fps, adaptive quality. VNC actually negotiated compressed
+ZRLE, with a 15 fps incremental-request ceiling. ZRLE is lossless changed-region
+encoding; JPEG is lossy full-frame encoding, so fidelity is not identical.
+
+| Candidate / scene    | Encoded arrivals/s | Encoded Mb/s | Guest CPU, % one core | Host probe/encode CPU, % one core | Guest working set MiB |
+| -------------------- | -----------------: | -----------: | --------------------: | --------------------------------: | --------------------: |
+| Native JPEG / static |               15.1 |        14.87 |                  24.3 |                              28.6 |                 253.6 |
+| Native JPEG / motion |               15.2 |        15.08 |                  25.3 |                              27.9 |                 254.2 |
+| VNC ZRLE / static    |      0 (unchanged) |            0 |                   3.2 |                              <0.1 |                 283.2 |
+| VNC ZRLE / motion    |               13.2 |         0.41 |                   9.9 |                               1.2 |                 284.7 |
+
+First encoded-frame arrival from adapter open was 202 ms JPEG / 373 ms VNC;
+reconnect was 154 / 454 ms. The shared native CUA lease and X11 desktops were
+already prepared before adapter timing; these are not cold attach/admission
+latencies. Five actual Escape operations per candidate produced median
+input-to-application-XSync acknowledgments of 11.8 / 3.8 ms. These are not
+input-to-displayed-frame latency or browser-decoder FPS. Both paths set the actual
+ASCII X11 clipboard, and the sibling desktop's clipboard stayed unchanged.
+Motion produced actual encoded updates; receive buffers were bounded and frames
+were not retained. Separate native acceptance already covers Unicode clipboard.
+
+The official Selkies 2.2.1 ARM64 Debian package's release checksum matched and
+installation succeeded. Actual startup, repeated with Python fault reporting,
+exited 132 (illegal instruction) in bundled cryptography imports before capture
+or its WebSocket listener started. No Selkies streaming numbers are claimed;
+this result is specific to that package/environment. It is not installed in the
+production image.
+
+**Initial integrated choice: retain native adaptive JPEG at 15 fps.** It fits
+this measured CPU/memory workload and reuses the shipped identity, control,
+clipboard, resize and client-decoder behavior. Its ~15 Mb/s cost is material:
+VNC's changed rectangles were much more efficient here and remain available
+through the managed compatibility route. This selection does not claim JPEG is
+the best codec. Browser decode, WAN and representative video workloads are
+needed before choosing a new integrated tile/video adapter.
+
+A separate **fresh stock-image** resource fixture ran each active workspace with
+its own Chromium animated local page and a real native executor hashing/writing
+files every 50 ms. Files and GUI launches used the native executor; actual browser
+page counters advanced throughout, and both executor jobs continued producing
+output/files. The personal console remained available; no viewers or model
+runtime ran inside the OS. Six samples covered each 10-second measurement window:
+
+| Stage                           | Guest CPU, % one core | Max raw cgroup MiB | Max working set MiB | Max anonymous MiB |
+| ------------------------------- | --------------------: | -----------------: | ------------------: | ----------------: |
+| Idle OS                         |                   1.7 |               93.8 |                93.4 |              88.7 |
+| One active desktop + executor   |                  20.9 |              338.0 |               333.3 |             292.6 |
+| Two active desktops + executors |                  31.8 |              600.7 |               591.5 |             517.4 |
+
+All samples retained the actual 4 GiB limit and zero OOM kills. This establishes
+that workload, not arbitrary project/site/build capacity. External Worker/model
+memory and Docker VM overhead are excluded. The initial resource-fixture browser
+invocation failed because its executor PATH omitted `/usr/local/bin`; the final
+fixture invokes the installed wrapper by absolute path and verifies actual
+rendering before recording an active stage.
+
+Final real stream and resource tests each passed (50.74 / 49.93 seconds). Strict
+TypeScript checking of the new harness import graph passed, and all seven OS
+script tests passed. Full Worker typechecking still reports the unchanged
+inference source/command and logging diagnostics recorded in earlier checkpoints.
+The standard root check was attempted and stops at unchanged application line
+budgets (1516/1500 and 2216/1999). Full Phase 4 remains active for refreshed
+live ISO/installation/disk-boot acceptance. Raw results and startup/failure logs
+are retained locally under `artifacts/phase4-streaming/`.
+
+After rebasing onto `f90caee31`, both real harness cases passed again (98.40s
+combined), the strict harness import-graph typecheck and seven OS tests passed.
+The current root check still fails on unchanged application budgets: 1516/1500
+and 2221/1999. The earlier measured numbers above remain the retained sample;
+the rebase run is an additional functional regression check.
