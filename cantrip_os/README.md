@@ -33,10 +33,12 @@ source-aware product workflows. Final distribution acceptance is recorded below.
 Phase 4 adds the optional [native desktop package](packages/remote/README.md),
 including its protected CUA carrier. Docker/ISO builds include it with the
 executor edition by default; `CANTRIP_OS_REMOTE=0` omits it independently.
-Version 0.3.0 routes normal agent CUA and previews to the captured Linux desktop,
+Version 0.4.0 routes normal agent CUA and previews to the captured Linux desktop,
 including scoped clipboard access, physical pointer movement and live resize.
-Integrated viewing/takeover, clipboard and managed service access are still in
-progress. Native, package and product evidence are recorded in acceptance.
+Project Settings → CantripOS → Open desktop now views that workspace inside
+Cantrip over WorkerLink. Human takeover, stream-candidate comparison and managed
+service access remain in progress. Native, package and product evidence are
+recorded in acceptance.
 
 Phase 3 execution and distribution acceptance is recorded. See [acceptance results](ACCEPTANCE.md)
 for the actual tested builds and platform limits. Iterate in Docker first; build

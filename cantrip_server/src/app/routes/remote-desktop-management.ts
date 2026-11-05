@@ -3,6 +3,8 @@ import {
   encryptedRemoteDesktopUpdateSchema,
   remoteDesktopProbeResultSchema,
   remoteDesktopWireSummarySchema,
+  remoteDesktopOsSourceSchema,
+  type CantripOsExecution,
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 
@@ -12,6 +14,8 @@ import {
   type ServerRepository,
 } from "../../db/repository.js";
 import { TabLayoutInvariantError } from "../../db/tab-layouts.js";
+import { CantripOsPlacementError } from "../../db/repository/cantrip-os.js";
+import { cantripOsExecutionForSource } from "../../db/repository/cantrip-os-chats.js";
 import { errorMessage, invalidBody } from "../../http/request-helpers.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 
@@ -25,6 +29,7 @@ export interface RemoteDesktopManagementRouteDependencies {
     | "getRemoteSurfaceExecutionContext"
     | "resolveProjectExecutionPlacement"
     | "updateRemoteSurface"
+    | "cantripOs"
   >;
   serverId: string;
   updateRemoteSurfaceStatus: (
@@ -89,7 +94,7 @@ export function installRemoteDesktopManagementRoutes(
               type: "surface.configure",
               surfaceId: context.surface.id,
               serverId,
-              configuration: { kind: "desktop" },
+              configuration: context.surface.configuration,
               stateResource: "remote-desktop-row",
               stateRevision: updated.stateRevision,
               stateProtection: updated.stateProtection,
@@ -128,17 +133,45 @@ export function installRemoteDesktopManagementRoutes(
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       let workerId: string;
+      let osExecution: CantripOsExecution | undefined;
       try {
-        workerId = (
-          await repository.resolveProjectExecutionPlacement(
+        if (input.data.cantripOsBindingId) {
+          const source = await repository.cantripOs.bindingContext(
             applicationOwnerId(),
-            request.params.projectId,
-            "remote-desktop",
-            input.data.target,
-            (workerId) => bridge.isConnected(workerId),
+            input.data.cantripOsBindingId,
+          );
+          if (
+            !source?.available ||
+            source.binding.projectId !== request.params.projectId ||
+            source.instance.runtimeGeneration !==
+              input.data.cantripOsRuntimeGeneration
           )
-        ).placement.workerId;
+            throw new CantripOsPlacementError(
+              "The selected desktop source is unavailable or stale.",
+            );
+          workerId = source.instance.workerId;
+          osExecution = cantripOsExecutionForSource(
+            applicationOwnerId(),
+            source,
+            {
+              bindingGeneration: source.binding.bindingGeneration,
+              attachmentGeneration: source.instance.attachmentGeneration,
+              runtimeGeneration: input.data.cantripOsRuntimeGeneration!,
+            },
+          );
+        } else
+          workerId = (
+            await repository.resolveProjectExecutionPlacement(
+              applicationOwnerId(),
+              request.params.projectId,
+              "remote-desktop",
+              input.data.target,
+              (workerId) => bridge.isConnected(workerId),
+            )
+          ).placement.workerId;
       } catch (error) {
+        if (error instanceof CantripOsPlacementError)
+          return reply.code(409).send({ error: error.message });
         if (error instanceof ExecutionPlacementUnavailableError) {
           return reply
             .code(error.code === "project-not-found" ? 404 : 409)
@@ -154,19 +187,38 @@ export function installRemoteDesktopManagementRoutes(
       }
 
       try {
-        const probe = remoteDesktopProbeResultSchema.parse(
-          await bridge.request(
-            workerId,
-            { type: "surface.desktop.probe" },
-            { timeoutMs: 20_000 },
-          ),
-        );
-        if (!probe.available) {
-          return reply.code(409).send({
-            error:
-              probe.message ??
-              "The project worker could not start managed Remote Desktop.",
-          });
+        const prepared = osExecution
+          ? remoteDesktopOsSourceSchema
+              .pick({ desktopGeneration: true })
+              .required()
+              .parse(
+                await bridge.request(
+                  workerId,
+                  {
+                    type: "surface.desktop.os-prepare",
+                    serverId,
+                    projectId: request.params.projectId,
+                    osExecution,
+                  },
+                  { ownerId: applicationOwnerId(), timeoutMs: 30_000 },
+                ),
+              )
+          : undefined;
+        if (!input.data.cantripOsBindingId) {
+          const probe = remoteDesktopProbeResultSchema.parse(
+            await bridge.request(
+              workerId,
+              { type: "surface.desktop.probe" },
+              { timeoutMs: 20_000 },
+            ),
+          );
+          if (!probe.available) {
+            return reply.code(409).send({
+              error:
+                probe.message ??
+                "The project worker could not start managed Remote Desktop.",
+            });
+          }
         }
         const desktop = await repository.createRemoteDesktop(
           applicationOwnerId(),
@@ -177,6 +229,13 @@ export function installRemoteDesktopManagementRoutes(
           input.data.stateProtection,
           input.data.paneId ?? input.data.tabGroupId,
           input.data.targetRegion,
+          input.data.cantripOsBindingId
+            ? {
+                bindingId: input.data.cantripOsBindingId,
+                runtimeGeneration: input.data.cantripOsRuntimeGeneration!,
+                desktopGeneration: prepared!.desktopGeneration,
+              }
+            : undefined,
         );
         if (!desktop) {
           return reply

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import { remoteSurfaceAttachResultSchema } from "@cantrip/protocol";
 import {
@@ -22,7 +23,7 @@ export interface WorkerLinkRemoteSurfaceGrantRouteDependencies {
   bridge: Pick<WorkerCommandBus, "isConnected" | "request">;
   repository: Pick<
     ServerRepository,
-    "getRemoteSurfaceExecutionContext" | "getUserSettings"
+    "getRemoteSurfaceExecutionContext" | "getUserSettings" | "remoteSurfaces"
   >;
   serverId: string;
   updateRemoteSurfaceStatus: (
@@ -96,6 +97,16 @@ export function installWorkerLinkRemoteSurfaceGrantRoute(
       let attached = false;
       let grantId: string | null = null;
       try {
+        const osExecution =
+          context.surface.configuration.kind === "desktop" &&
+          context.surface.configuration.osSource
+            ? await repository.remoteSurfaces.desktopExecution(
+                principal.user.id,
+                context.surface.projectId,
+                context.workerId,
+                context.surface.configuration,
+              )
+            : undefined;
         await updateRemoteSurfaceStatus(context.surface.id, "connecting");
         const desktopStream =
           context.surface.kind === "desktop"
@@ -116,6 +127,7 @@ export function installWorkerLinkRemoteSurfaceGrantRoute(
               projectId: context.surface.projectId,
               serverId,
               configuration: context.surface.configuration,
+              ...(osExecution ? { osExecution } : {}),
               stateResource:
                 context.surface.kind === "browser"
                   ? context.surface.titleProtection.classification
@@ -150,10 +162,22 @@ export function installWorkerLinkRemoteSurfaceGrantRoute(
           principal.user.id,
           context.surface.id,
         );
+        if (osExecution && current)
+          await repository.remoteSurfaces.desktopExecution(
+            principal.user.id,
+            current.surface.projectId,
+            current.workerId,
+            current.surface.configuration,
+          );
         if (
           !current ||
           current.surface.kind !== context.surface.kind ||
           current.workerId !== context.workerId ||
+          current.surface.projectId !== context.surface.projectId ||
+          !isDeepStrictEqual(
+            current.surface.configuration,
+            context.surface.configuration,
+          ) ||
           current.surface.stateRevision !== context.surface.stateRevision
         ) {
           await workerLinks.revokeGrant(

@@ -193,6 +193,7 @@ import {
 import { WorkerLinkPeerGateway } from "./worker-link-peer-gateway.js";
 import { createWorkerLinkWebRtcTransportFactory } from "./worker-link-webrtc.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
+import { OsDesktopSession, prepareOsDesktop } from "./desktop/os-desktop.js";
 import { DesktopApplicationIconStore } from "./desktop/desktop-icons.js";
 import { GithubClient } from "./github.js";
 import { probeManagedLinkPlacement } from "./project-replica-placement.js";
@@ -767,7 +768,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     new Date().toISOString(),
     {
       browser: browserAdapter.available,
-      desktop: desktopAdapter.available,
+      desktop: true,
       transports: ["websocket", "webrtc"],
       iceTransportPolicies: ["all", "relay"],
       maxSessions: 4,
@@ -965,7 +966,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const skillManager = new SkillManager(config.dataDirectory);
   const remoteSurfaces = new RemoteSurfaceManager({
     browser: browserAdapter,
-    desktop: desktopAdapter,
+    desktop: {
+      open: async (command, emit) =>
+        command.configuration.kind === "desktop" &&
+        command.configuration.osSource
+          ? new OsDesktopSession(
+              command,
+              emit,
+              osComputerUseServices,
+              workerEncryption,
+              config.workerId,
+            )
+          : desktopAdapter.open(command, emit),
+    },
   });
   remoteSurfaces.setEncryptionService(workerEncryption);
   const worktrees = new WorktreeManager(config.dataDirectory);
@@ -4877,9 +4890,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "surface.close":
       case "surface.desktop.probe":
       case "surface.desktop.targets":
+      case "surface.desktop.os-prepare":
         return handleSurfaceCommand(command, {
           remoteSurfaces,
           desktopAdapter,
+          prepareOsDesktop: (prepared) =>
+            prepareOsDesktop(
+              prepared,
+              osComputerUseServices,
+              workerEncryption,
+              config.workerId,
+            ),
         });
       case "model.provider.test": {
         const startedAtMs = Date.now();
@@ -7146,7 +7167,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     },
     capabilities: {
       browser: browserAdapter.available,
-      desktop: desktopAdapter.available,
+      desktop: true,
       desktopBackend: desktopAdapter.available
         ? desktopAdapter.frameBackend
         : null,

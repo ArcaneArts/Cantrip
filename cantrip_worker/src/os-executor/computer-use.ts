@@ -102,16 +102,28 @@ export class OsCuaServices {
     authority: CuaPreviewAuthority,
     signal: AbortSignal,
   ): Promise<CuaServiceLease> {
-    signal = AbortSignal.any([signal, this.lifetime.signal]);
     this.active(signal);
     const execution = this.placement(authority);
     if (!execution)
       return { service: this.options.host, release: async () => {} };
+    return this.acquireExecution(authority.serverId, execution, signal);
+  }
+  /** Called only with Server-admitted surface execution, never browser paths. */
+  async acquireExecution(
+    serverId: string,
+    execution: CantripOsExecution,
+    signal: AbortSignal,
+    expectedDesktopGeneration?: string,
+  ): Promise<CuaServiceLease & { desktopGeneration: string }> {
+    signal = AbortSignal.any([signal, this.lifetime.signal]);
+    this.active(signal);
     const { scope, transport } = execution;
+    if (scope.workerId !== this.options.workerId)
+      throw new CuaAuthorizationError("ownership-mismatch");
     const key = JSON.stringify([
-      authority.serverId,
-      authority.ownerId,
-      authority.workerId,
+      serverId,
+      scope.ownerId,
+      scope.workerId,
       scope.instanceId,
       scope.workspaceId,
     ]);
@@ -128,12 +140,15 @@ export class OsCuaServices {
             JSON.stringify({
               instance_id: scope.guestInstanceId,
               generation: scope.runtimeGeneration,
-              owner_id: authority.ownerId,
-              worker_id: authority.workerId,
+              owner_id: scope.ownerId,
+              worker_id: scope.workerId,
               workspace_id: scope.guestWorkspaceId,
               uid: scope.uid,
               gid: scope.gid,
               home: scope.homeGuestPath,
+              ...(expectedDesktopGeneration
+                ? { desktop_generation: expectedDesktopGeneration }
+                : {}),
             }),
           ],
           signal,
@@ -143,12 +158,14 @@ export class OsCuaServices {
       if (
         context.instance_id !== scope.guestInstanceId ||
         context.generation !== scope.runtimeGeneration ||
-        context.owner_id !== authority.ownerId ||
-        context.worker_id !== authority.workerId ||
+        context.owner_id !== scope.ownerId ||
+        context.worker_id !== scope.workerId ||
         context.workspace_id !== scope.guestWorkspaceId ||
         context.uid !== scope.uid ||
         context.gid !== scope.gid ||
-        context.home !== scope.homeGuestPath
+        context.home !== scope.homeGuestPath ||
+        (expectedDesktopGeneration !== undefined &&
+          context.desktop_generation !== expectedDesktopGeneration)
       ) {
         throw new CuaAuthorizationError("ownership-mismatch");
       }
@@ -197,6 +214,7 @@ export class OsCuaServices {
       const owner = Symbol("CUA desktop lease");
       owned.owners.add(owner);
       return {
+        desktopGeneration: owned.context.desktop_generation,
         service: owned.service,
         release: () =>
           this.serial(key, async () => {

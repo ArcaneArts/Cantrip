@@ -550,6 +550,7 @@ export function ProjectSettingsPage({
   onOpenConversations,
   onOpenTunnelOwner,
   onOpenImportedChat,
+  onOpenDesktop,
   onOpenPolicySettings,
   onMobileSectionOpenChange,
   project,
@@ -574,6 +575,7 @@ export function ProjectSettingsPage({
   onOpenConversations?(): void;
   onOpenTunnelOwner?(tunnel: TunnelSummary): void;
   onOpenImportedChat(chatId: string): void;
+  onOpenDesktop?(desktopId: string): void;
   onOpenPolicySettings?(policyId?: string): void;
   onMobileSectionOpenChange?(open: boolean): void;
   project: ProjectSummary;
@@ -756,6 +758,7 @@ export function ProjectSettingsPage({
                 workers={workers}
                 worktrees={worktrees}
                 onOpenAgent={onOpenImportedChat}
+                onOpenDesktop={onOpenDesktop}
               />
             ) : null}
             {section === "policies" ? (

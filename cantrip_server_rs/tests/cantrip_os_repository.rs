@@ -18,6 +18,34 @@ async fn exercise_run_captures(
     primary: Value,
     worktree: Value,
 ) -> Result<()> {
+    let desktop_repository = cantrip_server::remote_surfaces::Repository::new(database.clone());
+    let source = &primary["scope"];
+    let desktop_context = cantrip_server::wire::Value::from_serialize(
+        &json!({"workerId":"worker","surface":{"kind":"desktop","projectId":"project","configuration":{"kind":"desktop","osSource":{"bindingId":source["bindingId"],"worktreeId":source["worktreeId"],"bindingGeneration":source["bindingGeneration"],"attachmentGeneration":source["attachmentGeneration"],"runtimeGeneration":source["runtimeGeneration"],"desktopGeneration":"a".repeat(64)}}}}),
+    );
+    let desktop_execution = desktop_repository
+        .desktop_execution("owner", &desktop_context)
+        .await?
+        .unwrap();
+    assert_eq!(
+        desktop_execution["scope"]["bindingId"].as_str(),
+        source["bindingId"].as_str()
+    );
+    assert!(
+        desktop_repository
+            .desktop_execution("other", &desktop_context)
+            .await
+            .is_err()
+    );
+    let mut stale_desktop = desktop_context.clone();
+    stale_desktop["surface"]["configuration"]["osSource"]["runtimeGeneration"] =
+        cantrip_server::wire::Value::String(id().into());
+    assert!(
+        desktop_repository
+            .desktop_execution("owner", &stale_desktop)
+            .await
+            .is_err()
+    );
     // Run admission uses the same canonical Linux source, without requiring a
     // Worker-local project_sources row for this Linux-owned checkout.
     let runs = cantrip_server::run_configurations::Repository::new(database.clone());

@@ -11,7 +11,7 @@ sys.path.insert(0, "/usr/lib/cantrip-os-workspaces")
 from service import Store, atomic_json
 
 CONFIG = "/etc/cantrip-os/remote.json"
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 
 
 def request(store, command, pins=None, **arguments):
@@ -48,13 +48,23 @@ def observe(workspace, start=False, pins=None, expected_placement=None):
     if not attachment:
         raise ValueError("Attach an owning Worker before opening remote access")
     record = request("/etc/cantrip-os/workspaces.json", "show", pins=pins, id=workspace)
-    if expected_placement is not None and placement(executor, record) != expected_placement:
-        raise ValueError("Remote desktop attachment or generation mismatch")
-    if start:
+    expected_desktop = None
+    if expected_placement is not None:
+        expected = dict(expected_placement)
+        expected_desktop = expected.pop("desktop_generation", None)
+        if placement(executor, record) != expected:
+            raise ValueError("Remote desktop attachment or generation mismatch")
+        if expected_desktop is not None and (record["status"] != "running" or
+                hashlib.sha256(record["view_token"].encode()).hexdigest() != expected_desktop):
+            raise ValueError("The captured desktop is retired; explicitly open a new view")
+    # A pinned viewer never starts a replacement if its display disappeared.
+    if start and expected_desktop is None:
         record = request("/etc/cantrip-os/workspaces.json", "open", id=workspace)
     if record["status"] != "running":
         raise ValueError("The selected desktop is not running; explicitly open it first")
     generation = hashlib.sha256(record["view_token"].encode()).hexdigest()
+    if expected_desktop is not None and generation != expected_desktop:
+        raise ValueError("Remote desktop generation mismatch")
     public = {**placement(executor, record), "desktop_generation": generation,
               "user": record["user"], "display": record["display"]}
     return public

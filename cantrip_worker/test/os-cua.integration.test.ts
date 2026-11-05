@@ -1,4 +1,10 @@
 import { readFileSync } from "node:fs";
+import { encryptSurfacePrivateState } from "@cantrip/crypto";
+import {
+  OsDesktopSession,
+  prepareOsDesktop,
+} from "../src/desktop/os-desktop.js";
+import type { WorkerEncryptionService } from "../src/worker-encryption.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
@@ -296,8 +302,109 @@ describe.skipIf(!transport)(
       });
       broker.setComputerUseExecutor((...args) => coordinator.execute(...args));
       const client = new Client({ name: "actual-Linux-CUA-SDK", version: "1" });
+      let viewer: OsDesktopSession | null = null;
       try {
         await broker.start();
+        const componentKey = new Uint8Array(32).fill(73);
+        const surfaceId = randomUUID();
+        const stateProtection = await encryptSurfacePrivateState({
+          ownerId: identity.ownerId,
+          context: {
+            serverId: identity.serverId,
+            resource: "remote-desktop-row",
+            resourceId: surfaceId,
+            operationId: null,
+            recordKind: "remote-desktop-state",
+          },
+          keyRevision: 1,
+          componentKey,
+          content: {
+            version: 1,
+            classification: { recordKind: "remote-desktop-state" },
+            revision: 1,
+            target: { kind: "monitor", id: null, name: null },
+          },
+        });
+        const frames: Uint8Array[] = [];
+        const encryption = {
+          ownerId: () => identity.ownerId,
+          status: () => ({ error: null }),
+          componentKey: () => ({ key: componentKey.slice(), keyRevision: 1 }),
+        } as unknown as WorkerEncryptionService;
+        const prepared = await prepareOsDesktop(
+          {
+            type: "surface.desktop.os-prepare",
+            serverId: identity.serverId,
+            projectId: authority.projectId,
+            osExecution: execution,
+          },
+          services,
+          encryption,
+          identity.workerId,
+        );
+        expect(prepared.desktopGeneration).toBe(desktop.desktop_generation);
+        const viewerStartedAt = performance.now();
+        let firstFrameMs: number | null = null;
+        const scope = execution.scope;
+        viewer = new OsDesktopSession(
+          {
+            type: "surface.attach",
+            surfaceId,
+            attachmentId: "viewer",
+            projectId: authority.projectId,
+            serverId: identity.serverId,
+            configuration: {
+              kind: "desktop",
+              osSource: {
+                bindingId: scope.bindingId,
+                worktreeId: scope.worktreeId,
+                bindingGeneration: scope.bindingGeneration,
+                attachmentGeneration: scope.attachmentGeneration,
+                runtimeGeneration: scope.runtimeGeneration,
+                desktopGeneration: prepared.desktopGeneration,
+              },
+            },
+            osExecution: execution,
+            stateProtection,
+            stateRevision: 1,
+            stateResource: "remote-desktop-row",
+            preferredTransport: "websocket",
+            webrtc: null,
+            viewport: { width: 800, height: 600, devicePixelRatio: 1 },
+            desktopStream: { targetFps: 2, quality: "balanced" },
+          },
+          (_id, channel, payload) => {
+            if (channel === "frame") {
+              firstFrameMs ??= performance.now() - viewerStartedAt;
+              frames.push(payload);
+            }
+            return true;
+          },
+          services,
+          encryption,
+          identity.workerId,
+        );
+        process.stdout.write(
+          "Linux viewer acceptance: opening assigned desktop\n",
+        );
+        await viewer.attach({
+          id: "viewer",
+          viewport: { width: 800, height: 600, devicePixelRatio: 1 },
+        });
+        const frameDeadline = Date.now() + 20_000;
+        while (!frames.length && Date.now() < frameDeadline)
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        expect(frames.length).toBeGreaterThan(0);
+        expect(Buffer.from(frames[0]!).subarray(0, 3)).toEqual(
+          Buffer.from([255, 216, 255]),
+        );
+        process.stdout.write(
+          `Linux viewer acceptance: first JPEG ${Number(firstFrameMs).toFixed(1)}ms, ${frames[0]!.byteLength} bytes\n`,
+        );
+        await viewer.attach({
+          id: "second-viewer",
+          viewport: { width: 800, height: 600, devicePixelRatio: 1 },
+        });
         const binding = broker.createBinding({
           ownerId: identity.ownerId,
           workerId: identity.workerId,
@@ -353,7 +460,67 @@ describe.skipIf(!transport)(
           Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
         );
         expect(hostStarts).toBe(0);
+        process.stdout.write(
+          "Linux viewer acceptance: concurrent agent input and capture completed\n",
+        );
+        await viewer.handleFrame(
+          "viewer",
+          "control",
+          new TextEncoder().encode(
+            JSON.stringify({
+              type: "clipboard",
+              operation: "paste-text",
+              text: "Unowned viewer input must not dispatch",
+            }),
+          ),
+        );
+        await viewer.detach("viewer");
+        await viewer.detach("second-viewer");
+        // Detaching a viewer must not retire the agent's shared native service.
+        const continued = parseCuaMcpResult(
+          await client.callTool({
+            name: "js",
+            arguments: {
+              script:
+                "await cua.snapshot(); ({clipboard:await cua.readClipboard(),session:(await cua.getState()).session})",
+            },
+            _meta: {
+              threadId: "native-sdk-thread",
+              "x-codex-turn-metadata": { turn_id: "native-sdk-turn" },
+              itemId: "sdk-after-viewer",
+              callId: "sdk-after-viewer",
+            },
+          }),
+        );
+        expect(continued.isError).not.toBe(true);
+        process.stdout.write(
+          "Linux viewer acceptance: agent continued after last viewer detached\n",
+        );
+        const continuedText = continued.content.find(
+          (item) => item.type === "text",
+        );
+        expect(
+          continuedText?.type === "text" &&
+            JSON.parse(continuedText.text).value.clipboard,
+        ).toBe("Cantrip SDK 日本語 café 🦀");
+        await viewer.attach({
+          id: "after-agent",
+          viewport: { width: 800, height: 600, devicePixelRatio: 1 },
+        });
+        await unregister();
+        const beforeAgentStopped = frames.length;
+        const continuedDeadline = Date.now() + 20_000;
+        while (
+          frames.length === beforeAgentStopped &&
+          Date.now() < continuedDeadline
+        )
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        expect(frames.length).toBeGreaterThan(beforeAgentStopped);
+        process.stdout.write(
+          "Linux viewer acceptance: viewer continued after agent retirement\n",
+        );
       } finally {
+        await viewer?.close();
         await client.close();
         await broker.close();
         await unregister();

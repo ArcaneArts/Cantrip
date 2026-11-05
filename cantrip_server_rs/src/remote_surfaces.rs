@@ -17,6 +17,50 @@ impl Repository {
             .remote_execution_context(owner, &Value::String(id.into()))
             .await
     }
+    /// Resolve a saved desktop capture against current canonical OS authority.
+    /// Ordinary context reads/deletion remain possible after a source retires.
+    pub async fn desktop_execution(&self, owner: &str, context: &Value) -> Result<Option<Value>> {
+        let raw: serde_json::Value = serde_json::from_str(&context.stringify())?;
+        let surface = &raw["surface"];
+        let source = &surface["configuration"]["osSource"];
+        if source.is_null() {
+            return Ok(None);
+        }
+        anyhow::ensure!(
+            source["desktopGeneration"]
+                .as_str()
+                .is_some_and(|value| value.len() == 64
+                    && value
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))),
+            "This desktop view has no captured desktop generation; open a new view."
+        );
+        anyhow::ensure!(
+            surface["kind"] == "desktop",
+            "Linux desktop source has the wrong surface kind."
+        );
+        let text = |value: &serde_json::Value| {
+            value
+                .as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| anyhow::anyhow!("Linux desktop identity is incomplete."))
+        };
+        let captured = serde_json::json!({"binding_id":source["bindingId"],"binding_generation":source["bindingGeneration"],"attachment_generation":source["attachmentGeneration"],"runtime_generation":source["runtimeGeneration"]});
+        let root = crate::cantrip_os::files::root(
+            crate::database::Executor::Database(&self.database),
+            owner,
+            &text(&surface["projectId"])?,
+            &text(&source["worktreeId"])?,
+            &text(&raw["workerId"])?,
+            &captured,
+        )
+        .await?;
+        anyhow::ensure!(
+            root["kind"] == "cantrip-os",
+            "Linux desktop execution is unavailable."
+        );
+        Ok(Some(root))
+    }
     /// Source browser bootstrap uses independent source reads and one bulk
     /// INSERT. Existing surfaces, including their chosen worker, stay intact.
     pub async fn ensure_browsers(&self, owner: &str) -> Result<()> {

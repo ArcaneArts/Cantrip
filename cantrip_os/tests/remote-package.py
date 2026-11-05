@@ -254,8 +254,14 @@ try:
     denied = command("cantrip-remote", "open", args.workspace, "--expect-placement", json.dumps(wrong), check=False)
     assert denied.returncode != 0 and "generation mismatch" in denied.stderr
     assert json.loads(command("cantrip-workspaces", "show", args.workspace).stdout)["status"] == "stopped"
+    pinned = {**expected, "desktop_generation": new_context["desktop_generation"]}
+    denied = command("cantrip-remote", "open", args.workspace, "--expect-placement", json.dumps(pinned), check=False)
+    assert denied.returncode != 0 and "captured desktop is retired" in denied.stderr
+    assert json.loads(command("cantrip-workspaces", "show", args.workspace).stdout)["status"] == "stopped"
     context = remote("open", args.workspace, "--expect-placement", json.dumps(expected))
     assert context["desktop_generation"] != new_context["desktop_generation"]
+    denied = command("cantrip-remote", "open", args.workspace, "--expect-placement", json.dumps(pinned), check=False)
+    assert denied.returncode != 0 and "captured desktop is retired" in denied.stderr
     stale = command("cantrip-remote", "connect", args.workspace, "--expect", json.dumps(new_context), check=False)
     assert stale.returncode != 0 and "generation mismatch" in stale.stderr
 finally:

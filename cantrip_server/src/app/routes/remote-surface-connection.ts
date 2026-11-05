@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   remoteSurfaceAttachResultSchema,
@@ -220,6 +221,16 @@ export function installRemoteSurfaceConnectionRoute(
           workerId,
         });
         try {
+          const osExecution =
+            context.surface.configuration.kind === "desktop" &&
+            context.surface.configuration.osSource
+              ? await repository.remoteSurfaces.desktopExecution(
+                  ownerId,
+                  context.surface.projectId,
+                  workerId,
+                  context.surface.configuration,
+                )
+              : undefined;
           const result = remoteSurfaceAttachResultSchema.parse(
             await bridge.request(
               workerId,
@@ -230,6 +241,7 @@ export function installRemoteSurfaceConnectionRoute(
                 projectId: context.surface.projectId,
                 serverId,
                 configuration: context.surface.configuration,
+                ...(osExecution ? { osExecution } : {}),
                 stateResource:
                   context.surface.kind === "browser"
                     ? context.surface.titleProtection.classification
@@ -263,6 +275,32 @@ export function installRemoteSurfaceConnectionRoute(
             surfaceId,
             (surfaceAttachmentCounts.get(surfaceId) ?? 0) + 1,
           );
+          if (osExecution) {
+            const current = await repository.getRemoteSurfaceExecutionContext(
+              ownerId,
+              surfaceId,
+            );
+            if (
+              !current ||
+              current.workerId !== workerId ||
+              current.surface.projectId !== context.surface.projectId ||
+              current.surface.kind !== context.surface.kind ||
+              current.surface.stateRevision !== context.surface.stateRevision ||
+              !isDeepStrictEqual(
+                current.surface.configuration,
+                context.surface.configuration,
+              )
+            )
+              throw new Error(
+                "Linux desktop placement or state changed while opening.",
+              );
+            await repository.remoteSurfaces.desktopExecution(
+              ownerId,
+              current.surface.projectId,
+              workerId,
+              current.surface.configuration,
+            );
+          }
           await updateRemoteSurfaceStatus(surfaceId, "active");
           send({
             type: "ready",

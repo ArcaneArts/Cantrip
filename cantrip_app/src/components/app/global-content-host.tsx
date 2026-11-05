@@ -453,6 +453,9 @@ export function GlobalContentHost({
           onOpenImportedChat={(chatId) =>
             openCreatedTab(selectedProject.id, "chat", chatId)
           }
+          onOpenDesktop={(desktopId) =>
+            openCreatedTab(selectedProject.id, "remote-desktop", desktopId)
+          }
           onOpenPolicySettings={(policyId) => {
             setSettingsPolicyId(policyId ?? null);
             setSettingsSection("policies");

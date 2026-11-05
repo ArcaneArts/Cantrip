@@ -14,7 +14,10 @@ import {
   remoteSurfaceWebRtcConfigurationSchema,
 } from "./runtime-capabilities.js";
 import { browserHttpUrlSchema } from "./browser-surfaces.js";
-import { remoteDesktopApplicationIconKeySchema } from "./remote-desktops.js";
+import {
+  remoteDesktopApplicationIconKeySchema,
+  remoteDesktopOsSourceSchema,
+} from "./remote-desktops.js";
 
 export const remoteSurfaceConfigurationSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -24,6 +27,7 @@ export const remoteSurfaceConfigurationSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("desktop"),
+      osSource: remoteDesktopOsSourceSchema.optional(),
     })
     .strict(),
 ]);

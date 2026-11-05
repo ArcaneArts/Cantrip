@@ -454,7 +454,39 @@ pub(super) fn refine(
             }
             false
         }
+        "os-desktop-prepare" => {
+            if value["osExecution"]["scope"]["projectId"] != value["projectId"] {
+                issue!(
+                    &[json!("osExecution")],
+                    "Desktop execution must match its canonical source capture."
+                );
+            }
+            false
+        }
         "surface-command" => {
+            if value["type"] == "surface.attach" {
+                let source = &value["configuration"]["osSource"];
+                let scope = &value["osExecution"]["scope"];
+                if source.is_null() != scope.is_null()
+                    || (!source.is_null() && source["desktopGeneration"].is_null())
+                    || (!source.is_null()
+                        && (scope["projectId"] != value["projectId"]
+                            || [
+                                "bindingId",
+                                "worktreeId",
+                                "bindingGeneration",
+                                "attachmentGeneration",
+                                "runtimeGeneration",
+                            ]
+                            .iter()
+                            .any(|key| scope[*key] != source[*key])))
+                {
+                    issue!(
+                        &[json!("osExecution")],
+                        "Desktop execution must match its canonical source capture."
+                    );
+                }
+            }
             let browser = value["configuration"]["kind"] == "browser";
             let valid_resource = if browser {
                 value["stateResource"] == "browser-row"

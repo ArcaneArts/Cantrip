@@ -145,6 +145,94 @@ for (const type of [
     });
 }
 const file = fileDocumentWireFixtures().fileDocumentCreateSchema[0];
+const desktopEnvelope = commands.commands.find(
+  (item) => item.type === "surface.attach",
+).input;
+const desktopSource = Object.fromEntries(
+  [
+    "bindingId",
+    "worktreeId",
+    "bindingGeneration",
+    "attachmentGeneration",
+    "runtimeGeneration",
+  ].map((key) => [key, os.scope[key]]),
+);
+desktopSource.desktopGeneration = "a".repeat(64);
+const desktop = {
+  ...desktopEnvelope,
+  command: {
+    ...desktopEnvelope.command,
+    projectId: os.scope.projectId,
+    configuration: { kind: "desktop", osSource: desktopSource },
+    osExecution: os,
+    stateResource: "remote-desktop-row",
+    stateProtection: {
+      classification: { recordKind: "remote-desktop-state" },
+      protectedState: file.stateProtection.protectedState,
+    },
+  },
+};
+add("workerRequestEnvelopeSchema", desktop);
+if (!cases.at(-1).outcome.ok)
+  throw new Error(JSON.stringify(cases.at(-1).outcome));
+add("workerRequestEnvelopeSchema", {
+  ...desktop,
+  command: {
+    type: "surface.desktop.os-prepare",
+    serverId: desktop.command.serverId,
+    projectId: os.scope.projectId,
+    osExecution: os,
+  },
+});
+if (!cases.at(-1).outcome.ok)
+  throw new Error(JSON.stringify(cases.at(-1).outcome));
+add("workerRequestEnvelopeSchema", {
+  ...desktop,
+  command: {
+    type: "surface.desktop.os-prepare",
+    serverId: desktop.command.serverId,
+    projectId: "another-project",
+    osExecution: os,
+  },
+});
+add("workerRequestEnvelopeSchema", {
+  ...desktop,
+  command: {
+    ...desktop.command,
+    configuration: {
+      kind: "desktop",
+      osSource: { ...desktopSource, desktopGeneration: undefined },
+    },
+  },
+});
+add("workerRequestEnvelopeSchema", {
+  ...desktop,
+  command: { ...desktop.command, osExecution: undefined },
+});
+add("workerRequestEnvelopeSchema", {
+  ...desktop,
+  command: { ...desktop.command, configuration: { kind: "desktop" } },
+});
+for (const key of [
+  "projectId",
+  ...Object.keys(desktopSource).filter((key) => key !== "desktopGeneration"),
+])
+  add("workerRequestEnvelopeSchema", {
+    ...desktop,
+    command: {
+      ...desktop.command,
+      osExecution: {
+        ...os,
+        scope: {
+          ...os.scope,
+          [key]:
+            key === "projectId"
+              ? "another-project"
+              : "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        },
+      },
+    },
+  });
 for (const placement of [
   {},
   { cantripOsBindingId: os.scope.bindingId },

@@ -94,7 +94,7 @@ function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
+export class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
   configuration: Extract<RemoteSurfaceConfiguration, { kind: "desktop" }>;
   readonly transport = "websocket" as const;
   readonly #attachments = new Map<string, RemoteSurfaceAttachment>();
@@ -113,6 +113,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
   readonly #serverId: string;
   readonly #surfacePrivateState: WorkerEncryptionService;
   readonly #participantInput: DesktopParticipantInput | null;
+  readonly #viewOnly: boolean;
   #stateRevision: number;
   readonly #tuner: AdaptiveDesktopStreamTuner;
   #captureTimer: ReturnType<typeof setTimeout> | null = null;
@@ -150,6 +151,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
   readonly #resynchronizedAttachments = new Set<string>();
 
   constructor(options: {
+    viewOnly?: boolean;
     client: DesktopAutomationClient;
     sharedCapture?: boolean;
     interactions?: {
@@ -174,6 +176,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     surfaceId: string;
   }) {
     this.#client = options.client;
+    this.#viewOnly = options.viewOnly ?? false;
     this.#sharedCapture = options.sharedCapture ?? false;
     this.#participantInput = options.interactions
       ? new DesktopParticipantInput({
@@ -257,6 +260,22 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     this.scheduleCapture(0);
     await this.publishTargets(attachment.id);
     await this.#participantInput?.attach(attachment.id, this.#activeTarget);
+    this.publishViewOnly(attachment.id);
+  }
+
+  private publishViewOnly(id: string) {
+    if (this.#viewOnly)
+      this.#emit(
+        id,
+        "control",
+        encoder.encode(
+          JSON.stringify({
+            type: "desktop-input",
+            epoch: null,
+            message: "Viewing only.",
+          }),
+        ),
+      );
   }
 
   async updateConfiguration(
@@ -333,6 +352,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
         // Attachment setup may publish before the client has bound its stream.
         // Resynchronize input authority alongside state on the first viewport.
         await this.#participantInput?.attach(attachmentId, this.#activeTarget);
+        this.publishViewOnly(attachmentId);
       }
       this.scheduleCapture(0);
       return;
@@ -347,6 +367,10 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     }
     if (message.type === "request-target-icons") {
       await this.publishTargetIcons(attachmentId, message.keys);
+      return;
+    }
+    if (this.#viewOnly) {
+      this.publishViewOnly(attachmentId);
       return;
     }
     const independentInput = Boolean(this.#participantInput);
@@ -416,7 +440,8 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       operation: "resume",
       status: "completed",
       surfaceId: this.#surfaceId,
-      backend: this.#framePipeline ? "native" : "compatibility",
+      backend:
+        this.#sharedCapture || this.#framePipeline ? "native" : "compatibility",
     });
   }
 
@@ -432,7 +457,8 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       status: "completed",
       surfaceId: this.#surfaceId,
       durationMs: Date.now() - this.#startedAtMs,
-      backend: this.#framePipeline ? "native" : "compatibility",
+      backend:
+        this.#sharedCapture || this.#framePipeline ? "native" : "compatibility",
       counts: {
         attachments: this.#attachments.size,
         frames: this.#framesEmitted,
@@ -1031,16 +1057,21 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
           status,
           message:
             status === "error"
-              ? "Remote Desktop input is unavailable."
+              ? this.configuration.osSource
+                ? "The assigned Linux desktop is unavailable. Open a new view if it was restarted."
+                : "Remote Desktop input is unavailable."
               : status === "launching"
                 ? "Launching the selected application on the worker."
                 : message
                   ? "Remote Desktop target state changed."
                   : null,
           stream: {
-            backend: this.#framePipeline ? "native" : "compatibility",
+            backend:
+              this.#sharedCapture || this.#framePipeline
+                ? "native"
+                : "compatibility",
             targetFps: this.#streamSettings.targetFps,
-            observedFps: this.#observedFps,
+            observedFps: status === "error" ? 0 : this.#observedFps,
             quality: this.#tuner.quality,
             encodedWidth:
               this.#lastEncodedWidth ||

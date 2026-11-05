@@ -52,6 +52,7 @@ export type {
 
 export {
   remoteDesktopTargetSchema,
+  remoteDesktopOsSourceSchema,
   remoteDesktopCreateSchema,
   encryptedRemoteDesktopCreateSchema,
   remoteDesktopMonitorSchema,

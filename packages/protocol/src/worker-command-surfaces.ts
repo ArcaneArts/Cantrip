@@ -37,6 +37,21 @@ import {
 } from "./worker-runtime-support.js";
 
 export const workerSurfaceCommandSchemas = [
+  z
+    .strictObject({
+      type: z.literal("surface.desktop.os-prepare"),
+      serverId: z.string().min(1).max(255),
+      projectId: z.string().min(1),
+      osExecution: cantripOsExecutionSchema,
+    })
+    .superRefine((command, context) => {
+      if (command.projectId !== command.osExecution.scope.projectId)
+        context.addIssue({
+          code: "custom",
+          message: "Desktop execution must match its canonical source capture.",
+          path: ["osExecution"],
+        });
+    }),
   z.object({
     type: z.literal("permission-profiles.list"),
     cwd: z.string().min(1),
@@ -172,6 +187,7 @@ export const workerSurfaceCommandSchemas = [
   z
     .object({
       type: z.literal("surface.attach"),
+      osExecution: cantripOsExecutionSchema.optional(),
       surfaceId: z.string().min(1),
       attachmentId: z.string().min(1),
       projectId: z.string().min(1),
@@ -199,6 +215,28 @@ export const workerSurfaceCommandSchemas = [
     })
     .strict()
     .superRefine((command, context) => {
+      const source =
+        command.configuration.kind === "desktop"
+          ? command.configuration.osSource
+          : undefined;
+      const scope = command.osExecution?.scope;
+      if (
+        Boolean(source) !== Boolean(scope) ||
+        (source && !source.desktopGeneration) ||
+        (source &&
+          scope &&
+          (scope.projectId !== command.projectId ||
+            scope.bindingId !== source.bindingId ||
+            scope.worktreeId !== source.worktreeId ||
+            scope.bindingGeneration !== source.bindingGeneration ||
+            scope.attachmentGeneration !== source.attachmentGeneration ||
+            scope.runtimeGeneration !== source.runtimeGeneration))
+      )
+        context.addIssue({
+          code: "custom",
+          message: "Desktop execution must match its canonical source capture.",
+          path: ["osExecution"],
+        });
       const expectedRecordKind =
         command.configuration.kind === "browser"
           ? "browser-state"
