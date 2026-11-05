@@ -463,6 +463,15 @@ pub(super) fn refine(
             }
             false
         }
+        "os-tunnel-prepare" => {
+            if value["osExecution"]["scope"]["projectId"] != value["projectId"] {
+                issue!(
+                    &[],
+                    "The OS tunnel must match its canonical project source."
+                );
+            }
+            false
+        }
         "surface-command" => {
             if value["type"] == "surface.attach" {
                 let source = &value["configuration"]["osSource"];

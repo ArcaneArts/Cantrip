@@ -4,8 +4,8 @@
 use super::*;
 use std::collections::HashMap;
 
-const TUNNEL_COLUMNS: &str = "id,owner_id,project_id,position,origin,management,protocol_hint,source_kind,source_adapter,source_worker_id,destination_kind,destination_adapter,destination_resource_id,destination_worker_id,protected_content,protected_operation_id,protected_revision,managed_by_kind,managed_by_id,desired_state,status,error_code,active_connection_count,bytes_from_source,bytes_to_source,created_at,updated_at";
-const ATTACHMENT_COLUMNS: &str = "id,tunnel_id,kind,client_id,secret_hash,status,active_connection_count,bytes_from_source,bytes_to_source,error_code,secret_expires_at,expires_at,last_seen_at,created_at,updated_at";
+const TUNNEL_COLUMNS: &str = "id,owner_id,project_id,position,origin,management,protocol_hint,source_kind,source_adapter,source_worker_id,destination_kind,destination_adapter,destination_resource_id,os_source,destination_worker_id,protected_content,protected_operation_id,protected_revision,managed_by_kind,managed_by_id,desired_state,status,error_code,active_connection_count,bytes_from_source,bytes_to_source,created_at,updated_at";
+const ATTACHMENT_COLUMNS: &str = "id,tunnel_id,kind,client_id,secret_hash,status,active_connection_count,bytes_from_source,bytes_to_source,error_code,secret_expires_at,os_service_identity,expires_at,last_seen_at,created_at,updated_at";
 pub(super) fn tunnel_query(suffix: &str) -> String {
     format!(
         "SELECT row_to_json(selected)::text FROM (SELECT {TUNNEL_COLUMNS} FROM tunnels {suffix}) selected"
@@ -71,9 +71,11 @@ pub(super) fn summary(tunnel: &Value, attachments: &[Value]) -> Result<Value> {
         .iter()
         .map(attachment_summary)
         .collect::<Result<Vec<_>>>()?;
-    Ok(
-        json!({"id":tunnel["id"],"projectId":tunnel["project_id"],"position":tunnel["position"],"origin":tunnel["origin"],"management":tunnel["management"],"protocolHint":tunnel["protocol_hint"],"source":source(tunnel)?,"destination":destination(tunnel)?,"managedBy":managed,"desiredState":tunnel["desired_state"],"status":tunnel["status"],"errorCode":tunnel["error_code"],"activeConnectionCount":tunnel["active_connection_count"],"bytesFromSource":tunnel["bytes_from_source"],"bytesToSource":tunnel["bytes_to_source"],"attachments":attachments,"capabilities":capabilities(tunnel,&attachments),"protectedRecord":protected(tunnel),"createdAt":timestamp(tunnel,"created_at")?,"updatedAt":timestamp(tunnel,"updated_at")?}),
-    )
+    let mut result = json!({"id":tunnel["id"],"projectId":tunnel["project_id"],"position":tunnel["position"],"origin":tunnel["origin"],"management":tunnel["management"],"protocolHint":tunnel["protocol_hint"],"source":source(tunnel)?,"destination":destination(tunnel)?,"managedBy":managed,"desiredState":tunnel["desired_state"],"status":tunnel["status"],"errorCode":tunnel["error_code"],"activeConnectionCount":tunnel["active_connection_count"],"bytesFromSource":tunnel["bytes_from_source"],"bytesToSource":tunnel["bytes_to_source"],"attachments":attachments,"capabilities":capabilities(tunnel,&attachments),"protectedRecord":protected(tunnel),"createdAt":timestamp(tunnel,"created_at")?,"updatedAt":timestamp(tunnel,"updated_at")?});
+    if !tunnel["os_source"].is_null() {
+        result["osSource"] = tunnel["os_source"].clone();
+    }
+    Ok(result)
 }
 impl Repository {
     pub(super) async fn catalog_row(&self, owner: &str, id: &str) -> Result<Option<Value>> {

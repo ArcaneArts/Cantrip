@@ -122,6 +122,11 @@ export function registerWorkerCommandContracts(register) {
     "worker-command-os-desktop-prepare",
   );
   register(
+    at(command("surface.tunnel.os-prepare"), []),
+    0,
+    "worker-command-os-tunnel-prepare",
+  );
+  register(
     p.terminalPrivateStateOpaqueSchema,
     0,
     "worker-command-surface-kind:terminal-state",

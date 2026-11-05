@@ -7,6 +7,7 @@ impl Repository {
         project: Option<&str>,
         source: &Value,
         destination: &Value,
+        os_placement: bool,
     ) -> Result<bool> {
         let worker_id = |endpoint: &Value| {
             endpoint["workerId"]
@@ -48,7 +49,7 @@ impl Repository {
         if project.is_some() && row.is_none() {
             return Ok(false);
         }
-        if let Some(row) = row {
+        if let Some(row) = row.filter(|_| !os_placement) {
             let git = row.get::<bool>(0)?;
             let preferred: Option<crate::wire::JsString> =
                 row.get::<Option<String>>(3)?.map(Into::into);

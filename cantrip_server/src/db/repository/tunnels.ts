@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { resolveOsTunnelExecution } from "./cantrip-os-tunnels.js";
+import { CantripOsPlacementError } from "./cantrip-os.js";
 
 import type {
   TunnelAttachmentWireSummary,
@@ -49,11 +51,9 @@ export class TunnelManagementError extends Error {}
 export interface TunnelAttachmentAuthorization {
   attachmentId: string;
   clientId: string;
-  destination:
-    | Extract<TunnelPublicDestinationEndpoint, { kind: "worker-tcp" }>
-    | (Extract<TunnelPublicDestinationEndpoint, { kind: "worker-adapter" }> & {
-        adapter: "project-share";
-      });
+  destination: TunnelPublicDestinationEndpoint;
+  osSource?: TunnelWireSummary["osSource"];
+  osServiceIdentity?: string | null;
   expiresAt: Date;
   ownerId: string;
   origin: TunnelWireSummary["origin"];
@@ -167,7 +167,7 @@ function tunnelPublicDestination(
     return {
       kind: "worker-adapter",
       workerId: tunnel.destinationWorkerId,
-      adapter: tunnel.destinationAdapter as "project-share",
+      adapter: tunnel.destinationAdapter as "project-share" | "cantrip-os",
       resourceId: tunnel.destinationResourceId,
     };
   }
@@ -205,6 +205,7 @@ function toTunnelSummary(
     protocolHint: tunnel.protocolHint as TunnelWireSummary["protocolHint"],
     source: tunnelPublicSource(tunnel),
     destination: tunnelPublicDestination(tunnel),
+    ...(tunnel.osSource ? { osSource: tunnel.osSource } : {}),
     managedBy:
       tunnel.managedByKind && tunnel.managedById
         ? {
@@ -246,11 +247,87 @@ export class TunnelRepository {
     private readonly collaborators: TunnelRepositoryCollaborators,
   ) {}
 
+  private async validateOsSource(
+    ownerId: string,
+    tunnelId: string,
+    projectId: string | null,
+    destination: TunnelPublicDestinationEndpoint,
+    capture: TunnelWireSummary["osSource"] | null,
+  ) {
+    const guest =
+      destination.kind === "worker-adapter" &&
+      destination.adapter === "cantrip-os";
+    if (!guest) {
+      if (capture)
+        throw new TunnelManagementError(
+          "Host tunnels cannot capture an OS source.",
+        );
+      return;
+    }
+    if (!capture || destination.resourceId !== tunnelId)
+      throw new TunnelManagementError(
+        "The OS tunnel source capture is incomplete.",
+      );
+    try {
+      return await resolveOsTunnelExecution(
+        this.database,
+        ownerId,
+        projectId,
+        destination.workerId,
+        capture,
+      );
+    } catch (error) {
+      if (error instanceof CantripOsPlacementError)
+        throw new TunnelManagementError(error.message);
+      throw error;
+    }
+  }
+
+  resolveOsExecution(authorization: TunnelAttachmentAuthorization) {
+    return this.validateOsSource(
+      authorization.ownerId,
+      authorization.tunnelId,
+      authorization.projectId,
+      authorization.destination,
+      authorization.osSource ?? null,
+    );
+  }
+
+  async pinOsServiceIdentity(
+    authorization: TunnelAttachmentAuthorization,
+    identity: string,
+  ) {
+    if (!/^[a-f0-9]{64}$/.test(identity))
+      throw new TunnelManagementError("Invalid OS service identity.");
+    const rows = await this.database
+      .update(schema.tunnelAttachments)
+      .set({ osServiceIdentity: identity })
+      .where(
+        and(
+          eq(schema.tunnelAttachments.id, authorization.attachmentId),
+          eq(schema.tunnelAttachments.clientId, authorization.clientId),
+          eq(
+            schema.tunnelAttachments.secretExpiresAt,
+            authorization.secretExpiresAt,
+          ),
+          gt(schema.tunnelAttachments.expiresAt, new Date()),
+          ne(schema.tunnelAttachments.status, "stopped"),
+          or(
+            isNull(schema.tunnelAttachments.osServiceIdentity),
+            eq(schema.tunnelAttachments.osServiceIdentity, identity),
+          ),
+        ),
+      )
+      .returning({ id: schema.tunnelAttachments.id });
+    return rows.length === 1;
+  }
+
   private async tunnelReferencesAreOwned(
     ownerId: string,
     projectId: string | null,
     source: TunnelSourceEndpoint | TunnelPublicSourceEndpoint,
     destination: TunnelDestinationEndpoint | TunnelPublicDestinationEndpoint,
+    osPlacement = false,
   ): Promise<boolean> {
     const workerIds = [
       ...new Set(
@@ -313,6 +390,7 @@ export class TunnelRepository {
     const project = projectRows[0];
     if (projectId && !project) return false;
     if (
+      !osPlacement &&
       project &&
       isWorkerBoundFolderProject(project.originKind, project.gitCapability) &&
       workerIds.some((workerId) => workerId !== project.preferredWorkerId)
@@ -322,6 +400,7 @@ export class TunnelRepository {
       );
     }
     if (
+      !osPlacement &&
       project &&
       isLocalGitProject(project.originKind, project.gitCapability) &&
       workerIds.some(
@@ -417,12 +496,21 @@ export class TunnelRepository {
     input: TunnelUserWireCreate,
   ): Promise<TunnelWireSummary | null> {
     const source = { kind: "desktop-loopback" as const };
+    const osSource = input.osSource ?? null;
+    await this.validateOsSource(
+      ownerId,
+      input.id,
+      input.projectId,
+      input.destination,
+      osSource,
+    );
     if (
       !(await this.tunnelReferencesAreOwned(
         ownerId,
         input.projectId,
         source,
         input.destination,
+        osSource !== null,
       ))
     ) {
       return null;
@@ -441,8 +529,15 @@ export class TunnelRepository {
         sourceAdapter: null,
         sourceWorkerId: null,
         destinationKind: input.destination.kind,
-        destinationAdapter: null,
-        destinationResourceId: null,
+        destinationAdapter:
+          input.destination.kind === "worker-adapter"
+            ? input.destination.adapter
+            : null,
+        destinationResourceId:
+          input.destination.kind === "worker-adapter"
+            ? input.destination.resourceId
+            : null,
+        osSource,
         destinationWorkerId: input.destination.workerId,
         protectedContent: input.protectedRecord.protectedContent,
         protectedOperationId: input.protectedRecord.operationId,
@@ -505,12 +600,29 @@ export class TunnelRepository {
       input.projectId === undefined ? existing.projectId : input.projectId;
     const source = tunnelPublicSource(existing);
     const destination = input.destination ?? tunnelPublicDestination(existing);
+    const osSource =
+      destination.kind === "worker-adapter" &&
+      destination.adapter === "cantrip-os"
+        ? (input.osSource ?? existing.osSource)
+        : null;
+    if (input.osSource && !osSource)
+      throw new TunnelManagementError(
+        "Host tunnels cannot capture an OS source.",
+      );
+    await this.validateOsSource(
+      ownerId,
+      tunnelId,
+      projectId,
+      destination,
+      osSource,
+    );
     if (
       !(await this.tunnelReferencesAreOwned(
         ownerId,
         projectId,
         source,
         destination,
+        osSource !== null,
       ))
     ) {
       return null;
@@ -518,6 +630,7 @@ export class TunnelRepository {
     const rows = await this.database
       .update(schema.tunnels)
       .set({
+        osSource,
         ...(input.projectId === undefined ? {} : { projectId }),
         ...(input.protocolHint === undefined
           ? {}
@@ -902,6 +1015,8 @@ export class TunnelRepository {
         .select({
           id: schema.tunnelAttachments.id,
           secretExpiresAt: schema.tunnelAttachments.secretExpiresAt,
+          status: schema.tunnelAttachments.status,
+          osServiceIdentity: schema.tunnelAttachments.osServiceIdentity,
         })
         .from(schema.tunnelAttachments)
         .where(
@@ -925,6 +1040,10 @@ export class TunnelRepository {
         ),
       );
       const values = {
+        osServiceIdentity:
+          existing[0]?.status === "stopped"
+            ? null
+            : (existing[0]?.osServiceIdentity ?? null),
         activeConnectionCount: 0,
         expiresAt: input.expiresAt,
         errorCode: null,
@@ -1057,7 +1176,8 @@ export class TunnelRepository {
       (destination.kind !== "worker-tcp" &&
         !(
           destination.kind === "worker-adapter" &&
-          destination.adapter === "project-share"
+          (destination.adapter === "project-share" ||
+            destination.adapter === "cantrip-os")
         )) ||
       !protectedRecord
     ) {
@@ -1072,6 +1192,8 @@ export class TunnelRepository {
       ownerId: row.tunnel.ownerId,
       origin: row.tunnel.origin as TunnelWireSummary["origin"],
       projectId: row.tunnel.projectId,
+      osSource: row.tunnel.osSource ?? undefined,
+      osServiceIdentity: row.attachment.osServiceIdentity,
       protectedRecord,
       secretExpiresAt: row.attachment.secretExpiresAt!,
       tunnelId: row.tunnel.id,

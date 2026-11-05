@@ -39,14 +39,18 @@ impl Repository {
             || t["source_kind"] != "desktop-loopback"
             || (destination["kind"] != "worker-tcp"
                 && !(destination["kind"] == "worker-adapter"
-                    && destination["adapter"] == "project-share"))
+                    && (destination["adapter"] == "project-share"
+                        || (owner.is_some() && destination["adapter"] == "cantrip-os"))))
             || record.is_none()
         {
             return Ok(None);
         }
-        Ok(Some(
-            json!({"attachmentId":id,"clientId":a["client_id"],"destination":destination,"expiresAt":iso(time(&a,"expires_at")?.unwrap()),"ownerId":t["owner_id"],"origin":t["origin"],"projectId":t["project_id"],"protectedRecord":record.unwrap(),"secretExpiresAt":iso(time(&a,"secret_expires_at")?.unwrap()),"tunnelId":t["id"]}),
-        ))
+        let mut result = json!({"attachmentId":id,"clientId":a["client_id"],"destination":destination,"expiresAt":iso(time(&a,"expires_at")?.unwrap()),"ownerId":t["owner_id"],"origin":t["origin"],"projectId":t["project_id"],"protectedRecord":record.unwrap(),"secretExpiresAt":iso(time(&a,"secret_expires_at")?.unwrap()),"tunnelId":t["id"]});
+        if destination["adapter"] == "cantrip-os" {
+            result["osSource"] = t["os_source"].clone();
+            result["osServiceIdentity"] = a["os_service_identity"].clone();
+        }
+        Ok(Some(result))
     }
     pub async fn create_attachment(
         &self,
@@ -61,12 +65,12 @@ impl Repository {
             let rows=tx.query("SELECT to_jsonb(t)::text FROM tunnels t WHERE id=$1 AND owner_id=$2 LIMIT 1 FOR UPDATE",&[&tunnel,&owner]).await?;
             let Some(row)=rows.first()else{return Ok(None)};let t=raw(row,0)?;
             if t["source_kind"]!="desktop-loopback" || !(t["management"]=="user-managed" || (t["management"]=="managed-ephemeral" && ["browser","project-share"].iter().any(|v|t["origin"]==*v))){return Ok(None)}
-            let rows=tx.query("SELECT id,secret_expires_at FROM tunnel_attachments WHERE tunnel_id=$1 AND client_id=$2 LIMIT 1",&[&tunnel,&input.client]).await?;
+            let rows=tx.query("SELECT id,secret_expires_at,status,os_service_identity FROM tunnel_attachments WHERE tunnel_id=$1 AND client_id=$2 LIMIT 1",&[&tunnel,&input.client]).await?;
             let now=repository.now();let existing=rows.first();let id=existing.map(|r|r.get::<String>(0)).transpose()?.unwrap_or_else(||uuid::Uuid::new_v4().to_string());
             let previous=existing.map(|r|r.get::<Option<Time>>(1)).transpose()?.flatten().map_or(0,|v|v.timestamp_millis());
             let secret=Time::from_timestamp_millis(input.secret_expires.timestamp_millis().max(previous+1)).context("Tunnel secret generation range")?;
             if existing.is_some(){
-                tx.query("UPDATE tunnel_attachments SET active_connection_count=0,expires_at=$2,error_code=NULL,last_seen_at=NULL,secret_expires_at=$3,secret_hash=$4,status='starting',updated_at=$5 WHERE id=$1",&[&id,&input.expires,&secret,&input.secret_hash,&now]).await?;
+                tx.query("UPDATE tunnel_attachments SET os_service_identity=CASE WHEN status='stopped' THEN NULL ELSE os_service_identity END,active_connection_count=0,expires_at=$2,error_code=NULL,last_seen_at=NULL,secret_expires_at=$3,secret_hash=$4,status='starting',updated_at=$5 WHERE id=$1",&[&id,&input.expires,&secret,&input.secret_hash,&now]).await?;
                 tx.query("UPDATE tunnel_attachment_direct_leases SET lease_expires_at=LEAST(lease_expires_at,$2),updated_at=$3 WHERE attachment_id=$1",&[&id,&input.expires,&now]).await?;
             }else{tx.query("INSERT INTO tunnel_attachments(id,tunnel_id,kind,client_id,active_connection_count,expires_at,error_code,last_seen_at,secret_expires_at,secret_hash,status,updated_at) VALUES($1,$2,'desktop-loopback',$3,0,$4,NULL,NULL,$5,$6,'starting',$7)",&[&id,&tunnel,&input.client,&input.expires,&secret,&input.secret_hash,&now]).await?;}
             recompute(tx,&tunnel,now).await?;

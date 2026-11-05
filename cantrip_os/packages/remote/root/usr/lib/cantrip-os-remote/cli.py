@@ -179,7 +179,7 @@ def service(store, action):
     raise RuntimeError("Remote control did not become ready; inspect its system journal")
 
 
-def connect(store, workspace, expected, connection_id, service=False, public_key=None):
+def connect(store, workspace, expected, connection_id, service=False, public_key=None, notify_ready=False):
     with socket.socket(socket.AF_UNIX) as connection:
         connection.connect(str(store.socket))
         connection.sendall(json.dumps({"command": "service-connect" if service else "connect",
@@ -189,6 +189,8 @@ def connect(store, workspace, expected, connection_id, service=False, public_key
             result = json.loads(stream.readline(65536))
         if result != {"ready": True}:
             raise RuntimeError(result.get("failure", "Remote connection failed"))
+        if notify_ready:
+            print("CANTRIP_OS_SERVICE_READY " + connection_id, file=sys.stderr, flush=True)
         if service:
             stream_pump(sys.stdin.fileno(), sys.stdout.fileno(), connection.fileno(), connection.fileno(),
                         close_left=lambda: os.close(sys.stdout.fileno()),
@@ -222,6 +224,7 @@ def main():
         command.add_argument("--connection-id", required=True)
         if name == "service-connect":
             command.add_argument("--public-key")
+            command.add_argument("--notify-ready", action="store_true")
     commands.add_parser("service").add_argument("action", choices=("start", "stop", "restart"))
     args = parser.parse_args()
     if os.geteuid() != 0:
@@ -232,7 +235,8 @@ def main():
         daemon(store)
     elif args.command in ("connect", "service-connect"):
         connect(store, args.workspace, args.expect, args.connection_id,
-                service=args.command == "service-connect", public_key=getattr(args, "public_key", None))
+                service=args.command == "service-connect", public_key=getattr(args, "public_key", None),
+                notify_ready=getattr(args, "notify_ready", False))
     else:
         with store.lock("control"):
             if args.command == "status":

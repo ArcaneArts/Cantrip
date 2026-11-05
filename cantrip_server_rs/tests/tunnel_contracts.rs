@@ -1,6 +1,34 @@
 use anyhow::{Context, Result};
 use cantrip_server::wire::{self, ValidationError, Value};
 use std::{path::PathBuf, process::Command};
+
+#[test]
+fn os_tunnel_source_contracts_match_actual_protocol() -> Result<()> {
+    let output = Command::new("node")
+        .arg("scripts/server-rust/os-tunnel-vectors.mjs")
+        .current_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap())
+        .output()?;
+    anyhow::ensure!(
+        output.status.success(),
+        "OS tunnel oracle: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let cases: Value = serde_json::from_slice(&output.stdout)?;
+    for (index, case) in cases.as_array().unwrap().iter().enumerate() {
+        let schema = case["schema"].as_str().unwrap();
+        let actual = match wire::parse(schema, case.get("input")) {
+            Ok(value) => Value::object([("ok", value)]),
+            Err(ValidationError::Invalid(issues)) => {
+                Value::object([("issues", Value::Array(issues))])
+            }
+            Err(ValidationError::Operation) => {
+                Value::object([("thrown", Value::String("TypeError".into()))])
+            }
+        };
+        assert_eq!(actual, case["outcome"], "{schema} OS tunnel case {index}");
+    }
+    Ok(())
+}
 #[test]
 fn tunnel_catalog_contracts_match_actual_protocol() -> Result<()> {
     let mut total = 0;

@@ -1,4 +1,5 @@
 import { connect, type Socket } from "node:net";
+import type { Duplex } from "node:stream";
 
 import {
   TUNNEL_DATA_PLANE_MAX_CREDIT_BYTES,
@@ -20,6 +21,13 @@ type SocketConnector = (options: {
   port: number;
 }) => Socket;
 
+/** An admitted guest carrier uses the same bounded stream/credit machinery. */
+export type TunnelStreamSocket = Duplex & {
+  setNoDelay(noDelay?: boolean): unknown;
+  setTimeout(milliseconds: number): unknown;
+  readonly localPort?: number;
+};
+
 interface TcpStream {
   destinationHalfClosed: boolean;
   destinationHalfCloseSent: boolean;
@@ -33,7 +41,7 @@ interface TcpStream {
   pendingSourceCreditBytes: number;
   pausedForOutput: boolean;
   rejectedOutputSequence: number | null;
-  socket: Socket;
+  socket: TunnelStreamSocket;
   sourceHalfClosed: boolean;
   startedAtMs: number;
 }
@@ -205,6 +213,17 @@ export class TunnelTcpDestinationAdapter {
     }
   }
 
+  connectPrepared(
+    header: Extract<TunnelDataPlaneFrameHeader, { kind: "connect" }>,
+    socket: TunnelStreamSocket,
+  ): void {
+    this.#connect(header, undefined, socket);
+    // The carrier has already completed its actual guest connection handshake.
+    queueMicrotask(() => {
+      if (!socket.destroyed) socket.emit("connect");
+    });
+  }
+
   failProtectedFrame(header: TunnelDataPlaneFrameHeader): void {
     const stream = this.#streams.get(key(header));
     if (stream) this.#close(stream, "protocol-error");
@@ -256,28 +275,37 @@ export class TunnelTcpDestinationAdapter {
   #connect(
     header: Extract<TunnelDataPlaneFrameHeader, { kind: "connect" }>,
     onConnected?: ConnectionObserver,
+    prepared?: TunnelStreamSocket,
   ): void {
     const streamKey = key(header);
     if (this.#streams.has(streamKey)) {
+      prepared?.destroy();
       this.#logRejected(header, "protocol-error");
       this.#reject(header, "protocol-error");
       return;
     }
     if (this.#streams.size >= MAX_STREAMS) {
+      prepared?.destroy();
       this.#logRejected(header, "limit-exceeded");
       this.#reject(header, "limit-exceeded");
       return;
     }
-    if (header.target.kind !== "tcp") {
+    if (!prepared && header.target.kind !== "tcp") {
       this.#logRejected(header, "target-rejected");
       this.#reject(header, "target-rejected");
       return;
     }
-    const socket = this.connectSocket({
-      host: header.target.host,
-      port: header.target.port,
-      allowHalfOpen: true,
-    });
+    const socket =
+      prepared ??
+      (header.target.kind === "tcp"
+        ? this.connectSocket({
+            host: header.target.host,
+            port: header.target.port,
+            allowHalfOpen: true,
+          })
+        : null);
+    if (!socket)
+      throw new Error("A tunnel stream requires an admitted destination.");
     const stream: TcpStream = {
       destinationHalfClosed: false,
       destinationHalfCloseSent: false,

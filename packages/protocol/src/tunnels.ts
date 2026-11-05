@@ -1,5 +1,9 @@
 import { z } from "zod";
 import {
+  cantripOsTcpDestinationSchema,
+  cantripOsTunnelSourceSchema,
+} from "./cantrip-os-tunnels.js";
+import {
   protectedTunnelContentRecordSchema,
   tunnelContentErrorCodeSchema,
   tunnelPublicDestinationEndpointSchema,
@@ -71,7 +75,7 @@ export const tunnelDestinationEndpointSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("worker-adapter"),
       workerId: tunnelResourceIdSchema,
-      adapter: z.enum(["project-share"]),
+      adapter: z.enum(["project-share", "cantrip-os"]),
       resourceId: tunnelResourceIdSchema,
     })
     .strict(),
@@ -90,14 +94,17 @@ export const tunnelUserCreateSchema = z
     description: tunnelDescriptionSchema.default(null),
     projectId: tunnelResourceIdSchema.nullable().default(null),
     protocolHint: tunnelProtocolHintSchema,
-    destination: z
-      .object({
-        kind: z.literal("worker-tcp"),
-        workerId: tunnelResourceIdSchema,
-        host: tunnelWorkerHostSchema.default("127.0.0.1"),
-        port: z.number().int().min(1).max(65_535),
-      })
-      .strict(),
+    destination: z.union([
+      cantripOsTcpDestinationSchema,
+      z
+        .object({
+          kind: z.literal("worker-tcp"),
+          workerId: tunnelResourceIdSchema,
+          host: tunnelWorkerHostSchema.default("127.0.0.1"),
+          port: z.number().int().min(1).max(65_535),
+        })
+        .strict(),
+    ]),
   })
   .strict();
 
@@ -119,12 +126,34 @@ export const tunnelUserWireCreateSchema = z
     id: z.string().uuid(),
     projectId: tunnelResourceIdSchema.nullable().default(null),
     protocolHint: tunnelProtocolHintSchema,
-    destination: tunnelPublicDestinationEndpointSchema.and(
-      z.object({ kind: z.literal("worker-tcp") }).strict(),
-    ),
+    destination: z.union([
+      z.strictObject({
+        kind: z.literal("worker-tcp"),
+        workerId: tunnelResourceIdSchema,
+      }),
+      z.strictObject({
+        kind: z.literal("worker-adapter"),
+        workerId: tunnelResourceIdSchema,
+        adapter: z.literal("cantrip-os"),
+        resourceId: z.uuid(),
+      }),
+    ]),
+    osSource: cantripOsTunnelSourceSchema.optional(),
     protectedRecord: protectedTunnelContentRecordSchema,
   })
   .strict()
+  .refine(
+    ({ id, destination, osSource, projectId }) =>
+      destination.kind === "worker-adapter"
+        ? destination.resourceId === id &&
+          Boolean(osSource) &&
+          projectId !== null
+        : osSource === undefined,
+    {
+      message:
+        "OS tunnels require a project and a captured source bound to their tunnel ID.",
+    },
+  )
   .refine(({ id, protectedRecord }) => id === protectedRecord.operationId, {
     message: "A new tunnel record must use its tunnel id as operation id.",
     path: ["protectedRecord", "operationId"],
@@ -138,9 +167,8 @@ export const tunnelUserWireUpdateSchema = z
   .object({
     projectId: tunnelResourceIdSchema.nullable().optional(),
     protocolHint: tunnelProtocolHintSchema.optional(),
-    destination: tunnelPublicDestinationEndpointSchema
-      .and(z.object({ kind: z.literal("worker-tcp") }).strict())
-      .optional(),
+    destination: tunnelUserWireCreateSchema.shape.destination.optional(),
+    osSource: cantripOsTunnelSourceSchema.optional(),
     protectedRecord: protectedTunnelContentRecordSchema,
   })
   .strict();
@@ -316,8 +344,12 @@ export const tunnelSummarySchema = z
     management: tunnelManagementSchema,
     protocolHint: tunnelProtocolHintSchema,
     source: tunnelSourceEndpointSchema,
-    destination: tunnelDestinationEndpointSchema,
+    destination: z.union([
+      tunnelDestinationEndpointSchema,
+      cantripOsTcpDestinationSchema,
+    ]),
     managedBy: tunnelManagedResourceSchema.nullable(),
+    osSource: cantripOsTunnelSourceSchema.optional(),
     desiredState: tunnelDesiredStateSchema,
     status: tunnelStatusSchema,
     lastError: z.string().min(1).max(4_000).nullable(),
@@ -350,6 +382,10 @@ export const tunnelSummarySchema = z
 
 export const tunnelListSchema = z.array(tunnelSummarySchema).max(10_000);
 
+export const tunnelOsPrepareResultSchema = z.strictObject({
+  identity: z.string().regex(/^[a-f0-9]{64}$/),
+});
+
 export const tunnelWireSummarySchema = z
   .object({
     id: tunnelResourceIdSchema,
@@ -360,6 +396,7 @@ export const tunnelWireSummarySchema = z
     protocolHint: tunnelProtocolHintSchema,
     source: tunnelPublicSourceEndpointSchema,
     destination: tunnelPublicDestinationEndpointSchema,
+    osSource: cantripOsTunnelSourceSchema.optional(),
     managedBy: tunnelManagedResourceSchema.nullable(),
     desiredState: tunnelDesiredStateSchema,
     status: tunnelStatusSchema,

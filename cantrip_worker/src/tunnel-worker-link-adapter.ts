@@ -5,6 +5,7 @@ import {
 } from "@cantrip/protocol";
 
 import type { TunnelDestinationRouter } from "./tunnel-destination-router.js";
+import type { OsTunnelServices } from "./os-executor/tunnel-services.js";
 import {
   WorkerLinkChannelRejectedError,
   type WorkerLinkAdapterEmitter,
@@ -16,6 +17,7 @@ interface ActiveTunnelChannel {
   closed: boolean;
   emitter: WorkerLinkAdapterEmitter;
   grantId: string;
+  guest: boolean;
   resourceId: string;
   workerId: string;
   waiters: Set<(available: boolean) => void>;
@@ -26,7 +28,10 @@ export class TunnelWorkerLinkAdapter implements WorkerLinkResourceAdapter {
   readonly kind = "tunnel" as const;
   readonly #attachments = new Map<string, ActiveTunnelChannel>();
 
-  constructor(private readonly destinations: TunnelDestinationRouter) {}
+  constructor(
+    private readonly destinations: TunnelDestinationRouter,
+    private readonly osServices?: OsTunnelServices,
+  ) {}
 
   open: WorkerLinkResourceAdapter["open"] = ({
     grant,
@@ -53,11 +58,20 @@ export class TunnelWorkerLinkAdapter implements WorkerLinkResourceAdapter {
       closed: false,
       emitter: emit,
       grantId: grant.binding.grantId,
+      guest: grant.binding.operations.includes("stream:guest-connect"),
       resourceId: resource.resourceId,
       waiters: new Set(),
       workerId: session.identity.workerId,
       writable: true,
     };
+    if (grant.binding.operations.includes("stream:guest-connect")) {
+      if (!this.osServices)
+        throw new WorkerLinkChannelRejectedError(
+          "resource-unavailable",
+          "Guest tunnel preparation is unavailable.",
+        );
+      this.osServices.activate(grant, session);
+    }
     this.#attachments.set(attachmentId, active);
     return {
       carrierWritable: () => this.#markWritable(active),
@@ -65,6 +79,12 @@ export class TunnelWorkerLinkAdapter implements WorkerLinkResourceAdapter {
       credit: () => this.#markWritable(active),
       write: (payload) => this.#write(active, payload),
     };
+  };
+
+  revoke: WorkerLinkResourceAdapter["revoke"] = async ({ grant }) => {
+    const attachmentId = grant.binding.resource.attachmentId;
+    if (attachmentId)
+      await this.osServices?.revoke(attachmentId, grant.binding.grantId);
   };
 
   routeFrame(
@@ -102,6 +122,8 @@ export class TunnelWorkerLinkAdapter implements WorkerLinkResourceAdapter {
 
   #write(active: ActiveTunnelChannel, payload: Uint8Array): void {
     if (active.closed) throw new Error("Tunnel WorkerLink channel is closed.");
+    if (active.guest && !this.osServices?.isGuest(active.attachmentId))
+      throw new Error("The captured guest tunnel was retired.");
     const frame = decodeTunnelDataPlaneFrame(payload);
     if (
       frame.header.tunnelId !== active.resourceId ||
@@ -143,6 +165,7 @@ export class TunnelWorkerLinkAdapter implements WorkerLinkResourceAdapter {
       this.#attachments.delete(active.attachmentId);
     }
     this.destinations.revokeAttachment(active.attachmentId);
+    void this.osServices?.revoke(active.attachmentId, active.grantId);
     for (const resolve of active.waiters) resolve(false);
     active.waiters.clear();
   }

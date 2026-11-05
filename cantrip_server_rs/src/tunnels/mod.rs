@@ -6,6 +6,7 @@ pub mod frame;
 mod leases;
 mod managed;
 mod management;
+mod os;
 mod recovery;
 mod references;
 pub mod runtime;

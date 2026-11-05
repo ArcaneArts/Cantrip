@@ -1,8 +1,10 @@
 import {
   workerLinkTunnelGrantRequestSchema,
   workerLinkTunnelGrantSchema,
+  tunnelOsPrepareResultSchema,
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
+import { isDeepStrictEqual } from "node:util";
 
 import { authenticatedPrincipal } from "../../auth/principal.js";
 import type { DirectAttachmentCoordinator } from "../../direct-attachments/coordinator.js";
@@ -15,9 +17,11 @@ import { sendWorkerRequestFailure } from "../../http/worker-request-failures.js"
 import { WorkerLinkUnavailableError } from "../../worker-links/coordinator.js";
 import type { WorkerLinkService } from "../../worker-links/service.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
+import { TunnelManagementError } from "../../db/repository.js";
 
 export interface WorkerLinkTunnelAttachmentGrantRouteDependencies {
-  bridge: Pick<WorkerCommandBus, "isConnected">;
+  bridge: Pick<WorkerCommandBus, "isConnected"> &
+    Partial<Pick<WorkerCommandBus, "request">>;
   directAttachments: Pick<
     DirectAttachmentCoordinator,
     | "acquirePreparationLease"
@@ -31,7 +35,8 @@ export interface WorkerLinkTunnelAttachmentGrantRouteDependencies {
   repository: Pick<
     ServerRepository,
     "activateDesktopTunnelAttachment" | "getDesktopTunnelAttachment"
-  >;
+  > &
+    Partial<Pick<ServerRepository, "tunnels">>;
   workerLinks: Pick<
     WorkerLinkService,
     "issueGrant" | "revokeGrant" | "sessionForAuthorization"
@@ -111,6 +116,16 @@ export function installWorkerLinkTunnelAttachmentGrantRoute(
             error: "The tunnel attachment changed while opening.",
           });
         }
+        const guest =
+          authorization.destination.kind === "worker-adapter" &&
+          authorization.destination.adapter === "cantrip-os";
+        const osExecution = guest
+          ? await repository.tunnels?.resolveOsExecution(authorization)
+          : undefined;
+        if (guest && (!osExecution || !bridge.request || !repository.tunnels))
+          throw new TunnelManagementError(
+            "The captured OS tunnel is unavailable; no Host fallback was attempted.",
+          );
         const grant = await workerLinks.issueGrant({
           absoluteExpiresAt: authorization.expiresAt.toISOString(),
           attachmentId: authorization.attachmentId,
@@ -121,12 +136,44 @@ export function installWorkerLinkTunnelAttachmentGrantRoute(
             "stream:read",
             "stream:write",
             "stream:half-close",
+            ...(guest ? ["stream:guest-connect" as const] : []),
           ],
           resourceId: authorization.tunnelId,
           resourceKind: "tunnel",
           sessionId: session.sessionId,
         });
         grantId = grant.binding.grantId;
+        let serviceIdentity = authorization.osServiceIdentity;
+        if (osExecution) {
+          const prepared = tunnelOsPrepareResultSchema.parse(
+            await bridge.request!(
+              authorization.destination.workerId,
+              {
+                type: "surface.tunnel.os-prepare",
+                serverId: session.identity.serverId,
+                projectId: authorization.projectId!,
+                tunnelId: authorization.tunnelId,
+                attachmentId: authorization.attachmentId,
+                grantId: grant.binding.grantId,
+                expiresAt: grant.binding.lease.absoluteExpiresAt,
+                expectedIdentity: authorization.osServiceIdentity ?? null,
+                protectedRecord: authorization.protectedRecord,
+                osExecution,
+              },
+              { ownerId: principal.user.id, timeoutMs: 30_000 },
+            ),
+          );
+          if (
+            !(await repository.tunnels!.pinOsServiceIdentity(
+              authorization,
+              prepared.identity,
+            ))
+          )
+            throw new TunnelManagementError(
+              "The OS tunnel attachment was retired during preparation.",
+            );
+          serviceIdentity = prepared.identity;
+        }
         const current = await repository.getDesktopTunnelAttachment(
           principal.user.id,
           request.params.attachmentId,
@@ -135,7 +182,20 @@ export function installWorkerLinkTunnelAttachmentGrantRoute(
           !current ||
           current.tunnelId !== authorization.tunnelId ||
           current.clientId !== authorization.clientId ||
-          current.destination.workerId !== authorization.destination.workerId ||
+          !isDeepStrictEqual(current.destination, authorization.destination) ||
+          !isDeepStrictEqual(current.osSource, authorization.osSource) ||
+          current.protectedRecord.revision !==
+            authorization.protectedRecord.revision ||
+          current.protectedRecord.operationId !==
+            authorization.protectedRecord.operationId ||
+          current.secretExpiresAt.getTime() !==
+            authorization.secretExpiresAt.getTime() ||
+          (guest &&
+            (current.osServiceIdentity !== serviceIdentity ||
+              !isDeepStrictEqual(
+                await repository.tunnels!.resolveOsExecution(current),
+                osExecution,
+              ))) ||
           !directAttachments.preparationLeaseIsActive(preparationLease)
         ) {
           await workerLinks.revokeGrant(
@@ -174,7 +234,8 @@ export function installWorkerLinkTunnelAttachmentGrantRoute(
           target: {
             kind: "protected-tunnel" as const,
             targetKind:
-              authorization.destination.kind === "worker-tcp"
+              authorization.destination.kind === "worker-tcp" ||
+              authorization.destination.adapter === "cantrip-os"
                 ? ("tcp" as const)
                 : authorization.destination.adapter === "project-share"
                   ? ("project-share" as const)
@@ -204,6 +265,8 @@ export function installWorkerLinkTunnelAttachmentGrantRoute(
         if (error instanceof WorkerLinkUnavailableError) {
           return reply.code(409).send({ error: error.message });
         }
+        if (error instanceof TunnelManagementError)
+          return reply.code(409).send({ error: error.message });
         return sendWorkerRequestFailure(reply, error);
       } finally {
         directAttachments.releasePreparationLease(preparationLease);

@@ -363,6 +363,20 @@ pub(super) fn apply(
                 );
             }
         }
+        "tunnel-os-source" => {
+            let guest = value["destination"]["kind"] == "worker-adapter";
+            if (guest
+                && (value["destination"]["resourceId"] != value["id"]
+                    || value["osSource"].is_null()
+                    || value["projectId"].is_null()))
+                || (!guest && !value["osSource"].is_null())
+            {
+                custom(
+                    &[],
+                    "OS tunnels require a project and a captured source bound to their tunnel ID.",
+                );
+            }
+        }
         "tunnel-create-revision" => {
             if value["protectedRecord"]["revision"] != 1 {
                 custom(&[], "A new tunnel record must begin at revision one.");

@@ -725,7 +725,7 @@ See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 
 ## Phase 4 package checkpoint
 
-The optional `cantrip-os-remote` 0.6.0 package runs the first-party Linux CUA
+The optional `cantrip-os-remote` 0.7.0 package runs the first-party Linux CUA
 helper as the selected workspace account behind a protected root carrier.
 Docker and ISO scripts include it with the executor edition by default;
 `CANTRIP_OS_REMOTE=0` omits it. Its retained state uses a namespace inside the
@@ -767,5 +767,11 @@ and cannot follow a replacement desktop. SSH/TCP remain independent of desktop
 start/stop. Package/runtime/attachment retirement closes old connections and
 cleans up SSH descendants; disabling/removing the package retains ordinary
 desktops, delegated execution, workspace files and the SSH host identity.
-The Server/Worker managed-tunnel adapter remains the next dependent milestone;
-these administrative carriers alone do not complete product access.
+Remote 0.7.0 connects guest-loopback TCP to the existing managed tunnel product.
+Host and CantripOS destinations share one list. Each Linux route captures its
+source generations; Server admission resolves canonical execution authority and
+pins the actual service identity. The Worker compares the protected destination
+and uses a real guest stream through the signed WorkerLink grant. Encrypted
+bytes, bounded flow control and half-close reuse the existing tunnel data plane.
+Retired targets fail without Host fallback. Managed SSH/SFTP/VNC workflows,
+explicit Guest-to-Host forwarding and remaining acceptance are still required.

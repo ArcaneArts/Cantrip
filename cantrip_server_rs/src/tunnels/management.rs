@@ -52,12 +52,21 @@ impl Repository {
     }
     pub async fn create_user(&self, owner: &str, input: &Value) -> Result<Option<Value>> {
         let project = optional(input, "projectId")?;
+        self.os_execution(
+            owner,
+            &text(input, "id")?,
+            project.as_deref(),
+            &input["destination"],
+            &input["osSource"],
+        )
+        .await?;
         if !self
             .references_owned(
                 owner,
                 project.as_deref(),
                 &json!({"kind":"desktop-loopback"}),
                 &input["destination"],
+                !input["osSource"].is_null(),
             )
             .await?
         {
@@ -81,8 +90,21 @@ impl Repository {
                 Some(text(&input["destination"], "kind")?),
                 "text",
             ),
-            ("destination_adapter", None, "text"),
-            ("destination_resource_id", None, "text"),
+            (
+                "destination_adapter",
+                optional(&input["destination"], "adapter")?,
+                "text",
+            ),
+            (
+                "destination_resource_id",
+                optional(&input["destination"], "resourceId")?,
+                "text",
+            ),
+            (
+                "os_source",
+                (!input["osSource"].is_null()).then(|| input["osSource"].stringify()),
+                "jsonb",
+            ),
             (
                 "destination_worker_id",
                 Some(text(&input["destination"], "workerId")?),
@@ -162,14 +184,38 @@ impl Repository {
             .filter(|v| !v.is_null())
             .cloned()
             .map_or_else(|| destination(&existing), Ok)?;
+        let capture =
+            if destination["kind"] == "worker-adapter" && destination["adapter"] == "cantrip-os" {
+                input
+                    .get("osSource")
+                    .unwrap_or(&existing["os_source"])
+                    .clone()
+            } else {
+                Value::Null
+            };
+        if !input["osSource"].is_null() && capture.is_null() {
+            return Err(ManagementError("Host tunnels cannot capture an OS source.").into());
+        }
+        self.os_execution(owner, id, project.as_deref(), &destination, &capture)
+            .await?;
         if !self
-            .references_owned(owner, project.as_deref(), &source, &destination)
+            .references_owned(
+                owner,
+                project.as_deref(),
+                &source,
+                &destination,
+                !capture.is_null(),
+            )
             .await?
         {
             return Ok(None);
         }
         let mut bindings = Bindings::default();
         let mut set = Vec::new();
+        set.push(format!(
+            "os_source={}",
+            bindings.add((!capture.is_null()).then(|| capture.stringify()), "jsonb")
+        ));
         if input.get("projectId").is_some() {
             set.push(format!("project_id={}", bindings.add(project, "text")));
         }

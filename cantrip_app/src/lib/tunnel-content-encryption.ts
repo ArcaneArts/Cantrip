@@ -140,8 +140,14 @@ function publicEndpointsMatch(
   return (
     JSON.stringify(tunnelPublicSourceEndpoint(content.source)) ===
       JSON.stringify(wire.source) &&
-    JSON.stringify(tunnelPublicDestinationEndpoint(content.destination)) ===
-      JSON.stringify(wire.destination)
+    JSON.stringify(
+      tunnelPublicDestinationEndpoint(content.destination, wire.id),
+    ) === JSON.stringify(wire.destination) &&
+    JSON.stringify(
+      content.destination.kind === "worker-os-tcp"
+        ? content.destination.source
+        : undefined,
+    ) === JSON.stringify(wire.osSource)
   );
 }
 

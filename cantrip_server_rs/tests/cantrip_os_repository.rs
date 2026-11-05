@@ -13,6 +13,100 @@ fn id() -> String {
 fn scope(owner: &str, instance: &Value, workspace: &Value, binding: &Value) -> Value {
     json!({"ownerId":owner,"workerId":"worker","serverId":"server","instanceId":instance["id"],"guestInstanceId":instance["guestInstanceId"],"attachmentGeneration":instance["attachmentGeneration"],"runtimeGeneration":instance["runtimeGeneration"],"bindingId":binding["id"],"bindingGeneration":binding["bindingGeneration"],"projectId":"project","projectSourceId":binding["projectSourceId"],"worktreeId":binding["worktreeId"],"sourceKind":"git","workspaceId":workspace["id"],"guestWorkspaceId":workspace["guestWorkspaceId"],"uid":workspace["uid"],"gid":workspace["gid"],"homeGuestPath":workspace["homeGuestPath"],"guestPath":binding["guestPath"],"mode":binding["mode"],"linkedWorkerPath":binding["linkedWorkerPath"],"dependencyOverlays":binding["dependencyOverlays"]})
 }
+async fn exercise_os_tunnel(database: Arc<Database>, source: &Value) -> Result<()> {
+    use cantrip_server::tunnels::{CreateAttachment, Repository as TunnelRepository};
+    let repository = TunnelRepository::new(database);
+    let tunnel = id();
+    let input = cantrip_server::wire::Value::from_serialize(&json!({
+        "id":tunnel,"projectId":"project","protocolHint":"tcp",
+        "destination":{"kind":"worker-adapter","workerId":"worker","adapter":"cantrip-os","resourceId":tunnel},
+        "osSource":{"bindingId":source["bindingId"],"worktreeId":source["worktreeId"],"bindingGeneration":source["bindingGeneration"],"attachmentGeneration":source["attachmentGeneration"],"runtimeGeneration":source["runtimeGeneration"]},
+        "protectedRecord":{"operationId":tunnel,"revision":1,"protectedContent":{"formatVersion":1,"domain":"tunnel-content","keyRevision":1,"envelope":{"version":1,"algorithm":"AES-256-GCM","keyRevision":1,"nonce":"AAAAAAAAAAAAAAAA","ciphertext":"AAAAAAAAAAAAAAAAAAAAAA"}}}
+    }));
+    let saved = repository.create_user("owner", &input).await?.unwrap();
+    assert_eq!(saved["osSource"], input["osSource"]);
+    assert!(repository.create_user("other", &input).await.is_err());
+    let mut stale = input.clone();
+    stale["osSource"]["runtimeGeneration"] = cantrip_server::wire::Value::from_serialize(&id());
+    assert!(repository.create_user("owner", &stale).await.is_err());
+    let client = id();
+    let expires = chrono::Utc::now() + chrono::Duration::minutes(2);
+    let attachment = repository
+        .create_attachment(
+            "owner",
+            &tunnel,
+            CreateAttachment {
+                client: client.clone(),
+                expires,
+                secret_expires: expires,
+                secret_hash: "a".repeat(64),
+            },
+        )
+        .await?
+        .unwrap();
+    let attachment_id = attachment["attachmentId"].as_str().unwrap();
+    let auth = repository
+        .attachment("owner", attachment_id)
+        .await?
+        .unwrap();
+    assert!(
+        repository
+            .attachment("other", attachment_id)
+            .await?
+            .is_none()
+    );
+    assert!(
+        repository
+            .authorize_attachment(attachment_id, &"a".repeat(64))
+            .await?
+            .is_none()
+    );
+    let execution = repository.os_attachment_execution(&auth).await?.unwrap();
+    assert_eq!(
+        execution["scope"]["bindingId"],
+        input["osSource"]["bindingId"]
+    );
+    assert_eq!(
+        execution["scope"]["runtimeGeneration"],
+        input["osSource"]["runtimeGeneration"]
+    );
+    assert!(
+        repository
+            .pin_os_service_identity(&auth, &"a".repeat(64))
+            .await?
+    );
+    assert!(
+        !repository
+            .pin_os_service_identity(&auth, &"b".repeat(64))
+            .await?
+    );
+    repository
+        .create_attachment(
+            "owner",
+            &tunnel,
+            CreateAttachment {
+                client,
+                expires,
+                secret_expires: expires,
+                secret_hash: "b".repeat(64),
+            },
+        )
+        .await?;
+    let refreshed = repository
+        .attachment("owner", attachment_id)
+        .await?
+        .unwrap();
+    assert_eq!(
+        refreshed["osServiceIdentity"].as_str(),
+        Some("a".repeat(64).as_str())
+    );
+    assert!(
+        !repository
+            .pin_os_service_identity(&auth, &"a".repeat(64))
+            .await?
+    );
+    Ok(())
+}
 async fn exercise_run_captures(
     database: Arc<Database>,
     primary: Value,
@@ -20,6 +114,7 @@ async fn exercise_run_captures(
 ) -> Result<()> {
     let desktop_repository = cantrip_server::remote_surfaces::Repository::new(database.clone());
     let source = &primary["scope"];
+    exercise_os_tunnel(database.clone(), source).await?;
     let desktop_context = cantrip_server::wire::Value::from_serialize(
         &json!({"workerId":"worker","surface":{"kind":"desktop","projectId":"project","configuration":{"kind":"desktop","osSource":{"bindingId":source["bindingId"],"worktreeId":source["worktreeId"],"bindingGeneration":source["bindingGeneration"],"attachmentGeneration":source["attachmentGeneration"],"runtimeGeneration":source["runtimeGeneration"],"desktopGeneration":"a".repeat(64)}}}}),
     );

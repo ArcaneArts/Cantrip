@@ -1,4 +1,4 @@
-import type { CantripOsRunRoots } from "@cantrip/protocol";
+import type { CantripOsRunRoots, TunnelWireSummary } from "@cantrip/protocol";
 import type { TaskInferenceInputState } from "./task-inference-inputs.js";
 export { projectAlerts, chatGoalObservations } from "./schema-alerts.js";
 export {
@@ -1771,6 +1771,8 @@ export const tunnels = pgTable(
     destinationKind: text("destination_kind").notNull(),
     destinationAdapter: text("destination_adapter"),
     destinationResourceId: text("destination_resource_id"),
+    osSource:
+      jsonb("os_source").$type<NonNullable<TunnelWireSummary["osSource"]>>(),
     destinationWorkerId: text("destination_worker_id")
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
@@ -1843,7 +1845,11 @@ export const tunnels = pgTable(
     ),
     check(
       "tunnels_destination_endpoint_check",
-      sql`(${table.destinationKind} = 'worker-tcp' AND ${table.destinationAdapter} IS NULL AND ${table.destinationResourceId} IS NULL) OR (${table.destinationKind} = 'worker-adapter' AND ${table.destinationAdapter} IN ('project-share') AND ${table.destinationResourceId} IS NOT NULL)`,
+      sql`(${table.destinationKind} = 'worker-tcp' AND ${table.destinationAdapter} IS NULL AND ${table.destinationResourceId} IS NULL) OR (${table.destinationKind} = 'worker-adapter' AND ${table.destinationAdapter} IN ('project-share', 'cantrip-os') AND ${table.destinationResourceId} IS NOT NULL)`,
+    ),
+    check(
+      "tunnels_os_source_check",
+      sql`COALESCE(${table.destinationAdapter} = 'cantrip-os', false) = (${table.osSource} IS NOT NULL) AND (${table.osSource} IS NULL OR (cantrip_os_desktop_configuration_valid(jsonb_build_object('kind','desktop','osSource',${table.osSource})) AND NOT ${table.osSource} ? 'desktopGeneration' AND ${table.destinationResourceId} = ${table.id}))`,
     ),
     check(
       "tunnels_protected_content_check",
@@ -1887,6 +1893,7 @@ export const tunnelAttachments = pgTable(
       .default(0),
     errorCode: text("error_code"),
     secretExpiresAt: timestamp("secret_expires_at", { withTimezone: true }),
+    osServiceIdentity: text("os_service_identity"),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
