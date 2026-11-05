@@ -2217,3 +2217,14 @@ and formatted as source; it was not applied or executed. No tests, builds,
 typechecks, benchmarks, native/helper execution, patch-application checks,
 hosted validation or computer-use checks ran. Runtime and platform behavior
 remain unverified.
+
+Subsequent runtime integration repaired patch `0076`'s context around the
+existing `TaskInputKind` enum, preserving all 60 intended added and seven
+removed source lines. The complete 77-patch macOS ARM64 development build and
+default packaged-runtime verifier pass. Three real lifetime-keeper smoke cases
+confirm same-Goal unused takeover preserves its queue ordinal, while a foreign
+Goal epoch and an already-bound native execution reject adoption and retain
+their old evidence. Worker typecheck passes. These metadata checks do not
+establish the outstanding canonical reconciliation and whole-worker recovery
+paths. The combined runtime's acceptance evidence and fingerprint are recorded
+in the [durable suspension guide](DURABLE_TURN_SUSPENSION.md#mcp-clients-and-held-startup).
