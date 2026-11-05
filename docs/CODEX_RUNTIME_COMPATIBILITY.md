@@ -337,3 +337,13 @@ keeps the confirmed capture identity stable across lifecycle writes and retry.
 An earlier suspended runtime remains preserved with a clear compatibility error;
 explicit Stop can retire it. Product adoption and complete process-tree restart
 acceptance remain required before the product pause acknowledgement changes.
+
+Finalized CodeMode data uses native checkpoint contract
+`0.166.0/cantrip-suspension-v7` (patch `0072`). Protected resource-data format 2
+contains optional version-1 CodeMode JSON state and completed terminal records;
+the enclosing worker encryption envelope remains format 1. Native contracts
+from previous milestones remain inspectable and stoppable and require a matching
+runtime for Resume. The production gRPC CodeMode host supports explicit state
+export/import; unsupported providers and older hosts return an error, without
+empty-state fallback, prompt replay or a replacement turn. This does not establish
+the outstanding whole-worker/server/client recovery guarantee.

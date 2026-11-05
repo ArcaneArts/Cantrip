@@ -768,3 +768,17 @@ deferral acknowledgement and source cleanup still precede history transfer.
 The native keeper and worker must be upgraded together. This patch received
 source review and mechanical authoring only; it was not applied, built, tested or
 executed. No native/helper or computer-use validation ran for this change.
+
+## Finalized CodeMode resource continuation
+
+Patch `0072` extends protected resource data with finalized JSON values and cell
+identity bookkeeping under `0.166.0/cantrip-suspension-v7`. The gRPC
+CodeMode host exports only after cells and completion producers are quiescent.
+Explicit, freshly authorized Resume imports that data without evaluating cells
+or replaying tools. Capture never reconnects a missing host to an empty session;
+explicit import can recover a lost helper. Core selects this transport with
+`features.code_mode_host_grpc=true`. The default framed-stdio transport still
+returns an explicit unsupported error; completing its state transfer is the next
+native dependency. Unsupported providers never report empty state.
+See [the suspension contract](../docs/DURABLE_TURN_SUSPENSION.md) for resource
+limits, live controls, compatibility and the outstanding product integration.
