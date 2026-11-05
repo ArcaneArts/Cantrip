@@ -92,7 +92,7 @@ describe.skipIf(!transport)("actual authorized guest listener", () => {
         `import socket\nwith socket.create_connection(('127.0.0.1',${port}),timeout=20) as c:\n print(c.recv(128).decode().strip())\n`,
       ).output;
       expect(proof.trim()).toBe("WORKER HOST PROOF");
-      await channel.close?.();
+      await channel.close?.("normal");
       channel = undefined;
       const closed = await guestPython(
         transport!,
@@ -101,7 +101,7 @@ describe.skipIf(!transport)("actual authorized guest listener", () => {
       expect(closed.trim()).toBe("retired");
       expect(revokeAttachment).toHaveBeenCalledWith(f.attachmentId);
     } finally {
-      await channel?.close?.();
+      await channel?.close?.("normal");
       await services?.disconnect();
       server.close();
       await rm(directory, { recursive: true, force: true });

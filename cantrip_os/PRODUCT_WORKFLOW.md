@@ -98,7 +98,8 @@ its capture without stopping the agent or desktop; retiring the agent leaves
 an attached viewer usable. Reconnect observes the same captured destination.
 After an OS runtime changes, create a new view for the verified source rather
 than silently following the replacement. A retired view can still be closed or
-removed. Managed service endpoints remain later Phase 4 work.
+removed. Managed SSH/SFTP, VNC and TCP endpoints use the same saved source;
+see the service workflows below.
 
 ## Files and editor
 

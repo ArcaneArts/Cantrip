@@ -227,7 +227,10 @@ export async function protectedOsTunnel(
     sessionId: randomUUID(),
     identity,
     lease,
-    routePolicy: { enabled: ["local"], priority: ["local"] },
+    routePolicy: {
+      enabled: ["local"],
+      priority: ["local", "lan", "wan", "relay"],
+    },
     routeGeneration: 1,
     preferredRoute: "local",
   };

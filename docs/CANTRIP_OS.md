@@ -2,7 +2,7 @@
 
 - Status: Phase 3 execution and source ownership implemented and exercised in Docker
   and an installed VM. Phase 4 Linux computer use, integrated human control and
-  managed SSH/SFTP/VNC/TCP are implemented; final Phase 4 acceptance is in progress.
+  managed SSH/SFTP/VNC/TCP are implemented and accepted on the documented Docker/VM matrix.
 - Updated: 2026-11-05.
 - Scope: a customized, bootable Linux distribution for one Cantrip owner's
   agents, also distributed as a directly runnable Docker image.
@@ -27,9 +27,9 @@ The native Linux capture/input backend and optional
 checkpoints. Normal agent/preview routing selects the captured Linux display,
 including clipboard and resizing. An integrated source-bound desktop view now
 shares that helper over WorkerLink, including exclusive human takeover. Remote
-0.7.0 supplies protected guest SSH/SFTP/VNC/TCP carriers and managed product
-routes, including explicit Guest-to-Host forwarding. Final distribution/stream
-acceptance remain in progress.
+0.9.0 supplies protected guest SSH/SFTP/VNC/TCP carriers and managed product
+routes, including explicit Guest-to-Host forwarding. Distribution and stream
+acceptance are recorded in [the acceptance log](../cantrip_os/ACCEPTANCE.md#phase-4-refreshed-distribution-acceptance-2026-11-05).
 
 ## Optional package architecture
 
@@ -100,8 +100,8 @@ integration packages. An explicit executor selection wins. The ordinary Debian/
 IceWM desktop remains usable without either package. Host-only MCP Run/worktree/
 task-creation adapters are unavailable in Linux sessions; use the source-aware
 product workflows. Phase 4 adds Linux computer use and integrated viewing. Human
-control is implemented; general SSH/SFTP/TCP services, cloud provisioning, mirroring and backups remain
-in progress or later phases. The tested matrix and provider/platform limitations
+control and managed SSH/SFTP/VNC/TCP are implemented. Cloud provisioning,
+mirroring and backups remain later phases. The tested matrix and provider/platform limitations
 are recorded rather than implied to work on untested hardware.
 
 The canonical model keeps `project_sources.absolute_path` worker-local. A shared
@@ -581,11 +581,12 @@ Cantrip client and native agent runtime.
 
 ### 4. Computer use and remote access
 
-Implement Linux capture/input and integrate Cantrip's viewer. Verify click,
-typing, scroll, drag, clipboard, geometry, cancellation, and human takeover
-against real applications. Provide SSH/SFTP, VNC compatibility, and managed TCP
-services through Cantrip. Measure candidate stream implementations and choose
-the default based on those results.
+Implemented and accepted on the recorded local Docker/VM matrix. Linux
+capture/input and Cantrip's viewer support click, typing, scroll, drag, clipboard,
+geometry, cancellation and human takeover against real applications. Managed
+SSH/SFTP, VNC compatibility and TCP services use captured destinations. Stream
+measurements retain native JPEG as the initial integrated default and document
+the compressed VNC tradeoff.
 
 ### 5. Remote machines and state recovery
 
@@ -727,7 +728,7 @@ See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 
 ## Phase 4 package checkpoint
 
-The optional `cantrip-os-remote` 0.8.0 package runs the first-party Linux CUA
+The optional `cantrip-os-remote` 0.9.0 package runs the first-party Linux CUA
 helper as the selected workspace account behind a protected root carrier.
 Docker and ISO scripts include it with the executor edition by default;
 `CANTRIP_OS_REMOTE=0` omits it. Its retained state uses a namespace inside the
@@ -737,9 +738,10 @@ Normal agent CUA and previews resolve Server-owned placement and the Worker's
 immutable capture before acquiring the guest service. The MCP client and
 credentials stay on the Worker. Actual packaged SDK tests exercise turn
 authorization and routing without a Host Cantrip-window grant or Host launch.
-Real-provider evidence is recorded separately. The remaining Phase 4 work
-includes refreshed ISO acceptance. [Stream measurements](../cantrip_os/STREAMING.md)
-record the initial JPEG choice and the VNC tradeoff.
+Real-provider and refreshed Docker/live/install/disk-boot evidence are recorded
+in [acceptance](../cantrip_os/ACCEPTANCE.md#phase-4-refreshed-distribution-acceptance-2026-11-05).
+[Stream measurements](../cantrip_os/STREAMING.md) record the initial JPEG choice
+and the VNC tradeoff.
 
 Remote 0.3.0 adds scoped plain-text clipboard access and Unicode paste, actual
 Linux pointer motion and live resizing through supported RandR modes. These
@@ -787,7 +789,8 @@ exclusive human-control lease: agent input is canceled and released before
 admission, another controller is refused, and unrelated workspaces continue.
 Disconnect/Stop returns control only after confirmed guest cleanup or an actually
 observed replacement epoch; uncertainty keeps the old lease blocked. The Native
-app exposes a loopback host/port for an ordinary VNC client. Refreshed live/install/disk-boot distribution acceptance is still required.
+app exposes a loopback host/port for an ordinary VNC client. Refreshed
+live/install/disk-boot distribution acceptance passed on the recorded VM matrix.
 
 Remote 0.8.0 adds a protected guest-loopback listener carrier and a bounded
 Worker-host TCP bridge. It supports multiple clients and per-client half-close
