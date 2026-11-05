@@ -32,6 +32,10 @@ pub(super) fn wire_summary(raw: &Value) -> Result<Value> {
             .into_iter()
             .map(|(target, source)| (target, raw[source].clone())),
     );
+    if !raw["native_suspension_state"].is_null() {
+        value["nativeSuspension"] =
+            super::native_suspensions::stored_summary(&raw["native_suspension_state"]);
+    }
     if !raw["cantrip_os_binding_id"].is_null() {
         value["cantripOsBindingId"] = raw["cantrip_os_binding_id"].clone();
         value["cantripOsRuntimeGeneration"] = raw["cantrip_os_runtime_generation"].clone();

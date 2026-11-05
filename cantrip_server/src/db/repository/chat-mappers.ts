@@ -5,6 +5,7 @@ import {
   contextualChatWireSummarySchema,
   modelConfigurationSchema,
   standaloneChatWireSummarySchema,
+  storedChatNativeSuspension,
 } from "@cantrip/protocol";
 import type {
   ArchivedChatWireSummary,
@@ -64,6 +65,13 @@ export function toChatWireSummary(
     hasPendingPlanQuestion: chat.hasPendingPlanQuestion,
     hasUnreadCompletion: chat.hasUnreadCompletion,
     automationPaused: chat.automationPaused,
+    ...(chat.nativeSuspensionState == null
+      ? {}
+      : {
+          nativeSuspension: storedChatNativeSuspension(
+            chat.nativeSuspensionState,
+          ),
+        }),
     githubAgentContext,
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),
@@ -96,6 +104,13 @@ export function toStandaloneChatWireSummary(
     hasPendingPlanQuestion: false,
     hasUnreadCompletion: chat.hasUnreadCompletion,
     automationPaused: chat.automationPaused,
+    ...(chat.nativeSuspensionState == null
+      ? {}
+      : {
+          nativeSuspension: storedChatNativeSuspension(
+            chat.nativeSuspensionState,
+          ),
+        }),
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),
   });

@@ -1,4 +1,5 @@
 import { ProjectAlertRepository } from "./repository/project-alerts.js";
+import { NativeSuspensionRepository } from "./repository/native-suspensions.js";
 import { InferenceResourceRevocationRepository } from "./repository/inference-resource-revocations.js";
 import { CantripOsRepository } from "./repository/cantrip-os.js";
 import { AgentChatDeliveryRepository } from "./repository/agent-chat-delivery.js";
@@ -321,6 +322,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   readonly worktreeLifecycle: WorktreeLifecycleRepository;
   readonly chatExecutionLanes: ChatExecutionLaneRepository;
   readonly nativeCommands: NativeCommandRepository;
+  readonly nativeSuspensions: NativeSuspensionRepository;
   readonly nativeRuntimeHandoffs: NativeRuntimeHandoffRepository;
   readonly managedChatPreparations: ManagedChatPreparationRepository;
   readonly nativeHistoryBindings: NativeHistoryBindingRepository;
@@ -484,6 +486,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
       this.chatExecutionLanes,
       (transaction) => new ServerRepository(transaction, secretVault),
     );
+    this.nativeSuspensions = new NativeSuspensionRepository(database);
     this.chatCatalog = new ChatCatalogRepository(database, {
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
         this.getProjectWorktreeContext(ownerId, projectId, worktreeId),

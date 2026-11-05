@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { chatNativeSuspensionSchema } from "./native-suspensions.js";
 import { modelConfigurationSchema } from "./model-configuration.js";
 import { taskOpaqueContentSchema, taskOpaqueSummarySchema } from "./tasks.js";
 import { taskPrioritySchema } from "./task-scheduling.js";
@@ -406,6 +407,7 @@ const chatSummaryBaseSchema = z.object({
   hasPendingPlanQuestion: z.boolean(),
   hasUnreadCompletion: z.boolean().default(false),
   automationPaused: z.boolean().default(false),
+  nativeSuspension: chatNativeSuspensionSchema.optional(),
   githubAgentContext: githubAgentWorkflowContextSchema.nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
