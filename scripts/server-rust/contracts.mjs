@@ -641,6 +641,8 @@ export const contractRoots = [
   "policyCliWireReadResultSchema",
   "executionTargetResourceKindSchema",
   "executionTargetSchema",
+  "taskGoalOutcomeDeliverySchema",
+  "taskGoalOutcomeCommitSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.

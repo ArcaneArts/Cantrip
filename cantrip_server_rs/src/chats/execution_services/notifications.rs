@@ -37,7 +37,7 @@ impl Service {
             });
     }
 
-    async fn receive_outcome(
+    pub(crate) async fn receive_outcome(
         &self,
         owner: String,
         worker: String,

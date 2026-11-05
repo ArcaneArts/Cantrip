@@ -7053,6 +7053,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     },
     {
       connectionGeneration: workerProcessGeneration,
+      goalOutcomeDelivery: {
+        scope: nativeNamespaceScope,
+        send: (record, signal) =>
+          nativeCommands.commitGoalOutcome(record, signal),
+      },
       onAuthenticationRejected: () => {
         void retireInferenceAuthority().then(
           () =>

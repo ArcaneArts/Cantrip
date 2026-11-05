@@ -31,6 +31,9 @@ import {
   taskInferenceInputDispatchResultSchema,
   taskInferenceInputReceiptSchema,
   type TaskInferenceInputDispatch,
+  taskGoalOutcomeDeliverySchema,
+  taskGoalOutcomeCommitSchema,
+  type TaskGoalOutcomeDelivery,
 } from "@cantrip/protocol";
 import { z } from "zod";
 import { CantripServerRequestError } from "./cli-client.js";
@@ -164,6 +167,22 @@ export class NativeCommandClient {
         "Task input dispatch returned another operation's receipt.",
       );
     return result;
+  }
+
+  async commitGoalOutcome(input: TaskGoalOutcomeDelivery, signal: AbortSignal) {
+    const result = await this.post(
+      "task-goal-outcome",
+      taskGoalOutcomeDeliverySchema.parse(input),
+      taskGoalOutcomeCommitSchema,
+      AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
+    );
+    if (
+      !result.committed ||
+      result.deliveryId !== input.deliveryId ||
+      result.taskInferenceInputOperationId !==
+        input.notification.taskInferenceInputOperationId
+    )
+      throw new Error("Goal outcome has no matching canonical commit receipt.");
   }
 
   async observeSettings(

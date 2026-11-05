@@ -1063,6 +1063,7 @@ export function createWorkerNotificationRuntime({
       inferenceRevisions.clear();
     },
     ensureWorkerNotificationSubscription,
+    handleWorkerNotification,
     reconcileRunConfigurationRuntimesForWorker,
     scheduleProjectWorktreeObservation,
     scheduleWorkerWorktreeObservation,

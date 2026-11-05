@@ -352,6 +352,56 @@ export const workerEventEnvelopeSchema = z.object({
   event: workerEventSchema,
 });
 
+export const workerChatTurnOutcomeNotificationSchema = z
+  .object({
+    type: z.literal("chat.turn.outcome"),
+    nativeLogicalRoot: z
+      .object({
+        operationId: z.string().min(1),
+        operationGeneration: z.string().min(1),
+      })
+      .strict()
+      .optional(),
+    chatId: z.string().min(1),
+    clientMessageId: z.string().min(1),
+    executionLaneId: z.string().min(1),
+    contextKind: chatContextKindSchema.default("project"),
+    worktreeId: z.string().min(1).nullable(),
+    scratchRootId: z.string().min(1).nullable().default(null),
+    taskInferenceInputOperationId: z.uuid().optional(),
+    taskDispatchFence: taskDispatchWorkerLeaseSchema
+      .omit({ leaseExpiresAt: true })
+      .optional(),
+    outcome: z.discriminatedUnion("ok", [
+      z.object({
+        ok: z.literal(true),
+        result: agentTurnResultSchema,
+      }),
+      z.object({
+        ok: z.literal(false),
+        error: z.string().min(1),
+        inference: inferenceFailureEvidenceSchema.optional(),
+      }),
+    ]),
+  })
+  .superRefine((notification, context) => {
+    if (
+      (notification.contextKind === "project" &&
+        notification.worktreeId !== null &&
+        notification.scratchRootId === null) ||
+      (notification.contextKind === "standalone" &&
+        notification.worktreeId === null &&
+        notification.scratchRootId !== null)
+    ) {
+      return;
+    }
+    context.addIssue({
+      code: "custom",
+      message: "Chat turn outcome execution root is invalid.",
+      path: ["contextKind"],
+    });
+  });
+
 export const workerNotificationSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -362,55 +412,7 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
   cuaApprovalTerminalSchema,
   workerLinkPeerSignalNotificationSchema,
   workerLinkPeerCandidateNotificationSchema,
-  z
-    .object({
-      type: z.literal("chat.turn.outcome"),
-      nativeLogicalRoot: z
-        .object({
-          operationId: z.string().min(1),
-          operationGeneration: z.string().min(1),
-        })
-        .strict()
-        .optional(),
-      chatId: z.string().min(1),
-      clientMessageId: z.string().min(1),
-      executionLaneId: z.string().min(1),
-      contextKind: chatContextKindSchema.default("project"),
-      worktreeId: z.string().min(1).nullable(),
-      scratchRootId: z.string().min(1).nullable().default(null),
-      taskInferenceInputOperationId: z.uuid().optional(),
-      taskDispatchFence: taskDispatchWorkerLeaseSchema
-        .omit({ leaseExpiresAt: true })
-        .optional(),
-      outcome: z.discriminatedUnion("ok", [
-        z.object({
-          ok: z.literal(true),
-          result: agentTurnResultSchema,
-        }),
-        z.object({
-          ok: z.literal(false),
-          error: z.string().min(1),
-          inference: inferenceFailureEvidenceSchema.optional(),
-        }),
-      ]),
-    })
-    .superRefine((notification, context) => {
-      if (
-        (notification.contextKind === "project" &&
-          notification.worktreeId !== null &&
-          notification.scratchRootId === null) ||
-        (notification.contextKind === "standalone" &&
-          notification.worktreeId === null &&
-          notification.scratchRootId !== null)
-      ) {
-        return;
-      }
-      context.addIssue({
-        code: "custom",
-        message: "Chat turn outcome execution root is invalid.",
-        path: ["contextKind"],
-      });
-    }),
+  workerChatTurnOutcomeNotificationSchema,
   z
     .object({
       type: z.literal("chat.thread.changed"),

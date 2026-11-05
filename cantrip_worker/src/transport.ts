@@ -1,3 +1,8 @@
+import {
+  TaskGoalOutcomeDelivery,
+  type GoalOutcomeScope,
+} from "./task-goal-outcome-delivery.js";
+import type { TaskGoalOutcomeDelivery as GoalOutcomeRecord } from "@cantrip/protocol";
 import { randomBytes, randomUUID } from "node:crypto";
 import { inferenceFailure } from "./inference-failure.js";
 
@@ -92,6 +97,10 @@ function workerCommandFailureCode(error: unknown): string | undefined {
 
 export interface WorkerConnectionTimingOptions {
   connectionGeneration?: string;
+  goalOutcomeDelivery?: {
+    scope(): GoalOutcomeScope;
+    send(record: GoalOutcomeRecord, signal: AbortSignal): Promise<void>;
+  };
   handleWorkerLinkFrame?: WorkerLinkFrameHandler;
   keepaliveTimeoutMs?: number;
   /** Synchronously stop new execution admission; retire existing ownership asynchronously. */
@@ -262,6 +271,7 @@ export class WorkerConnection {
   #transportState: "inactive" | "connected" | "grace" | "disconnected" =
     "inactive";
   #workerLinkCapacityWait: Promise<boolean> | null = null;
+  readonly #goalOutcomes: TaskGoalOutcomeDelivery | null;
 
   constructor(
     private readonly config: WorkerConfig,
@@ -276,6 +286,23 @@ export class WorkerConnection {
     ) => void = () => undefined,
     private readonly timing: WorkerConnectionTimingOptions = {},
   ) {
+    this.#goalOutcomes = timing.goalOutcomeDelivery
+      ? new TaskGoalOutcomeDelivery({
+          ...timing.goalOutcomeDelivery,
+          directory: config.dataDirectory,
+          onError: (error) =>
+            workerLogger.rateLimited(
+              "task-goal-outcome-delivery",
+              "warn",
+              "Goal outcome durable delivery remains pending",
+              {
+                event: "task.goal.outcome-delivery-pending",
+                workerId: config.workerId,
+                error: workerLogError(error),
+              },
+            ),
+        })
+      : null;
     this.#connectionGeneration = timing.connectionGeneration ?? randomUUID();
     this.#keepaliveTimeoutMs = Math.max(
       1,
@@ -312,6 +339,7 @@ export class WorkerConnection {
   close(): void {
     if (this.#closed) return;
     this.#closed = true;
+    this.#goalOutcomes?.close();
     if (this.#reconnectTimer) {
       clearTimeout(this.#reconnectTimer);
       this.#reconnectTimer = null;
@@ -478,6 +506,7 @@ export class WorkerConnection {
     if (this.#closed || this.#authenticationRejected || this.#socket !== socket)
       return;
     this.#authenticationRejected = true;
+    this.#goalOutcomes?.close();
     if (this.#reconnectTimer) {
       clearTimeout(this.#reconnectTimer);
       this.#reconnectTimer = null;
@@ -646,6 +675,7 @@ export class WorkerConnection {
     this.#disconnectStartedAtMs = null;
     this.#connectAttempt = 0;
     this.handleTransportConnect(serverControlPlaneGeneration);
+    this.#goalOutcomes?.wake();
   }
 
   private handleConnectionEnvelope(
@@ -887,57 +917,77 @@ export class WorkerConnection {
     return this.sendCommandEnvelope(encodeWorkerServerEnvelope(envelope));
   }
 
-  private dispatchChatTurnOutcome(
-    request: WorkerRequestEnvelope,
+  private async prepareChatTurnOutcome(
     command: Extract<WorkerCommand, { type: "chat.turn" }>,
     outcome: Extract<
       WorkerNotification,
       { type: "chat.turn.outcome" }
     >["outcome"],
+    scope?: GoalOutcomeScope,
+  ): Promise<Extract<WorkerNotification, { type: "chat.turn.outcome" }>> {
+    const notification: Extract<
+      WorkerNotification,
+      { type: "chat.turn.outcome" }
+    > = {
+      type: "chat.turn.outcome",
+      chatId: command.chatId,
+      clientMessageId: command.clientMessageId,
+      executionLaneId: command.executionLaneId,
+      contextKind: command.contextKind,
+      worktreeId: command.worktreeId,
+      scratchRootId: command.scratchRootId,
+      nativeLogicalRoot: command.nativeCommandReceipt
+        ? {
+            operationId: command.nativeCommandReceipt.operationId,
+            operationGeneration:
+              command.nativeCommandReceipt.operationGeneration,
+          }
+        : undefined,
+      taskInferenceInputOperationId: command.taskInferenceInput?.operationId,
+      taskDispatchFence: command.taskDispatchLease
+        ? {
+            cycleId: command.taskDispatchLease.cycleId,
+            operationId: command.taskDispatchLease.operationId,
+            leaseOwner: command.taskDispatchLease.leaseOwner,
+            fencingToken: command.taskDispatchLease.fencingToken,
+          }
+        : undefined,
+      outcome,
+    };
+    if (command.taskInferenceInput?.kind === "goal" && this.#goalOutcomes) {
+      try {
+        await this.#goalOutcomes.append(notification, scope);
+      } catch (error) {
+        // Persistence/transport errors cannot contradict the actual execution
+        // result. Shutdown leaves already committed files for the next owner.
+        workerLogger.event("warn", "Goal outcome persistence was interrupted", {
+          event: "task.goal.outcome-persistence-interrupted",
+          workerId: this.config.workerId,
+          error: workerLogError(error),
+        });
+      }
+    }
+    return notification;
+  }
+
+  private dispatchChatTurnOutcome(
+    request: WorkerRequestEnvelope,
+    notification: Extract<WorkerNotification, { type: "chat.turn.outcome" }>,
   ): void {
     const delivery = this.sendServerEnvelope({
       kind: "notification",
-      notification: {
-        type: "chat.turn.outcome",
-        chatId: command.chatId,
-        clientMessageId: command.clientMessageId,
-        executionLaneId: command.executionLaneId,
-        contextKind: command.contextKind,
-        worktreeId: command.worktreeId,
-        scratchRootId: command.scratchRootId,
-        nativeLogicalRoot: command.nativeCommandReceipt
-          ? {
-              operationId: command.nativeCommandReceipt.operationId,
-              operationGeneration:
-                command.nativeCommandReceipt.operationGeneration,
-            }
-          : undefined,
-        taskInferenceInputOperationId: command.taskInferenceInput?.operationId,
-        taskDispatchFence: command.taskDispatchLease
-          ? {
-              cycleId: command.taskDispatchLease.cycleId,
-              operationId: command.taskDispatchLease.operationId,
-              leaseOwner: command.taskDispatchLease.leaseOwner,
-              fencingToken: command.taskDispatchLease.fencingToken,
-            }
-          : undefined,
-        outcome,
-      },
+      notification,
     });
-    workerLogger.event(
-      "debug",
-      "Codex outcome dispatched for durable recovery",
-      {
-        event: "codex.turn.outcome-dispatched",
-        subsystem: "worker-command",
-        operation: "dispatch-durable-outcome",
-        status: delivery,
-        requestId: request.requestId,
-        chatId: command.chatId,
-        delivery,
-        outcome: outcome.ok ? "completed" : "failed",
-      },
-    );
+    workerLogger.event("debug", "Codex outcome dispatched for recovery", {
+      event: "codex.turn.outcome-dispatched",
+      subsystem: "worker-command",
+      operation: "dispatch-durable-outcome",
+      status: delivery,
+      requestId: request.requestId,
+      chatId: notification.chatId,
+      delivery,
+      outcome: notification.outcome.ok ? "completed" : "failed",
+    });
   }
 
   private flushCommandEnvelopes(socket: WebSocket): void {
@@ -1213,6 +1263,17 @@ export class WorkerConnection {
 
   private async handleRequest(request: WorkerRequestEnvelope): Promise<void> {
     const startedAt = performance.now();
+    let outcomeScope: GoalOutcomeScope | undefined;
+    if (
+      request.command.type === "chat.turn" &&
+      request.command.taskInferenceInput?.kind === "goal"
+    ) {
+      try {
+        outcomeScope = this.timing.goalOutcomeDelivery?.scope();
+      } catch {
+        // First bootstrap may establish this identity while resolving the command.
+      }
+    }
     let emittedEventCount = 0;
     const level = commandLevel(request.command);
     const logContext = commandLogContext(request);
@@ -1244,19 +1305,21 @@ export class WorkerConnection {
       const result = await this.handleCommand(request.command, emit, {
         inferenceAdmissionAck: request.inferenceAdmissionAck,
       });
-      this.sendServerEnvelope({
-        kind: "response",
-        requestId: request.requestId,
-        ok: true,
-        result,
-      });
+      let turnOutcome: Extract<
+        WorkerNotification,
+        { type: "chat.turn.outcome" }
+      > | null = null;
       if (request.command.type === "chat.turn") {
         const parsedResult = agentTurnResultSchema.safeParse(result);
         if (parsedResult.success) {
-          this.dispatchChatTurnOutcome(request, request.command, {
-            ok: true,
-            result: parsedResult.data,
-          });
+          turnOutcome = await this.prepareChatTurnOutcome(
+            request.command,
+            {
+              ok: true,
+              result: parsedResult.data,
+            },
+            outcomeScope,
+          );
         } else {
           workerLogger.event(
             "error",
@@ -1271,6 +1334,13 @@ export class WorkerConnection {
           );
         }
       }
+      this.sendServerEnvelope({
+        kind: "response",
+        requestId: request.requestId,
+        ok: true,
+        result,
+      });
+      if (turnOutcome) this.dispatchChatTurnOutcome(request, turnOutcome);
       const completionContext = commandCompletionLogContext(request, result);
       const completedContext = {
         ...commandLogContext(request),
@@ -1318,6 +1388,18 @@ export class WorkerConnection {
           failureContext,
         );
       }
+      const turnOutcome =
+        request.command.type === "chat.turn"
+          ? await this.prepareChatTurnOutcome(
+              request.command,
+              {
+                ok: false,
+                error: message,
+                inference: inferenceFailure(error),
+              },
+              outcomeScope,
+            )
+          : null;
       this.sendServerEnvelope({
         kind: "response",
         requestId: request.requestId,
@@ -1330,13 +1412,7 @@ export class WorkerConnection {
             : {}),
         },
       });
-      if (request.command.type === "chat.turn") {
-        this.dispatchChatTurnOutcome(request, request.command, {
-          ok: false,
-          error: message,
-          inference: inferenceFailure(error),
-        });
-      }
+      if (turnOutcome) this.dispatchChatTurnOutcome(request, turnOutcome);
     }
   }
 }
