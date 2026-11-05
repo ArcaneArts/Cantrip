@@ -18,6 +18,7 @@ pub async fn source(service: &AuthService, owner: &str, project: &str) -> Result
         .ok_or_else(|| ApiError {
             status: 404,
             code: "not-found",
+            mcp_code: None,
             message: "The project Primary source was not found.".into(),
         })?;
     let worker = text(&source, "workerId")?;
@@ -25,6 +26,7 @@ pub async fn source(service: &AuthService, owner: &str, project: &str) -> Result
         return Err(ApiError {
             status: 503,
             code: "unavailable",
+            mcp_code: None,
             message: "The project Primary worker is offline.".into(),
         }
         .into());
@@ -110,6 +112,16 @@ pub async fn read(
     action: &str,
     input: &Value,
 ) -> Result<Value> {
+    Ok(read_with_source(service, owner, action, input).await?.0)
+}
+/// Retain the exact source used for dispatch, including when Primary changes
+/// while the worker request is in flight. MCP binds that source after reads.
+pub async fn read_with_source(
+    service: &AuthService,
+    owner: &str,
+    action: &str,
+    input: &Value,
+) -> Result<(Value, Value)> {
     let project = text(input, "projectId")?;
     let source = source(service, owner, project).await?;
     let mut result = dispatch(service, &source, action, input).await?;
@@ -127,9 +139,9 @@ pub async fn read(
                 .secret_statuses(owner, project, &references)
                 .await?,
         );
-        return crate::settings::parse_response(response_schema(action), Some(&result));
+        result = crate::settings::parse_response(response_schema(action), Some(&result))?;
     }
-    Ok(result)
+    Ok((result, source))
 }
 pub fn mutate(
     service: Arc<AuthService>,
@@ -137,6 +149,15 @@ pub fn mutate(
     action: &'static str,
     input: Value,
 ) -> BoxFuture<'static, Result<Value>> {
+    let mutation = mutate_with_source(service, owner, action, input);
+    async move { Ok(mutation.await?.0) }.boxed()
+}
+pub fn mutate_with_source(
+    service: Arc<AuthService>,
+    owner: String,
+    action: &'static str,
+    input: Value,
+) -> BoxFuture<'static, Result<(Value, Value)>> {
     let project = input["projectId"].as_str().unwrap().to_owned();
     service.project_operations.clone().serialize(&owner.clone(),&project,false,move || async move {
         let project = text(&input,"projectId")?;
@@ -148,7 +169,8 @@ pub fn mutate(
             let found = current["result"]["found"] == true;
             let revision = if found { current["result"]["entry"]["revision"].clone() } else {Value::Null};
             if !found || revision != input["expectedRevision"] {
-                return crate::settings::parse_response(response_schema("delete"),Some(&json!({"operation":"delete","operationId":input["operationId"],"projectId":project,"result":json!({"outcome":if found {"revision-mismatch"} else {"not-found"},"id":input["configurationId"],"currentRevision":revision})})));
+                let result = crate::settings::parse_response(response_schema("delete"),Some(&json!({"operation":"delete","operationId":input["operationId"],"projectId":project,"result":json!({"outcome":if found {"revision-mismatch"} else {"not-found"},"id":input["configurationId"],"currentRevision":revision})})))?;
+                return Ok((result, source));
             }
             super::retirement::retire_in_source(&service,&owner,project,Some(text(&input,"configurationId")?),None,Some(text(&source,"projectReplicaId")?)).await?;
         }
@@ -156,7 +178,7 @@ pub fn mutate(
         if action == "delete" && result["result"]["outcome"] == "deleted" {
             invalidate(&service.live,&owner,project,input["configurationId"].clone());
         }
-        Ok(result)
+        Ok((result, source))
     }.boxed())
 }
 pub fn invalidate(live: &crate::live::LiveService, owner: &str, project: &str, entity: Value) {

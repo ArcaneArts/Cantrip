@@ -10,10 +10,35 @@ impl TargetRepository {
         project: &str,
         worktree: &str,
     ) -> Result<Option<Value>> {
-        let rows = self.database.query(
+        self.worktree_context_with(owner, project, worktree, None)
+            .await
+    }
+    pub(crate) async fn mcp_worktree_context(
+        &self,
+        owner: &str,
+        project: &str,
+        worktree: &str,
+        raw_id: &Value,
+    ) -> Result<Option<Value>> {
+        self.worktree_context_with(owner, project, worktree, Some(raw_id))
+            .await
+    }
+    async fn worktree_context_with(
+        &self,
+        owner: &str,
+        project: &str,
+        worktree: &str,
+        raw_id: Option<&Value>,
+    ) -> Result<Option<Value>> {
+        let result = self.database.query(
             "SELECT p.id,s.id,s.absolute_path,w.worker_id,to_jsonb(w)::text FROM project_worktrees w INNER JOIN project_sources s ON s.id=w.project_source_id INNER JOIN projects p ON p.id=s.project_id AND p.owner_id=$1 WHERE p.id=$2 AND w.id=$3 AND s.removed_at IS NULL AND w.lifecycle_state='ready' LIMIT 1",
             &[&owner, &project, &worktree],
-        ).await?;
+        ).await;
+        let rows = if let Some(raw_id) = raw_id {
+            super::mcp_queries::context_in_project(result, "runWorktree", owner, project, raw_id)?
+        } else {
+            result?
+        };
         rows.first().map(|row| {
             let project = row.get::<String>(0)?;
             let worktree = reads::worktree(&reads::parse(row.get(4)?)?, &project)?;

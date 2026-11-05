@@ -4,6 +4,7 @@ pub mod execution;
 pub mod lifecycle;
 pub mod observations;
 mod operations;
+pub mod output;
 pub mod retirement;
 mod secret_writes;
 pub mod secrets;

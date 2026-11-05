@@ -11,13 +11,15 @@ import { ExplorerRepository } from "../../cantrip_server/src/db/repository/explo
 import { CodeSurfaceRepository } from "../../cantrip_server/src/db/repository/code-surfaces.ts";
 import { RemoteSurfaceRepository } from "../../cantrip_server/src/db/repository/remote-surfaces.ts";
 import { BrowserRepository } from "../../cantrip_server/src/db/repository/browsers.ts";
+import { ProjectRepository } from "../../cantrip_server/src/db/repository/projects.ts";
 const require = createRequire(
   new URL("../../cantrip_server/package.json", import.meta.url),
 );
 const { drizzle } = require("drizzle-orm/pg-proxy");
 const owner = "fixture-owner",
-  target = "fixture-target";
-async function capture(Constructor, method) {
+  target = "fixture-target",
+  project = "fixture-project";
+async function capture(Constructor, method, args = [owner, target]) {
   const calls = [];
   const database = drizzle(
     async (sql, params) => {
@@ -26,7 +28,7 @@ async function capture(Constructor, method) {
     },
     { schema },
   );
-  await new Constructor(database, {})[method](owner, target);
+  await new Constructor(database, {})[method](...args);
   return calls;
 }
 const entries = {};
@@ -54,6 +56,13 @@ const chat = await capture(
 assert.equal(chat.length, 2);
 entries.chatIdentity = chat[0];
 entries.chatProject = chat[1];
+const worktree = await capture(ProjectRepository, "getProjectWorktreeContext", [
+  owner,
+  project,
+  target,
+]);
+assert.equal(worktree.length, 1);
+entries.runWorktree = worktree[0];
 for (const [key, { params }] of Object.entries(entries)) {
   assert.ok(params.includes(owner) && params.includes(target));
   assert.ok(
@@ -63,10 +72,12 @@ for (const [key, { params }] of Object.entries(entries)) {
         [
           owner,
           target,
+          project,
           "desktop",
           "remote-desktop",
           "standalone",
           "active",
+          "ready",
         ].includes(value),
     ),
     JSON.stringify({ key, params }),

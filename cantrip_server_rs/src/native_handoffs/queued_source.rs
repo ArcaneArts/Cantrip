@@ -141,9 +141,9 @@ pub(super) async fn confirm(
             "{:x}",
             Sha256::digest(
                 json!([
-                    record["workerGeneration"],
-                    record["identity"]["runtimeGeneration"],
-                    record["identity"]["operationId"]
+                    record["workerGeneration"].clone(),
+                    record["identity"]["runtimeGeneration"].clone(),
+                    record["identity"]["operationId"].clone()
                 ])
                 .stringify()
                 .as_bytes()

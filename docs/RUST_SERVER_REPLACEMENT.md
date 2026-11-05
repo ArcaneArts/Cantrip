@@ -18,6 +18,35 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The Run configuration MCP milestone adds twelve operations to the Rust registry,
+bringing the supported set to twenty-eight. It reuses native definition, secret,
+lifecycle and encrypted-output services. Reads validate the exact worker used
+for dispatch; mutations retain Primary-worker prevalidation and eager project
+coordination. Public Run response and error contracts remain covered separately.
+Local coverage includes a real secondary worker, Primary movement during an
+in-flight read, read-only/standalone rejection, actual server restarts with fresh
+execution authority, retained receipts and endpoint-decrypted output. SQL error
+context attaches only after the native worktree query fails and preserves the
+original JavaScript text parameters. The existing nine captured target queries
+are unchanged. The 113-case suite passes all three stores and all three authentication modes
+(1,017 pairs, 2,034 HTTP calls/audit rows, 18 restarts, 36 output proofs), including
+UTF16/NUL lookup cases.
+The public Git/Run HTTP regression passes all nine storage/authentication profiles:
+1,089 paired observations and 2,178 calls. Each peer has 116, 120 or 127
+observations according to authentication mode.
+Run input schemas live in a self-contained generated graph. Rust relocates its
+references when composing it with the base graph, so unrelated base graph growth
+cannot silently change Run schema references during a clean Git merge. The base
+manifest retains all 626 roots and 10,545 nodes byte for byte from `9a6be65e9`.
+Local regression coverage compares Source outcomes after three base graph sizes.
+The refreshed reviewed inventory has 540 routes, 298 worker commands, 116 declared
+tables and 367 repository methods. Its additions cover the existing inference
+resource authorization, Task outcome delivery, inference revocation, captured OS
+tunnel preparation and owner/revision-only provider catalog fencing. Existing
+route content classifications are unchanged.
+These controlled-worker results do not establish full native product or platform
+acceptance; the worker remains Node and the default server has not changed.
+
 Native PGlite runtime reuse now attempts initialization with existing asset
 directories, including packaged assets without the optional extraction marker.
 A missing marker no longer blocks startup. New runtime extraction retains actual

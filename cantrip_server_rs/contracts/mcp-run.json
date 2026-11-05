@@ -1,0 +1,2928 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "cantripMcpRunConfigurationListInputSchema": 0,
+    "cantripMcpRunConfigurationGetInputSchema": 2,
+    "cantripMcpRunConfigurationDetectInputSchema": 5,
+    "cantripMcpRunConfigurationCreateInputSchema": 9,
+    "cantripMcpRunConfigurationUpdateInputSchema": 423,
+    "cantripMcpRunConfigurationDeleteInputSchema": 427,
+    "cantripMcpRunConfigurationStartInputSchema": 430,
+    "cantripMcpRunConfigurationRestartInputSchema": 436,
+    "cantripMcpRunConfigurationStopInputSchema": 438,
+    "cantripMcpRunConfigurationStatusInputSchema": 440,
+    "cantripMcpRunConfigurationReadOutputInputSchema": 449
+  },
+  "nodes": [
+    {
+      "type": "object",
+      "name": "cantripMcpRunConfigurationListInputSchema",
+      "shape": {},
+      "catchall": 1,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpRunConfigurationGetInputSchema",
+      "shape": { "configurationId": 3 },
+      "catchall": 4,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "message": "Expected a lowercase RFC 9562 UUID.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpRunConfigurationDetectInputSchema",
+      "shape": { "provider": 6 },
+      "catchall": 8,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 7,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["shell", "node", "java", "dart", "flutter", "rust"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpRunConfigurationCreateInputSchema",
+      "shape": { "operationId": 10, "document": 11 },
+      "catchall": 422,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "union",
+      "options": [12, 111, 162, 236, 281, 349],
+      "discriminator": "provider",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "schema": 13,
+        "version": 14,
+        "id": 3,
+        "name": 15,
+        "provider": 16,
+        "workingDirectory": 17,
+        "target": 19,
+        "commandOverride": 31,
+        "arguments": 33,
+        "environment": 36,
+        "beforeLaunch": 58,
+        "platformOverrides": 69,
+        "options": 99,
+        "stop": 105
+      },
+      "catchall": 110,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-run-document",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "literal",
+      "values": ["cantrip.run-configuration"],
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "literal", "values": ["shell"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 18,
+      "defaultValue": ".",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 512, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-portable-directory",
+          "messageAfterPath": true,
+          "message": "Expected a normalized repository-relative directory."
+        }
+      ]
+    },
+    {
+      "type": "union",
+      "options": [20, 24],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 21, "command": 22 },
+      "catchall": 23,
+      "checks": []
+    },
+    { "type": "literal", "values": ["command"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 100000, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
+          "message": "Values cannot contain NUL characters."
+        },
+        {
+          "check": "refinement",
+          "tag": "worker-command-not-blank",
+          "messageAfterPath": true,
+          "message": "Commands cannot be blank."
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 25, "path": 26, "interpreter": 27 },
+      "catchall": 30,
+      "checks": []
+    },
+    { "type": "literal", "values": ["script"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 512, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-portable-path",
+          "messageAfterPath": true,
+          "message": "Expected a normalized repository-relative path."
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 28,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 29, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 512, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
+          "message": "Values cannot contain NUL characters."
+        },
+        {
+          "check": "refinement",
+          "tag": "worker-command-not-blank",
+          "messageAfterPath": true,
+          "message": "Interpreters cannot be blank."
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 32,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 22, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 34,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 35,
+      "checks": [{ "check": "max_length", "maximum": 256, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 16384, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
+          "message": "Values cannot contain NUL characters."
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 37,
+      "defaultValue": {
+        "includeCodexEnvironment": true,
+        "files": [],
+        "variables": [],
+        "secrets": []
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "includeCodexEnvironment": 38,
+        "files": 40,
+        "variables": 42,
+        "secrets": 50
+      },
+      "catchall": 57,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-environment-names",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 39,
+      "defaultValue": true,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 41,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 26,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 43,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 44,
+      "checks": [{ "check": "max_length", "maximum": 256, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": { "name": 45, "value": 46, "enabled": 47 },
+      "catchall": 49,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        {
+          "message": "Environment names must be portable shell identifiers.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z_][A-Za-z0-9_]*$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 16384, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
+          "message": "Values cannot contain NUL characters."
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 48,
+      "defaultValue": true,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 51,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 52,
+      "checks": [{ "check": "max_length", "maximum": 256, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": { "name": 45, "secret": 53, "enabled": 54 },
+      "catchall": 56,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        {
+          "message": "Secret references may contain letters, digits, dots, underscores, slashes, and hyphens.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9][A-Za-z0-9._/-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "worker-command-secret-path",
+          "messageAfterPath": true,
+          "message": "Secret references must be normalized relative names."
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 55,
+      "defaultValue": true,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 59,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 60,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "union",
+      "options": [61, 65],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 62, "command": 22, "workingDirectory": 63 },
+      "catchall": 64,
+      "checks": []
+    },
+    { "type": "literal", "values": ["command"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 18,
+      "defaultValue": ".",
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 66, "task": 67 },
+      "catchall": 68,
+      "checks": []
+    },
+    { "type": "literal", "values": ["providerTask"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 70,
+      "defaultValue": {},
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "win32": 71, "darwin": 96, "linux": 97 },
+      "catchall": 98,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 72,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "workingDirectory": 73,
+        "commandOverride": 74,
+        "arguments": 76,
+        "environment": 77,
+        "options": 88
+      },
+      "catchall": 95,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 18,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 75,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 22, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 34,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 78,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "includeCodexEnvironment": 79,
+        "files": 81,
+        "variables": 83,
+        "secrets": 85
+      },
+      "catchall": 87,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-environment-names",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 80,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 82,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 26,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 84,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 44,
+      "checks": [{ "check": "max_length", "maximum": 256, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 86,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 52,
+      "checks": [{ "check": "max_length", "maximum": 256, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 89,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "shell": 90, "login": 92 },
+      "catchall": 94,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 91,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["automatic", "powershell", "cmd", "sh", "bash", "zsh"],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 93,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 72,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 72,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 100,
+      "defaultValue": { "shell": "automatic", "login": true },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "shell": 101, "login": 102 },
+      "catchall": 104,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 91,
+      "defaultValue": "automatic",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 103,
+      "defaultValue": true,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 106,
+      "defaultValue": { "gracePeriodMs": 3000 },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "gracePeriodMs": 107 },
+      "catchall": 109,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 108,
+      "defaultValue": 3000,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 60000, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "schema": 112,
+        "version": 113,
+        "id": 3,
+        "name": 114,
+        "provider": 115,
+        "workingDirectory": 116,
+        "target": 117,
+        "commandOverride": 125,
+        "arguments": 127,
+        "environment": 128,
+        "beforeLaunch": 129,
+        "platformOverrides": 131,
+        "options": 153,
+        "stop": 160
+      },
+      "catchall": 161,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-run-document",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "literal",
+      "values": ["cantrip.run-configuration"],
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "literal", "values": ["node"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 18,
+      "defaultValue": ".",
+      "checks": []
+    },
+    {
+      "type": "union",
+      "options": [118, 122],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 119, "script": 120 },
+      "catchall": 121,
+      "checks": []
+    },
+    { "type": "literal", "values": ["packageScript"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 123, "path": 26 },
+      "catchall": 124,
+      "checks": []
+    },
+    { "type": "literal", "values": ["entry"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 126,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 22, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 34,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 37,
+      "defaultValue": {
+        "includeCodexEnvironment": true,
+        "files": [],
+        "variables": [],
+        "secrets": []
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 130,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 60,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 132,
+      "defaultValue": {},
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "win32": 133, "darwin": 150, "linux": 151 },
+      "catchall": 152,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 134,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "workingDirectory": 135,
+        "commandOverride": 136,
+        "arguments": 138,
+        "environment": 139,
+        "options": 140
+      },
+      "catchall": 149,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 18,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 137,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 22, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 34,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 78,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 141,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "packageManager": 142,
+        "runtime": 144,
+        "runtimeArguments": 146
+      },
+      "catchall": 148,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 143,
+      "checks": []
+    },
+    { "type": "enum", "values": ["npm", "pnpm", "yarn", "bun"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 145,
+      "checks": []
+    },
+    { "type": "enum", "values": ["node", "bun"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 147,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 35,
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        { "check": "max_length", "maximum": 128, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 134,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 134,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 154,
+      "defaultValue": {
+        "packageManager": "npm",
+        "runtime": "node",
+        "runtimeArguments": []
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "packageManager": 155,
+        "runtime": 156,
+        "runtimeArguments": 157
+      },
+      "catchall": 159,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 143,
+      "defaultValue": "npm",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 145,
+      "defaultValue": "node",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 158,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 35,
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        { "check": "max_length", "maximum": 128, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 106,
+      "defaultValue": { "gracePeriodMs": 3000 },
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "schema": 163,
+        "version": 164,
+        "id": 3,
+        "name": 165,
+        "provider": 166,
+        "workingDirectory": 167,
+        "target": 168,
+        "commandOverride": 193,
+        "arguments": 195,
+        "environment": 196,
+        "beforeLaunch": 197,
+        "platformOverrides": 199,
+        "options": 224,
+        "stop": 234
+      },
+      "catchall": 235,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-run-document",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "literal",
+      "values": ["cantrip.run-configuration"],
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "literal", "values": ["java"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 18,
+      "defaultValue": ".",
+      "checks": []
+    },
+    {
+      "type": "union",
+      "options": [169, 176, 181, 188],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 170, "projectPath": 171, "task": 173 },
+      "catchall": 175,
+      "checks": []
+    },
+    { "type": "literal", "values": ["gradleTask"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 172,
+      "defaultValue": ":",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "max_length", "maximum": 512, "when": "length" },
+        {
+          "message": "Expected a Gradle project path such as : or :app.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^:(?:[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)*)?$",
+          "flags": "u",
+          "displayPattern": "/^:(?:[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)*)?$/u"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 174,
+      "defaultValue": "run",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        {
+          "message": "Expected a build-tool task or goal without command-line options.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^:?[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)*$",
+          "flags": "u",
+          "displayPattern": "/^:?[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)*$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 177, "projectPath": 178, "className": 179 },
+      "catchall": 180,
+      "checks": []
+    },
+    { "type": "literal", "values": ["gradleMainClass"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 172,
+      "defaultValue": ":",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 512, "when": "length" },
+        {
+          "message": "Expected a fully qualified Java class name.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 182, "module": 183, "goal": 186 },
+      "catchall": 187,
+      "checks": []
+    },
+    { "type": "literal", "values": ["mavenGoal"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 184,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 185, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 512, "when": "length" },
+        {
+          "message": "Expected a Maven module selector or normalized relative module path.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^(?!-)(?::?[A-Za-z0-9_.+@-]+(?::[A-Za-z0-9_.+@-]+)*|[A-Za-z0-9_.+@-]+(?:\\/[A-Za-z0-9_.+@-]+)*)$",
+          "flags": "u",
+          "displayPattern": "/^(?!-)(?::?[A-Za-z0-9_.+@-]+(?::[A-Za-z0-9_.+@-]+)*|[A-Za-z0-9_.+@-]+(?:\\/[A-Za-z0-9_.+@-]+)*)$/u"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 174,
+      "defaultValue": "spring-boot:run",
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 189, "module": 190, "className": 179 },
+      "catchall": 192,
+      "checks": []
+    },
+    { "type": "literal", "values": ["mavenMainClass"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 191,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 185, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 194,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 22, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 34,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 37,
+      "defaultValue": {
+        "includeCodexEnvironment": true,
+        "files": [],
+        "variables": [],
+        "secrets": []
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 198,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 60,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 200,
+      "defaultValue": {},
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "win32": 201, "darwin": 221, "linux": 222 },
+      "catchall": 223,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 202,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "workingDirectory": 203,
+        "commandOverride": 204,
+        "arguments": 206,
+        "environment": 207,
+        "options": 208
+      },
+      "catchall": 220,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 18,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 205,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 22, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 34,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 78,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 209,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "jdkHome": 210,
+        "useWrapper": 213,
+        "buildToolArguments": 215,
+        "vmArguments": 217
+      },
+      "catchall": 219,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 211,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 212, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1024, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
+          "message": "Values cannot contain NUL characters."
+        },
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 214,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 216,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 35,
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        { "check": "max_length", "maximum": 128, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 218,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 35,
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        { "check": "max_length", "maximum": 128, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 202,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 202,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 225,
+      "defaultValue": {
+        "jdkHome": null,
+        "useWrapper": true,
+        "buildToolArguments": [],
+        "vmArguments": []
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "jdkHome": 226,
+        "useWrapper": 227,
+        "buildToolArguments": 229,
+        "vmArguments": 231
+      },
+      "catchall": 233,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 211,
+      "defaultValue": null,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 228,
+      "defaultValue": true,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 230,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 35,
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        { "check": "max_length", "maximum": 128, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 232,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 35,
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        { "check": "max_length", "maximum": 128, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 106,
+      "defaultValue": { "gracePeriodMs": 3000 },
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "schema": 237,
+        "version": 238,
+        "id": 3,
+        "name": 239,
+        "provider": 240,
+        "workingDirectory": 241,
+        "target": 242,
+        "commandOverride": 246,
+        "arguments": 248,
+        "environment": 249,
+        "beforeLaunch": 250,
+        "platformOverrides": 252,
+        "options": 273,
+        "stop": 279
+      },
+      "catchall": 280,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-run-document",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "literal",
+      "values": ["cantrip.run-configuration"],
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "literal", "values": ["dart"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 18,
+      "defaultValue": ".",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 243, "path": 244 },
+      "catchall": 245,
+      "checks": []
+    },
+    { "type": "literal", "values": ["entrypoint"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 512, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-portable-path",
+          "messageAfterPath": true,
+          "message": "Expected a normalized repository-relative path."
+        },
+        {
+          "check": "refinement",
+          "tag": "worker-command-dart-path",
+          "messageAfterPath": true,
+          "message": "Expected a repository-relative Dart entrypoint path."
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 247,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 22, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 34,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 37,
+      "defaultValue": {
+        "includeCodexEnvironment": true,
+        "files": [],
+        "variables": [],
+        "secrets": []
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 251,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 60,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 253,
+      "defaultValue": {},
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "win32": 254, "darwin": 270, "linux": 271 },
+      "catchall": 272,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 255,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "workingDirectory": 256,
+        "commandOverride": 257,
+        "arguments": 259,
+        "environment": 260,
+        "options": 261
+      },
+      "catchall": 269,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 18,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 258,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 22, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 34,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 78,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 262,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "sdkHome": 263, "vmArguments": 266 },
+      "catchall": 268,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 264,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 265, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1024, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
+          "message": "Values cannot contain NUL characters."
+        },
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 267,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 35,
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        { "check": "max_length", "maximum": 128, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 255,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 255,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 274,
+      "defaultValue": { "sdkHome": null, "vmArguments": [] },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "sdkHome": 275, "vmArguments": 276 },
+      "catchall": 278,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 264,
+      "defaultValue": null,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 277,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 35,
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        { "check": "max_length", "maximum": 128, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 106,
+      "defaultValue": { "gracePeriodMs": 3000 },
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "schema": 282,
+        "version": 283,
+        "id": 3,
+        "name": 284,
+        "provider": 285,
+        "workingDirectory": 286,
+        "target": 287,
+        "commandOverride": 291,
+        "arguments": 293,
+        "environment": 294,
+        "beforeLaunch": 295,
+        "platformOverrides": 297,
+        "options": 334,
+        "stop": 347
+      },
+      "catchall": 348,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-run-document",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "literal",
+      "values": ["cantrip.run-configuration"],
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "literal", "values": ["flutter"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 18,
+      "defaultValue": ".",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 288, "path": 289 },
+      "catchall": 290,
+      "checks": []
+    },
+    { "type": "literal", "values": ["entrypoint"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 512, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-portable-path",
+          "messageAfterPath": true,
+          "message": "Expected a normalized repository-relative path."
+        },
+        {
+          "check": "refinement",
+          "tag": "worker-command-dart-path",
+          "messageAfterPath": true,
+          "message": "Expected a repository-relative Flutter entrypoint path."
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 292,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 22, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 34,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 37,
+      "defaultValue": {
+        "includeCodexEnvironment": true,
+        "files": [],
+        "variables": [],
+        "secrets": []
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 296,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 60,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 298,
+      "defaultValue": {},
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "win32": 299, "darwin": 331, "linux": 332 },
+      "catchall": 333,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 300,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "workingDirectory": 301,
+        "commandOverride": 302,
+        "arguments": 304,
+        "environment": 305,
+        "options": 306
+      },
+      "catchall": 330,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 18,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 303,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 22, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 34,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 78,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 307,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "sdkHome": 308,
+        "deviceId": 311,
+        "flavor": 314,
+        "mode": 317,
+        "dartDefines": 319,
+        "dartDefineFiles": 325,
+        "usePub": 327
+      },
+      "catchall": 329,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-dart-defines",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 309,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 310, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1024, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
+          "message": "Values cannot contain NUL characters."
+        },
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 312,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 313, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 512, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
+          "message": "Values cannot contain NUL characters."
+        },
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 315,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 316, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
+          "message": "Values cannot contain NUL characters."
+        },
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 318,
+      "checks": []
+    },
+    { "type": "enum", "values": ["debug", "profile", "release"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 320,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 321,
+      "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": { "name": 322, "value": 323 },
+      "catchall": 324,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
+          "message": "Values cannot contain NUL characters."
+        },
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-no-equals",
+          "messageAfterPath": true,
+          "message": "Dart define names cannot contain equals signs."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 16384, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
+          "message": "Values cannot contain NUL characters."
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 326,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 26,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 328,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 300,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 300,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 335,
+      "defaultValue": {
+        "sdkHome": null,
+        "deviceId": null,
+        "flavor": null,
+        "mode": "debug",
+        "dartDefines": [],
+        "dartDefineFiles": [],
+        "usePub": true
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "sdkHome": 336,
+        "deviceId": 337,
+        "flavor": 338,
+        "mode": 339,
+        "dartDefines": 340,
+        "dartDefineFiles": 342,
+        "usePub": 344
+      },
+      "catchall": 346,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-dart-defines",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 309,
+      "defaultValue": null,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 312,
+      "defaultValue": null,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 315,
+      "defaultValue": null,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 318,
+      "defaultValue": "debug",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 341,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 321,
+      "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 343,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 26,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 345,
+      "defaultValue": true,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 106,
+      "defaultValue": { "gracePeriodMs": 3000 },
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "schema": 350,
+        "version": 351,
+        "id": 3,
+        "name": 352,
+        "provider": 353,
+        "workingDirectory": 354,
+        "target": 355,
+        "commandOverride": 364,
+        "arguments": 366,
+        "environment": 367,
+        "beforeLaunch": 368,
+        "platformOverrides": 370,
+        "options": 404,
+        "stop": 420
+      },
+      "catchall": 421,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-run-document",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "literal",
+      "values": ["cantrip.run-configuration"],
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "literal", "values": ["rust"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 18,
+      "defaultValue": ".",
+      "checks": []
+    },
+    {
+      "type": "union",
+      "options": [356, 361],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 357, "package": 358, "name": 359 },
+      "catchall": 360,
+      "checks": []
+    },
+    { "type": "literal", "values": ["binary"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        {
+          "message": "Cargo package names may contain only letters, digits, underscores, and hyphens.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]+$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        {
+          "message": "Cargo target names may contain only letters, digits, dots, underscores, and hyphens.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_.-]+$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_.-]+$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 362, "package": 358, "name": 359 },
+      "catchall": 363,
+      "checks": []
+    },
+    { "type": "literal", "values": ["example"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 365,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 22, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 34,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 37,
+      "defaultValue": {
+        "includeCodexEnvironment": true,
+        "files": [],
+        "variables": [],
+        "secrets": []
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 369,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 60,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 371,
+      "defaultValue": {},
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "win32": 372, "darwin": 401, "linux": 402 },
+      "catchall": 403,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 373,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "workingDirectory": 374,
+        "commandOverride": 375,
+        "arguments": 377,
+        "environment": 378,
+        "options": 379
+      },
+      "catchall": 400,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 18,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 376,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 22, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 34,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 78,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 380,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "toolchain": 381,
+        "features": 383,
+        "allFeatures": 386,
+        "useDefaultFeatures": 388,
+        "targetTriple": 390,
+        "profile": 393,
+        "locked": 395,
+        "offline": 397
+      },
+      "catchall": 399,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-cargo-features",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 382,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
+          "message": "Values cannot contain NUL characters."
+        },
+        { "check": "trim" },
+        {
+          "message": "Expected default or a rustup toolchain name without the leading plus sign.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^(?:default|[A-Za-z0-9][A-Za-z0-9_.-]*)$",
+          "flags": "u",
+          "displayPattern": "/^(?:default|[A-Za-z0-9][A-Za-z0-9_.-]*)$/u"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 384,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 385,
+      "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
+          "message": "Values cannot contain NUL characters."
+        },
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        {
+          "message": "Expected a Cargo feature name, optionally qualified by package.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_+.-]+(?:\\/[A-Za-z0-9_+.-]+)?$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_+.-]+(?:\\/[A-Za-z0-9_+.-]+)?$/u"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 387,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 389,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 391,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 392, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
+          "message": "Values cannot contain NUL characters."
+        },
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        {
+          "message": "Expected a Rust target triple.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_.-]+$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_.-]+$/u"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 394,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
+          "message": "Values cannot contain NUL characters."
+        },
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        {
+          "message": "Expected a Cargo profile name.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_.-]+$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_.-]+$/u"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 396,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 398,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 373,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 373,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 405,
+      "defaultValue": {
+        "toolchain": "default",
+        "features": [],
+        "allFeatures": false,
+        "useDefaultFeatures": true,
+        "targetTriple": null,
+        "profile": "dev",
+        "locked": false,
+        "offline": false
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "toolchain": 406,
+        "features": 407,
+        "allFeatures": 409,
+        "useDefaultFeatures": 411,
+        "targetTriple": 413,
+        "profile": 414,
+        "locked": 415,
+        "offline": 417
+      },
+      "catchall": 419,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-cargo-features",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 382,
+      "defaultValue": "default",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 408,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 385,
+      "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 410,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 412,
+      "defaultValue": true,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 391,
+      "defaultValue": null,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 394,
+      "defaultValue": "dev",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 416,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 418,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 106,
+      "defaultValue": { "gracePeriodMs": 3000 },
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpRunConfigurationUpdateInputSchema",
+      "shape": {
+        "operationId": 424,
+        "configurationId": 3,
+        "expectedRevision": 425,
+        "document": 11
+      },
+      "catchall": 426,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "mcp-run-update",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "message": "Expected a SHA-256 revision.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{64}$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpRunConfigurationDeleteInputSchema",
+      "shape": {
+        "operationId": 428,
+        "configurationId": 3,
+        "expectedRevision": 425
+      },
+      "catchall": 429,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpRunConfigurationStartInputSchema",
+      "shape": { "operationId": 431, "configurationId": 3, "worktreeId": 432 },
+      "catchall": 435,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 433,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 434, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpRunConfigurationRestartInputSchema",
+      "shape": { "operationId": 431, "configurationId": 3, "worktreeId": 432 },
+      "catchall": 437,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpRunConfigurationStopInputSchema",
+      "shape": { "operationId": 431, "configurationId": 3, "worktreeId": 432 },
+      "catchall": 439,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpRunConfigurationStatusInputSchema",
+      "shape": { "configurationId": 441, "worktreeId": 443, "limit": 446 },
+      "catchall": 448,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 442,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 3, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 444,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 445, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 447,
+      "defaultValue": 256,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 256, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpRunConfigurationReadOutputInputSchema",
+      "shape": {
+        "operationId": 431,
+        "configurationId": 3,
+        "worktreeId": 432,
+        "tail": 450
+      },
+      "catchall": 452,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 451,
+      "defaultValue": 10000,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 100000, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] }
+  ]
+}

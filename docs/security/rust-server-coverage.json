@@ -12476,6 +12476,40 @@
         "Supported-platform packaged artifact execution and full app/storage/runtime acceptance remain required.",
         "The separate frozen df0114df0/64patch native Task/Goal PGlite scenario failed on the Node reference before Rust; a successful native artifact build/pin is not full product acceptance."
       ]
+    },
+    "agentRunMcp": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/http/agent_runs.rs",
+        "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "cantrip_server_rs/src/run_configurations/output.rs",
+        "cantrip_server_rs/src/run_configurations/lifecycle.rs",
+        "cantrip_server_rs/src/projects/targets/worktree_context.rs",
+        "cantrip_server_rs/src/projects/targets/mcp_queries.rs",
+        "cantrip_server_rs/src/http/agent_operations.rs",
+        "cantrip_server_rs/src/wire/mcp.rs",
+        "cantrip_server_rs/src/wire/contract_blocks.rs",
+        "cantrip_server_rs/contracts/mcp-run.json"
+      ],
+      "evidence": [
+        "scripts/server-rust/agent-run-http-compatibility.mjs",
+        "scripts/server-rust/agent-run-http-fixtures.mjs",
+        "scripts/server-rust/agent-run-http-boundaries.mjs",
+        "scripts/server-rust/agent-run-worker-binding-cases.mjs",
+        "scripts/server-rust/mcp-target-query-manifest.mjs",
+        "scripts/server-rust/mcp-run-binding-oracle.mjs",
+        "cantrip_server_rs/tests/mcp_run_contracts.rs",
+        "cantrip_server_rs/tests/mcp_run_bindings.rs",
+        "cantrip_server_rs/src/wire/contract_blocks.rs",
+        "scripts/server-rust/project-git-http-compatibility.mjs"
+      ],
+      "validatedSubset": "Twelve native Run MCP operations retain Source arguments/defaults, exact dispatched source/worker binding, Primary mutation prevalidation, durable project serialization, lifecycle/secret receipts, opaque output and Source success/rejection audit actions/resource IDs. Restart fences old execution claims before controlled fresh execution replays existing receipts. Public Run service response/error paths retain their previous interfaces. Only actual MCP worktree query failures receive captured Source SQL/original UTF16 parameter diagnostics; old target query statements remain unchanged. Empty worker-join reconciliation requests are retained independently of MCP call timing after verifying there are no active controlled worker runtimes; nonempty requests remain in command assertions.",
+      "localEvidence": "Local qualification on 839d712f7/base485014de8 passes2617 Source Run wire comparisons,2432 compatible binding comparisons,1824 authority/readiness pairs and strict all-target Clippy. All3stores x3auth modes pass113 MCP HTTP/audit cases per peer/profile:1017 pairs/2034 calls and audit rows,18 actual server restarts,36 endpoint-decrypted outputs. Public Git/Run regression passes1089 paired observations/2178 calls across the same nine profiles. Actual second-worker dispatch and held-read Primary movement retain exact binding; UTF16/NUL failure context retains captured SQL and original parameters. Protocol1114/Source server49/worker18 focused tests pass; inherited server8/worker7/app2 type errors remain separately reproduced and are not green. Integration on9a6be65e9 keeps the base manifest byte-identical at626 roots/10545 nodes and isolates eleven Run roots in a453-node self-contained graph, composed natively with relocated references. Source oracle comparisons at three base graph sizes cover unrelated graph growth. Reviewed inventory records540 routes/298 worker commands/116 tables/367 repository methods with existing content classifications unchanged. Seven additive runtime exports and inference.revoke are explicitly reviewed; legacy fingerprints remain unchanged. Current integrated qualification and historical frozen matrix evidence are retained in milestone receipts.",
+      "remaining": [
+        "Other MCP worktree/explorer/terminal/browser/client operations and actual full-worker native product acceptance.",
+        "Latest native runtime/platform artifacts, mixed/Redis coordination and operation recovery at full product failure boundaries.",
+        "Existing-data upgrades and post-write rollback, performance acceptance, packaged desktop/Winterhold rehearsal, default server cutover and production Node server removal."
+      ]
     }
   },
   "remainingAcceptance": [
