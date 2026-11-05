@@ -733,6 +733,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
               pending.onInferenceTiming?.(
                 event.data.timing,
                 event.data.sequence,
+                event.data.providerTimings,
               );
             } catch {}
           }

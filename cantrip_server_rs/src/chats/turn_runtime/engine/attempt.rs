@@ -265,6 +265,7 @@ impl Runtime {
             sink.clone(),
         );
         let sink_timing = sink.clone();
+        let timing_provider = runtime["provider"]["id"].clone();
         let receive = self.operations.spawn(async move {
             Ok(commands
                 .request_observing_inference(
@@ -278,7 +279,14 @@ impl Runtime {
                     Arc::new(move |event| {
                         if let (Some(sequence), Some(timing), Ok(mut current)) = (
                             event["sequence"].as_u64(),
-                            event.get("timing"),
+                            event["providerTimings"]
+                                .as_array()
+                                .and_then(|providers| {
+                                    providers
+                                        .iter()
+                                        .find(|provider| provider["providerId"] == timing_provider)
+                                })
+                                .and_then(|provider| provider.get("timing")),
                             sink_timing.inference_timing.lock(),
                         ) && current
                             .as_ref()

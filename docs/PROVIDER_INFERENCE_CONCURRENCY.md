@@ -34,7 +34,15 @@ typechecks, benchmarks, native execution and computer-use validation were not ru
 
 The existing private `inference.command-state` event carries exclusive monotonic
 command counters: provider queue wait, command preparation, admitted execution,
-and confirmed suspension. State transitions and command completion emit the
+and confirmed suspension. The event also carries independent clocks keyed by
+stable configured provider ID. Same-provider title and response share one clock;
+a separate title provider has a separate clock. Both servers persist only the
+response route provider's clock on that model-behavior observation. Aggregate
+command timing continues to control the existing deadline phases, not provider
+performance attribution. Older workers without provider-local timing remain
+unknown rather than assigning another provider's labeling time to the response.
+Clocks are released with the command and do not retain completed-ticket history.
+State transitions and command completion emit the
 counters; streamed tokens and idle time do not generate timing traffic. Commands
 that never observe inference do not emit a new completion event. Counters are
 correlated with the existing request and rejected by per-attempt sequence order.

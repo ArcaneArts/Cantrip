@@ -1040,10 +1040,14 @@ export function createChatTurnRuntime({
               },
               {
                 timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
-                onInferenceTiming: (timing, sequence) => {
+                onInferenceTiming: (_timing, sequence, providerTimings) => {
                   if (sequence <= inferenceTimingSequence) return;
                   inferenceTimingSequence = sequence;
-                  inferenceTiming = timing;
+                  // A separately configured title provider belongs to its own
+                  // pool. Never attribute aggregate command time to this route.
+                  inferenceTiming = providerTimings?.find(
+                    (value) => value.providerId === runtime.provider.id,
+                  )?.timing;
                 },
                 onEvent: (event) =>
                   runAsOwner(ownerId, async () => {

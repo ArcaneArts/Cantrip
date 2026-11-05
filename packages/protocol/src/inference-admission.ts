@@ -66,6 +66,17 @@ export type InferenceCommandTiming = z.infer<
   typeof inferenceCommandTimingSchema
 >;
 
+/** Provider-local timing, never attributed by display name or account. */
+export const inferenceProviderCommandTimingSchema = z
+  .object({
+    providerId: z.string().min(1),
+    timing: inferenceCommandTimingSchema,
+  })
+  .strict();
+export type InferenceProviderCommandTiming = z.infer<
+  typeof inferenceProviderCommandTimingSchema
+>;
+
 export const inferenceOperationStatusSchema = z.object({
   purpose: z.enum(["turn", "label", "child", "helper"]).default("helper"),
   operationId: z.string().min(1),

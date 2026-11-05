@@ -609,7 +609,7 @@ export class WorkerInferenceAdmission {
       resolve,
       reject,
       stopListening: () => {},
-      observe: observeInferenceCommand(),
+      observe: observeInferenceCommand(input.providerId),
       admitted: observeInferenceCommandAdmission(),
       journalKey:
         this.journal?.key(runtime.generation, input.operationId) ?? null,
