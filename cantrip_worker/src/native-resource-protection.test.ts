@@ -110,6 +110,24 @@ describe("native resource protection", () => {
     ]);
   });
 
+  it("keeps decimal native cell identities exact across the encrypted JSON bridge", async () => {
+    const worker = await open();
+    await authorize(worker, componentKey);
+    const protection = createNativeResourceProtection(worker.service);
+    const data = JSON.parse(
+      '{"formatVersion":2,"terminals":[],"codeMode":{"formatVersion":2,"nextCellId":"9007199254740993","cellIdGeneration":"18446744073709551614","storedValues":{"number":2.5}}}',
+    );
+    const opaque = JSON.parse(
+      JSON.stringify(await protection.seal(binding, data)),
+    );
+    const restored = JSON.parse(
+      JSON.stringify(await protection.open(binding, opaque)),
+    );
+    expect(restored).toEqual(data);
+    expect(restored.codeMode.nextCellId).toBe("9007199254740993");
+    expect(restored.codeMode.cellIdGeneration).toBe("18446744073709551614");
+  });
+
   it.each(["threadId", "turnId", "checkpointId"] as const)(
     "authenticates the exact %s",
     async (field) => {

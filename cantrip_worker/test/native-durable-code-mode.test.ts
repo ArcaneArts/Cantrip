@@ -41,6 +41,7 @@ describe.skipIf(!binary)("native durable CodeMode stored values", () => {
         stderr: string[] = [],
         errors: unknown[] = [];
       const protections: { seal: boolean }[] = [];
+      const cellIdentities: Json[] = [];
       let child: ChildProcessWithoutNullStreams | undefined,
         client: CodexRpcClient | undefined;
       let generation = "",
@@ -96,6 +97,11 @@ describe.skipIf(!binary)("native durable CodeMode stored values", () => {
           const frame = JSON.parse(line) as Json;
           if (frame.method === "thread/nativeResources/requested") {
             protections.push({ seal: frame.params.seal });
+            if (frame.params.seal && frame.params.value.codeMode) {
+              const { nextCellId, cellIdGeneration } =
+                frame.params.value.codeMode;
+              cellIdentities.push({ nextCellId, cellIdGeneration });
+            }
             void handleNativeResourceProtection(frame.params, {
               owner: () =>
                 client === ownClient
@@ -302,27 +308,6 @@ describe.skipIf(!binary)("native durable CodeMode stored values", () => {
           "store-once",
           `await tools.exec_command({cmd:${JSON.stringify(process.platform === "win32" ? "Add-Content -Path code-mode-effect.txt -Value once" : "echo once >> code-mode-effect.txt")},yield_time_ms:10000}); store("private", {marker:["INERT","CODE","MODE","SECRET"].join("_"), nested:[null,true,2.5], count:1}); text("SAVED_ONCE");`,
         );
-        if (transport === "framed") {
-          await expect(pause).rejects.toThrow(
-            "does not support durable stored state",
-          );
-          expect(requests).toHaveLength(1);
-          expect(protections).toEqual([]);
-          await rpc("turn/pause", { threadId, turnId, paused: false });
-          await waitRequests(2);
-          expect(JSON.stringify(requests[1]!.body.input)).toContain(
-            "SAVED_ONCE",
-          );
-          await rpc("turn/interrupt", { threadId, turnId });
-          expect(
-            (
-              await readFile(path.join(cwd, "code-mode-effect.txt"), "utf8")
-            ).trim(),
-          ).toBe("once");
-          expect(errors).toEqual([]);
-          succeeded = true;
-          return;
-        }
         let paused = await pause;
         expect(paused).toMatchObject({
           paused: true,
@@ -337,6 +322,9 @@ describe.skipIf(!binary)("native durable CodeMode stored values", () => {
           "INERT_CODE_MODE_SECRET",
         );
         expect(protections).toEqual([{ seal: true }]);
+        expect(cellIdentities).toEqual([
+          { nextCellId: "2", cellIdGeneration: "1" },
+        ]);
         expect(requests).toHaveLength(1);
         for (let cycle = 0; cycle < 2; cycle++) {
           // Hard-kill every native descendant immediately after the durable ACK.
@@ -414,6 +402,11 @@ describe.skipIf(!binary)("native durable CodeMode stored values", () => {
           paused = next;
           expect(requests).toHaveLength(2 + cycle);
         }
+        expect(cellIdentities).toEqual([
+          { nextCellId: "2", cellIdGeneration: "1" },
+          { nextCellId: "3", cellIdGeneration: "1" },
+          { nextCellId: "4", cellIdGeneration: "1" },
+        ]);
         // Keep the checkpoint owner alive but kill its real CodeMode helper.
         // Explicit live Resume must import the saved data into a replacement host.
         if (process.platform !== "win32") {

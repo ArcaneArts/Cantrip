@@ -1,0 +1,1459 @@
+diff --git a/codex-rs/code-mode-host/src/lib.rs b/codex-rs/code-mode-host/src/lib.rs
+index b534418..98da045 100644
+--- a/codex-rs/code-mode-host/src/lib.rs
++++ b/codex-rs/code-mode-host/src/lib.rs
+@@ -11,6 +11,7 @@ use std::time::Instant;
+ 
+ use anyhow::Context;
+ use anyhow::Result;
++use codex_code_mode_protocol::CodeModeSession;
+ use codex_code_mode_protocol::CodeModeSessionCellExecutionLimits;
+ use codex_code_mode_protocol::host::Capability;
+ use codex_code_mode_protocol::host::CapabilitySet;
+@@ -26,6 +27,7 @@ use codex_code_mode_protocol::host::HostToClient;
+ use codex_code_mode_protocol::host::ProtocolVersion;
+ use codex_code_mode_protocol::host::RequestId;
+ use codex_code_mode_protocol::host::SESSION_RESOURCE_LIMITS_CAPABILITY;
++use codex_code_mode_protocol::host::STORED_STATE_CAPABILITY;
+ use codex_code_mode_protocol::host::SessionId;
+ use codex_code_mode_protocol::host::SupportedProtocolVersions;
+ use codex_code_mode_protocol::host::WireWaitOutcome;
+@@ -277,6 +279,7 @@ async fn negotiate<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+     let host_capabilities = CapabilitySet::try_new(
+         [
+             SESSION_RESOURCE_LIMITS_CAPABILITY,
++            STORED_STATE_CAPABILITY,
+             YIELD_OBSERVATION_CAPABILITY,
+         ]
+         .into_iter()
+@@ -512,6 +515,38 @@ impl HostState {
+                 };
+                 self.respond(request_id, result);
+             }
++            HostRequest::ExportState { session_id } => {
++                let result = match self.session(&session_id) {
++                    Ok(session) => tokio::select! {
++                        biased;
++                        _ = cancellation.cancelled() => Err("code-mode state export cancelled".into()),
++                        result = async {
++                            let state = session.export_state().await?;
++                            // The runtime closes before its final forwarding task.
++                            // Join that producer too, before acknowledging the boundary.
++                            self.peer.wait_for_session_cells(&session_id).await;
++                            Ok(HostResponse::StateExported { session_id, state })
++                        } => result,
++                    },
++                    Err(error) => Err(error),
++                };
++                self.respond(request_id, result);
++            }
++            HostRequest::ImportState { session_id, state } => {
++                let result = match self.session(&session_id) {
++                    Ok(session) => tokio::select! {
++                        biased;
++                        _ = cancellation.cancelled() => Err("code-mode state import cancelled".into()),
++                        result = async {
++                            session.import_state(state).await?;
++                            self.peer.wait_for_session_cells(&session_id).await;
++                            Ok(HostResponse::StateImported { session_id })
++                        } => result,
++                    },
++                    Err(error) => Err(error),
++                };
++                self.respond(request_id, result);
++            }
+             HostRequest::ShutdownSession { session_id } => {
+                 let session = self
+                     .sessions
+@@ -632,6 +667,8 @@ enum RequestKind {
+     Execute,
+     Wait,
+     Terminate,
++    ExportState,
++    ImportState,
+     ShutdownSession,
+ }
+ 
+@@ -642,12 +679,17 @@ impl RequestKind {
+             HostRequest::Execute { .. } => Self::Execute,
+             HostRequest::Wait { .. } => Self::Wait,
+             HostRequest::Terminate { .. } => Self::Terminate,
++            HostRequest::ExportState { .. } => Self::ExportState,
++            HostRequest::ImportState { .. } => Self::ImportState,
+             HostRequest::ShutdownSession { .. } => Self::ShutdownSession,
+         }
+     }
+ 
+     fn is_cancellable(self) -> bool {
+-        matches!(self, Self::Execute | Self::Wait)
++        matches!(
++            self,
++            Self::Execute | Self::Wait | Self::ExportState | Self::ImportState
++        )
+     }
+ 
+     fn as_str(self) -> &'static str {
+@@ -656,6 +698,8 @@ impl RequestKind {
+             Self::Execute => "execute",
+             Self::Wait => "wait",
+             Self::Terminate => "terminate",
++            Self::ExportState => "export_state",
++            Self::ImportState => "import_state",
+             Self::ShutdownSession => "shutdown_session",
+         }
+     }
+diff --git a/codex-rs/code-mode-host/tests/stdio.rs b/codex-rs/code-mode-host/tests/stdio.rs
+index de75d91..9adb762 100644
+--- a/codex-rs/code-mode-host/tests/stdio.rs
++++ b/codex-rs/code-mode-host/tests/stdio.rs
+@@ -1149,3 +1149,239 @@ async fn child_process_loss_cleans_up_and_rebuilds_the_shared_host() {
+         Err(mpsc::error::TryRecvError::Empty)
+     ));
+ }
++
++async fn stored_state_run(session: &Arc<dyn CodeModeSession>, source: &str) -> RuntimeResponse {
++    let (delegate, mut events) = CancellationDelegate::new();
++    let response = execute(session, execute_request(source), delegate).await;
++    assert!(
++        matches!(
++            &response,
++            RuntimeResponse::Result {
++                error_text: None,
++                ..
++            }
++        ),
++        "{response:?}"
++    );
++    assert!(matches!(
++        events.recv().await.expect("actual cell closure"),
++        CallbackEvent::CellClosed(_)
++    ));
++    response
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn framed_stored_state_survives_process_death_with_fresh_and_surviving_providers() {
++    let host = codex_utils_cargo_bin::cargo_bin("codex-code-mode-host").expect("host");
++    let directory = tempfile::tempdir().expect("fixture storage");
++    let program = directory.path().join("state-host.sh");
++    let pid_file = directory.path().join("host.pid");
++    let quote = |value: &std::path::Path| {
++        format!("'{}'", value.display().to_string().replace('\'', "'\\''"))
++    };
++    codex_utils_cargo_bin::write_executable(
++        &program,
++        &format!(
++            "#!/bin/sh\nprintf '%s\\n' \"$$\" >> {}\nexec {} \"$@\"\n",
++            quote(&pid_file),
++            quote(&host)
++        ),
++    )
++    .expect("host wrapper");
++    let provider = ProcessOwnedCodeModeSessionProvider::with_host_program(program.clone());
++    let spare = provider.create_session().await.expect("first namespace");
++    let session = provider.create_session().await.expect("original session");
++    spare.shutdown().await.unwrap();
++    let first = stored_state_run(
++        &session,
++        r#"store("private", {nested:[null,true,2.5],text:"héllo",count:1}); text("saved");"#,
++    )
++    .await;
++    assert!(matches!(first, RuntimeResponse::Result { cell_id, .. } if cell_id.as_str() == "g2:1"));
++    let state = session
++        .export_state()
++        .await
++        .expect("capture actual finalized data");
++    assert_eq!(state.cell_id_generation, 2);
++    assert_eq!(state.next_cell_id, 2);
++    let pid_text = std::fs::read_to_string(&pid_file).expect("wrapper wrote before session opened");
++    let pid = pid_text.lines().last().expect("actual child PID");
++    assert!(
++        tokio::process::Command::new("kill")
++            .args(["-KILL", pid])
++            .status()
++            .await
++            .unwrap()
++            .success()
++    );
++    assert!(session.export_state().await.is_err());
++    assert_eq!(
++        std::fs::read_to_string(&pid_file).unwrap(),
++        pid_text,
++        "export must not start a replacement"
++    );
++
++    let fresh_provider = ProcessOwnedCodeModeSessionProvider::with_host_program(program);
++    let fresh = fresh_provider
++        .create_session()
++        .await
++        .expect("fresh process/session");
++    fresh
++        .import_state(state.clone())
++        .await
++        .expect("import saved namespace into new transport lease");
++    fresh
++        .import_state(state.clone())
++        .await
++        .expect("idempotent lost-ACK retry");
++    assert_eq!(fresh.export_state().await.unwrap(), state);
++    let result = stored_state_run(
++        &fresh,
++        "text(String(load('private').count)); store('private', {count:2});",
++    )
++    .await;
++    assert!(
++        matches!(result, RuntimeResponse::Result { cell_id, content_items, .. }
++        if cell_id.as_str() == "g2:2" && content_items == vec![FunctionCallOutputContentItem::InputText { text:"1".into() }])
++    );
++    assert!(
++        fresh.import_state(state.clone()).await.is_err(),
++        "stale import cannot reset executed state"
++    );
++    let after = fresh.export_state().await.unwrap();
++    assert_eq!(after.next_cell_id, 3);
++    assert_eq!(after.stored_values["private"], json!({"count":2}));
++    let missing = fresh
++        .wait(
++            WaitRequest {
++                cell_id: cell_id("g2:1"),
++                yield_time_ms: 0,
++                max_output_tokens: None,
++            },
++            None,
++        )
++        .await
++        .unwrap();
++    assert!(
++        matches!(missing, WaitOutcome::MissingCell(RuntimeResponse::Result { cell_id, .. }) if cell_id.as_str() == "g2:1")
++    );
++    let other = fresh_provider.create_session().await.unwrap();
++    let other_result = stored_state_run(&other, "text(String(load('private')));").await;
++    assert!(
++        matches!(other_result, RuntimeResponse::Result { cell_id, content_items, .. }
++        if cell_id.as_str() == "g3:1" && content_items == vec![FunctionCallOutputContentItem::InputText { text:"undefined".into() }])
++    );
++
++    session
++        .import_state(state.clone())
++        .await
++        .expect("explicit recovery of lost shared host");
++    assert_eq!(session.export_state().await.unwrap(), state);
++    let restored = stored_state_run(&session, "text(String(load('private').count));").await;
++    assert!(
++        matches!(restored, RuntimeResponse::Result { cell_id, content_items, .. }
++        if cell_id.as_str() == "g2:2" && content_items == vec![FunctionCallOutputContentItem::InputText { text:"1".into() }])
++    );
++    assert_eq!(
++        std::fs::read_to_string(pid_file).unwrap().lines().count(),
++        3
++    );
++    session.shutdown().await.unwrap();
++    fresh.shutdown().await.unwrap();
++    other.shutdown().await.unwrap();
++}
++
++#[tokio::test]
++async fn framed_stored_state_refuses_active_cells_and_retains_live_controls() {
++    let provider = ProcessOwnedCodeModeSessionProvider::with_host_program(
++        codex_utils_cargo_bin::cargo_bin("codex-code-mode-host").unwrap(),
++    );
++    let session = provider.create_session().await.unwrap();
++    let (delegate, mut events) = CancellationDelegate::new();
++    let signal = CancellationToken::new();
++    let mut request =
++        execute_request("await tools.tool_call_fast(); store('finished',true); text('done');");
++    request.enabled_tools = vec![ToolDefinition {
++        name: "tool_call_fast".into(),
++        tool_name: ToolName::plain("tool_call_fast"),
++        description: String::new(),
++        kind: CodeModeToolKind::Function,
++        input_schema: None,
++        input_schema_max_bytes: None,
++        output_schema: None,
++    }];
++    request.yield_time_ms = Some(60_000);
++    let started = session
++        .execute(request, delegate.clone(), Some(signal.clone()))
++        .await
++        .unwrap();
++    let id = started.cell_id.clone();
++    assert_eq!(
++        events.recv().await.unwrap(),
++        CallbackEvent::Started("tool_call_fast".into())
++    );
++    signal.cancel();
++    assert!(matches!(
++        started.initial_response().await.unwrap(),
++        RuntimeResponse::Yielded { .. }
++    ));
++    let error = session.export_state().await.unwrap_err();
++    assert!(error.contains("cells and unconsumed results"), "{error}");
++    delegate.fast_tool_release.add_permits(1);
++    let outcome = session
++        .wait(
++            WaitRequest {
++                cell_id: id,
++                yield_time_ms: 60_000,
++                max_output_tokens: None,
++            },
++            None,
++        )
++        .await
++        .unwrap();
++    assert!(matches!(
++        outcome,
++        WaitOutcome::LiveCell(RuntimeResponse::Result {
++            error_text: None,
++            ..
++        })
++    ));
++    assert!(matches!(
++        events.recv().await.unwrap(),
++        CallbackEvent::CellClosed(_)
++    ));
++    let state = session.export_state().await.unwrap();
++    assert_eq!(state.stored_values["finished"], json!(true));
++    session.shutdown().await.unwrap();
++}
++
++#[tokio::test]
++async fn framed_stored_state_rejects_unsupported_data_and_prevents_generation_wrap() {
++    let provider = ProcessOwnedCodeModeSessionProvider::with_host_program(
++        codex_utils_cargo_bin::cargo_bin("codex-code-mode-host").unwrap(),
++    );
++    let session = provider.create_session().await.unwrap();
++    let original = session.export_state().await.unwrap();
++    let mut invalid = original.clone();
++    invalid.format_version = 99;
++    assert!(session.import_state(invalid).await.is_err());
++    assert_eq!(session.export_state().await.unwrap(), original);
++    let mut state = original;
++    state.cell_id_generation = u64::MAX - 1;
++    session.import_state(state).await.unwrap();
++    let error = provider
++        .create_session()
++        .await
++        .err()
++        .expect("generation exhaustion must fail");
++    assert!(
++        error.contains("exhausted its host generation space"),
++        "{error}"
++    );
++    let result = stored_state_run(&session, "text('retained namespace');").await;
++    assert!(
++        matches!(result, RuntimeResponse::Result { cell_id, .. } if cell_id.as_str() == format!("g{}:1",u64::MAX-1))
++    );
++    session.shutdown().await.unwrap();
++}
+diff --git a/codex-rs/code-mode-protocol/src/host/message.rs b/codex-rs/code-mode-protocol/src/host/message.rs
+index e6a4d8d..79b1915 100644
+--- a/codex-rs/code-mode-protocol/src/host/message.rs
++++ b/codex-rs/code-mode-protocol/src/host/message.rs
+@@ -211,6 +211,13 @@ pub enum HostRequest {
+         #[serde(default, skip_serializing_if = "Option::is_none")]
+         max_output_tokens: Option<usize>,
+     },
++    #[serde(rename = "session/state/export")]
++    ExportState { session_id: SessionId },
++    #[serde(rename = "session/state/import")]
++    ImportState {
++        session_id: SessionId,
++        state: crate::CodeModeSessionState,
++    },
+     #[serde(rename = "session/shutdown")]
+     ShutdownSession { session_id: SessionId },
+ }
+@@ -224,6 +231,13 @@ pub enum HostResponse {
+     ExecutionStarted { cell_id: WireCellId },
+     #[serde(rename = "wait/completed")]
+     WaitCompleted { outcome: WireWaitOutcome },
++    #[serde(rename = "session/state/exported")]
++    StateExported {
++        session_id: SessionId,
++        state: crate::CodeModeSessionState,
++    },
++    #[serde(rename = "session/state/imported")]
++    StateImported { session_id: SessionId },
+     #[serde(rename = "session/closed")]
+     SessionClosed { session_id: SessionId },
+ }
+diff --git a/codex-rs/code-mode-protocol/src/host/mod.rs b/codex-rs/code-mode-protocol/src/host/mod.rs
+index b064cfc..936f2a9 100644
+--- a/codex-rs/code-mode-protocol/src/host/mod.rs
++++ b/codex-rs/code-mode-protocol/src/host/mod.rs
+@@ -21,6 +21,9 @@ pub const BOUNDED_OUTPUT_MAX_BYTES: usize = 1024 * 1024;
+ /// Negotiated support for cell execution resource limits on `session/open`.
+ pub const SESSION_RESOURCE_LIMITS_CAPABILITY: &str = "session-cell-execution-resource-limits";
+ 
++/// Optional data-only export/import of quiescent finalized session state.
++pub const STORED_STATE_CAPABILITY: &str = "stored-state-v2";
++
+ /// Support for yielding an in-flight execute or wait observation.
+ pub const YIELD_OBSERVATION_CAPABILITY: &str = "yield-observation";
+ 
+diff --git a/codex-rs/code-mode-protocol/src/session.rs b/codex-rs/code-mode-protocol/src/session.rs
+index af0df97..5888ed5 100644
+--- a/codex-rs/code-mode-protocol/src/session.rs
++++ b/codex-rs/code-mode-protocol/src/session.rs
+@@ -181,7 +181,9 @@ impl CodeModeSessionDelegate for NoopCodeModeSessionDelegate {
+ #[serde(rename_all = "camelCase", deny_unknown_fields)]
+ pub struct CodeModeSessionState {
+     pub format_version: u32,
++    #[serde(with = "decimal_cell_identity")]
+     pub next_cell_id: u64,
++    #[serde(with = "decimal_cell_identity")]
+     pub cell_id_generation: u64,
+     pub stored_values: BTreeMap<String, JsonValue>,
+ }
+@@ -190,7 +192,7 @@ impl CodeModeSessionState {
+     pub const MAX_BYTES: usize = 32 * 1024 * 1024;
+ 
+     pub fn validate(&self) -> Result<(), String> {
+-        if self.format_version != 1
++        if self.format_version != 2
+             || self.next_cell_id == 0
+             || self.cell_id_generation == 0
+             || self.cell_id_generation == u64::MAX
+@@ -206,6 +208,29 @@ impl CodeModeSessionState {
+     }
+ }
+ 
++// The encrypted resource bridge crosses JavaScript JSON. Decimal strings keep
++// the complete native identity space without Number rounding or ID reuse.
++mod decimal_cell_identity {
++    use serde::{Deserialize, Deserializer, Serializer};
++
++    pub(super) fn serialize<S: Serializer>(value: &u64, serializer: S) -> Result<S::Ok, S::Error> {
++        serializer.serialize_str(&value.to_string())
++    }
++
++    pub(super) fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
++        let text = String::deserialize(deserializer)?;
++        let value: u64 = text
++            .parse()
++            .map_err(|_| serde::de::Error::custom("invalid code-mode cell identity"))?;
++        if value.to_string() != text {
++            return Err(serde::de::Error::custom(
++                "noncanonical code-mode cell identity",
++            ));
++        }
++        Ok(value)
++    }
++}
++
+ /// A durable code-mode session owned by one Codex thread.
+ ///
+ /// Cells executed in the same session share stored values. Separate sessions
+diff --git a/codex-rs/code-mode-protocol/src/session_tests.rs b/codex-rs/code-mode-protocol/src/session_tests.rs
+index d0f6491..82a86ff 100644
+--- a/codex-rs/code-mode-protocol/src/session_tests.rs
++++ b/codex-rs/code-mode-protocol/src/session_tests.rs
+@@ -17,3 +17,34 @@ async fn started_cell_preserves_remote_initial_response_errors() {
+         Err("remote runtime failed".to_string())
+     );
+ }
++
++#[test]
++fn stored_state_identity_survives_json_consumers_without_number_rounding() {
++    use crate::CodeModeSessionState;
++    let state = CodeModeSessionState {
++        format_version: 2,
++        next_cell_id: 9_007_199_254_740_993,
++        cell_id_generation: u64::MAX - 1,
++        stored_values: [("ordinaryJson".into(), serde_json::json!([true, null, 2.5]))].into(),
++    };
++    state.validate().unwrap();
++    let json = serde_json::to_value(&state).unwrap();
++    assert_eq!(json["nextCellId"], "9007199254740993");
++    assert_eq!(json["cellIdGeneration"], "18446744073709551614");
++    let decoded: CodeModeSessionState = serde_json::from_value(json.clone()).unwrap();
++    assert_eq!(decoded, state);
++    for invalid in [
++        serde_json::json!(9007199254740992_u64),
++        serde_json::json!("09007199254740993"),
++        serde_json::json!("18446744073709551616"),
++    ] {
++        let mut invalid_json = json.clone();
++        invalid_json["nextCellId"] = invalid;
++        assert!(serde_json::from_value::<CodeModeSessionState>(invalid_json).is_err());
++    }
++    let legacy = CodeModeSessionState {
++        format_version: 1,
++        ..state
++    };
++    assert!(legacy.validate().unwrap_err().contains("unsupported"));
++}
+diff --git a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
+index 1ece14b..32db3d9 100644
+--- a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
++++ b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
+@@ -161,7 +161,7 @@ impl SessionRuntime {
+         let _admission = self.inner.admission.lock().await;
+         self.join_completed_cells().await?;
+         let state = CodeModeSessionState {
+-            format_version: 1,
++            format_version: 2,
+             next_cell_id: self.inner.next_cell_id.load(Ordering::Relaxed),
+             cell_id_generation: 1,
+             stored_values: self
+diff --git a/codex-rs/code-mode-runtime/src/session_runtime/tests.rs b/codex-rs/code-mode-runtime/src/session_runtime/tests.rs
+index 218515b..28bdb11 100644
+--- a/codex-rs/code-mode-runtime/src/session_runtime/tests.rs
++++ b/codex-rs/code-mode-runtime/src/session_runtime/tests.rs
+@@ -274,7 +274,7 @@ async fn drop_terminates_cells_when_the_registry_is_locked() {
+ async fn stored_state_import_is_atomic_and_rejects_replacement_after_execution() {
+     let runtime = SessionRuntime::new();
+     let original = CodeModeSessionState {
+-        format_version: 1,
++        format_version: 2,
+         next_cell_id: 42,
+         cell_id_generation: 1,
+         stored_values: [(
+@@ -330,7 +330,7 @@ async fn stored_state_validation_does_not_mutate_the_session() {
+     let original = runtime.export_state().await.unwrap();
+     for state in [
+         CodeModeSessionState {
+-            format_version: 2,
++            format_version: 99,
+             ..original.clone()
+         },
+         CodeModeSessionState {
+diff --git a/codex-rs/code-mode/src/remote_session.rs b/codex-rs/code-mode/src/remote_session.rs
+index 4c4c3c2..14dba70 100644
+--- a/codex-rs/code-mode/src/remote_session.rs
++++ b/codex-rs/code-mode/src/remote_session.rs
+@@ -12,6 +12,7 @@ use codex_code_mode_protocol::CodeModeSessionDelegate;
+ use codex_code_mode_protocol::CodeModeSessionProvider;
+ use codex_code_mode_protocol::CodeModeSessionProviderFuture;
+ use codex_code_mode_protocol::CodeModeSessionResultFuture;
++use codex_code_mode_protocol::CodeModeSessionState;
+ use codex_code_mode_protocol::ExecuteRequest;
+ use codex_code_mode_protocol::StartedCell;
+ use codex_code_mode_protocol::TerminateRequest;
+@@ -187,14 +188,19 @@ impl OwnedCodeModeHost {
+             .cloned()
+     }
+ 
+-    fn allocate_session(&self) -> RemoteSession {
+-        // The shared ordinal also keeps cell IDs distinct after a thread reload.
+-        let generation = self.next_session_id.fetch_add(1, Ordering::Relaxed);
++    fn allocate_session(&self) -> Result<RemoteSession, String> {
++        // Imported public namespaces also reserve ordinals for later bindings.
++        let generation = self
++            .next_session_id
++            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |generation| {
++                generation.checked_add(1)
++            })
++            .map_err(|_| "code-mode session exhausted its host generation space".to_string())?;
+         let id = match SessionId::new(format!("session-{generation}")) {
+             Ok(session_id) => session_id,
+             Err(_) => unreachable!("a generated code-mode session ID is nonempty"),
+         };
+-        RemoteSession { id, generation }
++        Ok(RemoteSession { id, generation })
+     }
+ }
+ 
+@@ -223,6 +229,7 @@ struct SessionInner {
+     shutdown_requested: AtomicBool,
+     shutdown_result: StdMutex<Option<ShutdownResultReceiver>>,
+     retired_cleanups: StdMutex<Vec<SessionCleanup>>,
++    state_admission: tokio::sync::RwLock<()>,
+ }
+ 
+ /// A logical code-mode session assigned to a process host.
+@@ -249,6 +256,7 @@ impl ProcessOwnedCodeModeSession {
+                 shutdown_requested: AtomicBool::new(false),
+                 shutdown_result: StdMutex::new(None),
+                 retired_cleanups: StdMutex::new(Vec::new()),
++                state_admission: tokio::sync::RwLock::new(()),
+             }),
+         }
+     }
+@@ -263,6 +271,7 @@ impl ProcessOwnedCodeModeSession {
+         delegate: Arc<dyn CodeModeSessionDelegate>,
+         preempt: Option<CancellationToken>,
+     ) -> Result<StartedCell, String> {
++        let _admission = self.inner.state_admission.read().await;
+         let binding = self.connection().await?;
+         let delegate = Arc::new(TracedCellDelegate {
+             delegate,
+@@ -312,7 +321,7 @@ impl SessionInner {
+                     .unwrap_or_else(std::sync::PoisonError::into_inner);
+                 match &*state {
+                     SessionState::New => {
+-                        let remote = self.host.allocate_session();
++                        let remote = self.host.allocate_session()?;
+                         let (result_tx, result_rx) = watch::channel(None);
+                         *state = SessionState::Opening {
+                             remote: remote.clone(),
+@@ -555,6 +564,56 @@ impl CodeModeSession for ProcessOwnedCodeModeSession {
+         Box::pin(ProcessOwnedCodeModeSession::terminate(self, request))
+     }
+ 
++    fn export_state(&self) -> CodeModeSessionResultFuture<'_, CodeModeSessionState> {
++        Box::pin(async move {
++            let _admission = self.inner.state_admission.write().await;
++            let binding = {
++                let state = self
++                    .inner
++                    .state
++                    .lock()
++                    .unwrap_or_else(std::sync::PoisonError::into_inner);
++                match &*state {
++                    SessionState::Open(binding)
++                        if !self.inner.shutdown_requested.load(Ordering::Acquire) =>
++                    {
++                        binding.clone()
++                    }
++                    _ => {
++                        return Err(
++                            "code-mode state export requires its existing open session".into()
++                        );
++                    }
++                }
++            };
++            // Do not call connection(): a dead actual host must not become an
++            // apparently empty replacement snapshot.
++            binding.connection.export_state(binding.remote).await
++        })
++    }
++
++    fn import_state(&self, state: CodeModeSessionState) -> CodeModeSessionResultFuture<'_, ()> {
++        Box::pin(async move {
++            state.validate()?;
++            let _admission = self.inner.state_admission.write().await;
++            // Explicit import may replace a lost transport. Public namespaces
++            // belong to the driver's session record, not this fresh lease ID.
++            let binding = self.connection().await?;
++            self.inner
++                .host
++                .next_session_id
++                .fetch_max(state.cell_id_generation + 1, Ordering::Relaxed);
++            binding
++                .connection
++                .import_state(binding.remote, state)
++                .await?;
++            if self.inner.shutdown_requested.load(Ordering::Acquire) {
++                return Err("code-mode state restoration was superseded by shutdown".into());
++            }
++            Ok(())
++        })
++    }
++
+     fn shutdown<'a>(&'a self) -> CodeModeSessionResultFuture<'a, ()> {
+         Box::pin(ProcessOwnedCodeModeSession::shutdown(self))
+     }
+diff --git a/codex-rs/code-mode/src/remote_session/connection.rs b/codex-rs/code-mode/src/remote_session/connection.rs
+index ed5a220..7d8a6ec 100644
+--- a/codex-rs/code-mode/src/remote_session/connection.rs
++++ b/codex-rs/code-mode/src/remote_session/connection.rs
+@@ -12,6 +12,7 @@ use std::time::Duration;
+ use codex_code_mode_protocol::CellId;
+ use codex_code_mode_protocol::CodeModeSessionCellExecutionLimits;
+ use codex_code_mode_protocol::CodeModeSessionDelegate;
++use codex_code_mode_protocol::CodeModeSessionState;
+ use codex_code_mode_protocol::ExecuteRequest;
+ use codex_code_mode_protocol::StartedCell;
+ use codex_code_mode_protocol::WaitOutcome;
+@@ -27,6 +28,7 @@ use codex_code_mode_protocol::host::HostToClient;
+ use codex_code_mode_protocol::host::ProtocolVersion;
+ use codex_code_mode_protocol::host::RequestId;
+ use codex_code_mode_protocol::host::SESSION_RESOURCE_LIMITS_CAPABILITY;
++use codex_code_mode_protocol::host::STORED_STATE_CAPABILITY;
+ use codex_code_mode_protocol::host::SupportedProtocolVersions;
+ use codex_code_mode_protocol::host::YIELD_OBSERVATION_CAPABILITY;
+ use codex_protocol::shell_environment::scrub_non_inheritable_env_vars;
+@@ -209,9 +211,12 @@ impl Connection {
+                 .map_err(|error| error.to_string())?;
+             let yield_capability =
+                 Capability::new(YIELD_OBSERVATION_CAPABILITY).map_err(|error| error.to_string())?;
+-            let optional_capabilities =
+-                CapabilitySet::try_new([session_limits_capability, yield_capability])
+-                    .map_err(|error| error.to_string())?;
++            let optional_capabilities = CapabilitySet::try_new([
++                session_limits_capability,
++                yield_capability,
++                Capability::new(STORED_STATE_CAPABILITY).map_err(|error| error.to_string())?,
++            ])
++            .map_err(|error| error.to_string())?;
+             let hello = ClientHello::new(
+                 SupportedProtocolVersions::try_new([ProtocolVersion::V1])
+                     .map_err(|err| err.to_string())?,
+@@ -449,6 +454,63 @@ impl Connection {
+         .await
+     }
+ 
++    fn require_stored_state(&self) -> Result<(), String> {
++        if !self
++            .capabilities
++            .iter()
++            .any(|capability| capability.as_str() == STORED_STATE_CAPABILITY)
++        {
++            return Err("this code-mode host does not support durable stored state; live Resume and Stop remain available".into());
++        }
++        Ok(())
++    }
++
++    pub(super) async fn export_state(
++        &self,
++        session: RemoteSession,
++    ) -> Result<CodeModeSessionState, String> {
++        self.require_stored_state()?;
++        let cancellation = CallerCancellation::new();
++        let (response_tx, response_rx) = oneshot::channel();
++        let result = self
++            .with_transport_deadline(Duration::ZERO, "state export", async {
++                self.send(DriverCommand::ExportState {
++                    session,
++                    caller_cancellation: cancellation.token(),
++                    response_tx,
++                })
++                .await?;
++                self.receive(response_rx).await
++            })
++            .await;
++        cancellation.disarm();
++        result
++    }
++
++    pub(super) async fn import_state(
++        &self,
++        session: RemoteSession,
++        state: CodeModeSessionState,
++    ) -> Result<(), String> {
++        self.require_stored_state()?;
++        let cancellation = CallerCancellation::new();
++        let (response_tx, response_rx) = oneshot::channel();
++        let result = self
++            .with_transport_deadline(Duration::ZERO, "state import", async {
++                self.send(DriverCommand::ImportState {
++                    session,
++                    state,
++                    caller_cancellation: cancellation.token(),
++                    response_tx,
++                })
++                .await?;
++                self.receive(response_rx).await
++            })
++            .await;
++        cancellation.disarm();
++        result
++    }
++
+     pub(super) async fn shutdown_session(&self, session: RemoteSession) -> Result<(), String> {
+         let (response_tx, response_rx) = oneshot::channel();
+         self.send(DriverCommand::ShutdownSession {
+diff --git a/codex-rs/code-mode/src/remote_session/connection/driver/commands.rs b/codex-rs/code-mode/src/remote_session/connection/driver/commands.rs
+index 3c4e050..913e546 100644
+--- a/codex-rs/code-mode/src/remote_session/connection/driver/commands.rs
++++ b/codex-rs/code-mode/src/remote_session/connection/driver/commands.rs
+@@ -68,6 +68,55 @@ impl ConnectionDriver {
+                 cell_id,
+                 response_tx,
+             } => self.terminate(session, cell_id, response_tx),
++            DriverCommand::ExportState {
++                session,
++                caller_cancellation,
++                response_tx,
++            } => {
++                if let Err(error) = self.sessions.require_ready(&session) {
++                    let _ = response_tx.send(Err(error));
++                    return true;
++                }
++                self.send_request(
++                    HostRequest::ExportState {
++                        session_id: session.id.clone(),
++                    },
++                    PendingRequest::ExportState {
++                        session,
++                        cancellation: CancellableRequest::new(caller_cancellation),
++                        response_tx,
++                    },
++                )
++            }
++            DriverCommand::ImportState {
++                session,
++                mut state,
++                caller_cancellation,
++                response_tx,
++            } => {
++                if let Err(error) = self
++                    .sessions
++                    .require_ready(&session)
++                    .and_then(|_| state.validate())
++                {
++                    let _ = response_tx.send(Err(error));
++                    return true;
++                }
++                let generation = state.cell_id_generation;
++                state.cell_id_generation = 1;
++                self.send_request(
++                    HostRequest::ImportState {
++                        session_id: session.id.clone(),
++                        state,
++                    },
++                    PendingRequest::ImportState {
++                        session,
++                        generation,
++                        cancellation: CancellableRequest::new(caller_cancellation),
++                        response_tx,
++                    },
++                )
++            }
+             DriverCommand::ShutdownSession {
+                 session,
+                 response_tx,
+@@ -213,7 +262,14 @@ impl ConnectionDriver {
+             let _ = response_tx.send(Err(err));
+             return true;
+         }
+-        let request = match remote_wait_request(&session, request) {
++        let public = match self.sessions.public_session(&session) {
++            Ok(public) => public,
++            Err(error) => {
++                let _ = response_tx.send(Err(error));
++                return true;
++            }
++        };
++        let request = match remote_wait_request(&public, request) {
+             Ok(request) => request,
+             Err(err) => {
+                 let _ = response_tx.send(Err(err));
+@@ -223,6 +279,7 @@ impl ConnectionDriver {
+         if self.requests.has_cancelled_wait(&session, &request.cell_id) {
+             self.requests.push_deferred_wait(DeferredWait {
+                 session,
++                generation: public.generation,
+                 request,
+                 caller_cancellation,
+                 yield_signal,
+@@ -232,6 +289,7 @@ impl ConnectionDriver {
+         }
+         self.start_wait(
+             session,
++            public.generation,
+             request,
+             caller_cancellation,
+             yield_signal,
+@@ -242,6 +300,7 @@ impl ConnectionDriver {
+     pub(super) fn start_wait(
+         &mut self,
+         session: RemoteSession,
++        generation: u64,
+         request: WireWaitRequest,
+         caller_cancellation: CancellationToken,
+         yield_signal: Option<CancellationToken>,
+@@ -256,6 +315,7 @@ impl ConnectionDriver {
+             },
+             PendingRequest::Wait {
+                 session,
++                generation,
+                 cell_id,
+                 cancellation: CancellableRequest::new(caller_cancellation),
+                 yield_observation: ObservationYield::new(yield_signal),
+@@ -274,7 +334,14 @@ impl ConnectionDriver {
+             let _ = response_tx.send(Err(err));
+             return true;
+         }
+-        let cell_id = match remote_cell_id(&session, &cell_id) {
++        let public = match self.sessions.public_session(&session) {
++            Ok(public) => public,
++            Err(error) => {
++                let _ = response_tx.send(Err(error));
++                return true;
++            }
++        };
++        let cell_id = match remote_cell_id(&public, &cell_id) {
+             Ok(cell_id) => cell_id,
+             Err(err) => {
+                 let _ = response_tx.send(Err(err));
+@@ -289,7 +356,7 @@ impl ConnectionDriver {
+                 max_output_tokens: None,
+             },
+             PendingRequest::Terminate {
+-                session,
++                generation: public.generation,
+                 cell_id: pending_cell_id,
+                 response_tx,
+             },
+diff --git a/codex-rs/code-mode/src/remote_session/connection/driver/responses.rs b/codex-rs/code-mode/src/remote_session/connection/driver/responses.rs
+index f3bd836..7b73fb3 100644
+--- a/codex-rs/code-mode/src/remote_session/connection/driver/responses.rs
++++ b/codex-rs/code-mode/src/remote_session/connection/driver/responses.rs
+@@ -40,6 +40,7 @@ impl ConnectionDriver {
+             }
+             if !self.start_wait(
+                 wait.session,
++                wait.generation,
+                 wait.request,
+                 wait.caller_cancellation,
+                 wait.yield_signal,
+@@ -189,28 +190,30 @@ impl ConnectionDriver {
+                     // The host owns a checked, never-reused ID sequence. Retain only live
+                     // IDs so client memory scales with concurrency, not session lifetime.
+                     let remote_cell_id = cell_id.clone();
+-                    let public_id = match self.sessions.admit_cell(&session, cell_id, delegate) {
+-                        Ok(public_id) => public_id,
+-                        Err(CellAdmissionError::MissingSession) => {
+-                            let _ = response_tx
+-                                .send(Err("code-mode session closed during execute".to_string()));
+-                            return true;
+-                        }
+-                        Err(CellAdmissionError::DuplicateCell) => {
+-                            let reason = format!(
+-                                "code-mode host reused live cell {} in session {}",
+-                                remote_cell_id.as_str(),
+-                                session.id
+-                            );
+-                            let _ = response_tx.send(Err(reason.clone()));
+-                            self.fail(reason);
+-                            return false;
+-                        }
+-                    };
++                    let (public_id, generation) =
++                        match self.sessions.admit_cell(&session, cell_id, delegate) {
++                            Ok(public_id) => public_id,
++                            Err(CellAdmissionError::MissingSession) => {
++                                let _ = response_tx.send(Err(
++                                    "code-mode session closed during execute".to_string(),
++                                ));
++                                return true;
++                            }
++                            Err(CellAdmissionError::DuplicateCell) => {
++                                let reason = format!(
++                                    "code-mode host reused live cell {} in session {}",
++                                    remote_cell_id.as_str(),
++                                    session.id
++                                );
++                                let _ = response_tx.send(Err(reason.clone()));
++                                self.fail(reason);
++                                return false;
++                            }
++                        };
+                     self.requests.insert_initial_response(
+                         id,
+                         InitialResponse {
+-                            generation: session.generation,
++                            generation,
+                             cell_id: remote_cell_id.clone(),
+                             response_tx: initial_response_tx,
+                             _yield_observation: yield_observation,
+@@ -247,7 +250,8 @@ impl ConnectionDriver {
+                 }
+             },
+             PendingRequest::Wait {
+-                session,
++                session: _,
++                generation,
+                 cell_id,
+                 cancellation: _,
+                 yield_observation: _,
+@@ -265,7 +269,7 @@ impl ConnectionDriver {
+                             self.fail(reason);
+                             return false;
+                         }
+-                        Ok(public_wait_outcome(session.generation, outcome.into()))
++                        Ok(public_wait_outcome(generation, outcome.into()))
+                     }
+                     Ok(_) => {
+                         let reason = "code-mode host returned an invalid cell response".to_string();
+@@ -278,7 +282,7 @@ impl ConnectionDriver {
+                 let _ = response_tx.send(result);
+             }
+             PendingRequest::Terminate {
+-                session,
++                generation,
+                 cell_id,
+                 response_tx,
+             } => {
+@@ -294,7 +298,7 @@ impl ConnectionDriver {
+                             self.fail(reason);
+                             return false;
+                         }
+-                        public_wait_outcome(session.generation, outcome.into())
++                        public_wait_outcome(generation, outcome.into())
+                     }
+                     Ok(_) => {
+                         let reason = "code-mode host returned an invalid cell response".to_string();
+@@ -309,6 +313,42 @@ impl ConnectionDriver {
+                 };
+                 let _ = response_tx.send(Ok(result));
+             }
++            PendingRequest::ExportState {
++                session,
++                response_tx,
++                ..
++            } => {
++                let result = match result {
++                    Ok(HostResponse::StateExported {
++                        session_id,
++                        mut state,
++                    }) if session_id == session.id => {
++                        self.sessions.public_session(&session).and_then(|public| {
++                            state.cell_id_generation = public.generation;
++                            state.validate()?;
++                            Ok(state)
++                        })
++                    }
++                    Ok(_) => Err("code-mode host returned an invalid state export response".into()),
++                    Err(error) => Err(error),
++                };
++                let _ = response_tx.send(result);
++            }
++            PendingRequest::ImportState {
++                session,
++                generation,
++                response_tx,
++                ..
++            } => {
++                let result = match result {
++                    Ok(HostResponse::StateImported { session_id }) if session_id == session.id => {
++                        self.sessions.set_public_generation(&session, generation)
++                    }
++                    Ok(_) => Err("code-mode host returned an invalid state import response".into()),
++                    Err(error) => Err(error),
++                };
++                let _ = response_tx.send(result);
++            }
+             PendingRequest::ShutdownSession {
+                 session,
+                 response_tx,
+@@ -428,6 +468,13 @@ impl ConnectionDriver {
+         }
+         let (response_tx, response_rx) = oneshot::channel();
+         drop(response_rx);
++        let generation = match self.sessions.public_session(&session) {
++            Ok(public) => public.generation,
++            Err(error) => {
++                self.fail(error);
++                return false;
++            }
++        };
+         self.send_request(
+             HostRequest::Terminate {
+                 session_id: session.id.clone(),
+@@ -435,7 +482,7 @@ impl ConnectionDriver {
+                 max_output_tokens: None,
+             },
+             PendingRequest::Terminate {
+-                session,
++                generation,
+                 cell_id,
+                 response_tx,
+             },
+diff --git a/codex-rs/code-mode/src/remote_session/connection/driver/session_registry.rs b/codex-rs/code-mode/src/remote_session/connection/driver/session_registry.rs
+index d3dda96..c25826f 100644
+--- a/codex-rs/code-mode/src/remote_session/connection/driver/session_registry.rs
++++ b/codex-rs/code-mode/src/remote_session/connection/driver/session_registry.rs
+@@ -34,6 +34,7 @@ pub(super) enum CellAdmissionError {
+ 
+ struct SessionRecord {
+     remote: RemoteSession,
++    public_generation: u64,
+     cleanup: SessionCleanup,
+     phase: SessionPhase,
+     cells: HashMap<WireCellId, CellOwner>,
+@@ -70,6 +71,7 @@ impl SessionRegistry {
+         self.records.insert(
+             session.id.clone(),
+             SessionRecord {
++                public_generation: session.generation,
+                 remote: session,
+                 cleanup,
+                 phase: SessionPhase::Ready,
+@@ -92,6 +94,40 @@ impl SessionRegistry {
+         Ok(())
+     }
+ 
++    /// Live transport identity stays unchanged when a saved public namespace is
++    /// imported. The driver commits this before sending the import result, so
++    /// cancellation or a lost caller acknowledgement cannot strand the binding.
++    pub(super) fn set_public_generation(
++        &mut self,
++        session: &RemoteSession,
++        generation: u64,
++    ) -> Result<(), String> {
++        self.require_ready(session)?;
++        let record = self
++            .records
++            .get_mut(&session.id)
++            .expect("validated session");
++        if !record.cells.is_empty() {
++            return Err("code-mode namespace import still has live client cells".into());
++        }
++        record.public_generation = generation;
++        Ok(())
++    }
++
++    pub(super) fn public_session(&self, session: &RemoteSession) -> Result<RemoteSession, String> {
++        let record = self
++            .records
++            .get(&session.id)
++            .ok_or_else(|| "code-mode public namespace is no longer available".to_string())?;
++        if record.remote != *session {
++            return Err("stale code-mode session generation".into());
++        }
++        Ok(RemoteSession {
++            id: session.id.clone(),
++            generation: record.public_generation,
++        })
++    }
++
+     pub(super) fn begin_shutdown(&mut self, session: &RemoteSession) -> Result<(), String> {
+         let record = self
+             .records
+@@ -127,14 +163,14 @@ impl SessionRegistry {
+         session: &RemoteSession,
+         cell_id: WireCellId,
+         delegate: Arc<dyn CodeModeSessionDelegate>,
+-    ) -> Result<CellId, CellAdmissionError> {
++    ) -> Result<(CellId, u64), CellAdmissionError> {
+         let Some(record) = self.records.get_mut(&session.id) else {
+             return Err(CellAdmissionError::MissingSession);
+         };
+         if record.cells.contains_key(&cell_id) {
+             return Err(CellAdmissionError::DuplicateCell);
+         }
+-        let public_id = public_cell_id(session.generation, &cell_id);
++        let public_id = public_cell_id(record.public_generation, &cell_id);
+         record.cells.insert(
+             cell_id,
+             CellOwner {
+@@ -143,7 +179,7 @@ impl SessionRegistry {
+                 delegate,
+             },
+         );
+-        Ok(public_id)
++        Ok((public_id, record.public_generation))
+     }
+ 
+     pub(super) fn delegate_target(
+diff --git a/codex-rs/code-mode/src/remote_session/connection/driver/types.rs b/codex-rs/code-mode/src/remote_session/connection/driver/types.rs
+index 8aed649..7a0333c 100644
+--- a/codex-rs/code-mode/src/remote_session/connection/driver/types.rs
++++ b/codex-rs/code-mode/src/remote_session/connection/driver/types.rs
+@@ -3,6 +3,7 @@ use std::sync::Arc;
+ use codex_code_mode_protocol::CellId;
+ use codex_code_mode_protocol::CodeModeSessionCellExecutionLimits;
+ use codex_code_mode_protocol::CodeModeSessionDelegate;
++use codex_code_mode_protocol::CodeModeSessionState;
+ use codex_code_mode_protocol::ExecuteRequest;
+ use codex_code_mode_protocol::RuntimeResponse;
+ use codex_code_mode_protocol::StartedCell;
+@@ -56,6 +57,17 @@ pub(in crate::remote_session::connection) enum DriverCommand {
+         cell_id: CellId,
+         response_tx: oneshot::Sender<Result<WaitOutcome, String>>,
+     },
++    ExportState {
++        session: RemoteSession,
++        caller_cancellation: CancellationToken,
++        response_tx: oneshot::Sender<Result<CodeModeSessionState, String>>,
++    },
++    ImportState {
++        session: RemoteSession,
++        state: CodeModeSessionState,
++        caller_cancellation: CancellationToken,
++        response_tx: oneshot::Sender<Result<(), String>>,
++    },
+     ShutdownSession {
+         session: RemoteSession,
+         response_tx: oneshot::Sender<Result<(), String>>,
+@@ -181,16 +193,28 @@ pub(super) enum PendingRequest {
+     },
+     Wait {
+         session: RemoteSession,
++        generation: u64,
+         cell_id: WireCellId,
+         cancellation: CancellableRequest,
+         yield_observation: ObservationYield,
+         response_tx: oneshot::Sender<Result<WaitOutcome, String>>,
+     },
+     Terminate {
+-        session: RemoteSession,
++        generation: u64,
+         cell_id: WireCellId,
+         response_tx: oneshot::Sender<Result<WaitOutcome, String>>,
+     },
++    ExportState {
++        session: RemoteSession,
++        cancellation: CancellableRequest,
++        response_tx: oneshot::Sender<Result<CodeModeSessionState, String>>,
++    },
++    ImportState {
++        session: RemoteSession,
++        generation: u64,
++        cancellation: CancellableRequest,
++        response_tx: oneshot::Sender<Result<(), String>>,
++    },
+     ShutdownSession {
+         session: RemoteSession,
+         response_tx: oneshot::Sender<Result<(), String>>,
+@@ -199,6 +223,7 @@ pub(super) enum PendingRequest {
+ 
+ pub(super) struct DeferredWait {
+     pub(super) session: RemoteSession,
++    pub(super) generation: u64,
+     pub(super) request: WireWaitRequest,
+     pub(super) caller_cancellation: CancellationToken,
+     pub(super) yield_signal: Option<CancellationToken>,
+@@ -210,7 +235,9 @@ impl PendingRequest {
+         match self {
+             Self::OpenSession { cancellation, .. }
+             | Self::Execute { cancellation, .. }
+-            | Self::Wait { cancellation, .. } => Some(cancellation),
++            | Self::Wait { cancellation, .. }
++            | Self::ExportState { cancellation, .. }
++            | Self::ImportState { cancellation, .. } => Some(cancellation),
+             Self::Terminate { .. } | Self::ShutdownSession { .. } => None,
+         }
+     }
+@@ -229,7 +256,12 @@ impl PendingRequest {
+ 
+     pub(super) fn fail(self, reason: String) {
+         match self {
+-            Self::OpenSession { response_tx, .. } | Self::ShutdownSession { response_tx, .. } => {
++            Self::OpenSession { response_tx, .. }
++            | Self::ImportState { response_tx, .. }
++            | Self::ShutdownSession { response_tx, .. } => {
++                let _ = response_tx.send(Err(reason));
++            }
++            Self::ExportState { response_tx, .. } => {
+                 let _ = response_tx.send(Err(reason));
+             }
+             Self::Execute { response_tx, .. } => {
+diff --git a/codex-rs/code-mode/src/remote_session/connection/driver_tests.rs b/codex-rs/code-mode/src/remote_session/connection/driver_tests.rs
+index 99e6536..08e91aa 100644
+--- a/codex-rs/code-mode/src/remote_session/connection/driver_tests.rs
++++ b/codex-rs/code-mode/src/remote_session/connection/driver_tests.rs
+@@ -2100,3 +2100,216 @@ async fn dropped_shutdown_waiter_does_not_abort_remote_cleanup() {
+         Err(mpsc::error::TryRecvError::Empty)
+     ));
+ }
++
++fn saved_state(generation: u64) -> codex_code_mode_protocol::CodeModeSessionState {
++    codex_code_mode_protocol::CodeModeSessionState {
++        format_version: 2,
++        next_cell_id: 42,
++        cell_id_generation: generation,
++        stored_values: [("saved".into(), serde_json::json!({"count":7}))].into(),
++    }
++}
++
++#[tokio::test]
++async fn stored_state_old_host_refuses_new_controls_without_breaking_live_session() {
++    let mut harness = DriverHarness::start();
++    let session = remote_session();
++    let _cleanup = harness.open(session.clone()).await;
++    let connection = Connection {
++        command_tx: harness.command_tx.clone(),
++        execute_claim_tx: harness.execute_claim_tx.clone(),
++        alive: Arc::clone(&harness.alive),
++        failure: Arc::clone(&harness.failure),
++        cancellation: harness.cancellation.clone(),
++        capabilities: CapabilitySet::empty(),
++    };
++    assert!(
++        connection
++            .export_state(session.clone())
++            .await
++            .unwrap_err()
++            .contains("does not support durable stored state")
++    );
++    assert!(
++        connection
++            .import_state(session.clone(), saved_state(1))
++            .await
++            .unwrap_err()
++            .contains("does not support durable stored state")
++    );
++    assert!(matches!(
++        harness.outgoing_rx.try_recv(),
++        Err(mpsc::error::TryRecvError::Empty)
++    ));
++    let started = harness
++        .start_cell(session, 2, "1", Arc::new(RecordingDelegate::default()))
++        .await;
++    assert_eq!(started.cell_id.as_str(), "1");
++    assert!(harness.alive.load(Ordering::Acquire));
++}
++
++#[tokio::test]
++async fn stored_state_lost_import_reply_commits_namespace_without_changing_live_lease() {
++    let mut harness = DriverHarness::start();
++    let session = remote_session();
++    let _cleanup = harness.open(session.clone()).await;
++    let cancellation = CancellationToken::new();
++    let (reply, receiver) = oneshot::channel();
++    harness
++        .command_tx
++        .send(DriverCommand::ImportState {
++            session: session.clone(),
++            state: saved_state(9),
++            caller_cancellation: cancellation.clone(),
++            response_tx: reply,
++        })
++        .await
++        .unwrap();
++    let frame = harness.outgoing_rx.recv().await.unwrap();
++    assert!(
++        matches!(EncodedFrame::decode_framed::<ClientToHost>(&frame.into_framed_bytes()).unwrap(),
++        ClientToHost::Request { id, request: HostRequest::ImportState { state, .. } }
++        if id == RequestId::new(2) && state.cell_id_generation == 1)
++    );
++    // Cancel after the host accepted the operation, before its reply arrives.
++    // The late successful reply must settle driver metadata even with no caller.
++    drop(receiver);
++    cancellation.cancel();
++    let frame = harness.outgoing_rx.recv().await.unwrap();
++    assert!(
++        matches!(EncodedFrame::decode_framed::<ClientToHost>(&frame.into_framed_bytes()).unwrap(),
++        ClientToHost::CancelRequest { id } if id == RequestId::new(2))
++    );
++    harness
++        .event_tx
++        .send(DriverEvent::HostMessage(HostToClient::Response {
++            id: RequestId::new(2),
++            result: WireResult::Ok {
++                value: HostResponse::StateImported {
++                    session_id: session.id.clone(),
++                },
++            },
++        }))
++        .await
++        .unwrap();
++
++    let (reply, receiver) = oneshot::channel();
++    harness
++        .command_tx
++        .send(DriverCommand::ExportState {
++            session: session.clone(),
++            caller_cancellation: CancellationToken::new(),
++            response_tx: reply,
++        })
++        .await
++        .unwrap();
++    let frame = harness.outgoing_rx.recv().await.unwrap();
++    assert!(
++        matches!(EncodedFrame::decode_framed::<ClientToHost>(&frame.into_framed_bytes()).unwrap(),
++        ClientToHost::Request { id, request: HostRequest::ExportState { .. } } if id == RequestId::new(3))
++    );
++    harness
++        .event_tx
++        .send(DriverEvent::HostMessage(HostToClient::Response {
++            id: RequestId::new(3),
++            result: WireResult::Ok {
++                value: HostResponse::StateExported {
++                    session_id: session.id.clone(),
++                    state: saved_state(1),
++                },
++            },
++        }))
++        .await
++        .unwrap();
++    assert_eq!(receiver.await.unwrap().unwrap(), saved_state(9));
++    let (reply, receiver) = oneshot::channel();
++    harness
++        .command_tx
++        .send(DriverCommand::ImportState {
++            session: session.clone(),
++            state: saved_state(9),
++            caller_cancellation: CancellationToken::new(),
++            response_tx: reply,
++        })
++        .await
++        .unwrap();
++    harness.outgoing_rx.recv().await.unwrap();
++    harness
++        .event_tx
++        .send(DriverEvent::HostMessage(HostToClient::Response {
++            id: RequestId::new(4),
++            result: WireResult::Ok {
++                value: HostResponse::StateImported {
++                    session_id: session.id.clone(),
++                },
++            },
++        }))
++        .await
++        .unwrap();
++    receiver.await.unwrap().unwrap();
++    let started = harness
++        .start_cell(
++            session.clone(),
++            5,
++            "42",
++            Arc::new(RecordingDelegate::default()),
++        )
++        .await;
++    assert_eq!(started.cell_id.as_str(), "g9:42");
++    harness
++        .event_tx
++        .send(DriverEvent::HostMessage(HostToClient::InitialResponse {
++            id: RequestId::new(5),
++            result: WireResult::Ok {
++                value: WireRuntimeResponse::Yielded {
++                    cell_id: CellId::new("42".into()).into(),
++                    content_items: vec![],
++                    code_mode_host_duration_ns: 1,
++                },
++            },
++        }))
++        .await
++        .unwrap();
++    assert!(
++        matches!(started.initial_response().await.unwrap(), codex_code_mode_protocol::RuntimeResponse::Yielded { cell_id, .. } if cell_id.as_str() == "g9:42")
++    );
++    assert!(harness.alive.load(Ordering::Acquire));
++}
++
++#[tokio::test]
++async fn stored_state_rejects_foreign_export_response_without_accepting_empty_state() {
++    let mut harness = DriverHarness::start();
++    let session = remote_session();
++    let _cleanup = harness.open(session.clone()).await;
++    let (reply, receiver) = oneshot::channel();
++    harness
++        .command_tx
++        .send(DriverCommand::ExportState {
++            session,
++            caller_cancellation: CancellationToken::new(),
++            response_tx: reply,
++        })
++        .await
++        .unwrap();
++    harness.outgoing_rx.recv().await.unwrap();
++    harness
++        .event_tx
++        .send(DriverEvent::HostMessage(HostToClient::Response {
++            id: RequestId::new(2),
++            result: WireResult::Ok {
++                value: HostResponse::StateExported {
++                    session_id: SessionId::new("foreign-session").unwrap(),
++                    state: saved_state(1),
++                },
++            },
++        }))
++        .await
++        .unwrap();
++    assert!(
++        receiver
++            .await
++            .unwrap()
++            .unwrap_err()
++            .contains("invalid state export response")
++    );
++}
+diff --git a/codex-rs/core/src/session/durable_suspension.rs b/codex-rs/core/src/session/durable_suspension.rs
+index 2131740..f01f3e7 100644
+--- a/codex-rs/core/src/session/durable_suspension.rs
++++ b/codex-rs/core/src/session/durable_suspension.rs
+@@ -37,7 +37,7 @@ use std::sync::atomic::AtomicBool;
+ use std::sync::atomic::AtomicU64;
+ use std::sync::atomic::Ordering;
+ 
+-pub(crate) const RUNTIME: &str = concat!(env!("CARGO_PKG_VERSION"), "/cantrip-suspension-v7");
++pub(crate) const RUNTIME: &str = concat!(env!("CARGO_PKG_VERSION"), "/cantrip-suspension-v8");
+ 
+ #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+ #[serde(rename_all = "camelCase", deny_unknown_fields)]
