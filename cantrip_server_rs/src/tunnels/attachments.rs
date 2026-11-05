@@ -1,5 +1,8 @@
+use super::catalog::source;
 use super::*;
 pub struct CreateAttachment {
+    pub kind: Option<String>,
+    pub expected_revision: Option<i64>,
     pub client: String,
     pub expires: Time,
     pub secret_expires: Time,
@@ -25,7 +28,7 @@ impl Repository {
         secret: Option<&str>,
     ) -> Result<Option<Value>> {
         let now = self.now();
-        let rows=self.database.query("SELECT to_jsonb(a)::text,to_jsonb(t)::text FROM tunnel_attachments a INNER JOIN tunnels t ON t.id=a.tunnel_id WHERE a.id=$1 AND a.kind='desktop-loopback' AND a.expires_at>$2 AND a.status<>'stopped' AND ($3::text IS NULL OR t.owner_id=$3) AND ($4::text IS NULL OR (a.secret_hash=$4 AND a.secret_expires_at>$2)) LIMIT 1",&[&id,&now,&owner,&secret]).await?;
+        let rows=self.database.query("SELECT to_jsonb(a)::text,to_jsonb(t)::text FROM tunnel_attachments a INNER JOIN tunnels t ON t.id=a.tunnel_id WHERE a.id=$1 AND a.kind IN ('desktop-loopback','worker-listener') AND a.expires_at>$2 AND a.status<>'stopped' AND ($3::text IS NULL OR t.owner_id=$3) AND ($4::text IS NULL OR (a.secret_hash=$4 AND a.secret_expires_at>$2)) LIMIT 1",&[&id,&now,&owner,&secret]).await?;
         let Some(row) = rows.first() else {
             return Ok(None);
         };
@@ -33,10 +36,16 @@ impl Repository {
         let t = raw(row, 1)?;
         let record = protected(&t);
         let destination = destination(&t)?;
+        let listening = t["source_kind"] == "worker-listener"
+            && a["kind"] == "worker-listener"
+            && !t["os_source"].is_null()
+            && destination["kind"] == "worker-tcp"
+            && t["source_worker_id"] == t["destination_worker_id"];
+        let desktop = t["source_kind"] == "desktop-loopback" && a["kind"] == "desktop-loopback";
         if !coercion::truthy(a.get("client_id"))
             || a["expires_at"].is_null()
             || a["secret_expires_at"].is_null()
-            || t["source_kind"] != "desktop-loopback"
+            || !(desktop || (owner.is_some() && listening))
             || (destination["kind"] != "worker-tcp"
                 && !(destination["kind"] == "worker-adapter"
                     && (destination["adapter"] == "project-share"
@@ -46,9 +55,12 @@ impl Repository {
             return Ok(None);
         }
         let mut result = json!({"attachmentId":id,"clientId":a["client_id"],"destination":destination,"expiresAt":iso(time(&a,"expires_at")?.unwrap()),"ownerId":t["owner_id"],"origin":t["origin"],"projectId":t["project_id"],"protectedRecord":record.unwrap(),"secretExpiresAt":iso(time(&a,"secret_expires_at")?.unwrap()),"tunnelId":t["id"]});
-        if destination["adapter"] == "cantrip-os" {
-            result["osSource"] = t["os_source"].clone();
+        if owner.is_some() {
+            result["source"] = source(&t)?;
             result["osServiceIdentity"] = a["os_service_identity"].clone();
+        }
+        if !t["os_source"].is_null() {
+            result["osSource"] = t["os_source"].clone();
         }
         Ok(Some(result))
     }
@@ -64,15 +76,20 @@ impl Repository {
         self.database.transaction(move |tx|Box::pin(async move {
             let rows=tx.query("SELECT to_jsonb(t)::text FROM tunnels t WHERE id=$1 AND owner_id=$2 LIMIT 1 FOR UPDATE",&[&tunnel,&owner]).await?;
             let Some(row)=rows.first()else{return Ok(None)};let t=raw(row,0)?;
-            if t["source_kind"]!="desktop-loopback" || !(t["management"]=="user-managed" || (t["management"]=="managed-ephemeral" && ["browser","project-share"].iter().any(|v|t["origin"]==*v))){return Ok(None)}
+            let listening=t["source_kind"]=="worker-listener" && !t["os_source"].is_null() && t["destination_kind"]=="worker-tcp" && t["source_worker_id"]==t["destination_worker_id"];
+            if !(t["source_kind"]=="desktop-loopback" || listening) || !(t["management"]=="user-managed" || (t["management"]=="managed-ephemeral" && ["browser","project-share"].iter().any(|v|t["origin"]==*v))){return Ok(None)}
+            let kind=if listening {"worker-listener"} else {"desktop-loopback"};
+            if input.kind.as_deref().unwrap_or("desktop-loopback")!=kind || input.expected_revision.is_some_and(|v|t["protected_revision"].as_f64()!=Some(v as f64)) {
+                return Err(ManagementError("The saved tunnel changed; refresh before starting it.").into());
+            }
             let rows=tx.query("SELECT id,secret_expires_at,status,os_service_identity FROM tunnel_attachments WHERE tunnel_id=$1 AND client_id=$2 LIMIT 1",&[&tunnel,&input.client]).await?;
             let now=repository.now();let existing=rows.first();let id=existing.map(|r|r.get::<String>(0)).transpose()?.unwrap_or_else(||uuid::Uuid::new_v4().to_string());
             let previous=existing.map(|r|r.get::<Option<Time>>(1)).transpose()?.flatten().map_or(0,|v|v.timestamp_millis());
             let secret=Time::from_timestamp_millis(input.secret_expires.timestamp_millis().max(previous+1)).context("Tunnel secret generation range")?;
             if existing.is_some(){
-                tx.query("UPDATE tunnel_attachments SET os_service_identity=CASE WHEN status='stopped' THEN NULL ELSE os_service_identity END,active_connection_count=0,expires_at=$2,error_code=NULL,last_seen_at=NULL,secret_expires_at=$3,secret_hash=$4,status='starting',updated_at=$5 WHERE id=$1",&[&id,&input.expires,&secret,&input.secret_hash,&now]).await?;
+                tx.query("UPDATE tunnel_attachments SET kind=$6,os_service_identity=CASE WHEN status='stopped' THEN NULL ELSE os_service_identity END,active_connection_count=0,expires_at=$2,error_code=NULL,last_seen_at=NULL,secret_expires_at=$3,secret_hash=$4,status='starting',updated_at=$5 WHERE id=$1",&[&id,&input.expires,&secret,&input.secret_hash,&now,&kind]).await?;
                 tx.query("UPDATE tunnel_attachment_direct_leases SET lease_expires_at=LEAST(lease_expires_at,$2),updated_at=$3 WHERE attachment_id=$1",&[&id,&input.expires,&now]).await?;
-            }else{tx.query("INSERT INTO tunnel_attachments(id,tunnel_id,kind,client_id,active_connection_count,expires_at,error_code,last_seen_at,secret_expires_at,secret_hash,status,updated_at) VALUES($1,$2,'desktop-loopback',$3,0,$4,NULL,NULL,$5,$6,'starting',$7)",&[&id,&tunnel,&input.client,&input.expires,&secret,&input.secret_hash,&now]).await?;}
+            }else{tx.query("INSERT INTO tunnel_attachments(id,tunnel_id,kind,client_id,active_connection_count,expires_at,error_code,last_seen_at,secret_expires_at,secret_hash,status,updated_at) VALUES($1,$2,$8,$3,0,$4,NULL,NULL,$5,$6,'starting',$7)",&[&id,&tunnel,&input.client,&input.expires,&secret,&input.secret_hash,&now,&kind]).await?;}
             recompute(tx,&tunnel,now).await?;
             Ok(Some(json!({"attachmentId":id,"expiresAt":iso(input.expires),"projectId":t["project_id"],"secretExpiresAt":iso(secret)})))
         })).await

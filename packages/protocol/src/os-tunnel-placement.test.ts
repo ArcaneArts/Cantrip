@@ -182,3 +182,50 @@ it("binds VNC to the canonical workspace rather than a supplied host, port or di
       }).success,
     ).toBe(false);
 });
+
+it("captures a private guest listener and restricts its public route to that same Worker Host", () => {
+  const listener = {
+    kind: "worker-os-listener" as const,
+    workerId: "worker",
+    source,
+    port: 51566,
+  };
+  const host = {
+    kind: "worker-tcp" as const,
+    workerId: "worker",
+    host: "127.0.0.1" as const,
+    port: 51458,
+  };
+  const content = {
+    name: "Guest to Host",
+    description: null,
+    source: listener,
+    destination: host,
+    dataProtection: {
+      formatVersion: 1,
+      algorithm: "AES-256-GCM",
+      keyRevision: 1,
+      key: "k".repeat(43),
+    },
+  };
+  expect(tunnelContentRecordSchema.safeParse(content).success).toBe(true);
+  expect(
+    tunnelContentRecordSchema.safeParse({
+      ...content,
+      destination: { ...host, workerId: "other" },
+    }).success,
+  ).toBe(false);
+  const reverse = {
+    ...wire,
+    source: { kind: "worker-listener", workerId: "worker" },
+    destination: { kind: "worker-tcp", workerId: "worker" },
+  };
+  expect(tunnelUserWireCreateSchema.safeParse(reverse).success).toBe(true);
+  for (const invalid of [
+    { ...reverse, osSource: undefined },
+    { ...reverse, projectId: null },
+    { ...reverse, source: { kind: "worker-listener", workerId: "other" } },
+    { ...reverse, destination: wire.destination },
+  ])
+    expect(tunnelUserWireCreateSchema.safeParse(invalid).success).toBe(false);
+});

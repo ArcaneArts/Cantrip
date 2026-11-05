@@ -17,6 +17,8 @@ import { openWorkerTunnelContentRecord } from "../tunnel-content-encryption.js";
 import { remoteControl } from "./connection.js";
 import { workerLogger, workerLogErrorIdentity } from "../logger.js";
 import { OsServiceStream } from "./service-stream.js";
+import { OsReverseForward } from "./reverse-forward.js";
+import { tunnelContentOsSource } from "@cantrip/protocol/tunnel-content";
 import { OsVncControls } from "./vnc-control.js";
 import type { OsCuaServices } from "./computer-use.js";
 
@@ -39,6 +41,10 @@ const descriptorSchema = z.strictObject({
     }),
     z.strictObject({ kind: z.literal("ssh") }),
     z.strictObject({ kind: z.literal("vnc") }),
+    z.strictObject({
+      kind: z.literal("listen"),
+      port: z.number().int().min(1).max(65_535),
+    }),
   ]),
   display: z.number().int().min(0).max(65535).optional(),
   desktop_generation: z
@@ -49,6 +55,15 @@ const descriptorSchema = z.strictObject({
     .unwrap()
     .shape.hostKey.optional(),
 });
+type Request =
+  | { kind: "tcp"; port: number }
+  | { kind: "ssh"; publicKey: string }
+  | { kind: "vnc" }
+  | {
+      kind: "listen";
+      port: number;
+      target: { host: "127.0.0.1" | "localhost" | "::1"; port: number };
+    };
 interface Entry {
   command: Prepare;
   descriptor: z.infer<typeof descriptorSchema>;
@@ -58,6 +73,12 @@ interface Entry {
   streams: Set<OsServiceStream>;
   abort: AbortController;
   openings: Set<Promise<OsServiceStream>>;
+  listener?: {
+    stream: OsServiceStream;
+    target: { host: "127.0.0.1" | "localhost" | "::1"; port: number };
+    forward?: OsReverseForward;
+    activation?: Promise<{ closed: Promise<void> }>;
+  };
 }
 
 /** Server-admitted source captures. Browser frames cannot create these entries. */
@@ -108,13 +129,15 @@ export class OsTunnelServices {
         tunnelId: command.tunnelId,
         workerId: this.workerId,
       });
-      this.validateDestination(command, content);
-      const service =
-        content.destination.kind === "worker-os-ssh"
-          ? { kind: "ssh" as const }
-          : content.destination.kind === "worker-os-vnc"
-            ? { kind: "vnc" as const }
-            : { kind: "tcp" as const, port: content.destination.port };
+      const request = this.request(command, content);
+      const service: z.infer<typeof descriptorSchema>["service"] =
+        request.kind === "listen"
+          ? { kind: "listen", port: request.port }
+          : request.kind === "tcp"
+            ? { kind: "tcp", port: request.port }
+            : request.kind === "ssh"
+              ? { kind: "ssh" }
+              : { kind: "vnc" };
       const descriptor = await this.describe(
         command.osExecution,
         service,
@@ -162,6 +185,16 @@ export class OsTunnelServices {
       };
       entry.timer.unref();
       this.entries.set(command.attachmentId, entry);
+      if (request.kind === "listen") {
+        try {
+          await this.prepareListener(entry, request.target);
+          if (!current() || this.entries.get(command.attachmentId) !== entry)
+            throw new Error("The guest listener preparation was retired.");
+        } catch (error) {
+          await this.closeEntry(entry);
+          throw error;
+        }
+      }
       return { identity, ...(ssh ? { ssh } : {}) };
     } finally {
       if (this.pending.get(command.attachmentId) === pending)
@@ -214,22 +247,12 @@ export class OsTunnelServices {
     return descriptor;
   }
 
-  private validateDestination(
-    command: Prepare,
-    content: TunnelContentRecord,
-  ): asserts content is TunnelContentRecord & {
-    destination: Extract<
-      TunnelContentRecord["destination"],
-      { kind: "worker-os-tcp" | "worker-os-ssh" | "worker-os-vnc" }
-    >;
-  } {
+  private request(command: Prepare, content: TunnelContentRecord): Request {
     const scope = command.osExecution.scope;
+    const capture = tunnelContentOsSource(content);
     if (
-      (content.destination.kind !== "worker-os-tcp" &&
-        content.destination.kind !== "worker-os-ssh" &&
-        content.destination.kind !== "worker-os-vnc") ||
       content.destination.workerId !== this.workerId ||
-      !isDeepStrictEqual(content.destination.source, {
+      !isDeepStrictEqual(capture, {
         bindingId: scope.bindingId,
         worktreeId: scope.worktreeId,
         bindingGeneration: scope.bindingGeneration,
@@ -238,8 +261,64 @@ export class OsTunnelServices {
       })
     )
       throw new Error(
-        "The encrypted tunnel destination differs from its canonical OS capture.",
+        "The encrypted tunnel differs from its canonical OS capture.",
       );
+    if (content.source.kind === "worker-os-listener") {
+      if (
+        command.mode !== "listen" ||
+        content.source.workerId !== this.workerId ||
+        content.destination.kind !== "worker-tcp"
+      )
+        throw new Error(
+          "The guest listener does not match its canonical direction.",
+        );
+      return {
+        kind: "listen",
+        port: content.source.port,
+        target: {
+          host: content.destination.host,
+          port: content.destination.port,
+        },
+      };
+    }
+    if (command.mode === "listen" || content.source.kind !== "desktop-loopback")
+      throw new Error(
+        "The incoming guest service does not match its canonical direction.",
+      );
+    switch (content.destination.kind) {
+      case "worker-os-tcp":
+        return { kind: "tcp", port: content.destination.port };
+      case "worker-os-ssh":
+        return { kind: "ssh", publicKey: content.destination.publicKey };
+      case "worker-os-vnc":
+        return { kind: "vnc" };
+      default:
+        throw new Error("The guest tunnel has no captured OS destination.");
+    }
+  }
+  private async prepareListener(
+    entry: Entry,
+    target: NonNullable<Entry["listener"]>["target"],
+  ) {
+    const stream = new OsServiceStream(
+      entry.command.osExecution.transport,
+      entry.command.osExecution.scope.guestWorkspaceId,
+      entry.descriptor,
+    );
+    entry.listener = { stream, target };
+    entry.streams.add(stream);
+    entry.abort.signal.addEventListener("abort", () => stream.destroy(), {
+      once: true,
+    });
+    stream.once("close", () => entry.streams.delete(stream));
+    const ready = stream.ready();
+    entry.openings.add(ready);
+    try {
+      await ready;
+    } finally {
+      entry.openings.delete(ready);
+    }
+    entry.abort.signal.throwIfAborted();
   }
 
   activate(grant: InstalledWorkerLinkGrant, session: WorkerLinkSession) {
@@ -257,7 +336,48 @@ export class OsTunnelServices {
       throw new Error(
         "The guest tunnel grant has no matching Server preparation.",
       );
+    const listening = grant.binding.operations.includes("stream:guest-listen");
+    if (
+      Boolean(entry.listener) !== listening ||
+      listening === grant.binding.operations.includes("stream:guest-connect")
+    )
+      throw new Error(
+        "The guest grant direction does not match its prepared service.",
+      );
+    if (entry.listener) {
+      if (entry.listener.activation)
+        throw new Error("The guest listener already has a control channel.");
+      entry.listener.activation = this.activateListener(entry);
+      return entry.listener.activation;
+    }
     entry.active = true;
+  }
+  private async activateListener(entry: Entry) {
+    try {
+      const current = await this.describe(
+        entry.command.osExecution,
+        entry.descriptor.service,
+        entry.abort.signal,
+      );
+      entry.abort.signal.throwIfAborted();
+      if (
+        !isDeepStrictEqual(current, entry.descriptor) ||
+        this.entries.get(entry.command.attachmentId) !== entry ||
+        entry.listener!.stream.destroyed ||
+        Date.parse(entry.command.expiresAt) <= Date.now()
+      )
+        throw new Error("The prepared guest listener is retired.");
+      const forward = new OsReverseForward(
+        entry.listener!.stream,
+        entry.listener!.target,
+      );
+      entry.listener!.forward = forward;
+      entry.active = true;
+      return { closed: forward.closed };
+    } catch (error) {
+      await this.closeEntry(entry);
+      throw error;
+    }
   }
 
   isGuest(attachmentId: string) {
@@ -280,15 +400,19 @@ export class OsTunnelServices {
       throw new Error(
         "The OS tunnel connection has no current canonical grant.",
       );
+    if (entry.listener)
+      throw new Error("Guest listeners do not accept incoming tunnel frames.");
     const work = this.connect(entry, content);
     entry.openings.add(work);
     void work.finally(() => entry.openings.delete(work)).catch(() => {});
     return work;
   }
   private async connect(entry: Entry, content: TunnelContentRecord) {
-    this.validateDestination(entry.command, content);
+    const request = this.request(entry.command, content);
+    if (request.kind === "listen")
+      throw new Error("Use the guest listener control channel.");
     const hold =
-      content.destination.kind === "worker-os-vnc"
+      request.kind === "vnc"
         ? await this.vnc.acquire(
             entry.command,
             entry.descriptor,
@@ -302,9 +426,7 @@ export class OsTunnelServices {
         entry.command.osExecution.transport,
         entry.command.osExecution.scope.guestWorkspaceId,
         entry.descriptor,
-        content.destination.kind === "worker-os-ssh"
-          ? content.destination.publicKey
-          : undefined,
+        request.kind === "ssh" ? request.publicKey : undefined,
       );
     } catch (error) {
       if (hold) await this.vnc.abandon(hold);
@@ -336,6 +458,7 @@ export class OsTunnelServices {
   }
   private async closeEntry(entry: Entry) {
     entry.active = false;
+    entry.listener?.forward?.close();
     entry.abort.abort();
     clearTimeout(entry.timer);
     if (this.entries.get(entry.command.attachmentId) === entry)
@@ -355,6 +478,22 @@ export class OsTunnelServices {
     );
     await Promise.allSettled([...entry.openings]);
     await this.vnc.retireAttachment(entry.command);
+    if (entry.listener) {
+      try {
+        await entry.listener.stream.confirmRetired();
+      } catch (error) {
+        const current = await this.describe(
+          entry.command.osExecution,
+          entry.descriptor.service,
+        ).catch(() => undefined);
+        if (
+          !current ||
+          (current.remote_generation === entry.descriptor.remote_generation &&
+            current.generation === entry.descriptor.generation)
+        )
+          throw error;
+      }
+    }
   }
   private closeBackground(entry: Entry) {
     return this.closeEntry(entry).catch((error: unknown) => {

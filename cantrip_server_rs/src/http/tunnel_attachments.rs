@@ -48,11 +48,13 @@ async fn execute(
         getrandom::fill(&mut bytes)?;
         let secret = URL_SAFE_NO_PAD.encode(bytes);
         let now = crate::auth::now();
-        let Some(created) = repo
+        let created = match repo
             .create_attachment(
                 owner,
                 tunnel,
                 CreateAttachment {
+                    kind: input["kind"].as_str().map(str::to_owned),
+                    expected_revision: input["expectedRevision"].as_f64().map(|v| v as i64),
                     client: input["clientId"]
                         .as_js_string()
                         .context("Tunnel client")?
@@ -63,9 +65,16 @@ async fn execute(
                     secret_hash: crypto::hash_secret(&secret),
                 },
             )
-            .await?
-        else {
-            return Ok(error(404, "An attachable desktop tunnel was not found."));
+            .await
+        {
+            Ok(Some(value)) => value,
+            Ok(None) => return Ok(error(404, "An attachable desktop tunnel was not found.")),
+            Err(cause) => {
+                if let Some(management) = cause.downcast_ref::<crate::tunnels::ManagementError>() {
+                    return Ok(error(409, management.0));
+                }
+                return Err(cause);
+            }
         };
         let id = created["attachmentId"]
             .as_str()

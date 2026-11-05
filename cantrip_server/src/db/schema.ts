@@ -1875,7 +1875,7 @@ export const tunnels = pgTable(
     ),
     check(
       "tunnels_os_source_check",
-      sql`COALESCE(${table.destinationAdapter} = 'cantrip-os', false) = (${table.osSource} IS NOT NULL) AND (${table.osSource} IS NULL OR (cantrip_os_desktop_configuration_valid(jsonb_build_object('kind','desktop','osSource',${table.osSource})) AND NOT ${table.osSource} ? 'desktopGeneration' AND ${table.destinationResourceId} = ${table.id}))`,
+      sql`(NOT COALESCE(${table.destinationAdapter} = 'cantrip-os', false) OR ${table.osSource} IS NOT NULL) AND (${table.osSource} IS NULL OR (cantrip_os_desktop_configuration_valid(jsonb_build_object('kind','desktop','osSource',${table.osSource})) AND NOT ${table.osSource} ? 'desktopGeneration' AND ((${table.sourceKind} = 'desktop-loopback' AND ${table.destinationKind} = 'worker-adapter' AND ${table.destinationAdapter} = 'cantrip-os' AND ${table.destinationResourceId} = ${table.id}) OR (${table.sourceKind} = 'worker-listener' AND ${table.destinationKind} = 'worker-tcp' AND ${table.sourceWorkerId} = ${table.destinationWorkerId}))))`,
     ),
     check(
       "tunnels_protected_content_check",
@@ -1942,7 +1942,7 @@ export const tunnelAttachments = pgTable(
       .where(sql`${table.secretHash} IS NOT NULL`),
     check(
       "tunnel_attachments_kind_check",
-      sql`${table.kind} = 'desktop-loopback'`,
+      sql`${table.kind} IN ('desktop-loopback', 'worker-listener')`,
     ),
     check(
       "tunnel_attachments_status_check",

@@ -291,3 +291,57 @@ describe("tunnel settings", () => {
     expect(markup).toContain(":3000");
   });
 });
+
+it("starts Guest-to-Host routes in a browser while keeping Host local ports Native-only", () => {
+  const source = {
+    bindingId: "binding",
+    worktreeId: "worktree",
+    bindingGeneration: "binding-generation",
+    attachmentGeneration: "attachment-generation",
+    runtimeGeneration: "runtime",
+  };
+  const reverse = tunnel("reverse", {
+    name: "Reverse browser route",
+    source: {
+      kind: "worker-os-listener",
+      workerId: "worker-1",
+      source,
+      port: 51567,
+    },
+    osSource: source,
+  });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  client.setQueryData(
+    ["tunnels"],
+    [tunnel("host-browser", { name: "Host browser route" }), reverse],
+  );
+  client.setQueryData(["projects"], []);
+  client.setQueryData(
+    ["workers"],
+    [{ workerId: "worker-1", name: "Studio Mac", online: true }],
+  );
+  const markup = renderToStaticMarkup(
+    <QueryClientProvider client={client}>
+      <TunnelSettings />
+    </QueryClientProvider>,
+  );
+  const button = (name: string) =>
+    markup.match(
+      new RegExp(`<button[^>]*aria-label="Start ${name}"[^>]*>`),
+    )?.[0];
+  expect(button("Reverse browser route")).toBeDefined();
+  expect(button("Reverse browser route")).not.toContain('disabled=""');
+  expect(button("Host browser route")).toContain('disabled=""');
+  expect(markup).toContain("CantripOS :51567 → Host");
+  expect(tunnelMatchesSearch(reverse, "51567", new Map(), new Map())).toBe(
+    true,
+  );
+  expect(
+    tunnelLocalUrl(reverse, {
+      localHost: "127.0.0.1",
+      localPort: 51567,
+    } as DesktopTunnelForwardSummary),
+  ).toBeNull();
+});

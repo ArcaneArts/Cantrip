@@ -30,7 +30,11 @@ export interface Descriptor {
   home: string;
   user: string;
   remote_generation: string;
-  service: { kind: "tcp"; port: number } | { kind: "ssh" } | { kind: "vnc" };
+  service:
+    | { kind: "tcp"; port: number }
+    | { kind: "listen"; port: number }
+    | { kind: "ssh" }
+    | { kind: "vnc" };
   display?: number;
   desktop_generation?: string;
   ssh_host_key?: string;
@@ -102,7 +106,8 @@ export async function protectedOsTunnel(
   destination:
     | { kind: "worker-os-tcp"; port: number }
     | { kind: "worker-os-ssh"; publicKey: string }
-    | { kind: "worker-os-vnc" },
+    | { kind: "worker-os-vnc" }
+    | { kind: "worker-os-listener"; port: number; hostPort: number },
 ) {
   const worker = await encryption(directory, descriptor);
   const tunnelId = randomUUID(),
@@ -141,8 +146,24 @@ export async function protectedOsTunnel(
   const content: TunnelContentRecord = {
     name: "Private guest endpoint",
     description: null,
-    source: { kind: "desktop-loopback" },
-    destination: { ...destination, workerId: descriptor.worker_id, source },
+    source:
+      destination.kind === "worker-os-listener"
+        ? {
+            kind: "worker-os-listener",
+            workerId: descriptor.worker_id,
+            source,
+            port: destination.port,
+          }
+        : { kind: "desktop-loopback" },
+    destination:
+      destination.kind === "worker-os-listener"
+        ? {
+            kind: "worker-tcp",
+            workerId: descriptor.worker_id,
+            host: "127.0.0.1",
+            port: destination.hostPort,
+          }
+        : { ...destination, workerId: descriptor.worker_id, source },
     dataProtection: {
       formatVersion: 1,
       algorithm: "AES-256-GCM",
@@ -174,6 +195,9 @@ export async function protectedOsTunnel(
     { type: "surface.tunnel.os-prepare" }
   > = {
     type: "surface.tunnel.os-prepare",
+    ...(destination.kind === "worker-os-listener"
+      ? { mode: "listen" as const }
+      : {}),
     serverId,
     projectId: scope.projectId,
     tunnelId,
@@ -221,7 +245,9 @@ export async function protectedOsTunnel(
         "stream:read",
         "stream:write",
         "stream:half-close",
-        "stream:guest-connect",
+        destination.kind === "worker-os-listener"
+          ? "stream:guest-listen"
+          : "stream:guest-connect",
       ],
       maxChannels: 1,
       lease,

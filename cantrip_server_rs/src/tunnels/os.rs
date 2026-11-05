@@ -8,18 +8,32 @@ impl Repository {
         tunnel: &str,
         project: Option<&str>,
         destination: &Value,
+        source: &Value,
         capture: &Value,
     ) -> Result<Option<Value>> {
-        let guest =
+        let incoming =
             destination["kind"] == "worker-adapter" && destination["adapter"] == "cantrip-os";
-        if !guest {
+        let outgoing = source["kind"] == "worker-listener" && !capture.is_null();
+        if !incoming && !outgoing {
             if !capture.is_null() {
                 return Err(ManagementError("Host tunnels cannot capture an OS source.").into());
             }
             return Ok(None);
         }
-        if capture.is_null() || destination["resourceId"] != tunnel || project.is_none() {
-            return Err(ManagementError("The OS tunnel source capture is incomplete.").into());
+        if capture.is_null()
+            || project.is_none()
+            || (if outgoing {
+                destination["kind"] != "worker-tcp" || destination["workerId"] != source["workerId"]
+            } else {
+                source["kind"] != "desktop-loopback"
+                    || !incoming
+                    || destination["resourceId"] != tunnel
+            })
+        {
+            return Err(ManagementError(
+                "The OS tunnel source capture or direction is incomplete.",
+            )
+            .into());
         }
         let captured = serde_json::json!({
             "binding_id":text(capture,"bindingId")?,
@@ -33,11 +47,17 @@ impl Repository {
     }
 
     pub async fn os_attachment_execution(&self, auth: &Value) -> Result<Option<Value>> {
+        let source = auth
+            .get("source")
+            .filter(|v| !v.is_null())
+            .cloned()
+            .unwrap_or_else(|| json!({"kind":"desktop-loopback"}));
         self.os_execution(
             &text(auth, "ownerId")?,
             &text(auth, "tunnelId")?,
             optional(auth, "projectId")?.as_deref(),
             &auth["destination"],
+            &source,
             &auth["osSource"],
         )
         .await

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { endpointContentOpaqueSchema } from "./endpoint-content.js";
 import {
+  cantripOsListenerSourceSchema,
   cantripOsTcpDestinationSchema,
   cantripOsSshDestinationSchema,
   cantripOsVncDestinationSchema,
@@ -33,6 +34,7 @@ export const tunnelContentErrorCodeSchema = z.enum([
 ]);
 
 export const tunnelContentSourceEndpointSchema = z.discriminatedUnion("kind", [
+  cantripOsListenerSourceSchema,
   z.object({ kind: z.literal("desktop-loopback") }).strict(),
   z
     .object({
@@ -101,7 +103,17 @@ export const tunnelContentRecordSchema = z
     destination: tunnelContentDestinationEndpointSchema,
     dataProtection: tunnelDataProtectionConfigurationSchema,
   })
-  .strict();
+  .strict()
+  .refine(
+    ({ source, destination }) =>
+      source.kind !== "worker-os-listener" ||
+      (destination.kind === "worker-tcp" &&
+        destination.workerId === source.workerId),
+    {
+      message:
+        "A guest listener requires an explicit TCP destination on its owning Worker host.",
+    },
+  );
 
 /**
  * Public authenticated context retained beside an opaque stored record. The
@@ -153,8 +165,11 @@ export const tunnelPublicDestinationEndpointSchema = z.discriminatedUnion(
 export function tunnelPublicSourceEndpoint(
   source: TunnelContentSourceEndpoint,
 ): TunnelPublicSourceEndpoint {
-  if (source.kind === "worker-listener") {
-    return { kind: source.kind, workerId: source.workerId };
+  if (
+    source.kind === "worker-listener" ||
+    source.kind === "worker-os-listener"
+  ) {
+    return { kind: "worker-listener", workerId: source.workerId };
   }
   return source;
 }
@@ -218,3 +233,15 @@ export type TunnelPublicDestinationEndpoint = z.infer<
 export type TunnelPublicSourceEndpoint = z.infer<
   typeof tunnelPublicSourceEndpointSchema
 >;
+
+export function tunnelContentOsSource(
+  record: Pick<TunnelContentRecord, "source" | "destination">,
+) {
+  if (record.source.kind === "worker-os-listener") return record.source.source;
+  const destination = record.destination;
+  return destination.kind === "worker-os-tcp" ||
+    destination.kind === "worker-os-ssh" ||
+    destination.kind === "worker-os-vnc"
+    ? destination.source
+    : undefined;
+}

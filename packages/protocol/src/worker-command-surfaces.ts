@@ -41,6 +41,7 @@ export const workerSurfaceCommandSchemas = [
   z
     .strictObject({
       type: z.literal("surface.tunnel.os-prepare"),
+      mode: z.enum(["connect", "listen"]).optional(),
       serverId: z.string().min(1).max(2_000),
       projectId: z.string().min(1),
       tunnelId: z.uuid(),

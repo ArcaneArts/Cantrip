@@ -305,7 +305,7 @@ restarted, Stop and explicitly start a fresh attachment. After the OS runtime
 changes, explicitly select the current workspace when editing a stopped route.
 
 Managed SSH/SFTP and VNC are described below. Explicit forwarding from Guest to
-Host remains a subsequent Phase 4 milestone.
+Host is available through saved reverse routes described below.
 
 ## Managed SSH and SFTP
 
@@ -333,7 +333,6 @@ routes remain separate. Stop/retirement closes its sessions and removes the
 client's temporary host pin. Reconnection cannot adopt another SSH host key or
 account within the same local attachment.
 
-
 ## Managed VNC compatibility
 
 First open the intended workspace's desktop from **Project Settings → CantripOS**.
@@ -360,3 +359,25 @@ remote-manager/desktop replacement fences the old helper before it is released.
 After a remote-manager restart, Stop and explicitly start a fresh attachment;
 a pinned old attachment cannot reconnect to the replacement. SSH and ordinary
 TCP services remain independent of desktop start/stop.
+
+## CantripOS to Worker Host
+
+In **Settings → Tunnels**, create a route and choose its project. Set **Direction**
+to **CantripOS → Worker Host**, select the workspace (a single available workspace
+is selected automatically), and enter a **Guest listen port** and the Host
+**Destination port**. The Host is the Worker that owns that workspace. These are
+per-route choices; Host, Linux service and reverse routes share one inventory.
+
+Start this route in the browser or Native app. From that Linux workspace,
+`127.0.0.1:<guest-listen-port>` reaches the configured loopback service on its
+Worker Host. It does not refer to the viewing device. No Docker Host alias,
+Host port publication, running guest desktop or local Native port is required.
+Use a distinct guest port for each simultaneously running route in the same OS;
+an occupied port fails admission rather than replacing the existing listener.
+
+Stop closes the actual guest listener and its clients. The controlling browser
+must remain connected: its WorkerLink control lease keeps the Worker-owned
+bridge alive. Losing it retires the bridge; start again explicitly. Saved source
+captures do not follow an OS replacement automatically. Stop attachments before
+editing a route; the server checks again while holding its mutation lock, so
+an attachment admitted concurrently cannot be silently changed or deleted.

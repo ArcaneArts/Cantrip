@@ -97,6 +97,7 @@ pub(super) async fn execute(
     };
     let result=async {
         let Some(authorization)=repo.attachment(owner,id).await?else{return Ok(error(404,"Tunnel attachment not found."));};
+        if authorization["source"]["kind"]=="worker-listener" {return Ok(error(409,"Guest listeners require their WorkerLink control channel."));}
         if !direct.bind_preparation(&lease,json!("tunnel"),authorization["tunnelId"].clone()) {
             return Ok(error(409,"The owning resource changed while direct access was opening."));
         }

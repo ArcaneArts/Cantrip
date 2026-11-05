@@ -246,6 +246,8 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
     ownerId: string,
     tunnelId: string,
     input: {
+      kind?: "desktop-loopback" | "worker-listener";
+      expectedRevision?: number;
       clientId: string;
       expiresAt: Date;
       secretExpiresAt: Date;
@@ -1669,7 +1671,11 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
     stateProtection: SurfacePrivateStateOpaque,
     paneId?: string,
     targetRegion?: ProjectPaneRegion,
-    osRequest?: { bindingId: string; runtimeGeneration: string; desktopGeneration: string },
+    osRequest?: {
+      bindingId: string;
+      runtimeGeneration: string;
+      desktopGeneration: string;
+    },
   ): Promise<RemoteDesktopWireSummary | null> {
     return this.remoteSurfaces.createRemoteDesktop(
       ownerId,

@@ -40,3 +40,10 @@ export const cantripOsVncDestinationSchema = z.strictObject({
   workerId: z.string().trim().min(1).max(200),
   source: cantripOsTunnelSourceSchema,
 });
+
+export const cantripOsListenerSourceSchema = z.strictObject({
+  kind: z.literal("worker-os-listener"),
+  workerId: z.string().trim().min(1).max(200),
+  port: z.number().int().min(1).max(65_535),
+  source: cantripOsTunnelSourceSchema,
+});

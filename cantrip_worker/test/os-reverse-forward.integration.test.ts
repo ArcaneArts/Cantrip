@@ -1,4 +1,5 @@
-import { spawn, execFile } from "node:child_process";
+import { guestPython } from "./fixtures/os-guest-python.js";
+import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createServer, type Socket } from "node:net";
 import { once } from "node:events";
@@ -6,7 +7,6 @@ import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import { describe, it, expect } from "vitest";
 import {
-  remoteCommand,
   remoteControl,
   type OsExecutorTransport,
 } from "../src/os-executor/connection.js";
@@ -20,42 +20,7 @@ const transport: OsExecutorTransport | undefined = process.env
     ? { kind: "docker", container: process.env.CANTRIP_OS_CUA_TEST_CONTAINER }
     : undefined;
 const guestPort = 51577;
-function guest(script: string) {
-  const spec = remoteCommand(transport!, []);
-  if (transport!.kind === "docker")
-    spec.args.splice(-1, 1, "/usr/bin/python3", "-");
-  else spec.args[spec.args.length - 1] = "sudo -n -- /usr/bin/python3 -";
-  const child = spawn(spec.command, spec.args, {
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  let stdout = "",
-    stderr = "";
-  const output = new Promise<string>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error("Actual guest client timed out."));
-    }, 60_000);
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-      if (stdout.length > 65_536) child.kill();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr = (stderr + chunk.toString()).slice(-4096);
-    });
-    child.once("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    child.once("close", (code) => {
-      clearTimeout(timer);
-      if (code === 0) resolve(stdout);
-      else reject(new Error(`Actual guest client exited ${code}: ${stderr}`));
-    });
-  });
-  void output.catch(() => {});
-  child.stdin.end(script);
-  return { child, output };
-}
+const guest = (script: string) => guestPython(transport!, script);
 async function listener(overrides: Record<string, unknown> = {}) {
   const descriptor = await remoteControl<Record<string, unknown>>(transport!, [
     "service-info",

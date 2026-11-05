@@ -18,7 +18,10 @@ import {
 } from "../../account-usage/frame-bandwidth.js";
 import { authenticatedPrincipal } from "../../auth/principal.js";
 import { hashSecret } from "../../auth/service.js";
-import type { ServerRepository } from "../../db/repository.js";
+import {
+  TunnelManagementError,
+  type ServerRepository,
+} from "../../db/repository.js";
 import {
   type DirectAttachmentCoordinator,
   DirectAttachmentUnavailableError,
@@ -101,16 +104,25 @@ export function installTunnelAttachmentRoutes(
       const now = Date.now();
       const secretExpiresAt = new Date(now + TUNNEL_ATTACHMENT_SECRET_TTL_MS);
       const expiresAt = new Date(now + TUNNEL_ATTACHMENT_LIFETIME_MS);
-      const created = await repository.createDesktopTunnelAttachment(
-        ownerId,
-        request.params.tunnelId,
-        {
-          clientId: input.data.clientId,
-          expiresAt,
-          secretExpiresAt,
-          secretHash: hashSecret(secret),
-        },
-      );
+      let created;
+      try {
+        created = await repository.createDesktopTunnelAttachment(
+          ownerId,
+          request.params.tunnelId,
+          {
+            clientId: input.data.clientId,
+            kind: input.data.kind,
+            expectedRevision: input.data.expectedRevision,
+            expiresAt,
+            secretExpiresAt,
+            secretHash: hashSecret(secret),
+          },
+        );
+      } catch (error) {
+        if (error instanceof TunnelManagementError)
+          return reply.code(409).send({ error: error.message });
+        throw error;
+      }
       if (!created) {
         return reply.code(404).send({
           error: "An attachable desktop tunnel was not found.",
@@ -236,6 +248,10 @@ export function installTunnelAttachmentRoutes(
               "The owning resource changed while direct access was opening.",
           });
         }
+        if (authorization.source?.kind === "worker-listener")
+          return reply.code(409).send({
+            error: "Guest listeners require their WorkerLink control channel.",
+          });
         const worker = await repository.getWorker(
           principal.user.id,
           authorization.destination.workerId,

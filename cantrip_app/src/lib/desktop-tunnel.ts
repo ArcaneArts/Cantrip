@@ -250,7 +250,11 @@ export async function startDesktopTunnel(
   }
   const clientId = desktopTunnelClientId(window.localStorage);
   const configuration = await getTunnelTransportConfiguration(tunnelId);
-  const attachment = await createTunnelAttachment(tunnelId, { clientId });
+  const attachment = await createTunnelAttachment(tunnelId, {
+    clientId,
+    kind: "desktop-loopback",
+    expectedRevision: configuration.revision,
+  });
   let started: DesktopTunnelForwardSummary | null = null;
   try {
     started = await startDesktopTunnelWorkerLinkForward({

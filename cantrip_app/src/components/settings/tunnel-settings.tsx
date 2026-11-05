@@ -1,13 +1,14 @@
 import { TunnelVncDetails } from "./tunnel-vnc";
-import { TunnelTcpFields, tunnelInputClass as inputClass } from "./tunnel-tcp";
+import { tunnelInputClass as inputClass } from "./tunnel-tcp";
 import {
-  TunnelSshDetails,
-  TunnelLinuxServiceFields,
-  publicKeyWithoutComment,
-} from "./tunnel-ssh";
+  TunnelRouteFields,
+  emptyDraft,
+  draftFor,
+  type TunnelDraft,
+} from "./tunnel-route-fields";
+import { TunnelSshDetails, publicKeyWithoutComment } from "./tunnel-ssh";
 import type {
   ProjectSummary,
-  TunnelProtocolHint,
   TunnelSummary,
   TunnelUserCreate,
   TunnelUserUpdate,
@@ -27,7 +28,13 @@ import {
   Square,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+} from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,81 +63,19 @@ import {
   stopDesktopTunnel,
   type DesktopTunnelForwardSummary,
 } from "@/lib/desktop-tunnel";
+import {
+  osReverseTunnelSnapshot,
+  subscribeOsReverseTunnels,
+  startOsReverseTunnel,
+  stopOsReverseTunnel,
+  type OsReverseTunnelSummary,
+} from "@/lib/os-reverse-tunnel";
+import { getActiveServerUrl } from "@/lib/server-connections";
+import { deleteTunnelAttachment } from "@/lib/api/tunnels";
 import { errorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
 import { SettingsSearchField } from "./settings-controls";
 import { getCantripOsRunSources } from "@/lib/api/cantrip-os";
-
-interface TunnelDraft {
-  service: "tcp" | "ssh" | "vnc";
-  publicKey: string;
-  osSource: TunnelSummary["osSource"] | null;
-  description: string;
-  host: "127.0.0.1" | "localhost" | "::1";
-  name: string;
-  port: string;
-  projectId: string;
-  protocolHint: TunnelProtocolHint;
-  workerId: string;
-}
-
-function emptyDraft(projectId: string | null): TunnelDraft {
-  return {
-    osSource: null,
-    service: "tcp",
-    publicKey: "",
-    description: "",
-    host: "127.0.0.1",
-    name: "",
-    port: "",
-    projectId: projectId ?? "",
-    protocolHint: "tcp",
-    workerId: "",
-  };
-}
-
-function draftFor(tunnel: TunnelSummary): TunnelDraft {
-  if (
-    tunnel.destination.kind !== "worker-tcp" &&
-    tunnel.destination.kind !== "worker-os-tcp" &&
-    tunnel.destination.kind !== "worker-os-ssh" &&
-    tunnel.destination.kind !== "worker-os-vnc"
-  ) {
-    return emptyDraft(tunnel.projectId);
-  }
-  return {
-    service:
-      tunnel.destination.kind === "worker-os-ssh"
-        ? "ssh"
-        : tunnel.destination.kind === "worker-os-vnc"
-          ? "vnc"
-          : "tcp",
-    publicKey:
-      tunnel.destination.kind === "worker-os-ssh"
-        ? tunnel.destination.publicKey
-        : "",
-    osSource:
-      tunnel.destination.kind === "worker-os-tcp" ||
-      tunnel.destination.kind === "worker-os-ssh" ||
-      tunnel.destination.kind === "worker-os-vnc"
-        ? tunnel.destination.source
-        : null,
-    description: tunnel.description ?? "",
-    host:
-      tunnel.destination.kind === "worker-tcp"
-        ? tunnel.destination.host
-        : "127.0.0.1",
-    name: tunnel.name,
-    port:
-      tunnel.destination.kind === "worker-os-ssh" ||
-      tunnel.destination.kind === "worker-os-vnc"
-        ? ""
-        : String(tunnel.destination.port),
-    projectId: tunnel.projectId ?? "",
-    protocolHint: tunnel.protocolHint,
-    workerId: tunnel.destination.workerId,
-  };
-}
 
 function destinationLabel(destination: TunnelSummary["destination"]) {
   if (destination.kind === "worker-os-vnc")
@@ -150,6 +95,7 @@ export function tunnelLocalUrl(
 ): string | null {
   if (
     !attachment ||
+    tunnel.source.kind === "worker-os-listener" ||
     tunnel.destination.kind === "worker-os-vnc" ||
     tunnel.destination.kind === "worker-os-ssh"
   )
@@ -187,6 +133,9 @@ export function tunnelMatchesSearch(
     destination.workerId,
     workers.get(destination.workerId),
     destinationLabel(destination),
+    tunnel.source.kind === "worker-os-listener"
+      ? `CantripOS → Host ${tunnel.source.port} ${tunnel.source.source.worktreeId}`
+      : null,
     tunnel.managedBy?.kind,
   ];
   return values.some((value) => value?.toLowerCase().includes(search));
@@ -240,6 +189,8 @@ function managementLabel(tunnel: TunnelSummary): string {
 
 function TunnelRows({
   attachments,
+  reverseAttachments,
+  onStopReverse,
   emptyText,
   items,
   onCopy,
@@ -255,6 +206,8 @@ function TunnelRows({
   workers,
 }: {
   attachments: ReadonlyMap<string, DesktopTunnelForwardSummary>;
+  reverseAttachments: ReadonlyMap<string, OsReverseTunnelSummary>;
+  onStopReverse(tunnel: TunnelSummary): void;
   emptyText: string;
   items: TunnelSummary[];
   onCopy(tunnel: TunnelSummary, url: string): void;
@@ -284,6 +237,13 @@ function TunnelRows({
           const destination = tunnel.destination;
           const worker = workers.get(destination.workerId);
           const local = attachments.get(tunnel.id);
+          const reverse = tunnel.source.kind === "worker-os-listener";
+          const control = reverseAttachments.get(tunnel.id);
+          const remoteAttachments = tunnel.attachments.filter(
+            (item) => item.status !== "stopped" && item.status !== "failed",
+          );
+          const liveReverse =
+            reverse && (Boolean(control) || remoteAttachments.length > 0);
           const localUrl = tunnelLocalUrl(tunnel, local);
           return (
             <div
@@ -306,7 +266,9 @@ function TunnelRows({
                 </div>
                 <p className="mt-1 truncate pl-6 font-mono text-[10px] text-muted-foreground">
                   {worker?.name ?? destination.workerId} ·{" "}
-                  {destinationLabel(destination)}
+                  {reverse && tunnel.source.kind === "worker-os-listener"
+                    ? `CantripOS :${tunnel.source.port} → Host ${destinationLabel(destination)}`
+                    : destinationLabel(destination)}
                 </p>
               </div>
               <div className="min-w-0 text-xs text-muted-foreground">
@@ -323,7 +285,8 @@ function TunnelRows({
                       ? "VNC"
                       : tunnel.protocolHint}
                 </Badge>
-                {destination.kind === "worker-os-tcp" ||
+                {reverse ||
+                destination.kind === "worker-os-tcp" ||
                 destination.kind === "worker-os-ssh" ||
                 destination.kind === "worker-os-vnc" ? (
                   <Badge variant="outline">CantripOS</Badge>
@@ -342,12 +305,17 @@ function TunnelRows({
                   {!worker?.online ? " · worker offline" : ""}
                 </span>
                 <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
-                  {local
-                    ? `${local.routeState === "local-direct" ? "Local direct" : local.routeState === "relayed" ? "Server relayed" : "Reconnecting"} · ${local.localHost}:${local.localPort}`
-                    : tunnel.attachments.length
-                      ? `${tunnel.attachments.length} remote ${tunnel.attachments.length === 1 ? "attachment" : "attachments"}`
-                      : "Not attached on this device"}
+                  {reverse && tunnel.source.kind === "worker-os-listener"
+                    ? `Guest 127.0.0.1:${tunnel.source.port} · ${control?.status ?? tunnel.status}`
+                    : local
+                      ? `${local.routeState === "local-direct" ? "Local direct" : local.routeState === "relayed" ? "Server relayed" : "Reconnecting"} · ${local.localHost}:${local.localPort}`
+                      : remoteAttachments.length
+                        ? `${remoteAttachments.length} remote ${remoteAttachments.length === 1 ? "attachment" : "attachments"}`
+                        : "Not attached on this device"}
                 </p>
+                {control?.error ? (
+                  <p className="mt-1 text-destructive">{control.error}</p>
+                ) : null}
               </div>
               <div className="flex items-center justify-end gap-0.5">
                 {local?.ssh ? (
@@ -380,7 +348,19 @@ function TunnelRows({
                     </Button>
                   </>
                 ) : null}
-                {local ? (
+                {liveReverse ? (
+                  <Button
+                    aria-label={`Stop ${tunnel.name}`}
+                    className="size-8"
+                    disabled={stopping}
+                    size="icon"
+                    title="Stop guest listener"
+                    variant="ghost"
+                    onClick={() => onStopReverse(tunnel)}
+                  >
+                    <Square className="size-3.5" />
+                  </Button>
+                ) : local ? (
                   <Button
                     aria-label={`Stop ${tunnel.name}`}
                     className="size-8"
@@ -400,14 +380,20 @@ function TunnelRows({
                   <Button
                     aria-label={`Start ${tunnel.name}`}
                     className="size-8"
-                    disabled={!desktopAvailable || starting || !worker?.online}
+                    disabled={
+                      (!reverse && !desktopAvailable) ||
+                      starting ||
+                      !worker?.online
+                    }
                     size="icon"
                     title={
-                      !desktopAvailable
-                        ? "Local ports are only available in the desktop app"
-                        : !worker?.online
-                          ? "The destination worker is offline"
-                          : "Attach a local port"
+                      reverse
+                        ? "Start guest listener"
+                        : !desktopAvailable
+                          ? "Local ports are only available in the desktop app"
+                          : !worker?.online
+                            ? "The destination worker is offline"
+                            : "Attach a local port"
                     }
                     variant="ghost"
                     onClick={() => onStart(tunnel)}
@@ -501,15 +487,6 @@ export function TunnelSettings({
     queryKey: ["cantrip-os-tunnel-sources", draft.projectId],
     queryFn: () => getCantripOsRunSources(draft.projectId),
   });
-  const destinationCount =
-    (workers.data?.length ?? 0) +
-    (osSources.data?.length ?? 0) +
-    (draft.osSource &&
-    !(osSources.data ?? []).some(
-      (source) => source.binding.id === draft.osSource?.bindingId,
-    )
-      ? 1
-      : 0);
   useEffect(() => {
     if (
       editorOpen &&
@@ -554,16 +531,52 @@ export function TunnelSettings({
     ]);
   };
 
+  const reverseTunnels = useSyncExternalStore(
+    subscribeOsReverseTunnels,
+    osReverseTunnelSnapshot,
+    osReverseTunnelSnapshot,
+  );
+  const reverseByTunnel = useMemo(
+    () =>
+      new Map(
+        reverseTunnels
+          .filter((item) => item.serverUrl === getActiveServerUrl())
+          .map((item) => [item.tunnelId, item]),
+      ),
+    [reverseTunnels],
+  );
+
   const save = useMutation({
     mutationFn: async () => {
+      const reverse = draft.direction === "to-host";
       const port = Number(draft.port);
+      const guestPort = Number(draft.guestPort);
       if (
-        !(draft.osSource && draft.service !== "tcp") &&
+        reverse &&
+        (!draft.osSource ||
+          !Number.isInteger(guestPort) ||
+          guestPort < 1 ||
+          guestPort > 65535)
+      )
+        throw new Error(
+          "Select a CantripOS workspace and a guest listen port between 1 and 65535.",
+        );
+      if (
+        (reverse || !(draft.osSource && draft.service !== "tcp")) &&
         (!Number.isInteger(port) || port < 1 || port > 65_535)
       ) {
         throw new Error("Enter a destination port between 1 and 65535.");
       }
       const common = {
+        source:
+          reverse && draft.osSource
+            ? {
+                kind: "worker-os-listener" as const,
+                workerId: draft.workerId,
+                source: draft.osSource,
+                port: guestPort,
+              }
+            : { kind: "desktop-loopback" as const },
         name: draft.name.trim(),
         description: draft.description.trim() || null,
         projectId: draft.projectId || null,
@@ -572,20 +585,20 @@ export function TunnelSettings({
             ? ("tcp" as const)
             : draft.protocolHint,
         destination:
-          draft.osSource && draft.service === "vnc"
+          !reverse && draft.osSource && draft.service === "vnc"
             ? {
                 kind: "worker-os-vnc" as const,
                 workerId: draft.workerId,
                 source: draft.osSource,
               }
-            : draft.osSource && draft.service === "ssh"
+            : !reverse && draft.osSource && draft.service === "ssh"
               ? {
                   kind: "worker-os-ssh" as const,
                   workerId: draft.workerId,
                   source: draft.osSource,
                   publicKey: publicKeyWithoutComment(draft.publicKey),
                 }
-              : draft.osSource
+              : !reverse && draft.osSource
                 ? {
                     kind: "worker-os-tcp" as const,
                     workerId: draft.workerId,
@@ -637,6 +650,26 @@ export function TunnelSettings({
       await refreshQueries();
     },
   });
+  const reverseStart = useMutation({
+    mutationFn: (tunnel: TunnelSummary) => startOsReverseTunnel(tunnel.id),
+    onSuccess: refreshQueries,
+  });
+  const reverseStop = useMutation({
+    mutationFn: async (tunnel: TunnelSummary) => {
+      await stopOsReverseTunnel(tunnel.id);
+      await Promise.all(
+        tunnel.attachments
+          .filter(
+            (item) =>
+              item.kind === "worker-listener" &&
+              item.status !== "stopped" &&
+              item.status !== "failed",
+          )
+          .map((item) => deleteTunnelAttachment(item.id)),
+      );
+    },
+    onSuccess: refreshQueries,
+  });
   const stop = useMutation({
     mutationFn: ({
       attachment,
@@ -682,7 +715,13 @@ export function TunnelSettings({
     tunnelMatchesSearch(tunnel, searchQuery, projectNames, workerNames),
   );
   const operationError =
-    save.error ?? remove.error ?? start.error ?? stop.error ?? null;
+    save.error ??
+    remove.error ??
+    start.error ??
+    stop.error ??
+    reverseStart.error ??
+    reverseStop.error ??
+    null;
 
   const openCreate = () => {
     setEditing(null);
@@ -709,20 +748,26 @@ export function TunnelSettings({
   };
   const rowsProps = {
     attachments: localByTunnel,
+    reverseAttachments: reverseByTunnel,
+    onStopReverse: (tunnel: TunnelSummary) => reverseStop.mutate(tunnel),
     onCopy: copyEndpoint,
     onDelete: setDeleteTarget,
     onEdit: openEdit,
     onOpen: openEndpoint,
     onOpenOwner,
     onStart: (tunnel: TunnelSummary) => {
+      if (tunnel.source.kind === "worker-os-listener") {
+        reverseStart.mutate(tunnel);
+        return;
+      }
       setPreferredPort("");
       setStartTarget(tunnel);
     },
     onStop: (tunnel: TunnelSummary, attachment: DesktopTunnelForwardSummary) =>
       stop.mutate({ tunnel, attachment }),
     projects: projectNames,
-    starting: start.isPending,
-    stopping: stop.isPending,
+    starting: start.isPending || reverseStart.isPending,
+    stopping: stop.isPending || reverseStop.isPending,
     workers: workerRecords,
   };
 
@@ -802,8 +847,9 @@ export function TunnelSettings({
       ) : null}
       {!desktopTunnelAvailable() ? (
         <p className="rounded-md border px-3 py-2 text-xs text-muted-foreground">
-          Local port attachments are available in the desktop app. Tunnel
-          definitions remain viewable and manageable here.
+          Local port attachments are available in the desktop app.
+          CantripOS-to-Host listeners can start here. Tunnel definitions remain
+          viewable and manageable here.
         </p>
       ) : null}
       {allTunnels.isError || projectTunnels.isError ? (
@@ -919,6 +965,7 @@ export function TunnelSettings({
                       ...current,
                       projectId: event.target.value,
                       osSource: null,
+                      direction: "to-service",
                       service: "tcp",
                     }))
                   }
@@ -931,110 +978,12 @@ export function TunnelSettings({
                   ))}
                 </NativeSelect>
               </label>
-              <label className="grid gap-1.5 text-sm">
-                <span className="font-medium">Destination</span>
-                {destinationCount === 1 && draft.workerId && !draft.osSource ? (
-                  <span className="flex h-9 items-center text-sm">
-                    {workerRecords.get(draft.workerId)?.name ?? draft.workerId}{" "}
-                    · Host
-                  </span>
-                ) : (
-                  <NativeSelect
-                    className={inputClass}
-                    required
-                    value={
-                      draft.osSource
-                        ? `os:${draft.osSource.bindingId}`
-                        : draft.workerId
-                          ? `host:${draft.workerId}`
-                          : ""
-                    }
-                    onChange={(event) => {
-                      const selected = event.target.value;
-                      const source = (osSources.data ?? []).find(
-                        (source) => `os:${source.binding.id}` === selected,
-                      );
-                      setDraft((current) =>
-                        source && source.instance.runtimeGeneration
-                          ? {
-                              ...current,
-                              workerId: source.instance.workerId,
-                              osSource: {
-                                bindingId: source.binding.id,
-                                worktreeId: source.binding.worktreeId,
-                                bindingGeneration:
-                                  source.binding.bindingGeneration,
-                                attachmentGeneration:
-                                  source.instance.attachmentGeneration,
-                                runtimeGeneration:
-                                  source.instance.runtimeGeneration,
-                              },
-                            }
-                          : {
-                              ...current,
-                              workerId: selected.replace(/^host:/, ""),
-                              osSource: null,
-                              service: "tcp",
-                            },
-                      );
-                    }}
-                  >
-                    <option value="" disabled>
-                      Select a destination
-                    </option>
-                    {(workers.data ?? []).map((worker) => (
-                      <option
-                        key={worker.workerId}
-                        value={`host:${worker.workerId}`}
-                      >
-                        {worker.name} · Host
-                        {worker.online ? "" : " (offline)"}
-                      </option>
-                    ))}
-                    {(osSources.data ?? []).map((source) => (
-                      <option
-                        key={source.binding.id}
-                        value={`os:${source.binding.id}`}
-                        disabled={!source.instance.runtimeGeneration}
-                      >
-                        CantripOS · {source.instance.name} /{" "}
-                        {source.workspace.guestWorkspaceId} ·{" "}
-                        {source.binding.worktreeId.slice(0, 8)}
-                      </option>
-                    ))}
-                    {draft.osSource &&
-                    !(osSources.data ?? []).some(
-                      (source) =>
-                        source.binding.id === draft.osSource?.bindingId,
-                    ) ? (
-                      <option value={`os:${draft.osSource.bindingId}`}>
-                        CantripOS · captured source{" "}
-                        {draft.osSource.worktreeId.slice(0, 8)}
-                      </option>
-                    ) : null}
-                  </NativeSelect>
-                )}
-              </label>
-              {draft.osSource ? (
-                <TunnelLinuxServiceFields
-                  service={draft.service}
-                  publicKey={draft.publicKey}
-                  onChange={(value) =>
-                    setDraft((current) => ({ ...current, ...value }))
-                  }
-                />
-              ) : null}
-              {!(draft.osSource && draft.service !== "tcp") ? (
-                <>
-                  <TunnelTcpFields
-                    value={draft}
-                    linux={Boolean(draft.osSource)}
-                    onChange={(value) =>
-                      setDraft((current) => ({ ...current, ...value }))
-                    }
-                  />
-                </>
-              ) : null}
+              <TunnelRouteFields
+                draft={draft}
+                setDraft={setDraft}
+                workers={workers.data ?? []}
+                osSources={osSources.data ?? []}
+              />
               <label className="grid gap-1.5 text-sm sm:col-span-2">
                 <span className="font-medium">Description (optional)</span>
                 <textarea
