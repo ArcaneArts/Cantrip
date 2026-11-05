@@ -7,8 +7,7 @@ pub(super) async fn lock(tx: &Transaction<'_>, owner: &str, chat: &str) -> Resul
         &[&chat, &owner],
     )
     .await?;
-    let Some(row) = row.filter(|c| c["experience"] == "agent" && c["context_kind"] == "project")
-    else {
+    let Some(row) = row.filter(|c| c["experience"] == "agent") else {
         return reject("managed-session-ineligible");
     };
     tx.query(
@@ -30,17 +29,24 @@ pub(super) async fn authorize(
         .execution_context(owner, &chat)
         .await?;
     let Some(context) =
-        context.filter(|c| crate::chats::managed_console::session_context(c).is_some())
+        context.filter(|c| crate::chats::managed_console::turn_session_context(c).is_some())
     else {
         return reject("stale-queue-session");
     };
     if context.get("workerId") != Some(worker) {
         return reject("stale-queue-session");
     }
+    let placement = if context["contextKind"] == "standalone" {
+        &context["scratchRootId"]
+    } else {
+        &context["worktreeId"]
+    };
+    if Some(placement) != session.get("placementId") {
+        return reject("stale-queue-session");
+    }
     for (field, input) in [
         ("projectId", "projectId"),
         ("contextKind", "contextKind"),
-        ("worktreeId", "placementId"),
         ("threadId", "threadId"),
         ("modelRouteId", "modelRouteId"),
         ("providerAccountId", "providerAccountId"),

@@ -30,7 +30,7 @@ import {
   queueStateChanged,
 } from "./native-command-queue.js";
 import { isDeepStrictEqual } from "node:util";
-import { managedConsoleSessionContext } from "../../terminals/managed-session.js";
+import { managedTurnSessionContext } from "../../terminals/managed-session.js";
 import type { ServerRepository } from "../repository.js";
 import { effectivePermissionProfile } from "../../chats/execution-helpers.js";
 import { randomUUID } from "node:crypto";
@@ -370,6 +370,12 @@ export class NativeCommandRepository {
       clientMessageId?: string;
       queueClaim?: { id: string; promptRevision: number };
       expectedInputRevision?: number;
+      /** Server-selected route, committed only after this input owns its lane. */
+      standaloneRuntime?: {
+        threadId: string | null;
+        modelRouteId: string;
+        providerAccountId: string | null;
+      };
     } = {},
   ): Promise<NativeCommandAdmissionResult> {
     const queueClaim = executionOptions.queueClaim ?? input.queueClaim;
@@ -470,7 +476,7 @@ export class NativeCommandRepository {
             ? "attach"
             : "write",
         );
-        if (!managedConsoleSessionContext(context))
+        if (!managedTurnSessionContext(context))
           throw new NativeCommandError("managed-session-ineligible");
         if (
           (input.method === "turn/pause" &&
@@ -666,14 +672,27 @@ export class NativeCommandRepository {
         )
           throw new NativeCommandError("path-scope-mismatch");
 
+        const standaloneRuntime = executionOptions.standaloneRuntime;
         if (
-          context.threadId !== input.session.threadId ||
+          standaloneRuntime &&
+          (context.contextKind !== "standalone" ||
+            context.experience !== "agent" ||
+            input.origin !== "gui" ||
+            input.method !== "turn/start" ||
+            !starts)
+        )
+          throw new NativeCommandError("managed-session-ineligible");
+        const intended = standaloneRuntime
+          ? { ...context, ...standaloneRuntime }
+          : context;
+        if (
+          intended.threadId !== input.session.threadId ||
           (!input.session.threadId &&
             (input.origin !== "gui" ||
               (!starts && !executionOptions.canonicalQueueMutation)))
         )
           throw new NativeCommandError("thread-identity-mismatch");
-        if (!sameRuntimeRoute(context, input.session))
+        if (!sameRuntimeRoute(intended, input.session))
           throw new NativeCommandError("runtime-route-mismatch");
         const [activation] = await tx
           .select()
@@ -694,6 +713,21 @@ export class NativeCommandRepository {
             );
           if (!context?.executionLaneId)
             throw new NativeCommandError("execution-unavailable");
+          if (standaloneRuntime) {
+            await this.transactionRepository(tx).updateChatRuntime(
+              context.chatId,
+              context.workerId,
+              null,
+              standaloneRuntime.threadId,
+              standaloneRuntime.modelRouteId,
+              "ready",
+              standaloneRuntime.providerAccountId,
+              context.scratchRootId,
+            );
+            context = await nativeCommandContext(tx, ownerId, context.chatId);
+            if (!context?.executionLaneId)
+              throw new NativeCommandError("execution-unavailable");
+          }
           initial.activationGeneration = randomUUID();
           initial.executionLaneId = context.executionLaneId;
         } else {
@@ -1287,7 +1321,7 @@ export class NativeCommandRepository {
     return this.database.transaction(async (tx) => {
       await this.lock(tx, ownerId, chatId);
       const context = await nativeCommandContext(tx, ownerId, chatId);
-      if (!context || !managedConsoleSessionContext(context)) return false;
+      if (!context || !managedTurnSessionContext(context)) return false;
       const [activation] = await tx
         .select()
         .from(schema.nativeCommandActivations)
@@ -1305,7 +1339,7 @@ export class NativeCommandRepository {
     return this.database.transaction(async (tx) => {
       await this.lock(tx, ownerId, chatId);
       const context = await nativeCommandContext(tx, ownerId, chatId);
-      if (!context || !managedConsoleSessionContext(context)) return;
+      if (!context || !managedTurnSessionContext(context)) return;
       await tx
         .update(schema.chats)
         .set({ managedAutonomyStopped: false })

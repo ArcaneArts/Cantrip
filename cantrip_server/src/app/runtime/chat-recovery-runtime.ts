@@ -1,7 +1,7 @@
 import { RelayLimitError } from "../../security/abuse-limits.js";
 import { createChatTurnOutcomeRuntime } from "./chat-turn-outcome-runtime.js";
 import {
-  managedConsoleSessionContext,
+  managedTurnSessionContext,
   prepareManagedConsoleLaunch,
 } from "../../terminals/managed-session.js";
 import { effectivePermissionProfile } from "../../chats/execution-helpers.js";
@@ -325,7 +325,7 @@ export function createChatRecoveryRuntime({
         chatIsExecuting(context.status)
       )
         return;
-      const managed = managedConsoleSessionContext(context) !== undefined;
+      const managed = managedTurnSessionContext(context) !== undefined;
       // Transfer an exhausted account before a queue claim takes ownership of
       // its next input. The native handoff and claim serialize on the chat lock.
       if (

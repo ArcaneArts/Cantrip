@@ -158,6 +158,17 @@ impl Bootstrap {
         let mut turn = self
             .preflight(owner, context, input, options, started_at, observer)
             .await?;
+        if turn.execution["contextKind"] == "standalone"
+            && turn.execution["experience"] == "agent"
+        {
+            let runtime = turn.route_pairs.first()
+                .context("No provider route is currently available.")?["root"]["runtime"].clone();
+            if !crate::chats::runtime_telemetry::RuntimeTelemetry::can_resume(&turn.execution, &runtime) {
+                turn.execution["threadId"] = Value::Null;
+            }
+            turn.execution["modelRouteId"] = runtime["routeId"].clone();
+            turn.execution["providerAccountId"] = runtime["provider"]["accountId"].clone();
+        }
         let protected_input = turn
             .encrypted_chat
             .as_ref()

@@ -3,7 +3,7 @@ import {
   chatPauseRuntimeStateSchema,
   type ChatPauseRuntimeState,
 } from "@cantrip/protocol";
-import { managedConsoleSessionContext } from "../../terminals/managed-session.js";
+import { managedTurnSessionContext } from "../../terminals/managed-session.js";
 import type { ServerRepository } from "../../db/repository.js";
 import { errorMessage } from "../../http/request-helpers.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
@@ -70,7 +70,7 @@ export function createChatAutomationPauseRuntime(
       );
     }
 
-    const managedNative = managedConsoleSessionContext(context) !== undefined;
+    const managedNative = managedTurnSessionContext(context) !== undefined;
     // Native goal/queue resume may start execution, so admission must observe
     // the user's durable unpause before the worker forwards that mutation.
     const resumed =

@@ -166,7 +166,7 @@ pub(crate) fn prepare_input(
         "mutation":mutation,
         "admission":json!({
             "workerId":context["workerId"],"operationId":options["operationId"],"origin":"gui","method":format!("thread/queue/{kind}"),
-            "session":json!({"chatId":context["chatId"],"threadId":context["threadId"],"contextKind":context["contextKind"],"projectId":context["projectId"],"placementId":context["worktreeId"],"modelRouteId":context["modelRouteId"],"providerAccountId":context["providerAccountId"],"runtimeGeneration":control["runtimeGeneration"],"connectionId":Value::Null}),
+            "session":json!({"chatId":context["chatId"],"threadId":context["threadId"],"contextKind":context["contextKind"],"projectId":context["projectId"],"placementId":if context["contextKind"]=="standalone"{&context["scratchRootId"]}else{&context["worktreeId"]},"modelRouteId":context["modelRouteId"],"providerAccountId":context["providerAccountId"],"runtimeGeneration":control["runtimeGeneration"],"connectionId":Value::Null}),
             "payloadDigest":digest,"protectedPayload":prompt["protectedContent"]["envelope"],"expectedActivationGeneration":control["activationGeneration"],"intent":intent
         })
     }))

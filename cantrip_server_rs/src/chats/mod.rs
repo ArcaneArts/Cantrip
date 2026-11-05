@@ -44,6 +44,7 @@ pub mod turn_runtime;
 pub mod turn_storage;
 mod worktree_selection;
 pub use runtime::RuntimeUpdate;
+pub(crate) use runtime::update_in_transaction as update_runtime_in_transaction;
 
 use crate::database::Database;
 use std::sync::Arc;

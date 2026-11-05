@@ -373,14 +373,14 @@ not an idle polling loop. No prompt content is copied into the journal.
 
 This is recovery of proven unstarted managed GUI inputs, not permission to replay
 potentially executed work. Granted/resumed execution still needs its canonical
-native checkpoint/terminal lifecycle. Standalone/Task recovery, current-generation
+native checkpoint/terminal lifecycle. Task recovery, current-generation
 abandoned preparations, the remaining execution/wait accounting, and the
 final bounded runtime/controller audit remain separate unfinished goal work.
 
 ## Canonical submission and transport backpressure
 
-New user submissions to managed IDE chats enter the existing encrypted canonical
-queue even when the chat is idle. The queue retains the client's original message,
+New user submissions to IDE and standalone Chats enter the existing encrypted
+canonical queue even when the chat is idle. The queue retains the client's original message,
 attachments, model selection, and subagent settings before dispatch; it is not a
 second worker prompt store. Only the next eligible item acquires a queue claim
 and competes for a provider ticket. GUI goal prompts default to the normal
@@ -407,11 +407,30 @@ transport attempts with zero inference time, without failing a chat, starting a
 goal cycle, spending its retry budget, or abandoning a live analytics record.
 Worker queue waiting and execution-time accounting still require the final audit.
 
-This step covers managed IDE submission and transport admission. Standalone Chat,
-Task dispatch, edited-message retries, and potentially executed native recovery must
-still complete their existing canonical lifecycle integration. It does not yet
-remove the ordinary RPC concurrency ceiling: a full transport retains inputs
-for retry rather than claiming that they have entered a provider's FIFO queue.
+Standalone Chat uses the same canonical claims and native GUI receipts as IDE
+chats. Input eligibility is separate from linked-terminal eligibility, which
+remains restricted to project chats. Queue edits, cancellation, Stop/resume,
+transport deferral, positive-no-start recovery and logical outcome recovery use
+the existing authority. Standalone placement is its actual scratch-root identity,
+including recovered outcomes; a nullable Git worktree cannot identify that root.
+Only its claimed head input competes for worker provider capacity.
+
+The server captures a standalone turn's selected route as intent, then commits
+that route inside native admission after the input acquires its execution lane.
+A competing input cannot overwrite a running chat's route during preparation.
+A fresh native thread remains unbound until actual worker dispatch, preserving
+initial encrypted-history seeding. Unbound worker preparation may reuse an
+identified thread and runner only for the same canonical operation generation;
+a different input must not append a freshly seeded history to an older thread.
+The existing association journal stores that opaque key, without prompt content.
+Known native threads keep their existing association. Standalone preparation uses
+its conversation profile and does not subscribe to project Goal/history observers.
+
+Task dispatch, durable edited-message retries, potentially executed native
+recovery and current-generation abandoned preparations remain part of the wider
+lifecycle integration. Ordinary transport admission still has its bounded
+backpressure policy; only work actually admitted by a worker receives a provider
+FIFO position.
 
 ## Configuration and live queue feedback
 
@@ -448,7 +467,7 @@ congestion, with a retry timer only while an actual connected write is blocked;
 there is no capacity polling or idle update loop. Reconnect obtains a fresh
 snapshot instead of replaying status from a previous authenticated binding.
 
-The remaining milestones must complete durable pending-operation/order recovery, ordinary
+The remaining milestones must complete durable pending-operation/order recovery, Task
 transport backpressure recovery, provider deletion/route-change and
 archival cancellation, execution-versus-wait accounting, bounded operation history, and the exhaustive
 inference-path/lifecycle audit. This intermediate implementation is not the

@@ -7,7 +7,7 @@ import type {
 } from "../../db/repository.js";
 import { NativeCommandError } from "../../db/repository/native-command-errors.js";
 import { effectivePermissionProfile } from "../../chats/execution-helpers.js";
-import { managedConsoleSessionContext } from "../../terminals/managed-session.js";
+import { managedTurnSessionContext } from "../../terminals/managed-session.js";
 import type { ChatTurnOptions } from "./chat-turn-types.js";
 import type { TaskTurnBootstrapObserver } from "./task-turn-bootstrap-observer.js";
 
@@ -29,7 +29,7 @@ export async function acquireChatTurnExecution({
   observeTaskTurnBootstrapStage: TaskTurnBootstrapObserver;
 }) {
   const managedNativeCommands =
-    managedConsoleSessionContext(context) !== undefined;
+    managedTurnSessionContext(context) !== undefined;
   if (managedNativeCommands && !protectedAdmissionInput)
     throw new Error("Chat turn content was not encrypted.");
   const nativeAdmission = managedNativeCommands
@@ -84,6 +84,15 @@ export async function acquireChatTurnExecution({
             clientMessageId: protectedAdmissionInput!.id,
             expectedInputRevision:
               options.expectedInputRevision ?? context.managedInputRevision,
+            ...(context.contextKind === "standalone"
+              ? {
+                  standaloneRuntime: {
+                    threadId: context.threadId,
+                    modelRouteId: context.modelRouteId!,
+                    providerAccountId: context.providerAccountId,
+                  },
+                }
+              : {}),
           },
         ),
       )

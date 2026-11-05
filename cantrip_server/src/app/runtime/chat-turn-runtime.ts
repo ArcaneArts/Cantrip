@@ -15,7 +15,8 @@ import { clearAgentInteraction } from "./clear-agent-interaction.js";
 import { protectChatInput } from "./protect-chat-input.js";
 import {
   managedConsoleSessionContext,
-  prepareManagedConsoleLaunch,
+  managedTurnSessionContext,
+  prepareManagedTurnLaunch,
 } from "../../terminals/managed-session.js";
 import { randomUUID } from "node:crypto";
 
@@ -286,6 +287,25 @@ export function createChatTurnRuntime({
         ),
       );
     }
+    // Capture the selected standalone route before its input receipt. Leave a
+    // fresh native thread unbound until actual dispatch so the worker can seed
+    // the existing protected conversation history exactly once.
+    if (
+      context.contextKind === "standalone" &&
+      context.experience === "agent"
+    ) {
+      const runtime = runtimes[0];
+      if (!runtime)
+        throw new Error("No configured provider route is available.");
+      context = {
+        ...context,
+        threadId: runtimeCanResumeContext(context, runtime)
+          ? context.threadId
+          : null,
+        modelRouteId: runtime.routeId,
+        providerAccountId: runtime.provider.accountId ?? null,
+      };
+    }
     const protectedAdmissionInput =
       encryptedChatMessages?.userMessage ??
       encryptedTaskMessages?.userMessage ??
@@ -368,8 +388,8 @@ export function createChatTurnRuntime({
             "The original Codex runtime is unavailable for this message.",
           );
         }
-        const managedRollback = managedConsoleSessionContext(execution)
-          ? await prepareManagedConsoleLaunch(execution, retryRuntime, {
+        const managedRollback = managedTurnSessionContext(execution)
+          ? await prepareManagedTurnLaunch(execution, retryRuntime, {
               ownerId,
               bridge,
               repository,

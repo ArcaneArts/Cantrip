@@ -27,6 +27,7 @@ const associationSchema = z
     identity: z.string().regex(/^[a-f0-9]{64}$/u),
     threadId: z.string().min(1),
     prepared: z.boolean().default(false),
+    unboundReuseKey: z.string().min(1).max(200).optional(),
     replacementOf: z.string().min(1).optional(),
     handoffCommitted: z.boolean().optional(),
     replacedThreads: z.array(z.string().min(1)).optional(),
@@ -39,6 +40,9 @@ export interface ManagedSessionPreparation {
   identity: ManagedSessionIdentity;
   runtime: Pick<CodexRuntime, "prepareManagedThread">;
   configuration: Omit<PrepareManagedThreadOptions, "onThreadIdentified">;
+  /** An unbound conversational input may adopt only its own identified thread.
+   * Other inputs still need their protected history seeded into a fresh thread. */
+  unboundReuseKey?: string;
   /** Read the actual source only when a replacement still needs configuration. */
   captureReplacementSettings?: () => Promise<NativeReplacementSettings>;
   /** The server can acknowledge its canonical association before attachment. */
@@ -139,7 +143,12 @@ export class ManagedSessionCoordinator {
           ])
         : fingerprint);
     let threadId =
-      configuration.threadId ?? (matchesPrevious ? previous.threadId : null);
+      configuration.threadId ??
+      (matchesPrevious &&
+      (input.unboundReuseKey === undefined ||
+        previous.unboundReuseKey === input.unboundReuseKey)
+        ? previous.threadId
+        : null);
     // A view request may have been routed before the canonical handoff. Only
     // committed predecessors may follow the replacement; an identified or
     // configured replacement alone does not establish that handoff succeeded.
@@ -242,6 +251,9 @@ export class ManagedSessionCoordinator {
             previous.handoffCommitted)
             ? { handoffCommitted: true }
             : {}),
+          ...(input.unboundReuseKey
+            ? { unboundReuseKey: input.unboundReuseKey }
+            : {}),
           prepared:
             intent === "preserve" &&
             previous?.threadId === identifiedThreadId &&
@@ -261,6 +273,9 @@ export class ManagedSessionCoordinator {
       identity: fingerprint,
       threadId: result.threadId,
       prepared: true,
+      ...(input.unboundReuseKey
+        ? { unboundReuseKey: input.unboundReuseKey }
+        : {}),
       ...(replacedThreads ? { replacedThreads } : {}),
       ...(handoffCommitted ||
       (matchesPrevious &&

@@ -62,7 +62,7 @@ fn executing(context: &Value) -> bool {
     )
 }
 fn managed(context: &Value) -> bool {
-    chats::managed_console::session_context(context).is_some()
+    chats::managed_console::turn_session_context(context).is_some()
 }
 fn empty() -> Response {
     Response::builder()

@@ -30,7 +30,7 @@ async fn stop(
     let current = context::execution(tx, owner, chat).await?;
     if current
         .as_ref()
-        .and_then(managed_console::session_context)
+        .and_then(managed_console::turn_session_context)
         .is_none()
     {
         return Ok(false);
@@ -52,7 +52,7 @@ pub(super) async fn resume(tx: &Transaction<'_>, owner: &str, chat: &str) -> Res
     let current = context::execution(tx, owner, chat).await?;
     if current
         .as_ref()
-        .and_then(managed_console::session_context)
+        .and_then(managed_console::turn_session_context)
         .is_none()
     {
         return Ok(());

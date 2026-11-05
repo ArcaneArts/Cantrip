@@ -1,4 +1,4 @@
-import { managedConsoleSessionContext } from "../../terminals/managed-session.js";
+import { managedTurnSessionContext } from "../../terminals/managed-session.js";
 import { NativeCommandError } from "../../db/repository/native-command-errors.js";
 import { mutateManagedGuiQueue } from "../runtime/managed-queue-input.js";
 import { randomUUID } from "node:crypto";
@@ -126,7 +126,7 @@ export function installChatTurnSubmissionRoutes(
         });
       }
       const managedSubmission =
-        managedConsoleSessionContext(context) !== undefined;
+        managedTurnSessionContext(context) !== undefined;
       if (
         managedSubmission ||
         context.automationPaused ||
@@ -144,7 +144,7 @@ export function installChatTurnSubmissionRoutes(
           return reply.code(409).send({ error: errorMessage(error) });
         }
         try {
-          const prompt = managedConsoleSessionContext(context)
+          const prompt = managedTurnSessionContext(context)
             ? ((
                 await mutateManagedGuiQueue(
                   repository,
@@ -197,7 +197,7 @@ export function installChatTurnSubmissionRoutes(
               "Chat prompt retained in the canonical queue",
             );
           }
-          if (prompt && managedConsoleSessionContext(context))
+          if (prompt && managedTurnSessionContext(context))
             void dispatchNextQueuedPrompt?.(context.chatId);
           return prompt
             ? reply.code(202).send(

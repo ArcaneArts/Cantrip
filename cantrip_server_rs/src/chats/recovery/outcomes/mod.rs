@@ -101,8 +101,8 @@ impl Service {
     async fn run(&self, owner: &str, worker: &str, n: &Value) -> Result<()> {
         let (chat, lane) = (text(&n["chatId"])?, text(&n["executionLaneId"])?);
         let context = self.lanes.recovery_context(owner, chat, lane).await?;
-        let logical = if truthy(n.get("nativeLogicalRoot")) && n["contextKind"] == "project" {
-            let mut input = json!({"chatId":n["chatId"],"executionLaneId":n["executionLaneId"],"clientMessageId":n["clientMessageId"],"worktreeId":n["worktreeId"],"nativeLogicalRoot":n["nativeLogicalRoot"]});
+        let logical = if truthy(n.get("nativeLogicalRoot")) {
+            let mut input = json!({"chatId":n["chatId"],"executionLaneId":n["executionLaneId"],"clientMessageId":n["clientMessageId"],"worktreeId":n["worktreeId"],"scratchRootId":n["scratchRootId"],"nativeLogicalRoot":n["nativeLogicalRoot"]});
             if n["outcome"]["ok"] == true {
                 for key in ["threadId", "turnId"] {
                     if let Some(value) = n["outcome"]["result"].get(key) {

@@ -70,7 +70,11 @@ pub(super) async fn root(
     let identity = head.get("identity");
     if head.get("logical_operation_id") != root.get("operation_id")
         || head.get("execution_lane_id") != input.get("executionLaneId")
-        || identity.and_then(|i| i.get("placementId")) != input.get("worktreeId")
+        || identity.and_then(|i| i.get("placementId"))
+            != input
+                .get("worktreeId")
+                .filter(|v| !v.is_null())
+                .or_else(|| input.get("scratchRootId"))
         || (truthy(input.get("threadId"))
             && identity.and_then(|i| i.get("threadId")) != input.get("threadId"))
         || (truthy(input.get("turnId"))

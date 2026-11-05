@@ -60,26 +60,26 @@ export function createChatTurnOutcomeRuntime({
       notification.chatId,
       notification.executionLaneId,
     );
-    const logicalRoot =
-      notification.nativeLogicalRoot && notification.contextKind === "project"
-        ? await repository.nativeCommands.logicalGuiOutcomeRoot(
-            ownerId,
-            workerId,
-            {
-              chatId: notification.chatId,
-              executionLaneId: notification.executionLaneId,
-              clientMessageId: notification.clientMessageId,
-              worktreeId: notification.worktreeId,
-              nativeLogicalRoot: notification.nativeLogicalRoot,
-              ...(notification.outcome.ok
-                ? {
-                    threadId: notification.outcome.result.threadId,
-                    turnId: notification.outcome.result.turnId,
-                  }
-                : {}),
-            },
-          )
-        : null;
+    const logicalRoot = notification.nativeLogicalRoot
+      ? await repository.nativeCommands.logicalGuiOutcomeRoot(
+          ownerId,
+          workerId,
+          {
+            chatId: notification.chatId,
+            executionLaneId: notification.executionLaneId,
+            clientMessageId: notification.clientMessageId,
+            worktreeId: notification.worktreeId,
+            scratchRootId: notification.scratchRootId,
+            nativeLogicalRoot: notification.nativeLogicalRoot,
+            ...(notification.outcome.ok
+              ? {
+                  threadId: notification.outcome.result.threadId,
+                  turnId: notification.outcome.result.turnId,
+                }
+              : {}),
+          },
+        )
+      : null;
     if (
       !laneContext ||
       (notification.nativeLogicalRoot && !logicalRoot) ||

@@ -127,7 +127,7 @@ impl Service {
                 "The project worker is offline. This chat remains paused so its next action is not lost.",
             ));
         }
-        let native = managed_console::session_context(context).is_some();
+        let native = managed_console::turn_session_context(context).is_some();
         let resumed = if native && !paused {
             self.chats
                 .set_automation_paused(owner, &chat, false)
