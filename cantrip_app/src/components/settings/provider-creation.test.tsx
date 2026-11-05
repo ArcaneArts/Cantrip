@@ -1,5 +1,5 @@
 import {
-  nativeEndpointProviderKinds,
+  endpointProviderKinds,
   settingsBundleSchema,
   type ModelProviderKind,
   type SettingsBundle,
@@ -43,7 +43,7 @@ vi.mock("./models-settings", () => ({
     <div>
       <button onClick={() => onAddProvider("ollama")}>Add Ollama</button>
       <button onClick={() => onAddProvider("chatgpt")}>Add ChatGPT</button>
-      {nativeEndpointProviderKinds.map((kind) => (
+      {endpointProviderKinds.map((kind) => (
         <button key={kind} onClick={() => onAddProvider(kind)}>
           Add {kind}
         </button>
@@ -136,7 +136,7 @@ function typeSelect(view: TestRenderer.ReactTestRenderer) {
 }
 
 describe("provider dialog singleton protection", () => {
-  it.each(nativeEndpointProviderKinds)(
+  it.each(endpointProviderKinds)(
     "keeps %s repeatable and retains its kind when changing the address",
     async (kind) => {
       const mounted = await mount(bundle([kind]));

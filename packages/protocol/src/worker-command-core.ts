@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { providerInferenceConfigurationSchema } from "./inference-admission.js";
-import { nativeEndpointProviderKinds } from "./provider-definitions.js";
+import { endpointProviderKinds } from "./provider-definitions.js";
 import {
   directCapabilityPrepareCommandSchema,
   directCapabilityRenewCommandSchema,
@@ -128,7 +128,7 @@ export const workerCoreCommandSchemas = [
   z.object({
     type: z.literal("model.endpoint.catalog"),
     provider: workerRuntimeProviderSchema.extend({
-      kind: z.enum(nativeEndpointProviderKinds),
+      kind: z.enum(endpointProviderKinds),
     }),
   }),
   z.object({

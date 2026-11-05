@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { nativeEndpointProviderKinds } from "@cantrip/protocol";
+import { endpointProviderKinds } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 import { CodexAppServer } from "../src/codex/app-server.js";
 import { discoverCodexRuntime } from "../src/codex/discovery.js";
@@ -15,7 +15,7 @@ const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
 // Uses the actual pinned executable and Cantrip's production provider/operation
 // configuration against a synthetic HTTP endpoint. This is not a real-backend benchmark.
 describe.skipIf(!binary)("native endpoint provider connections", () => {
-  it.each(nativeEndpointProviderKinds)(
+  it.each(endpointProviderKinds)(
     "completes an operation through %s without account credentials",
     async (kind) => {
       const root = await mkdtemp(
@@ -46,11 +46,20 @@ describe.skipIf(!binary)("native endpoint provider connections", () => {
         };
         const tool = (
           bodies.at(-1)?.tools as Array<Record<string, unknown>> | undefined
-        )?.find(
-          (tool) =>
-            tool.type === "function" &&
-            ["shell_command", "exec_command"].includes(String(tool.name)),
-        );
+        )
+          ?.map((tool) =>
+            kind === "mlx-lm"
+              ? {
+                  type: tool.type,
+                  ...(tool.function as Record<string, unknown>),
+                }
+              : tool,
+          )
+          .find(
+            (tool) =>
+              tool.type === "function" &&
+              ["shell_command", "exec_command"].includes(String(tool.name)),
+          );
         if (bodies.length === 1 && !tool) {
           response
             .writeHead(400)
@@ -62,6 +71,60 @@ describe.skipIf(!binary)("native endpoint provider connections", () => {
             "printf ENDPOINT_TOOL_OK",
           workdir: root,
         });
+        if (kind === "mlx-lm") {
+          response.writeHead(200, { "content-type": "text/event-stream" });
+          const packet = (delta: unknown, finish: string | null = null) => ({
+            id,
+            object: "chat.completion.chunk",
+            choices: [{ index: 0, delta, finish_reason: finish }],
+          });
+          const events =
+            bodies.length === 1
+              ? [
+                  packet({ reasoning: "Fixture reasoning." }),
+                  packet({
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: "endpoint-tool-call",
+                        type: "function",
+                        function: {
+                          name: tool!.name,
+                          arguments: arguments_.slice(0, 15),
+                        },
+                      },
+                    ],
+                  }),
+                  packet({
+                    tool_calls: [
+                      {
+                        index: 0,
+                        function: { arguments: arguments_.slice(15) },
+                      },
+                    ],
+                  }),
+                  packet({}, "tool_calls"),
+                ]
+              : [
+                  packet({ content: "ENDPOINT_" }),
+                  packet({ content: "OK" }),
+                  packet({}, "stop"),
+                ];
+          for (const event of [
+            ...events,
+            {
+              choices: [],
+              usage: {
+                prompt_tokens: 7,
+                completion_tokens: 3,
+                total_tokens: 10,
+              },
+            },
+          ])
+            response.write(`data: ${JSON.stringify(event)}\n\n`);
+          response.end("data: [DONE]\n\n");
+          return;
+        }
         const item =
           bodies.length === 1
             ? {
@@ -162,6 +225,27 @@ describe.skipIf(!binary)("native endpoint provider connections", () => {
             return child;
           },
         );
+        const model = {
+          id: "model",
+          routeId: "route",
+          name: "gpt-5",
+          reasoningEffort: null,
+          // Manual models still execute tools with discovery absent.
+          catalog:
+            kind === "llama-cpp" || kind === "mlx-lm"
+              ? null
+              : normalizeEndpointModel({
+                  id: "gpt-5",
+                  supports_tool_calling: true,
+                }),
+        };
+        const provider = {
+          id: `${kind}-instance`,
+          name: kind,
+          kind,
+          baseUrl: `http://127.0.0.1:${address.port}/proxy/v1`,
+          apiKey: kind === "llama-cpp" ? null : "fixture-key",
+        };
         const result = await runtime.runAgentOperation({
           operationId: `endpoint-${kind}`,
           cwd: root,
@@ -174,43 +258,44 @@ describe.skipIf(!binary)("native endpoint provider connections", () => {
           networkAccess: "none",
           permissionProfileId: null,
           timeoutMs: 30_000,
-          model: {
-            id: "model",
-            routeId: "route",
-            name: "gpt-5",
-            reasoningEffort: null,
-            // A manual model must still execute tools when discovery is absent.
-            catalog:
-              kind === "llama-cpp"
-                ? null
-                : normalizeEndpointModel({
-                    id: "gpt-5",
-                    supports_tool_calling: true,
-                  }),
-          },
-          provider: {
-            id: `${kind}-instance`,
-            name: kind,
-            kind,
-            baseUrl: `http://127.0.0.1:${address.port}/proxy/v1`,
-            apiKey: kind === "llama-cpp" ? null : "fixture-key",
-          },
+          model,
+          provider,
           mcpServers: [],
         });
         expect(result.status).toBe("completed");
         expect(result.text).toContain("ENDPOINT_OK");
+        expect(result.measuredUsage.inputTokens).toBeGreaterThan(0);
+        expect(result.measuredUsage.outputTokens).toBeGreaterThan(0);
+        expect(
+          await runtime.runLabelInference({
+            model,
+            provider,
+            instructions: "Return a short title without tools.",
+            input: "Title this fixture.",
+          }),
+        ).toContain("ENDPOINT_OK");
+        expect(bodies).toHaveLength(3);
+        expect(bodies[2]?.tools ?? []).toEqual([]);
         expect(bodies.length).toBeGreaterThan(0);
         expect(JSON.stringify(bodies[0]?.tools)).not.toContain(
           '"type":"custom"',
         );
-        expect(JSON.stringify(bodies[1]?.input)).toContain(
-          "endpoint-tool-call",
-        );
-        expect(JSON.stringify(bodies[1]?.input)).toContain("ENDPOINT_TOOL_OK");
+        const history =
+          kind === "mlx-lm" ? bodies[1]?.messages : bodies[1]?.input;
+        expect(JSON.stringify(history)).toContain("endpoint-tool-call");
+        expect(JSON.stringify(history)).toContain("ENDPOINT_TOOL_OK");
+        if (kind === "mlx-lm")
+          expect(JSON.stringify(history)).toContain("Fixture reasoning.");
         expect(bodies[0]?.model).toBe("gpt-5");
-        expect(paths.every((value) => value === "/proxy/v1/responses")).toBe(
-          true,
-        );
+        expect(
+          paths.every(
+            (value) =>
+              value ===
+              (kind === "mlx-lm"
+                ? "/proxy/v1/chat/completions"
+                : "/proxy/v1/responses"),
+          ),
+        ).toBe(true);
         expect(
           authorizations.every((value) =>
             kind === "llama-cpp"

@@ -7,6 +7,9 @@
   [runtime compatibility](CODEX_RUNTIME_COMPATIBILITY.md), and
   [multi-worker placement](MULTI_WORKER_ARCHITECTURE.md)
 
+For repeatable local/LAN provider setup, optional endpoint keys, and MLX-LM's
+private worker adapter, see [endpoint model providers](ENDPOINT_PROVIDERS.md).
+
 ## Security outcome
 
 Provider secrets are protected by account encryption keys that the server

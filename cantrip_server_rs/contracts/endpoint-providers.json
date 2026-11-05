@@ -20,6 +20,14 @@
     "defaultBaseUrl": "http://127.0.0.1:8080/v1",
     "multipleInstances": true
   },
+  "mlx-lm": {
+    "label": "MLX-LM",
+    "setupLabel": "MLX-LM",
+    "defaultName": "MLX-LM",
+    "defaultBaseUrl": "http://127.0.0.1:8080/v1",
+    "multipleInstances": true,
+    "adapter": "chat-completions"
+  },
   "vllm": {
     "label": "vLLM",
     "setupLabel": "vLLM",

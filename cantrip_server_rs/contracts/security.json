@@ -15852,7 +15852,14 @@
     },
     {
       "type": "enum",
-      "values": ["lm-studio", "llama-cpp", "vllm", "unsloth", "litellm"],
+      "values": [
+        "lm-studio",
+        "llama-cpp",
+        "vllm",
+        "unsloth",
+        "litellm",
+        "mlx-lm"
+      ],
       "checks": []
     },
     {
@@ -25770,6 +25777,7 @@
         "vllm",
         "unsloth",
         "litellm",
+        "mlx-lm",
         "openai-compatible"
       ],
       "checks": []

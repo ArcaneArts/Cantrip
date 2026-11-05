@@ -45,6 +45,7 @@ mod tests {
             "vllm",
             "unsloth",
             "litellm",
+            "mlx-lm",
         ] {
             assert!(super::worker_endpoint_kind(kind));
             assert_ne!(super::label(kind), "Model endpoint");

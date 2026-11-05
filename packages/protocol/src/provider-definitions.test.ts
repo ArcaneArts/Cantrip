@@ -8,6 +8,7 @@ import {
   isAccountProviderKind,
   modelProviderKinds,
   providerDefinitions,
+  providerUsesChatCompletions,
 } from "./provider-definitions.js";
 
 describe("provider instance policy", () => {
@@ -17,6 +18,7 @@ describe("provider instance policy", () => {
       expect(providerDefinitions[kind].multipleInstances).toBe(
         !isAccountProviderKind(kind),
       );
+      expect(providerUsesChatCompletions(kind)).toBe(kind === "mlx-lm");
     }
   });
 });

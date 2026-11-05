@@ -1,5 +1,6 @@
 import {
   nativeEndpointProviderKinds,
+  endpointProviderKinds,
   type WorkerCommand,
 } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
@@ -61,7 +62,7 @@ describe("Codex provider configuration", () => {
     },
   );
 
-  it.each(nativeEndpointProviderKinds)(
+  it.each(endpointProviderKinds)(
     "separates %s runtime generations when an instance or its connection changes",
     (kind) => {
       const model = {

@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { nativeEndpointProviderKinds } from "@cantrip/protocol";
+import { endpointProviderKinds } from "@cantrip/protocol";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
@@ -69,7 +69,7 @@ it("discovers each native backend on its worker and isolates catalogs by instanc
       },
     } satisfies WorkerCommandBus;
     const service = new OllamaCatalogService(repository, bridge);
-    for (const kind of nativeEndpointProviderKinds) {
+    for (const kind of endpointProviderKinds) {
       const first = await repository.createModelProvider(LOCAL_USER_ID, {
         name: `${kind} first`,
         kind,

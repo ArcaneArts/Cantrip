@@ -7,11 +7,16 @@ export const nativeEndpointProviderKinds = [
   "litellm",
 ] as const;
 
+export const endpointProviderKinds = [
+  ...nativeEndpointProviderKinds,
+  "mlx-lm",
+] as const;
+
 export const modelProviderKinds = [
   "chatgpt",
   "grok",
   "ollama",
-  ...nativeEndpointProviderKinds,
+  ...endpointProviderKinds,
   "openai-compatible",
 ] as const;
 
@@ -23,6 +28,7 @@ export interface ProviderDefinition {
   defaultName: string;
   defaultBaseUrl: string;
   multipleInstances: boolean;
+  adapter?: "chat-completions";
 }
 
 export const providerDefinitions = {
@@ -60,6 +66,14 @@ export const providerDefinitions = {
     defaultName: "llama.cpp",
     defaultBaseUrl: "http://127.0.0.1:8080/v1",
     multipleInstances: true,
+  },
+  "mlx-lm": {
+    label: "MLX-LM",
+    setupLabel: "MLX-LM",
+    defaultName: "MLX-LM",
+    defaultBaseUrl: "http://127.0.0.1:8080/v1",
+    multipleInstances: true,
+    adapter: "chat-completions",
   },
   vllm: {
     label: "vLLM",
@@ -103,11 +117,18 @@ export function isAccountProviderKind(
 /** Catalogs for these backends are observed from a selected worker. */
 export function isWorkerEndpointProviderKind(
   kind: string,
-): kind is "ollama" | (typeof nativeEndpointProviderKinds)[number] {
+): kind is "ollama" | (typeof endpointProviderKinds)[number] {
   return (
     kind === "ollama" ||
-    nativeEndpointProviderKinds.some((candidate) => candidate === kind)
+    endpointProviderKinds.some((candidate) => candidate === kind)
   );
+}
+
+export function providerUsesChatCompletions(
+  kind: (typeof modelProviderKinds)[number],
+) {
+  const definition = providerDefinitions[kind];
+  return "adapter" in definition && definition.adapter === "chat-completions";
 }
 
 export function providerSetupDefinition(

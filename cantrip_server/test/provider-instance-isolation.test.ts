@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { expect, it } from "vitest";
 import {
-  nativeEndpointProviderKinds,
+  endpointProviderKinds,
   type ModelProviderKind,
 } from "@cantrip/protocol";
 
@@ -37,7 +37,7 @@ it("persists repeatable endpoint instances with isolated credentials and model r
       "ollama",
       "openai-compatible",
       "openai-compatible",
-      ...nativeEndpointProviderKinds.flatMap((kind) => [kind, kind]),
+      ...endpointProviderKinds.flatMap((kind) => [kind, kind]),
     ].entries()) {
       const input = {
         kind: kind as ModelProviderKind,
@@ -65,7 +65,7 @@ it("persists repeatable endpoint instances with isolated credentials and model r
       expect(profile).not.toBeNull();
       instances.push({ provider, profile: profile!, input });
     }
-    expect(new Set(instances.map(({ provider }) => provider.id)).size).toBe(15);
+    expect(new Set(instances.map(({ provider }) => provider.id)).size).toBe(17);
 
     for (const { provider, profile, input } of instances) {
       expect(
