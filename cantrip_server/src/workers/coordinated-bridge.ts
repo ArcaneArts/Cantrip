@@ -62,6 +62,7 @@ interface PendingRemoteRequest {
   instanceId: string;
   eventQueue: Promise<void>;
   onEvent?: WorkerRequestOptions["onEvent"];
+  onInferenceTiming?: WorkerRequestOptions["onInferenceTiming"];
   reject(error: Error): void;
   resolve(value: unknown): void;
   startedAtMs: number;
@@ -670,6 +671,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         instanceId: presence.instanceId,
         eventQueue: Promise.resolve(),
         onEvent: options.onEvent,
+        onInferenceTiming: options.onInferenceTiming,
         forwardInferenceTiming: options.forwardInferenceTiming,
         reject,
         resolve,
@@ -726,6 +728,14 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         if (!event.success) return;
         if (event.data.type === "inference.command-state") {
           pending.deadline.observe(event.data.sequence, event.data.state);
+          if (event.data.timing) {
+            try {
+              pending.onInferenceTiming?.(
+                event.data.timing,
+                event.data.sequence,
+              );
+            } catch {}
+          }
           if (!pending.forwardInferenceTiming && event.data.admitted !== true)
             return;
         }

@@ -545,9 +545,6 @@ impl WorkerBridge {
                 {
                     pending.deadline_changed.send_replace(());
                 }
-                if event["admitted"].as_bool() != Some(true) {
-                    return;
-                }
             }
             let _ = pending.delivery.send(Delivery::Event(event));
         }

@@ -645,6 +645,7 @@ export const contractRoots = [
   "taskGoalOutcomeDeliverySchema",
   "taskGoalOutcomeCommitSchema",
   "workerChatTurnOutcomeNotificationSchema",
+  "inferenceCommandTimingSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.

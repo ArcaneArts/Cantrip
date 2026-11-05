@@ -174,6 +174,7 @@ impl SettingsRepository {
                         "completedAt",
                         "finalizedAt",
                         "durationMs",
+                        "inferenceTiming",
                         "finalAnswerAppeared",
                         "toolCallCount",
                         "invalidToolCallCount",

@@ -158,6 +158,11 @@ impl Runtime {
     ) -> Value {
         let turn = &sink.turn;
         let mut a = json!({"workerId":turn.execution["workerId"],"executionAttemptId":sink.attempt_id,"attemptKind":"chat-turn","attemptStatus":status,"codexVersion":turn.attributed_worker.as_ref().map(|v|v["codexVersion"].clone()).unwrap_or(Value::Null),"routeAttemptIndex":index,"retryFailoverCount":index,"startedAt":crate::wire::date_iso_milliseconds(began).expect("Attempt clock"),"immediateCorrectiveFollowup":turn.immediate_corrective_followup,"userRetryRegeneration":truthy(turn.options.get("retryMessageId"))});
+        if let Ok(timing) = sink.inference_timing.lock()
+            && let Some((_, timing)) = timing.as_ref()
+        {
+            a["inferenceTiming"] = timing.clone();
+        }
         if let Some(at) = at {
             let iso = json!(crate::wire::date_iso_milliseconds(at).expect("Attempt clock"));
             a["completedAt"] = iso.clone();
@@ -259,9 +264,10 @@ impl Runtime {
             events::text(&e["workerId"])?,
             sink.clone(),
         );
+        let sink_timing = sink.clone();
         let receive = self.operations.spawn(async move {
             Ok(commands
-                .request_with_timeout(
+                .request_observing_inference(
                     &worker,
                     command,
                     RequestTimeout::Disabled,
@@ -269,6 +275,18 @@ impl Runtime {
                         let sink = sink_events.clone();
                         async move { sink.on_event(&event).await.map_err(event_error) }.boxed()
                     })),
+                    Arc::new(move |event| {
+                        if let (Some(sequence), Some(timing), Ok(mut current)) = (
+                            event["sequence"].as_u64(),
+                            event.get("timing"),
+                            sink_timing.inference_timing.lock(),
+                        ) && current
+                            .as_ref()
+                            .is_none_or(|(previous, _)| sequence > *previous)
+                        {
+                            *current = Some((sequence, timing.clone()));
+                        }
+                    }),
                 )
                 .await?)
         });

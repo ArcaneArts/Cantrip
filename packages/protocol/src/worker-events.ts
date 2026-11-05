@@ -1,4 +1,7 @@
-import { workerInferenceStatusSchema } from "./inference-admission.js";
+import {
+  inferenceCommandTimingSchema,
+  workerInferenceStatusSchema,
+} from "./inference-admission.js";
 import { inferenceFailureEvidenceSchema } from "./inference-failure.js";
 import { nativeTurnModelAttributionSchema } from "./native-turn-model-attribution.js";
 import { z } from "zod";
@@ -243,6 +246,7 @@ export const workerEventSchema = z.discriminatedUnion("type", [
       state: z.enum(["waiting", "preparing", "running"]),
       /** The correlated operation is durably owned by worker admission. */
       admitted: z.literal(true).optional(),
+      timing: inferenceCommandTimingSchema.optional(),
     })
     .strict(),
   z

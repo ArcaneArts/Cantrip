@@ -23,6 +23,8 @@ use std::{
 };
 use tokio::sync::Notify;
 
+pub type InferenceTimingObserver = Arc<dyn Fn(Value) + Send + Sync>;
+
 pub type CommandOutcome = Result<Option<Value>, CommandError>;
 pub trait CommandDelegate: Send + Sync {
     fn stats(&self) -> BridgeStats;
@@ -459,6 +461,7 @@ impl LimitedCommandBus {
         command: Value,
         timeout: Option<Duration>,
         on_event: Option<EventHandler>,
+        inference_observer: Option<InferenceTimingObserver>,
         mut dispatch: tokio::sync::OwnedMutexGuard<()>,
     ) -> Result<Option<Value>, CommandFailure> {
         let mut resolving = Box::pin(self.owner(&worker));
@@ -491,6 +494,7 @@ impl LimitedCommandBus {
                     event_limit.clone(),
                     admission.clone(),
                 );
+                let inference_observer = inference_observer.clone();
                 Box::pin(async move {
                     if event["type"] == "inference.command-state"
                         && event["admitted"].as_bool() == Some(true)
@@ -514,6 +518,11 @@ impl LimitedCommandBus {
                             encoding_error: None,
                             inference: None,
                         });
+                    }
+                    if event["type"] == "inference.command-state"
+                        && let Some(observer) = inference_observer
+                    {
+                        observer(event.clone());
                     }
                     // Private admission/clock events never enter domain streams.
                     if event["type"] != "inference.command-state"
@@ -616,6 +625,24 @@ impl LimitedCommandBus {
             command,
             timeout,
             on_event,
+            None,
+        )
+        .await
+    }
+    pub async fn request_observing_inference(
+        self: &Arc<Self>,
+        worker: &str,
+        command: Value,
+        timeout: RequestTimeout,
+        on_event: Option<EventHandler>,
+        inference_observer: InferenceTimingObserver,
+    ) -> Result<Option<Value>, CommandFailure> {
+        self.request_for_key(
+            WorkerKey::new(Value::String(worker.into()))?,
+            command,
+            timeout,
+            on_event,
+            Some(inference_observer),
         )
         .await
     }
@@ -629,6 +656,7 @@ impl LimitedCommandBus {
             command,
             RequestTimeout::Default,
             None,
+            None,
         )
         .await
     }
@@ -638,6 +666,7 @@ impl LimitedCommandBus {
         command: Value,
         timeout: RequestTimeout,
         on_event: Option<EventHandler>,
+        inference_observer: Option<InferenceTimingObserver>,
     ) -> Result<Option<Value>, CommandFailure> {
         self.tasks.fetch_add(1, Ordering::AcqRel);
         let task = RequestTask(self.clone());
@@ -653,7 +682,14 @@ impl LimitedCommandBus {
             };
             _task
                 .0
-                .run(worker, command, timeout.duration(), on_event, dispatch)
+                .run(
+                    worker,
+                    command,
+                    timeout.duration(),
+                    on_event,
+                    inference_observer,
+                    dispatch,
+                )
                 .await
         })
         .await

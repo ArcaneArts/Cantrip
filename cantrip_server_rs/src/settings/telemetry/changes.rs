@@ -289,7 +289,13 @@ fn behavior_points(rows: &[&Value], metric: &str) -> Vec<Point> {
                         f64::NAN
                     }
                 }
-                "latency" => number(row, "durationMs"),
+                "latency" => {
+                    if row["inferenceTiming"]["complete"] == true {
+                        number(&row["inferenceTiming"], "executionMs")
+                    } else {
+                        f64::NAN
+                    }
+                }
                 "compaction-frequency" => number(row, "compactionCount"),
                 "completion-rate" => {
                     if row["attemptStatus"] == "completed" {

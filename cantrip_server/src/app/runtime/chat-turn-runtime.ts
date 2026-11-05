@@ -1,3 +1,4 @@
+import type { InferenceCommandTiming } from "@cantrip/protocol";
 import { RelayLimitError } from "../../security/abuse-limits.js";
 import {
   chatTurnModelConfiguration,
@@ -654,6 +655,8 @@ export function createChatTurnRuntime({
           const tokenUsageSourceKey = `chat-attempt:${executionAttemptId}`;
           const behaviorSourceKey = `chat-attempt:${executionAttemptId}`;
           const behaviorTracker = new ModelBehaviorTracker();
+          let inferenceTiming: InferenceCommandTiming | undefined;
+          let inferenceTimingSequence = -1;
           const attemptStartedAt = new Date();
           let quotaFollowupsScheduled = false;
           const attemptStartedAtMs = Date.now();
@@ -1037,6 +1040,11 @@ export function createChatTurnRuntime({
               },
               {
                 timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
+                onInferenceTiming: (timing, sequence) => {
+                  if (sequence <= inferenceTimingSequence) return;
+                  inferenceTimingSequence = sequence;
+                  inferenceTiming = timing;
+                },
                 onEvent: (event) =>
                   runAsOwner(ownerId, async () => {
                     if (event.type === "agent.automatic-label") {
@@ -1701,6 +1709,7 @@ export function createChatTurnRuntime({
                 completedAt,
                 finalizedAt: completedAt,
                 durationMs: completedAt.getTime() - attemptStartedAtMs,
+                inferenceTiming,
                 turnId: behaviorTurnId,
                 immediateCorrectiveFollowup,
                 userRetryRegeneration: Boolean(options.retryMessageId),
@@ -2046,6 +2055,7 @@ export function createChatTurnRuntime({
                 completedAt: failedAt,
                 finalizedAt: failedAt,
                 durationMs: failedAt.getTime() - attemptStartedAtMs,
+                inferenceTiming,
                 turnId: behaviorTurnId,
                 userInterrupted:
                   attemptStatus === "interrupted" ||

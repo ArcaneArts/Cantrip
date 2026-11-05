@@ -294,7 +294,7 @@ const changeMetricLabels: Record<TelemetryChangePoint["metric"], string> = {
   "effective-weekly-allowance": "Weekly allowance",
   "failure-rate": "Failure rate",
   "tool-error-rate": "Tool error rate",
-  latency: "Latency",
+  latency: "Execution duration",
   "compaction-frequency": "Compaction frequency",
   "completion-rate": "Completion rate",
   "output-reasoning-mix": "Reasoning / output mix",
@@ -413,19 +413,36 @@ function Behavior({ analytics }: { analytics: ProviderTelemetryAnalytics }) {
           detail={`${behavior.completedCount}/${behavior.attemptCount} attempts`}
         />
         <Metric
-          label="Median duration"
+          label="Total duration"
           value={formatDuration(behavior.durationMs.median)}
           detail={`${behavior.failedCount} failed · ${behavior.interruptedCount} interrupted`}
         />
         <Metric
           label="First activity"
           value={formatDuration(behavior.timeToFirstActivityMs.median)}
-          detail="Observed median"
+          detail="Total elapsed median"
         />
         <Metric
           label="Visible response"
           value={formatDuration(behavior.timeToVisibleResponseMs.median)}
-          detail="Observed median"
+          detail="Total elapsed median"
+        />
+      </div>
+      <div className="grid divide-x border-b sm:grid-cols-3">
+        <Metric
+          label="Execution duration"
+          value={formatDuration(behavior.executionDurationMs?.median ?? null)}
+          detail="Worker median · includes tools, excludes waiting"
+        />
+        <Metric
+          label="Provider queue wait"
+          value={formatDuration(behavior.queueWaitMs?.median ?? null)}
+          detail={`${behavior.queueWaitMs?.sampleCount ?? 0} complete worker samples`}
+        />
+        <Metric
+          label="Suspended wait"
+          value={formatDuration(behavior.suspendedMs?.median ?? null)}
+          detail="Worker median · dependency or user waits"
         />
       </div>
       <div className="grid divide-x border-b sm:grid-cols-4">
@@ -457,7 +474,7 @@ function Behavior({ analytics }: { analytics: ProviderTelemetryAnalytics }) {
               <span>Day</span>
               <span className="text-right">Attempts</span>
               <span className="text-right">Completion</span>
-              <span className="text-right">Median</span>
+              <span className="text-right">Total median</span>
               <span className="text-right">Tool errors</span>
             </div>
             {recentDays.map((day) => (

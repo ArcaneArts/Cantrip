@@ -156,6 +156,21 @@ pub fn summarize_model_behavior(rows: &[Value]) -> Value {
             .collect::<Vec<_>>(),
     );
     for (source, target) in [
+        ("executionMs", "executionDurationMs"),
+        ("queueWaitMs", "queueWaitMs"),
+        ("suspendedMs", "suspendedMs"),
+    ] {
+        result[target] = quota_value_statistics(
+            &rows
+                .iter()
+                .filter(|row| {
+                    row["attemptStatus"] != "running" && row["inferenceTiming"]["complete"] == true
+                })
+                .map(|row| number(&row["inferenceTiming"], source))
+                .collect::<Vec<_>>(),
+        );
+    }
+    for (source, target) in [
         ("firstActivityAt", "timeToFirstActivityMs"),
         ("firstVisibleResponseAt", "timeToVisibleResponseMs"),
     ] {

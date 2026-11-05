@@ -346,7 +346,9 @@ function behaviorPoints(
           : null;
         break;
       case "latency":
-        value = row.durationMs;
+        value = row.inferenceTiming?.complete
+          ? row.inferenceTiming.executionMs
+          : null;
         break;
       case "compaction-frequency":
         value = row.compactionCount;

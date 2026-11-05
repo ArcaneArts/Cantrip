@@ -1,3 +1,4 @@
+import { inferenceCommandTimingSchema } from "@cantrip/protocol";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import * as schema from "../schema.js";
@@ -112,6 +113,12 @@ export async function persistModelBehaviorObservation(
       completedAt: input.completedAt ?? null,
       finalizedAt: input.finalizedAt ?? null,
       durationMs: nullableCount(input.durationMs),
+      inferenceTiming:
+        input.inferenceTiming === undefined
+          ? (existing?.inferenceTiming ?? null)
+          : input.inferenceTiming === null
+            ? null
+            : inferenceCommandTimingSchema.parse(input.inferenceTiming),
       finalAnswerAppeared: input.finalAnswerAppeared ?? false,
       toolCallCount: count(input.toolCallCount),
       invalidToolCallCount: count(input.invalidToolCallCount),

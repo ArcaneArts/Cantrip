@@ -4733,6 +4733,10 @@ export const modelBehaviorObservations = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true }),
     finalizedAt: timestamp("finalized_at", { withTimezone: true }),
     durationMs: bigint("duration_ms", { mode: "number" }),
+    inferenceTiming:
+      jsonb("inference_timing").$type<
+        import("@cantrip/protocol").InferenceCommandTiming
+      >(),
     finalAnswerAppeared: boolean("final_answer_appeared")
       .notNull()
       .default(false),
