@@ -708,3 +708,24 @@ history evidence. Eight focused Core tests and 44 Goal accounting, backend and
 steering tests passed. Core unit checks used the upstream helper's 8 MiB test
 stack size after the initial notification test overflowed the default stack.
 Optimized product and whole-worker process-tree acceptance remain pending.
+
+## Goal budget time while waiting for inference
+
+Patch `0069` observes the actual native `begin`/`resume` admission future with a
+thread-owned monotonic queue clock. Goal progress subtracts those waits live, so
+FIFO reacquisition after a confirmed suspension cannot spend the Goal's time
+budget. Cancellation drops the same wait guard. Ordinary tools, active response
+streams, child work and non-Goal total-elapsed metrics keep their existing meaning.
+Independent background inference does not pause a concurrently executing parent.
+
+The clock stores cumulative duration and active-wait state, without a completed
+request history. Durable Goal checkpoints continue to save net elapsed work in
+the existing format; restoration reattaches the actual thread's queue clock and
+resets its baseline before resumption, preserving fractional work without counting
+the offline interval or subtracting an old wait again.
+
+Patch `0069` received source review, direct formatting of its new clock source,
+mechanical patch authoring and `git diff --check` only. It was not applied,
+compiled or executed. The earlier development-runtime results above do not cover
+this patch. No tests, builds, benchmarks, native helpers or computer-use checks
+were run for this change.

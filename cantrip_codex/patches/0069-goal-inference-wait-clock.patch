@@ -1,0 +1,280 @@
+diff --git a/codex-rs/ext/extension-api/src/inference_queue_clock.rs b/codex-rs/ext/extension-api/src/inference_queue_clock.rs
+new file mode 100644
+--- /dev/null
++++ b/codex-rs/ext/extension-api/src/inference_queue_clock.rs
+@@ -0,0 +1,54 @@
++//! Monotonic observation of actual worker-admission waits. This clock never
++//! grants capacity and keeps no history of completed requests.
++use std::sync::{Arc, Mutex, PoisonError};
++use std::time::{Duration, Instant};
++
++#[derive(Debug, Default)]
++pub struct InferenceQueueClock {
++    state: Mutex<ClockState>,
++}
++
++#[derive(Debug, Default)]
++struct ClockState {
++    completed: Duration,
++    started: Option<Instant>,
++    waiters: usize,
++}
++
++pub struct InferenceQueueWait(Arc<InferenceQueueClock>);
++
++impl InferenceQueueClock {
++    /// The owner enters this only at a non-inferencing admission boundary.
++    pub fn waiting(self: &Arc<Self>) -> InferenceQueueWait {
++        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
++        if state.waiters == 0 {
++            state.started = Some(Instant::now());
++        }
++        state.waiters += 1;
++        InferenceQueueWait(Arc::clone(self))
++    }
++
++    /// Overlapping waits count once. Live progress reads include the current
++    /// wait rather than charging it until the admission future finishes.
++    pub fn elapsed_at(&self, now: Instant) -> Duration {
++        let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
++        state.completed.saturating_add(
++            state
++                .started
++                .map(|started| now.saturating_duration_since(started))
++                .unwrap_or(Duration::ZERO),
++        )
++    }
++}
++
++impl Drop for InferenceQueueWait {
++    fn drop(&mut self) {
++        let mut state = self.0.state.lock().unwrap_or_else(PoisonError::into_inner);
++        state.waiters -= 1;
++        if state.waiters == 0 {
++            if let Some(started) = state.started.take() {
++                state.completed = state.completed.saturating_add(started.elapsed());
++            }
++        }
++    }
++}
+diff --git a/codex-rs/ext/extension-api/src/lib.rs b/codex-rs/ext/extension-api/src/lib.rs
+--- a/codex-rs/ext/extension-api/src/lib.rs
++++ b/codex-rs/ext/extension-api/src/lib.rs
+@@ -5 +5,2 @@
+ mod inference_admission;
++mod inference_queue_clock;
+@@ -19 +20,2 @@
+ pub use inference_admission::InferenceQueueAdmission;
++pub use inference_queue_clock::{InferenceQueueClock, InferenceQueueWait};
+diff --git a/codex-rs/core/src/managed_inference.rs b/codex-rs/core/src/managed_inference.rs
+--- a/codex-rs/core/src/managed_inference.rs
++++ b/codex-rs/core/src/managed_inference.rs
+@@ -28,2 +28,3 @@
+     transport_changed: Notify,
++    queue_clock: Option<Arc<codex_extension_api::InferenceQueueClock>>,
+ }
+@@ -124,4 +125,7 @@
+         cancellation: CancellationToken,
++        queue_clock: Arc<codex_extension_api::InferenceQueueClock>,
+     ) -> CodexResult<InferenceLifetime> {
+-        Self::begin_with_kind(gate, thread_id, turn_id, cancellation, false).await
++        Self::begin_with_kind(
++            gate, thread_id, turn_id, cancellation, false, Some(queue_clock),
++        ).await
+     }
+@@ -139,3 +143,4 @@
+         independent: bool,
++        queue_clock: Option<Arc<codex_extension_api::InferenceQueueClock>>,
+     ) -> CodexResult<InferenceLifetime> {
+-        let turn = Self::new(Some(gate), thread_id, turn_id, cancellation, false);
++        let turn = Self::new(Some(gate), thread_id, turn_id, cancellation, false, queue_clock);
+@@ -164,2 +169,3 @@
+         held: bool,
++        queue_clock: Option<Arc<codex_extension_api::InferenceQueueClock>>,
+     ) -> Arc<Self> {
+@@ -183,2 +189,3 @@
+             transport_changed: Notify::new(),
++            queue_clock,
+         })
+@@ -196,4 +203,5 @@
+             "stateless-inference".into(),
+             CancellationToken::new(),
+             true,
++            None,
+         ))
+@@ -205,2 +213,2 @@
+-        Self::begin_with_kind(gate, thread_id, operation, cancellation, true).await
++        Self::begin_with_kind(gate, thread_id, operation, cancellation, true, None).await
+     }
+@@ -211,4 +219,10 @@
+         let Some(gate) = &self.gate else {
+             return Ok(());
+         };
++        // Only the actual non-inferencing admission future owns this guard.
++        // Ordinary tools, child work and active response streams keep their
++        // existing Goal accounting semantics. Cancellation drops the wait too.
++        let _queue_wait = matches!(phase, "begin" | "resume")
++            .then(|| self.queue_clock.as_ref().map(|clock| clock.waiting()))
++            .flatten();
+         tokio::select! {
+diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
+--- a/codex-rs/core/src/session/turn.rs
++++ b/codex-rs/core/src/session/turn.rs
+@@ -282,4 +282,8 @@
+             sess.thread_id,
+             turn_context.sub_id.clone(),
+             cancellation_token.clone(),
++            sess.services.thread_extension_data
++                .get_or_init::<codex_extension_api::InferenceQueueClock>(
++                    codex_extension_api::InferenceQueueClock::default,
++                ),
+         )
+diff --git a/codex-rs/core/src/session/durable_suspension.rs b/codex-rs/core/src/session/durable_suspension.rs
+--- a/codex-rs/core/src/session/durable_suspension.rs
++++ b/codex-rs/core/src/session/durable_suspension.rs
+@@ -1302,4 +1302,8 @@
+             session.thread_id,
+             context.sub_id.clone(),
+             cancellation_token.clone(),
++            session.services.thread_extension_data
++                .get_or_init::<codex_extension_api::InferenceQueueClock>(
++                    codex_extension_api::InferenceQueueClock::default,
++                ),
+         )
+diff --git a/codex-rs/core/src/tasks/compact.rs b/codex-rs/core/src/tasks/compact.rs
+--- a/codex-rs/core/src/tasks/compact.rs
++++ b/codex-rs/core/src/tasks/compact.rs
+@@ -47,4 +47,8 @@
+                 session.thread_id,
+                 ctx.sub_id.clone(),
+                 cancellation_token.clone(),
++                session.services.thread_extension_data
++                    .get_or_init::<codex_extension_api::InferenceQueueClock>(
++                        codex_extension_api::InferenceQueueClock::default,
++                    ),
+             )
+diff --git a/codex-rs/ext/goal/src/extension.rs b/codex-rs/ext/goal/src/extension.rs
+--- a/codex-rs/ext/goal/src/extension.rs
++++ b/codex-rs/ext/goal/src/extension.rs
+@@ -160,2 +160,7 @@
++            runtime.accounting_state().bind_queue_clock(
++                input.thread_store.get_or_init::<codex_extension_api::InferenceQueueClock>(
++                    codex_extension_api::InferenceQueueClock::default,
++                ),
++            );
+             runtime.set_enabled(enabled);
+             self.goal_service.register_runtime(&runtime);
+diff --git a/codex-rs/ext/goal/src/accounting.rs b/codex-rs/ext/goal/src/accounting.rs
+--- a/codex-rs/ext/goal/src/accounting.rs
++++ b/codex-rs/ext/goal/src/accounting.rs
+@@ -1 +1,2 @@
++use codex_extension_api::InferenceQueueClock;
+ use codex_extension_api::ToolCallOutcome;
+@@ -12 +13,2 @@
++use std::sync::Arc;
+ use std::sync::Mutex;
+@@ -64,3 +66,5 @@
+     suspended: bool,
+     active_goal_id: Option<String>,
++    queue_clock: Option<Arc<InferenceQueueClock>>,
++    queue_baseline: Duration,
+ }
+@@ -108,2 +112,6 @@
+ impl GoalAccountingState {
++    pub(crate) fn bind_queue_clock(&self, clock: Arc<InferenceQueueClock>) {
++        self.inner().wall_clock.bind_queue_clock(clock);
++    }
++
+     pub(crate) fn start_turn(
+@@ -663,2 +671,4 @@
+             suspended: false,
+             active_goal_id: None,
++            queue_clock: None,
++            queue_baseline: Duration::ZERO,
+@@ -678,7 +688,29 @@
+     fn elapsed_at(&self, now: Instant) -> Duration {
++        self.elapsed_with_queue(now, self.queue_elapsed_at(now))
++    }
++
++    fn elapsed_with_queue(&self, now: Instant, excluded: Duration) -> Duration {
+         self.elapsed_before_start.saturating_add(if self.suspended {
+             Duration::ZERO
+         } else {
+             now.saturating_duration_since(self.last_accounted_at)
++                .saturating_sub(excluded.saturating_sub(self.queue_baseline))
+         })
+     }
++
++    fn queue_elapsed_at(&self, now: Instant) -> Duration {
++        self.queue_clock.as_ref()
++            .map(|clock| clock.elapsed_at(now))
++            .unwrap_or(Duration::ZERO)
++    }
++
++    fn bind_queue_clock(&mut self, clock: Arc<InferenceQueueClock>) {
++        if self.queue_clock.as_ref().is_some_and(|current| Arc::ptr_eq(current, &clock)) {
++            return;
++        }
++        let now = Instant::now();
++        self.elapsed_before_start = self.elapsed_at(now);
++        self.last_accounted_at = now;
++        self.queue_baseline = clock.elapsed_at(now);
++        self.queue_clock = Some(clock);
++    }
+@@ -687,6 +719,8 @@
+     fn hold(&mut self) {
+         let now = Instant::now();
+-        self.elapsed_before_start = self.elapsed_at(now);
++        let excluded = self.queue_elapsed_at(now);
++        self.elapsed_before_start = self.elapsed_with_queue(now, excluded);
+         self.last_accounted_at = now;
++        self.queue_baseline = excluded;
+         self.suspended = true;
+     }
+@@ -695,6 +729,8 @@
+     fn resume(&mut self) {
+         if self.suspended {
+-            self.last_accounted_at = Instant::now();
++            let now = Instant::now();
++            self.last_accounted_at = now;
++            self.queue_baseline = self.queue_elapsed_at(now);
+             self.suspended = false;
+         }
+     }
+@@ -712,9 +748,13 @@
+         let now = Instant::now();
+-        self.elapsed_before_start = self.elapsed_at(now).saturating_sub(advance);
++        let excluded = self.queue_elapsed_at(now);
++        self.elapsed_before_start = self.elapsed_with_queue(now, excluded).saturating_sub(advance);
+         self.last_accounted_at = now;
++        self.queue_baseline = excluded;
+     }
+ 
+     fn reset_baseline(&mut self) {
+-        self.last_accounted_at = Instant::now();
++        let now = Instant::now();
++        self.last_accounted_at = now;
+         self.elapsed_before_start = Duration::ZERO;
++        self.queue_baseline = self.queue_elapsed_at(now);
+     }
+diff --git a/codex-rs/ext/goal/src/accounting_suspension.rs b/codex-rs/ext/goal/src/accounting_suspension.rs
+--- a/codex-rs/ext/goal/src/accounting_suspension.rs
++++ b/codex-rs/ext/goal/src/accounting_suspension.rs
+@@ -35,2 +35,4 @@
+             suspended: true,
+             active_goal_id: saved.active_goal_id,
++            queue_clock: None,
++            queue_baseline: Duration::ZERO,
+@@ -210,3 +212,11 @@
+         saved.inner.wall_clock.hold();
+-        *self.inner() = saved.inner;
++        {
++            let mut inner = self.inner();
++            // The checkpoint persists net elapsed work, not process-local
++            // counters. Reattach this actual thread's clock before resuming.
++            if let Some(clock) = inner.wall_clock.queue_clock.clone() {
++                saved.inner.wall_clock.bind_queue_clock(clock);
++            }
++            *inner = saved.inner;
++        }
+         self.descendant_token_usage
