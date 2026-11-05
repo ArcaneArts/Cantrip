@@ -6006,7 +6006,6 @@ export class CodexAppServer implements CodexRuntime {
     threadId: string;
     turnId: string;
   }): CodexComputerUseExecution | null {
-    if (this.nativeEnvironment) return null;
     return this.#executions.resolveComputerUseExecution(input);
   }
 
