@@ -25,6 +25,11 @@ import {
 } from "../tasks/state.js";
 import * as schema from "./schema.js";
 import { toTaskDispatchCycleSummary } from "./task-dispatch.js";
+import {
+  assertTaskOperationDispatchFence,
+  type TaskOperationDispatchFence,
+  type TaskOperationLeaseFence,
+} from "./task-operation-fence.js";
 import { taskRetrySummary } from "../tasks/automatic-retry.js";
 import { detachProjectTab, projectTabKey } from "./tab-layouts.js";
 
@@ -803,7 +808,25 @@ export class TaskRepository {
     chatId: string,
     operationId: string,
     input: { executionLaneId: string; userMessageId: string },
+    dispatchFence?: TaskOperationLeaseFence,
   ): Promise<TaskOperationContext | null> {
+    if (dispatchFence)
+      return this.database.transaction(async (transaction) => {
+        await assertTaskOperationDispatchFence(
+          transaction,
+          ownerId,
+          chatId,
+          operationId,
+          dispatchFence,
+          true,
+        );
+        return new TaskRepository(transaction).attachOperationExecution(
+          ownerId,
+          chatId,
+          operationId,
+          input,
+        );
+      });
     if (!(await this.get(ownerId, chatId))) return null;
     await this.database
       .update(schema.taskPlanningRounds)
@@ -842,10 +865,19 @@ export class TaskRepository {
     operationId: string,
     rawResult: TaskOperationRelayResult,
     turnId: string | null,
+    dispatchFence?: TaskOperationLeaseFence,
   ): Promise<TaskOperationContext | null> {
     const result = taskOperationRelayResultSchema.parse(rawResult);
     if (!(await this.get(ownerId, chatId))) return null;
     return this.database.transaction(async (transaction) => {
+      if (dispatchFence)
+        await assertTaskOperationDispatchFence(
+          transaction,
+          ownerId,
+          chatId,
+          operationId,
+          dispatchFence,
+        );
       const roundRows = await transaction
         .select()
         .from(schema.taskPlanningRounds)
@@ -1003,9 +1035,18 @@ export class TaskRepository {
     chatId: string,
     operationId: string,
     goalLaunchFailure?: TaskOpaqueContent,
+    dispatchFence?: TaskOperationDispatchFence,
   ): Promise<TaskOperationContext | null> {
     if (!(await this.get(ownerId, chatId))) return null;
     return this.database.transaction(async (transaction) => {
+      if (dispatchFence)
+        await assertTaskOperationDispatchFence(
+          transaction,
+          ownerId,
+          chatId,
+          operationId,
+          dispatchFence,
+        );
       const roundRows = await transaction
         .select()
         .from(schema.taskPlanningRounds)

@@ -8,6 +8,31 @@ impl Repository {
         result: &Value,
         turn: Option<&str>,
     ) -> Result<Option<Value>> {
+        self.complete_operation_guarded(owner, chat, operation, result, turn, None)
+            .await
+    }
+    pub(crate) async fn complete_operation_fenced(
+        &self,
+        owner: &str,
+        chat: &str,
+        operation: &str,
+        result: &Value,
+        turn: Option<&str>,
+        lease: &Value,
+    ) -> Result<Option<Value>> {
+        let guard = json!({"kind":"leased","lease":lease});
+        self.complete_operation_guarded(owner, chat, operation, result, turn, Some(&guard))
+            .await
+    }
+    pub(crate) async fn complete_operation_guarded(
+        &self,
+        owner: &str,
+        chat: &str,
+        operation: &str,
+        result: &Value,
+        turn: Option<&str>,
+        guard: Option<&Value>,
+    ) -> Result<Option<Value>> {
         let result = parse("taskOperationRelayResultSchema", result)?;
         if self.get(owner, chat).await?.is_none() {
             return Ok(None);
@@ -17,9 +42,13 @@ impl Repository {
             operation.to_owned(),
             turn.map(str::to_owned),
         );
+        let (owner, guard) = (owner.to_owned(), guard.cloned());
         self.database
             .transaction(|tx| {
                 Box::pin(async move {
+                    if let Some(guard) = &guard {
+                        dispatch_fence::assert(tx, &owner, &chat, &operation, guard, false).await?;
+                    }
                     let Some(round) = locked_round(tx, &chat, &operation).await? else {
                         return Ok(None);
                     };
@@ -153,6 +182,28 @@ impl Repository {
         operation: &str,
         goal_launch_failure: Option<&Value>,
     ) -> Result<Option<Value>> {
+        self.fail_operation_guarded(owner, chat, operation, goal_launch_failure, None)
+            .await
+    }
+    pub(crate) async fn fail_operation_fenced(
+        &self,
+        owner: &str,
+        chat: &str,
+        operation: &str,
+        goal_launch_failure: Option<&Value>,
+        guard: &Value,
+    ) -> Result<Option<Value>> {
+        self.fail_operation_guarded(owner, chat, operation, goal_launch_failure, Some(guard))
+            .await
+    }
+    pub(crate) async fn fail_operation_guarded(
+        &self,
+        owner: &str,
+        chat: &str,
+        operation: &str,
+        goal_launch_failure: Option<&Value>,
+        guard: Option<&Value>,
+    ) -> Result<Option<Value>> {
         if self.get(owner, chat).await?.is_none() {
             return Ok(None);
         }
@@ -161,9 +212,13 @@ impl Repository {
             operation.to_owned(),
             goal_launch_failure.cloned(),
         );
+        let (owner, guard) = (owner.to_owned(), guard.cloned());
         self.database
             .transaction(|tx| {
                 Box::pin(async move {
+                    if let Some(guard) = &guard {
+                        dispatch_fence::assert(tx, &owner, &chat, &operation, guard, false).await?;
+                    }
                     let Some(round) = locked_round(tx, &chat, &operation).await? else {
                         return Ok(None);
                     };

@@ -94,12 +94,13 @@ impl Service {
         let relay = tasks::relay::parse_result(request, &completed.result["structuredResult"])?;
         let (chat, operation) = (text(&context["chatId"])?, text(&request["operationId"])?);
         self.tasks
-            .complete_operation(
+            .complete_operation_fenced(
                 owner,
                 &chat,
                 &operation,
                 &relay,
                 completed.result["turnId"].as_str(),
+                &claim["lease"],
             )
             .await?
             .context("Encrypted Task operation was not found.")?;

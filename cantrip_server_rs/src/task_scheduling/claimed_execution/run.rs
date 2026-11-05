@@ -73,12 +73,15 @@ impl Service {
             anyhow::ensure!(truthy(user_message.get("executionLaneId")),"Encrypted Task operation did not acquire a lane.");
             launch_stage="attach-execution";
             self.stage(claim,launch_stage,{
-                let (tasks,owner,chat,operation)=(self.tasks.clone(),owner.to_owned(),text(&context["chatId"])?,text(&request["operationId"])?);
-                async move {tasks.attach_operation_execution(&owner,&chat,&operation,&json!({"executionLaneId":user_message["executionLaneId"],"userMessageId":user_message["id"]})).await}
+                let (tasks,owner,chat,operation,lease)=(self.tasks.clone(),owner.to_owned(),text(&context["chatId"])?,text(&request["operationId"])?,claim["lease"].clone());
+                async move {tasks.attach_operation_execution_fenced(&owner,&chat,&operation,&json!({"executionLaneId":user_message["executionLaneId"],"userMessageId":user_message["id"]}),&lease).await}
             }).await?;
             Ok(())
         }.await;
         if let Err(error) = result {
+            if downcast_ref::<task_dispatch::Conflict>(&error).is_some() {
+                return Ok(());
+            }
             if launch_stage == "begin-turn"
                 && matches!(downcast_ref::<LaneError>(&error), Some(LaneError::Busy(_)))
             {

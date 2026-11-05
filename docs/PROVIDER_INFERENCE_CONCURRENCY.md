@@ -212,6 +212,18 @@ later-cycle queue status to identify the Task after its preceding ticket was
 released. It is cleared with that overlay; no additional controller map or prompt
 store is added. Task canonical recovery and execution accounting remain unfinished.
 
+Scheduled Task round completion, failure, and execution association, including
+durable worker outcome recovery, lock the real owner/cycle fence in the same transaction as their round write. A heartbeat before
+the write is insufficient: recovery or lease expiration can replace that authority
+between the heartbeat and callback. Both server implementations compare the exact
+cycle, operation, owner, fence, and current dispatch. Expiration cleanup carries
+its captured expired fence, so it cannot fail a subsequently recovered operation.
+A history association arriving after a fast settlement may finish under the same
+unchanged lease owner/fence, without reopening or settling the Task. Stale scheduled
+callbacks retire quietly instead of spending retry budget or logging a new launch
+failure. These are canonical data-write fences; lease expiry does not establish
+native inference settlement or release a provider ticket.
+
 Known dependency and user/approval waits can suspend their parent's reservation
 only after all parent sampling streams have stopped. Resumption rejoins FIFO before
 another model request. Ordinary tool round trips retain their reservation. Native

@@ -190,50 +190,77 @@ export function createChatTurnOutcomeRuntime({
     let recoveredOutcomeOk = notification.outcome.ok;
     let recoveredFinalizationOperationId: string | null = null;
     if (taskOperation) {
-      if (notification.outcome.ok) {
-        try {
-          const relayResult = parseTaskOperationRelayResult(
-            notification.outcome.result.structuredResult,
-            taskOperation.relayRequest,
-          );
-          await repository.tasks.completeOperation(
-            ownerId,
-            notification.chatId,
-            taskOperation.round.id,
-            relayResult,
-            notification.outcome.result.turnId ?? null,
-          );
-          if (taskOperation.round.kind === "finalize") {
-            recoveredFinalizationOperationId = taskOperation.round.id;
+      try {
+        if (notification.outcome.ok) {
+          try {
+            const relayResult = parseTaskOperationRelayResult(
+              notification.outcome.result.structuredResult,
+              taskOperation.relayRequest,
+            );
+            await repository.tasks.completeOperation(
+              ownerId,
+              notification.chatId,
+              taskOperation.round.id,
+              relayResult,
+              notification.outcome.result.turnId ?? null,
+              taskDispatchFence
+                ? { kind: "leased", lease: taskDispatchFence }
+                : undefined,
+            );
+            if (taskOperation.round.kind === "finalize") {
+              recoveredFinalizationOperationId = taskOperation.round.id;
+            }
+            const assistantMessage = await appendLiveTaskMessage(
+              ownerId,
+              notification.chatId,
+              relayResult.assistantMessage,
+              attribution,
+              laneContext.chat,
+            );
+            if (!assistantMessage) {
+              throw new Error("Task Chat was not found.");
+            }
+            await repository.tasks.attachOperationAssistantMessage(
+              ownerId,
+              notification.chatId,
+              taskOperation.round.id,
+              assistantMessage.id,
+            );
+            publishChatInvalidation(
+              notification.chatId,
+              "task",
+              null,
+              laneContext.chat,
+            );
+          } catch (error) {
+            if (error instanceof TaskDispatchConflictError) throw error;
+            recoveredOutcomeOk = false;
+            await repository.tasks.failOperation(
+              ownerId,
+              notification.chatId,
+              taskOperation.round.id,
+              undefined,
+              taskDispatchFence
+                ? { kind: "leased", lease: taskDispatchFence }
+                : undefined,
+            );
+            publishChatInvalidation(
+              notification.chatId,
+              "task",
+              null,
+              laneContext.chat,
+            );
           }
-          const assistantMessage = await appendLiveTaskMessage(
-            ownerId,
-            notification.chatId,
-            relayResult.assistantMessage,
-            attribution,
-            laneContext.chat,
-          );
-          if (!assistantMessage) {
-            throw new Error("Task Chat was not found.");
-          }
-          await repository.tasks.attachOperationAssistantMessage(
-            ownerId,
-            notification.chatId,
-            taskOperation.round.id,
-            assistantMessage.id,
-          );
-          publishChatInvalidation(
-            notification.chatId,
-            "task",
-            null,
-            laneContext.chat,
-          );
-        } catch (error) {
+        } else {
           recoveredOutcomeOk = false;
           await repository.tasks.failOperation(
             ownerId,
             notification.chatId,
             taskOperation.round.id,
+            undefined,
+            taskDispatchFence
+              ? { kind: "leased", lease: taskDispatchFence }
+              : undefined,
           );
           publishChatInvalidation(
             notification.chatId,
@@ -242,19 +269,9 @@ export function createChatTurnOutcomeRuntime({
             laneContext.chat,
           );
         }
-      } else {
-        recoveredOutcomeOk = false;
-        await repository.tasks.failOperation(
-          ownerId,
-          notification.chatId,
-          taskOperation.round.id,
-        );
-        publishChatInvalidation(
-          notification.chatId,
-          "task",
-          null,
-          laneContext.chat,
-        );
+      } catch (error) {
+        if (error instanceof TaskDispatchConflictError) return;
+        throw error;
       }
     }
     if (taskDispatchFence) {
