@@ -42,7 +42,10 @@ import { workerLogError, workerLogger } from "./logger.js";
 type CommandHandler = (
   command: WorkerCommand,
   emit: (event: WorkerEvent) => void,
-  context: Pick<WorkerRequestEnvelope, "inferenceAdmissionAck">,
+  context: Pick<WorkerRequestEnvelope, "inferenceAdmissionAck"> & {
+    inferenceOperationIdentity?: string;
+    inferenceOperationSignal?: AbortSignal;
+  },
 ) => Promise<unknown>;
 
 type SurfaceFrameHandler = (
@@ -239,6 +242,9 @@ export class WorkerConnection {
   #connectionReadyTimer: ReturnType<typeof setTimeout> | null = null;
   #connectionPendingObserved = false;
   #pendingServerControlPlaneGeneration: string | null = null;
+  #inferenceCommandGeneration: string | null = null;
+  #lastInferenceCommandSequence = 0n;
+  #inferenceCommandLifetime = new AbortController();
   #connectAttempt = 0;
   #disconnectStartedAtMs: number | null = null;
   #keepalivePingSendDeadline: ReturnType<typeof setTimeout> | null = null;
@@ -591,6 +597,9 @@ export class WorkerConnection {
     this.#transportDisconnectDeadlineMs = null;
     this.#transportLossGeneration += 1;
     this.#transportState = "disconnected";
+    this.#inferenceCommandLifetime.abort(
+      new Error("The worker command transport ended."),
+    );
     workerLogger.event(
       reasonCode === "reconnect-grace-expired" ? "warn" : "debug",
       "Worker transport resources disconnected",
@@ -655,6 +664,17 @@ export class WorkerConnection {
     this.#connectionReadyDeadlineMs = null;
     this.#readySocket = socket;
     this.#socketReadiness = "ready";
+    // Reconnect within the same authenticated control plane preserves the high
+    // water mark. Only an actual ready handshake can establish a new issuer.
+    if (this.#inferenceCommandGeneration !== serverControlPlaneGeneration) {
+      this.#inferenceCommandLifetime.abort(
+        new Error("The worker command issuer changed."),
+      );
+      this.#inferenceCommandGeneration = serverControlPlaneGeneration;
+      this.#lastInferenceCommandSequence = 0n;
+    }
+    if (this.#inferenceCommandLifetime.signal.aborted)
+      this.#inferenceCommandLifetime = new AbortController();
     this.markTransportConnected();
     this.startKeepalive(socket);
     this.flushCommandEnvelopes(socket);
@@ -1266,6 +1286,17 @@ export class WorkerConnection {
   }
 
   private async handleRequest(request: WorkerRequestEnvelope): Promise<void> {
+    let inferenceOperationIdentity: string | undefined;
+    let inferenceOperationSignal: AbortSignal | undefined;
+    if (request.inferenceSequence && this.#inferenceCommandGeneration) {
+      const sequence = BigInt(request.inferenceSequence);
+      // WebSocket commands arrive in issuer send order. A duplicate frame must
+      // not create another command owner, even after the old owner was collected.
+      if (sequence <= this.#lastInferenceCommandSequence) return;
+      this.#lastInferenceCommandSequence = sequence;
+      inferenceOperationIdentity = `${this.#inferenceCommandGeneration}:${request.inferenceSequence}`;
+      inferenceOperationSignal = this.#inferenceCommandLifetime.signal;
+    }
     const startedAt = performance.now();
     let outcomeScope: GoalOutcomeScope | undefined;
     if (
@@ -1308,6 +1339,8 @@ export class WorkerConnection {
       };
       const result = await this.handleCommand(request.command, emit, {
         inferenceAdmissionAck: request.inferenceAdmissionAck,
+        inferenceOperationIdentity,
+        inferenceOperationSignal,
       });
       let turnOutcome: Extract<
         WorkerNotification,

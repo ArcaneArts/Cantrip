@@ -1648,3 +1648,38 @@ unused reservations promptly; started inference still requires actual settlement
 The source and completed ticket remain reachable through weak references only
 when an actual caller retains them. Standalone helpers and legacy unreceipted
 turns remain separate retention-audit entries.
+
+## Standalone helper command lifetimes
+
+Both server command bridges issue an optional decimal inference sequence in
+actual command send order. The worker combines it with the issuer generation
+from its authenticated ready handshake. It records one high-water sequence per
+current issuer before entering the command handler; duplicate frames cannot
+create a new owner after completed state has been collected. Reconnecting to
+the same control plane preserves this mark. A new ready issuer establishes a
+new generation. No ordinal is minted from an external UUID or cache miss.
+
+Automatic naming, alternate-provider first-message naming, Git assistance and
+provider connection checks use a source owned by that actual command. Each
+standalone helper attempt gets its own source and ticket, including separately
+accounted concurrent calls. Account/provider failover occurs after the previous
+helper attempt settles and releases capacity. Same-provider first-message
+naming continues to borrow its response turn's ticket sequentially.
+
+Unreceipted legacy turns use that command authority for each actual response
+attempt as well. Receipt-bearing GUI, Task and managed native turns keep their
+own canonical sources; the command factory cannot replace a missing receipt
+owner or extend a completed native generation.
+
+Sources pin their actual native transport and close when the helper or its
+owning command finishes. Terminal command-connection loss or a changed ready
+issuer cancels unused reservations; transient reconnect grace preserves them.
+Already-started inference remains charged until actual native settlement or
+fencing. An HTTP caller disconnect does not close the worker command owner.
+Only active sources are retained by the command, and completed-ticket handles
+are weakly owned. There is no completed-UUID eviction window or new prompt queue.
+
+Legacy servers without the sequence, or connections without an authenticated
+issuer generation, retain conservative legacy ticket records. They do not mint
+collectible helper authority. The sequence carries no capacity, ordering priority
+or provider decision: the shared worker service still grants FIFO tickets.

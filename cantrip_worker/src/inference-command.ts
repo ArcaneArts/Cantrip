@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { ClaimedInferenceSource } from "./inference-source.js";
 import type {
   InferenceCommandTiming,
   InferenceTicketState,
@@ -83,11 +84,31 @@ class InferenceCommand {
   private closed = false;
   private admitted = false;
   private observed = false;
+  private inferenceAttempt = 0n;
+  private readonly sources = new Set<ClaimedInferenceSource>();
 
   constructor(
     private readonly emit: (event: WorkerEvent) => void,
     private readonly admissionAck: boolean,
+    private readonly operationIdentity?: string,
+    private readonly operationSignal?: AbortSignal,
   ) {}
+
+  claimSource(signal?: AbortSignal): ClaimedInferenceSource | undefined {
+    if (!this.operationIdentity) return undefined;
+    if (this.closed)
+      throw new Error("The owning worker inference command has ended.");
+    this.operationSignal?.throwIfAborted();
+    const source = new ClaimedInferenceSource(
+      `worker-command:${this.operationIdentity}:inference:${++this.inferenceAttempt}`,
+      this.operationSignal && signal
+        ? AbortSignal.any([this.operationSignal, signal])
+        : (this.operationSignal ?? signal),
+    );
+    this.sources.add(source);
+    void source.source.released.then(() => this.sources.delete(source));
+    return source;
+  }
 
   /** Captured by the operation at creation, before any asynchronous journal IO. */
   observeAdmission(): (() => void) | undefined {
@@ -139,6 +160,8 @@ class InferenceCommand {
     if (this.closed) return;
     if (this.observed) this.report(true);
     this.closed = true;
+    for (const source of this.sources) source.close();
+    this.sources.clear();
     this.clock.clear();
     for (const clock of this.providers.values()) clock.clear();
     this.providers.clear();
@@ -155,6 +178,12 @@ export function observeInferenceCommandAdmission(): (() => void) | undefined {
   return commands.getStore()?.observeAdmission();
 }
 
+/** Called for an actual standalone helper attempt within a transport-issued
+ * command. No owner is minted from an external operation UUID or a cache miss. */
+export function claimInferenceCommandSource(signal?: AbortSignal) {
+  return commands.getStore()?.claimSource(signal);
+}
+
 /** Socket callbacks can inherit the context that created the socket. Native
  * independent operations must not attach to that unrelated old command. */
 export function withoutInferenceCommand<T>(action: () => T): T {
@@ -165,8 +194,15 @@ export async function withInferenceCommand<T>(
   emit: (event: WorkerEvent) => void,
   action: () => Promise<T>,
   admissionAck = false,
+  operationIdentity?: string,
+  operationSignal?: AbortSignal,
 ): Promise<T> {
-  const command = new InferenceCommand(emit, admissionAck);
+  const command = new InferenceCommand(
+    emit,
+    admissionAck,
+    operationIdentity,
+    operationSignal,
+  );
   try {
     return await commands.run(command, action);
   } finally {

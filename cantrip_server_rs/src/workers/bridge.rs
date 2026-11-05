@@ -178,6 +178,7 @@ pub struct WorkerBridge {
     routed: AtomicU64,
     succeeded: AtomicU64,
     failed: AtomicU64,
+    inference_sequence: AtomicU64,
     notifications: Arc<Notifications>,
     frames: Arc<Frames>,
     tunnel_frames: Arc<Frames<crate::tunnels::frame::Frame>>,
@@ -237,6 +238,7 @@ impl WorkerBridge {
             routed: AtomicU64::new(0),
             succeeded: AtomicU64::new(0),
             failed: AtomicU64::new(0),
+            inference_sequence: AtomicU64::new(0),
             notifications: Arc::new(Notifications::default()),
             frames: Arc::new(Frames::default()),
             tunnel_frames: Arc::new(Frames::default()),
@@ -567,11 +569,24 @@ impl WorkerBridge {
             }
             let id = Uuid::new_v4().to_string();
             let kind = command["type"].as_str().unwrap_or("").to_owned();
+            let sequence = self
+                .inference_sequence
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+                    value.checked_add(1)
+                })
+                .map_err(|_| {
+                    CommandError::unavailable("Worker command sequence is exhausted.".into())
+                })?
+                + 1;
             let envelope = Value::object([
                 ("kind", Value::String("request".into())),
                 ("requestId", Value::String(id.clone().into())),
                 ("command", command),
                 ("inferenceAdmissionAck", Value::Bool(true)),
+                (
+                    "inferenceSequence",
+                    Value::String(sequence.to_string().into()),
+                ),
             ]);
             let envelope =
                 wire::parse("workerRequestEnvelopeSchema", Some(&envelope)).map_err(|error| {
