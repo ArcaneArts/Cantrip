@@ -68,6 +68,7 @@ export interface ChatRecoveryRuntimeDependencies
     chatId: string,
     operationId: string,
     error: unknown,
+    guard?: import("../../db/task-operation-fence.js").TaskOperationLeaseFence,
   ) => Promise<void>;
   launchPreparedTaskGoal: (
     chatId: string,

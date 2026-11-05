@@ -114,6 +114,45 @@ async fn defer_locked(tx: &Transaction<'_>, owner: &str, c: &Value, state: &Valu
     Ok(())
 }
 impl Repository {
+    pub async fn goal_launch_guard(&self, owner: &str, chat: &str, lease: &Value) -> Result<Value> {
+        let (owner, chat, lease) = (owner.to_owned(), chat.to_owned(), lease.clone());
+        self.database.transaction(|tx|Box::pin(async move {
+            dispatch_fence::assert(tx,&owner,&chat,&text(&lease["operationId"])?,&json!({"kind":"leased","lease":lease}),false).await?;
+            let c=cycle(tx,&owner,&chat,Some(&text(&lease["cycleId"])?)).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?;
+            let placement=one(Executor::Transaction(tx),"SELECT to_jsonb(c)::text FROM chats c WHERE c.id=$1 LIMIT 1 FOR UPDATE",&[&chat]).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?;
+            Ok(json!({"kind":"leased","lease":lease,"goalLaunch":json!({"inputOperationId":c["goal_input"].get("receipt").and_then(|r|r.get("operationId")).unwrap_or(&Value::Null),"placementRevision":placement["placement_revision"]})}))
+        })).await
+    }
+    pub async fn settle_goal_launch_failure(
+        &self,
+        owner: &str,
+        chat: &str,
+        guard: &Value,
+    ) -> Result<Value> {
+        let (owner, chat, guard) = (owner.to_owned(), chat.to_owned(), guard.clone());
+        self.database
+            .transaction(|tx| {
+                Box::pin(async move {
+                    dispatch_fence::assert(
+                        tx,
+                        &owner,
+                        &chat,
+                        &text(&guard["lease"]["operationId"])?,
+                        &guard,
+                        false,
+                    )
+                    .await?;
+                    crate::task_dispatch::Repository::settle_in(
+                        Executor::Transaction(tx),
+                        &guard["lease"],
+                        "failed",
+                        &Value::Null,
+                    )
+                    .await
+                })
+            })
+            .await
+    }
     pub async fn apply_goal_input_outcome(
         &self,
         owner: &str,

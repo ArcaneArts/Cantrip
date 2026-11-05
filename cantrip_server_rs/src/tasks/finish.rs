@@ -125,13 +125,31 @@ impl Repository {
         chat: &str,
         operation: &str,
     ) -> Result<Option<Value>> {
+        self.complete_finalization_operation_guarded(owner, chat, operation, None)
+            .await
+    }
+    pub async fn complete_finalization_operation_guarded(
+        &self,
+        owner: &str,
+        chat: &str,
+        operation: &str,
+        guard: Option<&Value>,
+    ) -> Result<Option<Value>> {
         if self.get(owner, chat).await?.is_none() {
             return Ok(None);
         }
-        let (chat, operation) = (chat.to_owned(), operation.to_owned());
+        let (owner, chat, operation, guard) = (
+            owner.to_owned(),
+            chat.to_owned(),
+            operation.to_owned(),
+            guard.cloned(),
+        );
         self.database
             .transaction(|tx| {
                 Box::pin(async move {
+                    if let Some(guard) = &guard {
+                        dispatch_fence::assert(tx, &owner, &chat, &operation, guard, false).await?;
+                    }
                     let Some(round) = locked_round(tx, &chat, &operation)
                         .await?
                         .filter(|r| truthy(r.get("relay_result")) && r["kind"] == "finalize")
@@ -248,7 +266,23 @@ impl Repository {
                             || c["stableStateBeforeFailure"] != "review"
                             || !c["activeOperationKind"].is_null()
                             || c["planningRound"] != round["ordinal"]
-                            || c["lastError"].get("code") != Some(&json!("task-goal-start-failed"))
+                            || !c["lastError"]["code"]
+                                .as_str()
+                                .and_then(|code| code.strip_prefix("task-goal-start-"))
+                                .is_some_and(|kind| {
+                                    matches!(
+                                        kind,
+                                        "failed"
+                                            | "timeout"
+                                            | "capacity"
+                                            | "rate-limit"
+                                            | "connection"
+                                            | "needs-input"
+                                            | "configuration"
+                                            | "usage-limit"
+                                            | "budget-limit"
+                                    )
+                                })
                             || c["lastError"].get("operationKind") != Some(&json!("finalize"))
                         {
                             return conflict(

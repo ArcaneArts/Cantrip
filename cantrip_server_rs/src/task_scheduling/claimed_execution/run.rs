@@ -118,6 +118,10 @@ impl Service {
         );
         self.operations.run(async move {
             let chat = text(&context["chatId"])?;
+            let guard = this
+                .tasks
+                .goal_launch_guard(&owner, &chat, &claim["lease"])
+                .await?;
             let launch: Result<()> = async {
                 this.dependencies.goals.retain(&claim["lease"]).await?;
                 this.dependencies
@@ -142,49 +146,45 @@ impl Service {
             }
             .await;
             if let Err(error) = launch {
+                if downcast_ref::<task_dispatch::Conflict>(&error).is_some() {
+                    return Ok(());
+                }
                 let error = Arc::new(error);
-                this.dependencies.goals.release(&claim["lease"]["cycleId"]);
                 let persisted = this
                     .dependencies
                     .goals
-                    .fail_launch(&owner, &chat, &operation, error.clone())
+                    .fail_launch_guarded(&owner, &chat, &operation, error.clone(), Some(&guard))
                     .await;
+                if persisted
+                    .as_ref()
+                    .err()
+                    .is_some_and(|e| downcast_ref::<task_dispatch::Conflict>(e).is_some())
+                {
+                    return Ok(());
+                }
                 let cleanup: Result<()> = async {
-                    let settled: Result<()> = async {
-                        this.dispatch
-                            .heartbeat(&claim["lease"], &Value::Null)
-                            .await?;
-                        this.dispatch
-                            .settle(&claim["lease"], "failed", &Value::Null)
-                            .await?;
-                        Ok(())
-                    }
-                    .await;
-                    if let Err(error) = settled
-                        && downcast_ref::<task_dispatch::Conflict>(&error).is_none()
-                    {
-                        return Err(error);
-                    }
-                    this.publish(&owner, &chat, Some(&context));
                     this.retries
-                        .note_failure(
+                        .settle_dispatch_failure_guarded(
                             &owner,
                             &chat,
-                            &format!(
-                                "goal-launch:{}:{}",
-                                text(&claim["cycle"]["id"])?,
-                                claim["lease"]["fencingToken"].stringify()
-                            ),
+                            &claim["lease"],
                             tasks::failure_kind::for_error(&error),
                             None,
+                            Some(&guard),
                         )
                         .await?;
+                    this.dependencies.goals.release_lease(&claim["lease"]);
                     this.publish(&owner, &chat, Some(&context));
                     this.tick();
                     Ok(())
                 }
                 .await;
-                cleanup?;
+                if let Err(error) = cleanup {
+                    if downcast_ref::<task_dispatch::Conflict>(&error).is_some() {
+                        return Ok(());
+                    }
+                    return Err(error);
+                }
                 persisted?;
             }
             Ok(())

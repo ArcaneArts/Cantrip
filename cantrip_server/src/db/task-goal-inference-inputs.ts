@@ -22,6 +22,7 @@ import { projectChatExecutionLock } from "./repository/chat-execution-lock.js";
 import {
   assertTaskOperationDispatchFence,
   type TaskOperationDispatchFence,
+  type TaskOperationLeaseFence,
 } from "./task-operation-fence.js";
 import {
   TaskDispatchConflictError,
@@ -43,6 +44,56 @@ export class TaskGoalInferenceInputRepository {
     private readonly lanes?: ChatExecutionLaneRepository,
     private readonly messages?: MessageWriteRepository,
   ) {}
+
+  async launchGuard(
+    owner: string,
+    chat: string,
+    lease: TaskInferenceInputReceipt["dispatch"],
+  ): Promise<TaskOperationLeaseFence> {
+    return this.database.transaction(async (tx) => {
+      await assertTaskOperationDispatchFence(
+        tx,
+        owner,
+        chat,
+        lease.operationId,
+        { kind: "leased", lease },
+      );
+      const cycle = await this.cycle(tx, owner, chat, lease.cycleId);
+      if (!cycle) stale();
+      const [placement] = await tx
+        .select({ revision: schema.chats.placementRevision })
+        .from(schema.chats)
+        .where(eq(schema.chats.id, chat))
+        .for("update")
+        .limit(1);
+      if (!placement) stale();
+      return {
+        kind: "leased",
+        lease,
+        goalLaunch: {
+          inputOperationId: cycle.goalInput?.receipt.operationId ?? null,
+          placementRevision: placement.revision,
+        },
+      };
+    });
+  }
+
+  async settleLaunchFailure(
+    owner: string,
+    chat: string,
+    guard: TaskOperationLeaseFence,
+  ) {
+    return this.database.transaction(async (tx) => {
+      await assertTaskOperationDispatchFence(
+        tx,
+        owner,
+        chat,
+        guard.lease.operationId,
+        guard,
+      );
+      return new TaskDispatchRepository(tx).settle(guard.lease, "failed");
+    });
+  }
 
   private async cycle(
     tx: RepositoryTransaction,

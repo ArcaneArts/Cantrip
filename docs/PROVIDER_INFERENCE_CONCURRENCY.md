@@ -739,3 +739,45 @@ Autonomous checkpoint/terminal reconciliation, current-generation abandoned
 preparation, precise physical cancellation of revoked inputs, the remaining
 canonical timing/lifecycle integration, bounded-runtime audit and exhaustive
 inference-path acceptance remain required for the full goal.
+
+## Goal setup callback ownership
+
+A claimed Goal launcher captures the existing dispatch lease, prior Goal input
+identity (including absence or a deferred input), and chat placement revision
+before asynchronous setup. The snapshot contains no prompt and grants no provider
+capacity. Goal startup completion/failure and captured worktree-continuation
+projections validate that authority inside their actual database transactions.
+They also require the same approved finalizer/planning ordinal, current Goal
+phase, and an eligible non-archived, unpaused chat/project.
+
+Replacing the lease, preparing a new Goal input, moving the chat, pausing it, or
+starting a newer planning operation makes an old setup callback stale. The
+launcher then retires quietly. Once the next input is prepared, its own receipt
+and controller handle terminal outcomes; an older setup failure cannot mark that
+input's Task failed or spend its retry budget. A valid setup failure still follows
+normal failure/retry policy. Dispatch failure and retry accounting use the same
+guard and stable dispatch key; an earlier heartbeat is not write authority.
+Repository validation accepts the worker's bounded startup failure categories
+(including connection, timeout and capacity), preserving their actual retry
+classification instead of rejecting every protected failure except generic
+`task-goal-start-failed`. The finalizer's precomputed generic fallback is unchanged.
+
+Goal heartbeat retention waits for its actual database heartbeat acknowledgment
+before replacing a timer. At installation it preserves any already-retained
+newer fence, and duplicate acknowledgments keep one timer. Captured setup,
+continuation, terminal reconciliation and project-pause callbacks release only
+their exact lease's timer. A delayed old acknowledgment, failure, or pause receipt
+cannot remove or overwrite a newer lease's retention. These timers retain Task
+dispatch ownership; they never release worker/provider inference tickets.
+
+Source acceptance review covers replacement during Goal setup, a new input under
+the same dispatch lease, changed placement/planning/pause intent, a current real
+setup failure, duplicate failure accounting, and reversed heartbeat-acknowledgment
+order. Both Node and Rust use the canonical cycle/Task/message authority and
+existing retention maps. Direct formatting and `git diff --check` were used; no
+tests, typechecks, builds, benchmarks, native execution or computer-use validation
+ran. No protocol or migration change was needed. Runtime behavior is unverified.
+
+Unscheduled Goal launch authority, recovered-finalizer Goal dispatch ownership,
+autonomous checkpoint recovery and the remaining lifecycle/accounting/bounded
+state audit still require completion as part of the full goal.
