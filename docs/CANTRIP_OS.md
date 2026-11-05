@@ -738,8 +738,8 @@ immutable capture before acquiring the guest service. The MCP client and
 credentials stay on the Worker. Actual packaged SDK tests exercise turn
 authorization and routing without a Host Cantrip-window grant or Host launch.
 Real-provider evidence is recorded separately. The remaining Phase 4 work
-includes stream-candidate comparison and
-refreshed ISO acceptance.
+includes refreshed ISO acceptance. [Stream measurements](../cantrip_os/STREAMING.md)
+record the initial JPEG choice and the VNC tradeoff.
 
 Remote 0.3.0 adds scoped plain-text clipboard access and Unicode paste, actual
 Linux pointer motion and live resizing through supported RandR modes. These
@@ -757,8 +757,9 @@ remote 0.5.0 adds an exclusive transient human controller lease, **Take control*
 and **Return to agent**. Held input is cleaned before handoff; old input is
 canceled rather than replayed. Disconnect or surface suspension ends the lease.
 Fresh CUA calls can continue on the same authorized agent turn after return.
-Current capture/encoding uses the existing adaptive JPEG pipeline; final stream
-selection and broader performance acceptance remain in Phase 4.
+The initial integrated adapter is the existing adaptive JPEG pipeline;
+[measured comparison and active resource results](../cantrip_os/STREAMING.md)
+record its CPU/bandwidth cost and the compressed VNC alternative.
 
 Remote 0.6.0 supplies independent protected service connections. SSH and SFTP
 use private Debian OpenSSH binaries in per-connection inetd mode, pinned host
@@ -786,8 +787,7 @@ exclusive human-control lease: agent input is canceled and released before
 admission, another controller is refused, and unrelated workspaces continue.
 Disconnect/Stop returns control only after confirmed guest cleanup or an actually
 observed replacement epoch; uncertainty keeps the old lease blocked. The Native
-app exposes a loopback host/port for an ordinary VNC client. Remaining distribution
-and comparative stream/resource acceptance are still required.
+app exposes a loopback host/port for an ordinary VNC client. Refreshed live/install/disk-boot distribution acceptance is still required.
 
 Remote 0.8.0 adds a protected guest-loopback listener carrier and a bounded
 Worker-host TCP bridge. It supports multiple clients and per-client half-close

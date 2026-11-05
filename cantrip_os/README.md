@@ -33,15 +33,16 @@ source-aware product workflows. Final distribution acceptance is recorded below.
 Phase 4 adds the optional [native desktop package](packages/remote/README.md),
 including its protected CUA carrier. Docker/ISO builds include it with the
 executor edition by default; `CANTRIP_OS_REMOTE=0` omits it independently.
-Version 0.5.0 routes normal agent CUA and previews to the captured Linux desktop,
+Version 0.8.0 routes normal agent CUA and previews to the captured Linux desktop,
 including scoped clipboard access, physical pointer movement and live resize.
 Project Settings → CantripOS → Open desktop now views that workspace inside
 Cantrip over WorkerLink, with exclusive **Take control** and **Return to agent**
 actions. Managed SSH/SFTP, VNC compatibility and development TCP services share
 Cantrip's tunnel list with Host routes. VNC clients use the same exclusive
-human-control state. Stream-candidate comparison and explicit Guest-to-Host
-forwarding remain in progress. Native, package and product evidence are
-recorded in acceptance.
+human-control state. Explicit Guest-to-Host routes are also available.
+[Streaming measurements](STREAMING.md) explain the initial JPEG choice and the
+compressed VNC alternative. Refreshed ISO acceptance remains in progress.
+Native, package and product evidence are recorded in acceptance.
 
 Phase 3 execution and distribution acceptance is recorded. See [acceptance results](ACCEPTANCE.md)
 for the actual tested builds and platform limits. Iterate in Docker first; build
