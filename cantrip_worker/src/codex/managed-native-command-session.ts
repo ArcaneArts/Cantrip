@@ -212,25 +212,30 @@ export class ManagedNativeCommandSession {
     const released = new Promise<void>((resolve) => {
       markReleased = resolve;
     });
+    const inferenceAbort = new AbortController();
     const execution: Execution = {
       receipt,
       session,
       released,
       markReleased,
-      inferenceAbort: new AbortController(),
+      inferenceAbort,
       inferenceSource: Object.freeze({
         operationId: receipt.operationGeneration,
         nativeTransportGeneration: session.runtimeGeneration,
+        signal: inferenceAbort.signal,
         released,
         assertCurrent: () => {
           if (
             this.active !== execution ||
+            execution.guiFinished ||
+            execution.logicalFinished ||
             execution.receipt.operationGeneration !==
               receipt.operationGeneration
           )
             throw new Error(
               "The canonical native execution no longer owns inference preparation.",
             );
+          execution.inferenceAbort.signal.throwIfAborted();
           this.assertTransport(session);
         },
       }),
@@ -304,6 +309,9 @@ export class ManagedNativeCommandSession {
     if (this.active === execution) this.active = null;
     execution.removeBridgeListener?.();
     execution.removeBridgeListener = undefined;
+    execution.inferenceAbort.abort(
+      new Error("Canonical inference ownership ended."),
+    );
     execution.markReleased();
   }
 
@@ -423,12 +431,10 @@ export class ManagedNativeCommandSession {
     }
   }
 
-  /** Joins an accepted GUI parent for mediated preparation without dispatching a model turn. */
-  async withGuiPreparation<T>(
+  private async bindGuiPreparation(
     receipt: NativeCommandReceipt,
     session: NativeCommandSession,
-    callback: () => Promise<T>,
-  ): Promise<T> {
+  ): Promise<{ execution: Execution; created: boolean }> {
     this.assertTransport(session);
     if (session.connectionId !== `gui:${receipt.operationGeneration}`)
       throw new Error(
@@ -455,14 +461,57 @@ export class ManagedNativeCommandSession {
     const execution = previous ?? this.createExecution(bound.receipt, session);
     if (!previous) execution.guiPreparation = true;
     this.active = execution;
+    return { execution, created: !previous };
+  }
+
+  /** Metadata-only preparation releases a temporary owner when it finishes. */
+  async withGuiPreparation<T>(
+    receipt: NativeCommandReceipt,
+    session: NativeCommandSession,
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    const { execution, created } = await this.bindGuiPreparation(
+      receipt,
+      session,
+    );
     try {
       return await this.withExpectedActivationGeneration(
         execution.receipt.activationGeneration,
         callback,
       );
     } finally {
-      if (!previous && execution.guiPreparation) this.clearExecution(execution);
+      if (created && execution.guiPreparation) this.clearExecution(execution);
     }
+  }
+
+  /** Bind the actual accepted GUI command before it competes for capacity. */
+  async prepareGuiInference(
+    receipt: NativeCommandReceipt,
+    session: NativeCommandSession,
+    logicalRoot: Pick<
+      NativeCommandReceipt,
+      "operationId" | "operationGeneration"
+    > = receipt,
+    bridgeSignal?: AbortSignal,
+  ): Promise<InferenceOperationSource> {
+    bridgeSignal?.throwIfAborted();
+    const { execution } = await this.bindGuiPreparation(receipt, session);
+    if (
+      execution.logicalRoot &&
+      (execution.logicalRoot.operationId !== logicalRoot.operationId ||
+        execution.logicalRoot.operationGeneration !==
+          logicalRoot.operationGeneration)
+    )
+      throw new Error(
+        "The GUI preparation belongs to another logical command.",
+      );
+    execution.logicalRoot = { ...logicalRoot };
+    // Transfer a temporary preparation owner to the complete GUI operation.
+    // A concurrent metadata helper must not release it in its finally block.
+    execution.guiPreparation = false;
+    this.bindGuiBridge(execution, bridgeSignal);
+    execution.inferenceSource.assertCurrent();
+    return execution.inferenceSource;
   }
 
   /** GUI admission already occurred on the server; join the same local generation. */
@@ -491,18 +540,15 @@ export class ManagedNativeCommandSession {
     };
     this.active = execution;
     this.bindGuiBridge(execution, bridgeSignal);
-    try {
-      await this.options.client.dispatch({
-        operationId: receipt.operationId,
-        operationGeneration: receipt.operationGeneration,
-        payloadDigest: receipt.payloadDigest,
-        session,
-      });
-      bridgeSignal?.throwIfAborted();
-    } catch (error) {
-      this.clearExecution(execution);
-      throw error;
-    }
+    // A transport failure may follow a dispatch commit. Retain the owner until
+    // normal physical/logical settlement or an authorized continuation replaces it.
+    await this.options.client.dispatch({
+      operationId: receipt.operationId,
+      operationGeneration: receipt.operationGeneration,
+      payloadDigest: receipt.payloadDigest,
+      session,
+    });
+    bridgeSignal?.throwIfAborted();
   }
 
   private bindGuiBridge(
@@ -551,6 +597,7 @@ export class ManagedNativeCommandSession {
     this.active = execution;
     this.bindGuiBridge(execution, bridgeSignal);
     if (previous) this.clearExecution(previous);
+    return execution.inferenceSource;
   }
 
   /** Local CUA/publication cleanup is finished; the server still owns logical persistence. */
@@ -583,6 +630,11 @@ export class ManagedNativeCommandSession {
       return;
     if (phase === "physical") execution.guiFinished = true;
     else execution.logicalFinished = true;
+    // Canonical or physical completion ends new preparation immediately. Keep
+    // the owner itself until both phases settle, so redelivery cannot remint it.
+    execution.inferenceAbort.abort(
+      new Error("The GUI inference operation has finished."),
+    );
     if (execution.guiFinished && execution.logicalFinished)
       this.clearExecution(execution);
   }

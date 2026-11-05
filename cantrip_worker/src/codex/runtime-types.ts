@@ -374,7 +374,10 @@ export interface RunAgentTurnOptions {
   /** First-message metadata is serial with this turn, never a concurrent borrower. */
   initialLabel?: {
     providerId: string;
-    run(inference?: CodexInferenceExecution): Promise<void>;
+    run(
+      inference?: CodexInferenceExecution,
+      signal?: AbortSignal,
+    ): Promise<void>;
   };
   /** Shared managed preparation owns configuration; this input inherits the native
    * thread selection instead of replaying a possibly stale GUI bootstrap model. */
@@ -383,6 +386,8 @@ export interface RunAgentTurnOptions {
   nativeInput?: ReadonlyArray<Record<string, unknown>>;
   nativeClientUserMessageId?: string;
   operationGeneration?: string;
+  /** Exact current canonical GUI owner, retained through its whole operation. */
+  inferenceSource?: InferenceOperationSource;
   /** Read after managed preparation/retry selected the exact canonical attempt. */
   inferenceRecovery?: () => InferenceRecoveryIdentity;
   /** Exact logical-root cancellation before native dispatch; never a chat-wide active-turn interrupt. */
