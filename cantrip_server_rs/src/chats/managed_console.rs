@@ -46,15 +46,26 @@ pub fn permission_profile(context: &Value) -> Value {
     };
     json!({"selectedId":selected_id,"effectiveId":effective,"defaultId":default,"usesDefault":uses_default,"forcedByWorktreePolicy":forced})
 }
-pub fn session_context(context: &Value) -> Option<Value> {
-    if context["experience"] != "agent" || context["contextKind"] != "project" {
+pub fn turn_session_context(context: &Value) -> Option<Value> {
+    if context["experience"] != "agent" {
         return None;
+    }
+    if context["contextKind"] == "standalone" {
+        return Some(
+            json!({"chatId":context["chatId"],"computerUseEnabled":context["computerUseEnabled"]==true,"contextKind":"standalone","projectId":Value::Null,"worktreeId":Value::Null,"rootKind":Value::Null,"scratchRootId":context["scratchRootId"]}),
+        );
     }
     let mut session = json!({"chatId":context["chatId"],"computerUseEnabled":context["computerUseEnabled"]==true,"contextKind":"project","projectId":context["projectId"],"worktreeId":context["worktreeId"],"rootKind":context["rootKind"],"scratchRootId":Value::Null});
     if let Some(os) = context.get("osExecution") {
         session["osExecution"] = os.clone();
     }
     Some(session)
+}
+
+pub fn session_context(context: &Value) -> Option<Value> {
+    (context["contextKind"] == "project")
+        .then(|| turn_session_context(context))
+        .flatten()
 }
 
 fn text(value: &Value, key: &str) -> Result<String> {
@@ -103,6 +114,14 @@ impl ManagedConsole {
         if context["contextKind"] == "standalone" {
             bail!("Standalone Chats do not support linked Codex consoles.");
         }
+        self.prepare_turn(owner, context, runtime).await
+    }
+    pub async fn prepare_turn(
+        &self,
+        owner: &str,
+        context: &Value,
+        runtime: &Value,
+    ) -> Result<Value> {
         let mut configuration = context["modelConfiguration"].clone();
         configuration["modelId"] = runtime["model"]["id"].clone();
         configuration["reasoningEffort"] = context["reasoningEffort"].clone();
@@ -122,7 +141,7 @@ impl ManagedConsole {
             .context("No provider route is currently available.")?;
         let root = &pair["root"]["runtime"];
         let child = &pair["subagent"]["runtime"];
-        let subagent = if truthy(Some(child)) {
+        let subagent = if context["contextKind"] != "standalone" && truthy(Some(child)) {
             json!({"model":child["model"],"provider":child["provider"]})
         } else {
             Value::Null
@@ -130,18 +149,30 @@ impl ManagedConsole {
         let worker = text(context, "workerId")?;
         let mcp = self
             .repository
-            .effective_mcp_servers(owner, context["projectId"].as_str(), &worker, "ide")
+            .effective_mcp_servers(
+                owner,
+                context["projectId"].as_str(),
+                &worker,
+                if context["contextKind"] == "standalone" {
+                    "chat"
+                } else {
+                    "ide"
+                },
+            )
             .await?;
         let mut fields = json!({"model":root["model"],"provider":root["provider"],"subagentDefaults":subagent,"planMode":context["planMode"],"permissionProfileId":permission_profile(context)["effectiveId"],"mcpServers":mcp});
-        if let Some(session) = session_context(context) {
+        if let Some(session) = turn_session_context(context) {
             fields["session"] = session;
         }
         let mut thread = context["threadId"].clone();
-        if !truthy(Some(&thread)) {
+        if !truthy(Some(&thread)) || context["contextKind"] == "standalone" {
             let mut command = fields.clone();
             command["type"] = json!("chat.thread.ensure");
             command["cwd"] = context["cwd"].clone();
-            command["threadId"] = Value::Null;
+            command["threadId"] = thread.clone();
+            if context["contextKind"] == "standalone" {
+                command["executionProfile"] = json!("standalone-chat");
+            }
             let result = (self.request)(owner.to_owned(), worker.clone(), command).await?;
             let returned = super::context::property(result.as_ref(), "threadId")?;
             if returned
@@ -170,7 +201,7 @@ impl ManagedConsole {
                     provider_account: root["provider"]
                         .get("accountId")
                         .map(|v| v.as_str().map(str::to_owned)),
-                    scratch_root: None,
+                    scratch_root: context["scratchRootId"].as_str().map(str::to_owned),
                 })
                 .await?;
         }

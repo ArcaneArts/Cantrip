@@ -1,6 +1,6 @@
 import {
-  managedConsoleSessionContext,
-  prepareManagedConsoleLaunch,
+  managedTurnSessionContext,
+  prepareManagedTurnLaunch,
   type ManagedConsoleRouting,
 } from "../../terminals/managed-session.js";
 import {
@@ -94,8 +94,8 @@ export function installChatExecutionControlRoutes(
         },
         "Chat compaction started",
       );
-      const managed = managedConsoleSessionContext(context)
-        ? await prepareManagedConsoleLaunch(context, runtime, {
+      const managed = managedTurnSessionContext(context)
+        ? await prepareManagedTurnLaunch(context, runtime, {
             ownerId: applicationOwnerId(),
             bridge,
             repository,
@@ -149,7 +149,7 @@ export function installChatExecutionControlRoutes(
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
       }
-      const autonomyStopped = managedConsoleSessionContext(context)
+      const autonomyStopped = managedTurnSessionContext(context)
         ? await repository.nativeCommands.stopAutonomy(
             applicationOwnerId(),
             context.chatId,

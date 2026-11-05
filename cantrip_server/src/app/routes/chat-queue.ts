@@ -1,5 +1,5 @@
 import { NativeCommandError } from "../../db/repository/native-commands.js";
-import { managedConsoleSessionContext } from "../../terminals/managed-session.js";
+import { managedTurnSessionContext } from "../../terminals/managed-session.js";
 import {
   lookupManagedGuiQueue,
   mutateManagedGuiQueue,
@@ -158,7 +158,7 @@ export function installChatQueueRoutes(
       if (modelId !== input.data.modelId) {
         return reply.code(409).send({ error: "Selected model was not found." });
       }
-      const managed = managedConsoleSessionContext(context) !== undefined;
+      const managed = managedTurnSessionContext(context) !== undefined;
       let prompt;
       try {
         prompt = managed
@@ -219,7 +219,7 @@ export function installChatQueueRoutes(
         applicationOwnerId(),
         request.params.chatId,
       );
-      if (context && managedConsoleSessionContext(context)) {
+      if (context && managedTurnSessionContext(context)) {
         if (
           input.data.expectedRevision === undefined ||
           !input.data.operationId
@@ -282,7 +282,7 @@ export function installChatQueueRoutes(
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
       }
-      if (managedConsoleSessionContext(promptContext)) {
+      if (managedTurnSessionContext(promptContext)) {
         if (
           input.data.expectedItemRevision === undefined ||
           !input.data.operationId
@@ -364,7 +364,7 @@ export function installChatQueueRoutes(
           current.chatId,
         )
       : null;
-    if (context && managedConsoleSessionContext(context)) {
+    if (context && managedTurnSessionContext(context)) {
       const revision = Number(request.query.expectedItemRevision);
       if (
         request.query.expectedItemRevision === undefined ||
@@ -422,7 +422,7 @@ export function installChatQueueRoutes(
       });
     }
 
-    const managed = managedConsoleSessionContext(context) !== undefined;
+    const managed = managedTurnSessionContext(context) !== undefined;
     let queueClaim: import("@cantrip/protocol").ManagedQueueClaim | null = null;
     if (managed) {
       if (

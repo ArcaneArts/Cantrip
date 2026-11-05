@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     chats::{
         live_mutations::MessageOptions,
-        managed_console::{permission_profile, session_context},
+        managed_console::{permission_profile, turn_session_context as session_context},
         message_queries::MessageKind,
     },
     workers::command_bus::{CommandFailure, RequestTimeout},

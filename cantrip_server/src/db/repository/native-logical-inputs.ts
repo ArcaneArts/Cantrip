@@ -300,6 +300,7 @@ export class NativeLogicalInputRepository {
       executionLaneId: string;
       clientMessageId: string;
       worktreeId: string | null;
+      scratchRootId?: string | null;
       nativeLogicalRoot: { operationId: string; operationGeneration: string };
       threadId?: string;
       turnId?: string | null;
@@ -373,7 +374,7 @@ export class NativeLogicalInputRepository {
         !head ||
         head.logicalOperationId !== root.operationId ||
         head.executionLaneId !== input.executionLaneId ||
-        identity?.placementId !== input.worktreeId ||
+        identity?.placementId !== (input.worktreeId ?? input.scratchRootId) ||
         (input.threadId && identity.threadId !== input.threadId) ||
         (input.turnId &&
           activation.nativeTurnId &&

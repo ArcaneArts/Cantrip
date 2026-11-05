@@ -58,7 +58,7 @@ async function prepareGuiQueueMutation(
         threadId: context.threadId,
         contextKind: context.contextKind,
         projectId: context.projectId,
-        placementId: context.worktreeId!,
+        placementId: context.worktreeId ?? context.scratchRootId,
         modelRouteId: context.modelRouteId,
         providerAccountId: context.providerAccountId,
         runtimeGeneration: control.runtimeGeneration,

@@ -24,10 +24,10 @@ impl Bootstrap {
             {
                 bail!("The original Codex runtime is unavailable for this message.");
             }
-            let launch = if managed_console::session_context(execution).is_some() {
+            let launch = if managed_console::turn_session_context(execution).is_some() {
                 Some(
                     self.console
-                        .prepare_launch(&turn.owner, execution, runtime)
+                        .prepare_turn(&turn.owner, execution, runtime)
                         .await?,
                 )
             } else {

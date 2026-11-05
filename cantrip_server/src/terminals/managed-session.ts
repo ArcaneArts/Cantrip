@@ -33,7 +33,8 @@ export async function resolveManagedSessionModelProfile(
     runtime,
   ]);
   if (!pair) throw new Error("No provider route is currently available.");
-  const child = pair.subagent?.runtime;
+  const child =
+    context.contextKind === "standalone" ? undefined : pair.subagent?.runtime;
   return {
     runtime: pair.root.runtime,
     subagentDefaults: child
@@ -42,15 +43,25 @@ export async function resolveManagedSessionModelProfile(
   };
 }
 
-export function managedConsoleSessionContext(
+/** Native input/queue ownership is shared by IDE and standalone agent Chats.
+ * Linked terminal support remains a separate, project-only capability. */
+export function managedTurnSessionContext(
   context: ChatExecutionContext,
 ): ManagedSessionContext | undefined {
-  if (context.experience !== "agent" || context.contextKind !== "project")
-    return undefined;
+  if (context.experience !== "agent") return undefined;
   const common = {
     chatId: context.chatId,
     computerUseEnabled: context.computerUseEnabled === true,
   };
+  if (context.contextKind === "standalone")
+    return {
+      ...common,
+      contextKind: "standalone",
+      projectId: null,
+      worktreeId: null,
+      rootKind: null,
+      scratchRootId: context.scratchRootId,
+    };
   return {
     ...common,
     contextKind: "project",
@@ -62,8 +73,16 @@ export function managedConsoleSessionContext(
   };
 }
 
+export function managedConsoleSessionContext(
+  context: ChatExecutionContext,
+): ManagedSessionContext | undefined {
+  return context.contextKind === "project"
+    ? managedTurnSessionContext(context)
+    : undefined;
+}
+
 /** One console configuration path for creation, direct, relay and WorkerLink. */
-export async function prepareManagedConsoleLaunch(
+export async function prepareManagedTurnLaunch(
   context: ChatExecutionContext,
   runtime: ModelRuntime,
   dependencies: ManagedConsoleRouting & {
@@ -80,9 +99,6 @@ export async function prepareManagedConsoleLaunch(
     { type: "codex" }
   >
 > {
-  if (context.contextKind === "standalone") {
-    throw new Error("Standalone Chats do not support linked Codex consoles.");
-  }
   const { ownerId, bridge, repository, routePairsForConfiguration } =
     dependencies;
   const { runtime: root, subagentDefaults } =
@@ -91,7 +107,7 @@ export async function prepareManagedConsoleLaunch(
       runtime,
       routePairsForConfiguration,
     );
-  const session = managedConsoleSessionContext(context);
+  const session = managedTurnSessionContext(context);
   const configurationFields = {
     model: root.model,
     provider: root.provider,
@@ -102,18 +118,22 @@ export async function prepareManagedConsoleLaunch(
       ownerId,
       context.projectId,
       context.workerId,
+      context.contextKind === "standalone" ? "chat" : "ide",
     ),
     ...(session ? { session } : {}),
   };
   let threadId = context.threadId;
-  if (!threadId) {
+  if (!threadId || context.contextKind === "standalone") {
     const result = (await bridge.request(
       context.workerId,
       {
         type: "chat.thread.ensure",
         cwd: context.cwd,
-        threadId: null,
+        threadId,
         ...configurationFields,
+        ...(context.contextKind === "standalone"
+          ? { executionProfile: "standalone-chat" as const }
+          : {}),
       },
       { ownerId, timeoutMs: null },
     )) as { threadId?: unknown };
@@ -133,7 +153,17 @@ export async function prepareManagedConsoleLaunch(
       root.routeId,
       "ready",
       root.provider.accountId,
+      context.scratchRootId,
     );
   }
   return { type: "codex", threadId, ...configurationFields };
+}
+
+/** Linked terminals retain their narrower project capability. */
+export async function prepareManagedConsoleLaunch(
+  ...args: Parameters<typeof prepareManagedTurnLaunch>
+): ReturnType<typeof prepareManagedTurnLaunch> {
+  if (args[0].contextKind === "standalone")
+    throw new Error("Standalone Chats do not support linked Codex consoles.");
+  return prepareManagedTurnLaunch(...args);
 }

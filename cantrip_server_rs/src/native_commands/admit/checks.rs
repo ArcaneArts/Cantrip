@@ -41,7 +41,7 @@ impl Admission<'_> {
             },
         )
         .await?;
-        if managed_console::session_context(&self.context).is_none() {
+        if managed_console::turn_session_context(&self.context).is_none() {
             return reject("managed-session-ineligible");
         }
         if (method == "turn/pause"
@@ -104,14 +104,33 @@ impl Admission<'_> {
         {
             return reject("path-scope-mismatch");
         }
-        if self.context.get("threadId") != session.get("threadId")
+        let standalone = self
+            .options
+            .get("standaloneRuntime")
+            .filter(|v| !v.is_null());
+        if standalone.is_some()
+            && (self.context["contextKind"] != "standalone"
+                || self.context["experience"] != "agent"
+                || input["origin"] != "gui"
+                || method != "turn/start"
+                || !self.starts)
+        {
+            return reject("managed-session-ineligible");
+        }
+        let mut intended = self.context.clone();
+        if let Some(route) = standalone {
+            for key in ["threadId", "modelRouteId", "providerAccountId"] {
+                intended[key] = route[key].clone();
+            }
+        }
+        if intended.get("threadId") != session.get("threadId")
             || (!truthy(session.get("threadId"))
                 && (input["origin"] != "gui"
                     || (!self.starts && !truthy(self.options.get("canonicalQueueMutation")))))
         {
             return reject("thread-identity-mismatch");
         }
-        if !context::same_runtime_route(Some(&self.context), Some(session))? {
+        if !context::same_runtime_route(Some(&intended), Some(session))? {
             return reject("runtime-route-mismatch");
         }
         let activation = raw_one(
@@ -146,6 +165,28 @@ impl Admission<'_> {
                     .unwrap_or(Value::Null);
             if !truthy(self.context.get("executionLaneId")) {
                 return reject("execution-unavailable");
+            }
+            if let Some(route) = standalone {
+                crate::chats::update_runtime_in_transaction(
+                    tx,
+                    crate::chats::RuntimeUpdate {
+                        chat: chat.clone(),
+                        worker: text(&self.context["workerId"])?,
+                        worktree: None,
+                        scratch_root: Some(text(&self.context["scratchRootId"])?),
+                        thread: optional(&route["threadId"])?,
+                        route: text(&route["modelRouteId"])?,
+                        status: "ready".into(),
+                        provider_account: Some(optional(&route["providerAccountId"])?),
+                    },
+                )
+                .await?;
+                self.context = context::execution(tx, self.owner, &chat)
+                    .await?
+                    .unwrap_or(Value::Null);
+                if !truthy(self.context.get("executionLaneId")) {
+                    return reject("execution-unavailable");
+                }
             }
             self.row["activation_generation"] = json!(uuid::Uuid::new_v4().to_string());
             self.row["execution_lane_id"] = self.context["executionLaneId"].clone();

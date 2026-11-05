@@ -20,7 +20,7 @@ import type { RepositoryDatabase, RepositoryTransaction } from "./database.js";
 import { NativeCommandError } from "./native-command-errors.js";
 import { nativeCommandContext } from "./native-command-context.js";
 import { projectChatExecutionLock } from "./chat-execution-lock.js";
-import { managedConsoleSessionContext } from "../../terminals/managed-session.js";
+import { managedTurnSessionContext } from "../../terminals/managed-session.js";
 
 type ClaimRow = typeof schema.managedQueueClaims.$inferSelect;
 const claimValue = (row: ClaimRow): ManagedQueueClaim =>
@@ -133,7 +133,6 @@ export class ManagedQueueRepository {
       .where(
         and(
           eq(schema.chats.experience, "agent"),
-          eq(schema.chats.contextKind, "project"),
           eq(schema.chats.automationPaused, false),
           eq(schema.chats.managedAutonomyStopped, false),
           noPendingPermission(schema.chats.id),
@@ -233,7 +232,7 @@ export class ManagedQueueRepository {
         and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
       )
       .for("update");
-    if (!chat || chat.experience !== "agent" || chat.contextKind !== "project")
+    if (!chat || chat.experience !== "agent")
       throw new NativeCommandError("managed-session-ineligible");
     await tx
       .insert(schema.managedQueueStates)
@@ -254,11 +253,11 @@ export class ManagedQueueRepository {
     );
     if (
       !context ||
-      !managedConsoleSessionContext(context) ||
+      !managedTurnSessionContext(context) ||
       context.workerId !== workerId ||
       context.projectId !== session.projectId ||
       context.contextKind !== session.contextKind ||
-      context.worktreeId !== session.placementId ||
+      (context.worktreeId ?? context.scratchRootId) !== session.placementId ||
       context.threadId !== session.threadId ||
       context.modelRouteId !== session.modelRouteId ||
       context.providerAccountId !== session.providerAccountId

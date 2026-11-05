@@ -2013,6 +2013,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   type ManagedBindingOptions = {
     cwd: string;
     threadId: string;
+    unboundReuseKey?: string;
     model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
     provider: RuntimeProvider;
     permissionProfileId: string;
@@ -2214,6 +2215,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     options: {
       cwd: string;
       threadId?: string | null;
+      unboundReuseKey?: string;
       model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
       provider: RuntimeProvider;
       permissionProfileId: string;
@@ -2227,7 +2229,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     }
     const key = session.chatId;
     const previous = runners.get(key);
-    if (!replace && previous?.belongsToCurrentTransport()) {
+    const preceding = previous
+      ? managedRunnerConfigurations.get(previous)
+      : undefined;
+    const sameUnboundInput =
+      options.threadId != null ||
+      options.unboundReuseKey === undefined ||
+      preceding?.unboundReuseKey === options.unboundReuseKey;
+    if (!replace && sameUnboundInput && previous?.belongsToCurrentTransport()) {
       return previous;
     }
     options = { ...options };
@@ -2394,10 +2403,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           session.computerUseEnabled,
         ),
     );
-    const runner =
-      session.contextKind === "project"
-        ? managedExecutionRunnerFor(runtime, session, options)
-        : null;
+    const runner = managedExecutionRunnerFor(runtime, session, options);
     const result = await managedSessions.prepare({
       identity: managedSessionIdentity(session),
       runtime: preparationRuntime,
@@ -2435,11 +2441,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         managedCurrentRuntimes.set(session.chatId, runtime);
       }
     }
-    projectGoalDelivery.watch(result.threadId, session.chatId);
-    threadObservations.bind(
-      observationScope(session.chatId, result.threadId, options),
-      runtime,
-    );
+    if (session.contextKind === "project") {
+      projectGoalDelivery.watch(result.threadId, session.chatId);
+      threadObservations.bind(
+        observationScope(session.chatId, result.threadId, options),
+        runtime,
+      );
+    }
     return { ...result, runtime, subagentDefaults };
   };
 
@@ -5436,6 +5444,26 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             entry: null,
             dispatch: null,
           };
+          const sessionForTurn = (): ManagedSessionContext =>
+            command.contextKind === "project"
+              ? {
+                  contextKind: "project",
+                  chatId: command.chatId,
+                  projectId: command.policyProjectId!,
+                  worktreeId: command.worktreeId!,
+                  rootKind: command.rootKind!,
+                  scratchRootId: null,
+                  computerUseEnabled: Boolean(command.computerUseAuthority),
+                }
+              : {
+                  contextKind: "standalone",
+                  chatId: command.chatId,
+                  projectId: null,
+                  worktreeId: null,
+                  rootKind: null,
+                  scratchRootId: command.scratchRootId!,
+                  computerUseEnabled: Boolean(command.computerUseAuthority),
+                };
           const guiAdapters = new Set<ManagedNativeCommandSession>();
           const guiBridgeSignal = managedGuiBridgeLifetime.signal;
           const computerUseRegistration: {
@@ -5569,30 +5597,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               worktreePolicy: command.worktreePolicy,
               onBeforeNativeDispatch: command.nativeCommandReceipt
                 ? async (threadId) => {
-                    const session: ManagedSessionContext =
-                      command.contextKind === "project"
-                        ? {
-                            contextKind: "project",
-                            chatId: command.chatId,
-                            projectId: command.policyProjectId!,
-                            worktreeId: command.worktreeId!,
-                            rootKind: command.rootKind!,
-                            scratchRootId: null,
-                            computerUseEnabled: Boolean(
-                              command.computerUseAuthority,
-                            ),
-                          }
-                        : {
-                            contextKind: "standalone",
-                            chatId: command.chatId,
-                            projectId: null,
-                            worktreeId: null,
-                            rootKind: null,
-                            scratchRootId: command.scratchRootId!,
-                            computerUseEnabled: Boolean(
-                              command.computerUseAuthority,
-                            ),
-                          };
+                    const session = sessionForTurn();
                     nativeCommandState.entry = managedCommandSessionFor(
                       runtime,
                       session,
@@ -5915,15 +5920,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 await computerUseRegistration.release?.();
                 computerUseRegistration.release = null;
                 computerUseRegistration.root = null;
-                const session: ManagedSessionContext = {
-                  contextKind: "project",
-                  chatId: command.chatId,
-                  computerUseEnabled: Boolean(command.computerUseAuthority),
-                  projectId: command.policyProjectId!,
-                  worktreeId: command.worktreeId!,
-                  rootKind: command.rootKind!,
-                  scratchRootId: null,
-                };
+                const session = sessionForTurn();
                 let nextPrompt = nativeCommandState.prompt;
                 if (
                   retry.reason === "invalid-compaction" &&
@@ -6013,23 +6010,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             }
             // Preparation is shared with console creation, but the queue is
             // released before model execution so it cannot block Stop/replies.
-            if (encryptedChat && !standalone) {
+            if (
+              encryptedChat &&
+              (!standalone || command.nativeCommandReceipt)
+            ) {
               turnOptions.onBeforeFirstAttempt = async (signal) => {
                 signal = AbortSignal.any([signal, guiBridgeSignal]);
                 signal.throwIfAborted();
-                const session: ManagedSessionContext = {
-                  contextKind: "project",
-                  chatId: command.chatId,
-                  computerUseEnabled: Boolean(command.computerUseAuthority),
-                  projectId: command.policyProjectId!,
-                  worktreeId: command.worktreeId!,
-                  rootKind: command.rootKind!,
-                  scratchRootId: null,
-                };
+                const session = sessionForTurn();
                 const runner = command.nativeCommandReceipt
                   ? managedExecutionRunnerFor(runtime, session, {
                       cwd: command.cwd,
                       threadId: command.threadId,
+                      unboundReuseKey: standalone
+                        ? command.nativeCommandReceipt?.operationGeneration
+                        : undefined,
                       model: command.model,
                       provider: provider(),
                       permissionProfileId: command.permissionProfileId,
@@ -6038,6 +6033,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 const prepared = await managedSessions.prepare({
                   identity: managedSessionIdentity(session),
                   runtime,
+                  unboundReuseKey: standalone
+                    ? command.nativeCommandReceipt?.operationGeneration
+                    : undefined,
                   configuration: {
                     cwd: command.cwd,
                     threadId: command.threadId,
@@ -6048,7 +6046,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     subagentDefaults,
                     mcpServers: resolvedMcpServers,
                     planMode: command.planMode,
-                    intent: "preserve",
+                    intent: standalone ? "configure" : "preserve",
                     ...(runner ? { executionGate: runner.configuration } : {}),
                   },
                 });
@@ -6058,6 +6056,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   Object.assign(managedRunnerConfigurations.get(runner)!, {
                     cwd: command.cwd,
                     threadId: prepared.threadId,
+                    unboundReuseKey: standalone
+                      ? command.nativeCommandReceipt?.operationGeneration
+                      : undefined,
                     model: command.model,
                     provider: provider(),
                     permissionProfileId: command.permissionProfileId,
@@ -6076,18 +6077,20 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   );
                 }
 
-                projectGoalDelivery.watch(prepared.threadId, command.chatId);
-                threadObservations.bind(
-                  observationScope(
-                    command.chatId,
-                    prepared.threadId,
-                    turnOptions,
-                  ),
-                  runtime,
-                );
+                if (!standalone) {
+                  projectGoalDelivery.watch(prepared.threadId, command.chatId);
+                  threadObservations.bind(
+                    observationScope(
+                      command.chatId,
+                      prepared.threadId,
+                      turnOptions,
+                    ),
+                    runtime,
+                  );
+                }
                 return {
                   threadId: prepared.threadId,
-                  inheritThreadSettings: true,
+                  inheritThreadSettings: !standalone,
                 };
               };
             }

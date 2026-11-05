@@ -43,7 +43,7 @@ impl GuiAdmission {
         protected_input: Option<&Value>,
         observer: Option<&crate::chats::turn_runtime::stages::Observer>,
     ) -> Result<Value> {
-        let managed = managed_console::session_context(context).is_some();
+        let managed = managed_console::turn_session_context(context).is_some();
         if managed && !truthy(protected_input) {
             bail!("Chat turn content was not encrypted.");
         }
@@ -77,6 +77,9 @@ impl GuiAdmission {
                 if let Some(value) = options.get(source) {
                     admission_options[target] = value.clone();
                 }
+            }
+            if context["contextKind"] == "standalone" {
+                admission_options["standaloneRuntime"] = json!({"threadId":context["threadId"],"modelRouteId":context["modelRouteId"],"providerAccountId":context["providerAccountId"]});
             }
             let commands = self.commands.clone();
             let owner = owner.to_owned();
