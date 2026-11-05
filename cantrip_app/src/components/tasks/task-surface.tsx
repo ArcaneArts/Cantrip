@@ -17,6 +17,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CircleAlert,
+  Clock3,
   ClipboardCopy,
   FilePlus2,
   ListTodo,
@@ -715,7 +716,11 @@ export function TaskSurface({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex shrink-0 items-center gap-3 border-b px-5 py-3">
           {onClose ? <TaskListBackButton onBack={onClose} /> : null}
-          <Loader2 className="size-4 animate-spin text-violet-500" />
+          {inferenceQueue.data ? (
+            <Clock3 className="size-4 text-muted-foreground" />
+          ) : (
+            <Loader2 className="size-4 animate-spin text-violet-500" />
+          )}
           <div className="min-w-0">
             <p className="text-sm font-medium">
               {inferenceQueue.data

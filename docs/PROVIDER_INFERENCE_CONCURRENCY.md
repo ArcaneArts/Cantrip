@@ -7,6 +7,23 @@ keep the limit optional so updates from older clients preserve it. Provider
 summaries and resolved model runtimes carry the configuration through both the
 Node and Rust server implementations.
 
+## Queued Task overview timing
+
+The Task overview uses the same selected worker queue observation for its notice,
+Goal-usage projection, and trajectory clock. While waiting for provider capacity,
+it stops extrapolating the native Goal's reported usage and freezes the timeline
+clock. Resuming starts a fresh observation baseline, so queued time cannot catch
+up as execution time. A queued planning header shows a static queue icon.
+
+Ordinary Task total-elapsed time retains its wall-clock meaning and continues to
+advance while queued. Queueing does not mark the underlying turn complete, change
+its canonical lifecycle, mutate Goal budgets, or change Task control behavior.
+The visible Goal clock has no interval while queued. Queue changes still arrive
+through the existing live status query; this adds no polling.
+
+Source review, direct formatting, and `git diff --check` only; no tests, builds,
+typechecks, benchmarks, native execution or computer-use validation were run.
+
 ## Exact native begin denial
 
 A Core acknowledgment of `allow: false` consumes the exact pending private
