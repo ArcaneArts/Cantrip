@@ -31,6 +31,16 @@ export type TaskOperationDispatchFence =
       cycleId: string;
       operationId: string;
       fencingToken: number;
+    }
+  | {
+      /** Only for a positively received worker terminal outcome. It can settle
+       * the exact old receipt after one lease expiry, never authorize inference. */
+      kind: "outcome";
+      cycleId: string;
+      operationId: string;
+      fencingToken: number;
+      leaseOwner: string;
+      inferenceInputOperationId: string;
     };
 
 /** Lock actual dispatch authority in the transaction that writes its round.
@@ -88,9 +98,48 @@ export async function assertTaskOperationDispatchFence(
     )
     .limit(1);
   if (!cycle) return fail();
-  if (latest?.id !== cycle.id || cycle.fencingToken !== fence.fencingToken)
+  const expiredOutcome =
+    expected.kind === "outcome" &&
+    cycle.state === "expired" &&
+    cycle.fencingToken === expected.fencingToken + 1;
+  if (
+    latest?.id !== cycle.id ||
+    (cycle.fencingToken !== fence.fencingToken && !expiredOutcome)
+  )
     fail();
-  if (expected.kind === "expired") {
+  if (expected.kind === "outcome") {
+    if (
+      !expiredOutcome &&
+      (!["claimed", "running"].includes(cycle.state) ||
+        cycle.leaseOwner !== expected.leaseOwner)
+    )
+      fail();
+    const [round] = await transaction
+      .select({ input: schema.taskPlanningRounds.inferenceInput })
+      .from(schema.taskPlanningRounds)
+      .where(
+        and(
+          eq(schema.taskPlanningRounds.id, operationId),
+          eq(schema.taskPlanningRounds.chatId, chatId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    const input = round?.input;
+    const receipt = input?.receipt;
+    if (
+      !input ||
+      input.deferred ||
+      !receipt ||
+      receipt.kind === "goal" ||
+      receipt.operationId !== expected.inferenceInputOperationId ||
+      receipt.dispatch.cycleId !== expected.cycleId ||
+      receipt.dispatch.operationId !== expected.operationId ||
+      receipt.dispatch.fencingToken !== expected.fencingToken ||
+      receipt.dispatch.leaseOwner !== expected.leaseOwner
+    )
+      fail();
+  } else if (expected.kind === "expired") {
     if (cycle.state !== "expired") fail();
   } else {
     const sameOwner = cycle.leaseOwner === expected.lease.leaseOwner;

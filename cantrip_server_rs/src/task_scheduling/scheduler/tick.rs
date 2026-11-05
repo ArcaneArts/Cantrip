@@ -57,16 +57,12 @@ impl Service {
                 }
                 if let Err(error) = self
                     .tasks
-                    .fail_operation_fenced(
-                        &owner_id,
-                        &text(&cycle["chatId"])?,
-                        &text(&cycle["operationId"])?,
-                        None,
-                        &json!({"kind":"expired","cycleId":cycle["id"],"operationId":cycle["operationId"],"fencingToken":cycle["fencingToken"]}),
-                    )
+                    .fail_confirmed_expired_round(&owner_id, &text(&cycle["chatId"])?, &guard)
                     .await
                 {
-                    if error.downcast_ref::<task_dispatch::Conflict>().is_some() { continue; }
+                    if error.downcast_ref::<task_dispatch::Conflict>().is_some() {
+                        continue;
+                    }
                     self.log("error", "Could not reconcile an expired started Task lease", json!({"chatId":cycle["chatId"],"cycleId":cycle["id"],"err":logging::error_details(&error),"event":"task.scheduler.started-lease-reconcile-failed","subsystem":"task-scheduler","operation":"reconcile-leases","status":"failed"}));
                 }
                 expired_attention += 1;

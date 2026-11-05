@@ -4,7 +4,6 @@ pub mod dashboard;
 mod dispatch_fence;
 mod edits;
 pub mod failure_kind;
-mod finalization_goal_outcomes;
 mod finish;
 mod goal_inference_inputs;
 mod inference_inputs;
@@ -14,6 +13,7 @@ mod query_error;
 mod reads;
 pub mod relay;
 pub mod retries;
+mod round_outcomes;
 mod rows;
 use crate::{
     database::{Database, Executor, Parameters, Transaction},
