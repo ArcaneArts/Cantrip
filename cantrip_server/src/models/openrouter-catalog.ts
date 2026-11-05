@@ -298,9 +298,10 @@ export class OpenRouterCatalogService {
 
     const startedAt = new Date();
     const scopes = [OPENROUTER_GLOBAL_SCOPE];
-    await Promise.all(
+    const started = await Promise.all(
       scopes.map((scopeKey) =>
         this.#repository.setProviderCatalogSyncState(provider.id, {
+          connection: provider,
           scopeKey,
           status: "refreshing",
           errorCode: null,
@@ -308,27 +309,28 @@ export class OpenRouterCatalogService {
         }),
       ),
     );
+    if (started.some((current) => !current))
+      return this.#repository.getProviderModelCatalog(ownerId, providerId);
 
     try {
       const publicRead = await this.#cache.read({
         baseUrl: provider.baseUrl,
-        cacheKey: `public:${new URL(provider.baseUrl).origin}`,
+        cacheKey: `public:${provider.baseUrl}`,
         force,
       });
       const servedStale = publicRead.servedStale;
-      await this.#persist(provider, publicRead.snapshot);
-      await this.#recordSuccess(provider, publicRead.snapshot, servedStale);
+      if (!(await this.#persist(provider, publicRead.snapshot)))
+        return this.#repository.getProviderModelCatalog(ownerId, providerId);
+      if (
+        !(await this.#recordSuccess(provider, publicRead.snapshot, servedStale))
+      )
+        return this.#repository.getProviderModelCatalog(ownerId, providerId);
 
       const background = [publicRead.backgroundRefresh].filter(
         (refresh): refresh is Promise<CatalogSnapshot> => Boolean(refresh),
       );
       if (background.length > 0) {
-        this.#scheduleBackgroundPersistence(
-          ownerId,
-          providerId,
-          scopes,
-          background,
-        );
+        this.#scheduleBackgroundPersistence(provider, scopes, background);
       }
       return this.#repository.getProviderModelCatalog(
         ownerId,
@@ -341,15 +343,18 @@ export class OpenRouterCatalogService {
         providerId,
         true,
       );
-      await Promise.all(
+      const recorded = await Promise.all(
         scopes.map((scopeKey) =>
           this.#repository.setProviderCatalogSyncState(provider.id, {
+            connection: provider,
             scopeKey,
             status: existing?.models.length ? "stale" : "failed",
             errorCode: "openrouter-catalog-refresh-failed",
           }),
         ),
       );
+      if (recorded.some((current) => !current))
+        return this.#repository.getProviderModelCatalog(ownerId, providerId);
       if (existing?.models.length) {
         return this.#repository.getProviderModelCatalog(
           ownerId,
@@ -364,13 +369,14 @@ export class OpenRouterCatalogService {
   async #persist(
     provider: ModelProviderCatalogRuntime,
     publicSnapshot: CatalogSnapshot,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const normalized = publicSnapshot.models.map(normalizeOpenRouterModel);
     const publicIds = new Set(normalized.map((model) => model.nativeModelId));
-    await this.#repository.reconcileProviderModelCatalog(
+    return this.#repository.reconcileProviderModelCatalog(
       provider.ownerId,
       provider.id,
       {
+        connectionRevision: provider.connectionRevision,
         models: normalized,
         availabilityScope: OPENROUTER_GLOBAL_SCOPE,
         availableNativeModelIds: publicIds,
@@ -382,9 +388,10 @@ export class OpenRouterCatalogService {
     provider: ModelProviderCatalogRuntime,
     publicSnapshot: CatalogSnapshot,
     servedStale: boolean,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const now = new Date();
-    await this.#repository.setProviderCatalogSyncState(provider.id, {
+    return this.#repository.setProviderCatalogSyncState(provider.id, {
+      connection: provider,
       scopeKey: OPENROUTER_GLOBAL_SCOPE,
       status: servedStale ? "stale" : "current",
       errorCode: null,
@@ -394,11 +401,11 @@ export class OpenRouterCatalogService {
   }
 
   #scheduleBackgroundPersistence(
-    ownerId: string,
-    providerId: string,
+    provider: ModelProviderCatalogRuntime,
     scopes: string[],
     refreshes: Promise<CatalogSnapshot>[],
   ): void {
+    const { ownerId, id: providerId } = provider;
     if (this.#backgroundRefreshes.has(providerId)) return;
     const refresh = Promise.all(refreshes)
       .then(async () => {
@@ -408,6 +415,7 @@ export class OpenRouterCatalogService {
         await Promise.all(
           scopes.map((scopeKey) =>
             this.#repository.setProviderCatalogSyncState(providerId, {
+              connection: provider,
               scopeKey,
               status: "stale",
               errorCode: "openrouter-background-refresh-failed",

@@ -607,8 +607,9 @@ export abstract class IdentityModelRepositoryFacade {
       lastSuccessAt?: Date | null;
       workerId?: string | null;
       providerAccountId?: string | null;
+      connection?: { ownerId: string; connectionRevision: number };
     },
-  ): Promise<void> {
+  ): Promise<boolean> {
     return this.providerCatalog.setProviderCatalogSyncState(providerId, input);
   }
 
@@ -624,6 +625,7 @@ export abstract class IdentityModelRepositoryFacade {
       availabilityWorkerId?: string | null;
       availabilityProviderAccountId?: string | null;
       defaultNativeModelId?: string | null;
+      connectionRevision?: number;
     },
   ): Promise<boolean> {
     return this.providerCatalog.reconcileProviderModelCatalog(

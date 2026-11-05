@@ -52,9 +52,14 @@ function zaiRateLimitHint(message: string): string | null {
  */
 export function readableCodexProviderError(
   message: string,
-  options: { secrets?: ReadonlySet<string>; zai?: boolean } = {},
+  options: {
+    secrets?: ReadonlySet<string>;
+    zai?: boolean;
+    endpoint?: boolean;
+  } = {},
 ): string {
   const sanitized = redactedMessage(message, options.secrets ?? new Set());
+  if (options.endpoint) return safeEndpointProviderError(sanitized);
   if (!options.zai) return sanitized;
   if (
     hasStatus(sanitized, 401) ||
@@ -89,4 +94,87 @@ export function readableCodexProviderError(
     return `The Z.ai response stream was interrupted. ${sanitized}`;
   }
   return sanitized;
+}
+
+/** Backend error bodies can echo private requests; expose only known diagnostics. */
+export function safeEndpointProviderError(message: string): string {
+  const status = message.match(
+    /(?:http(?:\/[\d.]+)?(?:\s+status)?|status)(?:\s+code)?\s*[:=]?\s*(\d{3})/i,
+  )?.[1];
+  const suffix = status ? ` HTTP ${status}.` : "";
+  const text = message.toLowerCase();
+  const reason =
+    status === "401" ||
+    status === "403" ||
+    /unauthorized|forbidden|authentication|invalid.{0,10}api.{0,4}key/.test(
+      text,
+    )
+      ? "The model server rejected authentication."
+      : /model.{0,30}(not found|unavailable|does not exist)|unknown model/.test(
+            text,
+          )
+        ? "Model not found on the configured server."
+        : /context.{0,40}(length|limit|exceed|size)|maximum.{0,20}context/.test(
+              text,
+            )
+          ? "The model rejected the request's context length."
+          : status === "404"
+            ? "The Responses endpoint or requested model was not found."
+            : status === "400" || status === "422"
+              ? "The model server rejected request options or tool formatting."
+              : status === "429" || /rate.limit|quota.exceeded/.test(text)
+                ? "The model server rate limit was reached."
+                : /econnrefused|connection refused/.test(text)
+                  ? "The connection was refused."
+                  : /enotfound|eai_again|dns/.test(text)
+                    ? "The endpoint hostname could not be resolved."
+                    : /timed?\s*out|timeout/.test(text)
+                      ? "The inference request timed out."
+                      : /certificate|tls|ssl/.test(text)
+                        ? "The secure connection failed."
+                        : /cancelled|canceled|interrupted/.test(text)
+                          ? "Inference was interrupted."
+                          : /stream|connection reset|unexpected eof/.test(text)
+                            ? "The model response stream was interrupted."
+                            : "Model inference failed.";
+  return reason + suffix;
+}
+
+export function safeEndpointDiagnosticPayload(
+  value: unknown,
+  depth = 0,
+): unknown {
+  if (depth > 20) return "[TRUNCATED]";
+  if (Array.isArray(value))
+    return value.map((entry) =>
+      safeEndpointDiagnosticPayload(entry, depth + 1),
+    );
+  if (!value || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  if (record.type === "error" && typeof record.message === "string")
+    return {
+      type: "error",
+      message: safeEndpointProviderError(record.message),
+    };
+  return Object.fromEntries(
+    Object.entries(record).map(([key, entry]) => {
+      if (
+        key === "error" &&
+        entry &&
+        typeof entry === "object" &&
+        "message" in entry &&
+        typeof entry.message === "string"
+      )
+        return [
+          key,
+          {
+            ...("code" in entry && typeof entry.code === "number"
+              ? { code: entry.code }
+              : {}),
+            message: safeEndpointProviderError(entry.message),
+          },
+        ];
+      return [key, safeEndpointDiagnosticPayload(entry, depth + 1)];
+    }),
+  );
 }

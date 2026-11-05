@@ -101,6 +101,7 @@ pub struct CatalogUpdate {
     pub worker_id: Option<String>,
     pub account_id: Option<String>,
     pub default_native_id: Option<String>,
+    pub connection_revision: Option<i64>,
 }
 impl SettingsRepository {
     pub async fn list_provider_catalog_targets(&self, owner: &str) -> Result<Vec<Value>> {
@@ -127,7 +128,7 @@ impl SettingsRepository {
         &self,
         provider: &str,
         input: &Value,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let scope = input["scopeKey"].as_str().context("catalog scope")?;
         let status = input["status"].as_str().context("catalog state")?;
         let mut record = json!({"scope_key":scope,"status":status});
@@ -147,12 +148,39 @@ impl SettingsRepository {
         }
         let id = uuid();
         let at = now();
-        let result = self.database.query(&format!("INSERT INTO provider_catalog_sync_states(id,provider_id,scope_key,status,error_code,etag,refresh_started_at,last_success_at,worker_id,provider_account_id,updated_at) SELECT $1,$2,s.scope_key,s.status,s.error_code,s.etag,s.refresh_started_at,s.last_success_at,s.worker_id,s.provider_account_id,$4 FROM jsonb_populate_record(NULL::provider_catalog_sync_states,$3::jsonb) s ON CONFLICT(provider_id,scope_key) DO UPDATE SET {}",updates.join(",")), &[&id,&provider,&record,&at]).await;
+        let query = format!(
+            "INSERT INTO provider_catalog_sync_states(id,provider_id,scope_key,status,error_code,etag,refresh_started_at,last_success_at,worker_id,provider_account_id,updated_at) SELECT $1,$2,s.scope_key,s.status,s.error_code,s.etag,s.refresh_started_at,s.last_success_at,s.worker_id,s.provider_account_id,$4 FROM jsonb_populate_record(NULL::provider_catalog_sync_states,$3::jsonb) s ON CONFLICT(provider_id,scope_key) DO UPDATE SET {}",
+            updates.join(",")
+        );
+        if let Some(connection) = input.get("connection") {
+            let owner = connection["ownerId"]
+                .as_str()
+                .context("catalog connection owner")?
+                .to_owned();
+            let revision = connection["connectionRevision"]
+                .as_i64()
+                .context("catalog connection revision")?;
+            let provider = provider.to_owned();
+            let input = input.clone();
+            return self.database.transaction(move |tx| Box::pin(async move {
+                if tx.query("SELECT id FROM model_providers WHERE id=$1 AND owner_id=$2 AND connection_revision=$3::bigint FOR UPDATE", &[&provider,&owner,&revision]).await?.is_empty() { return Ok(false); }
+                let result = tx.query(&query, &[&id,&provider,&record,&at]).await;
+                if result.is_err() {
+                    let (query, params) = super::query_error::catalog_sync(&id, &provider, &input, at);
+                    super::query_error::context(result, &query, &params)?;
+                }
+                Ok(true)
+            })).await;
+        }
+        let result = self
+            .database
+            .query(&query, &[&id, &provider, &record, &at])
+            .await;
         if result.is_err() {
             let (query, params) = super::query_error::catalog_sync(&id, provider, input, at);
             super::query_error::context(result, &query, &params)?;
         }
-        Ok(())
+        Ok(true)
     }
     pub async fn get_provider_model_catalog(
         &self,
@@ -195,20 +223,11 @@ impl SettingsRepository {
         provider: &str,
         input: CatalogUpdate,
     ) -> Result<bool> {
-        if self
-            .database
-            .query(
-                "SELECT id FROM model_providers WHERE id=$2 AND owner_id=$1 LIMIT 1",
-                &[&owner, &provider],
-            )
-            .await?
-            .is_empty()
-        {
-            return Ok(false);
-        }
         let (owner, provider) = (owner.to_owned(), provider.to_owned());
         let at = now();
         self.database.transaction(move |tx|Box::pin(async move {
+            if tx.query("SELECT id FROM model_providers WHERE id=$2 AND owner_id=$1 AND ($3::bigint IS NULL OR connection_revision=$3::bigint) FOR UPDATE", &[&owner,&provider,&input.connection_revision]).await?.is_empty() { return Ok(false); }
+
             for batch in input.models.chunks(BATCH) {
                 let rows=batch.iter().map(|model|Ok(json!({"id":uuid(),"source":model["metadataSource"].as_js_string().context("catalog metadata source")?.lossy(),"hash":catalog_hash::snapshot(model)?}))).collect::<Result<Vec<_>>>()?;
                 tx.query("INSERT INTO provider_model_catalog_snapshots(id,owner_id,provider_id,provider_account_id,worker_id,availability_scope,metadata_source,metadata_hash,observed_at) SELECT s.id,$2,$3,$4,$5,$6,s.source,s.hash,$7 FROM jsonb_to_recordset($1::jsonb) AS s(id text,source text,hash text) ON CONFLICT DO NOTHING", &[&json!(rows),&owner,&provider,&input.account_id,&input.worker_id,&input.availability_scope,&at]).await?;
@@ -221,7 +240,7 @@ impl SettingsRepository {
             }
             let rows=tx.query("SELECT id,native_model_id FROM provider_models WHERE provider_id=$1", &[&provider]).await?;
             let models=rows.iter().map(|row|Ok((row.get::<String>(0)?,row.get::<String>(1)?))).collect::<Result<Vec<_>>>()?;
-            if models.is_empty(){return Ok(())}
+            if models.is_empty(){return Ok(true)}
             let available=models.iter().filter(|(_,name)|input.available.contains(&JsString::from(name.as_str()))).map(|(id,_)|id.clone()).collect::<Vec<_>>();
             for ids in available.chunks(BATCH) {
                 tx.query("UPDATE model_routes r SET provider_model_id=m.id,updated_at=$3 FROM provider_models m WHERE r.provider_id=$1 AND m.provider_id=$1 AND m.id=ANY($2::text[]) AND r.model_name=m.native_model_id AND r.provider_model_id IS NULL", &[&provider,&ids,&at]).await?;
@@ -255,8 +274,7 @@ impl SettingsRepository {
                     if let Some(route)=routes.first(){tx.query("UPDATE user_settings SET default_model_id=$2,updated_at=$3 WHERE user_id=$1 AND default_model_id IS NULL", &[&owner,&route.get::<String>(0)?,&at]).await?;}
                 }
             }
-            Ok(())
-        })).await?;
-        Ok(true)
+            Ok(true)
+        })).await
     }
 }

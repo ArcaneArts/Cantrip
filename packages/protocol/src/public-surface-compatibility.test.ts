@@ -607,6 +607,9 @@ const inferenceRecoveryExports = [
   "inferenceTimingSchema",
   "nativeInferenceRecoveryResultSchema",
   "nativeInferenceRecoverySchema",
+  "taskInferenceInputDispatchResultSchema",
+  "taskInferenceInputDispatchSchema",
+  "taskInferenceInputReceiptSchema",
 ].sort();
 
 describe("protocol public surface compatibility", () => {

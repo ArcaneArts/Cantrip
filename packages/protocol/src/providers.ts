@@ -565,6 +565,7 @@ export const modelProviderSummarySchema = modelProviderCreateSchema
       DEFAULT_MAX_CONCURRENT_INFERENCE,
     ),
     inferenceConfigRevision: providerInferenceRevisionSchema.default(0),
+    connectionRevision: z.number().int().positive().optional(),
     accounts: modelProviderAccountListSchema.default([]),
     tokenUsage: tokenUsageTotalsSchema.default({
       inputTokens: 0,

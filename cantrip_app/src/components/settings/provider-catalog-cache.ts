@@ -12,6 +12,7 @@ const MAX_CACHE_ENTRIES = 8;
 const MAX_STORED_CHARACTERS = 3_000_000;
 
 interface StoredProviderCatalog {
+  connectionRevision?: number | string;
   cachedAt: number;
   catalog: ProviderModelCatalogResult;
   providerId: string;
@@ -114,11 +115,14 @@ function sameScope(
 export function cachedProviderModelCatalog(
   providerId: string,
   workerId: string | null,
+  connectionRevision?: number | string,
 ): ProviderModelCatalogResult | undefined {
   const localStorage = storage();
   if (!localStorage) return undefined;
-  return activeEntries(hydratedEntries(localStorage)).find((entry) =>
-    sameScope(entry, providerId, workerId),
+  return activeEntries(hydratedEntries(localStorage)).find(
+    (entry) =>
+      sameScope(entry, providerId, workerId) &&
+      entry.connectionRevision === connectionRevision,
   )?.catalog;
 }
 
@@ -126,6 +130,7 @@ export function cacheProviderModelCatalog(
   providerId: string,
   workerId: string | null,
   value: ProviderModelCatalogResult,
+  connectionRevision?: number | string,
 ): void {
   const localStorage = storage();
   if (!localStorage) return;
@@ -134,8 +139,23 @@ export function cacheProviderModelCatalog(
 
   const now = Date.now();
   const hydrated = hydratedEntries(localStorage, now);
+  const current = activeEntries(hydrated, now).find((entry) =>
+    sameScope(entry, providerId, workerId),
+  );
+  if (
+    typeof current?.connectionRevision === "number" &&
+    typeof connectionRevision === "number" &&
+    current.connectionRevision > connectionRevision
+  )
+    return;
   const candidates: StoredProviderCatalog[] = [
-    { cachedAt: now, catalog: catalog.data, providerId, workerId },
+    {
+      cachedAt: now,
+      catalog: catalog.data,
+      providerId,
+      workerId,
+      connectionRevision,
+    },
     ...activeEntries(hydrated, now).filter(
       (entry) => !sameScope(entry, providerId, workerId),
     ),

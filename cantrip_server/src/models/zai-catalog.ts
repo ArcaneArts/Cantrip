@@ -164,12 +164,14 @@ export class ZaiCatalogService {
       ZAI_CODEX_MODELS.map(({ nativeModelId }) => nativeModelId),
     );
     await this.#repository.setProviderCatalogSyncState(providerId, {
+      connection: provider,
       scopeKey: ZAI_CODEX_CATALOG_SCOPE,
       status: "refreshing",
       errorCode: null,
       refreshStartedAt: new Date(),
     });
     await this.#repository.reconcileProviderModelCatalog(ownerId, providerId, {
+      connectionRevision: provider.connectionRevision,
       models: [...ZAI_CODEX_MODELS],
       availabilityScope: ZAI_CODEX_CATALOG_SCOPE,
       availableNativeModelIds,
@@ -178,6 +180,7 @@ export class ZaiCatalogService {
       defaultNativeModelId: "glm-5.3",
     });
     await this.#repository.setProviderCatalogSyncState(providerId, {
+      connection: provider,
       scopeKey: ZAI_CODEX_CATALOG_SCOPE,
       status: "current",
       errorCode: null,

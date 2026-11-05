@@ -18,6 +18,7 @@ import type {
   UserSettings,
   TunnelSummary,
 } from "@cantrip/protocol";
+import { useModelsSettingsTab } from "./use-models-settings-tab";
 import {
   DEFAULT_MAX_CONCURRENT_INFERENCE,
   providerInferenceLimitSchema,
@@ -174,10 +175,10 @@ import { ModelsSettings } from "./models-settings";
 import {
   modelsSettingsSearchTab,
   providerModelsTab,
-  type ModelsSettingsTab,
 } from "./models-settings-state";
 import {
   providerSetupDefaults,
+  providerInstanceName,
   providerSetupFor,
   providerSetupOptions,
   providerSetupUnavailableReason,
@@ -812,13 +813,41 @@ function ProviderRow({
 }) {
   const queryClient = useQueryClient();
   const supportsCatalog = providerSupportsCatalog(provider);
-  const catalogQueryKey = providerCatalogQueryKey(provider.id, workerId);
-  const catalog = useProviderCatalog(provider.id, workerId, supportsCatalog);
+  const connectionRevision = provider.connectionRevision ?? provider.updatedAt;
+  const catalogQueryKey = providerCatalogQueryKey(
+    provider.id,
+    workerId,
+    connectionRevision,
+  );
+  const catalog = useProviderCatalog(
+    provider.id,
+    workerId,
+    supportsCatalog,
+    provider.connectionRevision ?? provider.updatedAt,
+  );
   const refreshCatalog = useMutation({
+    mutationKey: [
+      "provider-catalog-refresh",
+      provider.id,
+      workerId,
+      connectionRevision,
+    ],
+    onMutate: () => ({
+      providerId: provider.id,
+      workerId,
+      connectionRevision,
+      catalogQueryKey,
+    }),
     mutationFn: () => refreshProviderModelCatalog(provider.id, workerId),
-    onSuccess: (result) => {
-      cacheProviderModelCatalog(provider.id, workerId, result);
-      queryClient.setQueryData(catalogQueryKey, result);
+    onSuccess: (result, _variables, context) => {
+      if (!context) return;
+      cacheProviderModelCatalog(
+        context.providerId,
+        context.workerId,
+        result,
+        context.connectionRevision,
+      );
+      queryClient.setQueryData(context.catalogQueryKey, result);
       void queryClient.invalidateQueries({ queryKey: ["settings"] });
     },
   });
@@ -1008,6 +1037,7 @@ function CatalogModelField({
     provider?.id,
     workerId,
     Boolean(provider && supportsCatalog),
+    provider?.connectionRevision ?? provider?.updatedAt,
   );
   const visibleModels =
     catalog.data?.models.filter(({ hidden }) => !hidden) ?? [];
@@ -1137,8 +1167,7 @@ export function SettingsPage({
   onOpenTunnelOwner?(tunnel: TunnelSummary): void;
 }) {
   const [section, setSection] = useState<SettingsSection>(initialSection);
-  const [activeModelsTab, setActiveModelsTab] =
-    useState<ModelsSettingsTab>("general");
+  const [activeModelsTab, setActiveModelsTab] = useModelsSettingsTab();
   const [policyEditorId, setPolicyEditorId] = useState<string | null>(
     initialPolicyId,
   );
@@ -1182,6 +1211,7 @@ export function SettingsPage({
   const [connectionTestResult, setConnectionTestResult] = useState<{
     ok: boolean;
     message: string;
+    target: string;
   } | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(
     null,
@@ -1398,14 +1428,41 @@ export function SettingsPage({
       await refresh();
     },
   });
+  const savedConnection =
+    settings.data?.providers.find(({ id }) => id === editingProvider?.id) ??
+    editingProvider;
+  const connectionTestTarget = JSON.stringify([
+    savedConnection?.id,
+    savedConnection?.connectionRevision ?? savedConnection?.updatedAt,
+    worker?.workerId,
+  ]);
+  const connectionChangesSaved = Boolean(
+    savedConnection &&
+    baseUrl.trim() === savedConnection.baseUrl &&
+    providerKind === savedConnection.kind &&
+    !apiKey.trim() &&
+    !removeApiKey,
+  );
+  const visibleConnectionTestResult =
+    connectionChangesSaved &&
+    connectionTestResult?.target === connectionTestTarget
+      ? connectionTestResult
+      : null;
   const testProviderConnection = useMutation({
+    mutationKey: ["provider-connection-test", connectionTestTarget],
+    onMutate: () => connectionTestTarget,
     mutationFn: () =>
       testModelProviderConnection(
         editingProvider!.id,
         worker?.workerId ?? null,
       ),
-    onSuccess: (result) => {
-      setConnectionTestResult({ ok: result.ok, message: result.message });
+    onSuccess: (result, _variables, target) => {
+      if (target)
+        setConnectionTestResult({
+          ok: result.ok,
+          message: result.message,
+          target,
+        });
     },
   });
   const saveModel = useMutation({
@@ -1521,14 +1578,21 @@ export function SettingsPage({
   useEffect(() => {
     const providerId = accountProvider?.id;
     const workerId = worker?.workerId;
+    const connectionRevision =
+      accountProvider?.connectionRevision ?? accountProvider?.updatedAt;
     if (!providerDialogOpen || !providerId || !workerId) return;
     let cancelled = false;
     void refreshProviderModelCatalog(providerId, workerId)
       .then(async (catalog) => {
         if (cancelled) return;
-        cacheProviderModelCatalog(providerId, workerId, catalog);
+        cacheProviderModelCatalog(
+          providerId,
+          workerId,
+          catalog,
+          connectionRevision,
+        );
         queryClient.setQueryData(
-          providerCatalogQueryKey(providerId, workerId),
+          providerCatalogQueryKey(providerId, workerId, connectionRevision),
           catalog,
         );
         await reloadAccountProvider(providerId);
@@ -1537,7 +1601,13 @@ export function SettingsPage({
     return () => {
       cancelled = true;
     };
-  }, [accountProvider?.id, providerDialogOpen, worker?.workerId]);
+  }, [
+    accountProvider?.id,
+    accountProvider?.connectionRevision,
+    accountProvider?.updatedAt,
+    providerDialogOpen,
+    worker?.workerId,
+  ]);
   const addProviderAccount = useMutation({
     mutationFn: () =>
       createModelProviderAccount(accountProvider!.id, {
@@ -1584,7 +1654,10 @@ export function SettingsPage({
     signOutCodex.reset();
     consumeRateLimitReset.reset();
     setEditingProvider(provider);
-    setProviderName(provider?.name ?? defaults.name);
+    setProviderName(
+      provider?.name ??
+        providerInstanceName(defaults.name, settings.data?.providers ?? []),
+    );
     setProviderInferenceLimit(
       String(
         provider?.maxConcurrentInference ?? DEFAULT_MAX_CONCURRENT_INFERENCE,
@@ -2202,6 +2275,7 @@ export function SettingsPage({
                       : null
                   }
                   onTabChange={setActiveModelsTab}
+                  providersLoaded={Boolean(settings.data)}
                   onAddProvider={(setup) => openProviderDialog(null, setup)}
                   onEditProvider={(provider) => openProviderDialog(provider)}
                   onAddModel={(providerId) => openModelDialog(null, providerId)}
@@ -2417,9 +2491,17 @@ export function SettingsPage({
                       !providerName.trim() ||
                       (!editingProvider &&
                         providerName ===
-                          providerSetupDefaults(providerSetup).name)
+                          providerInstanceName(
+                            providerSetupDefaults(providerSetup).name,
+                            settings.data?.providers ?? [],
+                          ))
                     ) {
-                      setProviderName(preset.name);
+                      setProviderName(
+                        providerInstanceName(
+                          preset.name,
+                          settings.data?.providers ?? [],
+                        ),
+                      );
                     }
                   }}
                   className={inputClass}
@@ -2576,13 +2658,14 @@ export function SettingsPage({
                       ? " This uses a very small amount of Coding Plan quota."
                       : null}
                   </p>
-                  {connectionTestResult ? (
+                  {visibleConnectionTestResult ? (
                     <p
-                      className={`mt-1 text-xs ${connectionTestResult.ok ? "text-emerald-500" : "text-destructive"}`}
+                      className={`mt-1 text-xs ${visibleConnectionTestResult.ok ? "text-emerald-500" : "text-destructive"}`}
                     >
-                      {connectionTestResult.message}
+                      {visibleConnectionTestResult.message}
                     </p>
-                  ) : testProviderConnection.isError ? (
+                  ) : connectionChangesSaved &&
+                    testProviderConnection.isError ? (
                     <p className="mt-1 text-xs text-destructive">
                       {errorText(testProviderConnection.error)}
                     </p>
@@ -2595,19 +2678,13 @@ export function SettingsPage({
                   disabled={
                     !editingProvider ||
                     !worker ||
-                    baseUrl.trim() !== editingProvider.baseUrl ||
-                    providerKind !== editingProvider.kind ||
-                    Boolean(apiKey.trim()) ||
-                    removeApiKey ||
+                    !connectionChangesSaved ||
                     testProviderConnection.isPending
                   }
                   title={
                     !editingProvider
                       ? "Add the provider before testing"
-                      : apiKey.trim() ||
-                          removeApiKey ||
-                          baseUrl.trim() !== editingProvider.baseUrl ||
-                          providerKind !== editingProvider.kind
+                      : !connectionChangesSaved
                         ? "Save connection changes before testing"
                         : !worker
                           ? "Connect a worker before testing"
@@ -2620,7 +2697,7 @@ export function SettingsPage({
                 >
                   {testProviderConnection.isPending ? (
                     <Loader2 className="size-4 animate-spin" />
-                  ) : connectionTestResult?.ok ? (
+                  ) : visibleConnectionTestResult?.ok ? (
                     <Check className="size-4" />
                   ) : null}
                   Test connection

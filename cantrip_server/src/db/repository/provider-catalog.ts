@@ -52,6 +52,7 @@ export interface ModelProviderCatalogRuntime {
   kind: ModelProviderSummary["kind"];
   baseUrl: string;
   protectedApiKey: ProtectedSecretEnvelope | null;
+  connectionRevision: number;
 }
 
 export type ModelProviderCatalogTarget = Pick<
@@ -133,6 +134,7 @@ export function toProviderSummary(
     weeklyUsageReservePercent: provider.weeklyUsageReservePercent,
     maxConcurrentInference: provider.maxConcurrentInference,
     inferenceConfigRevision: provider.inferenceConfigRevision,
+    connectionRevision: provider.connectionRevision,
     accounts,
     tokenUsage,
     agentTime,
@@ -433,6 +435,7 @@ export class ProviderCatalogRepository {
       kind: provider.kind as ModelProviderSummary["kind"],
       baseUrl: provider.baseUrl,
       protectedApiKey: provider.protectedApiKey,
+      connectionRevision: provider.connectionRevision,
     };
   }
 
@@ -513,48 +516,75 @@ export class ProviderCatalogRepository {
       lastSuccessAt?: Date | null;
       workerId?: string | null;
       providerAccountId?: string | null;
+      connection?: { ownerId: string; connectionRevision: number };
     },
-  ): Promise<void> {
+  ): Promise<boolean> {
     const now = new Date();
-    await this.database
-      .insert(schema.providerCatalogSyncStates)
-      .values({
-        id: randomUUID(),
-        providerId,
-        scopeKey: input.scopeKey,
-        status: input.status,
-        errorCode: input.errorCode ?? null,
-        etag: input.etag ?? null,
-        refreshStartedAt: input.refreshStartedAt ?? null,
-        lastSuccessAt: input.lastSuccessAt ?? null,
-        workerId: input.workerId ?? null,
-        providerAccountId: input.providerAccountId ?? null,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [
-          schema.providerCatalogSyncStates.providerId,
-          schema.providerCatalogSyncStates.scopeKey,
-        ],
-        set: {
+    const write = async (database: RepositoryDatabase) =>
+      database
+        .insert(schema.providerCatalogSyncStates)
+        .values({
+          id: randomUUID(),
+          providerId,
+          scopeKey: input.scopeKey,
           status: input.status,
-          ...(input.errorCode === undefined
-            ? {}
-            : { errorCode: input.errorCode }),
-          ...(input.etag === undefined ? {} : { etag: input.etag }),
-          ...(input.refreshStartedAt === undefined
-            ? {}
-            : { refreshStartedAt: input.refreshStartedAt }),
-          ...(input.lastSuccessAt === undefined
-            ? {}
-            : { lastSuccessAt: input.lastSuccessAt }),
-          ...(input.workerId === undefined ? {} : { workerId: input.workerId }),
-          ...(input.providerAccountId === undefined
-            ? {}
-            : { providerAccountId: input.providerAccountId }),
+          errorCode: input.errorCode ?? null,
+          etag: input.etag ?? null,
+          refreshStartedAt: input.refreshStartedAt ?? null,
+          lastSuccessAt: input.lastSuccessAt ?? null,
+          workerId: input.workerId ?? null,
+          providerAccountId: input.providerAccountId ?? null,
           updatedAt: now,
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: [
+            schema.providerCatalogSyncStates.providerId,
+            schema.providerCatalogSyncStates.scopeKey,
+          ],
+          set: {
+            status: input.status,
+            ...(input.errorCode === undefined
+              ? {}
+              : { errorCode: input.errorCode }),
+            ...(input.etag === undefined ? {} : { etag: input.etag }),
+            ...(input.refreshStartedAt === undefined
+              ? {}
+              : { refreshStartedAt: input.refreshStartedAt }),
+            ...(input.lastSuccessAt === undefined
+              ? {}
+              : { lastSuccessAt: input.lastSuccessAt }),
+            ...(input.workerId === undefined
+              ? {}
+              : { workerId: input.workerId }),
+            ...(input.providerAccountId === undefined
+              ? {}
+              : { providerAccountId: input.providerAccountId }),
+            updatedAt: now,
+          },
+        });
+    if (!input.connection) {
+      await write(this.database);
+      return true;
+    }
+    return this.database.transaction(async (transaction) => {
+      const [provider] = await transaction
+        .select({ revision: schema.modelProviders.connectionRevision })
+        .from(schema.modelProviders)
+        .where(
+          and(
+            eq(schema.modelProviders.id, providerId),
+            eq(schema.modelProviders.ownerId, input.connection!.ownerId),
+          ),
+        )
+        .for("update");
+      if (
+        !provider ||
+        provider.revision !== input.connection!.connectionRevision
+      )
+        return false;
+      await write(transaction);
+      return true;
+    });
   }
 
   async reconcileProviderModelCatalog(
@@ -569,22 +599,31 @@ export class ProviderCatalogRepository {
       availabilityWorkerId?: string | null;
       availabilityProviderAccountId?: string | null;
       defaultNativeModelId?: string | null;
+      connectionRevision?: number;
     },
   ): Promise<boolean> {
-    const provider = await this.database
-      .select({ id: schema.modelProviders.id })
-      .from(schema.modelProviders)
-      .where(
-        and(
-          eq(schema.modelProviders.id, providerId),
-          eq(schema.modelProviders.ownerId, ownerId),
-        ),
-      )
-      .limit(1);
-    if (!provider[0]) return false;
-
     const now = new Date();
-    await this.database.transaction(async (transaction) => {
+    return this.database.transaction(async (transaction) => {
+      const provider = await transaction
+        .select({
+          id: schema.modelProviders.id,
+          revision: schema.modelProviders.connectionRevision,
+        })
+        .from(schema.modelProviders)
+        .where(
+          and(
+            eq(schema.modelProviders.id, providerId),
+            eq(schema.modelProviders.ownerId, ownerId),
+          ),
+        )
+        .limit(1)
+        .for("update");
+      if (!provider[0]) return false;
+      if (
+        input.connectionRevision !== undefined &&
+        provider[0].revision !== input.connectionRevision
+      )
+        return false;
       if (input.models.length > 0) {
         const modelBatches = providerCatalogBatches(input.models);
         for (const models of modelBatches) {
@@ -664,7 +703,7 @@ export class ProviderCatalogRepository {
         })
         .from(schema.providerModels)
         .where(eq(schema.providerModels.providerId, providerId));
-      if (providerModelRows.length === 0) return;
+      if (providerModelRows.length === 0) return true;
 
       const availableProviderModels = providerModelRows.filter((model) =>
         input.availableNativeModelIds.has(model.nativeModelId),
@@ -834,8 +873,8 @@ export class ProviderCatalogRepository {
           }
         }
       }
+      return true;
     });
-    return true;
   }
 
   async getProviderModelCatalog(

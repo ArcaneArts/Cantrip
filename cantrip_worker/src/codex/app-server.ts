@@ -1,5 +1,8 @@
 import { CodexInteractions } from "./interactions.js";
-import { providerUsesChatCompletions } from "@cantrip/protocol";
+import {
+  providerUsesChatCompletions,
+  isWorkerEndpointProviderKind,
+} from "@cantrip/protocol";
 import { startChatCompletionsAdapter } from "./chat-completions-adapter.js";
 import { withoutInferenceCommand } from "../inference-command.js";
 import { CodexAuthRecovery } from "./auth-recovery.js";
@@ -245,7 +248,10 @@ import {
   writeManagedCodexModelCatalog,
 } from "./model-catalog.js";
 import type { CodexComputerUseExecution } from "./execution-lifetime.js";
-import { readableCodexProviderError } from "./provider-errors.js";
+import {
+  readableCodexProviderError,
+  safeEndpointDiagnosticPayload,
+} from "./provider-errors.js";
 import type { RawData } from "ws";
 import {
   chatGptExternalAuthCapabilityError,
@@ -1656,6 +1662,7 @@ export class CodexAppServer implements CodexRuntime {
   readonly #threadSettings = new NativeThreadSettingsState();
   readonly #diagnosticSecrets = new Set<string>();
   #runtimeIsZai = false;
+  #runtimeIsEndpoint = false;
   readonly #externalImportStatuses = new Map<
     string,
     CodexExternalImportStatus
@@ -1732,6 +1739,7 @@ export class CodexAppServer implements CodexRuntime {
     runtimeId: () => this.#runtimeId,
     secrets: () => this.#diagnosticSecrets,
     isZai: () => this.#runtimeIsZai,
+    isEndpoint: () => this.#runtimeIsEndpoint,
     recordDiagnostic: (diagnostic, warning) =>
       this.recordDiagnostic(diagnostic, warning),
   });
@@ -5076,6 +5084,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#authRecovery.setSession(null);
     this.#diagnosticSecrets.clear();
     this.#runtimeIsZai = false;
+    this.#runtimeIsEndpoint = false;
     this.#starting = null;
     this.#loadedThreads.clear();
     this.#managedHistoryImports.clear();
@@ -5418,6 +5427,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#authRecovery.setSession(null);
     this.#diagnosticSecrets.clear();
     this.#runtimeIsZai = false;
+    this.#runtimeIsEndpoint = false;
     this.#loadedThreads.clear();
     this.#managedHistoryImports.clear();
     this.#mcpConfigFingerprintsByThread.clear();
@@ -6171,6 +6181,9 @@ export class CodexAppServer implements CodexRuntime {
       this.loadManagedModelInventory(provider),
     ]);
     this.#runtimeIsZai = isZaiRuntimeProvider(runtimeProvider);
+    this.#runtimeIsEndpoint = isWorkerEndpointProviderKind(
+      runtimeProvider.kind,
+    );
     if (runtimeProvider.apiKey) {
       this.#diagnosticSecrets.add(runtimeProvider.apiKey);
     }
@@ -6298,6 +6311,7 @@ export class CodexAppServer implements CodexRuntime {
       readableError: (line) =>
         readableCodexProviderError(line, {
           secrets: this.#diagnosticSecrets,
+          endpoint: this.#runtimeIsEndpoint,
           zai: this.#runtimeIsZai,
         }),
     });
@@ -6368,6 +6382,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#authRecovery.setSession(null);
       this.#diagnosticSecrets.clear();
       this.#runtimeIsZai = false;
+      this.#runtimeIsEndpoint = false;
       this.#starting = null;
       this.#loadedThreads.clear();
       this.#managedHistoryImports.clear();
@@ -6425,6 +6440,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#authRecovery.setSession(null);
       this.#diagnosticSecrets.clear();
       this.#runtimeIsZai = false;
+      this.#runtimeIsEndpoint = false;
       this.#starting = null;
       this.#loadedThreads.clear();
       this.#managedHistoryImports.clear();
@@ -7618,6 +7634,7 @@ export class CodexAppServer implements CodexRuntime {
               level: "warning",
               message: readableCodexProviderError(params.message, {
                 secrets: this.#diagnosticSecrets,
+                endpoint: this.#runtimeIsEndpoint,
               }),
               correlation: eventCorrelation(
                 message.method,
@@ -7638,6 +7655,7 @@ export class CodexAppServer implements CodexRuntime {
             level: "warning",
             message: readableCodexProviderError(params.message, {
               secrets: this.#diagnosticSecrets,
+              endpoint: this.#runtimeIsEndpoint,
             }),
             correlation: eventCorrelation(
               message.method,
@@ -7661,6 +7679,7 @@ export class CodexAppServer implements CodexRuntime {
             level: "warning",
             message: readableCodexProviderError(params.summary, {
               secrets: this.#diagnosticSecrets,
+              endpoint: this.#runtimeIsEndpoint,
             }),
             details:
               [params.details, params.path]
@@ -7668,6 +7687,7 @@ export class CodexAppServer implements CodexRuntime {
                 .map((value) =>
                   readableCodexProviderError(value, {
                     secrets: this.#diagnosticSecrets,
+                    endpoint: this.#runtimeIsEndpoint,
                   }),
                 )
                 .join("\n") || null,
@@ -7698,11 +7718,13 @@ export class CodexAppServer implements CodexRuntime {
             level: "error",
             message: readableCodexProviderError(params.error.message, {
               secrets: this.#diagnosticSecrets,
+              endpoint: this.#runtimeIsEndpoint,
               zai: this.#runtimeIsZai,
             }),
             details: params.error.additionalDetails
               ? readableCodexProviderError(params.error.additionalDetails, {
                   secrets: this.#diagnosticSecrets,
+                  endpoint: this.#runtimeIsEndpoint,
                 })
               : null,
             reasonCode: codexErrorReasonCode(params.error.codexErrorInfo),
@@ -7822,12 +7844,16 @@ export class CodexAppServer implements CodexRuntime {
             level: "error",
             message: readableCodexProviderError(params.turn.error.message, {
               secrets: this.#diagnosticSecrets,
+              endpoint: this.#runtimeIsEndpoint,
               zai: this.#runtimeIsZai,
             }),
             details: params.turn.error.additionalDetails
               ? readableCodexProviderError(
                   params.turn.error.additionalDetails,
-                  { secrets: this.#diagnosticSecrets },
+                  {
+                    secrets: this.#diagnosticSecrets,
+                    endpoint: this.#runtimeIsEndpoint,
+                  },
                 )
               : null,
             reasonCode: codexErrorReasonCode(params.turn.error.codexErrorInfo),
@@ -7901,6 +7927,7 @@ export class CodexAppServer implements CodexRuntime {
               : params.turn.error?.message
                 ? readableCodexProviderError(params.turn.error.message, {
                     secrets: this.#diagnosticSecrets,
+                    endpoint: this.#runtimeIsEndpoint,
                     zai: this.#runtimeIsZai,
                   })
                 : `Codex turn ended with ${terminalStatus}.`,
@@ -8393,7 +8420,11 @@ export class CodexAppServer implements CodexRuntime {
       id,
       ...diagnostic,
       payload: redactCodexDiagnosticPayload(
-        diagnostic.payload,
+        this.#runtimeIsEndpoint
+          ? diagnostic.kind === "malformed"
+            ? "[OMITTED]"
+            : safeEndpointDiagnosticPayload(diagnostic.payload)
+          : diagnostic.payload,
         this.#diagnosticSecrets,
       ),
     };

@@ -6,7 +6,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { endpointProviderKinds } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
-import { CodexAppServer } from "../src/codex/app-server.js";
+import {
+  CodexAppServer,
+  CodexTurnFailureError,
+} from "../src/codex/app-server.js";
 import { discoverCodexRuntime } from "../src/codex/discovery.js";
 import { normalizeEndpointModel } from "../src/endpoint-models.js";
 
@@ -15,7 +18,7 @@ const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
 // Uses the actual pinned executable and Cantrip's production provider/operation
 // configuration against a synthetic HTTP endpoint. This is not a real-backend benchmark.
 describe.skipIf(!binary)("native endpoint provider connections", () => {
-  it.each(endpointProviderKinds)(
+  it.each(["ollama", ...endpointProviderKinds] as const)(
     "completes an operation through %s without account credentials",
     async (kind) => {
       const root = await mkdtemp(
@@ -26,6 +29,10 @@ describe.skipIf(!binary)("native endpoint provider connections", () => {
       const paths: string[] = [];
       const authorizations: Array<string | undefined> = [];
       const children: ChildProcess[] = [];
+      const diagnostics: unknown[] = [];
+      let failureMode: "normal" | "http" | "stream" | "hold" = "normal";
+      let cancelled = false;
+      let heldRequestReceived: (() => void) | undefined;
       let runtime: CodexAppServer | undefined;
       const endpoint = createServer(async (request, response) => {
         if (request.method === "GET") {
@@ -37,6 +44,41 @@ describe.skipIf(!binary)("native endpoint provider connections", () => {
         bodies.push(JSON.parse(Buffer.concat(chunks).toString()));
         paths.push(request.url!);
         authorizations.push(request.headers.authorization);
+        if (failureMode !== "normal") {
+          if (failureMode === "http") {
+            response.writeHead(401).end("PRIVATE_ENGINE_REPLY fixture-key");
+            return;
+          }
+          const heldRequest =
+            failureMode === "hold" &&
+            JSON.stringify(bodies.at(-1)).includes("cancelled-request");
+          if (heldRequest) heldRequestReceived?.();
+          response.on("close", () => {
+            if (heldRequest) cancelled = true;
+          });
+          response.writeHead(200, { "content-type": "text/event-stream" });
+          if (kind === "mlx-lm") {
+            response.write(
+              `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Partial" }, finish_reason: null }] })}\n\n`,
+            );
+            if (failureMode === "stream")
+              response.end(
+                `data: ${JSON.stringify({ error: { message: "PRIVATE_ENGINE_REPLY fixture-key" } })}\n\n`,
+              );
+          } else {
+            response.write(
+              `data: ${JSON.stringify({ type: "response.created", response: { id: "failing-response" } })}\n\n`,
+            );
+            response.write(
+              `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "Partial" })}\n\n`,
+            );
+            if (failureMode === "stream")
+              response.end(
+                `data: ${JSON.stringify({ type: "response.failed", response: { error: { type: "invalid_request_error", code: "invalid_request_error", message: "PRIVATE_ENGINE_REPLY fixture-key" } } })}\n\n`,
+              );
+          }
+          return;
+        }
         const id = `response-${bodies.length}`;
         const finalItem = {
           type: "message",
@@ -212,7 +254,7 @@ describe.skipIf(!binary)("native endpoint provider connections", () => {
           path.join(root, "data"),
           home,
           await discoverCodexRuntime(binary!, path.join(root, "probe")),
-          undefined,
+          (diagnostic) => diagnostics.push(diagnostic),
           undefined,
           undefined,
           (executable, args, options) => {
@@ -232,7 +274,7 @@ describe.skipIf(!binary)("native endpoint provider connections", () => {
           reasoningEffort: null,
           // Manual models still execute tools with discovery absent.
           catalog:
-            kind === "llama-cpp" || kind === "mlx-lm"
+            kind === "ollama" || kind === "llama-cpp" || kind === "mlx-lm"
               ? null
               : normalizeEndpointModel({
                   id: "gpt-5",
@@ -296,6 +338,104 @@ describe.skipIf(!binary)("native endpoint provider connections", () => {
                 : "/proxy/v1/responses"),
           ),
         ).toBe(true);
+        // Native stream retries use five exponentially backed-off attempts.
+        // Allow their actual failure to surface before the operation deadline.
+        const probe = (operationId: string, timeoutMs = 15000) =>
+          runtime!.runAgentOperation({
+            operationId,
+            cwd: root,
+            prompt: `Reply OK for ${operationId}.`,
+            developerInstructions: null,
+            skillNames: [],
+            outputSchema: {},
+            mutationMode: "read-only",
+            networkAccess: "none",
+            permissionProfileId: null,
+            timeoutMs,
+            model,
+            provider,
+            mcpServers: [],
+          });
+        failureMode = "http";
+        const rejected = await probe("http-failure").catch(
+          (error: unknown) => error,
+        );
+        expect(rejected).toBeInstanceOf(Error);
+        expect((rejected as Error).message).toContain("401");
+        expect((rejected as Error).message).not.toContain(
+          "PRIVATE_ENGINE_REPLY",
+        );
+        expect((rejected as Error).message).not.toContain("fixture-key");
+        failureMode = "stream";
+        const streamFailure = await probe("stream-failure").catch(
+          (error: unknown) => error,
+        );
+        expect(streamFailure).toBeInstanceOf(Error);
+        expect((streamFailure as Error).message).not.toContain(
+          "PRIVATE_ENGINE_REPLY",
+        );
+        expect(JSON.stringify(diagnostics)).not.toContain(
+          "PRIVATE_ENGINE_REPLY",
+        );
+        expect(JSON.stringify(diagnostics)).not.toContain("fixture-key");
+        failureMode = "hold";
+        cancelled = false;
+        await expect(probe("cancelled-request", 3000)).rejects.toThrow(
+          "timed out",
+        );
+        await expect.poll(() => cancelled, { timeout: 3000 }).toBe(true);
+        cancelled = false;
+        const received = new Promise<void>((resolve) => {
+          heldRequestReceived = resolve;
+        });
+        const chat = runtime
+          .runTurn({
+            chatId: "endpoint-cancel-chat",
+            clientMessageId: "cancelled-message",
+            captureProtectedDiagnostics: false,
+            cwd: root,
+            threadId: null,
+            executionProfile: "ide",
+            isPrimary: true,
+            model,
+            provider,
+            automationPaused: false,
+            planMode: "default",
+            policyContext: null,
+            permissionProfileId: null,
+            prompt: "Reply OK for cancelled-request.",
+            rootKind: "git-worktree",
+            skillNames: [],
+            mcpServers: [],
+            subagentDefaults: null,
+            subagentProtocolVersion: undefined,
+            worktreeMode: "agent-managed",
+            worktreePolicy: "required-for-writes",
+          })
+          .catch((error: unknown) => error);
+        await Promise.race([
+          received,
+          chat.then((result) => {
+            throw result instanceof Error
+              ? result
+              : new Error(
+                  `Chat settled before backend request: ${JSON.stringify(result)}`,
+                );
+          }),
+          new Promise<never>((_, reject) => {
+            const timer = setTimeout(
+              () => reject(new Error("Chat did not reach the backend")),
+              5000,
+            );
+            timer.unref();
+          }),
+        ]);
+        expect(
+          await runtime.interruptChat("endpoint-cancel-chat", null),
+        ).toEqual({ interrupted: true });
+        expect(await chat).toBeInstanceOf(CodexTurnFailureError);
+        expect(await chat).toMatchObject({ terminalStatus: "interrupted" });
+        await expect.poll(() => cancelled, { timeout: 3000 }).toBe(true);
         expect(
           authorizations.every((value) =>
             kind === "llama-cpp"
@@ -313,6 +453,6 @@ describe.skipIf(!binary)("native endpoint provider connections", () => {
         await rm(root, { recursive: true, force: true });
       }
     },
-    60_000,
+    90_000,
   );
 });

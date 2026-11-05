@@ -3,9 +3,52 @@ import { describe, expect, it } from "vitest";
 import {
   isChatGptTokenExpiredError,
   readableCodexProviderError,
+  safeEndpointDiagnosticPayload,
 } from "../src/codex/provider-errors.js";
 
 describe("Codex provider errors", () => {
+  it.each([
+    ["unexpected status code 401: PRIVATE_RESPONSE", "authentication", "401"],
+    ["HTTP/1.1 422 PRIVATE_RESPONSE", "request options", "422"],
+    ["context length exceeded PRIVATE_RESPONSE", "context length", null],
+    ["model not found PRIVATE_RESPONSE", "Model not found", null],
+    ["ECONNREFUSED PRIVATE_RESPONSE", "connection was refused", null],
+    ["unrecognized PRIVATE_RESPONSE", "Model inference failed", null],
+  ])("bounds endpoint diagnostics: %s", (raw, category, status) => {
+    const result = readableCodexProviderError(raw!, { endpoint: true });
+    expect(result).toContain(category);
+    if (status) expect(result).toContain(status);
+    expect(result).not.toContain("PRIVATE_RESPONSE");
+  });
+
+  it("removes private backend error details without dropping normal protocol content", () => {
+    expect(
+      safeEndpointDiagnosticPayload({
+        params: {
+          turn: {
+            status: "failed",
+            error: {
+              message: "status code 401 PRIVATE_RESPONSE",
+              additionalDetails: "PRIVATE_RESPONSE",
+              data: { key: "PRIVATE_RESPONSE" },
+            },
+          },
+        },
+        result: { text: "public assistant output" },
+      }),
+    ).toEqual({
+      params: {
+        turn: {
+          status: "failed",
+          error: {
+            message: "The model server rejected authentication. HTTP 401.",
+          },
+        },
+      },
+      result: { text: "public assistant output" },
+    });
+  });
+
   it("recognizes the structured ChatGPT expired-token quota failure", () => {
     expect(
       isChatGptTokenExpiredError(

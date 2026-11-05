@@ -200,6 +200,27 @@ describe("provider model catalog cache", () => {
     ).toBeUndefined();
   });
 
+  it("invalidates old connection placeholders and ignores late writes from an older revision", () => {
+    cacheProviderModelCatalog("provider-1", "worker-1", catalog, 1);
+    expect(cachedProviderModelCatalog("provider-1", "worker-1", 1)).toEqual(
+      catalog,
+    );
+    expect(
+      cachedProviderModelCatalog("provider-1", "worker-1", 2),
+    ).toBeUndefined();
+    const latest = { ...catalog, models: [] };
+    cacheProviderModelCatalog("provider-1", "worker-1", latest, 2);
+    cacheProviderModelCatalog("provider-1", "worker-1", catalog, 1);
+    expect(cachedProviderModelCatalog("provider-1", "worker-1", 2)).toEqual(
+      latest,
+    );
+    expect(
+      providerCatalogQueryOptions("provider-1", "worker-1", true, 2).queryKey,
+    ).not.toEqual(
+      providerCatalogQueryOptions("provider-1", "worker-1", true, 1).queryKey,
+    );
+  });
+
   it("does not hydrate disabled queries and hydrates an enabled scope once", () => {
     const largeCatalog = {
       ...catalog,

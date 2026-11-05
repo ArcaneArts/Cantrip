@@ -151,6 +151,10 @@ impl SettingsRepository {
                 .is_some_and(super::endpoint_providers::worker_endpoint_kind),
             "Provider does not use worker endpoint discovery."
         );
+        let revision = runtime["connectionRevision"]
+            .as_i64()
+            .context("catalog connection revision")?;
+        let connection = json!({"ownerId":owner,"connectionRevision":revision});
         let scope = format!("worker:{worker}");
         let existing = self
             .get_provider_model_catalog(owner, provider, false)
@@ -176,13 +180,13 @@ impl SettingsRepository {
                 .is_some_and(|models| !models.is_empty())
         });
         if !worker_key_is_string || !commands.is_connected(worker) {
-            self.set_provider_catalog_sync_state(provider, &json!({"scopeKey":scope,"workerId":worker,"status":"stale","errorCode":"worker-offline"})).await?;
+            if !self.set_provider_catalog_sync_state(provider, &json!({"connection":connection,"scopeKey":scope,"workerId":worker,"status":"stale","errorCode":"worker-offline"})).await? { return self.get_provider_model_catalog(owner, provider, false).await; }
             if has_models {
                 return self.get_provider_model_catalog(owner, provider, true).await;
             }
             anyhow::bail!("Worker is offline.");
         }
-        self.set_provider_catalog_sync_state(provider, &json!({"scopeKey":scope,"workerId":worker,"status":"refreshing","errorCode":null,"refreshStartedAt":now()})).await?;
+        if !self.set_provider_catalog_sync_state(provider, &json!({"connection":connection,"scopeKey":scope,"workerId":worker,"status":"refreshing","errorCode":null,"refreshStartedAt":now()})).await? { return self.get_provider_model_catalog(owner, provider, false).await; }
         let refresh: Result<Option<Json>> = async {
             let mut runtime = Value::from_serialize(&runtime);
             let kind = runtime["kind"].as_str().context("stored provider kind")?.to_owned();
@@ -194,17 +198,23 @@ impl SettingsRepository {
             let inventory = super::parse_response(if ollama {"ollamaModelInventorySchema"} else {"endpointModelInventorySchema"}, result.as_ref())?;
             let models: Vec<_> = inventory["models"].as_array().expect("validated endpoint inventory").iter().map(|model| if ollama { normalize_model(model) } else { super::endpoint_providers::normalize_model(model) }).collect();
             let available = models.iter().map(|model|model["nativeModelId"].as_js_string().expect("validated model ID").clone()).collect();
-            self.reconcile_provider_model_catalog(owner,provider,CatalogUpdate {
+            let accepted = self.reconcile_provider_model_catalog(owner,provider,CatalogUpdate { connection_revision: Some(revision),
                 models, available, availability_scope:scope.clone(), auto_create:true, auto_create_native_ids:None,
                 worker_id:Some(worker.into()), account_id:None, default_native_id:None,
             }).boxed().await?;
-            self.set_provider_catalog_sync_state(provider, &json!({"scopeKey":scope,"workerId":worker,"status":"current","errorCode":null,"lastSuccessAt":now()})).await?;
+            if !accepted { return self.get_provider_model_catalog(owner, provider, false).await; }
+            self.set_provider_catalog_sync_state(provider, &json!({"connection":connection,"scopeKey":scope,"workerId":worker,"status":"current","errorCode":null,"lastSuccessAt":now()})).await?;
             self.get_provider_model_catalog(owner,provider,false).await
         }.boxed().await;
         match refresh {
             Ok(result) => Ok(result),
             Err(error) => {
-                self.set_provider_catalog_sync_state(provider,&json!({"scopeKey":scope,"workerId":worker,"status":if has_models {"stale"} else {"failed"},"errorCode":if runtime["kind"]=="ollama" {"ollama-catalog-refresh-failed"} else {"endpoint-catalog-refresh-failed"}})).await?;
+                let accepted = self.set_provider_catalog_sync_state(provider,&json!({"connection":connection,"scopeKey":scope,"workerId":worker,"status":if has_models {"stale"} else {"failed"},"errorCode":if runtime["kind"]=="ollama" {"ollama-catalog-refresh-failed"} else {"endpoint-catalog-refresh-failed"}})).await?;
+                if !accepted {
+                    return self
+                        .get_provider_model_catalog(owner, provider, false)
+                        .await;
+                }
                 if has_models {
                     self.get_provider_model_catalog(owner, provider, true).await
                 } else {

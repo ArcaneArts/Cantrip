@@ -372,6 +372,7 @@ export class NativeLogicalInputRepository {
       const identity = head?.identity as NativeCommandSession | undefined;
       if (
         !head ||
+        !identity ||
         head.logicalOperationId !== root.operationId ||
         head.executionLaneId !== input.executionLaneId ||
         identity?.placementId !== (input.worktreeId ?? input.scratchRootId) ||

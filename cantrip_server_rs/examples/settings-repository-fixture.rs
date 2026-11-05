@@ -769,6 +769,7 @@ async fn operation(
                     owner()?,
                     text(r, "provider")?,
                     cantrip_server::settings::catalog::CatalogUpdate {
+                        connection_revision: input["connectionRevision"].as_i64(),
                         models: input["models"]
                             .as_array()
                             .context("catalog models")?

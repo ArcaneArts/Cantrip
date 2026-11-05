@@ -41,7 +41,9 @@ export function codexModelProviderName(
   provider: CodexProvider,
 ): CodexModelProviderName {
   if (provider.kind === "chatgpt") return "openai";
-  if (provider.kind === "ollama") return "ollama";
+  // Codex's builtin OSS provider has no endpoint-key setting. Authenticated
+  // Ollama instances use the same private Responses transport as other endpoints.
+  if (provider.kind === "ollama" && !provider.apiKey) return "ollama";
   return "cantrip_runtime";
 }
 

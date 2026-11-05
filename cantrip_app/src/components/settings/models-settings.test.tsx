@@ -21,6 +21,7 @@ import {
   providerSetupDefaults,
   providerSetupFor,
   providerSetupOptions,
+  providerInstanceName,
 } from "./provider-setup";
 
 // Models settings now includes a query-backed inference usage panel. Supply
@@ -305,6 +306,31 @@ describe("Models provider navigation", () => {
     await act(async () => view.unmount());
   });
 
+  it("retains a saved provider tab while the provider list is still loading", async () => {
+    const inputs = props({
+      activeTab: "provider:local",
+      providers: [],
+      providersLoaded: false,
+    });
+    let view!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      view = createView(<ModelsSettings {...inputs} />);
+    });
+    expect(inputs.onTabChange).not.toHaveBeenCalled();
+    await act(async () => {
+      view.update(
+        <ModelsSettings {...inputs} providers={providers} providersLoaded />,
+      );
+    });
+    expect(inputs.onTabChange).not.toHaveBeenCalled();
+    expect(
+      view.root
+        .findAllByProps({ role: "tab" })
+        .find((tab) => tab.props["aria-selected"])?.props.title,
+    ).toBe(providers[0]!.name);
+    await act(async () => view.unmount());
+  });
+
   it("wires every add preset, per-tab Edit, and provider-scoped Add model", async () => {
     const inputs = props({ activeTab: "provider:local" });
     let view!: TestRenderer.ReactTestRenderer;
@@ -441,6 +467,20 @@ describe("Models provider navigation", () => {
 });
 
 describe("provider setup presets", () => {
+  it("chooses a distinct editable instance name without renaming existing providers", () => {
+    const existing = [
+      { name: "ollama" },
+      { name: "Ollama 2" },
+      { name: "Ollama — GPU Server" },
+    ];
+    expect(providerInstanceName("Ollama", existing)).toBe("Ollama 3");
+    expect(providerInstanceName("LM Studio", existing)).toBe("LM Studio");
+    expect(existing.map(({ name }) => name)).toEqual([
+      "ollama",
+      "Ollama 2",
+      "Ollama — GPU Server",
+    ]);
+  });
   it("offers every supported provider setup with distinct IDs and matching dialog defaults", () => {
     expect(providerSetupOptions.map(({ id }) => id)).toEqual([
       "ollama",

@@ -171,6 +171,7 @@ export function ModelsSettings({
   activeTab,
   models,
   providers,
+  providersLoaded = true,
   preferences,
   preferencesPending,
   preferencesError,
@@ -189,6 +190,7 @@ export function ModelsSettings({
   activeTab: ModelsSettingsTab;
   models: ModelProfileSummary[];
   providers: ModelProviderSummary[];
+  providersLoaded?: boolean;
   preferences: UserSettings;
   preferencesPending: boolean;
   preferencesError?: string | null;
@@ -214,8 +216,8 @@ export function ModelsSettings({
     ? modelsForProvider(models, provider.id)
     : unassignedModels(models, providers);
   useEffect(() => {
-    if (activeTab !== selectedTab) onTabChange(selectedTab);
-  }, [activeTab, selectedTab, onTabChange]);
+    if (providersLoaded && activeTab !== selectedTab) onTabChange(selectedTab);
+  }, [activeTab, selectedTab, onTabChange, providersLoaded]);
   useEffect(() => {
     tabList.current
       ?.querySelector<HTMLElement>('[aria-selected="true"]')
