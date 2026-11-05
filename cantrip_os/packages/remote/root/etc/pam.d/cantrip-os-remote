@@ -1,0 +1,5 @@
+# Public-key authentication is performed by the private OpenSSH process.
+# Retain Debian account policy. Keep sessions in the remote service lifetime:
+# pam_systemd would migrate descendants into a separate logind session scope.
+@include common-account
+session required pam_unix.so

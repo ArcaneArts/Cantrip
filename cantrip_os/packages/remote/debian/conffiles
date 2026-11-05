@@ -1,1 +1,2 @@
 /etc/cantrip-os/remote.json
+/etc/pam.d/cantrip-os-remote

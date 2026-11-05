@@ -1,6 +1,6 @@
 # Optional native desktop package
 
-`cantrip-os-remote` 0.5.0 supplies the Linux X11 `cantrip-cua` helper and a
+`cantrip-os-remote` 0.6.0 supplies the Linux X11 `cantrip-cua` helper and a
 workspace-bound protected stdio carrier. It depends on the existing workspace
 and executor packages. Removing it leaves those packages, ordinary desktops,
 and workspace files available. No Worker, conversation database, scheduler,
@@ -167,3 +167,62 @@ and attach again. Its live turn authorization is retained. Unconfirmed cleanup
 retires the helper instead of handing off input. The lease is transient Worker
 runtime state authorized by the Server's existing captured-surface WorkerLink
 grant, rather than a new durable placement or a guest-side scheduler.
+
+## Protected service carrier (0.6.0)
+
+The package also carries SSH/SFTP, VNC and guest-loopback TCP streams over the
+same root-only administrative transport. This is the guest foundation; the
+Cantrip-managed tunnel UI and authorization adapter are a subsequent cycle.
+No public SSH listener or replacement system SSH configuration is installed.
+
+```sh
+sudo cantrip-remote service-info work --service '{"kind":"ssh"}'
+sudo cantrip-remote service-info work --service '{"kind":"tcp","port":3000}'
+sudo cantrip-remote service-info work --service '{"kind":"vnc"}'
+```
+
+`service-info` returns a captured descriptor, including the owner/Worker,
+instance, executor generation, workspace account and remote-service generation.
+Use `--expect-placement` with the captured eight-field placement when admitting
+the service. It observes identity rather than guessing whether a port is ready.
+The actual connection reports connection refusal or an unavailable desktop.
+SSH and TCP do not start or depend on the desktop. VNC requires a running
+workspace desktop and captures its generation; it uses that desktop's private
+Unix socket, never the personal console or a replacement desktop.
+
+`service-connect WORKSPACE --expect '<descriptor>' --connection-id UUID`
+forwards opaque bytes on stdin/stdout. SSH additionally requires `--public-key
+'ssh-ed25519 BASE64'`: one public key without options or comments. The client
+private key stays outside this package. The descriptor's `ssh_host_key` must be
+pinned by the client. SSH logs in as the descriptor's exact workspace user, with
+normal unrestricted sudo. SFTP uses OpenSSH's internal subsystem. Passwords,
+other accounts, agent forwarding and SSH's own forwarding are disabled for this
+connection; explicit Cantrip service routes remain independently scoped.
+
+The private OpenSSH binaries are copied from Debian's `openssh-server` package
+at build time, with its version, hashes and copyright retained under
+`/usr/lib/cantrip-os-remote/openssh`. Its system service is not installed. Rebuild
+and upgrade the Cantrip package/image to receive updates to these bundled
+binaries. PAM retains Debian account policy and a package-owned `pam_unix`
+session, keeping processes in the remote service lifetime instead of moving
+them into independent logind scopes. Existing system SSH configuration is left
+to its ordinary package.
+
+Each service has its own root guardian and connection UUID, independent of
+CUA and other service streams. Forwarding uses bounded buffers and supports
+TCP half-close, including a reply after stdin EOF. Actual package peer pidfds,
+the root carrier process lifetime, and canonical workspace/attachment state
+retire obsolete connections. Service stop/disable/removal also closes streams
+and reaps SSH descendants. `service-close WORKSPACE --expect '<descriptor>'
+--connection-id UUID` retires only that exact connection. The persistent
+root-owned SSH host key and workspace files survive disable/remove/reinstall.
+
+For destructive acceptance in a disposable attached guest:
+
+```sh
+sudo python3 remote-services.py --workspace cua-a --other-workspace cua-b
+```
+
+The test uses real SSH/SFTP clients, a binary TCP server, VNC 3.8 negotiation,
+actual process pidfds and service retirement. It does not substitute direct
+guest ports for the protected carrier.

@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import pwd
 from pathlib import Path
 import socket
 import struct
@@ -11,7 +12,7 @@ sys.path.insert(0, "/usr/lib/cantrip-os-workspaces")
 from service import Store, atomic_json
 
 CONFIG = "/etc/cantrip-os/remote.json"
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 
 
 def request(store, command, pins=None, **arguments):
@@ -40,6 +41,29 @@ def placement(executor, record):
     return {"instance_id": executor["instance_id"], "generation": executor["generation"],
             **executor["attachment"], "workspace_id": record["id"], "uid": record["uid"],
             "gid": record["gid"], "home": record["home"]}
+
+
+def observe_workspace(workspace, pins=None, expected_placement=None):
+    """Shell/service authority does not depend on a running graphical session."""
+    executor = request("/etc/cantrip-os/executor.json", "status", pins=pins)
+    if not executor.get("attachment"):
+        raise ValueError("Attach an owning Worker before opening remote access")
+    record = request("/etc/cantrip-os/workspaces.json", "show", pins=pins, id=workspace)
+    actual = placement(executor, record)
+    if expected_placement is not None and actual != expected_placement:
+        raise ValueError("Remote workspace attachment or generation mismatch")
+    try:
+        account = pwd.getpwnam(record["user"])
+    except KeyError as error:
+        raise ValueError("The recorded workspace account does not exist") from error
+    if (account.pw_uid, account.pw_gid, account.pw_dir) != (record["uid"], record["gid"], record["home"]):
+        raise ValueError("Workspace account differs from its recorded identity")
+    return {**actual, "user": record["user"]}, record
+
+
+def current_workspace(context, registry):
+    record = registry.get(context["workspace_id"], {})
+    return all(record.get(field) == context[field] for field in ("uid", "gid", "home", "user"))
 
 
 def observe(workspace, start=False, pins=None, expected_placement=None):

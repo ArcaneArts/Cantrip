@@ -25,8 +25,9 @@ The native Linux capture/input backend and optional
 [`cantrip-os-remote`](../cantrip_os/packages/remote/README.md) carrier are Phase 4
 checkpoints. Normal agent/preview routing selects the captured Linux display,
 including clipboard and resizing. An integrated source-bound desktop view now
-shares that helper over WorkerLink, including exclusive human takeover. Managed service access
-are still in progress.
+shares that helper over WorkerLink, including exclusive human takeover. Remote
+0.6.0 adds protected guest SSH/SFTP/VNC/TCP carriers. Their managed product
+routes and explicit guest-to-Host forwarding are still in progress.
 
 ## Optional package architecture
 
@@ -724,7 +725,7 @@ See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 
 ## Phase 4 package checkpoint
 
-The optional `cantrip-os-remote` 0.5.0 package runs the first-party Linux CUA
+The optional `cantrip-os-remote` 0.6.0 package runs the first-party Linux CUA
 helper as the selected workspace account behind a protected root carrier.
 Docker and ISO scripts include it with the executor edition by default;
 `CANTRIP_OS_REMOTE=0` omits it. Its retained state uses a namespace inside the
@@ -756,3 +757,15 @@ canceled rather than replayed. Disconnect or surface suspension ends the lease.
 Fresh CUA calls can continue on the same authorized agent turn after return.
 Current capture/encoding uses the existing adaptive JPEG pipeline; final stream
 selection and broader performance acceptance remain in Phase 4.
+
+Remote 0.6.0 supplies independent protected service connections. SSH and SFTP
+use private Debian OpenSSH binaries in per-connection inetd mode, pinned host
+keys and one admitted public key for the exact workspace account. No system SSH
+listener is installed. Guest-loopback TCP supports bounded duplex forwarding
+and half-close. VNC connects to a captured workspace desktop's private socket
+and cannot follow a replacement desktop. SSH/TCP remain independent of desktop
+start/stop. Package/runtime/attachment retirement closes old connections and
+cleans up SSH descendants; disabling/removing the package retains ordinary
+desktops, delegated execution, workspace files and the SSH host identity.
+The Server/Worker managed-tunnel adapter remains the next dependent milestone;
+these administrative carriers alone do not complete product access.

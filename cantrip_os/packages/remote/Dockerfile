@@ -14,6 +14,12 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4 AS package
 COPY --from=compiler /runtime/ /runtime/
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-server \
+    && mkdir -p /runtime/openssh \
+    && cp /usr/sbin/sshd /usr/lib/openssh/sshd-session /usr/lib/openssh/sshd-auth /runtime/openssh/ \
+    && cp /usr/share/doc/openssh-client/copyright /runtime/openssh/copyright \
+    && dpkg-query -W -f='${Package} ${Version}\n' openssh-server > /runtime/openssh/version \
+    && sha256sum /runtime/openssh/* >> /runtime/build-manifest.sha256
 COPY cantrip_os/packages/remote/ /package/
 RUN /package/build.sh /runtime /out
 

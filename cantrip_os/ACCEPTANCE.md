@@ -1910,3 +1910,52 @@ This checkpoint completes the human-control milestone, not the complete Phase 4
 goal. Managed SSH/SFTP/VNC/TCP, explicit guest-to-Host forwarding, comparative
 stream measurements, active multi-desktop resource acceptance and refreshed
 Docker/ISO live/install/disk-boot validation remain outstanding.
+
+## Phase 4: protected guest services checkpoint (2026-11-05)
+
+Remote 0.6.0 adds independent root-carried SSH/SFTP, captured-workspace VNC,
+and guest-loopback TCP. This milestone supplies the guest transport; it does
+not yet expose managed service routes through Cantrip's tunnel UI.
+
+Both ARM64 Docker and the installed AMD64 QEMU guest passed the actual
+`tests/remote-services.py` script. Real OpenSSH clients logged in with the
+admitted public key, observed the exact workspace UID/home and used unrestricted
+sudo. Real SFTP upload/download retained Unicode bytes. Wrong keys and the
+other existing workspace account were denied. SSH/TCP worked while the desktop
+was stopped and did not start it. A transfer of more than 1 MiB of random binary
+data received its complete reply after request half-close. A refused guest port
+failed the actual connection. Mismatched placement fields and old runtime or
+remote descriptors were rejected without selecting another target.
+
+Actual VNC 3.8 negotiation reached the selected desktop. Stopping that desktop
+closed VNC; SSH remained usable. Killing a carrier closed an idle TCP connection
+without waiting for its server. Exact service retirement, remote-manager death,
+executor restart and disable cleaned up real detached SSH descendants, observed
+with pidfds. The SSH host public key and workspace files survived disable/enable.
+The full existing remote-package destructive harness also passed on both
+architectures, including CUA hold cleanup, upgrade, disable/remove/purge/reinstall,
+retained desktop/files/preferences, and unknown-state preservation.
+
+The first installed-system manager-death run found a real failure: ordinary
+`common-session` PAM policy moved SSH processes into a separate logind scope,
+allowing a detached process to survive. The package now retains Debian account
+policy and uses its own `pam_unix` session configuration. The final installed
+run passed that same process-death assertion. No existing system SSH service or
+configuration is replaced. The private Debian OpenSSH binaries require a
+Cantrip package/image rebuild for security updates; their version, hashes and
+copyright are included.
+
+| Package            | Bytes   | SHA-256                                                            |
+| ------------------ | ------- | ------------------------------------------------------------------ |
+| ARM64 remote 0.6.0 | 1838644 | `d62d39108bdedc4f2c8ebf2723572ea4a76c34bd0d5bdbfd6d93b2782f5530aa` |
+| AMD64 remote 0.6.0 | 2087476 | `e4bb180f15d7ab8292e4088b013390472bc496c63e6d18ddb6cc88dc1140c6d8` |
+
+Both package builds, Python compilation, shell syntax, scoped formatting,
+`pnpm os:test` (7 tests) and `git diff --check` passed. Required `pnpm check`
+still failed at unchanged Server budgets, 1513/1500 and 2199/1999. Named build,
+service, lifecycle and failure logs plus both packages are retained in ignored
+local `phase4-access` artifacts.
+
+Managed product SSH/SFTP/VNC/TCP routes, explicit guest-to-Host forwarding,
+comparative stream/resource measurements and refreshed Docker/ISO acceptance
+remain necessary before Phase 4 is complete.
