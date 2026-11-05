@@ -1683,3 +1683,29 @@ Legacy servers without the sequence, or connections without an authenticated
 issuer generation, retain conservative legacy ticket records. They do not mint
 collectible helper authority. The sequence carries no capacity, ordering priority
 or provider decision: the shared worker service still grants FIFO tickets.
+
+## Native Goal budget and provider waits
+
+Worker timing and native Goal budget timing are separate clocks. Native patch
+`0069` connects the actual per-thread admission wait to Goal accounting: `begin`
+and FIFO `resume` waits are subtracted while they are pending and after they end.
+The clock does not grant capacity, infer idleness from missing output, or change
+ordinary tool work, concurrent child work or total turn elapsed time.
+
+Regular turns, manual compaction and durable resumption share their thread's
+counter with its Goal runtime. Independent background inference receives no parent
+clock, so it cannot refund time while that parent is still doing work. Queue
+cancellation drops the same guard. Overlapping observed waits count once, with
+only accumulated duration and live-wait state retained.
+
+Goal budget reads, accounting commits, hold/resume and new-Goal baselines use the
+same adjusted elapsed value. Durable checkpoints retain their existing format and
+save net elapsed work. Restoration preserves the current thread's clock binding
+and rebases its cumulative wait counter, so a cold resume neither charges downtime
+nor subtracts already excluded waits again. Fractional execution time survives
+the same boundary.
+
+This patch was authored and source-reviewed without applying or executing the
+native patch stack. Direct formatting of the new clock source, mechanical patch
+authoring and `git diff --check` were performed. No tests, builds, typechecks,
+benchmarks, native/helper execution, hosted checks or computer-use validation ran.
