@@ -61,7 +61,7 @@ interface OperationLifetimeState {
 export interface InferenceRequest {
   purpose?: InferenceOperationStatus["purpose"];
   operationId: string;
-  lifetime?: InferenceOperationLifetime;
+  lifetime: InferenceOperationLifetime;
   providerId: string;
   providerCreationRevision?: number;
   chatId?: string | null;
@@ -615,21 +615,12 @@ export class WorkerInferenceAdmission {
       throw new Error(
         "Inference admission requires an operation and provider identity.",
       );
-    const lifetime = input.lifetime
-      ? runtime.lifetimes.get(input.lifetime)
-      : undefined;
-    if (
-      input.lifetime &&
-      (!lifetime || lifetime.operationId !== input.operationId)
-    )
+    const lifetime = runtime.lifetimes.get(input.lifetime);
+    if (!lifetime || lifetime.operationId !== input.operationId)
       throw new Error(
         "Inference operation lifetime belongs to another runtime or operation.",
       );
-    if (input.operationId.startsWith("native-inference:") && !lifetime)
-      throw new Error(
-        "Private native inference requires its live operation lifetime.",
-      );
-    const previous = lifetime?.ticket ?? runtime.records.get(input.operationId);
+    const previous = lifetime.ticket ?? runtime.records.get(input.operationId);
     if (previous) {
       if (
         previous.input.lifetime !== input.lifetime ||
@@ -648,7 +639,7 @@ export class WorkerInferenceAdmission {
         );
       return previous.handle;
     }
-    if (lifetime?.closed)
+    if (lifetime.closed)
       throw new Error("The canonical inference operation has closed.");
     // Old envelopes omit configuration. They establish the default only if this
     // provider has not already received a newer authoritative configuration.
@@ -720,7 +711,7 @@ export class WorkerInferenceAdmission {
       },
     };
     runtime.records.set(input.operationId, ticket);
-    if (lifetime) lifetime.ticket = ticket;
+    lifetime.ticket = ticket;
     pool.queue.push(ticket);
     this.diagnose(ticket, "queued");
     if (this.journal && ticket.journalKey) {
@@ -947,14 +938,10 @@ export class WorkerInferenceAdmission {
     this.drain(ticket.pool);
     this.prunePool(ticket.pool);
     this.changed();
-    // Canonical lifetime handles retain their exact ticket through a WeakMap,
-    // without a process-lifetime completed registry. Their source cannot issue a
-    // replacement handle for a closed canonical operation. Legacy bare IDs must
-    // stay retained until their source gains equivalent retirement authority.
-    if (
-      ticket.input.lifetime &&
-      ticket.runtime.records.get(ticket.input.operationId) === ticket
-    )
+    // Every request owns a canonical lifetime, which retains its exact ticket
+    // through a WeakMap. The strong runtime registry contains active work only;
+    // retired sources cannot mint replacement owners from an evicted UUID.
+    if (ticket.runtime.records.get(ticket.input.operationId) === ticket)
       ticket.runtime.records.delete(ticket.input.operationId);
   }
 

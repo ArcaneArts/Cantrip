@@ -27,6 +27,7 @@ it("shares capacity across endpoint runtimes while keeping instances and authori
     const replacement = admission.createRuntime();
     const first = original.request({
       operationId: "first",
+      lifetime: original.createOperationLifetime("first"),
       providerId: "ollama-mac",
       purpose: "turn",
       projectId: "one",
@@ -35,12 +36,14 @@ it("shares capacity across endpoint runtimes while keeping instances and authori
     firstLease.start();
     const waiting = replacement.request({
       operationId: "replacement",
+      lifetime: replacement.createOperationLifetime("replacement"),
       providerId: "ollama-mac",
       purpose: "helper",
       projectId: "two",
     });
     const independent = replacement.request({
       operationId: "lan",
+      lifetime: replacement.createOperationLifetime("lan"),
       providerId: "ollama-lan",
       purpose: "turn",
       projectId: "two",
@@ -82,6 +85,7 @@ it("shares capacity across endpoint runtimes while keeping instances and authori
     nextLease.start();
     const third = original.request({
       operationId: "third",
+      lifetime: original.createOperationLifetime("third"),
       providerId: "ollama-mac",
     });
     expect(third.status().state).toBe("waiting");
@@ -103,6 +107,7 @@ it("shares capacity across endpoint runtimes while keeping instances and authori
     ).toBe(true);
     const fourth = replacement.request({
       operationId: "fourth",
+      lifetime: replacement.createOperationLifetime("fourth"),
       providerId: "ollama-mac",
     });
     nextLease.settle("completed");
