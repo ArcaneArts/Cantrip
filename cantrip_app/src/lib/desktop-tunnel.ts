@@ -18,6 +18,7 @@ import {
   startDesktopTunnelWorkerLinkForward,
   stopDesktopTunnelWorkerLinkForward,
   type DesktopTunnelWorkerLinkBridge,
+  type DesktopTunnelSshConnection,
 } from "@/lib/desktop-tunnel-worker-link";
 
 const clientIdStorageKey = "cantrip.desktop-tunnel-client.v1";
@@ -28,6 +29,7 @@ const directCapabilityRetirements = new Map<string, Promise<void>>();
 const relayRefreshes = new Map<string, Promise<boolean>>();
 
 export interface DesktopTunnelForwardSummary {
+  ssh?: DesktopTunnelSshConnection;
   attachmentId: string;
   diagnosticTraceId: string | null;
   expiresAt: string;

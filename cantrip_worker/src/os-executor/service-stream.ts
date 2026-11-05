@@ -19,6 +19,7 @@ export class OsServiceStream extends Duplex implements TunnelStreamSocket {
     private readonly transport: OsExecutorTransport,
     private readonly workspace: string,
     private readonly descriptor: Record<string, unknown>,
+    publicKey?: string,
   ) {
     super({ allowHalfOpen: true, highWaterMark: 65_536 });
     const spec = remoteCommand(transport, [
@@ -29,6 +30,7 @@ export class OsServiceStream extends Duplex implements TunnelStreamSocket {
       "--connection-id",
       this.connectionId,
       "--notify-ready",
+      ...(publicKey ? ["--public-key", publicKey] : []),
     ]);
     this.child = spawn(spec.command, spec.args, {
       stdio: ["pipe", "pipe", "pipe"],

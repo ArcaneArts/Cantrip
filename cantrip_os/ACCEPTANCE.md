@@ -2044,3 +2044,74 @@ new OS forwarding code reports no type errors. Native compilation also reports
 Main's unused Goal `lease` warning. Rebased strict Clippy failed on that warning
 and the same two Goal lints; rebased `pnpm check` reports 1515/1500 and 2199/1999.
 These upstream diagnostics remain visible.
+
+## Phase 4: managed SSH/SFTP product checkpoint (2026-11-05)
+
+The managed service path now supports SSH/SFTP for an explicitly captured Linux
+workspace, using the existing remote 0.7.0 package. The saved public key stays in
+the protected endpoint record. Server preparation returns the observed account
+and SSH host public key; the descriptor identity remains pinned to the attachment.
+The Worker validates the decrypted source and opens independent protected SSH
+streams with that key. Desktop stop/start remains independent.
+
+The Native desktop client installs a temporary, independently created public
+`known_hosts` file for its exact forward/attachment/native generation. An active
+pin cannot change its account, alias or key. Retirement drops the retained file
+handle and removes the pin. SSH/SFTP connection details use the file with strict
+host verification and a stable instance alias, with properly quoted commands
+for macOS/Linux and PowerShell. No private client key enters CantripOS, and no
+global client or guest SSH configuration is replaced.
+
+A real saved-route product smoke passed against the disposable PostgreSQL
+profile: actual API admission, WorkerLink grant/relay, Worker, guest package and
+real OpenSSH clients. Login observed the Linux account/home, unrestricted sudo
+returned UID 0, and SFTP round-tripped Unicode bytes and deleted only its temporary
+remote proof file. Codex's in-app browser displayed the combined TCP/SSH list and
+the saved SSH form with its captured workspace/public key. Browser local-listener
+actions remained disabled. The headless test's local socket exercises production
+API/SDK/Worker routing; it is not a claim that the Native desktop UI start button
+was clicked end to end.
+
+The actual Worker/package SSH test passed on ARM64 Docker and installed emulated
+AMD64: correct account UID/home and sudo, SFTP Unicode upload/download, wrong
+client key, root-account login and wrong host-pin rejection, active idle SSH
+retirement and rejected reopening after revoke. Its first run exposed a missing
+close handler in the test's local socket bridge; adding the bridge's stream-close
+propagation made the same real client-retirement assertion pass. Existing TCP
+binary/encrypted tests passed on both architectures after extracting shared
+protected-admission test setup.
+
+The Native App compiled in an isolated target directory. Its 37 tunnel tests
+passed, including independent host-pin files, removal on handle drop, rejection
+of SSH options/line injection and the existing real native loopback/route tests.
+App regressions passed 20 cases, including exact native generation passed with
+SSH metadata and local-forward retirement when the host pin cannot be installed.
+Protocol tests passed 9 cases; Native tunnel contract comparison passed both
+tests with 19 OS wire vectors and 9,067 existing catalog cases. The original real
+product Host-vs-Linux same-port smoke also passed through the shared QA setup.
+
+Native distribution/package rebuilds are not part of this milestone because
+guest support is unchanged from 0.7.0. The full Phase 4 goal remains active:
+managed VNC with coordinated input ownership, explicit Guest-to-Host forwarding,
+comparative stream/resource measurements and final fresh Docker/ISO
+live/install/diskboot acceptance remain required.
+
+The final Native cleanup pass also gives failed WorkerLink starts an atomic
+stop keyed by tunnel, attachment and Native forward generation. A delayed
+failure with an equal reused attachment ID cannot remove a newer listener.
+The Native replacement test now covers stale generation, stale attachment and
+exact capture removal; App tests require the captured generation on cleanup.
+SSH commands explicitly omit global known-host sources for this connection.
+
+App `tsc -b` passed. Worker typechecking still reports Main's missing logging
+`subsystem` at `transport.ts:963`; Server types still report its three Task Goal
+worktree-property errors. Strict Native App Clippy failed on five existing
+diagnostics (NBT export boolean, three tunnel function argument counts and the
+existing connection event enum size). Required `pnpm check` stops at unchanged
+Server budgets, 1515/1500 and 2199/1999. These are recorded failures, not passes.
+
+After rebasing onto Main's provider-catalog and Goal input changes, both real
+product TCP/HTTP and SSH/SFTP smoke tests passed again, as did App typechecking
+and Native tunnel contract comparison. Main's added provider-catalog export is
+explicitly reviewed in the protocol compatibility list while the legacy export
+fingerprint is retained. No new guest package or migration is introduced here.

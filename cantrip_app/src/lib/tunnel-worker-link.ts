@@ -31,6 +31,7 @@ export interface TunnelWorkerLinkConnection {
   readonly bufferedAmount: number;
   readonly route: WorkerLinkRoute;
   readonly tunnelRoute: WorkerLinkTunnelRoute;
+  readonly ssh?: WorkerLinkTunnelGrant["ssh"];
   activate(): void;
   close(code?: WorkerLinkChannelCloseCode): void;
   send(frame: Uint8Array): boolean;
@@ -160,6 +161,10 @@ class ActiveTunnelWorkerLink implements TunnelWorkerLinkConnection {
       stream.onClose((code) => this.#retire(code, false)),
     ];
     this.#scheduleRenewal(issued.grant.binding.lease);
+  }
+
+  get ssh() {
+    return this.issued.ssh;
   }
 
   get route(): WorkerLinkRoute {

@@ -304,7 +304,31 @@ An attachment also pins the remote-service generation: after remote support is
 restarted, Stop and explicitly start a fresh attachment. After the OS runtime
 changes, explicitly select the current workspace when editing a stopped route.
 
-This milestone covers TCP/HTTP service forwarding. Managed SSH/SFTP and VNC
-connections and explicit forwarding from Guest to Host are subsequent Phase 4
-milestones; the administrative package carriers alone do not provide those
-product workflows.
+Managed SSH/SFTP is described below. VNC connections and explicit forwarding
+from Guest to Host remain subsequent Phase 4 milestones.
+
+## Managed SSH and SFTP
+
+In **Project Settings → Tunnels**, create a route for the intended CantripOS
+workspace and choose **Linux service → SSH / SFTP**. Paste one Ed25519 public
+key from your SSH client and save. A normal public-key comment is accepted;
+private keys stay on your computer. SSH routes share the ordinary tunnel list
+and retain their own captured workspace. They do not need a destination port or
+a running desktop.
+
+In the Cantrip desktop app, start the route and open its **SSH connection
+details** action. It provides SSH/SFTP commands for macOS/Linux and PowerShell,
+the selected account and the actual host-key fingerprint. The app writes an
+independent temporary public `known_hosts` pin for this exact local forward.
+The commands use that file, `HostKeyAlias`, `StrictHostKeyChecking=yes` and
+`GlobalKnownHostsFile=none`; they
+do not replace your global SSH configuration. Use your normal SSH agent/default
+key, or add `-i <matching-private-key-path>` to the copied command.
+
+Login starts in the captured account's home. The account has unrestricted
+`sudo -n`, as in ordinary CantripOS terminals. SFTP uses the same account and
+filesystem. SSH passwords, other accounts and SSH's own agent/port forwarding
+are disabled for this managed connection; explicit Cantrip development-service
+routes remain separate. Stop/retirement closes its sessions and removes the
+client's temporary host pin. Reconnection cannot adopt another SSH host key or
+account within the same local attachment.

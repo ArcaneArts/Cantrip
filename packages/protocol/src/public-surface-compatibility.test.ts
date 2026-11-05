@@ -575,6 +575,7 @@ const inferenceAdmissionExports = [
   "inferencePoolStatusSchema",
   "inferenceTicketStateSchema",
   "providerInferenceConfigurationSchema",
+  "providerInferenceCatalogSchema",
   "providerInferenceLimitSchema",
   "providerInferenceRevisionSchema",
   "workerInferenceStatusSchema",

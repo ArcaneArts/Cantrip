@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 import { endpointContentOpaqueSchema } from "./endpoint-content.js";
-import { cantripOsTcpDestinationSchema } from "./cantrip-os-tunnels.js";
+import {
+  cantripOsTcpDestinationSchema,
+  cantripOsSshDestinationSchema,
+} from "./cantrip-os-tunnels.js";
 
 const tunnelContentIdSchema = z.string().trim().min(1).max(200);
 const tunnelContentHostSchema = z.enum(["127.0.0.1", "localhost", "::1"]);
@@ -44,6 +47,7 @@ export const tunnelContentDestinationEndpointSchema = z.discriminatedUnion(
   "kind",
   [
     cantripOsTcpDestinationSchema,
+    cantripOsSshDestinationSchema,
     z
       .object({
         kind: z.literal("worker-tcp"),
@@ -157,7 +161,10 @@ export function tunnelPublicDestinationEndpoint(
   destination: TunnelContentDestinationEndpoint,
   tunnelId?: string,
 ): TunnelPublicDestinationEndpoint {
-  if (destination.kind === "worker-os-tcp") {
+  if (
+    destination.kind === "worker-os-tcp" ||
+    destination.kind === "worker-os-ssh"
+  ) {
     if (!tunnelId)
       throw new Error(
         "OS tunnel destinations require their canonical tunnel ID.",

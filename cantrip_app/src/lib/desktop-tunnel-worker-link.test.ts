@@ -52,6 +52,7 @@ class FakeConnection implements TunnelWorkerLinkConnection {
   constructor(
     readonly route: WorkerLinkRoute,
     readonly tunnelRoute: WorkerLinkTunnelRoute,
+    readonly ssh?: TunnelWorkerLinkConnection["ssh"],
   ) {}
 }
 
@@ -116,7 +117,10 @@ class FakeSocket {
   }
 }
 
-function setup(routes: WorkerLinkRoute[] = ["local"]) {
+function setup(
+  routes: WorkerLinkRoute[] = ["local"],
+  ssh?: TunnelWorkerLinkConnection["ssh"],
+) {
   const sockets: FakeSocket[] = [];
   const connections: FakeConnection[] = [];
   const linkOptions: OpenTunnelWorkerLinkOptions[] = [];
@@ -147,13 +151,20 @@ function setup(routes: WorkerLinkRoute[] = ["local"]) {
         },
       };
     }
+    if (command === "configure_tunnel_ssh_forward")
+      return {
+        ...ssh,
+        fingerprint: "SHA256:fixture",
+        knownHostsPath: "/tmp/public-pin",
+      };
     if (command === "rotate_worker_link_tunnel_bridge_claim") {
       bridgeClaimGeneration += 1;
       return bridge();
     }
     if (
       command === "update_worker_link_tunnel_forward_route" ||
-      command === "stop_tunnel_forward"
+      command === "stop_tunnel_forward" ||
+      command === "stop_worker_link_tunnel_forward"
     ) {
       return undefined;
     }
@@ -168,6 +179,7 @@ function setup(routes: WorkerLinkRoute[] = ["local"]) {
       const connection = new FakeConnection(
         selected,
         route(`grant-${connections.length + 1}`),
+        ssh,
       );
       connections.push(connection);
       return connection;
@@ -318,4 +330,59 @@ describe("desktop tunnel WorkerLink bridge", () => {
       expect(fixture.sockets).toHaveLength(1);
     },
   );
+  it("configures the observed SSH pin against the exact native forward generation", async () => {
+    const ssh = {
+      user: "ctw-work",
+      hostAlias: "cantrip-os-55555555-5555-4555-8555-555555555555",
+      hostKey:
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcH",
+    };
+    const fixture = setup(["relay"], ssh);
+    const summary = await startDesktopTunnelWorkerLinkForward(
+      input(),
+      fixture.dependencies,
+    );
+    expect(summary.ssh).toMatchObject({
+      ...ssh,
+      knownHostsPath: "/tmp/public-pin",
+    });
+    expect(fixture.invoke).toHaveBeenCalledWith(
+      "configure_tunnel_ssh_forward",
+      {
+        request: {
+          tunnelId,
+          attachmentId,
+          nativeForwardGeneration: "66666666-6666-4666-8666-666666666666",
+          ssh,
+        },
+      },
+    );
+  });
+  it("retires the local forward when its SSH host pin cannot be installed", async () => {
+    const fixture = setup(["relay"], {
+      user: "ctw-work",
+      hostAlias: "captured",
+      hostKey: "public",
+    });
+    const invoke = fixture.dependencies.invoke;
+    fixture.dependencies.invoke = async (command, args) => {
+      if (command === "configure_tunnel_ssh_forward")
+        throw new Error("SSH pin failed");
+      return invoke(command, args);
+    };
+    await expect(
+      startDesktopTunnelWorkerLinkForward(input(), fixture.dependencies),
+    ).rejects.toThrow("SSH pin failed");
+    expect(fixture.connections[0]!.close).toHaveBeenCalled();
+    expect(fixture.invoke).toHaveBeenCalledWith(
+      "stop_worker_link_tunnel_forward",
+      {
+        request: {
+          tunnelId,
+          attachmentId,
+          nativeForwardGeneration: "66666666-6666-4666-8666-666666666666",
+        },
+      },
+    );
+  });
 });

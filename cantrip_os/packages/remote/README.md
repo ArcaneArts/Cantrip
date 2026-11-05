@@ -256,3 +256,25 @@ and saved encrypted Host/Linux routes. It exercises actual API admission,
 WorkerLink grants and relay traffic. Keep that artifact private; this test never
 installs account keys or model credentials in the guest. Its two same-port
 services return different proof text so Host substitution fails visibly.
+
+## Managed SSH/SFTP product access
+
+The same 0.7.0 guest package supports the subsequent SSH/SFTP tunnel adapter.
+Choose an SSH service in Cantrip's per-route Linux destination form and supply
+one public key. The Worker compares its encrypted source capture with canonical
+Server admission, observes the actual SSH account/host key and pins that service
+identity for the attachment. Every client connection receives its own private
+inetd SSH process through `service-connect --public-key`; no new guest listener
+or system SSH configuration is installed.
+
+The desktop client retains a generation-bound temporary public host pin for its
+local forward and supplies strict SSH/SFTP commands. Its private key remains in
+the user's normal SSH client. Managed SSH is independent of desktop lifetime and
+uses the workspace account's normal unrestricted sudo. Package lifecycle cleanup
+remains the existing remote-service cleanup.
+
+`test/os-ssh.integration.test.ts` exercises the real Worker preparation, protected
+record, guest connection, OpenSSH authentication and SFTP on either guest fixture.
+The opt-in App test `src/lib/os-ssh.product.integration.test.ts` additionally
+creates the actual saved encrypted route and uses real Server API/WorkerLink relay
+admission. Its disposable client keys and account recovery material stay on Host.

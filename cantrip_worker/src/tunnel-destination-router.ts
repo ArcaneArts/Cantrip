@@ -223,13 +223,15 @@ export class TunnelDestinationRouter {
       reasonCode = "target-kind-mismatch";
       if (
         Boolean(this.osServices?.isGuest(header.attachmentId)) !==
-        (content.destination.kind === "worker-os-tcp")
+        (content.destination.kind === "worker-os-tcp" ||
+          content.destination.kind === "worker-os-ssh")
       )
         throw new Error(
           "The tunnel's canonical Host/guest destination does not match its encrypted record.",
         );
       if (
-        content.destination.kind === "worker-os-tcp" &&
+        (content.destination.kind === "worker-os-tcp" ||
+          content.destination.kind === "worker-os-ssh") &&
         header.target.targetKind === "tcp"
       ) {
         reasonCode = "tcp-target-handoff-failed";

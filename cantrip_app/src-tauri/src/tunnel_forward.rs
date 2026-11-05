@@ -50,6 +50,29 @@ pub struct PrepareWorkerLinkTunnelForwardRequest {
     pub worker_id: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StopWorkerLinkForwardRequest {
+    pub tunnel_id: String,
+    pub attachment_id: String,
+    pub native_forward_generation: String,
+}
+
+#[tauri::command]
+pub async fn stop_worker_link_tunnel_forward(
+    app: AppHandle,
+    state: State<'_, TunnelForwards>,
+    request: StopWorkerLinkForwardRequest,
+) -> Result<Option<TunnelForwardTerminalSnapshot>, String> {
+    #[cfg(desktop)]
+    return desktop::stop_worker_link(&app, &state, request).await;
+    #[cfg(mobile)]
+    {
+        let _ = (app, state, request);
+        Err("Local tunnel attachments are only available in the desktop app.".into())
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkerLinkTunnelBridge {
@@ -103,6 +126,8 @@ pub struct TunnelRelayRefreshResult {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TunnelForwardSummary {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ssh: Option<crate::tunnel_ssh::Connection>,
     pub attachment_id: String,
     pub diagnostic_trace_id: Option<String>,
     pub expires_at: String,
@@ -215,6 +240,21 @@ pub async fn prepare_worker_link_tunnel_forward(
 ) -> Result<WorkerLinkTunnelForwardPreparation, String> {
     #[cfg(desktop)]
     return desktop::prepare_worker_link(&app, &state, request).await;
+    #[cfg(mobile)]
+    {
+        let _ = (app, state, request);
+        Err("Local tunnel attachments are only available in the desktop app.".into())
+    }
+}
+
+#[tauri::command]
+pub fn configure_tunnel_ssh_forward(
+    app: AppHandle,
+    state: State<'_, TunnelForwards>,
+    request: crate::tunnel_ssh::ConfigureRequest,
+) -> Result<crate::tunnel_ssh::Connection, String> {
+    #[cfg(desktop)]
+    return desktop::configure_ssh(&app, &state, request);
     #[cfg(mobile)]
     {
         let _ = (app, state, request);
@@ -463,6 +503,7 @@ mod desktop {
         summary: TunnelForwardSummary,
         pub task: TauriJoinHandle<()>,
         worker_link_bridge: Option<StoredWorkerLinkBridge>,
+        known_host: Option<tempfile::NamedTempFile>,
     }
 
     struct StoredWorkerLinkBridge {
@@ -1237,6 +1278,7 @@ mod desktop {
             diagnostic_trace_id: summary_identity.1,
             expires_at: summary_identity.2,
             local_host: "127.0.0.1",
+            ssh: None,
             local_port,
             effective_route: match startup.state {
                 "local-direct" => Some("local".into()),
@@ -1275,6 +1317,7 @@ mod desktop {
                 summary: summary.clone(),
                 task,
                 worker_link_bridge: None,
+                known_host: None,
             },
         );
         let _ = publication_sender.send(());
@@ -1330,6 +1373,7 @@ mod desktop {
             diagnostic_trace_id: diagnostic_trace_id.clone(),
             expires_at,
             local_host: "127.0.0.1",
+            ssh: None,
             local_port,
             effective_route: None,
             route_state: "degraded",
@@ -1415,6 +1459,7 @@ mod desktop {
                 summary: summary.clone(),
                 task,
                 worker_link_bridge: Some(bridge),
+                known_host: None,
             },
         );
         drop(forwards);
@@ -1762,6 +1807,44 @@ mod desktop {
                 expected_direct_capability_id,
             )
         };
+        retire_forward(app, forward, reason).await
+    }
+
+    pub(super) async fn stop_worker_link(
+        app: &AppHandle,
+        state: &State<'_, TunnelForwards>,
+        request: super::StopWorkerLinkForwardRequest,
+    ) -> Result<Option<TunnelForwardTerminalSnapshot>, String> {
+        let forward = {
+            let mut forwards = state
+                .forwards
+                .lock()
+                .map_err(|_| "The local tunnel manager is unavailable.")?;
+            take_worker_link_for_stop(&mut forwards, &request)
+        };
+        retire_forward(app, forward, "requested").await
+    }
+
+    fn take_worker_link_for_stop(
+        forwards: &mut HashMap<String, ForwardHandle>,
+        request: &super::StopWorkerLinkForwardRequest,
+    ) -> Option<ForwardHandle> {
+        let candidate = forwards.get(&request.tunnel_id)?;
+        if candidate.summary.attachment_id != request.attachment_id
+            || !candidate.worker_link_bridge.as_ref().is_some_and(|bridge| {
+                bridge.native_forward_generation == request.native_forward_generation
+            })
+        {
+            return None;
+        }
+        forwards.remove(&request.tunnel_id)
+    }
+
+    async fn retire_forward(
+        app: &AppHandle,
+        forward: Option<ForwardHandle>,
+        reason: &'static str,
+    ) -> Result<Option<TunnelForwardTerminalSnapshot>, String> {
         let Some(mut forward) = forward else {
             return Ok(None);
         };
@@ -1833,6 +1916,8 @@ mod desktop {
     }
 
     pub(super) fn abort_forward(forward: &mut ForwardHandle) {
+        forward.known_host.take();
+        forward.summary.ssh = None;
         if let Some(stop) = forward.stop.take() {
             let _ = stop.send(());
         }
@@ -1925,6 +2010,44 @@ mod desktop {
                 "tunnelId": forward.summary.tunnel_id,
             }),
         );
+    }
+
+    pub(super) fn configure_ssh(
+        app: &AppHandle,
+        state: &State<'_, TunnelForwards>,
+        request: crate::tunnel_ssh::ConfigureRequest,
+    ) -> Result<crate::tunnel_ssh::Connection, String> {
+        let mut forwards = state
+            .forwards
+            .lock()
+            .map_err(|_| "The local tunnel manager is unavailable.")?;
+        let forward = forwards
+            .get_mut(&request.tunnel_id)
+            .filter(|f| {
+                f.summary.attachment_id == request.attachment_id
+                    && !f.task.inner().is_finished()
+                    && f.worker_link_bridge.as_ref().is_some_and(|b| {
+                        b.native_forward_generation == request.native_forward_generation
+                    })
+            })
+            .ok_or("The captured local tunnel forward is retired.")?;
+        if let Some(info) = &forward.summary.ssh {
+            if info.matches(&request.ssh) {
+                return Ok(info.clone());
+            }
+            return Err(
+                "An active SSH forward cannot change its captured host key or account.".into(),
+            );
+        }
+        let directory = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("tunnel-ssh");
+        let (file, info) = crate::tunnel_ssh::create(&directory, request.ssh)?;
+        forward.known_host = Some(file);
+        forward.summary.ssh = Some(info.clone());
+        Ok(info)
     }
 
     pub fn list(state: &State<'_, TunnelForwards>) -> Result<Vec<TunnelForwardSummary>, String> {
@@ -5651,6 +5774,7 @@ mod desktop {
                 diagnostic_trace_id: None,
                 expires_at: "2099-01-01T00:00:00.000Z".into(),
                 local_host: "127.0.0.1",
+                ssh: None,
                 local_port: 41_234,
                 effective_route: Some("relay".into()),
                 route_state: "relayed",
@@ -5694,6 +5818,7 @@ mod desktop {
                 diagnostic_trace_id: None,
                 expires_at: "2099-01-01T00:00:00.000Z".into(),
                 local_host: "127.0.0.1",
+                ssh: None,
                 local_port: 43_123,
                 effective_route: Some("local".into()),
                 route_state: "local-direct",
@@ -5760,6 +5885,7 @@ mod desktop {
                 diagnostic_trace_id: Some("replacement-trace".into()),
                 expires_at: "2099-01-01T00:00:00.000Z".into(),
                 local_host: "127.0.0.1",
+                ssh: None,
                 local_port: 43_123,
                 effective_route: Some("local".into()),
                 route_state: "local-direct",
@@ -5790,6 +5916,7 @@ mod desktop {
                     summary,
                     task,
                     worker_link_bridge: None,
+                    known_host: None,
                 },
             )]);
 
@@ -5827,6 +5954,33 @@ mod desktop {
             )
             .is_none());
             assert!(forwards.contains_key("tunnel"));
+
+            let mut request = super::super::StopWorkerLinkForwardRequest {
+                tunnel_id: "tunnel".into(),
+                attachment_id: "replacement-attachment".into(),
+                native_forward_generation: "retired-generation".into(),
+            };
+            assert!(take_worker_link_for_stop(&mut forwards, &request).is_none());
+            forwards.get_mut("tunnel").unwrap().worker_link_bridge = Some(StoredWorkerLinkBridge {
+                claim: Arc::new(Mutex::new(WorkerLinkBridgeClaim {
+                    generation: 1,
+                    id: Uuid::new_v4().to_string(),
+                    expires_at_epoch_ms: u64::MAX,
+                    token: Zeroizing::new("test".into()),
+                })),
+                native_forward_generation: "replacement-generation".into(),
+                url: "ws://127.0.0.1/".into(),
+            });
+            // Equal attachment IDs do not authorize a late cleanup from an
+            // older Native generation to remove this replacement.
+            assert!(take_worker_link_for_stop(&mut forwards, &request).is_none());
+            request.native_forward_generation = "replacement-generation".into();
+            request.attachment_id = "retired-attachment".into();
+            assert!(take_worker_link_for_stop(&mut forwards, &request).is_none());
+            request.attachment_id = "replacement-attachment".into();
+            let exact = take_worker_link_for_stop(&mut forwards, &request).unwrap();
+            assert!(forwards.is_empty());
+            forwards.insert("tunnel".into(), exact);
 
             let mut removed = take_forward_for_stop(
                 &mut forwards,

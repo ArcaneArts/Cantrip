@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
+import { tunnelOsPrepareResultSchema } from "@cantrip/protocol";
 import type {
   WorkerCommand,
   InstalledWorkerLinkGrant,
@@ -27,10 +28,16 @@ const descriptorSchema = z.strictObject({
   home: z.string().min(1),
   user: z.string().min(1),
   remote_generation: z.uuid(),
-  service: z.strictObject({
-    kind: z.literal("tcp"),
-    port: z.number().int().min(1).max(65_535),
-  }),
+  service: z.union([
+    z.strictObject({
+      kind: z.literal("tcp"),
+      port: z.number().int().min(1).max(65_535),
+    }),
+    z.strictObject({ kind: z.literal("ssh") }),
+  ]),
+  ssh_host_key: tunnelOsPrepareResultSchema.shape.ssh
+    .unwrap()
+    .shape.hostKey.optional(),
 });
 interface Entry {
   command: Prepare;
@@ -94,6 +101,10 @@ export class OsTunnelServices {
         gid: scope.gid,
         home: scope.homeGuestPath,
       };
+      const service =
+        content.destination.kind === "worker-os-ssh"
+          ? { kind: "ssh" as const }
+          : { kind: "tcp" as const, port: content.destination.port };
       const descriptor = descriptorSchema.parse(
         await remoteControl(
           command.osExecution.transport,
@@ -101,7 +112,7 @@ export class OsTunnelServices {
             "service-info",
             scope.guestWorkspaceId,
             "--service",
-            JSON.stringify({ kind: "tcp", port: content.destination.port }),
+            JSON.stringify(service),
             "--expect-placement",
             JSON.stringify(placement),
           ],
@@ -117,6 +128,18 @@ export class OsTunnelServices {
         throw new Error(
           "The guest service descriptor differs from its captured placement.",
         );
+      if (!isDeepStrictEqual(descriptor.service, service))
+        throw new Error(
+          "The guest returned a different service than the captured destination.",
+        );
+      const ssh =
+        service.kind === "ssh"
+          ? tunnelOsPrepareResultSchema.shape.ssh.unwrap().parse({
+              user: descriptor.user,
+              hostAlias: `cantrip-os-${descriptor.instance_id}`,
+              hostKey: descriptor.ssh_host_key,
+            })
+          : undefined;
       const identity = createHash("sha256")
         .update(JSON.stringify(descriptor))
         .digest("hex");
@@ -144,7 +167,7 @@ export class OsTunnelServices {
       };
       entry.timer.unref();
       this.entries.set(command.attachmentId, entry);
-      return { identity };
+      return { identity, ...(ssh ? { ssh } : {}) };
     } finally {
       if (this.pending.get(command.attachmentId) === pending)
         this.pending.delete(command.attachmentId);
@@ -157,12 +180,13 @@ export class OsTunnelServices {
   ): asserts content is TunnelContentRecord & {
     destination: Extract<
       TunnelContentRecord["destination"],
-      { kind: "worker-os-tcp" }
+      { kind: "worker-os-tcp" | "worker-os-ssh" }
     >;
   } {
     const scope = command.osExecution.scope;
     if (
-      content.destination.kind !== "worker-os-tcp" ||
+      (content.destination.kind !== "worker-os-tcp" &&
+        content.destination.kind !== "worker-os-ssh") ||
       content.destination.workerId !== this.workerId ||
       !isDeepStrictEqual(content.destination.source, {
         bindingId: scope.bindingId,
@@ -220,6 +244,9 @@ export class OsTunnelServices {
       entry.command.osExecution.transport,
       entry.command.osExecution.scope.guestWorkspaceId,
       entry.descriptor,
+      content.destination.kind === "worker-os-ssh"
+        ? content.destination.publicKey
+        : undefined,
     );
     entry.streams.add(stream);
     stream.once("close", () => entry.streams.delete(stream));

@@ -736,8 +736,8 @@ immutable capture before acquiring the guest service. The MCP client and
 credentials stay on the Worker. Actual packaged SDK tests exercise turn
 authorization and routing without a Host Cantrip-window grant or Host launch.
 Real-provider evidence is recorded separately. The remaining Phase 4 work
-includes stream-candidate comparison, managed SSH/SFTP/VNC/TCP
-and refreshed ISO acceptance.
+includes stream-candidate comparison, managed VNC, explicit Guest-to-Host
+forwarding and refreshed ISO acceptance.
 
 Remote 0.3.0 adds scoped plain-text clipboard access and Unicode paste, actual
 Linux pointer motion and live resizing through supported RandR modes. These
@@ -773,5 +773,10 @@ source generations; Server admission resolves canonical execution authority and
 pins the actual service identity. The Worker compares the protected destination
 and uses a real guest stream through the signed WorkerLink grant. Encrypted
 bytes, bounded flow control and half-close reuse the existing tunnel data plane.
-Retired targets fail without Host fallback. Managed SSH/SFTP/VNC workflows,
-explicit Guest-to-Host forwarding and remaining acceptance are still required.
+Retired targets fail without Host fallback. The same path now supports managed
+SSH/SFTP with one saved public key, an exact workspace account and the actual
+host key. The Native client retains an independent temporary public host pin
+for that forward and supplies strict SSH/SFTP commands. Client private keys stay
+outside the guest; no global SSH configuration or public guest SSH listener is
+installed. Managed VNC, explicit Guest-to-Host forwarding and remaining
+acceptance are still required.
