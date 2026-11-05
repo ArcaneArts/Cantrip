@@ -1,6 +1,6 @@
 //! Global provider mutations retain the complete admitted operation, including
 //! account cleanup and catalog work, when the HTTP caller disconnects.
-use super::{AccountService, LifecycleLog, sign_out_input};
+use super::{AccountService, sign_out_input};
 use crate::{settings::catalog_runtime::CatalogRequest, wire::Value};
 use anyhow::{Context, Result};
 use futures::future::BoxFuture;
@@ -135,55 +135,12 @@ impl AccountService {
         owner: &str,
         worker: &str,
     ) -> BoxFuture<'static, Result<()>> {
-        let (owner, worker) = (owner.to_owned(), worker.to_owned());
-        self.launch(move |service| async move {
-            let result = async {
-                let catalog = service.repository.provider_inference_catalog(&owner).await?;
-                let command = Value::from_serialize(&serde_json::json!({
-                    "type": "inference.configure", "configurations": catalog["configurations"], "catalogRevision":catalog["catalogRevision"],
-                }));
-                let reply = service.commands.request(
-                    &worker, command, Some(std::time::Duration::from_secs(30)), None,
-                ).await?;
-                let status = crate::settings::parse_response("workerInferenceStatusSchema", reply.as_ref())?;
-                anyhow::ensure!(
-                    status["workerId"] == worker && status["ownerId"] == owner &&
-                        status["providerCatalogRevision"].as_i64().is_some_and(|revision| revision >= catalog["catalogRevision"].as_i64().unwrap_or(0)),
-                    "Inference configuration acknowledgement belongs to another worker scope."
-                );
-                Ok(())
-            }.await;
-            if result.is_err() {
-                LifecycleLog::emit("warn", crate::wire::value::json!({"event":"inference.configuration.delivery-pending", "workerId":worker}), "Provider inference configuration delivery remains pending");
-            }
-            result
-        })
+        self.queue_inference_delivery(owner, Some(worker));
+        Box::pin(async { Ok(()) })
     }
 
     async fn synchronize_inference_workers(self: &Arc<Self>, owner: &str) {
-        let workers = match (crate::workers::repository::WorkerRepository {
-            database: self.repository.database.clone(),
-        })
-        .list_workers(owner)
-        .await
-        {
-            Ok(workers) => workers,
-            Err(_) => {
-                LifecycleLog::emit(
-                    "warn",
-                    crate::wire::value::json!({"event":"inference.configuration.delivery-pending"}),
-                    "Provider inference configuration delivery remains pending",
-                );
-                return;
-            }
-        };
-        let _ = futures::future::join_all(
-            workers
-                .iter()
-                .filter_map(|worker| worker["workerId"].as_str())
-                .map(|worker| self.synchronize_inference(owner, worker)),
-        )
-        .await;
+        self.queue_inference_delivery(owner, None);
     }
 
     pub fn delete_provider(

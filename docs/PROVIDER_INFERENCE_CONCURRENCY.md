@@ -112,9 +112,9 @@ discarded after their holders settle; pending canonical recovery metadata remain
 available for a separately authorized replacement route. The database membership
 counter is not a server semaphore and never grants or frees provider tickets.
 Delivery failures are reported without converting a committed provider mutation
-into a failed API mutation. Reconnection refreshes authoritative state; reliable
-retry of transient delivery failure on a still-connected worker remains a
-separate unfinished integration. Older workers need the updated catalog protocol.
+into a failed API mutation. Reconnection refreshes authoritative state; transient delivery failures also retry
+through the coalesced pending delivery service described below, including while
+the worker stays connected. Older workers need the updated catalog protocol.
 
 The migration was not executed. Source review, direct formatting, mechanical
 protocol export and diff checks were performed; no tests, builds, typechecks,
@@ -1302,3 +1302,29 @@ benchmarks, native/helper execution, computer-use testing or hosted validation
 ran. Native checkpoint reconciliation, abandoned-input cancellation, actual
 terminal delivery/restart recovery, and final timing/bounded-state/entry-point
 audits remain required for the full goal.
+
+## Reliable provider configuration delivery
+
+Node and Rust servers coalesce saved catalog and limit updates by owner and
+worker. Provider mutations return after scheduling delivery. An HTTP disconnect
+does not abandon it. Each attempt reads the current saved catalog, sends the
+actual worker command, and checks both catalog and per-provider limit revisions
+in its acknowledgement. A later edit or reconnect wakes the same pending job;
+it cannot launch a competing delivery for that owner/worker.
+
+Only failed, pending delivery has a retry timer, backing off from one second to
+at most sixty seconds. There is no idle polling or retained completed-job cache.
+The first failure is logged; continued failures do not produce one warning per
+retry. Owner-level fanout also retries if reading the worker list fails.
+Authoritative worker deletion, unlinking, or ownership change retires pending
+work. Connectivity status is never used as a preflight gate. An offline but
+still enrolled worker receives an actual delivery attempt and retains pending
+settings until delivery or retirement. Shutdown closes retry scheduling and
+waits for bounded in-flight configuration requests; reconnect after server
+restart reloads the durable configuration.
+
+These jobs contain identifiers and settings only. They do not own tickets,
+store prompts, or select which inference runs. Worker admission remains the
+only authority for provider capacity. Source review, formatting and
+`git diff --check` were performed; runtime retry and shutdown behavior remains
+unverified under the user's prohibition on tests/builds/computer-use validation.
