@@ -1,6 +1,12 @@
 #!/bin/sh
 set -eu
 if [ "$1" = configure ]; then
+    # OpenSSH's privilege-separation account/runtime, without installing or
+    # changing a system-wide SSH listener. The private binaries run in inetd mode.
+    if ! getent passwd sshd >/dev/null; then
+        adduser --system --quiet --no-create-home --home /run/sshd --shell /usr/sbin/nologin --group sshd
+    fi
+    install -d -m 0755 -o root -g root /run/sshd
     deb-systemd-helper enable cantrip-os-remote.service >/dev/null
     if [ -d /run/systemd/system ]; then
         systemctl daemon-reload

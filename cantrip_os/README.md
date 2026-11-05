@@ -77,7 +77,10 @@ Connections printed by the launcher:
 
 All published ports bind **only to host loopback**. VNC listens on the container
 network so Docker can forward it; this is the same trusted local desktop as the
-browser viewer. SSH/Cantrip remote connection management remains future work.
+browser viewer. The optional remote package supplies protected SSH/SFTP/VNC/TCP
+carriers without a public SSH listener. Cantrip-managed service connection
+management remains a following Phase 4 cycle; see the
+[remote package guide](packages/remote/README.md).
 
 For detached use without a watcher or Ctrl+C ownership:
 

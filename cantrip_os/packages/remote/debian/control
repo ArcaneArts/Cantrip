@@ -1,10 +1,10 @@
 Package: cantrip-os-remote
-Version: 0.5.0
+Version: 0.6.0
 Architecture: @ARCH@
 Maintainer: Cantrip <support@cantrip.dev>
 Section: admin
 Priority: optional
-Depends: cantrip-os-executor (>= 0.9.0), cantrip-os-workspaces (>= 0.3.0), python3, init-system-helpers, libc6, libgcc-s1, xclip, x11-xserver-utils
-Description: Optional native desktop access for CantripOS
- Workspace-bound Linux computer use over the owning Worker's protected carrier.
+Depends: cantrip-os-executor (>= 0.9.0), cantrip-os-workspaces (>= 0.3.0), python3, init-system-helpers, adduser, libc6 (>= 2.38), libgcc-s1, xclip, x11-xserver-utils, openssh-client, libpam-modules, libpam-runtime, libaudit1, libcom-err2, libcrypt1, libgssapi-krb5-2, libkrb5-3, libpam0g, libselinux1, libssl3t64, libwrap0, libwtmpdb0, zlib1g
+Description: Optional native desktop and service access for CantripOS
+ Workspace-bound Linux computer use and SSH/VNC/TCP over the owning Worker's protected carrier.
  The external Worker retains orchestration and provider credentials.

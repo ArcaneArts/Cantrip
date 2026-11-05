@@ -10,6 +10,7 @@ import threading
 import time
 import uuid
 from context import observe, identity, desktops, current_desktop, VERSION
+from services import Services
 
 HERE = Path(__file__).parent
 
@@ -64,6 +65,7 @@ class Manager:
         self.connections = {}
         self.lock = threading.RLock()
         self.stopping = False
+        self.services = Services(store, self.generation, Connection)
 
     def status(self):
         with self.lock:
@@ -71,7 +73,8 @@ class Manager:
                     "enabled": self.store.preferences()["enabled"], "remote_generation": self.generation,
                     "connections": {name: {"running": record.child.poll() is None,
                                             "stopping": record.stopping.is_set()}
-                                    for name, record in self.connections.items()}}
+                                    for name, record in self.connections.items()},
+                    "service_connections": self.services.status()}
 
     def inspect(self, workspace, start=False, pins=None, expected_placement=None):
         if self.stopping:
@@ -144,6 +147,7 @@ class Manager:
         return {"workspace_id": workspace, "status": "closed"}
 
     def close_all(self):
+        self.services.close_all()
         with self.lock:
             records = list(self.connections.values())
         # Begin cleanup together, so long gestures do not serialize shutdown.
@@ -153,6 +157,7 @@ class Manager:
             self.close(record)
 
     def tick(self):
+        self.services.tick()
         with self.lock:
             records = list(self.connections.values())
         if not records:
