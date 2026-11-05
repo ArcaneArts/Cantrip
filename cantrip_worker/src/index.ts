@@ -5537,6 +5537,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             );
           }
           try {
+            if (command.taskInferenceInput) {
+              // Confirm this controller enforces the receipt before its first
+              // provider wait. An older worker cannot create no-dispatch proof.
+              await nativeCommands.dispatchTaskInput(
+                {
+                  serverId: nativeNamespaceScope().serverId,
+                  workerGeneration: workerProcessGeneration,
+                  receipt: command.taskInferenceInput,
+                  phase: "accepted",
+                },
+                guiBridgeSignal,
+              );
+            }
             const turnOptions: Parameters<typeof runtime.runTurn>[0] = {
               taskOwned: encryptedTask,
               initialLabel,
@@ -5544,7 +5557,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 ? AbortSignal.any([preparationSignal, guiBridgeSignal])
                 : undefined,
               operationGeneration:
-                command.nativeCommandReceipt?.operationGeneration,
+                command.nativeCommandReceipt?.operationGeneration ??
+                command.taskInferenceInput?.operationId,
               inferenceRecovery: () => {
                 const receipt =
                   nativeCommandState.receipt ?? command.nativeCommandReceipt;
@@ -5552,6 +5566,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   commandId: receipt?.operationId,
                   commandGeneration: receipt?.operationGeneration,
                   messageId: command.clientMessageId,
+                  taskInput: command.taskInferenceInput,
                   threadId:
                     nativeCommandState.dispatch?.threadId ?? command.threadId,
                 };
@@ -5609,52 +5624,66 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               threadId: command.threadId,
               worktreeMode: command.worktreeMode,
               worktreePolicy: command.worktreePolicy,
-              onBeforeNativeDispatch: command.nativeCommandReceipt
-                ? async (threadId) => {
-                    const session = sessionForTurn();
-                    nativeCommandState.entry = managedCommandSessionFor(
-                      runtime,
-                      session,
-                      {
-                        cwd: command.cwd,
-                        threadId,
-                        model: command.model,
-                        provider: provider(),
-                        permissionProfileId: command.permissionProfileId,
-                      },
-                    );
-                    const identity = managedSessionIdentity(session);
-                    nativeCommandState.dispatch = {
-                      chatId: identity.chatId,
-                      threadId,
-                      contextKind: identity.contextKind,
-                      projectId: identity.projectId,
-                      placementId: identity.placementId,
-                      runtimeGeneration: nativeCommandState.entry.generation,
-                      connectionId: `gui:${command.nativeCommandReceipt!.operationGeneration}`,
-                      modelRouteId: command.model.routeId,
-                      providerAccountId: provider().accountId ?? null,
-                    };
-                    if (command.contextKind === "project")
-                      encryptedChatHistoryScopes.set(threadId, {
-                        chatId: command.chatId,
-                        threadId,
-                        provenance: {
-                          kind: "command",
-                          operationId: nativeCommandState.receipt!.operationId,
-                          operationGeneration:
-                            nativeCommandState.receipt!.operationGeneration,
+              onBeforeNativeDispatch:
+                command.nativeCommandReceipt || command.taskInferenceInput
+                  ? async (threadId) => {
+                      if (command.taskInferenceInput) {
+                        await nativeCommands.dispatchTaskInput(
+                          {
+                            serverId: nativeNamespaceScope().serverId,
+                            workerGeneration: workerProcessGeneration,
+                            receipt: command.taskInferenceInput,
+                            phase: "dispatch",
+                          },
+                          guiBridgeSignal,
+                        );
+                      }
+                      if (!command.nativeCommandReceipt) return;
+                      const session = sessionForTurn();
+                      nativeCommandState.entry = managedCommandSessionFor(
+                        runtime,
+                        session,
+                        {
+                          cwd: command.cwd,
+                          threadId,
+                          model: command.model,
+                          provider: provider(),
+                          permissionProfileId: command.permissionProfileId,
                         },
-                      });
-                    guiAdapters.add(nativeCommandState.entry.adapter);
-                    await nativeCommandState.entry.adapter.dispatchGui(
-                      nativeCommandState.receipt!,
-                      nativeCommandState.dispatch,
-                      command.nativeCommandReceipt!,
-                      guiBridgeSignal,
-                    );
-                  }
-                : undefined,
+                      );
+                      const identity = managedSessionIdentity(session);
+                      nativeCommandState.dispatch = {
+                        chatId: identity.chatId,
+                        threadId,
+                        contextKind: identity.contextKind,
+                        projectId: identity.projectId,
+                        placementId: identity.placementId,
+                        runtimeGeneration: nativeCommandState.entry.generation,
+                        connectionId: `gui:${command.nativeCommandReceipt!.operationGeneration}`,
+                        modelRouteId: command.model.routeId,
+                        providerAccountId: provider().accountId ?? null,
+                      };
+                      if (command.contextKind === "project")
+                        encryptedChatHistoryScopes.set(threadId, {
+                          chatId: command.chatId,
+                          threadId,
+                          provenance: {
+                            kind: "command",
+                            operationId:
+                              nativeCommandState.receipt!.operationId,
+                            operationGeneration:
+                              nativeCommandState.receipt!.operationGeneration,
+                          },
+                        });
+                      guiAdapters.add(nativeCommandState.entry.adapter);
+                      await nativeCommandState.entry.adapter.dispatchGui(
+                        nativeCommandState.receipt!,
+                        nativeCommandState.dispatch,
+                        command.nativeCommandReceipt!,
+                        guiBridgeSignal,
+                      );
+                    }
+                  : undefined,
               onNativeDeferred: command.nativeCommandReceipt
                 ? async ({ threadId, nativeInput, frame }) => {
                     const entry = nativeCommandState.entry;

@@ -1765,6 +1765,13 @@
       "when": 1793816000001,
       "tag": "0251_project_source_identity_lock_order",
       "breakpoints": true
+    },
+    {
+      "idx": 252,
+      "version": "7",
+      "when": 1793816000002,
+      "tag": "0252_task_inference_input_receipts",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { taskInferenceInputReceiptSchema } from "./task-inference-input.js";
 
 /** Admission metadata only: inputs remain in their existing encrypted queues. */
 const identifier = z
@@ -18,6 +19,7 @@ export const inferenceRecoveryIdentitySchema = z
     messageId: identifier.nullable().optional(),
     threadId: identifier.nullable().optional(),
     turnId: identifier.nullable().optional(),
+    taskInput: taskInferenceInputReceiptSchema.nullable().optional(),
   })
   .strict();
 
@@ -84,6 +86,9 @@ export const nativeInferenceRecoveryResultSchema = z
     key: z.string().regex(/^[a-f0-9]{64}$/u),
     disposition: z.enum(["requeued", "retired", "unresolved"]),
     chatId: identifier.nullable(),
+    /** Canonical Task input authority was revoked before forwarding. A title
+     * can have used the old reservation without consuming this Task input. */
+    taskInputNotDispatched: z.boolean().optional(),
   })
   .strict();
 

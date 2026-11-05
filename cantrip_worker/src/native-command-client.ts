@@ -27,6 +27,10 @@ import {
   nativeInferenceRecoverySchema,
   nativeInferenceRecoveryResultSchema,
   type NativeInferenceRecovery,
+  taskInferenceInputDispatchSchema,
+  taskInferenceInputDispatchResultSchema,
+  taskInferenceInputReceiptSchema,
+  type TaskInferenceInputDispatch,
 } from "@cantrip/protocol";
 import { z } from "zod";
 import { CantripServerRequestError } from "./cli-client.js";
@@ -135,6 +139,31 @@ export class NativeCommandClient {
       }),
       nativePermissionTransitionResolutionSchema,
     );
+  }
+
+  async dispatchTaskInput(
+    input: Omit<TaskInferenceInputDispatch, "workerId">,
+    signal?: AbortSignal,
+  ) {
+    const result = await this.post(
+      "task-input-dispatch",
+      taskInferenceInputDispatchSchema.parse({
+        ...input,
+        workerId: this.options.workerId,
+      }),
+      taskInferenceInputDispatchResultSchema,
+      signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
+        : AbortSignal.timeout(15_000),
+    );
+    if (
+      JSON.stringify(result.receipt) !==
+      JSON.stringify(taskInferenceInputReceiptSchema.parse(input.receipt))
+    )
+      throw new Error(
+        "Task input dispatch returned another operation's receipt.",
+      );
+    return result;
   }
 
   async observeSettings(

@@ -154,6 +154,13 @@ impl EventSink {
         } else {
             json!({"kind":"visible"})
         };
+        if t.task_relay.is_some() && truthy(t.options.get("taskDispatchLease")) {
+            let lease = &t.options["taskDispatchLease"];
+            command["taskInferenceInput"]=crate::tasks::Repository::new(self.dependencies.database.clone()).prepare_inference_input(&t.owner,&json!({
+                "chatId":e["chatId"],"clientMessageId":t.user_message["id"],"workerId":e["workerId"],"worktreeId":e["worktreeId"],"executionLaneId":e["executionLaneId"],"executionLaneActivatedAt":e["executionLaneActivatedAt"],"providerId":runtime["provider"]["id"],"modelRouteId":runtime["routeId"],"providerAccountId":runtime["provider"]["accountId"],
+                "dispatch":{"cycleId":lease["cycleId"],"operationId":lease["operationId"],"leaseOwner":lease["leaseOwner"],"fencingToken":lease["fencingToken"]}
+            })).await?;
+        }
         Ok(command)
     }
 }

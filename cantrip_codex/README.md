@@ -538,3 +538,19 @@ The optional native configuration field and its checked-in TypeScript/JSON and
 precomputed export representations were updated mechanically from source. Source
 review, direct formatting, patch generation and diff checks were used. No native
 schema generator, runtime, tests, build or computer-use validation was run.
+
+Patch `0060` retains explicit Task input receipt metadata in the lifetime
+keeper's admission journal. The canonical encrypted round remains on the server;
+the journal contains only its opaque attempt, placement, lane activation, route
+and dispatch-fence identities. A current worker can adopt an older Task ticket's
+FIFO order after the server positively confirms that its input authority was
+revoked before forwarding. This also covers a reservation used only for naming.
+The private adoption reference carries that confirmation and still checks the
+captured journal generation/revision and the same canonical Task/chat/message.
+
+Potentially dispatched Task input without exact native no-start evidence is not
+replayed. The existing never-granted/never-started rules for other operation kinds
+remain unchanged. This changes only the private CLI journal, not native public
+RPC or precomputed schema exports. Only source review, direct formatting,
+mechanical patch generation and diff checks were performed; no native execution,
+tests or builds were run.

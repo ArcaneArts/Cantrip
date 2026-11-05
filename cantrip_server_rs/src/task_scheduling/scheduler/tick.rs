@@ -34,7 +34,27 @@ impl Service {
                 Value::Array(Vec::new())
             };
             let expired = expired.as_array().context("Expired Task claims")?;
+            let mut expired_attention = 0;
             for cycle in expired {
+                let guard = json!({"kind":"expired","cycleId":cycle["id"],"operationId":cycle["operationId"],"fencingToken":cycle["fencingToken"]});
+                match self
+                    .tasks
+                    .defer_inference_input(&owner_id, &text(&cycle["chatId"])?, &guard)
+                    .await
+                {
+                    Ok(true) => {
+                        self.dependencies.live.publish_invalidation(
+                            &owner_id,
+                            &text(&cycle["chatId"])?,
+                            "task",
+                            None,
+                        );
+                        continue;
+                    }
+                    Ok(false) => {}
+                    Err(error) if error.is::<task_dispatch::Conflict>() => continue,
+                    Err(error) => return Err(error),
+                }
                 if let Err(error) = self
                     .tasks
                     .fail_operation_fenced(
@@ -49,6 +69,7 @@ impl Service {
                     if error.downcast_ref::<task_dispatch::Conflict>().is_some() { continue; }
                     self.log("error", "Could not reconcile an expired started Task lease", json!({"chatId":cycle["chatId"],"cycleId":cycle["id"],"err":logging::error_details(&error),"event":"task.scheduler.started-lease-reconcile-failed","subsystem":"task-scheduler","operation":"reconcile-leases","status":"failed"}));
                 }
+                expired_attention += 1;
                 self.dependencies.live.publish_invalidation(
                     &owner_id,
                     &text(&cycle["chatId"])?,
@@ -56,8 +77,8 @@ impl Service {
                     None,
                 );
             }
-            if !expired.is_empty() {
-                self.log("warn", "Expired started Task leases require user attention", json!({"event":"task.scheduler.started-leases-expired","subsystem":"task-scheduler","operation":"reconcile-leases","status":"attention-required","counts":json!({"expired":expired.len()})}));
+            if expired_attention > 0 {
+                self.log("warn", "Expired started Task leases require user attention", json!({"event":"task.scheduler.started-leases-expired","subsystem":"task-scheduler","operation":"reconcile-leases","status":"attention-required","counts":json!({"expired":expired_attention})}));
             }
             let lease_owner = format!(
                 "{}:{}",

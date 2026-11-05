@@ -69,6 +69,19 @@ export function createTaskClaimedExecutionRuntime(
   ): Promise<void> => {
     let cleanupError: unknown = null;
     try {
+      if (
+        await repository.tasks.inferenceInputs.defer(
+          ownerId,
+          claim.cycle.chatId,
+          { kind: "leased", lease: claim.lease },
+        )
+      ) {
+        publishChatInvalidation(claim.cycle.chatId, "task", null, {
+          experience: "task",
+          projectId: claim.projectId,
+        });
+        return;
+      }
       await repository.taskDispatch.heartbeat(claim.lease);
       let completed = false;
       try {

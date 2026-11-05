@@ -14,6 +14,12 @@ async fn finish(
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<bool> {
     let ex = Executor::Transaction(tx);
+    // Match start/recovery's chat -> lane order before any lane mutation.
+    tx.query(
+        "SELECT id FROM chats WHERE id=$1 LIMIT 1 FOR UPDATE",
+        &[&chat],
+    )
+    .await?;
     let previous=query(ex,"SELECT jsonb_build_object('lane',to_jsonb(l),'is_primary',w.is_primary)::text FROM chat_execution_lanes l LEFT JOIN project_worktrees w ON w.id=l.worktree_id WHERE l.id=$1 AND l.chat_id=$2 LIMIT 1",&[&lane,&chat],&[json!(lane),json!(chat)]).await?;
     let expected = options
         .get("expectedActivatedAt")

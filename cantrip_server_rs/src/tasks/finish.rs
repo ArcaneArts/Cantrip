@@ -290,14 +290,22 @@ impl Repository {
             .await
     }
     pub async fn reconcile_interrupted_operations(&self) -> Result<usize> {
-        let rows=self.database.query("SELECT json_build_object('task',to_jsonb(t),'round',to_jsonb(r))::text FROM tasks t JOIN task_planning_rounds r ON r.id=t.active_operation_id",&[]).await?;
+        let rows=self.database.query("SELECT json_build_object('task',to_jsonb(t),'round',to_jsonb(r))::text FROM tasks t JOIN task_planning_rounds r ON r.id=t.active_operation_id WHERE r.inference_input IS NULL",&[]).await?;
+        let mut reconciled = 0;
         for row in &rows {
             let row: Value = serde_json::from_str(&row.get::<String>(0)?)?;
-            self.database
+            let changed = self
+                .database
                 .transaction(|tx| {
                     Box::pin(async move {
                         let task = &row["task"];
                         let round = &row["round"];
+                        let current =
+                            locked_round(tx, &text(&task["chat_id"])?, &text(&round["id"])?)
+                                .await?;
+                        if current.is_none_or(|r| !r["inference_input"].is_null()) {
+                            return Ok(false);
+                        }
                         let now = now();
                         let mut fields = round_columns(
                             &round["failure_round"]["classification"],
@@ -317,12 +325,15 @@ impl Repository {
                             Some(("active_operation_id", &round["id"])),
                         )
                         .await?;
-                        Ok(())
+                        Ok(true)
                     })
                 })
                 .await?;
+            if changed {
+                reconciled += 1;
+            }
         }
-        Ok(rows.len())
+        Ok(reconciled)
     }
     pub async fn sync_implementation_state(
         &self,

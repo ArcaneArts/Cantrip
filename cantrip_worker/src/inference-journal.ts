@@ -20,6 +20,24 @@ export function recoveryIdentity(
     value?.messageId ?? null,
     value?.threadId ?? null,
     value?.turnId ?? null,
+    value?.taskInput
+      ? [
+          value.taskInput.operationId,
+          value.taskInput.chatId,
+          value.taskInput.clientMessageId,
+          value.taskInput.workerId,
+          value.taskInput.worktreeId,
+          value.taskInput.executionLaneId,
+          value.taskInput.executionLaneActivatedAt,
+          value.taskInput.providerId,
+          value.taskInput.modelRouteId,
+          value.taskInput.providerAccountId,
+          value.taskInput.dispatch.cycleId,
+          value.taskInput.dispatch.operationId,
+          value.taskInput.dispatch.leaseOwner,
+          value.taskInput.dispatch.fencingToken,
+        ]
+      : null,
   ]);
 }
 
@@ -55,6 +73,7 @@ interface InferenceRecoveryReference {
   key: string;
   workerGeneration: string;
   revision: number;
+  taskInputNotDispatched?: boolean;
 }
 
 /** Serial durable metadata operations travel over the existing lifetime keeper.
@@ -131,6 +150,7 @@ export class WorkerInferenceJournal {
     previous: readonly InferenceJournalRecord[],
     retainedOrder: number | null = null,
     signal?: AbortSignal,
+    taskInputNotDispatched: ReadonlySet<string> = new Set(),
   ): Promise<InferenceJournalRecord> {
     const validatedIdentity = identitySchema.parse(identity);
     // Persist the oldest same-provider ordinal in the first chunk. Every later
@@ -155,7 +175,12 @@ export class WorkerInferenceJournal {
     let bytes = baseBytes;
     for (const item of ordered) {
       const itemBytes = Buffer.byteLength(
-        JSON.stringify(this.reference(item)),
+        JSON.stringify({
+          ...this.reference(item),
+          ...(taskInputNotDispatched.has(item.key)
+            ? { taskInputNotDispatched: true }
+            : {}),
+        }),
         "utf8",
       );
       if (chunk.length && bytes + itemBytes + 1 > 60_000) {
@@ -182,7 +207,12 @@ export class WorkerInferenceJournal {
         action: "adopt",
         key,
         identity: validatedIdentity,
-        previous: chunk.map((item) => this.reference(item)),
+        previous: chunk.map((item) => ({
+          ...this.reference(item),
+          ...(taskInputNotDispatched.has(item.key)
+            ? { taskInputNotDispatched: true }
+            : {}),
+        })),
       });
       if (
         record.state !== "waiting" ||

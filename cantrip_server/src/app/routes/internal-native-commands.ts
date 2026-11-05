@@ -13,6 +13,8 @@ import {
   nativePendingRequestSchema,
   nativeInferenceRecoverySchema,
   nativeInferenceRecoveryResultSchema,
+  taskInferenceInputDispatchSchema,
+  taskInferenceInputDispatchResultSchema,
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 import type { ServerConfig } from "../../config.js";
@@ -24,6 +26,7 @@ import {
 import type { ApplicationOwnerContext } from "../http/owner-context.js";
 import { authenticateWorkerRequest } from "../../workers/credentials.js";
 import { computerUsePreviewAuthority } from "./computer-use-preview.js";
+import { TaskDispatchConflictError } from "../../db/task-dispatch.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 
 export function installInternalNativeCommandRoutes(
@@ -34,6 +37,7 @@ export function installInternalNativeCommandRoutes(
     repository: Pick<
       ServerRepository,
       | "nativeCommands"
+      | "tasks"
       | "authenticateWorkerCredential"
       | "getWorker"
       | "getChatExecutionContext"
@@ -50,6 +54,7 @@ export function installInternalNativeCommandRoutes(
       | "publishChatInvalidation"
     >;
     dispatchNextQueuedPrompt: (chatId: string) => Promise<void>;
+    queueTaskScheduleTick?: () => void;
   },
 ): void {
   const { repository, config, serverId, runAsOwner, live } = dependencies;
@@ -72,6 +77,56 @@ export function installInternalNativeCommandRoutes(
           }
         : null,
   });
+  app.post(
+    "/api/internal/native-commands/task-input-dispatch",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const parsed = taskInferenceInputDispatchSchema.safeParse(request.body);
+      if (!parsed.success)
+        return reply.code(400).send({ code: "invalid-task-input-dispatch" });
+      const input = parsed.data;
+      const authentication = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        input.workerId,
+        "worker:agent-tools",
+      );
+      if (!authentication)
+        return reply.code(401).send({ code: "unauthorized" });
+      const current = () => {
+        const identity = dependencies.bridge?.connectionIdentity?.(
+          input.workerId,
+        );
+        return (
+          input.serverId === serverId &&
+          identity?.ownerId === authentication.ownerId &&
+          identity.workerProcessGeneration === input.workerGeneration &&
+          dependencies.bridge?.isConnected(input.workerId)
+        );
+      };
+      if (!current())
+        return reply.code(409).send({ code: "stale-worker-generation" });
+      return runAsOwner(authentication.ownerId, async () => {
+        let result;
+        try {
+          result = await repository.tasks.inferenceInputs.dispatch(
+            authentication.ownerId,
+            input.workerId,
+            input.receipt,
+            input.phase,
+          );
+        } catch (error) {
+          if (error instanceof TaskDispatchConflictError)
+            return reply.code(409).send({ code: "stale-task-input" });
+          throw error;
+        }
+        if (!current())
+          return reply.code(409).send({ code: "stale-worker-generation" });
+        return taskInferenceInputDispatchResultSchema.parse(result);
+      });
+    },
+  );
   app.post(
     "/api/internal/native-commands/inference-recovery",
     { logLevel: "warn" },
@@ -103,14 +158,24 @@ export function installInternalNativeCommandRoutes(
       if (!current())
         return reply.code(409).send({ code: "stale-worker-generation" });
       return runAsOwner(authentication.ownerId, async () => {
-        const result = await repository.nativeCommands.reconcileInference(
-          authentication.ownerId,
-          input,
-        );
+        const result = input.record.identity.recovery?.taskInput
+          ? await repository.tasks.inferenceInputs.reconcile(
+              authentication.ownerId,
+              input,
+            )
+          : await repository.nativeCommands.reconcileInference(
+              authentication.ownerId,
+              input,
+            );
         if (!current())
           return reply.code(409).send({ code: "stale-worker-generation" });
         if (result.chatId && result.disposition !== "unresolved")
           live.publishChatInvalidation(result.chatId, "chat");
+        if (
+          result.disposition === "requeued" &&
+          input.record.identity.recovery?.taskInput
+        )
+          dependencies.queueTaskScheduleTick?.();
         return nativeInferenceRecoveryResultSchema.parse(result);
       });
     },

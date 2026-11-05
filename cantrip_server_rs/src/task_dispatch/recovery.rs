@@ -1,4 +1,5 @@
 use super::*;
+pub(super) const PENDING_TASK_INPUT: &str = "EXISTS(SELECT 1 FROM task_planning_rounds r JOIN tasks t ON t.chat_id=r.chat_id AND t.active_operation_id=r.id JOIN chats chat ON chat.id=t.chat_id WHERE r.id=c.operation_id AND r.status='running' AND r.relay_result IS NULL AND r.assistant_message_id IS NULL AND r.turn_id IS NULL AND r.inference_input->>'accepted'='true' AND r.inference_input->>'allAttemptsEnforced'='true' AND r.inference_input->>'deferred'='false' AND r.inference_input->>'firstDispatchedOperationId' IS NULL AND chat.archived_at IS NULL AND t.state NOT IN ('failed','complete') AND NOT EXISTS(SELECT 1 FROM task_dispatch_cycles newer WHERE newer.chat_id=c.chat_id AND (newer.created_at,newer.id)>(c.created_at,c.id)))";
 impl Repository {
     pub async fn defer_for_capacity(&self, fence: &Value, options: &Value) -> Result<Value> {
         let now = clock(options)?;
@@ -23,20 +24,29 @@ impl Repository {
             owner,
             &now,
             reset_fields(&now, json!("reconciliation-required"), true),
-            "c.state='claimed' AND c.started_at IS NULL",
+            "c.state='claimed' AND c.started_at IS NULL AND NOT EXISTS(SELECT 1 FROM task_planning_rounds r WHERE r.id=c.operation_id AND r.inference_input IS NOT NULL)",
         )
         .await
     }
     pub async fn expire_started_leases(&self, owner: &str, options: &Value) -> Result<Value> {
         let now = clock(options)?;
         let fields = json!({"state":"expired","lease_owner":Value::Null,"lease_expires_at":Value::Null,"last_heartbeat_at":Value::Null,"eligibility_code":"reconciliation-required","completed_at":now,"updated_at":now});
-        self.expire(
+        let expired=self.expire(
             owner,
             &now,
             fields,
-            "c.state='running' OR (c.state='claimed' AND c.started_at IS NOT NULL)",
+            "c.state='running' OR (c.state='claimed' AND (c.started_at IS NOT NULL OR EXISTS(SELECT 1 FROM task_planning_rounds r WHERE r.id=c.operation_id AND r.inference_input IS NOT NULL)))",
         )
-        .await
+        .await?;
+        let mut expired = expired.as_array().context("Expired Task leases")?.clone();
+        let mut ids = std::collections::HashSet::new();
+        for row in &expired {
+            ids.insert(text(&row["id"])?);
+        }
+        for row in all(Executor::Database(&self.database),&format!("SELECT to_jsonb(c)::text FROM task_dispatch_cycles c WHERE c.owner_id=$1 AND c.state='expired' AND {PENDING_TASK_INPUT}"),&[&owner]).await? {
+            if ids.insert(text(&row["id"])?) {expired.push(summary(&row)?);}
+        }
+        Ok(Value::Array(expired))
     }
     async fn expire(
         &self,

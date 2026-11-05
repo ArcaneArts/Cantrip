@@ -132,6 +132,10 @@ impl Service {
         );
         let mut cleanup_error = None;
         let result:Result<()>=async {
+            if self.tasks.defer_inference_input(owner,&chat,&json!({"kind":"leased","lease":claim["lease"]})).await? {
+                self.publish(owner,&chat,Some(&json!({"experience":"task","projectId":claim["projectId"]})));
+                return Ok(());
+            }
             self.dispatch.heartbeat(&claim["lease"],&Value::Null).await?;
             let mut completed=false;
             let persist:Result<()>=async {

@@ -210,7 +210,7 @@ its channel to the actual thread under the existing connection-owner check.
 The opaque chat association lives with the existing thread overlay, allowing
 later-cycle queue status to identify the Task after its preceding ticket was
 released. It is cleared with that overlay; no additional controller map or prompt
-store is added. Task canonical recovery and execution accounting remain unfinished.
+store is added. Task Goal/checkpoint recovery and execution accounting remain unfinished.
 
 Scheduled Task round completion, failure, and execution association, including
 durable worker outcome recovery, lock the real owner/cycle fence in the same transaction as their round write. A heartbeat before
@@ -223,6 +223,48 @@ unchanged lease owner/fence, without reopening or settling the Task. Stale sched
 callbacks retire quietly instead of spending retry budget or logging a new launch
 failure. These are canonical data-write fences; lease expiry does not establish
 native inference settlement or release a provider ticket.
+
+Scheduled encrypted Task rounds now attach input-authority metadata to their
+existing canonical round before worker dispatch. The receipt identifies the
+actual route attempt, Task dispatch fence, original user message, placement, and
+exact execution-lane activation; lane IDs alone are reusable. It contains no
+prompt copy and does not participate in provider capacity decisions.
+
+The worker acknowledges that it enforces the receipt before entering provider
+admission, then obtains a separate dispatch acknowledgement before sending the
+actual native input. An older worker that ignores the optional command field
+cannot manufacture no-dispatch evidence. Unacknowledged predecessor attempts
+retain uncertainty across route retries. A dispatch acknowledgement is a single
+input authorization: another dispatch with that receipt is rejected, including
+after an unobserved reply, rather than forwarding a duplicate native start.
+
+Both servers serialize receipt dispatch and recovery against the actual owner,
+cycle, canonical round and lane activation. If recovery revokes a pending input
+first, its old worker cannot forward it. If dispatch wins, sticky evidence prevents
+whole-input replay. Exact native no-start evidence can reconcile a single matching
+unobserved acknowledgement; an earlier or multiple forwarded attempts cannot be
+cleared by a later unstarted attempt. Pending round recovery preserves its encrypted
+relay input and FIFO cycle, restores the pre-claim attempt count, advances the
+dispatch fence, and retires only that exact lane activation without an unread
+completion. A paused recovery retains its placement for the existing resume path.
+Ordinary lane settlement also locks chat before lane, matching start and recovery.
+
+Server-startup interruption cleanup leaves receipt-bearing rounds to their actual
+dispatch lifecycle. Expired claimed receipts take the same exact-fence recovery
+path even if their start observation was lost; lease expiry itself releases no
+provider ticket. A committed expiry is retried after a recovery write fails or
+the server restarts, selecting only still-canonical enforced pending inputs
+rather than polling expired history. Native takeover first fences surviving processes. Patch `0060`
+then allows the keeper to adopt server-confirmed unforwarded Task input into the
+replacement ticket, preserving same-provider FIFO ordinals atomically. A title can
+have used that reservation without having forwarded the Task input. A route change
+retains the destination provider's fresh order. Dispatched/ambiguous native work
+still needs its own terminal/checkpoint recovery; this is not exactly-once execution.
+
+This covers scheduled initial direct/planning/finalization inputs. Explicit Task
+Goal kickoff/resume and autonomous checkpoint recovery have different canonical
+identities and remain separate unfinished work. Current-generation abandoned
+preparations and separate per-turn execution/wait accounting also remain open.
 
 Known dependency and user/approval waits can suspend their parent's reservation
 only after all parent sampling streams have stopped. Resumption rejoins FIFO before
@@ -407,7 +449,7 @@ not an idle polling loop. No prompt content is copied into the journal.
 
 This is recovery of proven unstarted managed GUI inputs, not permission to replay
 potentially executed work. Granted/resumed execution still needs its canonical
-native checkpoint/terminal lifecycle. Task recovery, current-generation
+native checkpoint/terminal lifecycle. Task Goal recovery, current-generation
 abandoned preparations, the remaining execution/wait accounting, and the
 final bounded runtime/controller audit remain separate unfinished goal work.
 

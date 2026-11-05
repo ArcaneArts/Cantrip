@@ -109,6 +109,7 @@ export function createChatTurnRuntime({
   dispatchNextQueuedPrompt,
   interruptLiveAgentInteractionRequests,
   publishChatSummary,
+  publishChatInvalidation,
   publishChatTurnBoundary,
   publishInferenceProgress,
   recordLiveAgentInteractionRequest,
@@ -880,6 +881,27 @@ export function createChatTurnRuntime({
               ? undefined
               : (initialLabel ?? undefined);
             initialLabelSent = true;
+            const taskInferenceInput =
+              options.taskDispatchLease && encryptedTaskRelay
+                ? await repository.tasks.inferenceInputs.prepare(ownerId, {
+                    chatId: execution.chatId,
+                    clientMessageId: userMessage.id,
+                    workerId: execution.workerId,
+                    worktreeId: execution.worktreeId!,
+                    executionLaneId,
+                    executionLaneActivatedAt:
+                      execution.executionLaneActivatedAt!,
+                    providerId: runtime.provider.id,
+                    modelRouteId: runtime.routeId,
+                    providerAccountId: runtime.provider.accountId ?? null,
+                    dispatch: {
+                      cycleId: options.taskDispatchLease.cycleId,
+                      operationId: options.taskDispatchLease.operationId,
+                      leaseOwner: options.taskDispatchLease.leaseOwner,
+                      fencingToken: options.taskDispatchLease.fencingToken,
+                    },
+                  })
+                : undefined;
             const rawResultPromise = bridge.request(
               execution.workerId,
               {
@@ -1002,6 +1024,7 @@ export function createChatTurnRuntime({
                         }
                       : { kind: "visible" },
                 taskDispatchLease: options.taskDispatchLease,
+                taskInferenceInput,
               },
               {
                 timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
@@ -2063,6 +2086,36 @@ export function createChatTurnRuntime({
           }
         }
       } catch (error: unknown) {
+        if (options.taskDispatchLease && encryptedTaskRelay) {
+          try {
+            if (
+              await repository.tasks.inferenceInputs.defer(
+                ownerId,
+                execution.chatId,
+                { kind: "leased", lease: options.taskDispatchLease },
+              )
+            ) {
+              markTaskWorkerDispatchFailed(
+                new TaskDispatchConflictError(
+                  "Pending Task input was returned to its canonical queue.",
+                  "stale-lease",
+                ),
+              );
+              publishChatSummary(execution.chatId, execution.projectId);
+              publishChatInvalidation(
+                execution.chatId,
+                "task",
+                null,
+                execution,
+              );
+              return;
+            }
+          } catch (deferError) {
+            markTaskWorkerDispatchFailed(deferError);
+            if (deferError instanceof TaskDispatchConflictError) return;
+            throw deferError;
+          }
+        }
         markTaskWorkerDispatchFailed(error);
         await settleChatTurnFailure({
           dependencies: {

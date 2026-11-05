@@ -9,6 +9,36 @@ impl Runtime {
         error: &Arc<anyhow::Error>,
     ) -> Result<()> {
         let e = &turn.execution;
+        if turn.task_relay.is_some() && truthy(turn.options.get("taskDispatchLease")) {
+            match crate::tasks::Repository::new(self.dependencies.events.database.clone())
+                .defer_inference_input(
+                    &turn.owner,
+                    &events::text(&e["chatId"])?,
+                    &json!({"kind":"leased","lease":turn.options["taskDispatchLease"]}),
+                )
+                .await
+            {
+                Ok(true) => {
+                    self.dependencies.events.live.publish_invalidation(
+                        &turn.owner,
+                        &events::text(&e["chatId"])?,
+                        "task",
+                        None,
+                    );
+                    if let Some(hook) = &hooks.structured {
+                        (hook.failed)(Failure {
+                            turn: turn.clone(),
+                            error: error.clone(),
+                        })
+                        .await?;
+                    }
+                    return Ok(());
+                }
+                Ok(false) => {}
+                Err(error) if error.is::<crate::task_dispatch::Conflict>() => return Ok(()),
+                Err(error) => return Err(error),
+            }
+        }
         let worker_interrupted = worker_interrupted(&turn, error);
         let transport = error
             .downcast_ref::<CommandFailure>()
