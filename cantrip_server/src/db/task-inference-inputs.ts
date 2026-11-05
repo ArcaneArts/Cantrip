@@ -45,6 +45,8 @@ export interface TaskInferenceInputState {
     failureKind: TaskFailureKind | null;
     /** Round completion's canonical protected-outcome identity; no response copy. */
     outcomeDigest?: string;
+    /** Historical persistence must never replay Task/lane/dispatch mutations. */
+    historyOnly?: boolean;
     observedAt: string;
     projectedAt: string | null;
     threadId: string | null;

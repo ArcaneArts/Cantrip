@@ -63,6 +63,7 @@ export type TaskOperationOutcomeFence = {
 } & (
   | {
       inferenceInputOperationId: string;
+      roundProjection?: { control: TaskGoalProjectionFence["control"] };
       goalInferenceInputOperationId?: never;
       goalProjection?: never;
     }
@@ -70,6 +71,7 @@ export type TaskOperationOutcomeFence = {
       goalInferenceInputOperationId: string;
       inferenceInputOperationId?: never;
       goalProjection?: TaskGoalProjectionFence;
+      roundProjection?: never;
     }
 );
 
@@ -189,8 +191,10 @@ export async function assertTaskOperationDispatchFence(
     .limit(1);
   if (!cycle) return fail();
   const projectionControl =
-    expected.kind === "outcome" && expected.goalInferenceInputOperationId
-      ? expected.goalProjection?.control
+    expected.kind === "outcome"
+      ? expected.goalInferenceInputOperationId
+        ? expected.goalProjection?.control
+        : expected.roundProjection?.control
       : undefined;
   const expiredOutcome =
     !projectionControl &&
@@ -217,6 +221,7 @@ export async function assertTaskOperationDispatchFence(
           "expired",
           "succeeded",
           "failed",
+          ...(expected.inferenceInputOperationId ? ["queued"] : []),
         ].includes(cycle.state))
     )
       fail();

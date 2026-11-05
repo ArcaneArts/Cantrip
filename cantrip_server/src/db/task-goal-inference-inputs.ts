@@ -752,13 +752,19 @@ export class TaskGoalInferenceInputRepository {
     });
   }
 
-  /** Positive canonical deletion/replacement only, never lease expiry, archive,
-   * observer loss, or absence of a terminal notification. This retires delivery
-   * authority only and cannot settle any physical inference. */
+  /** Positive deletion/replacement or a proven no-forward deferred failure.
+   * Lease expiry, archive and missing output are never retirement evidence.
+   * This retires delivery authority only, never physical inference. */
   async outcomeRetirementReason(
     owner: string,
     notification: Extract<WorkerNotification, { type: "chat.turn.outcome" }>,
-  ): Promise<"canonical-input-deleted" | "canonical-input-replaced" | null> {
+    worker?: string,
+  ): Promise<
+    | "canonical-input-deleted"
+    | "canonical-input-replaced"
+    | "canonical-input-deferred"
+    | null
+  > {
     return this.database.transaction(async (tx) => {
       await tx.execute(projectChatExecutionLock(owner, notification.chatId));
       const [row] = await tx
@@ -795,6 +801,31 @@ export class TaskGoalInferenceInputRepository {
         receipt.data.operationId !== notification.taskInferenceInputOperationId
       )
         return "canonical-input-replaced" as const;
+      const proof = !notification.outcome.ok
+        ? notification.outcome.inference
+        : undefined;
+      const neverForwarded =
+        receipt.success &&
+        proof !== undefined &&
+        inferenceNeverStarted(proof) &&
+        proof.operationId === receipt.data.operationId &&
+        proof.providerId === receipt.data.providerId &&
+        proof.chatId === receipt.data.chatId &&
+        proof.messageId === receipt.data.clientMessageId;
+      if (
+        receipt.success &&
+        !notification.outcome.ok &&
+        row.state?.deferred &&
+        row.state.accepted &&
+        row.state.allAttemptsEnforced &&
+        row.state.firstDispatchedOperationId === null &&
+        (row.state.failedBeforeDispatch || neverForwarded) &&
+        receipt.data.operationId ===
+          notification.taskInferenceInputOperationId &&
+        receipt.data.workerId === worker &&
+        receipt.data.clientMessageId === notification.clientMessageId
+      )
+        return "canonical-input-deferred" as const;
       return null;
     });
   }

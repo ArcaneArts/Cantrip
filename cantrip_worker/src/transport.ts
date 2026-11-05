@@ -292,11 +292,11 @@ export class WorkerConnection {
           directory: config.dataDirectory,
           onError: (error) =>
             workerLogger.rateLimited(
-              "task-goal-outcome-delivery",
+              "task-outcome-delivery",
               "warn",
-              "Goal outcome durable delivery remains pending",
+              "Task outcome durable delivery remains pending",
               {
-                event: "task.goal.outcome-delivery-pending",
+                event: "task.outcome-delivery-pending",
                 workerId: config.workerId,
                 error: workerLogError(error),
               },
@@ -954,14 +954,18 @@ export class WorkerConnection {
         : undefined,
       outcome,
     };
-    if (command.taskInferenceInput?.kind === "goal" && this.#goalOutcomes) {
+    if (command.taskInferenceInput && this.#goalOutcomes) {
       try {
-        await this.#goalOutcomes.append(notification, scope);
+        await this.#goalOutcomes.append(
+          notification,
+          scope,
+          command.taskInferenceInput.kind === "goal" ? "goal" : "round",
+        );
       } catch (error) {
         // Persistence/transport errors cannot contradict the actual execution
         // result. Shutdown leaves already committed files for the next owner.
-        workerLogger.event("warn", "Goal outcome persistence was interrupted", {
-          event: "task.goal.outcome-persistence-interrupted",
+        workerLogger.event("warn", "Task outcome persistence was interrupted", {
+          event: "task.outcome-persistence-interrupted",
           workerId: this.config.workerId,
           error: workerLogError(error),
         });
@@ -1266,7 +1270,7 @@ export class WorkerConnection {
     let outcomeScope: GoalOutcomeScope | undefined;
     if (
       request.command.type === "chat.turn" &&
-      request.command.taskInferenceInput?.kind === "goal"
+      request.command.taskInferenceInput !== undefined
     ) {
       try {
         outcomeScope = this.timing.goalOutcomeDelivery?.scope();

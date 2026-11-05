@@ -15,6 +15,7 @@ mod query_error;
 mod reads;
 pub mod relay;
 pub mod retries;
+mod round_input_history;
 mod round_outcomes;
 mod rows;
 use crate::{

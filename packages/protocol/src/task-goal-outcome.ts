@@ -8,6 +8,8 @@ export const TASK_GOAL_OUTCOME_MAX_BYTES = 32 * 1_024 * 1_024;
 export const taskGoalOutcomeDeliverySchema = z
   .object({
     version: z.literal(1),
+    // Existing version-one files contain captured Goal outcomes.
+    inputKind: z.enum(["round", "goal"]).default("goal"),
     deliveryId: z.uuid(),
     serverId: z.string().min(1),
     ownerId: z.string().min(1),
@@ -27,7 +29,11 @@ export const taskGoalOutcomeCommitSchema = z.discriminatedUnion("committed", [
       ...outcomeReceiptIdentity,
       committed: z.literal(false),
       retiredReason: z
-        .enum(["canonical-input-deleted", "canonical-input-replaced"])
+        .enum([
+          "canonical-input-deleted",
+          "canonical-input-replaced",
+          "canonical-input-deferred",
+        ])
         .optional(),
     })
     .strict(),

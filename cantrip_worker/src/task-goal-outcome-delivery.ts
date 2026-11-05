@@ -50,10 +50,12 @@ export class TaskGoalOutcomeDelivery {
   async append(
     notification: OutcomeRecord["notification"],
     scope = this.options.scope(),
+    inputKind: OutcomeRecord["inputKind"] = "goal",
   ): Promise<void> {
     const record = taskGoalOutcomeDeliverySchema.parse({
       ...scope,
       version: 1,
+      inputKind,
       deliveryId: randomUUID(),
       notification,
     });
@@ -71,7 +73,7 @@ export class TaskGoalOutcomeDelivery {
           !written &&
           JSON.stringify(await readHistoryJson(filename)) !== body
         )
-          throw new Error("Goal outcome delivery identity has another body.");
+          throw new Error("Task outcome delivery identity has another body.");
         this.wake();
         return;
       } catch (error) {
@@ -85,7 +87,7 @@ export class TaskGoalOutcomeDelivery {
         );
       }
     }
-    throw new Error("Goal outcome delivery stopped before persistence.");
+    throw new Error("Task outcome delivery stopped before persistence.");
   }
 
   wake(): void {
@@ -144,7 +146,7 @@ export class TaskGoalOutcomeDelivery {
             entry.name !== record.deliveryId + ".json"
           )
             throw new Error(
-              "Goal outcome file belongs to another scope or identity.",
+              "Task outcome file belongs to another scope or identity.",
             );
           // Credentials/bindings can change while disk reads are pending.
           if (this.directory(this.options.scope()) !== directory) return;
@@ -162,7 +164,7 @@ export class TaskGoalOutcomeDelivery {
   }
 
   close(): void {
-    this.lifetime.abort(new Error("Goal outcome delivery stopped."));
+    this.lifetime.abort(new Error("Task outcome delivery stopped."));
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
   }
