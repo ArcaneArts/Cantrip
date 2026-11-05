@@ -14,6 +14,9 @@ import type { RepositoryTransaction } from "./database.js";
 import type { ChatExecutionLaneRepository } from "./chat-execution-lanes.js";
 import { NativeCommandError } from "./native-command-errors.js";
 import { isNativeTransportClosure } from "./native-transport-evidence.js";
+import { queueStateChanged } from "./native-command-queue.js";
+import { validateWithdrawingGoalClaim } from "./native-handoff-goal-claim.js";
+import type { GoalHandoffClaim } from "./native-goal-handoff-affinity.js";
 
 type Command = typeof schema.nativeCommands.$inferSelect;
 const fail = (): never => {
@@ -56,6 +59,7 @@ export async function confirmAutonomousHandoffSource(
   root: Command,
   expected: NativeAutonomousAttempt,
   record: InferenceJournalRecord | null,
+  goalClaim?: GoalHandoffClaim,
 ): Promise<void> {
   const attempt = autonomousHandoffAttempt(root);
   if (
@@ -83,8 +87,8 @@ export async function confirmAutonomousHandoffSource(
     .from(schema.nativeCommandTurns)
     .where(eq(schema.nativeCommandTurns.operationId, root.operationId))
     .limit(1);
-  const [claim] = await tx
-    .select({ id: schema.managedQueueClaims.id })
+  const claims = await tx
+    .select()
     .from(schema.managedQueueClaims)
     .where(
       and(
@@ -97,10 +101,8 @@ export async function confirmAutonomousHandoffSource(
         ]),
       ),
     )
-    .limit(1);
-  // First-cycle awaitingGoal claims need their own retained-parent transition;
-  // never pretend they are an ordinary claimless continuation.
-  if (observed || claim) fail();
+    .limit(2);
+  if (observed || (!goalClaim && claims.length)) fail();
   const evidence = root.terminalEvidence as Record<string, unknown> | null;
   const alreadyDeferred =
     root.status === "rejected" &&
@@ -109,6 +111,14 @@ export async function confirmAutonomousHandoffSource(
     root.executionCompletedAt &&
     evidence?.kind === "not-started" &&
     evidence.source === "worker-inference-journal";
+  if (goalClaim)
+    await validateWithdrawingGoalClaim(
+      tx,
+      root,
+      goalClaim,
+      claims,
+      Boolean(alreadyDeferred),
+    );
   if (!record) {
     if (!alreadyDeferred) fail();
     return;
@@ -245,4 +255,22 @@ export async function confirmAutonomousHandoffSource(
         eq(schema.nativeCommandActivations.operationId, root.operationId),
       ),
     );
+  if (goalClaim) {
+    const updated = await tx
+      .update(schema.managedQueueClaims)
+      .set({ goalOperationId: null, goalOperationGeneration: null })
+      .where(
+        and(
+          eq(schema.managedQueueClaims.id, goalClaim.id),
+          eq(schema.managedQueueClaims.goalOperationId, root.operationId),
+          eq(
+            schema.managedQueueClaims.goalOperationGeneration,
+            root.operationGeneration,
+          ),
+        ),
+      )
+      .returning({ id: schema.managedQueueClaims.id });
+    if (updated.length !== 1) fail();
+    await queueStateChanged(tx, root.chatId);
+  }
 }

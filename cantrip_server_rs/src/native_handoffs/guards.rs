@@ -34,7 +34,7 @@ pub(super) async fn assert_source(tx: &Transaction<'_>, owner: &str, source: &Va
     }
     Ok(())
 }
-pub(super) async fn assert_idle(tx: &Transaction<'_>, chat: &str) -> Result<()> {
+pub(super) async fn assert_idle(tx: &Transaction<'_>, chat: &str, queued: &Value) -> Result<()> {
     let lane = tx
         .query(
             "SELECT id FROM chat_execution_lanes WHERE chat_id=$1 AND state='active' LIMIT 1",
@@ -42,9 +42,22 @@ pub(super) async fn assert_idle(tx: &Transaction<'_>, chat: &str) -> Result<()> 
         )
         .await?;
     let command=tx.query("SELECT operation_id FROM native_commands WHERE chat_id=$1 AND status IN ('accepted','dispatched','uncertain') LIMIT 1",&[&chat]).await?;
-    let claim=tx.query("SELECT id FROM managed_queue_claims WHERE chat_id=$1 AND status IN ('claimed','accepted','dispatched','uncertain') LIMIT 1",&[&chat]).await?;
-    if !lane.is_empty() || !command.is_empty() || !claim.is_empty() {
+    let claims=tx.query("SELECT to_jsonb(c)::text FROM managed_queue_claims c WHERE chat_id=$1 AND status IN ('claimed','accepted','dispatched','uncertain') LIMIT 2",&[&chat]).await?;
+    if !lane.is_empty() || !command.is_empty() || claims.len() > 1 {
         return reject("handoff-native-operation-pending");
+    }
+    if let Some(row) = claims.first() {
+        let claim: Value = serde_json::from_str(&row.get::<String>(0)?)?;
+        let Some(expected) = queued
+            .get("goalClaim")
+            .filter(|_| truthy(queued.get("autonomousAttempt")))
+        else {
+            return reject("handoff-native-operation-pending");
+        };
+        if !goal_claim::retained(&claim, expected) {
+            return reject("handoff-native-operation-pending");
+        }
+        goal_claim::assert_prompt(tx, chat, expected).await?;
     }
     Ok(())
 }

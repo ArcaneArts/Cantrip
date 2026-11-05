@@ -15,6 +15,19 @@ export const nativeRuntimeHandoffQueuedSourceSchema = z
     withdrawn: z.boolean(),
     // Derived from the canonical accepted command, never from the UI request.
     autonomousAttempt: nativeAutonomousAttemptSchema.optional(),
+    // The acknowledged Goal setter is never replayed. Only its exact pending
+    // first-cycle claim is carried across the canonical route binding.
+    goalClaim: z
+      .object({
+        id,
+        promptId: id,
+        promptRevision: z.number().int().nonnegative(),
+        operationId: id,
+        operationGeneration: id,
+        goalEpoch: id,
+      })
+      .strict()
+      .optional(),
     // Standalone inputs retain per-message model choices. Only this exact
     // transferred revision inherits the explicitly selected provider route.
     retargetedPrompt: z

@@ -7179,3 +7179,17 @@ The Rust boundary remains partially implemented and source-reviewed; historical
 validation above does not establish correctness of this extension or platform
 acceptance. The exported protocol now has 631 roots and 10,588 nodes; Run remains
 at 11 roots and 453 nodes. No route or worker-command surface was added.
+
+The subsequent first-cycle extension retains an exact `awaitingGoal` claim
+across the same worker-confirmed pre-start transfer. Node and Rust preserve its
+applied parent setter and original encrypted input, retire only the unused child
+operation, and allow that one claim through handoff idle boundaries. Route
+affinity requires its exact captured identity and the current full settings
+binding on a settled completed/cancelled handoff. The worker wake preserves that
+claim's ordering ahead of later prompts while obtaining normal FIFO capacity.
+The protocol export now has 631 roots and 10,592 nodes; Run remains 11/453.
+This extension was source-reviewed and formatted, with mechanical protocol export
+and `git diff --check` only. No tests, builds, typechecks, benchmarks,
+native/helper execution, patch application, hosted validation or computer-use
+checks ran. Neither this extension nor its boundary review establishes runtime
+or platform acceptance, and the overall replacement remains partial.

@@ -29,6 +29,11 @@ pub(super) async fn reserve(tx: &Transaction<'_>, source: &Value) -> Result<Valu
     }
     let command = &commands[0];
     let autonomous = autonomous_source::attempt(command)?;
+    let goal_claim = if autonomous.is_some() {
+        goal_claim::capture(tx, command, &claims).await?
+    } else {
+        None
+    };
     let session = &command["identity"];
     if command["status"] != "accepted"
         || command["kind"] != "start"
@@ -70,7 +75,7 @@ pub(super) async fn reserve(tx: &Transaction<'_>, source: &Value) -> Result<Valu
         return reject("handoff-native-operation-pending");
     }
     if autonomous.is_some() {
-        if !claims.is_empty() {
+        if !claims.is_empty() && goal_claim.is_none() {
             return reject("handoff-native-operation-pending");
         }
     } else if claims.len() != 1
@@ -86,6 +91,9 @@ pub(super) async fn reserve(tx: &Transaction<'_>, source: &Value) -> Result<Valu
     let mut result = json!({"operationId":command["operation_id"],"operationGeneration":command["operation_generation"],"withdrawn":false});
     if let Some(attempt) = autonomous {
         result["autonomousAttempt"] = attempt;
+    }
+    if let Some(claim) = goal_claim {
+        result["goalClaim"] = claim;
     }
     Ok(result)
 }
@@ -120,8 +128,16 @@ pub(super) async fn confirm(
     )
     .await?;
     if let Some(attempt) = queued.get("autonomousAttempt") {
-        autonomous_source::confirm(tx, &row["source"], &root, attempt, record).await?;
-        guards::assert_idle(tx, &text(&row["chat_id"])?).await?;
+        autonomous_source::confirm(
+            tx,
+            &row["source"],
+            &root,
+            attempt,
+            record,
+            queued.get("goalClaim"),
+        )
+        .await?;
+        guards::assert_idle(tx, &text(&row["chat_id"])?, &row["queued_source"]).await?;
         let mut queued = queued.clone();
         queued["withdrawn"] = json!(true);
         return update(
@@ -210,7 +226,7 @@ pub(super) async fn confirm(
             return reject("handoff-native-operation-pending");
         }
     }
-    guards::assert_idle(tx, &text(&row["chat_id"])?).await?;
+    guards::assert_idle(tx, &text(&row["chat_id"])?, &row["queued_source"]).await?;
     let mut queued = queued.clone();
     queued["withdrawn"] = json!(true);
     update(

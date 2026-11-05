@@ -25,9 +25,23 @@ export async function wakeManagedQueueAutonomy(options: {
   runtimeGeneration: string;
   runner: { runnerGeneration: string } | undefined;
 }): Promise<void> {
+  // The acknowledged Goal setter already owns the next input. A transfer can
+  // retire its unused first attempt while retaining that claim; later prompts
+  // must not prevent the corresponding native Goal from requesting a new one.
+  const awaitingGoal = options.snapshot.claims.some(
+    (claim) =>
+      claim.awaitingGoal &&
+      claim.goalEpoch &&
+      claim.operationId &&
+      claim.operationGeneration &&
+      !claim.goalOperationId &&
+      !claim.goalOperationGeneration &&
+      !claim.nativeTurnId &&
+      (claim.status === "dispatched" || claim.status === "uncertain"),
+  );
   if (
     options.snapshot.paused ||
-    eligibleManagedQueueItem(options.snapshot) ||
+    (eligibleManagedQueueItem(options.snapshot) && !awaitingGoal) ||
     !options.runner
   )
     return;

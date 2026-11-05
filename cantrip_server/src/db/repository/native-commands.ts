@@ -3,6 +3,7 @@ import {
   reconcileUnstartedGui,
 } from "./native-undispatched-gui.js";
 import { isNativeTransportClosure } from "./native-transport-evidence.js";
+import { goalHandoffSessionMatches } from "./native-goal-handoff-affinity.js";
 import { reconcileNativeThreadObservation } from "./native-thread-observation.js";
 import { NativeCommandRecoveryRepository } from "./native-command-recovery.js";
 import { authorizeNativeInferenceResource } from "./native-inference-resources.js";
@@ -527,6 +528,8 @@ export class NativeCommandRepository {
           (input.origin !== "autonomous" ||
             input.method !== "turn/start" ||
             input.intent.expectedTurnId !== attempt.turnId ||
+            (input.goalQueueHandoff &&
+              attempt.goalEpoch !== input.goalQueueHandoff.goalEpoch) ||
             input.operationId !==
               `native:${attempt.runnerGeneration}:${attempt.attemptId}` ||
             input.session.connectionId !==
@@ -559,14 +562,14 @@ export class NativeCommandRepository {
             parent.workerId !== input.workerId ||
             parent.status !== "applied" ||
             parent.method !== "thread/goal/set" ||
-            !isDeepStrictEqual(
-              {
-                ...(parent.identity as NativeCommandSession),
-                runtimeGeneration: null,
-                connectionId: null,
-              },
-              { ...input.session, runtimeGeneration: null, connectionId: null },
-            )
+            !(await goalHandoffSessionMatches(
+              tx,
+              ownerId,
+              input.workerId,
+              goalClaim,
+              parent.identity as NativeCommandSession,
+              input.session,
+            ))
           )
             throw new NativeCommandError("stale-goal-handoff");
         }

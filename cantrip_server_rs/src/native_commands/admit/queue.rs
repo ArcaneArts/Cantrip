@@ -1,20 +1,10 @@
 use super::{Admission, raw_one, reject, text};
+use crate::native_commands::goal_handoff;
 use crate::{
     database::Transaction,
     wire::{Value, coercion::truthy, value::json},
 };
 use anyhow::Result;
-
-fn unbound(identity: &Value) -> Value {
-    let mut result = if identity.is_object() {
-        identity.clone()
-    } else {
-        Value::object([] as [(&str, Value); 0])
-    };
-    result["runtimeGeneration"] = Value::Null;
-    result["connectionId"] = Value::Null;
-    result
-}
 impl Admission<'_> {
     pub(super) async fn check_queue(&self, tx: &Transaction<'_>) -> Result<()> {
         let input = self.input;
@@ -26,6 +16,8 @@ impl Admission<'_> {
             if input["origin"] != "autonomous"
                 || input["method"] != "turn/start"
                 || input["intent"].get("expectedTurnId") != attempt.get("turnId")
+                || (truthy(input.get("goalQueueHandoff"))
+                    && attempt.get("goalEpoch") != input["goalQueueHandoff"].get("goalEpoch"))
                 || input["operationId"]
                     != format!(
                         "native:{}:{}",
@@ -71,9 +63,20 @@ impl Admission<'_> {
                         && parent["worker_id"] == input["workerId"]
                         && parent["status"] == "applied"
                         && parent["method"] == "thread/goal/set"
-                        && unbound(&parent["identity"]) == unbound(&input["session"])
                 });
             if !valid {
+                return reject("stale-goal-handoff");
+            }
+            if !goal_handoff::session_matches(
+                tx,
+                self.owner,
+                &text(&input["workerId"])?,
+                claim.as_ref().unwrap(),
+                &parent.as_ref().unwrap()["identity"],
+                &input["session"],
+            )
+            .await?
+            {
                 return reject("stale-goal-handoff");
             }
             goal_claim = claim;

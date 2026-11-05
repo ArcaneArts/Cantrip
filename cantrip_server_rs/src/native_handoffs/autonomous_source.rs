@@ -35,6 +35,7 @@ pub(super) async fn confirm(
     root: &Value,
     expected: &Value,
     record: &Value,
+    retained_claim: Option<&Value>,
 ) -> Result<()> {
     if attempt(root)?.as_ref() != Some(expected)
         || root.get("chat_id") != source.get("chatId")
@@ -58,7 +59,7 @@ pub(super) async fn confirm(
     let chat = text(&root["chat_id"])?;
     let operation = text(&root["operation_id"])?;
     if !tx.query("SELECT operation_id FROM native_command_turns WHERE operation_id=$1 LIMIT 1", &[&operation]).await?.is_empty()
-        || !tx.query("SELECT id FROM managed_queue_claims WHERE chat_id=$1 AND status IN ('claimed','accepted','dispatched','uncertain') LIMIT 1", &[&chat]).await?.is_empty()
+        || (retained_claim.is_none() && !tx.query("SELECT id FROM managed_queue_claims WHERE chat_id=$1 AND status IN ('claimed','accepted','dispatched','uncertain') LIMIT 1", &[&chat]).await?.is_empty())
     {
         return reject("handoff-native-operation-pending");
     }
@@ -69,6 +70,9 @@ pub(super) async fn confirm(
         && truthy(root.get("execution_completed_at"))
         && evidence["kind"] == "not-started"
         && evidence["source"] == "worker-inference-journal";
+    if let Some(expected) = retained_claim {
+        goal_claim::validate_withdrawal(tx, root, expected, already).await?;
+    }
     if record.is_null() {
         return if already {
             Ok(())
@@ -183,6 +187,13 @@ pub(super) async fn confirm(
     }
     persist_no_start(tx, root, record, false).await?;
     tx.query("UPDATE native_command_activations SET active=false WHERE chat_id=$1 AND generation=$2 AND operation_id=$3", &[&chat,&text(&root["activation_generation"])?,&operation]).await?;
+    if let Some(claim) = retained_claim {
+        let updated = tx.query("UPDATE managed_queue_claims SET goal_operation_id=NULL,goal_operation_generation=NULL WHERE id=$1 AND goal_operation_id=$2 AND goal_operation_generation=$3 RETURNING id", &[&text(&claim["id"])?,&operation,&text(&root["operation_generation"])?]).await?;
+        if updated.len() != 1 {
+            return reject("handoff-native-operation-pending");
+        }
+        crate::native_commands::queue_state_changed(tx, &chat).await?;
+    }
     Ok(())
 }
 

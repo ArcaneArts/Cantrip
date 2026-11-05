@@ -29,6 +29,11 @@ import {
   confirmHandoffQueuedSource,
   retargetStandaloneHandoffInput,
 } from "./native-handoff-queued-source.js";
+import {
+  assertGoalClaimPrompt,
+  retainedGoalClaimMatches,
+} from "./native-handoff-goal-claim.js";
+import type { GoalHandoffClaim } from "./native-goal-handoff-affinity.js";
 
 type Row = typeof schema.nativeRuntimeHandoffs.$inferSelect;
 const activePhases = ["preparing", "prepared", "committed"];
@@ -422,7 +427,7 @@ export class NativeRuntimeHandoffRepository {
       )
         fail("handoff-prepared-source-mismatch");
       await this.assertSource(tx, ownerId, row.binding ?? row.source);
-      await this.assertIdle(tx, row.chatId);
+      await this.assertIdle(tx, row.chatId, row.queuedSource?.goalClaim);
       return this.update(tx, row, {
         phase: "prepared",
         prepared,
@@ -454,7 +459,7 @@ export class NativeRuntimeHandoffRepository {
       if (row.phase !== "prepared" || !row.prepared)
         fail("handoff-not-prepared");
       await this.assertSource(tx, ownerId, row.binding ?? row.source);
-      await this.assertIdle(tx, row.chatId);
+      await this.assertIdle(tx, row.chatId, row.queuedSource?.goalClaim);
       const target = await this.target(
         tx,
         ownerId,
@@ -599,7 +604,7 @@ export class NativeRuntimeHandoffRepository {
               providerAccountId: row.targetProviderAccountId,
             });
       await this.assertSource(tx, ownerId, prior);
-      await this.assertIdle(tx, row.chatId);
+      await this.assertIdle(tx, row.chatId, row.queuedSource?.goalClaim);
       const routeId =
         side === "source" ? row.source.modelRouteId! : row.targetModelRouteId;
       const accountId =
@@ -759,7 +764,7 @@ export class NativeRuntimeHandoffRepository {
         row.queuedSource!,
         record,
       );
-      await this.assertIdle(tx, row.chatId);
+      await this.assertIdle(tx, row.chatId, row.queuedSource?.goalClaim);
       return this.update(tx, row, {
         queuedSource: { ...row.queuedSource!, withdrawn: true },
         errorCode: null,
@@ -876,7 +881,11 @@ export class NativeRuntimeHandoffRepository {
     if (!current || !isDeepStrictEqual(current, source))
       fail("handoff-source-replaced");
   }
-  private async assertIdle(tx: RepositoryTransaction, chatId: string) {
+  private async assertIdle(
+    tx: RepositoryTransaction,
+    chatId: string,
+    goalClaim?: GoalHandoffClaim,
+  ) {
     const [lane] = await tx
       .select({ id: schema.chatExecutionLanes.id })
       .from(schema.chatExecutionLanes)
@@ -903,8 +912,8 @@ export class NativeRuntimeHandoffRepository {
       .limit(1);
     // Queue claiming and handoff reservation share the chat lock. A claim that
     // won first owns the next dispatch even before native admission is stored.
-    const [claim] = await tx
-      .select({ id: schema.managedQueueClaims.id })
+    const claims = await tx
+      .select()
       .from(schema.managedQueueClaims)
       .where(
         and(
@@ -917,8 +926,17 @@ export class NativeRuntimeHandoffRepository {
           ]),
         ),
       )
-      .limit(1);
-    if (lane || command || claim) fail("handoff-native-operation-pending");
+      .limit(2);
+    if (
+      lane ||
+      command ||
+      (claims.length &&
+        (!goalClaim ||
+          claims.length !== 1 ||
+          !retainedGoalClaimMatches(claims[0]!, goalClaim)))
+    )
+      fail("handoff-native-operation-pending");
+    if (claims.length) await assertGoalClaimPrompt(tx, chatId, goalClaim!);
   }
   private async target(
     tx: RepositoryTransaction,

@@ -2133,3 +2133,47 @@ export (631 roots, 10,588 nodes; unchanged Run export of 11 roots, 453 nodes) an
 `git diff --check`. No tests, builds, typechecks, benchmarks, native/helper
 execution, patch application, hosted validation or computer-use testing were
 run. End-to-end behavior and supported-platform operation remain unverified.
+
+## Retaining the first Goal cycle across provider transfer
+
+The queued managed-Goal transfer path also handles a first cycle whose original
+GUI queue claim is still awaiting execution. The handoff captures only that
+claim's ID, original prompt revision, acknowledged parent setter and Goal epoch.
+It verifies the claim already belongs to the exact accepted native attempt,
+has not consumed a native turn, and still owns its unchanged claimed prompt.
+The parent setter must remain applied and match the same chat, worker, thread
+and placement. No encrypted prompt or setter operation is copied or replayed.
+
+After the worker's existing source seal and native pre-start fence are
+acknowledged, canonical deferral clears only the claim's unused child operation
+and generation. Its `awaitingGoal`, original parent, status, epoch and prompt
+remain intact. The queue revision advances in the same transaction. A repeated
+confirmation recognizes this exact retired child; an explicit Stop keeps its
+rejected claim. No new prompt revision or competing queue is introduced.
+
+Handoff preparation, recovery and commit permit that one retained claim while
+still rejecting active lanes, pending commands, consumption or unrelated
+claims. The native Goal epoch survives the existing portable Goal state
+transfer. Its new first attempt links back to the same parent setter through
+the normal managed admission boundary and obtains a fresh FIFO ticket.
+
+An immutable setter can still name the original provider. Route affinity for
+its pending first cycle therefore requires a completed transfer, or a settled
+cancelled transfer restoring its source, with the exact captured claim metadata
+and the current full canonical settings binding. Owner, worker, chat, thread,
+placement, route, account and native generation must agree. A stale historical
+transfer cannot grant affinity to a newer binding or another prompt. Repeated
+transfers retain the original parent rather than rewriting its provenance.
+
+The completion wake recognizes the retained first Goal claim even if later
+prompts are pending. Those later messages cannot dispatch while the original
+claim owns the next input, and must not prevent its native cycle from waking.
+Pause/Stop still suppress that wake; the worker remains the ticket owner.
+
+This extends managed Goal admission only. Task-private native Goal channels,
+partially executed turns and the remaining lifecycle audit are still separate.
+Validation is source review, direct formatting, mechanical source-based protocol
+export (631 roots, 10,592 nodes; unchanged Run export of 11 roots, 453 nodes) and
+`git diff --check`. No tests, builds, typechecks, benchmarks, native/helper
+execution, patch application, hosted validation or computer-use checks ran.
+Runtime behavior and supported-platform operation remain unverified.
