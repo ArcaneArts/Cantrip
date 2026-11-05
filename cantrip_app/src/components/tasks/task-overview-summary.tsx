@@ -1,11 +1,14 @@
-import { ChatInferenceQueue } from "@/components/chat/inference-queue-notice";
+import {
+  InferenceQueueNotice,
+  useChatInferenceQueue,
+} from "@/components/chat/inference-queue-notice";
 import type {
   ChatMessage,
   ChatSummary,
   TaskDetail,
   TaskGoalSnapshot,
 } from "@cantrip/protocol";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { TaskGitChangeMetrics } from "./task-git-change-metrics";
 import { formatGoalElapsed } from "@/components/chat/goal-panel";
@@ -33,6 +36,12 @@ export function TaskOverviewSummary({
   task: TaskDetail;
   visible: boolean;
 }) {
+  const inferenceQueue = useChatInferenceQueue({
+    chatId: chat.id,
+    workerId: chat.activeWorkerId,
+    enabled: visible && chat.status !== "offline",
+  });
+  const waitingForInference = Boolean(inferenceQueue.data);
   const active =
     chat.status === "running" || chat.status === "waiting-for-approval";
   const clockActive =
@@ -40,24 +49,40 @@ export function TaskOverviewSummary({
     !chat.automationPaused &&
     (goal ? goal.status === "active" : active);
   const [clockMs, setClockMs] = useState(Date.now);
-  const usageObservedAt = useRef(Date.now());
+  // Reset both sides of a capacity wait. Resuming must never extrapolate the
+  // queued interval onto the native Goal's reported execution usage.
+  const usageObservedAt = useMemo(
+    () => Date.now(),
+    [
+      chat.id,
+      goal?.timeUsedSeconds,
+      goal?.status,
+      chat.automationPaused,
+      waitingForInference,
+    ],
+  );
+  const interpolateGoalUsage = clockActive && !waitingForInference;
+  const tickClock = clockActive && (!goal || !waitingForInference);
   useEffect(() => {
-    usageObservedAt.current = Date.now();
-  }, [goal?.timeUsedSeconds, goal?.status, chat.automationPaused]);
-  useEffect(() => {
-    if (!visible || !clockActive) return;
+    if (!visible || !tickClock) return;
     setClockMs(Date.now());
     const interval = window.setInterval(() => setClockMs(Date.now()), 1_000);
     return () => window.clearInterval(interval);
-  }, [clockActive, visible]);
+  }, [tickClock, visible]);
   const execution = useMemo(
     () => taskExecutionMessages(messages, task.implementationStartedAt),
     [messages, task.implementationStartedAt],
   );
   const metrics = useMemo(() => taskOverviewMetrics(execution), [execution]);
+  const trajectoryClockMs = waitingForInference ? usageObservedAt : clockMs;
   const trajectory = useMemo(
-    () => projectTrajectory({ active, messages: execution, nowMs: clockMs }),
-    [active, clockMs, execution],
+    () =>
+      projectTrajectory({
+        active,
+        messages: execution,
+        nowMs: trajectoryClockMs,
+      }),
+    [active, trajectoryClockMs, execution],
   );
   const started = Date.parse(task.implementationStartedAt ?? task.createdAt);
   const ended = task.completedAt
@@ -67,8 +92,8 @@ export function TaskOverviewSummary({
       : Date.parse(task.updatedAt);
   const elapsed = goal
     ? goal.timeUsedSeconds +
-      (clockActive
-        ? Math.max(0, (clockMs - usageObservedAt.current) / 1_000)
+      (interpolateGoalUsage
+        ? Math.max(0, (clockMs - usageObservedAt) / 1_000)
         : 0)
     : Math.max(0, (ended - started) / 1_000 || 0);
   const count = (value: number) =>
@@ -78,11 +103,7 @@ export function TaskOverviewSummary({
     : null;
   return (
     <section className="border-b py-5" aria-label="Task progress">
-      <ChatInferenceQueue
-        chatId={chat.id}
-        workerId={chat.activeWorkerId}
-        enabled={visible && chat.status !== "offline"}
-      />
+      <InferenceQueueNotice queue={inferenceQueue.data} />
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
         <div>
           <dt className="text-xs text-muted-foreground">Elapsed</dt>
