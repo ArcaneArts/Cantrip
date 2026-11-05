@@ -20,6 +20,7 @@ export class ManagedExecutionRunner {
   private transport: string | null;
   private threadId: string | null;
   private invalidated = false;
+  private revoked = false;
   private pendingBind: { previous: string; next: string } | null = null;
   private mutations: Promise<void> = Promise.resolve();
 
@@ -46,6 +47,7 @@ export class ManagedExecutionRunner {
   }
 
   prepared(threadId: string): void {
+    if (this.revoked) throw new Error("The managed resource was removed.");
     if (this.threadId && this.threadId !== threadId)
       throw new Error("The managed runner belongs to another native thread.");
     if (!this.belongsToCurrentTransport())
@@ -62,6 +64,7 @@ export class ManagedExecutionRunner {
       this.generation,
       {
         requested: (attempt, signal) => {
+          controller.signal.throwIfAborted();
           this.prepared(attempt.threadId);
           return this.handler.requested(
             attempt,
@@ -73,6 +76,12 @@ export class ManagedExecutionRunner {
         failed: (error) => this.handler.failed(error),
       },
     );
+  }
+
+  /** Revokes this actual runner registration; a queue wake cannot reopen it. */
+  revoke(): void {
+    this.revoked = true;
+    this.controller.abort(new Error("The managed resource was removed."));
   }
 
   private mutate(operation: () => Promise<void>): Promise<void> {
@@ -89,6 +98,8 @@ export class ManagedExecutionRunner {
     resumeAutonomy = false,
     cancelGoalAttempt = false,
   ): Promise<void> {
+    if (this.revoked)
+      return Promise.reject(new Error("The managed resource was removed."));
     if (
       method !== "turn/interrupt" &&
       method !== "thread/queue/add" &&

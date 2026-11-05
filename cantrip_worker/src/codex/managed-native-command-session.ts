@@ -148,6 +148,7 @@ const object = (value: unknown): value is NativeRpcFrame =>
 /** Shares the current admitted root across GUI and all attached terminal views. */
 export class ManagedNativeCommandSession {
   private active: Execution | null = null;
+  private revoked = false;
   private goalMutationSettlement: Promise<void> | null = null;
   private goalMutationResponse: Promise<void> | null = null;
   private readonly expectedActivation = new AsyncLocalStorage<{
@@ -156,6 +157,14 @@ export class ManagedNativeCommandSession {
 
   get currentActivationGeneration(): string | null {
     return this.active?.receipt.activationGeneration ?? null;
+  }
+
+  /** Seal admission without claiming that its native execution has stopped. */
+  revoke(): void {
+    this.revoked = true;
+    this.active?.inferenceAbort.abort(
+      new Error("The native resource was removed."),
+    );
   }
 
   assertActivationGeneration(expected: string | null): void {
@@ -316,6 +325,7 @@ export class ManagedNativeCommandSession {
   }
 
   private assertTransport(session: NativeCommandSession) {
+    if (this.revoked) throw new Error("The native resource was removed.");
     if (
       !session.runtimeGeneration ||
       this.options.runtime.transportGeneration !== session.runtimeGeneration

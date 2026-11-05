@@ -1,4 +1,5 @@
 import { CodexInteractions } from "./interactions.js";
+import { setTimeout as retryDelay } from "node:timers/promises";
 import {
   providerUsesChatCompletions,
   isWorkerEndpointProviderKind,
@@ -12,12 +13,14 @@ import {
 import { startChatCompletionsAdapter } from "./chat-completions-adapter.js";
 import {
   claimInferenceCommandSource,
+  inferenceCommandSignal,
   withoutInferenceCommand,
 } from "../inference-command.js";
 import { CodexAuthRecovery } from "./auth-recovery.js";
 import {
   CodexInferenceAdmission,
   type CodexInferenceExecution,
+  type RevokedInferenceExecution,
 } from "./inference-admission.js";
 import type {
   WorkerInferenceAdmission,
@@ -1725,6 +1728,7 @@ export class CodexAppServer implements CodexRuntime {
     {
       epoch: number;
       chatId?: string;
+      inferenceRevocation: AbortController;
       options: Pick<
         PrepareManagedThreadOptions,
         | "mcpServers"
@@ -3288,7 +3292,7 @@ export class CodexAppServer implements CodexRuntime {
         lifetime,
         recoveryKey: `operation:${options.operationId}`,
         provider: options.provider,
-        signal: owner?.source.signal,
+        signal: owner?.source.signal ?? inferenceCommandSignal(),
       });
       owner?.source.assertCurrent();
       return await this.executeAgentOperation(options, inference);
@@ -5097,6 +5101,105 @@ export class CodexAppServer implements CodexRuntime {
     return { interrupted: true };
   }
 
+  ownsInferenceAdmission(admission: WorkerInferenceAdmission): boolean {
+    return this.inferenceAdmission === admission;
+  }
+
+  /** Authorized resource cleanup acts on existing owners, without resolving a
+   * provider or trying to admit a new command against an already-deleted row. */
+  revokeInference(
+    admission: WorkerInferenceAdmission,
+    chatIds: ReadonlySet<string>,
+    operationIds: ReadonlySet<string>,
+  ): void {
+    if (!this.ownsInferenceAdmission(admission)) return;
+    for (const overlay of this.#managedThreadOverlays.values())
+      if (overlay.chatId && chatIds.has(overlay.chatId))
+        overlay.inferenceRevocation.abort(
+          new Error("The managed resource was removed."),
+        );
+    for (const chatId of chatIds)
+      this.#pendingCapacityRetries.get(chatId)?.controller.abort();
+    for (const active of this.#executions.activeTurns.values()) {
+      if (!active.chatId || !chatIds.has(active.chatId)) continue;
+      const execution = this.#executions.rootExecutionsByActive.get(active);
+      if (execution) this.#executions.abortComputerUseExecution(execution);
+    }
+    this.#inference?.revoke(chatIds, operationIds);
+  }
+
+  private interruptRevokedInference(
+    owner: CodexInferenceAdmission,
+    execution: RevokedInferenceExecution,
+  ): void {
+    const transport = this.transportGeneration;
+    const controller = new AbortController();
+    void execution.settled.then(() => controller.abort());
+    // One retry owner per actual physical execution. A failed Stop or a missing
+    // ACK does not free its ticket, and retries cannot cross process generations.
+    void (async () => {
+      let retryMs = 250;
+      let reported = false;
+      while (
+        !controller.signal.aborted &&
+        transport &&
+        this.#inference === owner &&
+        this.transportGeneration === transport
+      ) {
+        try {
+          const active = this.#executions.activeTurns.get(execution.turnId);
+          if (active?.threadId === execution.threadId) {
+            active.interruptionRequestedAtMs ??= Date.now();
+            const root = this.#executions.rootExecutionsByActive.get(active);
+            if (root) this.#executions.abortComputerUseExecution(root);
+          }
+          const commands =
+            this.nativeEnvironment && active?.threadId === execution.threadId
+              ? new Set(active.commandTelemetry.keys())
+              : null;
+          await this.request("turn/interrupt", {
+            threadId: execution.threadId,
+            turnId: execution.turnId,
+          });
+          if (commands)
+            await this.terminateOsTurnCommands(execution.threadId, commands);
+          return;
+        } catch (error) {
+          if (
+            controller.signal.aborted ||
+            this.#inference !== owner ||
+            this.transportGeneration !== transport
+          )
+            return;
+          if (!reported) {
+            reported = true;
+            workerLogger.event(
+              "warn",
+              "Removed-resource native interruption remains pending",
+              {
+                event: "inference.resource.interrupt-pending",
+                subsystem: "codex",
+                threadId: execution.threadId,
+                turnId: execution.turnId,
+                runtimeGenerationId: transport,
+                error: workerLogError(error),
+              },
+            );
+          }
+          try {
+            await retryDelay(retryMs, undefined, {
+              signal: controller.signal,
+              ref: false,
+            });
+          } catch {
+            return;
+          }
+          retryMs = Math.min(30_000, retryMs * 2);
+        }
+      }
+    })();
+  }
+
   private async terminateOsTurnCommands(
     threadId: string,
     itemIds: Set<string>,
@@ -5337,7 +5440,8 @@ export class CodexAppServer implements CodexRuntime {
           : null,
         provider: options.provider,
         chatId: options.chatId,
-        signal: owner?.source.signal ?? options.signal,
+        signal:
+          owner?.source.signal ?? options.signal ?? inferenceCommandSignal(),
       });
       owner?.source.assertCurrent();
       return await this.runInitialLabelInference({
@@ -6064,6 +6168,15 @@ export class CodexAppServer implements CodexRuntime {
     assertCurrent: () => void,
     preserveSubagentSettings = false,
   ): Promise<void> {
+    const inferenceRevocation =
+      this.#managedThreadOverlays.get(threadId)?.inferenceRevocation ??
+      new AbortController();
+    const assertOwner = assertCurrent;
+    assertCurrent = () => {
+      assertOwner();
+      inferenceRevocation.signal.throwIfAborted();
+    };
+    assertCurrent();
     // Omitted material is observational, not an instruction to disable tools.
     if (options.mcpServers === undefined) return;
     const hasGitMetadata = await this.hasWorkspaceGitMetadata(options.cwd);
@@ -6103,6 +6216,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#managedSecurityOwners.add(threadId);
     this.#managedThreadOverlays.set(threadId, {
       epoch: this.#preparationEpoch,
+      inferenceRevocation,
       chatId:
         options.chatId ?? this.#managedThreadOverlays.get(threadId)?.chatId,
       options: structuredClone({
@@ -6388,8 +6502,12 @@ export class CodexAppServer implements CodexRuntime {
           managedInventory?.models ?? [],
         )
       : null;
-    const inference = this.inferenceAdmission
-      ? new CodexInferenceAdmission(this.inferenceAdmission)
+    const inference: CodexInferenceAdmission | null = this.inferenceAdmission
+      ? new CodexInferenceAdmission(this.inferenceAdmission, (execution) =>
+          inference && this.#inference === inference
+            ? this.interruptRevokedInference(inference, execution)
+            : undefined,
+        )
       : null;
     let inferenceEnvironment: NodeJS.ProcessEnv;
     try {
@@ -6831,8 +6949,15 @@ export class CodexAppServer implements CodexRuntime {
       scopeId,
       controller: new AbortController(),
     };
+    const resourceSignal = this.#managedThreadOverlays.get(
+      rootThreadId ?? base.threadId,
+    )?.inferenceRevocation.signal;
+    const signal = resourceSignal
+      ? AbortSignal.any([pending.controller.signal, resourceSignal])
+      : pending.controller.signal;
     this.#nativeInferenceWaits.set(base.attemptId, pending);
     try {
+      signal.throwIfAborted();
       if (phase === "begin" || phase === "begin-independent") {
         const provider = this.#managedModelInventoryProvider;
         if (!provider)
@@ -6863,12 +6988,12 @@ export class CodexAppServer implements CodexRuntime {
             ?.chatId,
           independent: phase === "begin-independent",
           provider,
-          signal: pending.controller.signal,
+          signal,
         });
       } else if (phase === "suspend")
         inference.suspendNative(base.threadId, base.turnId, scopeId);
       else await inference.resumeNative(base.threadId, base.turnId, scopeId);
-      pending.controller.signal.throwIfAborted();
+      signal.throwIfAborted();
       await this.resolveManagedExecution(
         {
           ...base,

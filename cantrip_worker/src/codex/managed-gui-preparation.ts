@@ -37,6 +37,12 @@ export class ManagedGuiPreparationRegistry {
     this.controllers.delete(this.key(chatId, root));
   }
 
+  cancelChat(chatId: string): void {
+    for (const [key, controller] of this.controllers)
+      if (JSON.parse(key)[0] === chatId)
+        controller.abort(new Error("The GUI resource was removed."));
+  }
+
   disconnect(): void {
     for (const controller of this.controllers.values())
       controller.abort(new Error("The managed worker connection was lost."));

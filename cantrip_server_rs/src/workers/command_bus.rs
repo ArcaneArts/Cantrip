@@ -147,6 +147,7 @@ fn is_execution_control(command: &Value) -> bool {
         Some(
             "inference.status"
             | "inference.configure"
+            | "inference.revoke"
             | "worker.version"
             | "worker.restart"
             | "worker.credential.rotate"

@@ -54,6 +54,28 @@ export const workerCoreCommandSchemas = [
   z.object({ type: z.literal("inference.status") }).strict(),
   z
     .object({
+      type: z.literal("inference.revoke"),
+      target: z.discriminatedUnion("kind", [
+        z
+          .object({
+            kind: z.literal("chat"),
+            chatId: z.string().min(1).max(200),
+          })
+          .strict(),
+        z
+          .object({
+            kind: z.literal("project"),
+            projectId: z.string().min(1).max(200),
+            // Canonical chat IDs captured by resource deletion also cover helpers
+            // whose command owns a chat but does not carry project routing.
+            chatIds: z.array(z.string().min(1).max(200)).max(1_000),
+          })
+          .strict(),
+      ]),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("inference.configure"),
       configurations: z.array(providerInferenceConfigurationSchema).max(10_000),
       catalogRevision: providerInferenceRevisionSchema.optional(),
