@@ -38,10 +38,17 @@ if (verify.status !== 0) process.exit(verify.status ?? 1);
 
 const executableSuffix = process.platform === "win32" ? ".exe" : "";
 const executorOnly = process.argv.includes("--executor-only");
+const development = process.argv.includes("--dev");
+const cargoProfile = development ? "dev" : "release";
+const profileArguments = development ? ["--profile", "dev"] : ["--release"];
 const buildDirectory = () =>
   executorOnly
-    ? path.join(fullBuildDirectory(), "executor")
-    : fullBuildDirectory();
+    ? path.join(
+        fullBuildDirectory(),
+        ...(development ? ["dev"] : []),
+        "executor",
+      )
+    : path.join(fullBuildDirectory(), ...(development ? ["dev"] : []));
 const bundleDirectory = () => path.join(buildDirectory(), "bundle");
 const buildManifestPath = () =>
   path.join(bundleDirectory(), "codex-runtime.json");
@@ -208,7 +215,7 @@ async function reusableBundle() {
     manifest.upstream?.commit !== metadata.commit ||
     manifest.entrypoint !== entrypoint ||
     manifest.target !== platformKey() ||
-    manifest.profile !== "release" ||
+    manifest.profile !== cargoProfile ||
     JSON.stringify(compiledArtifactPaths) !==
       JSON.stringify(expectedCompiledArtifacts) ||
     !compiledArtifacts.every((artifact) =>
@@ -270,7 +277,7 @@ function runtimeManifest(artifacts) {
     entrypoint,
     artifacts,
     target: platformKey(),
-    profile: "release",
+    profile: cargoProfile,
   };
 }
 
@@ -347,7 +354,10 @@ console.log(
 );
 const cargoDirectory = path.join(preparedRoot, "codex-rs");
 const cargoTargetDirectory = path.join(outputDirectory, "target");
-const releaseDirectory = path.join(cargoTargetDirectory, "release");
+const compiledDirectory = path.join(
+  cargoTargetDirectory,
+  development ? "debug" : "release",
+);
 const buildEnvironment = {
   ...process.env,
   CARGO_TARGET_DIR: cargoTargetDirectory,
@@ -418,11 +428,11 @@ if (!executorOnly)
 if (process.platform === "linux") {
   const bwrapBuild = spawnSync(
     cargo,
-    ["build", "--locked", "--release", "--bin", "bwrap"],
+    ["build", "--locked", ...profileArguments, "--bin", "bwrap"],
     { cwd: cargoDirectory, env: buildEnvironment, stdio: "inherit" },
   );
   if (bwrapBuild.status !== 0) process.exit(bwrapBuild.status ?? 1);
-  const bwrap = path.join(releaseDirectory, "bwrap");
+  const bwrap = path.join(compiledDirectory, "bwrap");
   const strip = spawnSync(
     "strip",
     ["--strip-debug", "--strip-unneeded", bwrap],
@@ -440,7 +450,7 @@ const build = spawnSync(
   [
     "build",
     "--locked",
-    "--release",
+    ...profileArguments,
     ...runtimeBinaries.flatMap((binary) => ["--bin", binary]),
   ],
   {
@@ -457,7 +467,7 @@ await mkdir(bundle, { recursive: true });
 const artifacts = [];
 for (const name of runtimeBinaries) {
   const fileName = `${name}${executableSuffix}`;
-  const source = path.join(releaseDirectory, fileName);
+  const source = path.join(compiledDirectory, fileName);
   const destination = path.join(bundle, fileName);
   await cp(source, destination);
   if (process.platform !== "win32") await chmod(destination, 0o755);
@@ -470,7 +480,7 @@ if (process.platform === "linux") {
   const relative = path.join("codex-resources", "bwrap");
   const destination = path.join(bundle, relative);
   await mkdir(path.dirname(destination), { recursive: true });
-  await cp(path.join(releaseDirectory, "bwrap"), destination);
+  await cp(path.join(compiledDirectory, "bwrap"), destination);
   await chmod(destination, 0o755);
   artifacts.push({ path: relative, sha256: await sha256File(destination) });
 }

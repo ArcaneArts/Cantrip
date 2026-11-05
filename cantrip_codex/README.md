@@ -19,6 +19,20 @@ The repository's normal development preparation and worker packaging invoke:
 pnpm codex:build
 ```
 
+For native development and opt-in acceptance fixtures, use the same verified
+build workflow with Cargo's development profile:
+
+```sh
+node scripts/cantrip-codex/build.mjs --dev
+CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/$(node -p 'process.platform + "-" + process.arch')/dev/bundle/codex" \
+  pnpm --dir cantrip_worker exec vitest run test/native-durable-goal.test.ts
+```
+
+Development builds use a separate `dev/` source and bundle directory and record
+`profile: "dev"` in their manifest. They retain the same source, patch, artifact
+and generated-protocol verification. The default build and packaging paths use
+the release profile.
+
 This verifies the snapshot and patch series, then runs Cargo with the upstream
 lockfile and pinned Rust toolchain. Output is cached below
 `cantrip_codex/.build/` and is never
@@ -637,3 +651,16 @@ worker and keeper update. Source review, direct formatting, mechanical patch and
 protocol generation, and diff checks were performed; no native execution, patch
 verification helper, tests or builds were run. Checkpoint/result reconciliation
 and the remaining inference lifecycle audit are still required.
+
+Patch `0066` adds versioned extension bookkeeping to the private v4 continuation.
+The Goal extension preserves original-turn usage baselines, descendant usage,
+failure/empty-turn streaks and fractional elapsed accounting. Durably paused and
+offline time is excluded. Restore reconciles actual persisted Goal counters, and
+cold Stop settles reconstructible usage before retiring the continuation. Short
+native control guards fence stale callbacks without retaining execution grants.
+The v3 suspended payload remains inspectable and stoppable but cannot be resumed
+under v4. The verified 67-patch development build passed all 28 native cases,
+including 16 Goal cases. Fifteen accounting tests, 27 Goal backend tests and the
+SQLite continuation-hold test passed. Final native acceptance used the development
+profile; optimized product and complete worker-tree acceptance remain pending.
+Resource recovery and worker/server/client adoption remain required work.
