@@ -2328,3 +2328,43 @@ source-based protocol export (648 roots, 10,732 nodes; Run export 11 roots,
 453 nodes), and `git diff --check`. No tests, builds, typechecks, benchmarks,
 native/helper execution, hosted validation, or computer-use testing ran. Runtime
 and platform behavior remain unverified.
+
+## Goal FIFO identity across provider transfers
+
+A retained unused cycle now carries its configured provider ID and an ordering
+epoch in the canonical recovery marker. The server records this causal identity;
+the worker still owns capacity and the actual FIFO ordinal. A successful routing
+commit increments the epoch when the configured provider changes. Model/account
+changes within that provider and transfer cancellation keep the epoch. Repeated
+commit receipts do not increment it again. A provider round trip therefore
+cannot reclaim the queue position from before the cycle left that provider.
+
+An original autonomous source can establish this marker only after its exact
+journal withdrawal and actual native gate invalidation are confirmed. A late
+acknowledgement cannot recreate a marker removed by Stop or dispatch. Receipt
+cleanup leaves Goal journal evidence for canonical recovery to retain or retire.
+All subsequent marker association, partial receipt, withdrawal and fencing paths
+preserve the provider/epoch metadata.
+
+Recovery reconciles the actual admitted source before deciding whether its old
+ordinal still belongs to the current provider and epoch. A positive logical
+marker permits account/model route changes without losing the same-provider
+position. An old provider or epoch retires only the old ordinal, keeping the
+logical cycle for a fresh destination admission. An abandoned replacement that
+crashed before journal enqueue is still fenced through its exact admission;
+retiring an older alias cannot bypass that step.
+
+The worker includes the epoch in physical and logical recovery identity and in
+the actual autonomous admission. Both servers compare it at admission and
+dispatch. Native journal patch `0078` preserves it across process recovery and
+requires equality during Goal adoption. Legacy metadata means epoch zero.
+Retained first-cycle claims may follow a positive exact Goal marker into the
+actual current native binding after restart, without replaying their setter.
+
+Validation is source review, direct formatting, mechanical source protocol
+export (648 roots, 10,739 nodes; Run export 11 roots, 453 nodes), and
+`git diff --check`. The native patch was authored from tracked source fragments;
+it was not applied, checked or executed. No tests, builds, typechecks,
+benchmarks, native/helper execution, hosted validation or computer-use testing
+ran. Runtime and platform behavior remain unverified. The wider lifecycle and
+Task-private-cycle audit continues as part of the full concurrency goal.

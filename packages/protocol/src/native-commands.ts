@@ -55,6 +55,12 @@ export const nativeCommandIntentSchema = z
     autonomousAttempt: nativeAutonomousAttemptSchema.optional(),
     workerGeneration: z.uuid().optional(),
     goalRecovery: nativeGoalRecoverySourceSchema.optional(),
+    goalRecoveryOrderEpoch: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
     permissionProfileId: id.optional(),
     permissionTransition: permissionTransitionSchema.optional(),
     configTarget: z.literal("account-defaults").optional(),

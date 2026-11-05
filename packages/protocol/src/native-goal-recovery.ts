@@ -25,6 +25,15 @@ export const nativeGoalRecoveryAdmissionSchema = z
 export const nativeGoalRecoverySchema = z
   .object({
     source: nativeGoalRecoverySourceSchema,
+    // Current configured provider, never an account/model or capacity owner.
+    providerId: id.optional(),
+    // A committed provider change ends the old FIFO episode. Legacy is zero.
+    orderEpoch: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
     admission: nativeGoalRecoveryAdmissionSchema.nullable().default(null),
   })
   .strict();

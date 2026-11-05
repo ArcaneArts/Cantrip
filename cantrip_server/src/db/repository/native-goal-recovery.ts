@@ -94,7 +94,7 @@ export async function fenceGoalRecoveryAdmission(
     )
       throw new NativeCommandError("goal-recovery-source-unsettled");
     const recovery: NativeGoalRecovery = {
-      source: marker.source,
+      ...marker,
       admission: null,
     };
     await tx
@@ -386,7 +386,10 @@ export async function reconcileUnstartedGoal(
         session.threadId !== identity.threadId ||
         session.projectId !== record.identity.projectId ||
         attempt.turnId !== identity.turnId ||
-        attempt.goalEpoch !== identity.autonomousGoal!.goalEpoch
+        attempt.goalEpoch !== identity.autonomousGoal!.goalEpoch ||
+        (identity.autonomousGoal!.orderEpoch ?? 0) !==
+          ((row.intent as NativeCommandAdmission["intent"])
+            .goalRecoveryOrderEpoch ?? 0)
       )
         return result;
       let marker = await readGoalRecovery(tx, row.chatId);
@@ -430,20 +433,27 @@ export async function reconcileUnstartedGoal(
       if (!unblocked) return result;
       if (
         !samePlacement(context, input.workerId, session) ||
-        !sameRuntimeRoute(context, session) ||
         context.threadId !== source.threadId ||
         !chat ||
         chat.archivedAt ||
         chat.managedAutonomyStopped
       )
         return { ...result, disposition: "retired" };
-      const [route] = session.modelRouteId
+      // Positive marker ownership follows the logical cycle across a route
+      // change; an unreconciled physical source still needs its original route.
+      const ownsRecoveredInput = Boolean(priorRecovery && marker);
+      if (!ownsRecoveredInput && !sameRuntimeRoute(context, session))
+        return { ...result, disposition: "retired" };
+      const [route] = context.modelRouteId
         ? await tx
             .select({ providerId: schema.modelRoutes.providerId })
             .from(schema.modelRoutes)
-            .where(eq(schema.modelRoutes.id, session.modelRouteId))
+            .where(eq(schema.modelRoutes.id, context.modelRouteId))
         : [];
-      if (route?.providerId !== record.identity.providerId)
+      if (
+        !ownsRecoveredInput &&
+        route?.providerId !== record.identity.providerId
+      )
         return { ...result, disposition: "retired" };
       // Closure is not dispatch revocation. An unused durable waiter could not
       // reach dispatch; an ever-granted ambiguous closed attempt stays uncertain.
@@ -461,7 +471,14 @@ export async function reconcileUnstartedGoal(
         }))
       )
         return result;
-      marker ??= { source, admission: null };
+      marker ??= {
+        source,
+        admission: null,
+        providerId: record.identity.providerId,
+        orderEpoch: identity.autonomousGoal!.orderEpoch ?? 0,
+      };
+      if (!marker.providerId && route?.providerId)
+        marker = { ...marker, providerId: route.providerId };
       const admitted = marker.admission;
       if (admitted && admitted.workerGeneration !== input.workerGeneration) {
         // An older alias may predate this physical source. Obtain a fresh actual
@@ -480,6 +497,7 @@ export async function reconcileUnstartedGoal(
         if (
           intent.workerGeneration !== admitted.workerGeneration ||
           !isDeepStrictEqual(intent.goalRecovery, source) ||
+          (intent.goalRecoveryOrderEpoch ?? 0) !== (marker.orderEpoch ?? 0) ||
           !(await retireUnusedGoal(tx, lanes, current, source, {
             kind: "not-dispatched",
             source: "canonical-goal-recovery",
@@ -488,7 +506,7 @@ export async function reconcileUnstartedGoal(
           }))
         )
           return result;
-        marker = { source, admission: null };
+        marker = { ...marker, admission: null };
       }
       const existing = await readGoalRecovery(tx, row.chatId);
       if (!isDeepStrictEqual(existing, marker)) {
@@ -503,7 +521,14 @@ export async function reconcileUnstartedGoal(
       }
       return {
         ...result,
-        disposition: chat.automationPaused ? "retired" : "requeued",
+        disposition:
+          !chat.automationPaused &&
+          route?.providerId === record.identity.providerId &&
+          marker.providerId === record.identity.providerId &&
+          (marker.orderEpoch ?? 0) ===
+            (identity.autonomousGoal!.orderEpoch ?? 0)
+            ? "requeued"
+            : "retired",
         goalInputNotDispatched: true,
       };
     });
@@ -525,6 +550,8 @@ export async function assertGoalRecoveryAdmission(
 ): Promise<NativeGoalRecovery | null> {
   const marker = await readGoalRecovery(tx, input.session.chatId);
   const source = input.intent.goalRecovery;
+  if (input.intent.goalRecoveryOrderEpoch !== undefined && !source)
+    throw new NativeCommandError("invalid-goal-recovery");
   if (input.method !== "turn/start") {
     if (source) throw new NativeCommandError("invalid-goal-recovery");
     return null;
@@ -534,6 +561,7 @@ export async function assertGoalRecoveryAdmission(
     !marker ||
     !source ||
     !isDeepStrictEqual(marker.source, source) ||
+    (input.intent.goalRecoveryOrderEpoch ?? 0) !== (marker.orderEpoch ?? 0) ||
     input.origin !== "autonomous" ||
     input.intent.autonomousAttempt?.goalEpoch !== source.goalEpoch ||
     input.session.threadId !== source.threadId ||
@@ -565,14 +593,15 @@ export async function recordGoalRecoveryAdmission(
     !marker ||
     marker.admission ||
     !input.intent.workerGeneration ||
-    !isDeepStrictEqual(marker.source, input.intent.goalRecovery)
+    !isDeepStrictEqual(marker.source, input.intent.goalRecovery) ||
+    (input.intent.goalRecoveryOrderEpoch ?? 0) !== (marker.orderEpoch ?? 0)
   )
     throw new NativeCommandError("stale-goal-recovery");
   await tx
     .update(schema.managedQueueStates)
     .set({
       goalRecovery: {
-        source: marker.source,
+        ...marker,
         admission: {
           operationId: row.operationId,
           operationGeneration: row.operationGeneration,
@@ -603,6 +632,7 @@ export async function dispatchGoalRecovery(
   if (
     !marker ||
     !isDeepStrictEqual(marker.source, intent.goalRecovery) ||
+    (intent.goalRecoveryOrderEpoch ?? 0) !== (marker.orderEpoch ?? 0) ||
     marker.admission?.operationId !== row.operationId ||
     marker.admission.operationGeneration !== row.operationGeneration ||
     !workerGeneration ||
@@ -720,7 +750,7 @@ export async function settleGoalRecoveryBeforeDispatch(
     .update(schema.managedQueueStates)
     .set({
       goalRecovery: {
-        source: marker.source,
+        ...marker,
         admission: row.executionCompletedAt ? null : marker.admission,
       },
     })

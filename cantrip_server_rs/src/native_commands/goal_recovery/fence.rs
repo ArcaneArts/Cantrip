@@ -30,7 +30,8 @@ impl Repository {
                     "admission":input["admission"],"fencedByWorkerGeneration":input["workerGeneration"]})).await? {
                 return reject("goal-recovery-source-unsettled");
             }
-            let recovery = json!({"source":marker["source"],"admission":Value::Null});
+            let mut recovery = marker;
+            recovery["admission"] = Value::Null;
             tx.query("UPDATE managed_queue_states SET goal_recovery=$1::text::jsonb WHERE chat_id=$2", &[&recovery.stringify(),&chat]).await?;
             queue::changed(tx, &chat).await?;
             Ok(json!({"recovery":recovery}))

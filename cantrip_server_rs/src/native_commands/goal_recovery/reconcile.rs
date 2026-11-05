@@ -38,6 +38,12 @@ async fn reconcile(
             && session.get("projectId") == record["identity"].get("projectId")
             && a.get("turnId") == identity.get("turnId")
             && a.get("goalEpoch") == identity["autonomousGoal"].get("goalEpoch")
+            && identity["autonomousGoal"]["orderEpoch"]
+                .as_f64()
+                .unwrap_or(0.0)
+                == row["intent"]["goalRecoveryOrderEpoch"]
+                    .as_f64()
+                    .unwrap_or(0.0)
     }) else {
         return Ok(result);
     };
@@ -95,7 +101,6 @@ async fn reconcile(
         return Ok(result);
     }
     if !context::same_placement(current.as_ref(), &input["workerId"], Some(session))?
-        || !context::same_runtime_route(current.as_ref(), Some(session))?
         || current.as_ref().and_then(|c| c.get("threadId")) != source.get("threadId")
         || chat_row.as_ref().is_none_or(|c| {
             truthy(c.get("archived_at")) || truthy(c.get("managed_autonomy_stopped"))
@@ -104,17 +109,28 @@ async fn reconcile(
         result["disposition"] = json!("retired");
         return Ok(result);
     }
-    let route = if truthy(session.get("modelRouteId")) {
+    let owns_recovered_input = prior.is_some() && marker.is_some();
+    if !owns_recovered_input && !context::same_runtime_route(current.as_ref(), Some(session))? {
+        result["disposition"] = json!("retired");
+        return Ok(result);
+    }
+    let selected_route = current
+        .as_ref()
+        .and_then(|c| c.get("modelRouteId"))
+        .filter(|v| truthy(Some(v)));
+    let route = if let Some(selected) = selected_route {
         raw_one(
             tx,
             "SELECT to_jsonb(r)::text FROM model_routes r WHERE id=$1",
-            &[&text(&session["modelRouteId"])?],
+            &[&text(selected)?],
         )
         .await?
     } else {
         None
     };
-    if route.as_ref().and_then(|r| r.get("provider_id")) != record["identity"].get("providerId") {
+    if !owns_recovered_input
+        && route.as_ref().and_then(|r| r.get("provider_id")) != record["identity"].get("providerId")
+    {
         result["disposition"] = json!("retired");
         return Ok(result);
     }
@@ -124,9 +140,17 @@ async fn reconcile(
     if (prior.is_none() || !truthy(row.get("execution_completed_at"))) && !retire::unused(tx, &row, &source, json!({"kind":"not-started","source":"worker-inference-journal",
         "key":record["key"],"workerGeneration":record["workerGeneration"],"runtimeGeneration":record["identity"]["runtimeGeneration"],"revision":record["revision"]})).await? { return Ok(result); }
     if marker.is_none() {
-        marker = Some(json!({"source":source,"admission":Value::Null}));
+        marker = Some(
+            json!({"source":source,"admission":Value::Null,"providerId":record["identity"]["providerId"],
+            "orderEpoch":identity["autonomousGoal"]["orderEpoch"].as_f64().unwrap_or(0.0)}),
+        );
     }
     let marker = marker.as_mut().unwrap();
+    if !truthy(marker.get("providerId"))
+        && let Some(provider) = route.as_ref().and_then(|r| r.get("provider_id"))
+    {
+        marker["providerId"] = provider.clone();
+    }
     if truthy(marker.get("admission"))
         && marker["admission"].get("workerGeneration") != input.get("workerGeneration")
     {
@@ -147,7 +171,8 @@ async fn reconcile(
         )
         .await?;
         if row["intent"].get("workerGeneration") != admitted.get("workerGeneration") ||
-            !deep_equal(&row["intent"]["goalRecovery"], &source) || !retire::unused(tx, &row, &source,
+            !deep_equal(&row["intent"]["goalRecovery"], &source) ||
+            row["intent"]["goalRecoveryOrderEpoch"].as_f64().unwrap_or(0.0) != marker["orderEpoch"].as_f64().unwrap_or(0.0) || !retire::unused(tx, &row, &source,
             json!({"kind":"not-dispatched","source":"canonical-goal-recovery","admission":admitted,"fencedByWorkerGeneration":input["workerGeneration"]})).await? { return Ok(result); }
         marker["admission"] = Value::Null;
     }
@@ -158,13 +183,15 @@ async fn reconcile(
         tx.query("INSERT INTO managed_queue_states(chat_id,goal_recovery) VALUES($1,$2::text::jsonb) ON CONFLICT(chat_id) DO UPDATE SET goal_recovery=EXCLUDED.goal_recovery", &[&chat,&marker.stringify()]).await?;
         queue::changed(tx, &chat).await?;
     }
-    result["disposition"] = json!(
-        if chat_row.is_some_and(|c| truthy(c.get("automation_paused"))) {
-            "retired"
-        } else {
-            "requeued"
-        }
-    );
+    let same_episode = !chat_row.is_some_and(|c| truthy(c.get("automation_paused")))
+        && route.as_ref().and_then(|r| r.get("provider_id"))
+            == record["identity"].get("providerId")
+        && marker.get("providerId") == record["identity"].get("providerId")
+        && marker["orderEpoch"].as_f64().unwrap_or(0.0)
+            == identity["autonomousGoal"]["orderEpoch"]
+                .as_f64()
+                .unwrap_or(0.0);
+    result["disposition"] = json!(if same_episode { "requeued" } else { "retired" });
     result["goalInputNotDispatched"] = json!(true);
     Ok(result)
 }

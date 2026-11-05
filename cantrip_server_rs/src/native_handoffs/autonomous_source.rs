@@ -75,7 +75,7 @@ pub(super) async fn confirm(
     }
     if record.is_null() {
         return if already {
-            complete_recovered_withdrawal(tx, root).await
+            complete_recovered_withdrawal(tx, root, None).await
         } else {
             reject("handoff-native-operation-pending")
         };
@@ -105,12 +105,23 @@ pub(super) async fn confirm(
         || identity.get("commandGeneration") != root.get("operation_generation")
         || identity.get("threadId") != source.get("threadId")
         || identity.get("turnId") != expected.get("turnId")
+        || (truthy(expected.get("goalEpoch"))
+            && (truthy(identity.get("messageId"))
+                || truthy(identity.get("taskInput"))
+                || identity["autonomousGoal"]["orderEpoch"]
+                    .as_f64()
+                    .unwrap_or(0.0)
+                    != root["intent"]["goalRecoveryOrderEpoch"]
+                        .as_f64()
+                        .unwrap_or(0.0)
+                || (truthy(identity.get("autonomousGoal"))
+                    && identity["autonomousGoal"].get("goalEpoch") != expected.get("goalEpoch"))))
         || (already && evidence.get("key") != record.get("key"))
     {
         return reject("handoff-native-operation-pending");
     }
     if already {
-        return complete_recovered_withdrawal(tx, root).await;
+        return complete_recovered_withdrawal(tx, root, None).await;
     }
     let activation = one(
         Executor::Transaction(tx),
@@ -195,12 +206,16 @@ pub(super) async fn confirm(
         }
         crate::native_commands::queue_state_changed(tx, &chat).await?;
     }
-    complete_recovered_withdrawal(tx, root).await
+    complete_recovered_withdrawal(tx, root, Some(record)).await
 }
 
 /// Exact withdrawal plus native invalidation ACK retires only its own marker
 /// admission. Keep the logical source and immutable native settlement intact.
-async fn complete_recovered_withdrawal(tx: &Transaction<'_>, root: &Value) -> Result<()> {
+async fn complete_recovered_withdrawal(
+    tx: &Transaction<'_>,
+    root: &Value,
+    fresh_record: Option<&Value>,
+) -> Result<()> {
     let chat = text(&root["chat_id"])?;
     let state = one(
         Executor::Transaction(tx),
@@ -208,34 +223,69 @@ async fn complete_recovered_withdrawal(tx: &Transaction<'_>, root: &Value) -> Re
         &[&chat],
     )
     .await?;
-    let Some(state) = state else {
-        return Ok(());
+    let existing = state
+        .and_then(|s| s.get("goal_recovery").cloned())
+        .filter(|m| !m.is_null());
+    let created = existing.is_none();
+    let mut marker = if let Some(marker) = existing {
+        parse("nativeGoalRecoverySchema", &marker)?
+    } else {
+        let Some(record) = fresh_record else {
+            return Ok(());
+        };
+        let Some(attempt) = attempt(root)?.filter(|a| truthy(a.get("goalEpoch"))) else {
+            return Ok(());
+        };
+        if truthy(root["intent"].get("goalRecovery")) || !truthy(root["identity"].get("threadId")) {
+            return Ok(());
+        }
+        let current = one(
+            Executor::Transaction(tx),
+            "SELECT to_jsonb(c)::text FROM chats c WHERE id=$1",
+            &[&chat],
+        )
+        .await?;
+        if current.is_none_or(|c| {
+            truthy(c.get("archived_at")) || truthy(c.get("managed_autonomy_stopped"))
+        }) {
+            return Ok(());
+        }
+        let marker = json!({"source":{"operationId":root["operation_id"],"operationGeneration":root["operation_generation"],
+            "threadId":root["identity"]["threadId"],"goalEpoch":attempt["goalEpoch"]},"admission":Value::Null,
+            "providerId":record["identity"]["providerId"],"orderEpoch":0});
+        tx.query("INSERT INTO managed_queue_states(chat_id,goal_recovery) VALUES($1,$2::text::jsonb) ON CONFLICT(chat_id) DO UPDATE SET goal_recovery=EXCLUDED.goal_recovery", &[&chat,&marker.stringify()]).await?;
+        marker
     };
-    let Some(marker) = state.get("goal_recovery").filter(|m| !m.is_null()) else {
-        return Ok(());
-    };
-    let marker = parse("nativeGoalRecoverySchema", marker)?;
-    if marker["admission"].get("operationId") != root.get("operation_id")
-        || marker["admission"].get("operationGeneration") != root.get("operation_generation")
-    {
-        return Ok(());
-    }
-    if !deep_equal(&root["intent"]["goalRecovery"], &marker["source"])
-        || root["intent"].get("workerGeneration") != marker["admission"].get("workerGeneration")
-    {
-        return reject("handoff-native-operation-pending");
+    if !created {
+        if marker["admission"].get("operationId") != root.get("operation_id")
+            || marker["admission"].get("operationGeneration") != root.get("operation_generation")
+        {
+            return Ok(());
+        }
+        if !deep_equal(&root["intent"]["goalRecovery"], &marker["source"])
+            || root["intent"].get("workerGeneration") != marker["admission"].get("workerGeneration")
+            || root["intent"]["goalRecoveryOrderEpoch"]
+                .as_f64()
+                .unwrap_or(0.0)
+                != marker["orderEpoch"].as_f64().unwrap_or(0.0)
+        {
+            return reject("handoff-native-operation-pending");
+        }
+        if !truthy(marker.get("providerId"))
+            && let Some(record) = fresh_record
+        {
+            marker["providerId"] = record["identity"]["providerId"].clone();
+        }
     }
     tx.query(
         "UPDATE native_commands SET goal_recovery_source=$1::text::jsonb WHERE operation_id=$2",
         &[&marker["source"].stringify(), &text(&root["operation_id"])?],
     )
     .await?;
+    marker["admission"] = Value::Null;
     tx.query(
         "UPDATE managed_queue_states SET goal_recovery=$1::text::jsonb WHERE chat_id=$2",
-        &[
-            &json!({"source":marker["source"],"admission":Value::Null}).stringify(),
-            &chat,
-        ],
+        &[&marker.stringify(), &chat],
     )
     .await?;
     crate::native_commands::queue_state_changed(tx, &chat).await
