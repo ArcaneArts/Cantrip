@@ -79,6 +79,22 @@ Independently concurrent native operations acquire separate tickets. Guardian
 transport cancellation/draining retains its reservation through actual settlement.
 Hidden helper threads receive the same connection-owned channel.
 
+Patch `0054` gives independently concurrent native requests an explicit private
+`begin-independent` phase. A helper such as Guardian can start while the root's
+`turn/started` observation is still pending; speculative background compaction
+uses the same explicit independent boundary. Their identities must not bind that
+unobserved root or reuse the root reservation. The worker admits these requests
+as helpers with their own tickets. Ordinary root `begin` retains its existing
+reservation reuse, including at limit one. Redelivery of an operation cannot
+change its admission kind. Suspension, resumption, cancellation and terminal
+settlement still use the original exact native operation identity.
+
+The native runtime and worker ship this boundary together. An older worker
+denies the new unsupported phase through the existing private resolver rather
+than letting an independent request execute without admission. This does not
+add a public protocol endpoint or another semaphore. Memory-extraction and
+transport-lifetime coverage remain part of the continuing helper audit.
+
 Known dependency and user/approval waits can suspend their parent's reservation
 only after all parent sampling streams have stopped. Resumption rejoins FIFO before
 another model request. Ordinary tool round trips retain their reservation. Native

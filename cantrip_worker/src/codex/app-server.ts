@@ -6490,7 +6490,14 @@ export class CodexAppServer implements CodexRuntime {
     const payload = z
       .object({
         input: z.object({
-          phase: z.enum(["begin", "suspend", "resume", "finish", "cancel"]),
+          phase: z.enum([
+            "begin",
+            "begin-independent",
+            "suspend",
+            "resume",
+            "finish",
+            "cancel",
+          ]),
           requestId: z.string().nullable().optional(),
           rootThreadId: z.string().nullable().optional(),
         }),
@@ -6530,13 +6537,14 @@ export class CodexAppServer implements CodexRuntime {
     const pending = { ...base, controller: new AbortController() };
     this.#nativeInferenceWaits.set(base.attemptId, pending);
     try {
-      if (phase === "begin") {
+      if (phase === "begin" || phase === "begin-independent") {
         const provider = this.#managedModelInventoryProvider;
         if (!provider)
           throw new Error("Native inference has no configured provider.");
         await inference.enterNative({
           ...base,
           rootThreadId,
+          independent: phase === "begin-independent",
           provider,
           signal: pending.controller.signal,
         });
