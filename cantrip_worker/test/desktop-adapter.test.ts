@@ -982,6 +982,7 @@ it.skipIf(process.platform !== "darwin")(
     adapter.setSurfacePrivateStateService(encryptionService, workerId);
     let frames = 0;
     let firstFrameMs = 0;
+    const states: unknown[] = [];
     const startedAt = performance.now();
     const session = await adapter.open(
       {
@@ -998,7 +999,11 @@ it.skipIf(process.platform !== "darwin")(
         viewport: { width: 200, height: 200, devicePixelRatio: 1 },
         webrtc: null,
       },
-      (_id, channel) => {
+      (_id, channel, payload) => {
+        if (channel === "control") {
+          const message = JSON.parse(new TextDecoder().decode(payload));
+          if (message.type === "desktop-state") states.push(message);
+        }
         if (channel === "frame") {
           frames++;
           if (frames === 1) firstFrameMs = performance.now() - startedAt;
@@ -1023,6 +1028,15 @@ it.skipIf(process.platform !== "darwin")(
         timeout: 2000,
       });
       await eventually(() => frames > before);
+      expect(states).toContainEqual(
+        expect.objectContaining({
+          status: "error",
+          stream: expect.objectContaining({
+            backend: "native",
+            observedFps: 0,
+          }),
+        }),
+      );
       expect(inputClose).not.toHaveBeenCalled();
       expect(closes[0]).toHaveBeenCalledOnce();
       session.suspend();

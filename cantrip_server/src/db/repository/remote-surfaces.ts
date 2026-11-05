@@ -8,7 +8,12 @@ import type {
   RemoteSurfaceStatus,
   RemoteSurfaceWireSummary,
   SurfacePrivateStateOpaque,
+  CantripOsExecution,
+  RemoteSurfaceConfiguration,
 } from "@cantrip/protocol";
+import { remoteDesktopOsSourceSchema } from "@cantrip/protocol";
+import { CantripOsRepository, CantripOsPlacementError } from "./cantrip-os.js";
+import { CantripOsFileRepository } from "./cantrip-os-files.js";
 import { and, asc, eq, sql } from "drizzle-orm";
 
 import * as schema from "../schema.js";
@@ -87,6 +92,9 @@ function toRemoteDesktopWireSummary(
     titleProtection: view.protectedLabel,
     position: view.position,
     workerId: surface.workerId,
+    ...(surface.configuration.osSource
+      ? { osSource: surface.configuration.osSource }
+      : {}),
     stateProtection: surface.protectedState,
     stateRevision: surface.stateRevision,
     status: surface.status as RemoteDesktopWireSummary["status"],
@@ -103,6 +111,46 @@ export class RemoteSurfaceRepository {
     private readonly database: RepositoryDatabase,
     private readonly collaborators: RemoteSurfaceRepositoryCollaborators,
   ) {}
+
+  async desktopExecution(
+    ownerId: string,
+    projectId: string,
+    workerId: string,
+    configuration: RemoteSurfaceConfiguration,
+  ): Promise<CantripOsExecution | undefined> {
+    if (configuration.kind !== "desktop" || !configuration.osSource)
+      return undefined;
+    const source = remoteDesktopOsSourceSchema.parse(configuration.osSource);
+    if (!source.desktopGeneration)
+      throw new CantripOsPlacementError(
+        "This desktop view has no captured desktop generation; open a new view.",
+      );
+    const [tree] = await this.database
+      .select()
+      .from(schema.projectWorktrees)
+      .where(eq(schema.projectWorktrees.id, source.worktreeId))
+      .limit(1);
+    if (!tree || tree.workerId !== workerId)
+      throw new CantripOsPlacementError(
+        "The desktop source worktree is unavailable.",
+      );
+    const execution = await new CantripOsFileRepository(this.database).root(
+      ownerId,
+      projectId,
+      tree,
+      {
+        cantripOsBindingId: source.bindingId,
+        osBindingGeneration: source.bindingGeneration,
+        osAttachmentGeneration: source.attachmentGeneration,
+        osRuntimeGeneration: source.runtimeGeneration,
+      },
+    );
+    if (typeof execution === "string")
+      throw new CantripOsPlacementError(
+        "The desktop source requires Linux execution.",
+      );
+    return execution;
+  }
 
   async listRemoteSurfaces(
     ownerId: string,
@@ -159,6 +207,12 @@ export class RemoteSurfaceRepository {
     projectId: string,
     input: EncryptedRemoteSurfaceCreate,
   ): Promise<RemoteSurfaceWireSummary | null> {
+    await this.desktopExecution(
+      ownerId,
+      projectId,
+      input.workerId,
+      input.configuration,
+    );
     const [projectRows, workerRows] = await Promise.all([
       this.database
         .select({ id: schema.projects.id })
@@ -437,7 +491,51 @@ export class RemoteSurfaceRepository {
     stateProtection: SurfacePrivateStateOpaque,
     paneId?: string,
     targetRegion?: ProjectPaneRegion,
+    osRequest?: {
+      bindingId: string;
+      runtimeGeneration: string;
+      desktopGeneration: string;
+    },
   ): Promise<RemoteDesktopWireSummary | null> {
+    let configuration: Extract<
+      RemoteSurfaceConfiguration,
+      { kind: "desktop" }
+    > = { kind: "desktop" };
+    if (osRequest) {
+      if (!osRequest.desktopGeneration)
+        throw new CantripOsPlacementError(
+          "A new Linux desktop view requires its observed desktop generation.",
+        );
+      const source = await new CantripOsRepository(
+        this.database,
+      ).bindingContext(ownerId, osRequest.bindingId);
+      if (
+        !source?.available ||
+        source.binding.projectId !== projectId ||
+        source.instance.workerId !== workerId
+      )
+        throw new CantripOsPlacementError(
+          "The selected desktop source is unavailable.",
+        );
+      const captured = await new CantripOsFileRepository(this.database).capture(
+        ownerId,
+        projectId,
+        source.binding.worktreeId,
+        osRequest.bindingId,
+        osRequest.runtimeGeneration,
+      );
+      configuration = {
+        kind: "desktop",
+        osSource: remoteDesktopOsSourceSchema.parse({
+          bindingId: captured.cantripOsBindingId,
+          worktreeId: source.binding.worktreeId,
+          bindingGeneration: captured.osBindingGeneration,
+          attachmentGeneration: captured.osAttachmentGeneration,
+          runtimeGeneration: captured.osRuntimeGeneration,
+          desktopGeneration: osRequest.desktopGeneration,
+        }),
+      };
+    }
     const [projectRows, workerRows] = await Promise.all([
       this.database
         .select({ id: schema.projects.id })
@@ -477,7 +575,7 @@ export class RemoteSurfaceRepository {
         workerId,
         kind: "desktop",
         preferredTransport: "webrtc",
-        configuration: { kind: "desktop" },
+        configuration,
         protectedState: stateProtection,
         stateRevision: 1,
       });

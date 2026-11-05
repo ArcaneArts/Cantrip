@@ -55,8 +55,8 @@ an existing chat is not implemented. A failed or disconnected OS never selects a
 host directory as a fallback.
 
 The workspace selector URL opens its independent desktop. Shell execution does
-not require starting that desktop. The optional remote package now supplies Linux
-computer use; Cantrip's integrated desktop transport remains in progress.
+not require starting that desktop. The optional remote package supplies Linux
+computer use and Cantrip's integrated desktop viewer.
 
 ## Agent computer use
 
@@ -77,6 +77,23 @@ read/write/paste, physical pointer movement and supported live desktop resizing
 through the SDK. Clipboard text is limited to 1 MiB and its selection owner lasts
 only for the helper/desktop lifetime; final JavaScript output retains its 32 KiB
 limit. Integrated human takeover remains in progress.
+
+## View the assigned desktop
+
+In **Project Settings → CantripOS**, choose **Open desktop** on the intended
+source. This creates a Cantrip Remote Desktop view bound to that source's
+workspace and captured binding/attachment/runtime generations. It does not move
+an existing agent. The encrypted stream uses the normal authorized WorkerLink
+route and shares the guest native helper with agent CUA. Model credentials stay
+on the Worker.
+
+This checkpoint is view-only: remote input and clipboard buttons are disabled.
+An agent can continue operating while you watch. Closing the last viewer releases
+its capture without stopping the agent or desktop; retiring the agent leaves
+an attached viewer usable. Reconnect observes the same captured destination.
+After an OS runtime changes, create a new view for the verified source rather
+than silently following the replacement. A retired view can still be closed or
+removed. Human takeover and managed service endpoints remain later Phase 4 work.
 
 ## Files and editor
 

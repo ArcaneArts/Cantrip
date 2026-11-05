@@ -117,6 +117,11 @@ export function registerWorkerCommandContracts(register) {
     "worker-command-surface-command",
   );
   register(
+    at(command("surface.desktop.os-prepare"), []),
+    0,
+    "worker-command-os-desktop-prepare",
+  );
+  register(
     p.terminalPrivateStateOpaqueSchema,
     0,
     "worker-command-surface-kind:terminal-state",

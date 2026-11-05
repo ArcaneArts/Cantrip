@@ -1,6 +1,6 @@
 # Optional native desktop package
 
-`cantrip-os-remote` 0.3.0 supplies the Linux X11 `cantrip-cua` helper and a
+`cantrip-os-remote` 0.4.0 supplies the Linux X11 `cantrip-cua` helper and a
 workspace-bound protected stdio carrier. It depends on the existing workspace
 and executor packages. Removing it leaves those packages, ordinary desktops,
 and workspace files available. No Worker, conversation database, scheduler,
@@ -8,9 +8,12 @@ or model-provider credentials are installed in the guest.
 
 The Worker routes normal agent CUA and human previews to their captured Linux
 placement. The MCP client, turn authorization and provider credentials stay on
-the Worker. Integrated Remote Desktop/takeover and managed
-SSH/SFTP/VNC/TCP access require the following Phase 4 cycles. The independent
-local workspace viewer continues to work.
+the Worker. Project Settings → CantripOS → Open desktop supplies integrated
+viewing through the existing encrypted Remote Desktop/WorkerLink path, sharing
+the same guest helper with agents. Viewing remains available after an agent
+retires, and closing a viewer does not cancel the agent. Human takeover and
+managed SSH/SFTP/VNC/TCP access require the following Phase 4 cycles. The
+independent local workspace viewer continues to work.
 
 From the repository root:
 
@@ -141,3 +144,9 @@ transport file using the existing SSH transport fields. The second case exercise
 the real packaged SDK through HTTP MCP, turn authorization and placement routing,
 and asserts that the Host helper never launches. Its admitted turn is a fixture;
 real-provider product acceptance is recorded separately in the acceptance guide.
+
+Version 0.4.0 pins saved viewers to the observed desktop generation. Opening a new
+view starts or observes its actual assigned desktop before the Server saves its
+identity. Reconnecting a saved view cannot start or follow a replacement desktop.
+A retired view can be closed; use **Open desktop** to explicitly create a new view.
+Incomplete captures remain readable for cleanup but cannot acquire a viewer.

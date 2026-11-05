@@ -13,10 +13,14 @@ export type SurfaceCommand = Extract<
       | "surface.resume"
       | "surface.close"
       | "surface.desktop.probe"
-      | "surface.desktop.targets";
+      | "surface.desktop.targets"
+      | "surface.desktop.os-prepare";
   }
 >;
 export interface SurfaceCommandDependencies {
+  prepareOsDesktop?: (
+    command: Extract<WorkerCommand, { type: "surface.desktop.os-prepare" }>,
+  ) => Promise<unknown>;
   remoteSurfaces: Pick<
     RemoteSurfaceManager,
     "attach" | "detach" | "configure" | "suspend" | "resume" | "close"
@@ -31,6 +35,10 @@ export async function handleSurfaceCommand(
 ): Promise<unknown> {
   const { remoteSurfaces, desktopAdapter } = dependencies;
   switch (command.type) {
+    case "surface.desktop.os-prepare":
+      if (!dependencies.prepareOsDesktop)
+        throw new Error("Linux desktop preparation is unavailable.");
+      return dependencies.prepareOsDesktop(command);
     case "surface.attach":
       return remoteSurfaces.attach(command);
     case "surface.detach":

@@ -314,6 +314,7 @@ export async function createRemoteDesktop(
   target?: ExecutionTarget,
   desktopTarget?: RemoteDesktopTarget,
   targetRegion?: ProjectPaneRegion,
+  osSource?: { bindingId: string; runtimeGeneration: string },
 ) {
   const id = crypto.randomUUID();
   const initialTarget = desktopTarget ?? {
@@ -323,7 +324,7 @@ export async function createRemoteDesktop(
   };
   const titleProtection = await surfaceTitleEncryption.protect(
     id,
-    "Remote Desktop",
+    osSource ? "CantripOS" : "Remote Desktop",
     "project-view",
   );
   const stateProtection =
@@ -342,6 +343,12 @@ export async function createRemoteDesktop(
         titleProtection,
         ...(paneId ? { paneId } : targetRegion ? { targetRegion } : {}),
         ...(target ? { target } : {}),
+        ...(osSource
+          ? {
+              cantripOsBindingId: osSource.bindingId,
+              cantripOsRuntimeGeneration: osSource.runtimeGeneration,
+            }
+          : {}),
       },
     );
   } catch (error) {

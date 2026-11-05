@@ -127,6 +127,53 @@ function fixture() {
 const active = () => new AbortController().signal;
 
 describe("OS desktop service ownership", () => {
+  it("pins a viewer to its observed desktop generation before native startup", async () => {
+    const f = fixture();
+    const generation = f.context().desktop_generation;
+    const viewer = await f.registry.acquireExecution(
+      "server",
+      f.execution,
+      active(),
+      generation,
+    );
+    expect(viewer.desktopGeneration).toBe(generation);
+    const open = f.control.mock.calls[0]![1];
+    expect(
+      JSON.parse(open[open.indexOf("--expect-placement") + 1]!),
+    ).toMatchObject({ desktop_generation: generation });
+    f.change({ desktop_generation: "b".repeat(64) });
+    await expect(
+      f.registry.acquireExecution("server", f.execution, active(), generation),
+    ).rejects.toMatchObject({ code: "ownership-mismatch" });
+    expect(f.create).toHaveBeenCalledTimes(1);
+    expect(f.services[1]!.close).not.toHaveBeenCalled();
+    await viewer.release();
+    await f.registry.close();
+  });
+  it("shares a Server-admitted viewer with the assigned agent and fences wrong Workers", async () => {
+    const f = fixture();
+    const viewer = await f.registry.acquireExecution(
+      "server",
+      f.execution,
+      active(),
+    );
+    const agent = await f.registry.acquire(f.authority, active());
+    expect(viewer.service).toBe(agent.service);
+    expect(viewer.service).not.toBe(f.host);
+    expect(f.create).toHaveBeenCalledTimes(1);
+    await expect(
+      f.registry.acquireExecution(
+        "server",
+        { ...f.execution, scope: { ...f.execution.scope, workerId: "other" } },
+        active(),
+      ),
+    ).rejects.toMatchObject({ code: "ownership-mismatch" });
+    await viewer.release();
+    expect(f.services[1]!.close).not.toHaveBeenCalled();
+    await agent.release();
+    expect(f.services[1]!.close).toHaveBeenCalledTimes(1);
+    await f.registry.close();
+  });
   it("shares one connection across owned leases and closes only after the last release", async () => {
     const f = fixture();
     const first = await f.registry.acquire(f.authority, active());

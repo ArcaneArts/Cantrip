@@ -615,6 +615,7 @@ const inferenceRecoveryExports = [
 const desktopIoExports = [
   "CUA_MAX_CLIPBOARD_BYTES",
   "cuaClipboardResultSchema",
+  "remoteDesktopOsSourceSchema",
 ].sort();
 
 describe("protocol public surface compatibility", () => {
@@ -794,8 +795,17 @@ describe("protocol public surface compatibility", () => {
   });
 
   it("keeps worker discriminators stable and ordered", () => {
-    const inferenceStatusCommandTypes = workerCommandSchema.options.map(
+    const advertisedCommandTypes = workerCommandSchema.options.map(
       (option) => option.shape.type.value,
+    );
+    // Reviewed additive desktop preparation leaves every legacy order/fingerprint intact.
+    expect(
+      advertisedCommandTypes.filter(
+        (type) => type === "surface.desktop.os-prepare",
+      ),
+    ).toEqual(["surface.desktop.os-prepare"]);
+    const inferenceStatusCommandTypes = advertisedCommandTypes.filter(
+      (type) => type !== "surface.desktop.os-prepare",
     );
     expect(inferenceStatusCommandTypes).toHaveLength(295);
     expect(inferenceStatusCommandTypes[6]).toBe("inference.status");

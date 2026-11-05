@@ -690,6 +690,7 @@ export function ManagedRemoteDesktopView({
         <div className="mr-auto flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
           <MonitorUp className="size-4 shrink-0" />
           <span className="truncate">
+            {desktop.osSource ? "CantripOS · " : ""}
             {desktopSize.width} × {desktopSize.height} ·{" "}
             {workerName ?? desktop.workerId}
             {streamStatus
@@ -697,7 +698,7 @@ export function ManagedRemoteDesktopView({
               : ""}
           </span>
         </div>
-        {fleetDiscovery ? (
+        {fleetDiscovery && !desktop.osSource ? (
           <Button
             aria-pressed={fleetOpen}
             className="h-8 gap-1.5 px-2"
@@ -724,7 +725,7 @@ export function ManagedRemoteDesktopView({
               size="sm"
               variant="ghost"
               className="h-8 max-w-[min(26rem,40vw)] gap-1.5 px-2"
-              disabled={updateTarget.isPending}
+              disabled={updateTarget.isPending || Boolean(desktop.osSource)}
               title={
                 targetMessage ??
                 `Streaming ${remoteDesktopTargetLabel(activeTarget)}`
@@ -738,7 +739,9 @@ export function ManagedRemoteDesktopView({
                 <MonitorUp className="size-3.5 shrink-0" />
               )}
               <span className="truncate">
-                {remoteDesktopTargetLabel(activeTarget)}
+                {desktop.osSource
+                  ? "Assigned Linux desktop"
+                  : remoteDesktopTargetLabel(activeTarget)}
               </span>
               <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
             </Button>
@@ -884,6 +887,7 @@ export function ManagedRemoteDesktopView({
           variant="ghost"
           className="size-8"
           title="Copy remote selection"
+          disabled={Boolean(desktop.osSource) && !ownCursorId}
           onClick={() =>
             send({ type: "clipboard", operation: "copy", text: "" })
           }
@@ -897,6 +901,7 @@ export function ManagedRemoteDesktopView({
           variant="ghost"
           className="size-8"
           title="Paste local clipboard"
+          disabled={Boolean(desktop.osSource) && !ownCursorId}
           onClick={() => void pasteClipboard()}
         >
           <ClipboardPaste className="size-3.5" />

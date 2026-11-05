@@ -6,6 +6,18 @@ import type {
   RemoteSurfaceViewport,
   WorkerCommand,
 } from "@cantrip/protocol";
+import { isDeepStrictEqual } from "node:util";
+
+function sameDesktopSource(
+  left: RemoteSurfaceConfiguration,
+  right: RemoteSurfaceConfiguration,
+) {
+  return (
+    left.kind !== "desktop" ||
+    right.kind !== "desktop" ||
+    isDeepStrictEqual(left.osSource, right.osSource)
+  );
+}
 import { encodeRemoteSurfaceFrame } from "@cantrip/protocol";
 
 import {
@@ -183,7 +195,10 @@ export class RemoteSurfaceManager {
     if (!managed) {
       managed = await this.openSession(command);
     }
-    if (managed.session.configuration.kind !== command.configuration.kind) {
+    if (
+      managed.session.configuration.kind !== command.configuration.kind ||
+      !sameDesktopSource(managed.session.configuration, command.configuration)
+    ) {
       throw new Error(
         "Remote Surface kind changed while its session was live.",
       );
@@ -323,7 +338,10 @@ export class RemoteSurfaceManager {
   async configure(command: ConfigureCommand): Promise<void> {
     const managed = this.#sessions.get(command.surfaceId);
     if (!managed) return;
-    if (managed.session.configuration.kind !== command.configuration.kind) {
+    if (
+      managed.session.configuration.kind !== command.configuration.kind ||
+      !sameDesktopSource(managed.session.configuration, command.configuration)
+    ) {
       throw new Error("Remote Surface kind cannot change while it is live.");
     }
     try {

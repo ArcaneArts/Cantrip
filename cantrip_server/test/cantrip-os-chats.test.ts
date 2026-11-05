@@ -18,6 +18,7 @@ import {
   protectedChatFields,
   protectedExplorerFields,
   protectedTerminalFields,
+  protectedRemoteDesktopFields,
 } from "./private-label-fixture.js";
 
 it("captures an OS binding before native preparation and preserves lane identity without a host fallback", async () => {
@@ -122,6 +123,60 @@ it("captures an OS binding before native preparation and preserves lane identity
       cantripOsBindingId: binding.id,
       cantripOsRuntimeGeneration: generation,
     };
+    const desktopInput = protectedRemoteDesktopFields();
+    const desktop = await repository.createRemoteDesktop(
+      "owner",
+      "project",
+      desktopInput.id,
+      desktopInput.titleProtection,
+      "worker",
+      desktopInput.stateProtection,
+      undefined,
+      undefined,
+      {
+        bindingId: binding.id,
+        runtimeGeneration: generation,
+        desktopGeneration: "a".repeat(64),
+      },
+    );
+    expect(desktop?.osSource).toMatchObject({
+      bindingId: binding.id,
+      worktreeId: binding.worktreeId,
+      runtimeGeneration: generation,
+    });
+    const desktopContext = await repository.getRemoteSurfaceExecutionContext(
+      "owner",
+      desktop!.id,
+    );
+    expect(
+      await repository.remoteSurfaces.desktopExecution(
+        "owner",
+        "project",
+        "worker",
+        desktopContext!.surface.configuration,
+      ),
+    ).toMatchObject({
+      kind: "cantrip-os",
+      scope: {
+        bindingId: binding.id,
+        workspaceId: workspace.id,
+        runtimeGeneration: generation,
+      },
+    });
+    await expect(
+      repository.remoteSurfaces.desktopExecution(
+        "other",
+        "project",
+        "worker",
+        desktopContext!.surface.configuration,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      db.query("UPDATE remote_surfaces SET configuration=$1 WHERE id=$2", [
+        JSON.stringify({ kind: "desktop" }),
+        desktop!.id,
+      ]),
+    ).rejects.toThrow(/cannot be retargeted/);
     const explorer = await repository.createExplorer("owner", "project", {
       ...protectedExplorerFields(),
       ...placement,
@@ -387,6 +442,21 @@ it("captures an OS binding before native preparation and preserves lane identity
     await expect(
       repository.getChatExecutionContext("owner", input.id),
     ).rejects.toThrow(/unavailable or changed/);
+    await expect(
+      repository.remoteSurfaces.desktopExecution(
+        "owner",
+        "project",
+        "worker",
+        desktopContext!.surface.configuration,
+      ),
+    ).rejects.toThrow(/unavailable or changed/);
+    // Retired viewers can still be inspected and removed without opening Linux.
+    expect(
+      await repository.getRemoteDesktop("owner", desktop!.id),
+    ).toMatchObject({ id: desktop!.id });
+    expect(
+      await repository.remoteSurfaces.deleteRemoteSurface("owner", desktop!.id),
+    ).not.toBeNull();
     expect(await repository.getChatLiveRouting("owner", input.id)).toEqual({
       experience: "agent",
       projectId: "project",

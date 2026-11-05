@@ -1786,6 +1786,13 @@
       "when": 1793816000004,
       "tag": "0254_task_goal_inference_input",
       "breakpoints": true
+    },
+    {
+      "idx": 255,
+      "version": "7",
+      "when": 1793816000005,
+      "tag": "0255_cantrip_os_desktop_capture",
+      "breakpoints": true
     }
   ]
 }

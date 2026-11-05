@@ -25,13 +25,37 @@ export const remoteDesktopTargetSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
+/** Canonical source capture, persisted by the Server; contains no transport. */
+export const remoteDesktopOsSourceSchema = z.strictObject({
+  bindingId: z.uuid(),
+  worktreeId: z.string().min(1).max(200),
+  bindingGeneration: z.uuid(),
+  attachmentGeneration: z.uuid(),
+  runtimeGeneration: z.uuid(),
+  // Optional only for reading incomplete pre-release captures. Admission requires it.
+  desktopGeneration: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
+});
+
 const remoteDesktopCreateBaseSchema = z.object({
   ...projectPaneDestinationShape,
   target: executionTargetSchema.optional(),
+  cantripOsBindingId: z.uuid().optional(),
+  cantripOsRuntimeGeneration: z.uuid().optional(),
 });
+
+const validOsSource = (input: z.infer<typeof remoteDesktopCreateBaseSchema>) =>
+  Boolean(input.cantripOsBindingId) ===
+    Boolean(input.cantripOsRuntimeGeneration) &&
+  !(input.cantripOsBindingId && input.target);
 
 export const remoteDesktopCreateSchema = remoteDesktopCreateBaseSchema
   .strict()
+  .refine(validOsSource, {
+    message: "Choose an OS binding and runtime generation, or a Host target.",
+  })
   .refine(hasUnambiguousProjectPaneDestination, {
     message:
       "Specify only one of paneId, the deprecated tabGroupId, or targetRegion.",
@@ -45,6 +69,9 @@ export const encryptedRemoteDesktopCreateSchema = remoteDesktopCreateBaseSchema
     titleProtection: privateDisplayLabelOpaqueSchema,
   })
   .strict()
+  .refine(validOsSource, {
+    message: "Choose an OS binding and runtime generation, or a Host target.",
+  })
   .refine(hasUnambiguousProjectPaneDestination, {
     message:
       "Specify only one of paneId, the deprecated tabGroupId, or targetRegion.",
@@ -107,6 +134,7 @@ const remoteDesktopSummaryBaseSchema = z.object({
   projectId: z.string().min(1),
   position: z.number().int().nonnegative(),
   workerId: z.string().min(1),
+  osSource: remoteDesktopOsSourceSchema.optional(),
   stateRevision: z.number().int().positive().safe(),
   status: remoteSurfaceStatusSchema,
   lastError: z.string().nullable(),

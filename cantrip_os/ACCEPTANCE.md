@@ -1698,3 +1698,129 @@ real failure. Unconfirmed mutations have an unknown outcome and are not replayed
 This checkpoint does not complete Phase 4. Integrated streaming, exclusive human
 takeover, managed SSH/SFTP/VNC/TCP, final real-agent GUI file acceptance and
 refreshed bootable media remain to be delivered and verified.
+
+## Phase 4: integrated viewing checkpoint (2026-11-05)
+
+Project Settings → CantripOS → Open desktop creates an encrypted Remote Desktop
+view for an explicitly selected Linux source. The Server persists the source's
+worktree/binding, binding/attachment/runtime generations and observed desktop
+generation, validates current
+authority before and after opening, and supplies private execution transport
+only in the Worker command. A migration admits this configuration and prevents
+retargeting the saved capture. Retired views remain inspectable/removable.
+
+The Worker shares the native guest connection with agent CUA and reuses native
+capture plus the existing adaptive JPEG and WorkerLink transport. No Host helper,
+Host application launch, or legacy Host input/capture fallback is used for this
+path. The current viewer is read-only; human takeover and its input controls
+remain a following Phase 4 cycle.
+
+The actual packaged SDK case passed on ARM64 Docker and the installed AMD64 VM.
+It opened a real JPEG stream, attached two viewers, dispatched normal agent
+input/clipboard/resize, rejected an unowned viewer paste, detached the last viewer
+without interrupting the agent's next screenshot, then reopened viewing and
+retired the agent while frames continued. The final AMD64 retry took 13.35 seconds
+for the test body, with its first JPEG after 3821.4 ms (3328 bytes). An earlier
+loaded AMD64 run timed out at 120 seconds before first-frame completion; that
+failure is retained. The successful retry used the unchanged timeout. The ARM64
+expanded case passed in 19.93 seconds during concurrent local inference. These
+are acceptance timings rather than controlled comparative stream benchmarks.
+
+The actual Cantrip UI opened the assigned 1440×900 desktop over WorkerLink relay
+and reconnected to the same destination. Idle viewing reported about 30 FPS;
+concurrent local vision inference produced substantial contention and lower
+reported frame rates. A point-in-time Docker measurement was 395.9 MiB of a
+4 GiB limit and 29.90% CPU. This includes the personal and assigned desktops in
+the test guest; it is not a capacity recommendation. Comparative streaming,
+active multi-desktop resource testing and refreshed media remain outstanding.
+
+A real local Qwen turn used normal `cantrip_cua/js` in that product workspace,
+launched Mousepad through the assigned Linux shell, pasted three lines through
+the desktop clipboard and saved `phase4-gui.txt` through the GTK Save As dialog.
+It then read the saved file. An independent read confirmed exactly 73 UTF-8 bytes:
+
+```text
+CantripOS GUI acceptance
+Clipboard café 日本語
+Saved through Mousepad
+```
+
+There are two newline bytes and no trailing newline. No shell/file write created
+the document. The minimal editor font displayed missing CJK glyphs, while the
+saved Japanese bytes were correct. Product screenshots are retained with the
+ignored local acceptance artifacts. This is distinct from the earlier real-agent
+Chromium navigation and native/package fixtures.
+
+Local validation passed 23 focused Worker tests, the two new protocol placement
+tests, and seven Server tests covering real PGlite source capture/retirement,
+Remote Desktop routes and authority retirement during grant issuance. Rust
+CantripOS contract tests passed; the new desktop resolver also passed against
+native PGlite and an owned ephemeral PostgreSQL instance. The first PostgreSQL
+test invocation lacked its required binary-directory environment variable;
+the configured retry passed. Worker, Server and App TypeScript checks passed.
+
+The public-export compatibility test reports 2221 exports against a 2220
+expectation on both this branch and an independently extracted unchanged Main
+snapshot. The new desktop export is explicitly reviewed without changing the
+legacy fingerprint. Required `pnpm check` stops at unchanged Server budgets
+(`build-app.ts` 1504/1500; `chat-turn-runtime.ts` 2182/1999). The separate repository
+budget check reports unchanged `native-commands.ts` 2049/2000. These failures are
+recorded rather than counted as passes. Full Phase 4 remains in progress.
+
+The final pinning pass uses remote package 0.4.0. New-view preparation observes the
+actual native monitor before persisting its desktop generation. Saved viewers
+pass that generation to the guest open operation; stopped or replaced desktops
+are rejected without starting a replacement. Both architecture lifecycle suites
+exercise this behavior. An older incomplete capture remains readable/removable
+but cannot reconnect. The product agent’s returned Markdown link was clicked in
+Cantrip and opened the Linux editor with the exact three saved lines.
+
+Final focused checks passed 24 Worker, eight Server and three placement protocol
+tests. Both Rust CantripOS contract tests passed. Worker and Server TypeScript
+checks passed after the pinning change. An initial package install exposed an
+accidentally raised workspace-package dependency; it was restored to the actual
+0.3.0 workspace minimum and both remote packages were rebuilt. An initial new
+source-replacement test had an incorrect no-revoke expectation; the corrected
+assertion verifies the actual revoked grant.
+
+Both final 0.4.0 destructive package suites passed on ARM64 Docker and the
+installed AMD64 VM, including pinned opens while stopped and after replacement,
+held-input cleanup and remove/purge/reinstall with retained desktops and files.
+Both final actual Worker SDK cases passed on each architecture. The final SDK
+run took 3.38 seconds in ARM64 and 11.46 seconds in emulated AMD64 for the test
+bodies; first JPEG times were 315.4 ms and 1788.8 ms respectively. These remain
+acceptance timings, not controlled streaming comparisons.
+
+| Package architecture | Bytes   | SHA-256                                                            |
+| -------------------- | ------- | ------------------------------------------------------------------ |
+| ARM64 0.4.0          | 1343220 | `fec5a61a1864739759be579bcfbc1e4e81930f7b5e50bf1e8b79981fa2e693a8` |
+| AMD64 0.4.0          | 1546116 | `2804cfcb7a4fbd4b4eed0842408b9f133258eb7baa85f0502d9e3583a5646c95` |
+
+The final product exercise reconnected the captured viewer, stopped its desktop,
+and observed rejected reconnects while the actual workspace remained stopped.
+Explicit **Open desktop** then created a new view with a different observed
+desktop generation. The old row retained its original generation. Capture-error
+status remains native, reports zero FPS and identifies Linux desktop
+unavailability rather than implying a Host compatibility capture.
+
+After rebasing onto Main `dd0ba7161`, the focused Worker (24), Server (8), App
+(10), Rust source contracts (2), and both native PostgreSQL/PGlite repository
+cases passed. Worker and App TypeScript checks passed. Server TypeScript now
+reports three errors in unchanged Task Goal callback/routing code; the exact
+same errors were reproduced by checking the clean Main checkout. The final
+required `pnpm check` stops at unchanged Main budgets: `build-app.ts` 1513/1500
+and `chat-turn-runtime.ts` 2199/1999. The full protocol run initially had 1096
+passing tests and four failures across source/built compatibility tests. The
+new preparation command needed its explicit additive review before the legacy
+counts; that assertion now passes while the pre-existing root-export count
+failure remains (2221 versus 2220). No legacy fingerprint was changed.
+
+The owned QA database had already applied the earlier unmerged migration under
+number 254. After Main used 254 for Task Goal input, this cycle moved to 255.
+The isolated QA database was backed up, then both actual SQL changes and their
+matching migration hashes were applied transactionally; no source identity was
+invented for the older incomplete view. Fresh repository migration tests passed.
+
+After rebuilding the protocol package with that explicit command review, the
+complete protocol run passed 1098 tests. Its only two failures are the source
+and built copies of the already-reproduced root-export baseline assertion.

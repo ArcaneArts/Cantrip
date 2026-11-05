@@ -21,6 +21,7 @@ import {
 import { ensureChatWorkerEncryption } from "@/lib/chat-worker-encryption";
 import { prepareConversationCreation } from "@/lib/api/conversations";
 import { errorMessage } from "@/lib/error-message";
+import { createRemoteDesktop } from "@/lib/api/surfaces";
 import { CantripOsAttachForm } from "./cantrip-os-attach-form";
 import { CantripOsSourceForm } from "./cantrip-os-source-form";
 import { CantripOsWorktreeForm } from "./cantrip-os-worktree-form";
@@ -30,11 +31,13 @@ export function CantripOsSettings({
   workers,
   worktrees,
   onOpenAgent,
+  onOpenDesktop,
 }: {
   project: ProjectSummary;
   workers: WorkerSummary[];
   worktrees: ProjectWorktreeSummary[];
   onOpenAgent(id: string): void;
+  onOpenDesktop?(id: string): void;
 }) {
   const queryClient = useQueryClient();
   const [instanceId, setInstanceId] = useState("");
@@ -138,6 +141,32 @@ export function CantripOsSettings({
       onOpenAgent(chat.id);
     },
   });
+  const desktop = useMutation({
+    mutationFn: async (binding: CantripOsSourceBindingSummary) => {
+      const refreshed = await refreshCantripOs(binding.instanceId);
+      await verifyCantripOsBinding(project.id, binding.id);
+      if (!refreshed.instance.runtimeGeneration)
+        throw new Error("The selected OS has no current runtime.");
+      return createRemoteDesktop(
+        project.id,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          bindingId: binding.id,
+          runtimeGeneration: refreshed.instance.runtimeGeneration,
+        },
+      );
+    },
+    onSuccess: (view) => {
+      queryClient.setQueryData(["remote-desktop", view.id], view);
+      void queryClient.invalidateQueries({
+        queryKey: ["project-views", project.id],
+      });
+      onOpenDesktop?.(view.id);
+    },
+  });
   const error =
     instances.error ??
     workspaces.error ??
@@ -146,7 +175,8 @@ export function CantripOsSettings({
     createWorkspace.error ??
     observe.error ??
     verify.error ??
-    open.error;
+    open.error ??
+    desktop.error;
   return (
     <div
       className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8"
@@ -315,6 +345,15 @@ export function CantripOsSettings({
               >
                 New Linux agent
               </Button>
+              {onOpenDesktop ? (
+                <Button
+                  variant="ghost"
+                  disabled={desktop.isPending}
+                  onClick={() => desktop.mutate(binding)}
+                >
+                  Open desktop
+                </Button>
+              ) : null}
               {project.capabilities.git && binding.mode === "linux-owned" ? (
                 <Button
                   variant="ghost"
@@ -340,9 +379,10 @@ export function CantripOsSettings({
         ))}
       </section>
       <p className="text-xs text-muted-foreground">
-        Open the workspace selector URL printed by pnpm os to view its desktop.
-        Shell work does not require an open desktop. New Linux agents stay bound
-        to their selected source.
+        Open desktop to view this workspace inside Cantrip, or use the
+        independent workspace selector URL printed by pnpm os. Shell work does
+        not require an open desktop. New Linux agents stay bound to their
+        selected source.
       </p>
     </div>
   );

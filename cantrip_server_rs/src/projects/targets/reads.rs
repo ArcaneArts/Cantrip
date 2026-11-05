@@ -344,6 +344,9 @@ pub(super) fn desktop(view: &Value, raw: &Value) -> Result<Value> {
             ("position", "position"),
         ],
     );
+    if let Some(source) = raw["configuration"].get("osSource") {
+        result["osSource"] = source.clone();
+    }
     for (key, value) in mapped(
         raw,
         &[
