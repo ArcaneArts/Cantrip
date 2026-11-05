@@ -26,6 +26,9 @@ import {
   type NativePendingRequest,
   nativeInferenceRecoverySchema,
   nativeInferenceRecoveryResultSchema,
+  nativeInferenceResourceAuthorizationSchema,
+  nativeInferenceResourceAuthorizationResultSchema,
+  type NativeInferenceResourceAuthorization,
   type NativeInferenceRecovery,
   taskInferenceInputDispatchSchema,
   taskInferenceInputDispatchResultSchema,
@@ -126,6 +129,36 @@ export class NativeCommandClient {
       throw new Error(
         "Inference recovery returned another operation's receipt.",
       );
+    return result;
+  }
+
+  async authorizeInferenceResource(
+    input: Omit<NativeInferenceResourceAuthorization, "workerId">,
+    signal?: AbortSignal,
+  ) {
+    const scope = nativeInferenceResourceAuthorizationSchema.parse({
+      ...input,
+      workerId: this.options.workerId,
+    });
+    const result = await this.post(
+      "inference-resource-authorize",
+      scope,
+      nativeInferenceResourceAuthorizationResultSchema,
+      signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
+        : AbortSignal.timeout(15_000),
+    );
+    if (
+      result.serverId !== scope.serverId ||
+      result.ownerId !== scope.ownerId ||
+      result.workerId !== scope.workerId ||
+      result.workerGeneration !== scope.workerGeneration ||
+      JSON.stringify(result.target) !== JSON.stringify(scope.target)
+    )
+      throw new Error(
+        "Inference resource authorization returned another worker or resource scope.",
+      );
+    signal?.throwIfAborted();
     return result;
   }
 

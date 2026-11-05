@@ -13,6 +13,8 @@ import {
   nativePendingRequestSchema,
   nativeInferenceRecoverySchema,
   nativeInferenceRecoveryResultSchema,
+  nativeInferenceResourceAuthorizationSchema,
+  nativeInferenceResourceAuthorizationResultSchema,
   taskInferenceInputDispatchSchema,
   taskInferenceInputDispatchResultSchema,
   taskGoalOutcomeDeliverySchema,
@@ -67,6 +69,60 @@ export function installInternalNativeCommandRoutes(
   },
 ): void {
   const { repository, config, serverId, runAsOwner, live } = dependencies;
+  app.post(
+    "/api/internal/native-commands/inference-resource-authorize",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const parsed = nativeInferenceResourceAuthorizationSchema.safeParse(
+        request.body,
+      );
+      if (!parsed.success)
+        return reply.code(400).send({ code: "invalid-inference-resource" });
+      const input = parsed.data;
+      const authentication = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        input.workerId,
+        "worker:agent-tools",
+      );
+      if (!authentication)
+        return reply.code(401).send({ code: "unauthorized" });
+      const current = () => {
+        const identity = dependencies.bridge?.connectionIdentity?.(
+          input.workerId,
+        );
+        // Exact authenticated incarnation, including retained reconnect continuity.
+        // Socket availability does not decide canonical resource authorization.
+        return (
+          input.serverId === serverId &&
+          input.ownerId === authentication.ownerId &&
+          identity?.ownerId === authentication.ownerId &&
+          identity.workerProcessGeneration === input.workerGeneration
+        );
+      };
+      if (!current())
+        return reply.code(409).send({ code: "stale-worker-generation" });
+      return runAsOwner(authentication.ownerId, async () => {
+        try {
+          const result =
+            await repository.nativeCommands.authorizeInferenceResource(
+              authentication.ownerId,
+              input,
+            );
+          if (!current())
+            return reply.code(409).send({ code: "stale-worker-generation" });
+          return nativeInferenceResourceAuthorizationResultSchema.parse(result);
+        } catch (error) {
+          if (error instanceof NativeCommandError)
+            return reply
+              .code(error.statusCode)
+              .send({ code: error.code, error: error.message });
+          throw error;
+        }
+      });
+    },
+  );
   const authority = (
     ownerId: string,
     result: NativeCommandAdmissionResult,

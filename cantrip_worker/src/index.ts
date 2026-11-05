@@ -327,6 +327,7 @@ import {
   inferenceCommandResource,
   inferenceCommandSignal,
   revokeInferenceCommands,
+  registerInferenceResourceAuthorization,
 } from "./inference-command.js";
 import {
   runWorkerRuntimeLoop,
@@ -1611,6 +1612,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerId: config.workerId,
     token: () => config.token,
   });
+  const authorizeInferenceResource = (
+    target: Parameters<
+      NativeCommandClient["authorizeInferenceResource"]
+    >[0]["target"],
+  ) => {
+    const signal = inferenceCommandSignal();
+    signal?.throwIfAborted();
+    const { serverId, ownerId } = nativeNamespaceScope();
+    return nativeCommands.authorizeInferenceResource(
+      { serverId, ownerId, workerGeneration: workerProcessGeneration, target },
+      signal,
+    );
+  };
   const inferenceAdmissions = new Map<string, WorkerInferenceAdmission>();
   let inferenceAuthorityRetired = false;
   const retireInferenceAuthority = async () => {
@@ -3554,7 +3568,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             routingRegistry,
           ),
         );
-      case "label.generate":
+      case "label.generate": {
+        await authorizeInferenceResource({
+          kind: "chat",
+          chatId: command.chatId,
+        });
+        registerInferenceResourceAuthorization(() =>
+          authorizeInferenceResource({ kind: "chat", chatId: command.chatId }),
+        );
         return generatePrivateLabel(
           command,
           workerEncryption,
@@ -3571,6 +3592,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               input,
             }),
         );
+      }
       case "worker-link.identity.resolve":
       case "worker-link.session.install":
       case "worker-link.session.renew":
@@ -4256,6 +4278,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             throw new Error("Repository agent routing metadata is invalid.");
           }
           if (isAgentRequest) {
+            await authorizeInferenceResource({
+              kind: "project",
+              projectId: command.projectId,
+            });
+            registerInferenceResourceAuthorization(() =>
+              authorizeInferenceResource({
+                kind: "project",
+                projectId: command.projectId,
+              }),
+            );
             const input = gitAgentDraftCreateSchema.parse(request.arguments);
             if (command.agentRuntimes.length === 0 || !command.modelId) {
               throw new Error(

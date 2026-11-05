@@ -1,4 +1,5 @@
 export * from "./inference-admission.js";
+export * from "./inference-resources.js";
 export * from "./inference-recovery.js";
 export * from "./inference-failure.js";
 export * from "./task-inference-input.js";
