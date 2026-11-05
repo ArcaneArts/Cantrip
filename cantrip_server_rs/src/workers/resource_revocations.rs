@@ -191,7 +191,10 @@ async fn deliver(service: &WorkerService, owner: &str, worker: &str) -> Result<(
                     None,
                 )
                 .await?;
-            let result = crate::wire::parse("taskInferenceRouteSettlementSchema", reply.as_ref())?;
+            let result = crate::settings::parse_response(
+                "taskInferenceRouteSettlementSchema",
+                reply.as_ref(),
+            )?;
             anyhow::ensure!(
                 result["ownerId"] == owner
                     && result["workerId"] == worker

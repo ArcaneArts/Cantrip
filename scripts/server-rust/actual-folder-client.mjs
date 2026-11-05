@@ -87,6 +87,7 @@ const option = (name) => {
 const databaseMode = option("--database") ?? "pglite";
 const workerLinkRoute = option("--worker-link-route") ?? "relay";
 const reportPath = option("--report");
+const liveTaskDiagnostics = process.argv.includes("--task-diagnostics");
 const surfaceFixtureRequests = [];
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-actual-folder-"));
 const appRoot = path.join(repositoryRoot, "cantrip_app");
@@ -101,6 +102,9 @@ const report = {
   scope:
     "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Optional --github-conversion uses the existing encrypted APIs and full worker to link matching public history in a fresh managed folder, preserve dirty bytes and identities, and restart without SQL seeding or command substitutions. Optional --tasks uses existing encrypted Task APIs, the full production worker and bundled Codex for direct execution, planning, native Goal completion, failure/retry, paused admissions and retained restart; only public model HTTP responses are controlled. Optional --project-chats exercises retained Agent creation and usage, real managed native preparation, encrypted turns, completed canonical history, native Goal tools, exact restart retention and Goal clear; only public model HTTP responses are controlled. Optional --chat-customizations adds actual skills, extra roots, MCP and bound permission configuration with native restart recovery. Optional --skill-settings adds actual project/account skill files, audiences, encrypted recovery deletion and retained restart. Optional --mcp-settings uses an acceptance-only owned worker home and the existing encrypted browser SDK for MCP CRUD, full discovery, copy, native resource access and restart. Not whole UI, packaging or multi-instance acceptance.",
   runtimes: [],
+  taskDiagnostics: liveTaskDiagnostics
+    ? "Development SQL fixture executable; unchanged production startup, routes, worker and native runtime. Failed Task runs retain scoped read-only database snapshots before teardown."
+    : null,
 };
 let vite, browser, postgres, failure, surfaceRepositoryBinary;
 async function flow(
@@ -887,7 +891,9 @@ async function flow(
   }
 }
 try {
-  const executable = await buildRustServer();
+  const executable = liveTaskDiagnostics
+    ? await buildRustExample("http-sql-fixture")
+    : await buildRustServer();
   if (
     process.argv.includes("--surfaces") ||
     process.argv.includes("--tunnels") ||
@@ -957,6 +963,7 @@ try {
       name: "actual-folder",
       databaseMode,
       providerAuthDrain: true,
+      liveSqlFixture: liveTaskDiagnostics,
       environment: {
         CANTRIP_AUTH_MODE: "accounts",
         ...(process.argv.includes("--worker-links")

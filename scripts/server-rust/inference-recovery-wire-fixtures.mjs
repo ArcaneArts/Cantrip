@@ -88,8 +88,54 @@ const authorizations = [
     target: { kind: "project", projectId: "fixture-project" },
   },
 ];
+const routeRequest = {
+  operationId: generation,
+  inputOperationId: receipt.operationId,
+  expectedRevision: 1,
+  targetModelRouteId: "fixture-next-route",
+  targetProviderAccountId: null,
+};
+const routeChanges = receipts.flatMap((source) =>
+  ["draining", "completed", "cancelled"].map((phase) => ({
+    ...routeRequest,
+    source,
+    phase,
+    queuedFencingToken: 0,
+    createdAt: "2026-11-05T00:00:00.000Z",
+    completedAt: phase === "draining" ? null : "2026-11-05T00:00:01.000Z",
+  })),
+);
 
 export const inferenceRecoveryWireFixtures = {
+  taskInferenceRouteChangeRequestSchema: [
+    routeRequest,
+    { ...routeRequest, targetProviderAccountId: "fixture-account" },
+  ],
+  taskInferenceRouteChangeSchema: routeChanges,
+  taskInferenceRouteViewSchema: [
+    {
+      chatId: receipt.chatId,
+      revision: 1,
+      source: null,
+      latest: null,
+      providers: [],
+    },
+    ...routeChanges.map((latest) => ({
+      chatId: receipt.chatId,
+      revision: 2,
+      source: latest.source,
+      latest,
+      providers: [],
+    })),
+  ],
+  taskInferenceRouteSettlementSchema: receipts.flatMap((source) =>
+    [false, true].map((settled) => ({
+      ...authorization,
+      operationId: routeRequest.operationId,
+      source,
+      settled,
+    })),
+  ),
   inferenceFailureEvidenceSchema: failures,
   nativeInferenceRecoverySchema: ["waiting", "granted", "released"].map(
     (state, index) => ({

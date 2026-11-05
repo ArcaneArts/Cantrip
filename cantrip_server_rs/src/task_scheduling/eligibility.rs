@@ -294,7 +294,10 @@ impl Service {
             }
             if pending_routes.contains(&text(&cycle["chatId"])?) {
                 resolutions.insert(
-                    text(&cycle["id"])?,
+                    cycle["id"]
+                        .as_js_string()
+                        .context("Task cycle identity")?
+                        .clone(),
                     json!({"eligible":false,"code":"provider-transfer-pending"}),
                 );
                 continue;

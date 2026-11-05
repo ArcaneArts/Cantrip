@@ -19,7 +19,7 @@ feature set.
 Status: **implementation in progress; not a deployable replacement**.
 
 The Task/Goal integration repair restores server, worker and app typechecks and
-builds. Retirement now reads the failure-evidence discriminator while retaining
+builds against base `1579245e9`. Retirement now reads the failure-evidence discriminator while retaining
 the existing receipt, worker and dispatch guards. Historical output resolves its
 physical worktree through the owning project source. Goal observations use the
 actual worktree path and project relationship. Thirty database regressions cover
@@ -27,21 +27,38 @@ these paths, including original-root attribution, owner isolation, changed
 observation fences and failure classification. The old implementation reproduces
 four authority/observation failures and two wrong-root historical writes.
 
-Thirteen missing protocol fixture roots now have valid Source samples. The
-broad native wire suite passes 619,692 comparisons across 625 roots, both
+The initial qualification against base `d9e8ddf11` supplies thirteen previously
+missing protocol fixture roots. Its broad native wire suite passes 619,692 comparisons across 625 roots, both
 generated-manifest equality checks and 69,648 ECMAScript JSON round trips. The
 outgoing worker envelope separately passes 298 complete requests, 86 boundary
 cases and 241,091 mutations, executing all 100 registered refinement callbacks.
 Its refreshed fixtures preserve all 295 previous command inputs and 1,134
 alternative cases. All 625 other roots retain identical fixture inputs.
 Focused Task input
-and Run input oracles pass 1,692 and 2,617 comparisons. Current local broad
+and Run input oracles pass 1,692 and 2,617 comparisons. The local broad
 TypeScript suites still fail: server 60 failed / 1,699 passed / 58 skipped;
 worker six failed / 2,745 passed / 225 skipped. Every failing test heading was
-reproduced on a separate clean `d9e8ddf11` checkout. The broad repository check
+reproduced on a separate clean `d9e8ddf11` checkout. These counts describe that
+frozen baseline, rather than later additions to Main. The broad repository check
 also stops on unchanged Node source line limits. These failures remain required
 acceptance work. Native worker tests requiring a current built runtime remain
 separate; passing typechecks and builds do not establish native product readiness.
+
+Integration with `1579245e9` adds the four Task provider-transfer fixture roots
+and the settled/revoke worker messages. All 630 roots have valid Source fixture
+samples. The updated corpus preserves all 298 prior command inputs and 1,154
+alternative cases. Rust integration fixes retain JavaScript-string dispatch keys,
+use an explicitly typed empty provider array and convert settlement validation
+through the existing response error adapter.
+
+The full-worker folder harness accepts `--task-diagnostics` to select its
+development SQL fixture executable. On a Task failure it captures eight scoped
+operational tables from the server's open database before worker teardown,
+using one read-only, repeatable-read transaction. It preserves the original
+failure if evidence collection also fails. The production executable does not
+include this SQL endpoint. A thirty-first database regression exercises the
+actual queries and rejects other owner/project scopes. This evidence-capture
+test does not establish successful native Task or Goal execution.
 
 The Run configuration MCP milestone adds twelve operations to the Rust registry,
 bringing the supported set to twenty-eight. It reuses native definition, secret,

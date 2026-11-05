@@ -13105,11 +13105,7 @@
         "method": "PATCH",
         "path": "/api/project-views/:viewId"
       },
-      {
-        "contract": "opaque-list",
-        "method": "GET",
-        "path": "/api/projects"
-      },
+      { "contract": "opaque-list", "method": "GET", "path": "/api/projects" },
       {
         "contract": "opaque-archive-list",
         "method": "GET",

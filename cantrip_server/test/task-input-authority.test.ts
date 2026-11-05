@@ -26,6 +26,7 @@ import {
   taskResult,
   taskStart,
 } from "../../scripts/server-rust/task-wire-fixtures.mjs";
+import { captureTaskRuntimeState } from "../../scripts/server-rust/task-runtime-snapshot.mjs";
 
 const client = new PGlite();
 const database = drizzle(client, { schema });
@@ -310,6 +311,49 @@ describe.each(["round", "goal"] as const)(
     );
   },
 );
+
+it("captures live Task evidence in one read-only snapshot scoped to its owner and project", async () => {
+  const f = await input("round");
+  const query = (statements: string[], queries: string[]) =>
+    client.transaction(async (tx) => {
+      for (const statement of statements) await tx.exec(statement);
+      const values = [];
+      for (const statement of queries) {
+        const result = await tx.query<{ state: string }>(statement);
+        values.push(JSON.parse(result.rows[0]!.state));
+      }
+      return values;
+    });
+  const snapshot = await captureTaskRuntimeState({
+    ownerId: owner,
+    projectId: project,
+    query,
+  });
+  expect(snapshot.rows.tasks).toEqual(
+    expect.arrayContaining([expect.objectContaining({ chat_id: f.chat })]),
+  );
+  expect(snapshot.rows.chat_messages).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: f.receipt.clientMessageId,
+        protected_content: expect.any(Object),
+      }),
+    ]),
+  );
+  expect(Object.keys(snapshot.rows)).toHaveLength(8);
+  for (const scope of [
+    { ownerId: randomUUID(), projectId: project },
+    { ownerId: owner, projectId: randomUUID() },
+  ]) {
+    const other = await captureTaskRuntimeState({ ...scope, query });
+    expect(
+      Object.values(other.rows).every(
+        (rows) => Array.isArray(rows) && rows.length === 0,
+      ),
+    ).toBe(true);
+  }
+  expect(await tasks.get(owner, f.chat)).not.toBeNull();
+});
 
 describe("durable Goal observation placement", () => {
   async function observed() {

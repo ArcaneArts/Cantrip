@@ -100,7 +100,7 @@ impl Repository {
         let inventory = crate::native_handoffs::Repository::new(self.database.clone())
             .inventory(owner, chat)
             .await?;
-        parse("taskInferenceRouteViewSchema", &json!({"chatId":chat,"revision":task["row_version"],"source":source,"latest":latest,"providers":inventory.as_ref().map(|i|i["providers"].clone()).unwrap_or_else(||json!([]))})).map(Some)
+        parse("taskInferenceRouteViewSchema", &json!({"chatId":chat,"revision":task["row_version"],"source":source,"latest":latest,"providers":inventory.as_ref().map(|i|i["providers"].clone()).unwrap_or_else(||Value::Array(Vec::new()))})).map(Some)
     }
 
     pub async fn pending_inference_routes(
