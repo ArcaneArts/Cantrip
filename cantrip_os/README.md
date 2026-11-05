@@ -37,7 +37,10 @@ Version 0.5.0 routes normal agent CUA and previews to the captured Linux desktop
 including scoped clipboard access, physical pointer movement and live resize.
 Project Settings → CantripOS → Open desktop now views that workspace inside
 Cantrip over WorkerLink, with exclusive **Take control** and **Return to agent**
-actions. Stream-candidate comparison and managed service access remain in progress. Native, package and product evidence are
+actions. Managed SSH/SFTP, VNC compatibility and development TCP services share
+Cantrip's tunnel list with Host routes. VNC clients use the same exclusive
+human-control state. Stream-candidate comparison and explicit Guest-to-Host
+forwarding remain in progress. Native, package and product evidence are
 recorded in acceptance.
 
 Phase 3 execution and distribution acceptance is recorded. See [acceptance results](ACCEPTANCE.md)
@@ -78,8 +81,8 @@ Connections printed by the launcher:
 All published ports bind **only to host loopback**. VNC listens on the container
 network so Docker can forward it; this is the same trusted local desktop as the
 browser viewer. The optional remote package supplies protected SSH/SFTP/VNC/TCP
-carriers without a public SSH listener. Cantrip-managed service connection
-management remains a following Phase 4 cycle; see the
+carriers without a public SSH listener. Configure managed routes in
+**Project Settings → Tunnels**; see the
 [remote package guide](packages/remote/README.md).
 
 For detached use without a watcher or Ctrl+C ownership:

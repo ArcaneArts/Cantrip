@@ -34,3 +34,9 @@ export const tunnelSshConnectionInfoSchema = z.strictObject({
   hostAlias: z.string().regex(/^cantrip-os-[0-9a-f-]{36}$/u),
   hostKey: cantripOsSshPublicKeySchema,
 });
+
+export const cantripOsVncDestinationSchema = z.strictObject({
+  kind: z.literal("worker-os-vnc"),
+  workerId: z.string().trim().min(1).max(200),
+  source: cantripOsTunnelSourceSchema,
+});

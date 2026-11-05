@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   cantripOsTcpDestinationSchema,
   cantripOsSshDestinationSchema,
+  cantripOsVncDestinationSchema,
   tunnelSshConnectionInfoSchema,
   cantripOsTunnelSourceSchema,
 } from "./cantrip-os-tunnels.js";
@@ -99,6 +100,7 @@ export const tunnelUserCreateSchema = z
     destination: z.union([
       cantripOsTcpDestinationSchema,
       cantripOsSshDestinationSchema,
+      cantripOsVncDestinationSchema,
       z
         .object({
           kind: z.literal("worker-tcp"),
@@ -351,6 +353,7 @@ export const tunnelSummarySchema = z
       tunnelDestinationEndpointSchema,
       cantripOsTcpDestinationSchema,
       cantripOsSshDestinationSchema,
+      cantripOsVncDestinationSchema,
     ]),
     managedBy: tunnelManagedResourceSchema.nullable(),
     osSource: cantripOsTunnelSourceSchema.optional(),

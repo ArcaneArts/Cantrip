@@ -278,3 +278,35 @@ record, guest connection, OpenSSH authentication and SFTP on either guest fixtur
 The opt-in App test `src/lib/os-ssh.product.integration.test.ts` additionally
 creates the actual saved encrypted route and uses real Server API/WorkerLink relay
 admission. Its disposable client keys and account recovery material stay on Host.
+
+
+## Managed VNC product access
+
+The unchanged 0.7.0 guest package also supports Cantrip's managed VNC adapter.
+Choose **VNC desktop** for a captured Linux destination in Project Settings →
+Tunnels. The Worker observes the actual running desktop, pins its generation in
+the service identity and opens `service-connect` through the existing encrypted
+WorkerLink route. A VNC client receives a Native-app loopback host/port without
+publishing another guest listener.
+
+The Worker shares its existing CUA service with the agent and integrated viewer.
+VNC acquires an exclusive human-control owner before service admission; held
+agent input is canceled/released, competing controllers are refused and other
+workspaces continue. Retirement requires `service-close` confirmation before
+returning the lease. If cleanup fails, only an actual placement-verified changed
+manager/desktop descriptor can fence the old helper and release the stale lease.
+Unavailable or unchanged observations leave the lease blocked. The package's
+VNC socket closes release held keys/buttons, including abrupt manager death.
+
+Opt-in real Worker/package acceptance:
+
+```sh
+CANTRIP_OS_CUA_TEST_CONTAINER=<disposable-container> \
+  pnpm --filter @cantrip/worker exec vitest run test/os-vnc.integration.test.ts --maxWorkers=1
+```
+
+For an installed VM use `CANTRIP_OS_CUA_TEST_TRANSPORT` with the established
+SSH transport JSON. The tests exercise real RFB 3.8 pixels, native agent/VNC
+handoff, physical held-input cleanup, other-workspace independence and actual
+remote-manager replacement. Use disposable fixtures: the replacement test
+restarts their remote-access service.

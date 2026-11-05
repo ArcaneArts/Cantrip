@@ -961,6 +961,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const osTunnelServices = new OsTunnelServices(
     workerEncryption,
     config.workerId,
+    () => osComputerUseServices,
   );
   const tunnelDestinations = new TunnelDestinationRouter(
     tunnelTcpDestination,

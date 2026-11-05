@@ -4,6 +4,7 @@ import { endpointContentOpaqueSchema } from "./endpoint-content.js";
 import {
   cantripOsTcpDestinationSchema,
   cantripOsSshDestinationSchema,
+  cantripOsVncDestinationSchema,
 } from "./cantrip-os-tunnels.js";
 
 const tunnelContentIdSchema = z.string().trim().min(1).max(200);
@@ -48,6 +49,7 @@ export const tunnelContentDestinationEndpointSchema = z.discriminatedUnion(
   [
     cantripOsTcpDestinationSchema,
     cantripOsSshDestinationSchema,
+    cantripOsVncDestinationSchema,
     z
       .object({
         kind: z.literal("worker-tcp"),
@@ -163,7 +165,8 @@ export function tunnelPublicDestinationEndpoint(
 ): TunnelPublicDestinationEndpoint {
   if (
     destination.kind === "worker-os-tcp" ||
-    destination.kind === "worker-os-ssh"
+    destination.kind === "worker-os-ssh" ||
+    destination.kind === "worker-os-vnc"
   ) {
     if (!tunnelId)
       throw new Error(

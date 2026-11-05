@@ -2115,3 +2115,66 @@ product TCP/HTTP and SSH/SFTP smoke tests passed again, as did App typechecking
 and Native tunnel contract comparison. Main's added provider-catalog export is
 explicitly reviewed in the protocol compatibility list while the legacy export
 fingerprint is retained. No new guest package or migration is introduced here.
+
+
+## Phase 4: managed VNC and shared control checkpoint (2026-11-05)
+
+Managed tunnels now include **VNC desktop** for an explicitly captured Linux
+workspace. It shares the Host/CantripOS list with TCP and SSH/SFTP. The saved
+private destination contains the canonical source capture, not a caller-chosen
+host/port/display. Admission observes the actual running desktop and pins the
+full service descriptor, including desktop and remote-manager generations.
+Existing encrypted WorkerLink framing, native loopback listeners and bounded
+TCP streams carry RFB bytes. No new public guest listener is installed; the
+guest remote package remains 0.7.0.
+
+VNC acquires the same exclusive human-control lease as the integrated viewer.
+Agent input is canceled and physically released before VNC admission. A second
+VNC client or viewer cannot take over concurrently; another workspace continues
+independently. Closing the client or retiring its attachment confirms actual
+root-service cleanup before returning control. Failed cleanup retains the old
+lease. A fresh placement-verified replacement descriptor can fence the old
+helper and retire that lease; unavailable/unchanged observations cannot.
+Background cleanup failures are logged without crashing the Worker.
+
+Actual Worker/package acceptance passed on ARM64 Docker and the installed
+AMD64 VM over verified SSH: two cases on each architecture. These used native
+CUA and a real RFB 3.8 client, received a full raw framebuffer, canceled a held
+agent drag, rejected competing controllers and kept the other workspace usable.
+Actual X11 keymap/pointer queries observed VNC-held Shift and left button, then
+both released before agent control resumed. A real remote-manager restart
+fenced the old controller, rejected the retired attachment and allowed a fresh
+native agent target. Separate physical probes killed the root manager with a
+pidfd and verified both held inputs released on both architectures. The first
+probe incorrectly waited for a carrier whose stdin was still open; corrected
+probes checked physical state before closing that half-open carrier. The first
+replacement-test fixture also parsed a non-JSON lifecycle command as JSON;
+using the actual lifecycle exit result made the unchanged assertions pass.
+
+The actual Cantrip Server API, saved encrypted VNC route, WorkerLink relay,
+Worker and guest package passed the product framebuffer test. Codex's in-app
+browser showed **Human controlling** during the external client's connection
+and returned to **Take control** after disconnect. The saved route editor
+showed its exact CantripOS workspace and VNC service. Browser local-listener
+buttons remain disabled; this does not claim a Native UI Start click. The final
+three product regression cases passed together: VNC, real SSH/SFTP and the
+same-port Host-shadow versus Linux HTTP service proof.
+
+Focused validation passed: 39 Worker control/routing/TCP tests, 32 App tunnel
+and native-forward adapter tests, 18 protocol tests, and actual App `tsc -b`.
+New control cases retain ownership after unconfirmed cleanup, recover only on
+verified replacement and prevent late cleanup from returning another owner.
+The existing Worker typecheck failure remains `transport.ts:967`'s missing
+logging subsystem. `pnpm check` still stops at the unchanged Server line budgets
+(1515/1500 and 2199/1999); those checks are recorded as failures. This milestone
+does not claim refreshed ISO/distribution or comparative stream acceptance.
+Explicit Guest-to-Host forwarding and the remaining Phase 4 acceptance continue.
+
+
+After rebasing onto the current main, the production App build, App typecheck,
+39 focused Worker tests, both real guest cases on each architecture and all
+three product smoke cases passed again. Protocol contract regeneration matched
+main (624 roots, 10483 nodes); no public Native contract changes were needed.
+The initial post-rebase launch used stale protocol build output; rebuilding the
+workspace dependencies restored the Server and Worker, and the product cases
+above passed against that rebuilt stack.

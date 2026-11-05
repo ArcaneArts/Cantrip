@@ -14,6 +14,13 @@ export class OsServiceStream extends Duplex implements TunnelStreamSocket {
   private readonly connectionId = randomUUID();
   private timeout: ReturnType<typeof setTimeout> | undefined;
   private readonly readiness: Promise<void>;
+  private confirmed = false;
+  private resolveRetired!: () => void;
+  private rejectRetired!: (error: unknown) => void;
+  private readonly retired = new Promise<void>((resolve, reject) => {
+    this.resolveRetired = resolve;
+    this.rejectRetired = reject;
+  });
 
   constructor(
     private readonly transport: OsExecutorTransport,
@@ -36,6 +43,7 @@ export class OsServiceStream extends Duplex implements TunnelStreamSocket {
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child.stdout.pause();
+    void this.retired.catch(() => {});
     this.on("error", () => {}); // The preparing caller owns errors before handoff.
     this.readiness = new Promise<void>((resolve, reject) => {
       let text = "",
@@ -124,26 +132,43 @@ export class OsServiceStream extends Duplex implements TunnelStreamSocket {
     if (this.timeout) clearTimeout(this.timeout);
     this.child.stdin.destroy();
     this.child.stdout.destroy();
-    // Explicit, generation-bound retirement confirms guest cleanup even when
-    // killing a Docker/SSH client alone would leave its remote exec alive.
-    void remoteControl<{ status: string }>(this.transport, [
+    void this.closeRemote()
+      .then(
+        () => {
+          this.resolveRetired();
+          callback(error);
+        },
+        (cleanupError) => {
+          this.rejectRetired(cleanupError);
+          callback(error ?? cleanupError);
+        },
+      )
+      .finally(() => this.child.kill());
+  }
+  private async closeRemote() {
+    if (this.confirmed) return;
+    const result = await remoteControl<{ status: string }>(this.transport, [
       "service-close",
       this.workspace,
       "--expect",
       JSON.stringify(this.descriptor),
       "--connection-id",
       this.connectionId,
-    ])
-      .then((result) => {
-        if (result.status !== "closed")
-          throw new Error("Guest service cleanup was not confirmed.");
-      })
-      .then(
-        () => callback(error),
-        (cleanupError) => callback(error ?? (cleanupError as Error)),
-      )
-      .finally(() => this.child.kill());
+    ]);
+    if (result.status !== "closed")
+      throw new Error("Guest service cleanup was not confirmed.");
+    this.confirmed = true;
   }
+  async confirmRetired() {
+    this.destroy();
+    if (this.confirmed) return;
+    try {
+      await this.retired;
+    } catch {
+      await this.closeRemote();
+    }
+  }
+
   setNoDelay() {
     return this;
   }

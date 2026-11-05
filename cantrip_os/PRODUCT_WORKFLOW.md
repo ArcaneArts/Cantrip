@@ -304,8 +304,8 @@ An attachment also pins the remote-service generation: after remote support is
 restarted, Stop and explicitly start a fresh attachment. After the OS runtime
 changes, explicitly select the current workspace when editing a stopped route.
 
-Managed SSH/SFTP is described below. VNC connections and explicit forwarding
-from Guest to Host remain subsequent Phase 4 milestones.
+Managed SSH/SFTP and VNC are described below. Explicit forwarding from Guest to
+Host remains a subsequent Phase 4 milestone.
 
 ## Managed SSH and SFTP
 
@@ -332,3 +332,31 @@ are disabled for this managed connection; explicit Cantrip development-service
 routes remain separate. Stop/retirement closes its sessions and removes the
 client's temporary host pin. Reconnection cannot adopt another SSH host key or
 account within the same local attachment.
+
+
+## Managed VNC compatibility
+
+First open the intended workspace's desktop from **Project Settings → CantripOS**.
+Create a tunnel with that exact **CantripOS** destination and choose **Linux
+service → VNC desktop**. No guest port, display number or VNC password is needed.
+The route captures the running workspace desktop when its attachment starts;
+it cannot follow a replacement desktop or fall back to the personal/Host display.
+
+In the Cantrip desktop app, start the route and open **VNC connection details**.
+Use the displayed local **Host** and **Port** fields in your VNC client. Port
+syntax varies by client; use its separate fields where available. The browser
+app can manage the saved route but cannot create a local TCP listener.
+
+Connecting a VNC client takes the same exclusive human-control lease as the
+integrated viewer. Pending agent input is canceled and held input released
+before the connection is admitted. The integrated viewer displays **Human
+controlling**; another viewer or VNC client cannot also control that desktop.
+Other workspace desktops remain independent. Closing the VNC client or stopping
+its tunnel releases held VNC input and returns control to the agent. Existing
+agent CUA sessions are retired; fresh authorized CUA calls can continue.
+
+Unconfirmed guest cleanup keeps the old human-control lease blocked. A verified
+remote-manager/desktop replacement fences the old helper before it is released.
+After a remote-manager restart, Stop and explicitly start a fresh attachment;
+a pinned old attachment cannot reconnect to the replacement. SSH and ordinary
+TCP services remain independent of desktop start/stop.
