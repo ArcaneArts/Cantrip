@@ -7,6 +7,7 @@ import Fastify from "fastify";
 import { expect, it } from "vitest";
 import {
   cantripOsSourceReceiptSchema,
+  cantripOsRecoveryResultSchema,
   workerCommandSchema,
   type WorkerCommand,
 } from "@cantrip/protocol";
@@ -47,10 +48,11 @@ it(
         loseResponse = true,
         offline = false;
       const guest = randomUUID();
+      let reportedGuest = guest;
       const records = new Map<string, unknown>();
       const commands: WorkerCommand[] = [];
       const observed = () => ({
-        guestInstanceId: guest,
+        guestInstanceId: reportedGuest,
         runtimeGeneration: runtime,
         attachment: attached ? { ownerId: "owner", workerId: "worker" } : null,
         workspaces: [
@@ -168,6 +170,76 @@ it(
       expect(workspaces.map((w: { uid: number }) => w.uid)).toEqual([
         20000, 20001,
       ]);
+      const recoveryPath = `/api/cantrip-os/${instance.id}/recovery`;
+      let expectedRecovery = {
+        attachmentGeneration: instance.attachmentGeneration,
+        runtimeGeneration: instance.runtimeGeneration,
+      };
+      const recoverInstance = async (kind: string) => {
+        const response = await post(recoveryPath, expectedRecovery);
+        expect(response.statusCode, response.body).toBe(200);
+        const result = cantripOsRecoveryResultSchema.parse(response.json());
+        expect(result.recovery.kind).toBe(kind);
+        expect(result.recovery.previousRuntimeGeneration).toBe(
+          expectedRecovery.runtimeGeneration,
+        );
+        expectedRecovery = {
+          attachmentGeneration: result.instance.attachmentGeneration,
+          runtimeGeneration: result.instance.runtimeGeneration,
+        };
+        return result;
+      };
+      const beforeRecovery = commands.length;
+      owner = "other";
+      expect((await post(recoveryPath, expectedRecovery)).statusCode).toBe(409);
+      owner = "owner";
+      expect(
+        (
+          await post(recoveryPath, {
+            ...expectedRecovery,
+            attachmentGeneration: randomUUID(),
+          })
+        ).statusCode,
+      ).toBe(409);
+      expect(
+        (
+          await post(recoveryPath, {
+            ...expectedRecovery,
+            runtimeGeneration: randomUUID(),
+          })
+        ).statusCode,
+      ).toBe(409);
+      expect((await post(recoveryPath, {})).statusCode).toBe(400);
+      expect(commands).toHaveLength(beforeRecovery);
+      await recoverInstance("same-runtime");
+      offline = true;
+      const missing = await recoverInstance("unavailable");
+      expect(missing.instance.runtimeGeneration).toBe(runtime);
+      expect(missing.instance.status).toBe("unknown");
+      expect(missing.recovery.observedRuntimeGeneration).toBeNull();
+      offline = false;
+      await recoverInstance("same-runtime");
+      reportedGuest = randomUUID();
+      const changed = await recoverInstance("identity-changed");
+      expect(changed.instance.guestInstanceId).toBe(guest);
+      expect(changed.instance.runtimeGeneration).toBe(runtime);
+      expect(changed.instance.status).toBe("unknown");
+      reportedGuest = guest;
+      await recoverInstance("same-runtime");
+      await repository.observe(
+        "owner",
+        instance.id,
+        instance.attachmentGeneration,
+        { status: "unknown", runtimeGeneration: null, lastError: null },
+        runtime,
+      );
+      expectedRecovery.runtimeGeneration = null;
+      await recoverInstance("first-observation");
+      expect(
+        commands
+          .slice(beforeRecovery)
+          .every((c) => c.type === "cantrip-os.inspect"),
+      ).toBe(true);
       const root = "/api/projects/project/cantrip-os/bindings";
       expect(
         (
@@ -296,9 +368,8 @@ it(
         ).statusCode,
       ).toBe(409);
       runtime = randomUUID();
-      expect(
-        (await post(`/api/cantrip-os/${instance.id}/refresh`)).statusCode,
-      ).toBe(200);
+      const restarted = await recoverInstance("runtime-changed");
+      expect(restarted.recovery.observedRuntimeGeneration).toBe(runtime);
       expect(
         (await repository.bindingContext("owner", binding.id))?.available,
       ).toBe(false);
@@ -342,6 +413,10 @@ it(
         (await repository.bindingContext("owner", binding.id))?.available,
       ).toBe(false);
       expect((await post(`${path}/recover`)).statusCode).toBe(200);
+      expect(
+        (await repository.attachment("owner", instance.id))?.instance
+          .runtimeGeneration,
+      ).toBe(runtime);
       expect(mutations).toBe(1);
       offline = false;
       await post(`/api/cantrip-os/${instance.id}/refresh`);

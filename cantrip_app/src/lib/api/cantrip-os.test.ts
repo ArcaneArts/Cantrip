@@ -1,5 +1,8 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import type { CantripOsSourceBindingSummary } from "@cantrip/protocol";
+import type {
+  CantripOsSourceBindingSummary,
+  CantripOsInstanceSummary,
+} from "@cantrip/protocol";
 const identity = {
   accountId: "owner",
   connectionId: "connection",
@@ -37,6 +40,7 @@ vi.mock("./worker-wire", () => ({
 import {
   prepareCantripOsProvision,
   recoverCantripOsBinding,
+  recoverCantripOsInstance,
   createCantripOsWorkspace,
   getCantripOsInstances,
   executeCantripOsRunDefinition,
@@ -194,4 +198,44 @@ it("captures the Linux Run source and preserves the operation identity without t
     runtimeGeneration: id,
     request,
   });
+});
+
+it("checks recovery for the selected attachment without accepting a replacement destination", async () => {
+  const instance: CantripOsInstanceSummary = {
+    id: "instance/id",
+    ownerId: "owner",
+    workerId: "worker",
+    guestInstanceId: "00000000-0000-4000-8000-000000000001",
+    attachmentGeneration: "00000000-0000-4000-8000-000000000002",
+    runtimeGeneration: "old-runtime",
+    name: "Linux",
+    status: "unknown",
+    lastError: null,
+    lastObservedAt: null,
+    createdAt: "2026-11-05T00:00:00.000Z",
+    updatedAt: "2026-11-05T00:00:00.000Z",
+  };
+  const observed = {
+    instance,
+    workspaces: [],
+    recovery: {
+      kind: "unavailable",
+      previousRuntimeGeneration: "old-runtime",
+      observedRuntimeGeneration: null,
+      message: "The OS could not be verified.",
+    },
+  };
+  mocks.request.mockResolvedValue(observed);
+  await expect(recoverCantripOsInstance(instance)).resolves.toEqual(observed);
+  expect(mocks.request).toHaveBeenCalledExactlyOnceWith(
+    "/api/cantrip-os/instance%2Fid/recovery",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        attachmentGeneration: instance.attachmentGeneration,
+        runtimeGeneration: "old-runtime",
+      }),
+    },
+    { expectedIdentity: identity, allowCsrfRecovery: false },
+  );
 });

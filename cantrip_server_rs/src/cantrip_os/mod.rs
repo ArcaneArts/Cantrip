@@ -3,6 +3,7 @@ pub mod chats;
 mod control;
 pub mod coordinator;
 pub mod files;
+mod recovery;
 pub(crate) mod run;
 mod run_selection;
 mod sources;

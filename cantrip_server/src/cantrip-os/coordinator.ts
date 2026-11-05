@@ -11,11 +11,13 @@ import {
   type cantripOsInspectSchema,
   type cantripOsProvisionSchema,
   type cantripOsWorkspaceCreateSchema,
+  type cantripOsRecoveryRequestSchema,
   type CantripOsDispatchScope,
 } from "@cantrip/protocol";
 import type { ServerRepository } from "../db/repository.js";
 import { CantripOsPlacementError } from "../db/repository/cantrip-os.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
+import { recoverCantripOsInstance } from "./recovery.js";
 
 const fail = (message: string): never => {
   throw new CantripOsPlacementError(message);
@@ -258,6 +260,20 @@ export class CantripOsCoordinator {
     }
   }
 
+  recoverInstance(
+    ownerId: string,
+    instanceId: string,
+    expected: ReturnType<typeof cantripOsRecoveryRequestSchema.parse>,
+  ) {
+    return recoverCantripOsInstance({
+      ownerId,
+      instanceId,
+      expected,
+      repository: this.repository,
+      inspect: (input) => this.inspect(ownerId, input),
+    });
+  }
+
   async refresh(ownerId: string, instanceId: string) {
     const { instance, transport } = await this.attachment(ownerId, instanceId);
     try {
@@ -303,9 +319,9 @@ export class CantripOsCoordinator {
         instance.attachmentGeneration,
         {
           status: "unknown",
-          runtimeGeneration: null,
+          runtimeGeneration: instance.runtimeGeneration,
           lastError:
-            "The executor could not be observed. No host fallback was attempted.",
+            "The executor could not be observed. Check recovery before continuing.",
         },
         instance.runtimeGeneration,
       );

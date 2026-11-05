@@ -2600,3 +2600,39 @@ not start in its measured environment and has no claimed performance result.
 Remote enrollment/state recovery and broader release/hardware qualification
 remain subsequent phases. The broad root check is still limited by the unrelated
 Server budgets above; focused checks and full Worker types passed.
+
+## Phase 5: explicit recovery observation checkpoint (2026-11-05)
+
+The first Phase 5 cycle adds `Check recovery` to the existing instance controls.
+Both Server implementations expose the same owner-scoped recovery endpoint and
+shared request/result contracts. The request pins the selected attachment and
+previous runtime. The owning Worker observes the existing guest package without
+starting a desktop, running a command or changing chat placement.
+
+The Node Server's real PGlite-backed HTTP fixture covers same runtime,
+unavailability followed by reconnection, a changed target identity, first
+observation, a changed runtime, wrong owner and stale selections. Only inspect
+commands were sent for recovery; the single admitted source mutation was not
+replayed. Failed ordinary refresh now also preserves the previous generation as
+historical metadata, while unknown status blocks source availability.
+
+Native contract-oracle tests and the real native Server HTTP/PostgreSQL fixture
+passed. Its fixture Worker exercised the same unavailable/identity/runtime
+transitions and rejected stale request generations. These are actual Server/API
+and database tests with controlled Worker receipts, not proof of a remote cloud
+connection. App API/project-settings tests passed (13 cases), protocol tests
+passed, and the three focused Node Server files passed (7 cases). App and Server
+type checking passed after removing an invalid type-only import; the initial
+Server typecheck failure is retained in local test logs.
+
+Required `pnpm check` stops at the existing Server line budgets:
+`build-app.ts` 1516/1500 and `chat-turn-runtime.ts` 2230/1999. No hosted ordinary
+validation was run. Phase 5 remains in progress: process/output recovery,
+workspace backups/restores, lifecycle/upgrade preservation, fresh distribution
+artifacts and real remote product acceptance are still required.
+
+Infrastructure discovery found no named SSH targets for Cantrip. The active
+cloud project contains only another application's machines; they were not used
+or modified. Remote acceptance needs an explicitly authorized disposable Linux
+target and Worker-local SSH identity/known-host references. Local fixtures do not
+establish cloud acceptance.

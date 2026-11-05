@@ -16,6 +16,7 @@ fn linux_source_contracts_match_the_actual_protocol() -> Result<()> {
         "cantripOsSourceReceiptSchema",
         "cantripOsOperationResultSchema",
         "cantripOsInspectSchema",
+        "cantripOsRecoveryRequestSchema",
         "cantripOsWorkspaceCreateSchema",
         "cantripOsBindingCreateSchema",
         "cantripOsProvisionSchema",

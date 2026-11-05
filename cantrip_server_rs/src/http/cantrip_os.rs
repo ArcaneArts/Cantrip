@@ -46,6 +46,8 @@ async fn execute(
             Some("cantripOsRunDefinitionApiSchema")
         } else if route.ends_with("/inspect") {
             Some("cantripOsInspectSchema")
+        } else if route.ends_with("/recovery") {
+            Some("cantripOsRecoveryRequestSchema")
         } else if route.ends_with("/attach") {
             Some("cantripOsAttachSchema")
         } else if route.ends_with("/workspaces") {
@@ -79,6 +81,10 @@ async fn execute(
             coordinator.attach(&owner, &input).await?
         } else if route.ends_with("/refresh") {
             coordinator.refresh(&owner, param("instanceId")?).await?
+        } else if route.ends_with("/recovery") {
+            coordinator
+                .recover_instance(&owner, param("instanceId")?, &input)
+                .await?
         } else if route.ends_with("/workspaces") {
             coordinator
                 .create_workspace(&owner, param("instanceId")?, &input)
@@ -143,6 +149,7 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         .route("/api/cantrip-os/inspect", post(handle))
         .route("/api/cantrip-os/attach", post(handle))
         .route("/api/cantrip-os/{instanceId}/refresh", post(handle))
+        .route("/api/cantrip-os/{instanceId}/recovery", post(handle))
         .route(
             "/api/cantrip-os/{instanceId}/workspaces",
             get(handle).post(handle),
