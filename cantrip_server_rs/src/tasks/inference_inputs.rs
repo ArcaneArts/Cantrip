@@ -39,6 +39,9 @@ async fn context(tx: &Transaction<'_>, owner: &str, receipt: &Value) -> Result<V
 }
 
 async fn defer_locked(tx: &Transaction<'_>, row: &Value, state: &Value) -> Result<()> {
+    if state["failedBeforeDispatch"] == true {
+        return stale();
+    }
     let receipt = &state["receipt"];
     let (chat, lane, operation, cycle) = (
         text(&receipt["chatId"])?,
@@ -94,8 +97,9 @@ impl Repository {
             let cycle=one(Executor::Transaction(tx),"SELECT to_jsonb(c)::text FROM task_dispatch_cycles c WHERE id=$1",&[&cycle]).await?.context("Task input dispatch")?;
             if cycle["physical_worker_id"]!=receipt["workerId"] || cycle["worktree_id"]!=receipt["worktreeId"] {return stale();}
             let previous=&row["round"]["inference_input"];
+            if previous["failedBeforeDispatch"]==true && previous["receipt"]["dispatch"]["cycleId"]==receipt["dispatch"]["cycleId"] && previous["receipt"]["dispatch"]["fencingToken"]==receipt["dispatch"]["fencingToken"] {return stale();}
             let attempts=if previous["deferred"]==true {previous["attemptCountBefore"].clone()}else{json!((cycle["attempt_count"].as_i64().context("Task attempts")?-1).max(0))};
-            let state=json!({"receipt":receipt,"deferred":false,"accepted":false,"dispatched":false,"allAttemptsEnforced":previous.is_null() || (previous["accepted"]==true && previous["allAttemptsEnforced"]==true),"firstDispatchedOperationId":previous["firstDispatchedOperationId"],"multipleDispatched":previous["multipleDispatched"]==true,"attemptCountBefore":attempts});
+            let state=json!({"receipt":receipt,"deferred":false,"failedBeforeDispatch":false,"accepted":false,"dispatched":false,"allAttemptsEnforced":previous.is_null() || (previous["accepted"]==true && previous["allAttemptsEnforced"]==true),"firstDispatchedOperationId":previous["firstDispatchedOperationId"],"multipleDispatched":previous["multipleDispatched"]==true,"attemptCountBefore":attempts});
             update(tx,Table::Round,&operation,&json!({"inference_input":state,"user_message_id":receipt["clientMessageId"],"execution_lane_id":receipt["executionLaneId"]}),None).await?;
             let route=text(&receipt["modelRouteId"])?;let account=receipt["providerAccountId"].as_str();let cycle_id=text(&cycle["id"])?;
             tx.query("UPDATE task_dispatch_cycles SET model_route_id=$2,provider_account_id=$3 WHERE id=$1",&[&cycle_id,&route,&account]).await?;
@@ -134,6 +138,7 @@ impl Repository {
                     let mut state = row["round"]["inference_input"].clone();
                     if state.is_null()
                         || state["deferred"] == true
+                        || state["failedBeforeDispatch"] == true
                         || state["dispatched"] == true
                         || state["receipt"] != receipt
                         || row["lane"]["state"] != "active"
@@ -181,6 +186,59 @@ impl Repository {
             .await
     }
 
+    /// Record terminal no-input evidence separately from lease-sensitive failure
+    /// settlement. A stale lease must not roll back this canonical observation.
+    pub async fn record_inference_failure(
+        &self,
+        owner: &str,
+        worker: &str,
+        proof: &Value,
+    ) -> Result<()> {
+        if proof["disposition"] != "input-not-dispatched" {
+            return Ok(());
+        }
+        let (owner, worker, proof) = (owner.to_owned(), worker.to_owned(), proof.clone());
+        self.database.transaction(|tx|Box::pin(async move {
+            if !lock_user(tx, &owner).await? { return Ok(()); }
+            let chat = text(&proof["chatId"])?;
+            let round = one(Executor::Transaction(tx),
+                "SELECT to_jsonb(r)::text FROM task_planning_rounds r JOIN tasks t ON t.chat_id=r.chat_id AND t.active_operation_id=r.id WHERE r.chat_id=$1 LIMIT 1",
+                &[&chat]).await?;
+            let Some(round) = round else { return Ok(()); };
+            let state = &round["inference_input"];
+            if state.is_null() || state["deferred"] == true { return Ok(()); }
+            let receipt = &state["receipt"];
+            if receipt["operationId"] != proof["operationId"] || receipt["chatId"] != proof["chatId"] ||
+                receipt["clientMessageId"] != proof["messageId"] || receipt["providerId"] != proof["providerId"] ||
+                receipt["workerId"] != worker.as_str() { return Ok(()); }
+            let fence = &receipt["dispatch"];
+            let (cycle_id, operation) = (text(&fence["cycleId"])?, text(&fence["operationId"])?);
+            let cycle = one(Executor::Transaction(tx),
+                "SELECT to_jsonb(c)::text FROM task_dispatch_cycles c WHERE c.id=$1 AND c.owner_id=$2 AND c.chat_id=$3 AND c.operation_id=$4 LIMIT 1 FOR UPDATE",
+                &[&cycle_id,&owner,&chat,&operation]).await?;
+            let latest = one(Executor::Transaction(tx),
+                "SELECT to_jsonb(c)::text FROM task_dispatch_cycles c WHERE c.owner_id=$1 AND c.chat_id=$2 ORDER BY c.created_at DESC,c.id DESC LIMIT 1",
+                &[&owner,&chat]).await?;
+            let Some(cycle) = cycle else { return Ok(()); };
+            if latest.as_ref().and_then(|v|v.get("id")) != cycle.get("id") { return Ok(()); }
+            let current = (cycle["fencing_token"] == fence["fencingToken"] && cycle["lease_owner"] == fence["leaseOwner"] &&
+                matches!(cycle["state"].as_str(),Some("claimed"|"running"))) ||
+                (cycle["state"] == "expired" && cycle["fencing_token"].as_i64().context("Task dispatch fence")? == fence["fencingToken"].as_i64().context("Task input fence")? + 1);
+            if !current { return Ok(()); }
+            let row = match context(tx,&owner,receipt).await {
+                Ok(row) => row,
+                Err(error) if error.is::<crate::task_dispatch::Conflict>() => return Ok(()),
+                Err(error) => return Err(error),
+            };
+            if row["round"]["inference_input"]["failedBeforeDispatch"] != true {
+                let mut state = state.clone();
+                state["failedBeforeDispatch"] = json!(true);
+                update(tx,Table::Round,&operation,&json!({"inference_input":state}),None).await?;
+            }
+            Ok(())
+        })).await
+    }
+
     pub async fn defer_inference_input(
         &self,
         owner: &str,
@@ -193,7 +251,7 @@ impl Repository {
             dispatch_fence::assert(tx,&owner,&chat,&operation,&guard,false).await?;
             let round=one(Executor::Transaction(tx),"SELECT to_jsonb(r)::text FROM task_planning_rounds r WHERE id=$1 AND chat_id=$2 LIMIT 1 FOR UPDATE",&[&operation,&chat]).await?;
             let Some(round)=round else{return Ok(false);};let state=&round["inference_input"];
-            if state.is_null() || state["accepted"]!=true || state["allAttemptsEnforced"]!=true || state["deferred"]==true || !state["firstDispatchedOperationId"].is_null(){return Ok(false);}
+            if state.is_null() || state["accepted"]!=true || state["allAttemptsEnforced"]!=true || state["deferred"]==true || state["failedBeforeDispatch"]==true || !state["firstDispatchedOperationId"].is_null(){return Ok(false);}
             let receipt=&state["receipt"];let previous=&receipt["dispatch"];
             if previous["cycleId"]!=fence["cycleId"] || previous["operationId"]!=fence["operationId"] || previous["fencingToken"].as_i64().context("Task receipt fence")?+if leased{0}else{1}!=fence["fencingToken"].as_i64().context("Task dispatch fence")? || (leased && previous["leaseOwner"]!=fence["leaseOwner"]){return Ok(false);}
             let row=context(tx,&owner,receipt).await?;
@@ -239,6 +297,7 @@ impl Repository {
             let (Some(cycle),Some(round))=(cycle,round) else{return Ok(result("retired",false));};
             if latest.as_ref().and_then(|v|v.get("id"))!=cycle.get("id") || cycle["operation_id"]!=receipt["dispatch"]["operationId"] || round["relay_request"]["userMessage"]["id"]!=receipt["clientMessageId"]{return Ok(result("retired",false));}
             let mut state=round["inference_input"].clone();
+            if state["failedBeforeDispatch"]==true{return Ok(result("retired",false));}
             if state.is_null() || state["accepted"]!=true || state["allAttemptsEnforced"]!=true{return Ok(result("unresolved",false));}
             if !round["relay_result"].is_null() || round["status"]!="running" || !matches!(cycle["state"].as_str(),Some("claimed"|"running"|"queued"|"paused"|"expired")){return Ok(result("retired",false));}
             if state["receipt"]["workerId"]!=input["workerId"] || state["receipt"]["providerId"]!=receipt["providerId"]{return Ok(result("retired",false));}

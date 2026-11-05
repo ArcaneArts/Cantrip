@@ -55,6 +55,11 @@ export function createChatTurnOutcomeRuntime({
     workerId: string,
     notification: Extract<WorkerNotification, { type: "chat.turn.outcome" }>,
   ): Promise<void> {
+    if (!notification.outcome.ok && notification.outcome.inference)
+      await repository.tasks.inferenceInputs.recordFailure(ownerId, {
+        workerId,
+        evidence: notification.outcome.inference,
+      });
     const laneContext = await repository.getChatExecutionRecoveryContext(
       ownerId,
       notification.chatId,

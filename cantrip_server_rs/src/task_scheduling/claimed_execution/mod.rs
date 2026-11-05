@@ -132,6 +132,9 @@ impl Service {
         );
         let mut cleanup_error = None;
         let result:Result<()>=async {
+            if let (Some(worker),Some(proof)) = (claim["cycle"]["physicalWorkerId"].as_str(), failure.and_then(crate::workers::inference_failure::evidence)) {
+                self.tasks.record_inference_failure(owner,worker,proof).await?;
+            }
             if self.tasks.defer_inference_input(owner,&chat,&json!({"kind":"leased","lease":claim["lease"]})).await? {
                 self.publish(owner,&chat,Some(&json!({"experience":"task","projectId":claim["projectId"]})));
                 return Ok(());

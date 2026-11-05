@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   taskInferenceInputReceiptSchema,
+  type InferenceFailureEvidence,
   type TaskInferenceInputReceipt,
   inferenceNeverStarted,
   type NativeInferenceRecovery,
@@ -32,6 +33,8 @@ export interface TaskInferenceInputState {
   firstDispatchedOperationId: string | null;
   multipleDispatched: boolean;
   attemptCountBefore: number;
+  /** A positive terminal worker failure, not a transport observation timeout. */
+  failedBeforeDispatch?: boolean;
 }
 
 function stale(): never {
@@ -121,6 +124,7 @@ export class TaskInferenceInputRepository {
     ownerId: string,
     state: TaskInferenceInputState,
   ): Promise<void> {
+    if (state.failedBeforeDispatch) stale();
     const receipt = state.receipt;
     const chatId = receipt.chatId;
     const { round, task, lane, chat, project } = await this.context(
@@ -236,9 +240,16 @@ export class TaskInferenceInputRepository {
       )
         stale();
       const previous = round.inferenceInput;
+      if (
+        previous?.failedBeforeDispatch &&
+        previous.receipt.dispatch.cycleId === receipt.dispatch.cycleId &&
+        previous.receipt.dispatch.fencingToken === receipt.dispatch.fencingToken
+      )
+        stale();
       const state: TaskInferenceInputState = {
         receipt,
         deferred: false,
+        failedBeforeDispatch: false,
         accepted: false,
         dispatched: false,
         allAttemptsEnforced:
@@ -297,6 +308,7 @@ export class TaskInferenceInputRepository {
       if (
         !state ||
         state.deferred ||
+        state.failedBeforeDispatch ||
         state.dispatched ||
         JSON.stringify(taskInferenceInputReceiptSchema.parse(state.receipt)) !==
           JSON.stringify(taskInferenceInputReceiptSchema.parse(receipt)) ||
@@ -330,6 +342,105 @@ export class TaskInferenceInputRepository {
         })
         .where(eq(schema.taskPlanningRounds.id, round.id));
       return { receipt };
+    });
+  }
+
+  /** Persist an actual worker rejection even if its lease just expired.
+   * No input authority, provider capacity or retry decision is granted here. */
+  async recordFailure(
+    ownerId: string,
+    failure:
+      | {
+          workerId: string;
+          evidence: InferenceFailureEvidence;
+        }
+      | undefined,
+  ): Promise<void> {
+    if (!failure || failure.evidence.disposition !== "input-not-dispatched")
+      return;
+    const proof = failure.evidence;
+    await this.database.transaction(async (tx) => {
+      const [owner] = await tx
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update")
+        .limit(1);
+      if (!owner) return;
+      const [found] = await tx
+        .select({ round: schema.taskPlanningRounds })
+        .from(schema.taskPlanningRounds)
+        .innerJoin(
+          schema.tasks,
+          and(
+            eq(schema.tasks.chatId, schema.taskPlanningRounds.chatId),
+            eq(schema.tasks.activeOperationId, schema.taskPlanningRounds.id),
+          ),
+        )
+        .where(eq(schema.taskPlanningRounds.chatId, proof.chatId))
+        .limit(1);
+      const state = found?.round.inferenceInput;
+      if (!state || state.deferred) return;
+      const receipt = state.receipt;
+      if (
+        receipt.operationId !== proof.operationId ||
+        receipt.chatId !== proof.chatId ||
+        receipt.clientMessageId !== proof.messageId ||
+        receipt.providerId !== proof.providerId ||
+        receipt.workerId !== failure.workerId
+      )
+        return;
+      const [cycle] = await tx
+        .select()
+        .from(schema.taskDispatchCycles)
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.id, receipt.dispatch.cycleId),
+            eq(schema.taskDispatchCycles.ownerId, ownerId),
+            eq(schema.taskDispatchCycles.chatId, receipt.chatId),
+            eq(
+              schema.taskDispatchCycles.operationId,
+              receipt.dispatch.operationId,
+            ),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const [latest] = await tx
+        .select({ id: schema.taskDispatchCycles.id })
+        .from(schema.taskDispatchCycles)
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.ownerId, ownerId),
+            eq(schema.taskDispatchCycles.chatId, receipt.chatId),
+          ),
+        )
+        .orderBy(
+          desc(schema.taskDispatchCycles.createdAt),
+          desc(schema.taskDispatchCycles.id),
+        )
+        .limit(1);
+      if (!cycle || latest?.id !== cycle.id) return;
+      const fence = receipt.dispatch;
+      const current =
+        (cycle.fencingToken === fence.fencingToken &&
+          cycle.leaseOwner === fence.leaseOwner &&
+          ["claimed", "running"].includes(cycle.state)) ||
+        (cycle.state === "expired" &&
+          cycle.fencingToken === fence.fencingToken + 1);
+      if (!current) return;
+      try {
+        const { round } = await this.context(tx, ownerId, receipt);
+        if (!round.inferenceInput?.failedBeforeDispatch)
+          await tx
+            .update(schema.taskPlanningRounds)
+            .set({
+              inferenceInput: { ...state, failedBeforeDispatch: true },
+            })
+            .where(eq(schema.taskPlanningRounds.id, round.id));
+      } catch (error) {
+        if (!(error instanceof TaskDispatchConflictError)) throw error;
+      }
     });
   }
 
@@ -371,6 +482,7 @@ export class TaskInferenceInputRepository {
         !state.accepted ||
         !state.allAttemptsEnforced ||
         state.deferred ||
+        state.failedBeforeDispatch ||
         state.firstDispatchedOperationId !== null
       )
         return false;
@@ -472,6 +584,7 @@ export class TaskInferenceInputRepository {
         return result("retired");
       const state = round.inferenceInput;
       if (!state) return result("unresolved");
+      if (state.failedBeforeDispatch) return result("retired");
       if (!state.accepted || !state.allAttemptsEnforced)
         return result("unresolved");
       if (

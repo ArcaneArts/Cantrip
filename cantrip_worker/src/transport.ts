@@ -1334,6 +1334,7 @@ export class WorkerConnection {
         this.dispatchChatTurnOutcome(request, request.command, {
           ok: false,
           error: message,
+          inference: inferenceFailure(error),
         });
       }
     }

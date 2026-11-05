@@ -99,6 +99,13 @@ impl Service {
             .publish_invalidation(owner, chat, "task", Some(context));
     }
     async fn run(&self, owner: &str, worker: &str, n: &Value) -> Result<()> {
+        if n["outcome"]["ok"] == false
+            && let Some(proof) = n["outcome"].get("inference")
+        {
+            self.tasks
+                .record_inference_failure(owner, worker, proof)
+                .await?;
+        }
         let (chat, lane) = (text(&n["chatId"])?, text(&n["executionLaneId"])?);
         let context = self.lanes.recovery_context(owner, chat, lane).await?;
         let logical = if truthy(n.get("nativeLogicalRoot")) {
