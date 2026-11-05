@@ -289,6 +289,30 @@ pub(super) fn refine(
             false
         }
         "chat-turn" => {
+            if let Some(task) = value.get("taskInferenceInput")
+                && (value.get("nativeCommandReceipt").is_some()
+                    || value["resultMode"]["kind"] != "task-encrypted"
+                    || value["resultMode"]["operation"]["operationId"]
+                        != task["dispatch"]["operationId"]
+                    || value["resultMode"]["operation"]["chatId"] != task["chatId"]
+                    || value["resultMode"]["operation"]["userMessage"]["id"]
+                        != task["clientMessageId"]
+                    || value["chatId"] != task["chatId"]
+                    || value["clientMessageId"] != task["clientMessageId"]
+                    || value["executionLaneId"] != task["executionLaneId"]
+                    || value["worktreeId"] != task["worktreeId"]
+                    || value["provider"]["id"] != task["providerId"]
+                    || value["provider"]["accountId"] != task["providerAccountId"]
+                    || value["model"]["routeId"] != task["modelRouteId"]
+                    || ["cycleId", "operationId", "leaseOwner", "fencingToken"]
+                        .iter()
+                        .any(|key| value["taskDispatchLease"][*key] != task["dispatch"][*key]))
+            {
+                issue!(
+                    &[json!("taskInferenceInput")],
+                    "Task input receipt must match its canonical round, dispatch, and placement."
+                );
+            }
             if (value["executionProfile"] == "cantrip-os") != value.get("osExecution").is_some() {
                 issue!(
                     &[json!("executionProfile")],
@@ -313,8 +337,8 @@ pub(super) fn refine(
                         "OS turns must use their exact captured project, worktree, guest cwd, and Linux capabilities."
                     );
                 }
-                if let Some(authority) = value.get("computerUseAuthority") {
-                    if authority["ownerId"] != scope["ownerId"]
+                if let Some(authority) = value.get("computerUseAuthority")
+                    && (authority["ownerId"] != scope["ownerId"]
                         || authority["workerId"] != scope["workerId"]
                         || authority["chatId"] != value["chatId"]
                         || authority["contextKind"] != "project"
@@ -334,13 +358,12 @@ pub(super) fn refine(
                             "guestWorkspaceId",
                         ]
                         .iter()
-                        .any(|key| authority["osPlacement"][*key] != scope[*key])
-                    {
-                        issue!(
-                            &[json!("computerUseAuthority")],
-                            "OS computer use must match its captured desktop placement and execution lane."
-                        );
-                    }
+                        .any(|key| authority["osPlacement"][*key] != scope[*key]))
+                {
+                    issue!(
+                        &[json!("computerUseAuthority")],
+                        "OS computer use must match its captured desktop placement and execution lane."
+                    );
                 }
             }
             let project = (value["executionProfile"] == "ide"

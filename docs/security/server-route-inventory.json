@@ -217,13 +217,13 @@
     "external-credential": 1,
     "public-authentication": 3,
     "public-bootstrap": 3,
-    "worker-control": 40,
-    "http": 530,
+    "worker-control": 41,
+    "http": 531,
     "legacyLocalOwnerRoutes": 0,
     "requestPrincipalRoutes": 427,
-    "total": 537,
+    "total": 538,
     "websocket": 7,
-    "workerCredentialRoutes": 40,
+    "workerCredentialRoutes": 41,
     "durableTables": 115,
     "agentOperations": 56,
     "workerCommands": 295,
@@ -234,15 +234,15 @@
     "repositoryMethods": 366,
     "repositoryOwnerEvidence": {
       "explicit-owner": 296,
-      "owner-parameter-unused": 18,
-      "worker-scoped": 8,
+      "owner-parameter-unused": 19,
+      "worker-scoped": 7,
       "system-lifecycle": 9,
       "delegated-or-missing-review": 35
     }
   },
   "contractSetDigests": {
     "agentOperations": "c01cedeb5ad07aa7eeee81033073509e4be8826ed45621e68200d85a2c5c61b9",
-    "applicationRoutes": "15e307bd261191e7a72a2c5347b87e56295fdd25fc6967fb7184a0f1368f7b84",
+    "applicationRoutes": "9ce11892a29c4944d41c97d2fea6b3897a90556900c170ab2e15f78118dd88c3",
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
@@ -1558,7 +1558,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/computer-use-preview.ts",
-      "line": 175,
+      "line": 179,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/computer-use/preview",
@@ -1571,7 +1571,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/computer-use-preview.ts",
-      "line": 231,
+      "line": 235,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/computer-use/preview/stop",
@@ -2897,7 +2897,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 333,
+      "line": 398,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/admit",
@@ -2910,7 +2910,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 333,
+      "line": 398,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/bind-preparation",
@@ -2923,7 +2923,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 333,
+      "line": 398,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/continue",
@@ -2936,7 +2936,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 333,
+      "line": 398,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/dispatch",
@@ -2949,7 +2949,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 152,
+      "line": 217,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/events",
@@ -2962,7 +2962,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 75,
+      "line": 130,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/inference-recovery",
@@ -2975,7 +2975,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 294,
+      "line": 359,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/pending",
@@ -2988,7 +2988,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 118,
+      "line": 183,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/permission-transition",
@@ -3001,7 +3001,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 333,
+      "line": 398,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/receipt",
@@ -3014,7 +3014,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 333,
+      "line": 398,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/settings-evidence",
@@ -3048,6 +3048,19 @@
       "contentBoundary": {
         "classification": "endpoint-protected",
         "rationale": "worker-authenticated owner/chat command admission and receipts; protected input, results, events or settings accompany immutable operation identity and server-derived exact-turn authority"
+      }
+    },
+    {
+      "boundary": "worker-control",
+      "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
+      "line": 80,
+      "method": "POST",
+      "ownerEvidence": "worker-credential",
+      "path": "/api/internal/native-commands/task-input-dispatch",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "worker-authenticated owner, server and current process generation; canonical Task round/input and dispatch-fence identities plus accepted/dispatch phase only; prompt content remains in the existing endpoint-encrypted Task round"
       }
     },
     {
@@ -10924,167 +10937,167 @@
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
       "line": 599,
       "method": "setProviderCatalogSyncState",
-      "ownerEvidence": "worker-scoped"
+      "ownerEvidence": "owner-parameter-unused"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 615,
+      "line": 616,
       "method": "reconcileProviderModelCatalog",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 636,
+      "line": 638,
       "method": "getProviderModelCatalog",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 648,
+      "line": 650,
       "method": "listProviderModelAvailability",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 659,
+      "line": 661,
       "method": "createModelProfile",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 666,
+      "line": 668,
       "method": "deleteModelProfile",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 670,
+      "line": 672,
       "method": "updateModelProfile",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 678,
+      "line": 680,
       "method": "getModelRuntime",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 686,
+      "line": 688,
       "method": "getModelRuntimeByRoute",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 693,
+      "line": 695,
       "method": "getModelRuntimes",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 709,
+      "line": 711,
       "method": "listModelProviderAccountRuntimes",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 722,
+      "line": 724,
       "method": "getOrCreateServerId",
       "ownerEvidence": "system-lifecycle"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 726,
+      "line": 728,
       "method": "createWorkerEnrollmentCode",
       "ownerEvidence": "owner-parameter-unused"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 736,
+      "line": 738,
       "method": "findReusableWorkerId",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 743,
+      "line": 745,
       "method": "getWorkerEnrollmentCodeStatus",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 753,
+      "line": 755,
       "method": "exchangeWorkerEnrollmentCode",
       "ownerEvidence": "worker-scoped"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 764,
+      "line": 766,
       "method": "authenticateWorkerCredential",
       "ownerEvidence": "worker-scoped"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 776,
+      "line": 778,
       "method": "listWorkerCredentials",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 783,
+      "line": 785,
       "method": "rotateWorkerCredential",
       "ownerEvidence": "owner-parameter-unused"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 794,
+      "line": 796,
       "method": "revokeWorkerCredential",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 808,
+      "line": 810,
       "method": "recordWorker",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 815,
+      "line": 817,
       "method": "listWorkers",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 819,
+      "line": 821,
       "method": "getWorker",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 826,
+      "line": 828,
       "method": "listWorkerManagement",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 832,
+      "line": 834,
       "method": "updateWorkerDisplayName",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 840,
+      "line": 842,
       "method": "unlinkWorker",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 844,
+      "line": 846,
       "method": "getWorkerOwnerId",
       "ownerEvidence": "worker-scoped"
     },
     {
       "file": "cantrip_server/src/db/repository-facade-identity-model.ts",
-      "line": 848,
+      "line": 850,
       "method": "onlineWorkerCount",
       "ownerEvidence": "explicit-owner"
     },

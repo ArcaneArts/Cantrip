@@ -29,14 +29,25 @@ export async function runNativeModelInventoryCases(h) {
   await seed(inventorySeed(owner));
   for (const worker of ["alpha", "beta", "�", "\ud800"]) {
     const result = await call(
-      "worker scoped Ollama inventory " + JSON.stringify(worker),
+      "configured Ollama inventory permits an actual endpoint attempt " +
+        JSON.stringify(worker),
       request(undefined, worker),
     );
     for (const r of result) {
+      assert.equal(r.workerId, worker);
+      assert.deepEqual(
+        new Set(r.models.map((model) => model.id)),
+        new Set(
+          Array.from(
+            { length: 8 },
+            (_, i) => "inventory-provider-model-" + (i + 1),
+          ),
+        ),
+      );
       assert.ok(r.models.some((m) => m.name === "Custom"));
       assert.equal(
         r.models.some((m) => m.name === "Zebra"),
-        false,
+        true,
       );
     }
   }
@@ -53,11 +64,13 @@ export async function runNativeModelInventoryCases(h) {
     "original UTF16 worker identity is not its SQL encoding",
     request(undefined, "\ud800"),
   );
-  for (const r of surrogate)
+  for (const r of surrogate) {
+    assert.equal(r.workerId, "\ud800");
     assert.equal(
       r.models.some((m) => m.name === "éclair"),
-      false,
+      true,
     );
+  }
   for (const [name, input, options] of [
     ["missing provider", request("missing"), {}],
     ["another owner", request(), { requestOwner: otherOwner }],
@@ -139,6 +152,34 @@ export async function runNativeModelInventoryCases(h) {
     );
     for (const r of scoped)
       assert.ok(r.models.some((m) => m.name === "éclair"));
+    // Account providers retain authoritative worker/account observations.
+    // Preserve the original UTF-16-versus-SQL-encoding isolation assertion in
+    // the scope where Source actually applies that filter.
+    await seed(
+      `INSERT INTO provider_model_availability(id,provider_model_id,scope_key,provider_account_id,worker_id,state) VALUES(${literal(provider + "-replacement-worker")},${literal(provider + "-catalog-1")},'replacement-account-worker',${literal(account)},'�','available')`,
+    );
+    const replacementWorker = await call(
+      kind + " actual replacement worker/account inventory",
+      request(provider, "�", account),
+    );
+    for (const r of replacementWorker) {
+      assert.equal(r.workerId, "�");
+      assert.equal(
+        r.models.some((m) => m.name === "éclair"),
+        true,
+      );
+    }
+    const originalUtf16Worker = await call(
+      kind + " original UTF16 worker is not its SQL encoding",
+      request(provider, "\ud800", account),
+    );
+    for (const r of originalUtf16Worker) {
+      assert.equal(r.workerId, "\ud800");
+      assert.equal(
+        r.models.some((m) => m.name === "éclair"),
+        false,
+      );
+    }
     await seed(
       `INSERT INTO provider_model_availability(id,provider_model_id,scope_key,provider_account_id,worker_id,state) VALUES(${literal(provider + "-global")},${literal(provider + "-catalog-1")},'server-account',${literal(account)},NULL,'unavailable')`,
     );

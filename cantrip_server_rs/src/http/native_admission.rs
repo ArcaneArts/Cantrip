@@ -197,7 +197,16 @@ async fn handle(
         body.as_ref(),
     ) {
         Ok(v) => v,
-        Err(_) => return code(400, "invalid-native-command"),
+        Err(_) => {
+            return code(
+                400,
+                match phase.as_str() {
+                    "task-input-dispatch" => "invalid-task-input-dispatch",
+                    "inference-recovery" => "invalid-inference-recovery",
+                    _ => "invalid-native-command",
+                },
+            );
+        }
     };
     let worker = input["workerId"]
         .as_js_string()

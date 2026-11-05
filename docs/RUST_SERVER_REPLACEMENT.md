@@ -18,6 +18,69 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The context and policy MCP milestone integrates `b5ea4ba84`. Rust now
+advertises fourteen operations, adding `context.compact`, `policy.list` and
+`policy.read`. Compaction retains Source's current-turn authorization result;
+the worker remains responsible for executing it. Policy reads retain project
+scope, mandatory/workspace/direct assignment order, JavaScript string trimming,
+read-only permissions and opaque content. Standalone chats retain the IDE
+unsupported-capability response. Stored-record validation and actual database
+failures preserve Source's MCP error classification, exact ORM SQL/parameters
+and 2,000 UTF-16-unit limit. Public policy readers keep their existing error
+messages and database operations.
+
+Local real HTTP and authenticated WorkerConnection comparisons pass all three
+stores and all three auth modes: 47 calls per peer/profile, 423 pairs and 846
+audit rows. Eighteen actual server restarts preserve encrypted policy content
+and assignments; endpoint crypto verifies 54 policy reads. Nine real query
+failures per peer/profile cover all eight distinct Source policy statements,
+including argument/query precedence. Private summary/body text never appears
+in observed HTTP, worker command or server log data. Independently encrypted
+peer results are compared only after verifying each actual stored envelope and
+blind index; the report retains the raw ciphertext and query failures.
+
+Both added policy result roots pass 1,026 actual Source normalization, issue
+and error-message comparisons; the existing compatible-binding target passes
+another 2,432. All 614 prior root references and all 10,365 prior ordered nodes
+remain unchanged. The combined manifest has 616 roots and 10,367 nodes.
+An incoming computer-use validation condition is expressed as a let-chain for
+strict Clippy; its predicates and short-circuit order are retained.
+
+The integrated Task input contract also checks canonical round, input, provider,
+placement and dispatch-fence bindings in the Rust worker validator, preserving
+Source issue ordering. Task dispatch and inference recovery return their distinct
+invalid-request codes. The new local oracle and HTTP suite compare validation
+and rejection boundaries; successful canonical Task dispatch and native restart
+acceptance remain required. The reviewed inventory now includes 538 routes;
+only the Task input dispatch route was added, with prior classifications retained.
+
+The integrated logical-input helper rejects an absent session identity before
+checking its thread. The admission regression follows Source #2534's supported
+standalone Agent input: it checks durable scratch-lane ownership and retains a
+rejected standalone case for the selected runtime's GUI-origin restriction.
+Standalone GUI queue coverage asserts accepted scratch ownership, encrypted
+input retention, queue revision, immutable replay and foreign-owner rejection.
+The inventory regression follows Source #2507: configured endpoint routes remain
+eligible for an authorized attempt despite past availability observations.
+Account providers retain authoritative worker/account filtering, including exact
+UTF-16 identity isolation. The local PGlite regression passes 1,580 paired cases
+and 1,359 execution-state snapshots; public policy HTTP passes 80 cases per
+runtime with actual encryption, publication and query-error assertions.
+
+Run this milestone locally:
+
+```sh
+node --import tsx scripts/server-rust/agent-policy-http-compatibility.mjs --database pglite --report /tmp/mcp-policy.json
+node --import tsx scripts/server-rust/mcp-policy-query-manifest.mjs
+node scripts/server-rust/cargo.mjs test --test mcp_policy_contracts --test mcp_operation_contracts -- --nocapture
+```
+
+Repeat the HTTP suite with `bundled-postgres` and `postgres`. These checks use
+controlled worker transport and actual endpoint crypto; they do not establish
+full native-worker compaction/lifecycle or supported-platform packaging
+acceptance. Execution-target, Run, surface and other MCP domains, coordination,
+upgrades, post-write rollback, artifacts and default cutover remain unfinished.
+
 The atomic MCP chat-delivery milestone starts from `dd9a1303f`. Rust now
 implements `chat.send` and advertises eleven MCP operations. The worker continues
 to prepare and open encrypted messages. The server checks Source's delivery

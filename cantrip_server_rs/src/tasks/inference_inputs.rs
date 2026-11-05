@@ -196,7 +196,7 @@ impl Repository {
             if state.is_null() || state["accepted"]!=true || state["allAttemptsEnforced"]!=true || state["deferred"]==true || !state["firstDispatchedOperationId"].is_null(){return Ok(false);}
             let receipt=&state["receipt"];let previous=&receipt["dispatch"];
             if previous["cycleId"]!=fence["cycleId"] || previous["operationId"]!=fence["operationId"] || previous["fencingToken"].as_i64().context("Task receipt fence")?+if leased{0}else{1}!=fence["fencingToken"].as_i64().context("Task dispatch fence")? || (leased && previous["leaseOwner"]!=fence["leaseOwner"]){return Ok(false);}
-            let row=context(tx,&owner,&receipt).await?;
+            let row=context(tx,&owner,receipt).await?;
             defer_locked(tx,&row,state).await?;
             Ok(true)
         })).await

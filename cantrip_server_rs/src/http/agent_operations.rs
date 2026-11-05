@@ -50,15 +50,19 @@ impl OperationError {
         if cause
             .downcast_ref::<crate::settings::ResponseValidationError>()
             .is_some()
+            || cause.is::<crate::policies::StoredPolicyValidationError>()
         {
             return Self::validation();
         }
         let message = cause
             .downcast_ref::<crate::database::query_error::QueryError>()
-            .map_or_else(
-                || JsString::from(cause.to_string()),
-                |error| error.message.clone(),
-            );
+            .map(|error| &error.message)
+            .or_else(|| {
+                cause
+                    .downcast_ref::<crate::policies::PolicyQueryError>()
+                    .map(|error| &error.message)
+            })
+            .map_or_else(|| JsString::from(cause.to_string()), Clone::clone);
         Self::new(
             400,
             "invalid",

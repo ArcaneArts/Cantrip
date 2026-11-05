@@ -3,22 +3,37 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "00ce3c2672229b5ce73cf987edfe57550360016bd84bd8720a3680158ec2f6a4",
-    "baselineCommit": "dd9a1303f98863276f3beabdbb723e672b7923dc",
+    "sha256": "bb79fe6922f7461532601b9ad43a8727b37b10aa3109408bea97d9bee2f750b0",
+    "baselineCommit": "b5ea4ba841083df98f1e2d0159849d485e13faec",
     "counts": {
-      "routes": 537,
+      "routes": 538,
       "workerCommands": 295,
       "durableTables": 115,
       "repositoryMethods": 366,
       "liveResources": 47
     },
-    "workingTreeNote": "Current Source inventory through dd9a1303f: 537 routes, 295 worker commands, 115 declared tables, 366 repository methods and 47 Live resources; 122 physical tables and 252 migrations. Reviewed the new worker-authenticated, process-generation-bound inference-recovery route as lifecycle/identity control metadata; all 536 previous route classifications and other inventory sets remain unchanged. Local validation only; full product/platform/replacement acceptance remains unfinished.",
+    "workingTreeNote": "Current Source inventory through b5ea4ba84: 538 routes, 295 worker commands, 115 declared tables, 366 repository methods and 47 Live resources; 122 physical tables and 254 migrations. Reviewed the new worker-authenticated, server/process-generation-bound task-input-dispatch route as canonical Task identity and dispatch-fence control metadata; all 537 prior route classifications and the other inventory sets remain unchanged. New Task HTTP and worker binding checks are local; successful full native Task execution and platform/replacement acceptance remain unfinished.",
     "migrationBackedTableCount": 122
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
   "routes": {
     "defaultStatus": "unported",
     "overrides": [
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/task-input-dispatch",
+        "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/task_input_contracts.rs",
+          "scripts/server-rust/task-input-worker-oracle.mjs",
+          "scripts/server-rust/task-input-dispatch-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Wire comparison and HTTP rejection boundaries do not establish successful canonical Task input dispatch, renewal, recovery or full native worker restart acceptance.",
+          "Supported-platform packaging, shared coordination, existing-data upgrades and post-write rollback remain required."
+        ]
+      },
       {
         "method": "GET",
         "path": "/api",
@@ -5156,10 +5171,11 @@
           "scripts/server-rust/agent-task-audit-publication-compatibility.mjs",
           "scripts/server-rust/agent-chat-read-http-compatibility.mjs",
           "scripts/server-rust/agent-context-scope-http-compatibility.mjs",
-          "scripts/server-rust/agent-chat-send-http-compatibility.mjs"
+          "scripts/server-rust/agent-chat-send-http-compatibility.mjs",
+          "scripts/server-rust/agent-policy-http-compatibility.mjs"
         ],
         "remaining": [
-          "Eleven native operations are advertised, including atomic chat.send. Other Source MCP domains remain unfinished.",
+          "Fourteen native operations are advertised, including atomic chat.send, context.compact and opaque policy.list/read. Other Source MCP domains remain unfinished.",
           "Current native and supported-platform product/packaging acceptance."
         ]
       },
@@ -5173,10 +5189,11 @@
           "scripts/server-rust/agent-task-audit-publication-compatibility.mjs",
           "scripts/server-rust/agent-chat-read-http-compatibility.mjs",
           "scripts/server-rust/agent-context-scope-http-compatibility.mjs",
-          "scripts/server-rust/agent-chat-send-http-compatibility.mjs"
+          "scripts/server-rust/agent-chat-send-http-compatibility.mjs",
+          "scripts/server-rust/agent-policy-http-compatibility.mjs"
         ],
         "remaining": [
-          "Eleven native operations are advertised, including atomic chat.send. Other Source MCP domains remain unfinished.",
+          "Fourteen native operations are advertised, including atomic chat.send, context.compact and opaque policy.list/read. Other Source MCP domains remain unfinished.",
           "Current native and supported-platform product/packaging acceptance."
         ]
       }
@@ -12375,6 +12392,27 @@
         "Other Source MCP domains and additional operation-failure/coordination boundaries.",
         "Full native worker/runtime product lifecycle, supported-platform packaging and complete deployment acceptance.",
         "Existing-data upgrades and post-write rollback, multi-instance/Redis, performance acceptance, default cutover and production Node server removal."
+      ]
+    },
+    "agentPolicyMcpOperations": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/http/agent_metadata.rs",
+        "cantrip_server_rs/src/policies/repository.rs",
+        "cantrip_server_rs/src/policies/mcp_queries.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/agent-policy-http-compatibility.mjs",
+        "scripts/server-rust/agent-policy-http-fixtures.mjs",
+        "scripts/server-rust/mcp-policy-query-manifest.mjs",
+        "cantrip_server_rs/tests/mcp_policy_contracts.rs"
+      ],
+      "validatedSubset": "context.compact retains current-turn authorization and exact mutation binding. policy.list/read retain Source project scope, assignment ordering, opaque envelopes, JS required-string trimming, read-only grants and standalone IDE rejection. Actual database errors use captured Source ORM statements and actual request-bound parameters; stored validation failures use the generic MCP error. Public policy SQL and failure messages are preserved.",
+      "localEvidence": "Local macOS all three stores x three auth modes:47 HTTP/audit cases per peer/profile,423 pairs/846 calls and audit records,18 actual server restarts,162 actual query failures across eight distinct Source statements and54 endpoint-decrypted policy reads. Two new roots pass1026 Source comparisons; existing compatible binding target passes2432. Against integratedb5ea4ba84, all614 old root references and10365 ordered nodes are unchanged; combined616 roots/10367 nodes. The incoming CUA validation condition only changes to an equivalent let-chain for strict Clippy. The Source-current PGlite admission regression passes1580 paired cases and1359 execution-state snapshots; public policy HTTP passes80 cases per runtime. Configured endpoint routes follow PR2507 actual-attempt semantics; account-worker UTF16 identity isolation remains explicitly tested.",
+      "remaining": [
+        "Other MCP domains, including execution-target, Run and surface operations.",
+        "Actual native-worker compaction and full lifecycle/product acceptance.",
+        "Supported-platform artifacts, coordination, existing-data upgrades/post-write rollback, performance and default server cutover."
       ]
     }
   },

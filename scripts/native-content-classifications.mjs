@@ -113,6 +113,10 @@ export function nativeRouteContentClassification({ path }) {
     return protectedContract(
       "worker-authenticated owned queue; encrypted prompt/input/source/result envelopes with revision, claim and native-removal acknowledgement metadata",
     );
+  if (path === "/api/internal/native-commands/task-input-dispatch")
+    return control(
+      "worker-authenticated owner, server and current process generation; canonical Task round/input and dispatch-fence identities plus accepted/dispatch phase only; prompt content remains in the existing endpoint-encrypted Task round",
+    );
   if (path === "/api/internal/native-commands/inference-recovery")
     return control(
       "worker-authenticated owner and current process generation; strict admission journal identities, lifecycle outcomes and recovery disposition only; prompt inputs remain in their existing endpoint-encrypted queues",

@@ -183,6 +183,16 @@ async fn execute_operation(service: &Arc<AuthService>, owner: &str, call: &Value
         )
         .await;
     }
+    if operation == "context.compact" || operation.starts_with("policy.") {
+        return super::agent_metadata::execute(
+            service,
+            owner,
+            &context,
+            operation,
+            &call["request"]["arguments"],
+        )
+        .await;
+    }
     if context["contextKind"] != "project" {
         return Err(OperationError::new(403, "invalid", "Alerts require a project Chat.").into());
     }

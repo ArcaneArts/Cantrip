@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { retainedPrompt, promptId } from "./native-settlement-fixtures.mjs";
-import { otherOwner } from "./project-target-state.mjs";
+import { literal, otherOwner } from "./project-target-state.mjs";
 export async function runGuiQueueCases(h) {
   const { setup, call, seed, assertUnchanged, report } = h;
   const add = (extra = {}) => ({
@@ -213,7 +213,7 @@ export async function runGuiQueueCases(h) {
       { error: true, code: "stale-queue-session" },
     ),
   );
-  for (const chat of ["task", h.standalone])
+  for (const chat of ["task"])
     await assertUnchanged("GUI ineligible context " + chat, () =>
       invoke(
         "mutate",
@@ -224,7 +224,80 @@ export async function runGuiQueueCases(h) {
         { error: true, code: "managed-session-ineligible" },
       ),
     );
+  // Source #2534 admits standalone Agent queues through scratch placement.
+  const standaloneMutation = add();
+  const standaloneOperation = options("gui-standalone-add");
+  const standalone = await invoke(
+    "mutate",
+    "standalone add retains scratch ownership",
+    standaloneMutation,
+    standaloneOperation,
+    { chat: h.standalone },
+  );
+  for (const value of standalone) {
+    assert.equal(value.receipt.status, "applied");
+    assert.equal(value.receipt.chatId, h.standalone);
+    assert.equal(value.receipt.startsExecution, false);
+    assert.equal(value.revision, 2);
+    assert.equal(value.paused, false);
+    assert.equal(value.items.length, 1);
+    assert.equal(value.items[0].id, promptId);
+    assert.deepEqual(
+      value.items[0].protectedContent,
+      standaloneMutation.prompt.protectedContent,
+    );
+  }
+  for (const state of report.snapshots.at(-1).values) {
+    const command = state.commands.find(
+      (c) => c.operation_id === standaloneOperation.operationId,
+    );
+    assert.equal(command.status, "applied");
+    assert.equal(command.identity.chatId, h.standalone);
+    assert.equal(command.identity.contextKind, "standalone");
+    assert.equal(command.identity.projectId, null);
+    assert.equal(command.identity.placementId, h.scratch);
+    assert.equal(command.intent.resumeAutonomy, true);
+    assert.deepEqual(
+      command.protected_payload,
+      standaloneMutation.prompt.protectedContent.envelope,
+    );
+    assert.equal(
+      state.queues.find((q) => q.chat_id === h.standalone).revision,
+      2,
+    );
+  }
+  await assertUnchanged("GUI standalone immutable replay", () =>
+    invoke(
+      "mutate",
+      "standalone replay",
+      standaloneMutation,
+      standaloneOperation,
+      { chat: h.standalone },
+    ),
+  );
+  const contexts = await call(
+    "gui-context",
+    "GUI standalone captured context",
+    { chat: h.standalone },
+  );
+  await assertUnchanged("GUI standalone tenant isolation", () =>
+    invoke(
+      "mutate",
+      "standalone foreign owner",
+      add(),
+      options("gui-standalone-foreign"),
+      { chat: h.standalone, context: contexts[0] },
+      {
+        requestOwner: otherOwner,
+        error: true,
+        code: "managed-session-ineligible",
+      },
+    ),
+  );
   await setup();
+  await seed(
+    `DELETE FROM managed_queue_states WHERE chat_id=${literal(h.standalone)}`,
+  );
   await seed("UPDATE chats SET automation_paused=true WHERE id='chat'");
   const paused = await invoke(
     "mutate",

@@ -56,6 +56,22 @@ export const policyWireFixtures = {
     { expectedBootstrapVersion: 2, policies: [policyCreate] },
   ],
   policyWireDetailSchema: [{ ...summary, content: policyCreate.content }],
+  policyCliWireReadResultSchema: [
+    { policy: { ...summary, content: policyCreate.content } },
+  ],
+  policyCliWireListResultSchema: [
+    { policies: [] },
+    {
+      policies: [
+        {
+          id: policyCreate.id,
+          protectedSummary: policyEnvelope,
+          mandatory: true,
+          sources: [{ type: "mandatory" }],
+        },
+      ],
+    },
+  ],
   policyWireListSchema: [
     { bootstrapVersion: 2, collectionVersion: 1, policies: [summary] },
   ],
