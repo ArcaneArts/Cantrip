@@ -52,13 +52,15 @@ export interface NativeResourceProtection {
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
-const table = "native_turn_resources";
+type ProtectionDomain =
+  "native_turn_resources" | "native_turn_suspension_sources";
 const field = "payload";
 const component = "chat-content" as const;
 
 function material(
   service: WorkerEncryptionService,
   input: NativeResourceBinding,
+  table: ProtectionDomain,
   revision?: number,
 ) {
   const binding = nativeResourceBindingSchema.parse(input);
@@ -79,7 +81,9 @@ function material(
       rowId: createHash("sha256")
         .update(
           JSON.stringify([
-            "cantrip-native-turn-resources",
+            table === "native_turn_resources"
+              ? "cantrip-native-turn-resources"
+              : "cantrip-native-suspension-source",
             1,
             serverId,
             principalId,
@@ -109,6 +113,21 @@ function material(
 export function createNativeResourceProtection(
   service: WorkerEncryptionService,
 ): NativeResourceProtection {
+  return createProtection(service, "native_turn_resources");
+}
+
+/** Separate derived key and authenticated-data domain from Core resources.
+ * A source-locator ciphertext must never decode as a Core resource snapshot. */
+export function createNativeSuspensionSourceProtection(
+  service: WorkerEncryptionService,
+): NativeResourceProtection {
+  return createProtection(service, "native_turn_suspension_sources");
+}
+
+function createProtection(
+  service: WorkerEncryptionService,
+  domain: ProtectionDomain,
+): NativeResourceProtection {
   return {
     async seal(binding, value) {
       let serialized: string | undefined;
@@ -119,7 +138,7 @@ export function createNativeResourceProtection(
       }
       if (serialized === undefined)
         throw new Error("Native resource state is not JSON data.");
-      const encryption = material(service, binding);
+      const encryption = material(service, binding, domain);
       let plaintext: Uint8Array | undefined;
       try {
         plaintext = encoder.encode(serialized);
@@ -145,6 +164,7 @@ export function createNativeResourceProtection(
       const encryption = material(
         service,
         binding,
+        domain,
         opaque.data.envelope.keyRevision,
       );
       let plaintext: Uint8Array | undefined;

@@ -23,6 +23,8 @@ import {
   type PermissionTransition,
 } from "@cantrip/protocol";
 
+import { isDurablePauseRewrite } from "./managed-native-suspension.js";
+
 export type NativeRpcId = string | number;
 export type NativeRpcFrame = Record<string, unknown>;
 export interface ManagedNativeGatewayIdentity extends ManagedSessionIdentity {
@@ -329,7 +331,10 @@ export async function createManagedNativeGateway(
           entry.admission = admission;
           if (admission.forward) {
             forwarded = { ...frame, ...admission.forward };
-            if (!managedNativeMethods.has(admission.forward.method))
+            if (
+              !managedNativeMethods.has(admission.forward.method) &&
+              !isDurablePauseRewrite(frame, admission.forward)
+            )
               throw new Error("Unsupported admitted native rewrite.");
             validateScope(forwarded);
           }

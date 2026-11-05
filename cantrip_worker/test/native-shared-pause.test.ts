@@ -82,7 +82,10 @@ describe.skipIf(!binary)("shared pause on the pinned native runtime", () => {
         f = await createNativeSharedViewFixture(
           binary!,
           `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`,
-          { planMode: action === "reply" ? "plan" : "default" },
+          {
+            planMode: action === "reply" ? "plan" : "default",
+            durablePause: true,
+          },
         );
         const gui =
           origin === "gui" ? await f.guiStart("PAUSE_START") : undefined;
@@ -217,6 +220,18 @@ describe.skipIf(!binary)("shared pause on the pinned native runtime", () => {
           const paused = await control("pause acknowledgement", pause);
           expect(paused.error).toBeUndefined();
           expect(paused.result).toEqual({ threadId: f.threadId, turnId });
+          expect(f.captures).toHaveLength(1);
+          expect(f.captures[0]!.suspension).toMatchObject({
+            threadId: f.threadId,
+            turnId,
+          });
+          expect(await f.suspensionStore.list(f.authority.chatId)).toEqual(
+            f.captures,
+          );
+          expect(await f.runtime.inspectTurnSuspension(f.threadId)).toEqual({
+            paused: true,
+            suspension: f.captures[0]!.suspension,
+          });
           expect(
             (
               await f.authority.repository.getChatExecutionContext(

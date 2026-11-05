@@ -19,7 +19,11 @@ import type { NativeSettingsDelivery } from "../native-settings-delivery.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { managedNativeMethods } from "@cantrip/protocol";
+import {
+  managedNativeMethods,
+  nativeTurnSuspensionSchema,
+  type NativeTurnSuspension,
+} from "@cantrip/protocol";
 import {
   CodexNativeRpcError,
   CodexTurnFailureError,
@@ -138,6 +142,13 @@ export interface ManagedNativeCommandSessionOptions {
   onGoalSourceSettled?(): void;
   /** Capture and deliver the exact encrypted deferral independently of runtime lifetime. */
   settleDeferred?: NativeCommandClient["settle"];
+  /** Commit native continuation and its worker-local source before confirming
+   * the existing Pause RPC to either GUI or terminal. No replay on failure. */
+  captureSuspension?(input: {
+    session: NativeCommandSession;
+    turnId: string;
+    suspension: NativeTurnSuspension;
+  }): Promise<unknown>;
   /** Encrypt the exact unconsumed direct terminal input for the canonical queue. */
   retainDeferredInput?(
     operation: ManagedNativeOperation,
@@ -205,7 +216,8 @@ export class ManagedNativeCommandSession {
       });
       try {
         await Promise.race([
-          Promise.all(this.pendingGoalOperations.values()), cancelled,
+          Promise.all(this.pendingGoalOperations.values()),
+          cancelled,
         ]);
       } finally {
         signal.removeEventListener("abort", aborted);
@@ -1232,6 +1244,24 @@ export class ManagedNativeCommandSession {
       throw new Error(
         `Native command admission rejected: ${grant.receipt.rejectionCode ?? grant.receipt.status}`,
       );
+    if (
+      operation.method === "turn/pause" &&
+      intent.paused === true &&
+      this.options.captureSuspension
+    ) {
+      const params = object(operation.frame.params)
+        ? operation.frame.params
+        : null;
+      if (!session.threadId || typeof params?.turnId !== "string")
+        throw new Error("The paused native turn identity is missing.");
+      forward = {
+        method: "turn/suspension",
+        params: {
+          threadId: session.threadId,
+          operation: { type: "pause", turnId: params.turnId },
+        },
+      };
+    }
     const execution = this.createExecution(grant.receipt, session);
     execution.expectedTurnId = operation.expectedTurnId;
     execution.autonomousAttempt = operation.autonomousAttempt;
@@ -1349,7 +1379,6 @@ export class ManagedNativeCommandSession {
       beforeForward: async () => {
         if (
           operation.method === "turn/interrupt" ||
-          operation.method === "turn/pause" ||
           operation.method === "thread/goal/clear" ||
           (operation.method === "thread/goal/set" &&
             intent.goalStatus === "paused")
@@ -1362,6 +1391,9 @@ export class ManagedNativeCommandSession {
             ),
           );
         }
+        // Pause retains this exact execution source. Native suspension releases
+        // its inference lease without terminal cancellation and resumes with
+        // fresh capacity; aborting the source here makes that impossible.
         const priorGoalResponse =
           operation.method === "thread/goal/clear" ||
           (operation.method === "thread/goal/set" &&
@@ -1598,6 +1630,42 @@ export class ManagedNativeCommandSession {
                   );
                 }
               }
+            }
+            if (
+              frame &&
+              !rejected &&
+              operation.method === "turn/pause" &&
+              intent.paused === true &&
+              this.options.captureSuspension
+            ) {
+              const params = object(operation.frame.params)
+                ? operation.frame.params
+                : null;
+              const turnId =
+                typeof params?.turnId === "string"
+                  ? params.turnId
+                  : root?.nativeTurnId;
+              if (!turnId || !session.threadId)
+                throw new Error("The paused native turn identity is missing.");
+              assertRootCurrent();
+              this.assertTransport(session);
+              const result = object(frame.result) ? frame.result : null;
+              const suspension = nativeTurnSuspensionSchema.parse(
+                result?.suspension,
+              );
+              if (
+                result?.paused !== true ||
+                suspension.threadId !== session.threadId ||
+                suspension.turnId !== turnId
+              )
+                throw new Error("The native turn was not durably suspended.");
+              await this.options.captureSuspension({
+                session,
+                turnId,
+                suspension,
+              });
+              assertRootCurrent();
+              this.assertTransport(session);
             }
             acceptance = this.persistResult(
               execution,

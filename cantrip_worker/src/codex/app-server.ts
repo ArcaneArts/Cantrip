@@ -5,6 +5,7 @@ import type { NativeResourceProtection } from "../native-resource-protection.js"
 import { handleNativeResourceProtection } from "./native-resource-control.js";
 import {
   providerUsesChatCompletions,
+  nativeTurnSuspensionSchema,
   isWorkerEndpointProviderKind,
 } from "@cantrip/protocol";
 import {
@@ -2193,6 +2194,58 @@ export class CodexAppServer implements CodexRuntime {
     }
   }
 
+  /** Called only after the admitted live Pause boundary. Native history and
+   * resource capture decide whether durable confirmation is possible. */
+  async captureTurnSuspension(threadId: string, turnId: string) {
+    const generation = this.transportGeneration;
+    const result = await this.request(
+      "turn/suspension",
+      {
+        threadId,
+        operation: { type: "pause", turnId },
+      },
+      CODEX_PAUSE_BOUNDARY_TIMEOUT_MS,
+    );
+    const suspension = nativeTurnSuspensionSchema.parse(
+      objectRecord(result)?.suspension,
+    );
+    if (
+      objectRecord(result)?.paused !== true ||
+      suspension.threadId !== threadId ||
+      suspension.turnId !== turnId ||
+      generation !== this.transportGeneration
+    )
+      throw new Error(
+        "The native suspension no longer owns the requested turn.",
+      );
+    return suspension;
+  }
+
+  /** Inspection does not attach a stored thread or release its execution hold. */
+  async inspectTurnSuspension(threadId: string) {
+    const generation = this.transportGeneration;
+    const result = await this.request("turn/suspension", {
+      threadId,
+      operation: { type: "read" },
+    });
+    const record = objectRecord(result);
+    if (
+      !record ||
+      typeof record.paused !== "boolean" ||
+      generation !== this.transportGeneration
+    )
+      throw new Error("The native suspension inspection changed transport.");
+    const suspension =
+      record.suspension == null
+        ? null
+        : nativeTurnSuspensionSchema.parse(record.suspension);
+    if (suspension && suspension.threadId !== threadId)
+      throw new Error(
+        "Native suspension inspection belongs to another thread.",
+      );
+    return { paused: record.paused, suspension };
+  }
+
   /** Latest requested automation state, regardless of older RPC acknowledgements. */
   isChatPaused(chatId: string): boolean {
     return this.#pausedChats.has(chatId);
@@ -2247,6 +2300,7 @@ export class CodexAppServer implements CodexRuntime {
       });
       return null;
     }
+    let durableRequested = false;
     try {
       const params = {
         threadId: active[1].threadId,
@@ -2256,17 +2310,32 @@ export class CodexAppServer implements CodexRuntime {
       await this.dispatchGuiNativeCommand(active[1].threadId, {
         method: "turn/pause",
         params,
-        dispatch: () => {
+        dispatch: (forward) => {
           this.assertGuiTurnCurrent(active[1], active[0]);
+          durableRequested = forward?.method === "turn/suspension";
           return this.request(
-            "turn/pause",
-            params,
+            forward?.method ?? "turn/pause",
+            forward?.params ?? params,
             CODEX_PAUSE_BOUNDARY_TIMEOUT_MS,
           );
         },
       });
     } catch (error) {
-      if (!this.#executions.activeTurns.has(active[0])) return null;
+      if (durableRequested) {
+        // Stop/completion can win while the durable boundary is pending. A
+        // failed checkpoint alone is not terminal proof; inspect native history.
+        try {
+          const history = await this.readNativeHistory(active[1].threadId);
+          const turn = history.thread.turns.find(
+            (turn) => turn.id === active[0],
+          );
+          if (turn && turn.status !== "inProgress") return null;
+        } catch {
+          /* Keep the original persistence/control error. */
+        }
+      } else if (this.#executions.activeTurns.get(active[0]) !== active[1]) {
+        return null;
+      }
       throw error;
     }
     workerLogger.event("info", `Codex turn ${paused ? "paused" : "resumed"}`, {
