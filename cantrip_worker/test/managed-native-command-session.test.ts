@@ -60,7 +60,13 @@ const receipt: NativeCommandReceipt = {
   createdAt: "2026-09-08T00:00:00Z",
   updatedAt: "2026-09-08T00:00:00Z",
 };
-function fixture(start = true) {
+function fixture(
+  start = true,
+  captureSuspension?: (input: {
+    session: NativeCommandSession;
+    turnId: string;
+  }) => Promise<unknown>,
+) {
   const order: string[] = [];
   const done = deferred<AgentTurnResult>();
   const controller = new AbortController();
@@ -168,6 +174,7 @@ function fixture(start = true) {
     identity,
     runtime: runtime as never,
     client: client as unknown as NativeCommandClient,
+    captureSuspension,
     settingsDelivery,
     onDeferredReady,
     retainDeferredInput,
@@ -230,7 +237,122 @@ const result = {
   text: "done",
 } as AgentTurnResult;
 
+const durablePauseResult = {
+  paused: true,
+  suspension: {
+    threadId: "thread",
+    turnId: "turn",
+    checkpointId: "checkpoint",
+    revision: 1,
+  },
+};
+
 describe("managed native command session", () => {
+  it.each([true, false])(
+    "keeps the original inference source alive for paused=%s",
+    async (paused) => {
+      const f = fixture();
+      const root = await f.adapter.admit(f.operation);
+      await root.beforeForward();
+      await root.settle({ result: { turn: { id: "turn" } } });
+      const calls = f.runtime.prepareAdmittedNativeExecution.mock
+        .calls as unknown as Array<
+        [{ inferenceSource: { signal: AbortSignal; assertCurrent(): void } }]
+      >;
+      const source = calls[0]![0].inferenceSource;
+      expect(source.signal.aborted).toBe(false);
+      f.client.admit.mockResolvedValueOnce({
+        receipt: {
+          ...receipt,
+          startsExecution: false,
+          operationId: "pause-control",
+          operationGeneration: "pause-generation",
+        },
+        execution: null,
+        computerUseAuthority: null,
+      });
+      const control = await f.adapter.admit({
+        ...f.operation,
+        operationId: "pause-control",
+        kind: "control",
+        method: "turn/pause",
+        frame: {
+          method: "turn/pause",
+          params: { threadId: "thread", turnId: "turn", paused },
+        },
+      });
+      await control.beforeForward();
+      expect(source.signal.aborted).toBe(false);
+      expect(() => source.assertCurrent()).not.toThrow();
+      await control.settle({ result: {} });
+      f.done.resolve(result);
+      await vi.waitFor(() => expect(f.publication.complete).toHaveBeenCalled());
+    },
+  );
+  it("confirms Pause only after native capture and worker storage acknowledge", async () => {
+    const committed = deferred<void>();
+    const capture = vi.fn(() => committed.promise);
+    const f = fixture(false, capture);
+    f.operation.method = "turn/pause";
+    f.operation.frame.method = "turn/pause";
+    f.operation.frame.params = {
+      threadId: "thread",
+      turnId: "turn",
+      paused: true,
+    };
+    const admitted = await f.adapter.admit(f.operation);
+    expect(admitted.forward).toEqual({
+      method: "turn/suspension",
+      params: {
+        threadId: "thread",
+        operation: { type: "pause", turnId: "turn" },
+      },
+    });
+    await admitted.beforeForward();
+    let confirmed = false;
+    const settlement = admitted
+      .settle({ result: durablePauseResult })
+      .then(() => {
+        confirmed = true;
+      });
+    await vi.waitFor(() => expect(capture).toHaveBeenCalledOnce());
+    expect(capture).toHaveBeenCalledWith({
+      session,
+      turnId: "turn",
+      suspension: durablePauseResult.suspension,
+    });
+    expect(confirmed).toBe(false);
+    expect(f.client.settle).not.toHaveBeenCalled();
+    committed.resolve();
+    await settlement;
+    expect(confirmed).toBe(true);
+    expect(f.client.settle).toHaveBeenCalledOnce();
+    expect(f.runtime.prepareAdmittedNativeExecution).not.toHaveBeenCalled();
+  });
+
+  it("does not confirm a failed durable capture or repeat an uncertain native action", async () => {
+    const capture = vi.fn(async () => {
+      throw new Error("actual checkpoint write failed");
+    });
+    const f = fixture(false, capture);
+    f.operation.method = "turn/pause";
+    f.operation.frame.method = "turn/pause";
+    f.operation.frame.params = {
+      threadId: "thread",
+      turnId: "turn",
+      paused: true,
+    };
+    const admitted = await f.adapter.admit(f.operation);
+    await admitted.beforeForward();
+    await expect(
+      admitted.settle({ result: durablePauseResult }),
+    ).rejects.toThrow("actual checkpoint write failed");
+    await expect(
+      admitted.settle({ result: durablePauseResult }),
+    ).rejects.toThrow("actual checkpoint write failed");
+    expect(capture).toHaveBeenCalledOnce();
+    expect(f.client.settle).not.toHaveBeenCalled();
+  });
   it.each(["interrupted", "failed"] as const)(
     "settles native %s with its authoritative terminal outcome",
     async (outcome) => {
@@ -501,6 +623,7 @@ describe("managed native command session", () => {
           },
         }),
       }),
+      undefined,
     );
     expect(f.settingsDelivery.track).not.toHaveBeenCalled();
     await admitted.beforeForward();
@@ -708,6 +831,7 @@ describe("managed native command session", () => {
         operationId: "queued-effect",
         queueClaim: { id: "claim", promptRevision: 7 },
       }),
+      undefined,
     );
     expect(dispatch).toHaveBeenCalledOnce();
   });
@@ -744,6 +868,7 @@ describe("managed native command session", () => {
       expect.objectContaining({
         expectedActivationGeneration: receipt.activationGeneration,
       }),
+      undefined,
     );
     expect(f.order).toEqual([
       "bind-preparation",
@@ -854,6 +979,7 @@ describe("managed native command session", () => {
         },
         intent: expect.objectContaining({ expectedTurnId: "turn" }),
       }),
+      { continueUnobservedGoalAdmission: true },
     );
     expect(f.client.settle).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -1244,6 +1370,7 @@ describe("managed native command session", () => {
     });
     expect(f.client.admit).toHaveBeenCalledWith(
       expect.objectContaining({ operationId: "stable-user-message" }),
+      undefined,
     );
     f.client.admit.mockResolvedValue({
       receipt: { ...receipt, status: "applied", startsExecution: false },
@@ -1326,6 +1453,7 @@ describe("managed native command session", () => {
     ).resolves.toEqual({ turnId: "turn" });
     expect(f.client.admit).toHaveBeenCalledWith(
       expect.objectContaining({ origin: "gui", method: "turn/steer", session }),
+      undefined,
     );
     expect(f.order).toEqual(["dispatch", "native", "receipt"]);
     expect(f.runtime.prepareAdmittedNativeExecution).not.toHaveBeenCalled();
@@ -1403,6 +1531,7 @@ describe("managed native command session", () => {
         method: "serverRequest/reply",
         expectedActivationGeneration: "activation",
       }),
+      undefined,
     );
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(f.runtime.resolveAdmittedNativeReply).not.toHaveBeenCalled();

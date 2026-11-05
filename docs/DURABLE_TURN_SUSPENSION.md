@@ -12,9 +12,11 @@ turn and generation. Patch `0064` preserves a held continuation through native
 runtime teardown and transport EOF. Patches `0072` and `0073` retain finalized
 CodeMode data through both gRPC and the default framed-stdio transport. Patch
 `0075` quiesces MCP clients and defers held startup until explicit resumption.
-Cantrip's current product pause remains an in-memory execution gate until the
-worker/server/client integration is delivered. Do not treat the
-existing product acknowledgement as a process-termination guarantee.
+The managed worker now captures a native checkpoint and commits its encrypted
+source locator before confirming Pause through either shared control path.
+Server control orchestration, cold execution adoption and client recovery are
+still being integrated. Do not treat the current product acknowledgement as
+the complete process-termination/resumption guarantee yet.
 
 The complete acceptance target is:
 
@@ -113,6 +115,60 @@ claiming native Codex or whole-worker resumption. Server typecheck and focused
 format checks pass. The standard check still stops at the existing application
 decomposition limits; the separate repository guard reports the existing
 `native-commands.ts` limit. Later standard-check stages did not run.
+
+## Managed worker capture and source locator
+
+An admitted managed `turn/pause` with `paused: true` forwards the exact stronger
+native `turn/suspension` Pause operation for the same thread and turn. The
+gateway permits only this exact rewrite, including its parameter shape; clients
+cannot use it to select Resume, discard, another turn, or another filesystem
+path. Requesting the durable boundary directly avoids a gap in which a separate
+live Pause reply could arrive after the original turn finished.
+
+The existing shared command settlement awaits both native checkpoint completion
+and worker source persistence before returning its receipt to GUI or terminal.
+It does not replay an uncertain mutation. Stop and ordinary completion may win
+while Pause is pending. The worker accepts that outcome only after an actual
+native history read proves the original turn ended; disappearing local process
+state alone is not durable confirmation. Existing live Resume still uses its
+admitted `turn/pause` operation and the native continuation's live path.
+
+`NativeSuspensionStore` retains immutable files beneath the worker data
+directory's `native-turn-suspensions/<scope-hash>/<chat-hash>` directories. Each
+opaque UUID locator identifies one exact checkpoint descriptor and revision.
+The source's project/placement/provider binding and actual original native home
+are encrypted with the current worker's granted chat-content key. A separate
+derived-key and authenticated-data domain prevents substitution between source
+locator ciphertext and Core resource ciphertext. No credentials, socket IDs,
+worker/runtime generations, execution grants, or conversation copy are saved in
+the source locator.
+
+Publication uses the existing private immutable-file helper: synced contents,
+atomic same-directory publication, and directory sync on POSIX. Retrying a
+publication retries actual directory sync before confirmation. Corrupt or
+unsupported bytes are retained, and an uncertain write is not success. Opening
+a locator after restart requires actual use of a fresh component grant; the
+worker's private key alone is not a fallback. Saved paths never travel through
+the public chat status. Inspection/listing does not attach or execute a turn,
+and the registry does not choose a latest checkpoint using timestamps or PIDs.
+
+These files are historical capture evidence, not execution authority or proof
+that a turn is still resumable. Native checkpoint/history inspection and the
+server's current control/owner fences must establish that at restoration.
+Original-home selection through credential changes, fresh execution/observer
+adoption, server control records and the recovery UI remain required for cold
+product Resume. Startup and reconnect must retain the hold while those paths
+are connected; the worker capture milestone does not complete that guarantee.
+
+Local capture validation used the normal development build of all 78 patches,
+fingerprint `6b953a3bbca421aef73a5dc2dd08f64db330315c3397d88f2116e4be09a59c52`.
+Its runtime verifier, worker typecheck and 94 focused worker tests passed.
+The seven-file native run passed 71 of 72 cases, including all six managed
+GUI/TUI shared-control cases. One raw CodeMode case received an ended-turn
+error from suspension Read immediately after Stop completion instead of the
+expected empty result. This terminal-cleanup inspection race remains tracked;
+it did not resume the stopped turn. The standard repository check stopped at
+existing application decomposition limits, so later stages were not run.
 
 ## Checkpoint store foundation
 

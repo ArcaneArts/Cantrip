@@ -346,6 +346,8 @@ import { SkillManager } from "./skill-manager.js";
 import { WorkerConnection } from "./transport.js";
 import { WorkerEncryptionService } from "./worker-encryption.js";
 import { createNativeResourceProtection } from "./native-resource-protection.js";
+import { NativeSuspensionStore } from "./native-suspension-store.js";
+import { createManagedSuspensionCapture } from "./codex/managed-native-suspension.js";
 import { WorktreeManager } from "./worktrees.js";
 import { CantripOsController } from "./os-executor/controller.js";
 import { OsTerminalLauncher } from "./os-executor/terminal-launcher.js";
@@ -1708,8 +1710,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             record.identity.recovery?.autonomousGoal
           ) {
             const recovery = record.identity.recovery;
-            for (const entries of managedCommandSessions.values())
-              for (const entry of entries.values()) {
+            for (const runtime of codexRuntimes.values())
+              for (const entry of managedCommandSessions
+                .get(runtime)
+                ?.values() ?? []) {
                 const identity = entry.queueScope.identity;
                 if (
                   identity.serverId === scope.serverId &&
@@ -2630,6 +2634,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       identity,
       runtime,
       client: nativeCommands,
+      captureSuspension: createManagedSuspensionCapture(
+        runtime,
+        new NativeSuspensionStore(
+          config.dataDirectory,
+          () => ({
+            serverId: workerEncryption.serverIdentity(),
+            ownerId: workerEncryption.ownerId(),
+            workerId: config.workerId,
+          }),
+          workerEncryption,
+        ),
+      ),
       settingsDelivery: nativeSettingsDelivery,
       settleDeferred: (input) => nativeDeferredSettlements.settle(input),
       retainDeferredInput: (operation) => codec.retainTerminalPrompt(operation),

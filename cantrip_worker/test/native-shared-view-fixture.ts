@@ -31,6 +31,10 @@ import type { WorkerEncryptionService } from "../src/worker-encryption.js";
 import { nativePermissionPatch } from "../src/codex/managed-native-permissions.js";
 import { createNativeCuaWorkerFixture } from "./native-cua-worker-fixture.js";
 import { computerUsePreviewAuthority } from "../../cantrip_server/src/app/routes/computer-use-preview.js";
+import { createNativeResourceProtection } from "../src/native-resource-protection.js";
+import { NativeSuspensionStore } from "../src/native-suspension-store.js";
+import { createManagedSuspensionCapture } from "../src/codex/managed-native-suspension.js";
+import type { NativeSuspensionEvidence } from "@cantrip/protocol";
 
 const { Terminal: HeadlessTerminal } = createRequire(import.meta.url)(
   "@xterm/headless",
@@ -44,6 +48,7 @@ export async function createNativeSharedViewFixture(
   options: {
     computerUse?: boolean;
     plugins?: boolean;
+    durablePause?: boolean;
     afterNativeReceipt?(method: string): void;
     planMode?: "default" | "plan";
     mcpServers?: McpServerConfiguration[];
@@ -145,6 +150,15 @@ export async function createNativeSharedViewFixture(
     });
     const f = authority;
     const { chatId, projectId, placementId, ownerId, workerId, serverId } = f;
+    const encryption = {
+      ownerId: () => ownerId,
+      serverIdentity: () => serverId,
+      registration: () => ({ principalId: "shared-native-fixture" }),
+      componentKey: (_scope: string, keyRevision = 1) => ({
+        keyRevision,
+        key: new Uint8Array(32).fill(73),
+      }),
+    } as WorkerEncryptionService;
     const model: Parameters<CodexAppServer["runTurn"]>[0]["model"] =
       f.modelRuntime.model;
     if (options.computerUse)
@@ -187,6 +201,11 @@ export async function createNativeSharedViewFixture(
         children.push(child);
         return child;
       },
+      [],
+      null,
+      null,
+      null,
+      options.durablePause ? createNativeResourceProtection(encryption) : null,
     );
     const r = runtime;
     if (options.computerUse)
@@ -237,20 +256,26 @@ export async function createNativeSharedViewFixture(
       fetch: f.fetch,
     };
     const client = new NativeCommandClient(transport);
-    const encryption = {
-      ownerId: () => ownerId,
-      serverIdentity: () => serverId,
-      componentKey: (_scope: string, keyRevision = 1) => ({
-        keyRevision,
-        key: new Uint8Array(32).fill(73),
-      }),
-    } as WorkerEncryptionService;
+    const suspensionStore = new NativeSuspensionStore(
+      data,
+      () => ({ serverId, ownerId, workerId }),
+      encryption,
+    );
+    const captures: NativeSuspensionEvidence[] = [];
+    const capture = createManagedSuspensionCapture(r, suspensionStore);
     const createAdapter = () =>
       new ManagedNativeCommandSession({
         identity,
         runtime: r,
         client,
         encryption,
+        captureSuspension: options.durablePause
+          ? async (input) => {
+              const evidence = await capture(input);
+              captures.push(evidence);
+              return evidence;
+            }
+          : undefined,
         policy: {
           cwd,
           codexHome: home,
@@ -417,6 +442,9 @@ export async function createNativeSharedViewFixture(
     return {
       authority: f,
       runtime: r,
+      captures,
+      suspensionStore,
+      home,
       threadId,
       get generation() {
         return generation;
