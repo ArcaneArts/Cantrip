@@ -31,7 +31,7 @@ async fn dispatch(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Va
     )
     .await?;
     let runtime = optional(&session["runtimeGeneration"])?;
-    guard::assert_runtime_writable(
+    guard::assert_runtime_writable_for_dispatch(
         tx,
         &chat,
         runtime.as_deref(),
@@ -40,6 +40,11 @@ async fn dispatch(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Va
             Access::Attach
         } else {
             Access::Write
+        },
+        if row["status"] == "accepted" && row["origin"] == "gui" && row["kind"] == "start" {
+            Some((operation.as_str(), generation.as_str()))
+        } else {
+            None
         },
     )
     .await?;

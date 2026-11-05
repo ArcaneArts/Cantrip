@@ -15,7 +15,7 @@ use anyhow::Result;
 use futures::FutureExt;
 use sha2::{Digest, Sha256};
 
-async fn defer(
+pub(crate) async fn defer(
     tx: &Transaction<'_>,
     owner: &str,
     worker: &str,

@@ -115,6 +115,15 @@ export class WorkerInferenceJournal {
     return this.recovered;
   }
 
+  /** Read the actual keeper, including a just-sealed current-generation owner.
+   * A cached recovery list or absence of output is not withdrawal evidence. */
+  async snapshot(): Promise<readonly InferenceJournalRecord[]> {
+    const result = snapshotSchema.parse(
+      await this.request({ action: "snapshot" }),
+    );
+    return Object.values(result.operations);
+  }
+
   key(runtimeGeneration: string, operationId: string): string {
     return createHash("sha256")
       .update(

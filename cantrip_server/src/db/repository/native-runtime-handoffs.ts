@@ -11,6 +11,7 @@ import {
   type NativeRuntimeHandoffRequest,
   type NativeRuntimeHandoffPrepared,
   type NativeSettingsBinding,
+  type InferenceJournalRecord,
 } from "@cantrip/protocol";
 import * as schema from "../schema.js";
 import type { RepositoryDatabase, RepositoryTransaction } from "./database.js";
@@ -19,6 +20,11 @@ import { NativeCommandError } from "./native-command-errors.js";
 import { ChatRuntimeContextRepository } from "./chat-runtime-context.js";
 import { NativeSettingsStateRepository } from "./native-settings-persistence.js";
 import { bindNativeSettingsRead } from "./native-settings-state.js";
+import type { ChatExecutionLaneRepository } from "./chat-execution-lanes.js";
+import {
+  reserveHandoffQueuedSource,
+  confirmHandoffQueuedSource,
+} from "./native-handoff-queued-source.js";
 
 type Row = typeof schema.nativeRuntimeHandoffs.$inferSelect;
 const activePhases = ["preparing", "prepared", "committed"];
@@ -65,7 +71,10 @@ function sameSnapshot(
 /** Owns durable routing only. Files, credentials, native operations and CLI
  * replacement are performed by the authenticated worker outside transactions. */
 export class NativeRuntimeHandoffRepository {
-  constructor(private readonly database: RepositoryDatabase) {}
+  constructor(
+    private readonly database: RepositoryDatabase,
+    private readonly lanes: ChatExecutionLaneRepository,
+  ) {}
   async inventory(ownerId: string, chatId: string) {
     const [latest] = await this.database
       .select({ operationId: schema.nativeRuntimeHandoffs.operationId })
@@ -174,7 +183,7 @@ export class NativeRuntimeHandoffRepository {
       if (!source || source.bindingId !== input.bindingId)
         fail("handoff-source-replaced");
       await this.assertSource(tx, ownerId, source!);
-      await this.assertIdle(tx, chatId);
+      const queuedSource = await reserveHandoffQueuedSource(tx, source!);
       if (state!.pending.length) fail("handoff-settings-pending");
       const target = await this.target(
         tx,
@@ -200,6 +209,7 @@ export class NativeRuntimeHandoffRepository {
           workerId: source!.workerId,
           source: source!,
           binding: source!,
+          queuedSource,
           phase: "preparing",
           targetModelRouteId: input.targetModelRouteId,
           targetProviderAccountId: input.targetProviderAccountId,
@@ -238,6 +248,8 @@ export class NativeRuntimeHandoffRepository {
   ) {
     const prepared = nativeRuntimeHandoffPreparedSchema.parse(value);
     return this.mutate(ownerId, workerId, operationId, async (tx, row) => {
+      if (row.queuedSource && !row.queuedSource.withdrawn)
+        fail("handoff-queued-source-unconfirmed");
       if (row.cancelRequested) fail("handoff-cancel-requested");
       if (row.prepared) {
         const prior = row.prepared;
@@ -460,6 +472,8 @@ export class NativeRuntimeHandoffRepository {
   ) {
     const recovered = nativeRuntimeHandoffPreparedSchema.parse(value);
     return this.mutate(ownerId, workerId, operationId, async (tx, row) => {
+      if (row.queuedSource && !row.queuedSource.withdrawn)
+        fail("handoff-queued-source-unconfirmed");
       if (
         side === "source"
           ? !["preparing", "prepared"].includes(row.phase)
@@ -628,6 +642,62 @@ export class NativeRuntimeHandoffRepository {
       return result;
     });
   }
+  async withdrawn(
+    ownerId: string,
+    workerId: string,
+    operationId: string,
+    record: InferenceJournalRecord | null,
+  ) {
+    return this.mutate(ownerId, workerId, operationId, async (tx, row) => {
+      if (row.queuedSource?.withdrawn) return row;
+      if (row.phase !== "preparing" || row.prepared || !row.queuedSource)
+        fail("handoff-phase-conflict");
+      await this.assertSource(tx, ownerId, row.binding ?? row.source);
+      await confirmHandoffQueuedSource(
+        tx,
+        this.lanes,
+        ownerId,
+        workerId,
+        row.source,
+        row.queuedSource!,
+        record,
+      );
+      await this.assertIdle(tx, row.chatId);
+      return this.update(tx, row, {
+        queuedSource: { ...row.queuedSource!, withdrawn: true },
+        errorCode: null,
+      });
+    });
+  }
+
+  /** Only a worker refusal before sealing the source may take this path. It
+   * abandons the route reservation without touching the current input or slot. */
+  async declineQueuedSource(
+    ownerId: string,
+    workerId: string,
+    operationId: string,
+  ) {
+    return this.mutate(ownerId, workerId, operationId, async (tx, row) => {
+      if (row.phase === "cancelled") return row;
+      if (
+        row.phase !== "preparing" ||
+        row.prepared ||
+        !row.queuedSource ||
+        row.queuedSource.withdrawn
+      )
+        fail("handoff-phase-conflict");
+      await this.assertSource(tx, ownerId, row.binding ?? row.source);
+      const result = await this.update(tx, row, {
+        phase: "cancelled",
+        errorCode: row.cancelRequested
+          ? null
+          : "handoff-source-no-longer-queued",
+      });
+      await queueStateChanged(tx, row.chatId);
+      return result;
+    });
+  }
+
   async failure(
     ownerId: string,
     workerId: string,

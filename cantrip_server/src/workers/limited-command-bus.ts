@@ -56,6 +56,8 @@ const EXECUTION_CONTROL_COMMANDS = new Set<WorkerCommand["type"]>([
   "chat.goal.clear",
 ]);
 function isExecutionControl(command: WorkerCommand): boolean {
+  if (command.type === "chat.runtime.handoff")
+    return command.intent === "cancel";
   if (command.type === "chat.native-control") {
     const kind = command.control?.kind;
     return kind === "interrupt" || kind === "pause" || kind === "reply";

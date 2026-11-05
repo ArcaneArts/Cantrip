@@ -1842,3 +1842,48 @@ The existing endpoint-isolation test fixture was updated to provide its five
 runtime-owned lifetime handles; it was not executed. Source review, direct
 formatting and git diff --check were performed. No tests, builds, typechecks,
 benchmarks, native/helper execution, hosted checks or computer-use validation ran.
+
+## Queued managed GUI provider transfers
+
+The existing provider/account transfer can reserve an accepted, original managed
+GUI turn that is waiting for capacity. The reservation records only its canonical
+operation identity and blocks new queue claims; it grants no inference capacity.
+The owning worker must withdraw the actual unforwarded source and obtain the
+keeper's durable no-start receipt. Both server implementations then return the
+same encrypted prompt to the canonical queue and acknowledge withdrawal in one
+transaction. Source export and destination preparation start only after the
+original command's physical and logical cleanup completes.
+
+The old command waits for that acknowledgement instead of racing ordinary failed
+turn cleanup. A lost reply retains the handoff reservation and exact withdrawal
+metadata in the existing worker journal. Recovery reads actual keeper metadata or
+an already persisted no-start deferral; a missing observer or record is not proof.
+After canonical acknowledgement and actual source closure, the keeper retires the
+exact released no-start record, including in the current worker generation.
+Retirement compares its revision and never erases running or stale records. The
+private withdrawal file is removed after the handoff reaches its terminal phase;
+housekeeping failures do not hold an inference ticket or block publication.
+The destination queues the same message through its normal worker provider pool,
+without holding an old provider slot or borrowing its FIFO position.
+
+If dispatch wins the race, only the exact previously accepted source may commit
+dispatch through the pending transfer. The worker refuses withdrawal, abandons
+the route reservation, and leaves that operation running. The UI explains that
+the turn started before transfer. New admissions and retired native generations
+remain fenced. Cancelling an unstarted transfer does not withdraw its source;
+cancelling after acknowledged withdrawal restores the original route before the
+canonical queue resumes.
+Stopping the queued input during transfer keeps that input removed. An
+acknowledgement wait suspends the command deadline without inventing another
+provider ticket, and deferred attempt telemetry closes without a failed turn or
+inference time attributed to its capacity wait.
+
+This integration covers the existing project-agent GUI handoff lifecycle. It
+does not establish provider transfer for an already-forwarded native autonomous
+cycle, suspended turn, direct Task input, standalone Chat or a response whose
+alternate-provider title is still waiting before the response reservation exists.
+Those lifecycle paths must not reuse this original-GUI no-input proof.
+
+Validation was source review, direct formatting, mechanical protocol export and
+`git diff --check`. No tests, builds, typechecks, benchmarks, native/helper
+execution, hosted checks or computer-use validation ran.

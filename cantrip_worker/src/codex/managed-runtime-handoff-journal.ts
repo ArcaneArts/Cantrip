@@ -1,9 +1,13 @@
 import { createHash } from "node:crypto";
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
-import type { NativeRuntimeHandoffState } from "@cantrip/protocol";
+import {
+  inferenceJournalRecordSchema,
+  type InferenceJournalRecord,
+  type NativeRuntimeHandoffState,
+} from "@cantrip/protocol";
 import type {
   ManagedHistoryExport,
   ManagedHistoryImport,
@@ -13,10 +17,23 @@ import {
   ensureHistoryDirectory,
   writeImmutableHistoryFile,
   serializeHistoryOperation,
+  flushHistoryDirectory,
 } from "../native-history-outbox-files.js";
 
 const id = z.string().min(1);
 const absolutePath = z.string().refine(path.isAbsolute);
+const withdrawalSchema = z
+  .object({
+    version: z.literal(1),
+    scope: z.object({ serverId: id, ownerId: id, workerId: id }).strict(),
+    chatId: id,
+    operationId: z.string().uuid(),
+    sourceBindingId: id,
+    sourceOperationId: id,
+    sourceOperationGeneration: id,
+    record: inferenceJournalRecordSchema,
+  })
+  .strict();
 const planSchema = z
   .object({
     version: z.literal(1),
@@ -76,6 +93,73 @@ export class ManagedRuntimeHandoffJournal {
       ),
       operationId,
     );
+  }
+
+  async withdrawal(
+    state: NativeRuntimeHandoffState,
+    capture: () => Promise<InferenceJournalRecord | null>,
+  ): Promise<InferenceJournalRecord | null> {
+    const source = state.queuedSource;
+    if (!source || state.workerId !== this.scope.workerId)
+      throw new Error("The handoff has no queued source for this worker.");
+    const root = this.root(state.chatId, state.operationId);
+    return serializeHistoryOperation(root, async () => {
+      const filename = path.join(root, "withdrawal.json");
+      const identity = {
+        version: 1 as const,
+        scope: this.scope,
+        chatId: state.chatId,
+        operationId: state.operationId,
+        sourceBindingId: state.source.bindingId,
+        sourceOperationId: source.operationId,
+        sourceOperationGeneration: source.operationGeneration,
+      };
+      const existing = await readOptional(filename);
+      if (existing) {
+        const { record, ...stored } = withdrawalSchema.parse(
+          JSON.parse(existing.toString("utf8")),
+        );
+        if (!isDeepStrictEqual(stored, identity))
+          throw new Error("The handoff withdrawal reservation changed.");
+        return record;
+      }
+      const record = await capture();
+      if (!record) return null;
+      const value = withdrawalSchema.parse({ ...identity, record });
+      await ensureHistoryDirectory(root);
+      await this.publish(filename, value);
+      return value.record;
+    });
+  }
+
+  async retireWithdrawal(state: NativeRuntimeHandoffState): Promise<void> {
+    if (!state.queuedSource?.withdrawn) return;
+    if (
+      !["completed", "cancelled"].includes(state.phase) ||
+      state.workerId !== this.scope.workerId
+    )
+      throw new Error(
+        "Withdrawal metadata still belongs to a pending handoff.",
+      );
+    const root = this.root(state.chatId, state.operationId);
+    await serializeHistoryOperation(root, async () => {
+      const filename = path.join(root, "withdrawal.json");
+      const bytes = await readOptional(filename);
+      if (!bytes) return;
+      const value = withdrawalSchema.parse(JSON.parse(bytes.toString("utf8")));
+      if (
+        !isDeepStrictEqual(value.scope, this.scope) ||
+        value.chatId !== state.chatId ||
+        value.operationId !== state.operationId ||
+        value.sourceBindingId !== state.source.bindingId ||
+        value.sourceOperationId !== state.queuedSource!.operationId ||
+        value.sourceOperationGeneration !==
+          state.queuedSource!.operationGeneration
+      )
+        throw new Error("Withdrawal metadata belongs to another handoff.");
+      await rm(filename, { force: true });
+      await flushHistoryDirectory(root);
+    });
   }
 
   async prepare(

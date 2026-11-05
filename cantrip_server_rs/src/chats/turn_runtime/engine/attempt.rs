@@ -200,12 +200,7 @@ impl Runtime {
             )
             .await;
     }
-    pub(super) async fn record_transport_deferred(
-        &self,
-        sink: &EventSink,
-        index: usize,
-        began: i64,
-    ) {
+    pub(super) async fn record_deferred_input(&self, sink: &EventSink, index: usize, began: i64) {
         let runtime = sink.runtime.lock().unwrap().clone();
         let mut a = self.analytics(sink, index, "cancelled", began, Some(began));
         a["finalizedAt"] = json!(

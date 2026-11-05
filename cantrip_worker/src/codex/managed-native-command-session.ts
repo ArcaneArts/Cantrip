@@ -1,4 +1,8 @@
 import type { InferenceOperationSource } from "../inference-admission.js";
+import {
+  InferenceWithdrawalError,
+  UnstartedInferenceUnavailableError,
+} from "../inference-withdrawal.js";
 import { ManagedNativeSettings } from "./managed-native-settings.js";
 import {
   isNativePermissionDeferred,
@@ -32,6 +36,7 @@ import type {
   NativeCommandSettlement,
   PermissionTransition,
   NativeThreadSettings,
+  InferenceJournalRecord,
 } from "@cantrip/protocol";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
 import { NativeCommandClient } from "../native-command-client.js";
@@ -79,6 +84,11 @@ interface Execution {
   removeBridgeListener?: () => void;
   released: Promise<void>;
   markReleased(): void;
+  routeWithdrawal?: {
+    handoffOperationId: string;
+    reason: InferenceWithdrawalError;
+    proof: Promise<InferenceJournalRecord>;
+  };
 }
 export interface ManagedNativeExecutionPublication {
   options: Omit<
@@ -99,6 +109,7 @@ export interface ManagedNativeCommandSessionOptions {
     | "transportGeneration"
     | "resolveManagedExecution"
     | "observeNativeHistory"
+    | "withdrawUnstartedInference"
   >;
   client: NativeCommandClient;
   settingsDelivery?: Pick<NativeSettingsDelivery, "track" | "record"> &
@@ -492,6 +503,52 @@ export class ManagedNativeCommandSession {
     } finally {
       if (created && execution.guiPreparation) this.clearExecution(execution);
     }
+  }
+
+  /** Retain the exact source while the existing handoff records its deferral. */
+  withdrawGuiInference(
+    handoffOperationId: string,
+    expected: { operationId: string; operationGeneration: string },
+    existingOnly = false,
+  ): Promise<InferenceJournalRecord> {
+    const execution = this.active;
+    if (
+      !execution ||
+      execution.receipt.operationId !== expected.operationId ||
+      execution.receipt.operationGeneration !== expected.operationGeneration ||
+      execution.logicalRoot?.operationId !== expected.operationId ||
+      execution.logicalRoot.operationGeneration !== expected.operationGeneration
+    )
+      throw new UnstartedInferenceUnavailableError(
+        "The reserved queued input is no longer owned by this session.",
+      );
+    if (execution.routeWithdrawal) {
+      if (execution.routeWithdrawal.handoffOperationId !== handoffOperationId)
+        throw new Error("Another handoff owns this input's withdrawal.");
+      return execution.routeWithdrawal.proof;
+    }
+    if (existingOnly)
+      throw new UnstartedInferenceUnavailableError(
+        "This handoff has not withdrawn the current input.",
+      );
+    if (execution.inferenceForwarded)
+      throw new UnstartedInferenceUnavailableError(
+        "The reserved input has already been forwarded.",
+      );
+    this.assertTransport(execution.session);
+    const reason = new InferenceWithdrawalError();
+    const proof = this.options.runtime.withdrawUnstartedInference(
+      execution.inferenceSource,
+      reason,
+    );
+    execution.routeWithdrawal = { handoffOperationId, reason, proof };
+    return proof;
+  }
+
+  acknowledgeGuiWithdrawal(handoffOperationId: string): void {
+    const withdrawal = this.active?.routeWithdrawal;
+    if (withdrawal?.handoffOperationId === handoffOperationId)
+      withdrawal.reason.acknowledge();
   }
 
   /** Bind the actual accepted GUI command before it competes for capacity. */
