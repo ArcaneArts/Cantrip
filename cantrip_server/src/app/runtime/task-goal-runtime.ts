@@ -934,10 +934,17 @@ export function createTaskGoalRuntime({
             receipt,
             observed.task.rowVersion,
             pending.guard.goalProjection,
+            observed.execution,
           );
-        if (["complete", "blocked", "failed", "paused"].includes(state))
-          releaseTaskGoalLease(lease.cycleId, lease);
-        else await reconcileTaskGoalDispatch(task, state);
+        const control = pending.guard.goalProjection.control;
+        if (["complete", "blocked", "failed", "paused"].includes(state)) {
+          if (control.leaseOwner)
+            releaseTaskGoalLease(lease.cycleId, {
+              ...receipt.dispatch,
+              fencingToken: control.fencingToken,
+              leaseOwner: control.leaseOwner,
+            });
+        } else await reconcileTaskGoalDispatch(task, state);
         publishChatInvalidation(chatId, "task", null, context);
         publishChatInvalidation(chatId, "agent-interaction", null, context);
         queueTaskScheduleTick();

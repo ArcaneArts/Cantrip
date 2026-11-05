@@ -119,8 +119,16 @@ impl Service {
                 observe_execution:true,runtime_failure:failure,dispatch_guard:Some(pending["guard"].clone()),..Observation::default()
             }).await?;
             if !truthy(observed.get("goal")) && !(pending["failedBeforeDispatch"]==true && observed["task"]["state"]=="failed") {return Ok(());}
-            let state=self.tasks.finish_goal_input_projection(owner,receipt,&observed["task"]["rowVersion"],pending["guard"].get("goalProjection")).await?;
-            if matches!(state.as_str(),Some("complete"|"blocked"|"failed"|"paused")){self.release_lease(lease);}
+            let projection=&pending["guard"]["goalProjection"];
+            let state=self.tasks.finish_goal_input_projection(owner,receipt,&observed["task"]["rowVersion"],projection,&observed["execution"]).await?;
+            if matches!(state.as_str(),Some("complete"|"blocked"|"failed"|"paused")) {
+                if !projection["control"]["leaseOwner"].is_null() {
+                    let mut control=receipt["dispatch"].clone();
+                    control["fencingToken"]=projection["control"]["fencingToken"].clone();
+                    control["leaseOwner"]=projection["control"]["leaseOwner"].clone();
+                    self.release_lease(&control);
+                }
+            }
             else {self.reconcile_one(owner,&task,&state).await?;}
             self.publish(owner,chat,"task",Some(&context));
             self.publish(owner,chat,"agent-interaction",Some(&context));

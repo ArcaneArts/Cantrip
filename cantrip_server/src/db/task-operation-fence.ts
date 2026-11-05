@@ -1,5 +1,8 @@
 import type { TaskInferenceInputReceipt } from "@cantrip/protocol";
-import type { TaskDispatchFence } from "@cantrip/protocol/task-scheduling";
+import type {
+  TaskDispatchFence,
+  TaskDispatchCycleState,
+} from "@cantrip/protocol/task-scheduling";
 import { and, desc, eq } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
@@ -36,6 +39,13 @@ export type TaskOperationDispatchFence =
   | TaskOperationOutcomeFence;
 
 export interface TaskGoalProjectionFence {
+  terminalObservedAt: string;
+  /** Current control authority observed independently of the physical input. */
+  control: {
+    fencingToken: number;
+    leaseOwner: string | null;
+    state: TaskDispatchCycleState;
+  };
   placementRevision: number;
   automationPaused: boolean;
   taskSchedulingPaused: boolean;
@@ -178,17 +188,40 @@ export async function assertTaskOperationDispatchFence(
     )
     .limit(1);
   if (!cycle) return fail();
+  const projectionControl =
+    expected.kind === "outcome" && expected.goalInferenceInputOperationId
+      ? expected.goalProjection?.control
+      : undefined;
   const expiredOutcome =
+    !projectionControl &&
     expected.kind === "outcome" &&
     cycle.state === "expired" &&
     cycle.fencingToken === expected.fencingToken + 1;
   if (
     latest?.id !== cycle.id ||
-    (cycle.fencingToken !== fence.fencingToken && !expiredOutcome)
+    (projectionControl
+      ? cycle.fencingToken !== projectionControl.fencingToken ||
+        cycle.fencingToken < fence.fencingToken
+      : cycle.fencingToken !== fence.fencingToken && !expiredOutcome)
   )
     fail();
   if (expected.kind === "outcome") {
     if (
+      projectionControl &&
+      (cycle.state !== projectionControl.state ||
+        cycle.leaseOwner !== projectionControl.leaseOwner ||
+        ![
+          "claimed",
+          "running",
+          "paused",
+          "expired",
+          "succeeded",
+          "failed",
+        ].includes(cycle.state))
+    )
+      fail();
+    if (
+      !projectionControl &&
       !expiredOutcome &&
       (![
         "claimed",
@@ -228,7 +261,13 @@ export async function assertTaskOperationDispatchFence(
       receipt.dispatch.cycleId !== expected.cycleId ||
       receipt.dispatch.operationId !== expected.operationId ||
       receipt.dispatch.fencingToken !== expected.fencingToken ||
-      receipt.dispatch.leaseOwner !== expected.leaseOwner
+      receipt.dispatch.leaseOwner !== expected.leaseOwner ||
+      (goal &&
+        expected.goalProjection &&
+        (!input.terminal ||
+          input.terminal.observedAt !==
+            expected.goalProjection.terminalObservedAt ||
+          input.terminal.projectedAt !== null))
     )
       fail();
     if (goal && receipt)

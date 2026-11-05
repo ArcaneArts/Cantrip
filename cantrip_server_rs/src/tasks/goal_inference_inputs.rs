@@ -10,6 +10,36 @@ fn outcome_guard(r: &Value) -> Value {
     guard["goalInferenceInputOperationId"] = r["operationId"].clone();
     guard
 }
+// Original physical input ownership never becomes a newer control lease.
+fn physical_input(c: &Value, r: &Value) -> Result<()> {
+    let input = &c["goal_input"];
+    if c.is_null()
+        || input.is_null()
+        || input["deferred"] == true
+        || r["kind"] != "goal"
+        || c["id"] != r["dispatch"]["cycleId"]
+        || c["chat_id"] != r["chatId"]
+        || c["operation_id"] != r["dispatch"]["operationId"]
+        || parse("taskInferenceInputReceiptSchema", &input["receipt"])?
+            != parse("taskInferenceInputReceiptSchema", r)?
+    {
+        return stale();
+    }
+    Ok(())
+}
+fn original_control(c: &Value, r: &Value) -> bool {
+    (c["fencing_token"] == r["dispatch"]["fencingToken"]
+        && c["lease_owner"] == r["dispatch"]["leaseOwner"]
+        && matches!(
+            c["state"].as_str(),
+            Some("claimed" | "running" | "paused" | "succeeded" | "failed")
+        ))
+        || (c["state"] == "expired"
+            && c["fencing_token"].as_i64()
+                == r["dispatch"]["fencingToken"]
+                    .as_i64()
+                    .and_then(|n| n.checked_add(1)))
+}
 async fn cycle(
     tx: &Transaction<'_>,
     owner: &str,
@@ -208,8 +238,8 @@ impl Repository {
                 || r["clientMessageId"]!=n["clientMessageId"] || r["executionLaneId"]!=n["executionLaneId"]
                 || r["worktreeId"]!=n["worktreeId"] || r["dispatch"]["cycleId"]!=f["cycleId"] || r["dispatch"]["operationId"]!=f["operationId"]
                 || r["dispatch"]["fencingToken"]!=f["fencingToken"] || r["dispatch"]["leaseOwner"]!=f["leaseOwner"] {return stale();}
-            dispatch_fence::assert(tx,&owner,&chat,&text(&f["operationId"])?,
-                &outcome_guard(r),true).await?;
+            physical_input(&c,r)?;
+            let owns_control=original_control(&c,r);
             let row=context(tx,&owner,r,true,true).await?;
             let response_key=format!("assistant:{}",text(&r["clientMessageId"])?);
             let message=if n["outcome"]["ok"]==true {
@@ -231,12 +261,12 @@ impl Repository {
                     Some(&json!({"executionLaneId":r["executionLaneId"],"worktreeId":r["worktreeId"]}))).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?)
             }else{None};
             if s["terminal"].is_null() {let mut state=s.clone();state["terminal"]=terminal.clone();write(tx,&text(&c["id"])?,&state).await?;}
-            if !ok && s["accepted"]==true && s["allAttemptsEnforced"]==true && s["firstDispatchedOperationId"].is_null()
+            if owns_control && !ok && s["accepted"]==true && s["allAttemptsEnforced"]==true && s["firstDispatchedOperationId"].is_null()
                 && s["failedBeforeDispatch"]!=true && (row["chat"]["automation_paused"]==true || row["project"]["task_scheduling_paused"]==true || row["task"]["state"]=="paused") {
                 let mut state=s.clone();state["terminal"]=terminal.clone();defer_locked(tx,&owner,&c,&state).await?;
                 return Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":true,"chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})));
             }
-            if record_only {return Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":false,"chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})));}
+            if record_only || !owns_control {return Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":false,"chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})));}
             let lane=text(&r["executionLaneId"])?;
             if n["outcome"]["ok"]==true {crate::chats::execution_lanes::update_runtime_in_transaction(tx,&chat,&lane,n["outcome"]["result"]["threadId"].as_str(),"ready").await?;}
             let finished=crate::chats::execution_lanes::finish_in_transaction(tx,&chat,&lane,if ok{"idle"}else{"failed"},
@@ -261,12 +291,13 @@ impl Repository {
             if let Some(expected)=expected {
                 if parse("taskInferenceInputReceiptSchema",&expected)?!=parse("taskInferenceInputReceiptSchema",r)? {return Ok(None);}
             }
+            physical_input(&c,r)?;
             let mut guard=outcome_guard(r);
-            dispatch_fence::assert(tx,&owner,&chat,&text(&guard["operationId"])?,&guard,false).await?;
             let row=context(tx,&owner,r,true,true).await?;
             if !s["terminal"]["threadId"].is_null() && row["lane"]["codex_thread_id"]!=s["terminal"]["threadId"] {return stale();}
-            guard["goalProjection"]=json!({"placementRevision":row["chat"]["placement_revision"],"automationPaused":row["chat"]["automation_paused"],
+            guard["goalProjection"]=json!({"terminalObservedAt":s["terminal"]["observedAt"],"control":json!({"fencingToken":c["fencing_token"],"leaseOwner":c["lease_owner"],"state":c["state"]}),"placementRevision":row["chat"]["placement_revision"],"automationPaused":row["chat"]["automation_paused"],
                 "taskSchedulingPaused":row["project"]["task_scheduling_paused"],"threadId":row["lane"]["codex_thread_id"]});
+            dispatch_fence::assert(tx,&owner,&chat,&text(&guard["operationId"])?,&guard,false).await?;
             Ok(Some(json!({"receipt":r,"terminal":s["terminal"],"guard":guard,
                 "failedBeforeDispatch":s["failedBeforeDispatch"]==true && s["firstDispatchedOperationId"].is_null()})))
         })).await;
@@ -281,25 +312,31 @@ impl Repository {
         owner: &str,
         r: &Value,
         version: &Value,
-        projection: Option<&Value>,
+        projection: &Value,
+        execution: &Value,
     ) -> Result<Value> {
         let (owner, r, version) = (owner.to_owned(), r.clone(), version.clone());
-        let projection = projection.cloned();
+        let (projection, execution) = (projection.clone(), execution.clone());
         self.database.transaction(|tx|Box::pin(async move {
             let chat=text(&r["chatId"])?;let mut guard=outcome_guard(&r);
-            if let Some(projection)=projection {guard["goalProjection"]=projection;}
+            guard["goalProjection"]=projection.clone();
             dispatch_fence::assert(tx,&owner,&chat,&text(&guard["operationId"])?,&guard,false).await?;
             let c=cycle(tx,&owner,&chat,Some(&text(&r["dispatch"]["cycleId"])?)).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?;
             let s=&c["goal_input"];
-            if s["terminal"].is_null() || s["deferred"]==true {return stale();}
+            if s["terminal"].is_null() || !s["terminal"]["projectedAt"].is_null() || s["deferred"]==true {return stale();}
             let row=context(tx,&owner,&r,true,true).await?;
             let task=&row["task"];
-            if task["row_version"]!=version || (!s["terminal"]["threadId"].is_null() && row["lane"]["codex_thread_id"]!=s["terminal"]["threadId"]) {return stale();}
+            if (execution.is_null() && !(s["failedBeforeDispatch"]==true && s["firstDispatchedOperationId"].is_null() && task["state"]=="failed")) ||
+                (!execution.is_null() && !projection["threadId"].is_null() && execution["threadId"]!=projection["threadId"]) || task["row_version"]!=version || (!s["terminal"]["threadId"].is_null() && row["lane"]["codex_thread_id"]!=s["terminal"]["threadId"]) {return stale();}
             if task["state"]=="failed" {
                 super::retries::note_failure_in(tx,&owner,&chat,&format!("goal-input:{}",text(&r["operationId"])?),
                     super::failure_kind::classify(&task["last_error"]["code"]),&guard).await?;
             }else if matches!(task["state"].as_str(),Some("complete"|"blocked")) {
                 super::retries::clear_pending_in(tx,&owner,&chat,&guard).await?;
+            }
+            if execution["status"]!="running" && matches!(task["state"].as_str(),Some("complete"|"blocked"|"failed")) {
+                crate::chats::execution_lanes::finish_in_transaction(tx,&chat,&text(&r["executionLaneId"])?,
+                    if task["state"]=="failed"{"failed"}else{"idle"},&json!({"expectedActivatedAt":r["executionLaneActivatedAt"]})).await?;
             }
             let mut state=s.clone();state["terminal"]["projectedAt"]=now();
             let id=text(&c["id"])?;write(tx,&id,&state).await?;
@@ -323,20 +360,37 @@ impl Repository {
             lease.clone(),
             turn.clone(),
         );
-        self.database.transaction(|tx|Box::pin(async move {
-            let c=cycle(tx,&owner,&chat,Some(&text(&lease["cycleId"])?)).await?;
-            let Some(c)=c else{return Ok(None);};let s=&c["goal_input"];let r=&s["receipt"];
-            if s.is_null() || s["deferred"]==true || r["clientMessageId"]!=turn["clientMessageId"]
-                || r["executionLaneId"]!=turn["executionLaneId"] || r["executionLaneActivatedAt"]!=turn["executionLaneActivatedAt"]
-                || r["dispatch"]["operationId"]!=lease["operationId"] || r["dispatch"]["fencingToken"]!=lease["fencingToken"]
-                || r["dispatch"]["leaseOwner"]!=lease["leaseOwner"] {return Ok(None);}
-            if let Err(error)=dispatch_fence::assert(tx,&owner,&chat,&text(&lease["operationId"])?,
-                &json!({"kind":"leased","lease":lease,"goalInferenceInputOperationId":r["operationId"]}),true).await {
-                if error.is::<crate::task_dispatch::Conflict>() {return Ok(None);}
-                return Err(error);
-            }
-            Ok(Some(r.clone()))
-        })).await
+        let result = self
+            .database
+            .transaction(|tx| {
+                Box::pin(async move {
+                    let c = cycle(tx, &owner, &chat, Some(&text(&lease["cycleId"])?)).await?;
+                    let Some(c) = c else {
+                        return Ok(None);
+                    };
+                    let s = &c["goal_input"];
+                    let r = &s["receipt"];
+                    if s.is_null()
+                        || s["deferred"] == true
+                        || r["clientMessageId"] != turn["clientMessageId"]
+                        || r["executionLaneId"] != turn["executionLaneId"]
+                        || r["executionLaneActivatedAt"] != turn["executionLaneActivatedAt"]
+                        || r["dispatch"]["operationId"] != lease["operationId"]
+                        || r["dispatch"]["fencingToken"] != lease["fencingToken"]
+                        || r["dispatch"]["leaseOwner"] != lease["leaseOwner"]
+                    {
+                        return Ok(None);
+                    }
+                    physical_input(&c, r)?;
+                    context(tx, &owner, r, true, true).await?;
+                    Ok(Some(r.clone()))
+                })
+            })
+            .await;
+        match result {
+            Err(e) if e.downcast_ref::<crate::task_dispatch::Conflict>().is_some() => Ok(None),
+            other => other,
+        }
     }
     pub async fn pause_goal_input(
         &self,

@@ -83,23 +83,48 @@ pub(super) async fn assert(
     let Some(cycle) = cycle else {
         return Err(crate::task_dispatch::Conflict::stale().into());
     };
-    let expired_outcome = outcome
+    let projection_control = if outcome && expected.get("goalInferenceInputOperationId").is_some() {
+        expected
+            .get("goalProjection")
+            .and_then(|p| p.get("control"))
+    } else {
+        None
+    };
+    let expired_outcome = projection_control.is_none()
+        && outcome
         && cycle["state"] == "expired"
         && cycle["fencing_token"].as_i64()
             == fence["fencingToken"]
                 .as_i64()
                 .and_then(|n| n.checked_add(1));
     let current = latest.as_ref().and_then(|v| v.get("id")) == cycle.get("id")
-        && (cycle["fencing_token"] == fence["fencingToken"] || expired_outcome);
+        && if let Some(control) = projection_control {
+            cycle["fencing_token"] == control["fencingToken"]
+                && cycle["fencing_token"]
+                    .as_i64()
+                    .zip(fence["fencingToken"].as_i64())
+                    .is_some_and(|(current, original)| current >= original)
+        } else {
+            cycle["fencing_token"] == fence["fencingToken"] || expired_outcome
+        };
     let valid = if outcome {
-        expired_outcome
-            || ((matches!(cycle["state"].as_str(), Some("claimed" | "running"))
-                || (expected.get("goalInferenceInputOperationId").is_some()
-                    && matches!(
-                        cycle["state"].as_str(),
-                        Some("paused" | "succeeded" | "failed")
-                    )))
-                && cycle["lease_owner"] == fence["leaseOwner"])
+        if let Some(control) = projection_control {
+            cycle["state"] == control["state"]
+                && cycle["lease_owner"] == control["leaseOwner"]
+                && matches!(
+                    cycle["state"].as_str(),
+                    Some("claimed" | "running" | "paused" | "expired" | "succeeded" | "failed")
+                )
+        } else {
+            expired_outcome
+                || ((matches!(cycle["state"].as_str(), Some("claimed" | "running"))
+                    || (expected.get("goalInferenceInputOperationId").is_some()
+                        && matches!(
+                            cycle["state"].as_str(),
+                            Some("paused" | "succeeded" | "failed")
+                        )))
+                    && cycle["lease_owner"] == fence["leaseOwner"])
+        }
     } else if leased {
         let valid_state = if association {
             // Binding history may trail a fast completion. It never revives or
@@ -134,6 +159,11 @@ pub(super) async fn assert(
                 || r["dispatch"]["operationId"] != fence["operationId"]
                 || r["dispatch"]["fencingToken"] != fence["fencingToken"]
                 || r["dispatch"]["leaseOwner"] != fence["leaseOwner"]
+                || expected.get("goalProjection").is_some_and(|p| {
+                    input["terminal"].is_null()
+                        || input["terminal"]["observedAt"] != p["terminalObservedAt"]
+                        || !input["terminal"]["projectedAt"].is_null()
+                })
             {
                 return Err(crate::task_dispatch::Conflict::stale().into());
             }
