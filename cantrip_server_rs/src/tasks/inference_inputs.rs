@@ -84,6 +84,9 @@ async fn defer_locked(tx: &Transaction<'_>, row: &Value, state: &Value) -> Resul
 
 impl Repository {
     pub async fn prepare_inference_input(&self, owner: &str, input: &Value) -> Result<Value> {
+        if input["kind"] == "goal" {
+            return self.prepare_goal_inference_input(owner, input).await;
+        }
         let mut receipt = input.clone();
         receipt["operationId"] = json!(uuid::Uuid::new_v4().to_string());
         let receipt = parse("taskInferenceInputReceiptSchema", &receipt)?;
@@ -116,6 +119,11 @@ impl Repository {
         receipt: &Value,
         phase: &str,
     ) -> Result<Value> {
+        if receipt["kind"] == "goal" {
+            return self
+                .dispatch_goal_inference_input(owner, worker, receipt, phase)
+                .await;
+        }
         if receipt["workerId"] != worker {
             return stale();
         }
@@ -194,6 +202,8 @@ impl Repository {
         worker: &str,
         proof: &Value,
     ) -> Result<()> {
+        self.record_goal_inference_failure(owner, worker, proof)
+            .await?;
         if proof["disposition"] != "input-not-dispatched" {
             return Ok(());
         }
@@ -245,6 +255,9 @@ impl Repository {
         chat: &str,
         guard: &Value,
     ) -> Result<bool> {
+        if let Some(result) = self.defer_goal_inference_input(owner, chat, guard).await? {
+            return Ok(result);
+        }
         let (owner, chat, guard) = (owner.to_owned(), chat.to_owned(), guard.clone());
         self.database.transaction(|tx|Box::pin(async move {
             let leased=guard["kind"]=="leased";let fence=if leased{&guard["lease"]}else{&guard};let operation=text(&fence["operationId"])?;
@@ -261,6 +274,9 @@ impl Repository {
     }
 
     pub async fn reconcile_inference_input(&self, owner: &str, input: &Value) -> Result<Value> {
+        if input["record"]["identity"]["recovery"]["taskInput"]["kind"] == "goal" {
+            return self.reconcile_goal_inference_input(owner, input).await;
+        }
         let record = &input["record"];
         let receipt = &record["identity"]["recovery"]["taskInput"];
         let result = |disposition: &str, no_input: bool| {

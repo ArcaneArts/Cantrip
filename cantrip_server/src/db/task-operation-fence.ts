@@ -4,12 +4,15 @@ import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import * as schema from "./schema.js";
 import { TaskDispatchConflictError } from "./task-dispatch.js";
+import { projectChatExecutionLock } from "./repository/chat-execution-lock.js";
 
 export type TaskOperationLeaseFence = {
   kind: "leased";
   lease: TaskDispatchFence;
   /** undefined preserves other writers; null requires a legacy round without a receipt. */
   inferenceInputOperationId?: string | null;
+  /** Explicit Task Goal input, separate from the finalizer's round receipt. */
+  goalInferenceInputOperationId?: string;
 };
 export type TaskOperationDispatchFence =
   | TaskOperationLeaseFence
@@ -96,6 +99,48 @@ export async function assertTaskOperationDispatchFence(
         cycle.leaseExpiresAt !== null &&
         cycle.leaseExpiresAt.getTime() > Date.now();
     if (!sameOwner || !valid) fail();
+    if (expected.goalInferenceInputOperationId !== undefined) {
+      const input = cycle.goalInput;
+      if (
+        !input ||
+        input.deferred ||
+        input.receipt.operationId !== expected.goalInferenceInputOperationId ||
+        input.receipt.dispatch.fencingToken !== cycle.fencingToken ||
+        input.receipt.dispatch.leaseOwner !== cycle.leaseOwner
+      )
+        fail();
+      if (!input) return fail();
+      const receipt = input.receipt;
+      await transaction.execute(projectChatExecutionLock(ownerId, chatId));
+      const [chat] = await transaction
+        .select()
+        .from(schema.chats)
+        .where(eq(schema.chats.id, chatId))
+        .for("update")
+        .limit(1);
+      const [lane] = await transaction
+        .select()
+        .from(schema.chatExecutionLanes)
+        .where(
+          and(
+            eq(schema.chatExecutionLanes.id, receipt.executionLaneId),
+            eq(schema.chatExecutionLanes.chatId, chatId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (
+        !chat ||
+        chat.archivedAt ||
+        chat.activeWorkerId !== receipt.workerId ||
+        chat.activeWorktreeId !== receipt.worktreeId ||
+        !lane ||
+        lane.activatedAt?.toISOString() !== receipt.executionLaneActivatedAt ||
+        lane.workerId !== receipt.workerId ||
+        lane.worktreeId !== receipt.worktreeId
+      )
+        fail();
+    }
     if (expected.inferenceInputOperationId !== undefined) {
       // Receipt replacement/defer holds this same owner/cycle lock. Validate
       // inside the round write transaction, not in a prior heartbeat/read.

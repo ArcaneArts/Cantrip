@@ -32,6 +32,19 @@ impl Service {
             entry.timer.abort();
         }
     }
+    pub(super) fn release_lease(&self, lease: &Value) {
+        let Some(cycle) = lease["cycleId"].as_js_string() else {
+            return;
+        };
+        let mut state = self.leases.lock().unwrap();
+        if state.retained.get(cycle).is_some_and(|r| {
+            r.lease["fencingToken"] == lease["fencingToken"]
+                && r.lease["leaseOwner"] == lease["leaseOwner"]
+        }) && let Some(entry) = state.retained.remove(cycle)
+        {
+            entry.timer.abort();
+        }
+    }
     pub fn retain(self: &Arc<Self>, lease: &Value) -> BoxFuture<'static, Result<()>> {
         let (this, lease) = (self.clone(), lease.clone());
         self.operations
@@ -72,7 +85,7 @@ impl Service {
                 let lease = timer_lease.clone();
                 drop(service.operations.clone().run(async move {
                     if let Err(error)=service.dispatch.heartbeat(&lease,&Value::Null).await {
-                        service.release(&lease["cycleId"]);
+                        service.release_lease(&lease);
                         if !error.is::<task_dispatch::Conflict>(){service.log("warn","Could not retain the Task Goal dispatch lease",json!({"cycleId":lease["cycleId"],"err":logging::error_details(&error)}));}
                     }Ok(())
                 }));

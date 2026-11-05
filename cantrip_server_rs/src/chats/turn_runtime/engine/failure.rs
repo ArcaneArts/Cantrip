@@ -9,7 +9,10 @@ impl Runtime {
         error: &Arc<anyhow::Error>,
     ) -> Result<()> {
         let e = &turn.execution;
-        if turn.task_relay.is_some() && truthy(turn.options.get("taskDispatchLease")) {
+        if (turn.task_relay.is_some()
+            || (turn.encrypted_task.is_some() && turn.user_message["mode"] == "goal"))
+            && truthy(turn.options.get("taskDispatchLease"))
+        {
             if let Some(proof) = crate::workers::inference_failure::evidence(error) {
                 crate::tasks::Repository::new(self.dependencies.events.database.clone())
                     .record_inference_failure(&turn.owner, &events::text(&e["workerId"])?, proof)

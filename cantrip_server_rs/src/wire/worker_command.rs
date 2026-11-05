@@ -291,12 +291,18 @@ pub(super) fn refine(
         "chat-turn" => {
             if let Some(task) = value.get("taskInferenceInput")
                 && (value.get("nativeCommandReceipt").is_some()
-                    || value["resultMode"]["kind"] != "task-encrypted"
-                    || value["resultMode"]["operation"]["operationId"]
-                        != task["dispatch"]["operationId"]
-                    || value["resultMode"]["operation"]["chatId"] != task["chatId"]
-                    || value["resultMode"]["operation"]["userMessage"]["id"]
-                        != task["clientMessageId"]
+                    || (if task["kind"] == "goal" {
+                        value["resultMode"]["kind"] != "task-message-encrypted"
+                            || value["protectedTaskPrompt"]["classification"]["mode"] != "goal"
+                            || value["protectedTaskPrompt"]["id"] != task["clientMessageId"]
+                    } else {
+                        value["resultMode"]["kind"] != "task-encrypted"
+                            || value["resultMode"]["operation"]["operationId"]
+                                != task["dispatch"]["operationId"]
+                            || value["resultMode"]["operation"]["chatId"] != task["chatId"]
+                            || value["resultMode"]["operation"]["userMessage"]["id"]
+                                != task["clientMessageId"]
+                    })
                     || value["chatId"] != task["chatId"]
                     || value["clientMessageId"] != task["clientMessageId"]
                     || value["executionLaneId"] != task["executionLaneId"]

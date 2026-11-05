@@ -79,7 +79,8 @@ impl EventSink {
                 t.protected_history.clone(),
                 t.protected_plan.clone().unwrap_or(Value::Null),
             )
-        } else if let Some(encrypted) = t.encrypted_task.as_ref().filter(|_| t.task_conversation) {
+        } else if let Some(encrypted) = t.encrypted_task.as_ref().filter(|_| t.task_relay.is_none())
+        {
             command["protectedTaskPrompt"] = encrypted["userMessage"].clone();
             (Vec::new(), Value::Null)
         } else {
@@ -154,12 +155,22 @@ impl EventSink {
         } else {
             json!({"kind":"visible"})
         };
-        if t.task_relay.is_some() && truthy(t.options.get("taskDispatchLease")) {
+        if (t.task_relay.is_some()
+            || (t.encrypted_task.is_some() && t.user_message["mode"] == "goal"))
+            && truthy(t.options.get("taskDispatchLease"))
+        {
             let lease = &t.options["taskDispatchLease"];
-            command["taskInferenceInput"]=crate::tasks::Repository::new(self.dependencies.database.clone()).prepare_inference_input(&t.owner,&json!({
+            let mut task_input = json!({
                 "chatId":e["chatId"],"clientMessageId":t.user_message["id"],"workerId":e["workerId"],"worktreeId":e["worktreeId"],"executionLaneId":e["executionLaneId"],"executionLaneActivatedAt":e["executionLaneActivatedAt"],"providerId":runtime["provider"]["id"],"modelRouteId":runtime["routeId"],"providerAccountId":runtime["provider"]["accountId"],
                 "dispatch":json!({"cycleId":lease["cycleId"],"operationId":lease["operationId"],"leaseOwner":lease["leaseOwner"],"fencingToken":lease["fencingToken"]})
-            })).await?;
+            });
+            if t.task_relay.is_none() {
+                task_input["kind"] = json!("goal");
+            }
+            command["taskInferenceInput"] =
+                crate::tasks::Repository::new(self.dependencies.database.clone())
+                    .prepare_inference_input(&t.owner, &task_input)
+                    .await?;
             *self.task_input_operation.lock().unwrap() =
                 Some(command["taskInferenceInput"]["operationId"].clone());
         }

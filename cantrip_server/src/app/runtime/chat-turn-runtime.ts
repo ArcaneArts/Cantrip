@@ -357,7 +357,7 @@ export function createChatTurnRuntime({
             status,
             {
               pauseAutomation,
-              ...(pauseAutomation
+              ...(execution.executionLaneActivatedAt
                 ? { expectedActivatedAt: execution.executionLaneActivatedAt }
                 : {}),
             },
@@ -888,8 +888,11 @@ export function createChatTurnRuntime({
               : (initialLabel ?? undefined);
             initialLabelSent = true;
             taskInferenceInput =
-              options.taskDispatchLease && encryptedTaskRelay
+              options.taskDispatchLease &&
+              (encryptedTaskRelay ||
+                (turnMode === "goal" && encryptedTaskMessages))
                 ? await repository.tasks.inferenceInputs.prepare(ownerId, {
+                    ...(encryptedTaskRelay ? {} : { kind: "goal" as const }),
                     chatId: execution.chatId,
                     clientMessageId: userMessage.id,
                     workerId: execution.workerId,
@@ -2100,7 +2103,10 @@ export function createChatTurnRuntime({
           }
         }
       } catch (error: unknown) {
-        if (options.taskDispatchLease && encryptedTaskRelay) {
+        if (
+          options.taskDispatchLease &&
+          (encryptedTaskRelay || (turnMode === "goal" && encryptedTaskMessages))
+        ) {
           try {
             await repository.tasks.inferenceInputs.recordFailure(
               ownerId,

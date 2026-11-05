@@ -1779,6 +1779,13 @@
       "when": 1793816000003,
       "tag": "0253_provider_connection_revision",
       "breakpoints": true
+    },
+    {
+      "idx": 254,
+      "version": "7",
+      "when": 1793816000004,
+      "tag": "0254_task_goal_inference_input",
+      "breakpoints": true
     }
   ]
 }

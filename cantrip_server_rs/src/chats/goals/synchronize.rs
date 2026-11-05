@@ -19,14 +19,8 @@ impl Service {
                 move |completed: Completion| {
                     let (this, owner, lease) = (this.clone(), owner.clone(), lease.clone());
                     async move {
-                        this.synchronize(
-                            &owner,
-                            &text(&completed.turn.execution["chatId"])?,
-                            &lease,
-                            false,
-                            None,
-                        )
-                        .await
+                        this.synchronize_turn(&owner, &completed.turn, &lease, false, None)
+                            .await
                     }
                     .boxed()
                 }
@@ -36,9 +30,9 @@ impl Service {
                 move |failed: Failure| {
                     let (this, owner, lease) = (this.clone(), owner.clone(), lease.clone());
                     async move {
-                        this.synchronize(
+                        this.synchronize_turn(
                             &owner,
-                            &text(&failed.turn.execution["chatId"])?,
+                            &failed.turn,
                             &lease,
                             true,
                             Some(failed.error),
@@ -59,14 +53,41 @@ impl Service {
         failed: bool,
         error: Option<Arc<anyhow::Error>>,
     ) -> BoxFuture<'static, Result<()>> {
+        self.synchronize_goal_input(owner, chat, lease, failed, error, None)
+    }
+    async fn synchronize_turn(
+        self: &Arc<Self>,
+        owner: &str,
+        turn: &crate::chats::turn_runtime::bootstrap::PreparedTurn,
+        lease: &Value,
+        failed: bool,
+        error: Option<Arc<anyhow::Error>>,
+    ) -> Result<()> {
+        let chat = text(&turn.execution["chatId"])?;
+        if let Some(receipt)=self.tasks.goal_input_receipt_for_turn(owner,&chat,lease,
+            &json!({"clientMessageId":turn.user_message["id"],"executionLaneId":turn.execution["executionLaneId"],"executionLaneActivatedAt":turn.execution["executionLaneActivatedAt"]})).await? {
+            self.synchronize_goal_input(owner,&chat,lease,failed,error,Some(&receipt)).await?;
+        }
+        Ok(())
+    }
+    pub fn synchronize_goal_input(
+        self: &Arc<Self>,
+        owner: &str,
+        chat: &str,
+        lease: &Value,
+        failed: bool,
+        error: Option<Arc<anyhow::Error>>,
+        receipt: Option<&Value>,
+    ) -> BoxFuture<'static, Result<()>> {
         let (this, owner, chat, lease) = (
             self.clone(),
             owner.to_owned(),
             chat.to_owned(),
             lease.clone(),
         );
+        let receipt = receipt.cloned();
         self.operations.run(async move {
-            this.synchronize_one(&owner, &chat, &lease, failed, error)
+            this.synchronize_one(&owner, &chat, &lease, failed, error, receipt.as_ref())
                 .await
         })
     }
@@ -77,7 +98,12 @@ impl Service {
         lease: &Value,
         failed: bool,
         error: Option<Arc<anyhow::Error>>,
+        receipt: Option<&Value>,
     ) -> Result<()> {
+        let mut guard = json!({"kind":"leased","lease":lease});
+        if let Some(receipt) = receipt {
+            guard["goalInferenceInputOperationId"] = receipt["operationId"].clone();
+        }
         let context = self.chats.execution_context(owner, chat).await?;
         let task = self.tasks.get(owner, chat).await?;
         let (Some(context), Some(task)) = (context.filter(|c| c["experience"] == "task"), task)
@@ -86,61 +112,75 @@ impl Service {
         };
         if truthy(context.get("automationPaused")) && error.as_ref().is_some_and(|e| interrupted(e))
         {
-            self.release(&lease["cycleId"]);
-            if let Err(error) = self
-                .dispatch
-                .pause(
-                    lease,
-                    &json!({"threadId":context["threadId"],"turnId":Value::Null}),
-                    &Value::Null,
-                    false,
-                )
-                .await
-                && !error.is::<task_dispatch::Conflict>()
-            {
+            let paused = if let Some(receipt) = receipt {
+                self.tasks
+                    .pause_goal_input(owner, receipt, &context["threadId"])
+                    .await
+            } else {
+                self.dispatch
+                    .pause(
+                        lease,
+                        &json!({"threadId":context["threadId"],"turnId":Value::Null}),
+                        &Value::Null,
+                        false,
+                    )
+                    .await
+            };
+            if let Err(error) = paused {
+                if error.is::<task_dispatch::Conflict>() {
+                    return Ok(());
+                }
                 return Err(error);
             }
+            self.release_lease(lease);
             self.publish(owner, chat, "task", Some(&context));
             (self.dependencies.queue_tick)();
             return Ok(());
         }
         let observation:Result<()>=async {
             let failure=if failed{Some(json!({"kind":error.as_ref().map_or("runtime",|e|failure_kind::for_error(e)),"occurredAt":crate::wire::date_iso_milliseconds((self.dependencies.clock)()).context("Invalid time value")?}))}else{None};
-            let observed=self.read_one(owner,&context,&task,Observation{runtime_failure:failure.clone(),..Observation::default()}).await?;
+            let observed=self.read_one(owner,&context,&task,Observation{runtime_failure:failure.clone(),dispatch_guard:Some(guard.clone()),..Observation::default()}).await?;
             if let Some(failure)=failure.filter(|_|observed["task"]["state"]=="failed") {
-                let key=concat(&[&json!("goal:"),&context["threadId"],&json!(":"),&failure["occurredAt"]]);
+                let key=if let Some(receipt)=receipt {json!(format!("goal-input:{}",text(&receipt["operationId"])?))}else{concat(&[&json!("goal:"),&context["threadId"],&json!(":"),&failure["occurredAt"]])};
                 let kind=selected(observed["task"]["lastError"].get("code"),&failure["kind"]);
-                self.retries.note_failure(owner,chat,&text(&key)?,failure_kind::classify(&kind),Some((self.dependencies.clock)() as f64)).await?;self.publish(owner,chat,"task",Some(&context));
-            }else if matches!(observed["task"]["state"].as_str(),Some("complete"|"blocked")){self.retries.clear_pending(owner,chat).await?;self.publish(owner,chat,"task",Some(&context));}
+                self.retries.note_failure_guarded(owner,chat,&text(&key)?,failure_kind::classify(&kind),Some((self.dependencies.clock)() as f64),Some(&guard)).await?;self.publish(owner,chat,"task",Some(&context));
+            }else if matches!(observed["task"]["state"].as_str(),Some("complete"|"blocked")){self.retries.clear_pending_guarded(owner,chat,Some(&guard)).await?;self.publish(owner,chat,"task",Some(&context));}
             Ok(())
         }.await;
         if let Err(observation_error) = observation {
+            if crate::operations::shared_failure::downcast_ref::<task_dispatch::Conflict>(
+                &observation_error,
+            )
+            .is_some()
+            {
+                return Ok(());
+            }
             if !failed {
                 return Err(observation_error);
             }
             let now = (self.dependencies.clock)();
-            let key = format!("goal-observation:{}:{now}", text(&lease["cycleId"])?);
-            self.retries
-                .note_failure(
+            let settled = self
+                .retries
+                .settle_dispatch_failure_guarded(
                     owner,
                     chat,
-                    &key,
+                    lease,
                     failure_kind::for_error(error.as_deref().unwrap_or(&observation_error)),
                     Some(now as f64),
+                    Some(&guard),
                 )
-                .await?;
-            self.release(&lease["cycleId"]);
-            let settled: Result<()> = async {
-                self.dispatch.heartbeat(lease, &Value::Null).await?;
-                self.dispatch.settle(lease, "failed", &Value::Null).await?;
-                Ok(())
-            }
-            .await;
-            if let Err(error) = settled
-                && !error.is::<task_dispatch::Conflict>()
-            {
+                .await;
+            if let Err(error) = settled {
+                if crate::operations::shared_failure::downcast_ref::<task_dispatch::Conflict>(
+                    &error,
+                )
+                .is_some()
+                {
+                    return Ok(());
+                }
                 return Err(error);
             }
+            self.release_lease(lease);
             self.publish(owner, chat, "task", Some(&context));
             (self.dependencies.queue_tick)();
         }

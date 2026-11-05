@@ -33,6 +33,7 @@ import {
 import { taskRetrySummary } from "../tasks/automatic-retry.js";
 import { TaskInferenceInputRepository } from "./task-inference-inputs.js";
 import type { ChatExecutionLaneRepository } from "./repository/chat-execution-lanes.js";
+import type { MessageWriteRepository } from "./repository/message-writes.js";
 import { detachProjectTab, projectTabKey } from "./tab-layouts.js";
 
 type TaskDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
@@ -237,8 +238,13 @@ export class TaskRepository {
   constructor(
     private readonly database: TaskDatabase,
     lanes?: ChatExecutionLaneRepository,
+    messages?: MessageWriteRepository,
   ) {
-    this.inferenceInputs = new TaskInferenceInputRepository(database, lanes);
+    this.inferenceInputs = new TaskInferenceInputRepository(
+      database,
+      lanes,
+      messages,
+    );
   }
 
   async list(ownerId: string, projectId: string): Promise<TaskOpaqueSummary[]> {
@@ -1205,10 +1211,20 @@ export class TaskRepository {
     ownerId: string,
     chatId: string,
     input: { rowVersion: number; task: TaskOpaqueContent },
+    dispatchFence?: TaskOperationLeaseFence,
   ): Promise<TaskOpaqueSummary | null> {
     const next = taskOpaqueContentSchema.parse(input.task);
     if (!(await this.get(ownerId, chatId))) return null;
     return this.database.transaction(async (transaction) => {
+      if (dispatchFence)
+        await assertTaskOperationDispatchFence(
+          transaction,
+          ownerId,
+          chatId,
+          dispatchFence.lease.operationId,
+          dispatchFence,
+          true,
+        );
       const rows = await transaction
         .select()
         .from(schema.tasks)

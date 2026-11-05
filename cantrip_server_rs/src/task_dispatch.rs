@@ -271,6 +271,22 @@ impl Repository {
         options: &Value,
         unstarted: bool,
     ) -> Result<Value> {
+        Self::pause_in(
+            Executor::Database(&self.database),
+            fence,
+            affinity,
+            options,
+            unstarted,
+        )
+        .await
+    }
+    pub(crate) async fn pause_in(
+        executor: Executor<'_, '_>,
+        fence: &Value,
+        affinity: &Value,
+        options: &Value,
+        unstarted: bool,
+    ) -> Result<Value> {
         let now = clock(options)?;
         let mut fields =
             json!({"state":"paused","last_heartbeat_at":now,"paused_at":now,"updated_at":now});
@@ -294,29 +310,29 @@ impl Repository {
             parameters.push(json!("running"));
         }
         summary(
-            &self
-                .update(
-                    fence,
-                    fields,
-                    &now,
-                    Update {
-                        predicate: if unstarted {
-                            "c.state='claimed' AND c.started_at IS NULL"
-                        } else {
-                            "c.state IN ('claimed','running')"
-                        },
-                        extra: if unstarted {
-                            ",fencing_token=c.fencing_token+1"
-                        } else {
-                            ""
-                        },
-                        query_context: Some((
-                            if unstarted { "unstarted" } else { "pause" },
-                            &parameters,
-                        )),
+            &Self::update_in(
+                executor,
+                fence,
+                fields,
+                &now,
+                Update {
+                    predicate: if unstarted {
+                        "c.state='claimed' AND c.started_at IS NULL"
+                    } else {
+                        "c.state IN ('claimed','running')"
                     },
-                )
-                .await?,
+                    extra: if unstarted {
+                        ",fencing_token=c.fencing_token+1"
+                    } else {
+                        ""
+                    },
+                    query_context: Some((
+                        if unstarted { "unstarted" } else { "pause" },
+                        &parameters,
+                    )),
+                },
+            )
+            .await?,
         )
     }
     pub async fn settle(&self, fence: &Value, state: &str, options: &Value) -> Result<Value> {

@@ -210,7 +210,7 @@ its channel to the actual thread under the existing connection-owner check.
 The opaque chat association lives with the existing thread overlay, allowing
 later-cycle queue status to identify the Task after its preceding ticket was
 released. It is cleared with that overlay; no additional controller map or prompt
-store is added. Task Goal/checkpoint recovery and execution accounting remain unfinished.
+store is added. Autonomous Task Goal checkpoint recovery and execution accounting remain unfinished.
 
 Scheduled Task round completion, failure, and execution association, including
 durable worker outcome recovery, lock the real owner/cycle fence in the same transaction as their round write. A heartbeat before
@@ -262,8 +262,8 @@ retains the destination provider's fresh order. Dispatched/ambiguous native work
 still needs its own terminal/checkpoint recovery; this is not exactly-once execution.
 
 This covers scheduled initial direct/planning/finalization inputs. Explicit Task
-Goal kickoff/resume and autonomous checkpoint recovery have different canonical
-identities and remain separate unfinished work. Current-generation abandoned
+Goal kickoff/resume uses the separate canonical identity described below;
+autonomous checkpoint recovery remains unfinished. Current-generation abandoned
 preparations and separate per-turn execution/wait accounting also remain open.
 
 Known dependency and user/approval waits can suspend their parent's reservation
@@ -449,7 +449,7 @@ not an idle polling loop. No prompt content is copied into the journal.
 
 This is recovery of proven unstarted managed GUI inputs, not permission to replay
 potentially executed work. Granted/resumed execution still needs its canonical
-native checkpoint/terminal lifecycle. Task Goal recovery, current-generation
+native checkpoint/terminal lifecycle. Autonomous Task Goal recovery, current-generation
 abandoned preparations, the remaining execution/wait accounting, and the
 final bounded runtime/controller audit remain separate unfinished goal work.
 
@@ -680,3 +680,62 @@ production remain in place. Task Goal/checkpoint ownership, abandoned preparatio
 without a terminal observation, canonical timing integration and the final
 inference-path audit remain required. No tests, builds, benchmarks or computer-use
 validation were run; runtime behavior remains unverified.
+
+## Explicit Task Goal input ownership
+
+Explicit Goal kickoff and resume messages use the existing Task dispatch cycle's
+nullable `goal_input` metadata (migration `0254`). Their receipt has optional
+`kind: "goal"`; ordinary round receipts keep that field absent. The metadata
+references the original encrypted `chat_messages` row, approved finalizer, actual
+route attempt, dispatch fence and exact lane activation. It never rewrites the
+completed finalizer's user-message identity or stores another prompt body.
+
+Both servers prepare that receipt before sending `chat.turn`. The existing worker
+accepted and pre-native-dispatch acknowledgments enforce the same input authority
+as round inputs. A Goal receipt is valid only for its matching protected Goal
+message and encrypted Task-message result mode. Positive terminal no-input
+failures, sticky earlier dispatch evidence and exact attempt correlation retain
+the round path's conservative rules.
+
+Proven pending recovery revokes the old input authority, finishes only its
+captured lane activation, advances the fence and returns the same dispatch cycle
+to queued or paused. Claiming this deferred Goal input does not increment the
+already-used finalization attempt. Recovery reads the original encrypted message
+and submits it under a new receipt without rerunning finalization, setting the
+Goal objective again, or inventing a new Resume message. Native status activation
+restores a paused Goal without resetting it or starting a competing kickoff.
+Explicit Resume can
+unpause this pending input without taking over its still-owned attempt. Logical
+pending-message lookup does not require the obsolete lane activation to survive;
+actual dispatch still validates the new worker, placement and active lane.
+
+Native patch `0063` preserves the optional kind in the private keeper journal and
+requires it to match during adoption. An old round record cannot be adopted as a
+Goal input. Omitting the field for rounds preserves their existing serialized
+identity. Existing native no-start proof and same-provider FIFO adoption remain
+required; lease expiry or the new server metadata cannot release provider capacity.
+
+Durable Goal input outcomes have their own transaction instead of looking up the
+finalizer by its unrelated user message. Protected response persistence, runtime
+association and lane settlement require the current exact receipt, dispatch
+owner/fence, placement and lane activation. The canonical response key is checked.
+A first Goal response never marks the continuing Goal dispatch succeeded. Native
+Goal observation performs the existing Task projection/dispatch reconciliation;
+its Task-state, pause and retry writes now carry that same input authority.
+Duplicate failure observations use the physical input ID as their retry key.
+Captured heartbeat callbacks cannot clear a replacement lease's retention timer.
+Ordinary captured turn completion also fences its lane activation.
+
+Source acceptance review traces an unforwarded kickoff, deferred Resume, paused
+input, released/reused old lane, replacement receipt, duplicate protected outcome,
+late old outcome and crash after history commit before Goal projection. The code
+keeps completed finalization results idempotent and never uses them as evidence
+that the Goal input itself executed. Node and Rust paths share these boundaries.
+Direct formatting, mechanical protocol export and `git diff --check` were used;
+tests, typechecks, builds, benchmarks, native execution and computer-use validation
+were not run. Runtime behavior is unverified.
+
+Autonomous checkpoint/terminal reconciliation, current-generation abandoned
+preparation, precise physical cancellation of revoked inputs, the remaining
+canonical timing/lifecycle integration, bounded-runtime audit and exhaustive
+inference-path acceptance remain required for the full goal.

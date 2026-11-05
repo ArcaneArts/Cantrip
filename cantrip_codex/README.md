@@ -594,3 +594,12 @@ local model scope; it does not promise exactly-once provider execution or
 authorize replay of a restored checkpoint's original prompt. Only source review,
 direct formatting, mechanical patch/contract generation and diff checks were
 performed for this patch; no native execution, tests or builds were run.
+
+Patch `0063` adds the optional explicit Task Goal input kind to the private
+admission keeper journal. Adoption requires the same kind as well as the existing
+canonical chat/message, worker and dispatch identities. Ordinary round receipts
+omit the new field, preserving their serialized recovery identity. Goal inputs
+reference the server's original protected message and existing dispatch cycle;
+the journal stores no prompt content. This patch changes no public native RPC or
+precomputed schema archive. Source review, direct formatting, mechanical patch
+generation and diff checks were used; no native execution or tests were run.

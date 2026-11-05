@@ -341,14 +341,40 @@ impl Repository {
         chat: &str,
         input: &Value,
     ) -> Result<Option<Value>> {
+        self.sync_implementation_state_guarded(owner, chat, input, None)
+            .await
+    }
+    pub async fn sync_implementation_state_guarded(
+        &self,
+        owner: &str,
+        chat: &str,
+        input: &Value,
+        guard: Option<&Value>,
+    ) -> Result<Option<Value>> {
         let next = parse("taskOpaqueContentSchema", &input["task"])?;
         if self.get(owner, chat).await?.is_none() {
             return Ok(None);
         }
-        let (chat, version) = (chat.to_owned(), input["rowVersion"].clone());
+        let (owner, chat, version, guard) = (
+            owner.to_owned(),
+            chat.to_owned(),
+            input["rowVersion"].clone(),
+            guard.cloned(),
+        );
         self.database
             .transaction(|tx| {
                 Box::pin(async move {
+                    if let Some(guard) = &guard {
+                        dispatch_fence::assert(
+                            tx,
+                            &owner,
+                            &chat,
+                            &text(&guard["lease"]["operationId"])?,
+                            guard,
+                            true,
+                        )
+                        .await?;
+                    }
                     let Some(task) = locked_task(tx, &chat).await? else {
                         return Ok(None);
                     };

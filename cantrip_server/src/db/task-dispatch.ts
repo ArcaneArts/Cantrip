@@ -47,7 +47,7 @@ const RETRYABLE_TERMINAL_STATES: readonly TaskDispatchCycleState[] = [
  * Revisit canonical pending input or a recorded terminal input awaiting failure
  * settlement, not settled expired history. */
 function pendingInputRecovery() {
-  return sql`EXISTS (
+  return sql`(EXISTS (
     SELECT 1 FROM task_planning_rounds r
     JOIN tasks t ON t.chat_id=r.chat_id AND t.active_operation_id=r.id
     JOIN chats chat ON chat.id=t.chat_id
@@ -64,7 +64,21 @@ function pendingInputRecovery() {
       AND NOT EXISTS(SELECT 1 FROM task_dispatch_cycles newer
         WHERE newer.chat_id=${schema.taskDispatchCycles.chatId}
           AND (newer.created_at,newer.id)>(${schema.taskDispatchCycles.createdAt},${schema.taskDispatchCycles.id}))
-  )`;
+  ) OR EXISTS (
+    SELECT 1 FROM tasks t JOIN chats chat ON chat.id=t.chat_id
+    WHERE t.chat_id=${schema.taskDispatchCycles.chatId}
+      AND t.plan_goal_enabled=true AND t.implementation_started_at IS NOT NULL
+      AND t.state NOT IN ('failed','complete') AND chat.archived_at IS NULL
+      AND ${schema.taskDispatchCycles.goalInput}->>'deferred'='false'
+      AND (${schema.taskDispatchCycles.goalInput}->>'failedBeforeDispatch'='true' OR (
+        ${schema.taskDispatchCycles.goalInput}->>'accepted'='true'
+        AND ${schema.taskDispatchCycles.goalInput}->>'allAttemptsEnforced'='true'
+        AND ${schema.taskDispatchCycles.goalInput}->>'firstDispatchedOperationId' IS NULL
+      ))
+      AND NOT EXISTS(SELECT 1 FROM task_dispatch_cycles newer
+        WHERE newer.chat_id=${schema.taskDispatchCycles.chatId}
+          AND (newer.created_at,newer.id)>(${schema.taskDispatchCycles.createdAt},${schema.taskDispatchCycles.id}))
+  ))`;
 }
 
 export class TaskDispatchNotFoundError extends Error {}
@@ -630,7 +644,9 @@ export class TaskDispatchRepository {
             leaseExpiresAt,
             lastHeartbeatAt: now,
             fencingToken,
-            attemptCount: cycle.attemptCount + 1,
+            attemptCount:
+              cycle.attemptCount +
+              (candidate.cycle.goalInput?.deferred ? 0 : 1),
             eligibilityCode: null,
             claimedAt: now,
             pausedAt: null,
@@ -879,7 +895,7 @@ export class TaskDispatchRepository {
             leaseOwner: candidate.cycle.leaseOwner ?? leaseOwner,
             leaseExpiresAt,
             lastHeartbeatAt: now,
-            attemptCount: sql`${schema.taskDispatchCycles.attemptCount} + 1`,
+            attemptCount: sql`${schema.taskDispatchCycles.attemptCount} + CASE WHEN ${schema.taskDispatchCycles.goalInput}->>'deferred'='true' THEN 0 ELSE 1 END`,
             eligibilityCode: null,
             pausedAt: null,
             updatedAt: now,

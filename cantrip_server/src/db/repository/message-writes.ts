@@ -83,6 +83,10 @@ export class MessageWriteRepository {
     private readonly collaborators: MessageWriteRepositoryCollaborators,
   ) {}
 
+  inTransaction(database: RepositoryDatabase): MessageWriteRepository {
+    return new MessageWriteRepository(database, this.collaborators);
+  }
+
   private async encryptedWriteTransaction(
     ownerId: string,
     chatId: string,

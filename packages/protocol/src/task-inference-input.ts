@@ -8,6 +8,8 @@ const identity = z.string().min(1).max(200);
 export const taskInferenceInputReceiptSchema = z
   .object({
     operationId: z.uuid(),
+    // Omitted for existing round receipts, preserving their journal identity.
+    kind: z.literal("goal").optional(),
     chatId: identity,
     clientMessageId: identity,
     workerId: identity,

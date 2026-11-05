@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { TaskGoalInferenceInputRepository } from "./task-goal-inference-inputs.js";
 import {
   taskInferenceInputReceiptSchema,
   type InferenceFailureEvidence,
@@ -14,6 +15,7 @@ import type {
   RepositoryTransaction,
 } from "./repository/database.js";
 import type { ChatExecutionLaneRepository } from "./repository/chat-execution-lanes.js";
+import type { MessageWriteRepository } from "./repository/message-writes.js";
 import { TaskDispatchConflictError } from "./task-dispatch.js";
 import { projectChatExecutionLock } from "./repository/chat-execution-lock.js";
 import {
@@ -45,10 +47,18 @@ function stale(): never {
 }
 
 export class TaskInferenceInputRepository {
+  readonly goals: TaskGoalInferenceInputRepository;
   constructor(
     private readonly database: RepositoryDatabase,
     private readonly lanes?: ChatExecutionLaneRepository,
-  ) {}
+    messages?: MessageWriteRepository,
+  ) {
+    this.goals = new TaskGoalInferenceInputRepository(
+      database,
+      lanes,
+      messages,
+    );
+  }
 
   private async context(
     tx: RepositoryTransaction,
@@ -204,6 +214,7 @@ export class TaskInferenceInputRepository {
     ownerId: string,
     input: Omit<TaskInferenceInputReceipt, "operationId">,
   ): Promise<TaskInferenceInputReceipt> {
+    if (input.kind === "goal") return this.goals.prepare(ownerId, input);
     const receipt = taskInferenceInputReceiptSchema.parse({
       ...input,
       operationId: randomUUID(),
@@ -290,6 +301,8 @@ export class TaskInferenceInputRepository {
     receipt: TaskInferenceInputReceipt,
     phase: "accepted" | "dispatch" = "dispatch",
   ): Promise<{ receipt: TaskInferenceInputReceipt }> {
+    if (receipt.kind === "goal")
+      return this.goals.dispatch(ownerId, workerId, receipt, phase);
     if (workerId !== receipt.workerId) stale();
     return this.database.transaction(async (tx) => {
       await assertTaskOperationDispatchFence(
@@ -356,6 +369,7 @@ export class TaskInferenceInputRepository {
         }
       | undefined,
   ): Promise<void> {
+    await this.goals.recordFailure(ownerId, failure);
     if (!failure || failure.evidence.disposition !== "input-not-dispatched")
       return;
     const proof = failure.evidence;
@@ -453,6 +467,8 @@ export class TaskInferenceInputRepository {
     chatId: string,
     guard: TaskOperationDispatchFence,
   ): Promise<boolean> {
+    const goal = await this.goals.defer(ownerId, chatId, guard);
+    if (goal !== null) return goal;
     if (!this.lanes)
       throw new Error("Task input recovery requires execution lane ownership.");
     return this.database.transaction(async (tx) => {
@@ -506,6 +522,8 @@ export class TaskInferenceInputRepository {
     ownerId: string,
     input: NativeInferenceRecovery,
   ): Promise<NativeInferenceRecoveryResult> {
+    if (input.record.identity.recovery?.taskInput?.kind === "goal")
+      return this.goals.reconcile(ownerId, input);
     const record = input.record;
     const receipt = record.identity.recovery?.taskInput;
     const result = (

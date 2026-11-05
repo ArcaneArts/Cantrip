@@ -20,6 +20,7 @@ type Dependencies = Pick<
   | "repository"
   | "bridge"
   | "appendLiveTaskMessage"
+  | "publishTaskMessage"
   | "appendLiveEncryptedChatMessage"
   | "upsertLiveChatMessage"
   | "interruptLiveAgentInteractionRequests"
@@ -28,6 +29,7 @@ type Dependencies = Pick<
   | "launchPreparedTaskGoal"
   | "failTaskGoalLaunch"
   | "queueTaskScheduleTick"
+  | "synchronizeScheduledTaskGoal"
 > & {
   continuePendingWorktreeTransition: (chatId: string) => Promise<boolean>;
   dispatchNextQueuedPrompt: (chatId: string) => Promise<void>;
@@ -39,6 +41,7 @@ export function createChatTurnOutcomeRuntime({
   repository,
   bridge,
   appendLiveTaskMessage,
+  publishTaskMessage,
   appendLiveEncryptedChatMessage,
   upsertLiveChatMessage,
   interruptLiveAgentInteractionRequests,
@@ -47,6 +50,7 @@ export function createChatTurnOutcomeRuntime({
   launchPreparedTaskGoal,
   failTaskGoalLaunch,
   queueTaskScheduleTick,
+  synchronizeScheduledTaskGoal,
   continuePendingWorktreeTransition,
   dispatchNextQueuedPrompt,
 }: Dependencies) {
@@ -60,6 +64,48 @@ export function createChatTurnOutcomeRuntime({
         workerId,
         evidence: notification.outcome.inference,
       });
+    // Goal kickoff/resume owns a different message from its completed finalizer.
+    // Its first response does not complete the ongoing Goal dispatch.
+    try {
+      const goal = await repository.tasks.inferenceInputs.goals.applyOutcome(
+        ownerId,
+        workerId,
+        notification,
+      );
+      if (goal) {
+        if (goal.message) publishTaskMessage(goal.message, goal.chat);
+        publishChatTurnBoundary(
+          notification.chatId,
+          goal.chat.projectId,
+          goal.chat,
+        );
+        await synchronizeScheduledTaskGoal(
+          notification.chatId,
+          notification.taskDispatchFence!,
+          !notification.outcome.ok,
+          notification.outcome.ok
+            ? undefined
+            : new Error(notification.outcome.error),
+          goal.receipt,
+        );
+        app.log.info(
+          {
+            event: "chat.turn.outcome-recovered",
+            subsystem: "chat-execution",
+            chatId: notification.chatId,
+            workerId,
+            taskInferenceInputOperationId: goal.receipt.operationId,
+            status: notification.outcome.ok ? "completed" : "failed",
+          },
+          "Recovered Task Goal input outcome from worker",
+        );
+        queueTaskScheduleTick();
+        return;
+      }
+    } catch (error) {
+      if (error instanceof TaskDispatchConflictError) return;
+      throw error;
+    }
     const laneContext = await repository.getChatExecutionRecoveryContext(
       ownerId,
       notification.chatId,

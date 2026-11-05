@@ -38,7 +38,8 @@ impl Repository {
         self.database.query("SELECT json_build_object('ownerId',c.owner_id,'chatId',t.chat_id,'projectId',c.project_id)::text FROM tasks t JOIN chats c ON c.id=t.chat_id JOIN projects p ON p.id=c.project_id WHERE c.archived_at IS NULL AND c.automation_paused=false AND p.task_scheduling_paused=false AND c.status NOT IN ('running','waiting-for-approval') AND NOT EXISTS (SELECT 1 FROM agent_interaction_requests i WHERE i.chat_id=c.id AND i.status='pending') AND ((t.state='failed' AND t.automatic_retry IS NULL AND t.last_error IS NOT NULL) OR (t.automatic_retry->>'status'='scheduled' AND (t.automatic_retry->>'dueAt')::double precision<=$1::text::double precision) OR (t.automatic_retry->>'status'='retrying' AND (t.automatic_retry->'claim'->>'expiresAt')::double precision<=$1::text::double precision)) ORDER BY t.updated_at ASC",&[&now]).await?.iter().map(|r|Ok(serde_json::from_str(&r.get::<String>(0)?)?)).collect()
     }
     async fn mutate(&self, owner: &str, chat: &str, action: Action) -> Result<Value> {
-        self.mutate_with_fence(owner, chat, action, None).await
+        self.mutate_with_fence(owner, chat, action, None, None)
+            .await
     }
     async fn mutate_with_fence(
         &self,
@@ -46,9 +47,11 @@ impl Repository {
         chat: &str,
         action: Action,
         fence: Option<(Value, f64)>,
+        guard: Option<Value>,
     ) -> Result<Value> {
         let (owner, chat) = (owner.to_owned(), chat.to_owned());
         self.database.transaction(|tx|Box::pin(async move {
+            if let Some(guard)=&guard {super::dispatch_fence::assert(tx,&owner,&chat,&text(&guard["lease"]["operationId"])?,guard,true).await?;}
             tx.query("SELECT id FROM users WHERE id=$1 LIMIT 1 FOR UPDATE",&[&owner]).await?;
             let row=one(Executor::Transaction(tx),"SELECT json_build_object('task',to_jsonb(t),'chat',to_jsonb(c),'project',to_jsonb(p))::text FROM tasks t JOIN chats c ON c.id=t.chat_id JOIN projects p ON p.id=c.project_id WHERE t.chat_id=$1 AND c.owner_id=$2 AND c.archived_at IS NULL LIMIT 1 FOR UPDATE",&[&chat,&owner]).await?;
             let Some(row)=row else { return if fence.is_some() { Err(crate::task_dispatch::Conflict::stale().into()) } else { Ok(Value::Null) }; };
@@ -78,7 +81,19 @@ impl Repository {
         kind: &str,
         now: Option<f64>,
     ) -> Result<Value> {
-        self.mutate(
+        self.note_failure_guarded(owner, chat, key, kind, now, None)
+            .await
+    }
+    pub async fn note_failure_guarded(
+        &self,
+        owner: &str,
+        chat: &str,
+        key: &str,
+        kind: &str,
+        now: Option<f64>,
+        guard: Option<&Value>,
+    ) -> Result<Value> {
+        self.mutate_with_fence(
             owner,
             chat,
             Action::Note {
@@ -86,6 +101,8 @@ impl Repository {
                 kind: kind.into(),
                 now: time(now),
             },
+            None,
+            guard.cloned(),
         )
         .await
     }
@@ -102,6 +119,18 @@ impl Repository {
         kind: &str,
         now: Option<f64>,
     ) -> Result<Value> {
+        self.settle_dispatch_failure_guarded(owner, chat, fence, kind, now, None)
+            .await
+    }
+    pub async fn settle_dispatch_failure_guarded(
+        &self,
+        owner: &str,
+        chat: &str,
+        fence: &Value,
+        kind: &str,
+        now: Option<f64>,
+        guard: Option<&Value>,
+    ) -> Result<Value> {
         let at = time(now);
         self.mutate_with_fence(
             owner,
@@ -116,6 +145,7 @@ impl Repository {
                 now: at,
             },
             Some((fence.clone(), at)),
+            guard.cloned(),
         )
         .await
     }
@@ -139,7 +169,16 @@ impl Repository {
         .await
     }
     pub async fn clear_pending(&self, owner: &str, chat: &str) -> Result<Value> {
-        self.mutate(owner, chat, Action::Clear).await
+        self.clear_pending_guarded(owner, chat, None).await
+    }
+    pub async fn clear_pending_guarded(
+        &self,
+        owner: &str,
+        chat: &str,
+        guard: Option<&Value>,
+    ) -> Result<Value> {
+        self.mutate_with_fence(owner, chat, Action::Clear, None, guard.cloned())
+            .await
     }
     pub async fn claim_due(&self, owner: &str, chat: &str, now: Option<f64>) -> Result<Value> {
         self.mutate(owner, chat, Action::Claim { now: time(now) })
