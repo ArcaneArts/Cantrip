@@ -88,15 +88,43 @@ pub(crate) async fn append_task_with(
     input: &Value,
     attribution: Option<&Value>,
 ) -> Result<Option<Value>> {
+    append_task_impl(executor, owner, chat, input, attribution, false).await
+}
+pub(crate) async fn append_task_history_with(
+    executor: Executor<'_, '_>,
+    owner: &str,
+    chat: &str,
+    input: &Value,
+    attribution: &Value,
+) -> Result<Option<Value>> {
+    append_task_impl(executor, owner, chat, input, Some(attribution), true).await
+}
+async fn append_task_impl(
+    executor: Executor<'_, '_>,
+    owner: &str,
+    chat: &str,
+    input: &Value,
+    attribution: Option<&Value>,
+    historical: bool,
+) -> Result<Option<Value>> {
     if attribution.is_some_and(|a| a["contextKind"] == "standalone") {
         anyhow::bail!("Standalone Chats do not support Task messages.")
     }
     let input = crate::settings::parse_response("taskMessageOpaqueContentSchema", Some(input))?;
-    let Some(current) = project_chat(executor, owner, chat, true).await? else {
+    if historical && (attribution.is_none() || input["classification"]["role"] != "assistant") {
+        anyhow::bail!("Historical Task messages require an attributed assistant response.");
+    }
+    let current = if historical {
+        let rows=executor.query("SELECT to_jsonb(c)::text FROM chats c JOIN projects p ON p.id=c.project_id AND p.owner_id=$1 WHERE c.id=$2 AND c.experience='task' LIMIT 1",&[&owner,&chat]).await?;
+        rows.first().map(catalog::raw).transpose()?
+    } else {
+        project_chat(executor, owner, chat, true).await?
+    };
+    let Some(current) = current else {
         return Ok(None);
     };
     let active = lane(executor, chat, &current, attribution).await?;
-    if attribution.is_some() && active.is_none() {
+    if attribution.is_some() && active.is_none() && !historical {
         return Ok(None);
     }
     if let Some(saved) = raw_key(executor, chat, &text(&input["idempotencyKey"])?).await? {
@@ -126,7 +154,9 @@ pub(crate) async fn append_task_with(
         ("idempotency_key", input["idempotencyKey"].clone()),
     ]);
     let rows = insert(executor, fields).await?;
-    touch(executor, chat).await?;
+    if !historical {
+        touch(executor, chat).await?;
+    }
     messages::task(&required(&rows, "appending a Task message")?).map(Some)
 }
 pub(crate) async fn upsert_task_with(

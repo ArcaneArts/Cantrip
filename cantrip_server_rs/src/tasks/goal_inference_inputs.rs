@@ -231,16 +231,20 @@ impl Repository {
             let f=&n["taskDispatchFence"];
             let chat=text(&n["chatId"])?;
             let c=cycle(tx,&owner,&chat,Some(&text(&f["cycleId"])?)).await?;
-            let Some(c)=c else{return Ok(None);};
+            let Some(c)=c else{return super::goal_input_history::recover(tx,&owner,&worker,&n).await;};
             let s=&c["goal_input"];let r=&s["receipt"];
-            if s.is_null() || r["operationId"]!=n["taskInferenceInputOperationId"] {return Ok(None);}
+            if s.is_null() || r["operationId"]!=n["taskInferenceInputOperationId"] {return super::goal_input_history::recover(tx,&owner,&worker,&n).await;}
             if s["deferred"]==true || (n["outcome"]["ok"]==true && (s["accepted"]!=true || s["dispatched"]!=true || s["failedBeforeDispatch"]==true)) || r["workerId"]!=worker.as_str()
                 || r["clientMessageId"]!=n["clientMessageId"] || r["executionLaneId"]!=n["executionLaneId"]
                 || r["worktreeId"]!=n["worktreeId"] || r["dispatch"]["cycleId"]!=f["cycleId"] || r["dispatch"]["operationId"]!=f["operationId"]
                 || r["dispatch"]["fencingToken"]!=f["fencingToken"] || r["dispatch"]["leaseOwner"]!=f["leaseOwner"] {return stale();}
             physical_input(&c,r)?;
             let owns_control=original_control(&c,r);
-            let row=context(tx,&owner,r,true,true).await?;
+            let row=match context(tx,&owner,r,true,true).await {
+                Ok(row)=>row,
+                Err(e) if e.downcast_ref::<crate::task_dispatch::Conflict>().is_some()=>return super::goal_input_history::recover(tx,&owner,&worker,&n).await,
+                Err(e)=>return Err(e),
+            };
             let response_key=format!("assistant:{}",text(&r["clientMessageId"])?);
             let message=if n["outcome"]["ok"]==true {
                 parse("taskMessageRelayResultSchema",&n["outcome"]["result"]["structuredResult"]).ok()
@@ -264,16 +268,16 @@ impl Repository {
             if owns_control && !ok && s["accepted"]==true && s["allAttemptsEnforced"]==true && s["firstDispatchedOperationId"].is_null()
                 && s["failedBeforeDispatch"]!=true && (row["chat"]["automation_paused"]==true || row["project"]["task_scheduling_paused"]==true || row["task"]["state"]=="paused") {
                 let mut state=s.clone();state["terminal"]=terminal.clone();defer_locked(tx,&owner,&c,&state).await?;
-                return Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":true,"chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})));
+                return Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":true,"historyOnly":false,"chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})));
             }
-            if record_only || !owns_control {return Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":false,"chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})));}
+            if record_only || !owns_control {return Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":false,"historyOnly":false,"chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})));}
             let lane=text(&r["executionLaneId"])?;
             if n["outcome"]["ok"]==true {crate::chats::execution_lanes::update_runtime_in_transaction(tx,&chat,&lane,n["outcome"]["result"]["threadId"].as_str(),"ready").await?;}
             let finished=crate::chats::execution_lanes::finish_in_transaction(tx,&chat,&lane,if ok{"idle"}else{"failed"},
                 &json!({"expectedActivatedAt":r["executionLaneActivatedAt"]})).await?;
             let at=crate::auth::now();
             tx.query("UPDATE agent_interaction_requests SET status='interrupted',resolved_at=$1,updated_at=$1 WHERE chat_id=$2 AND execution_lane_id=$3 AND status='pending'",&[&at,&chat,&lane]).await?;
-            Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":finished,"chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})))
+            Ok(Some(json!({"receipt":r,"terminal":terminal,"message":saved,"finished":finished,"historyOnly":false,"chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})))
         })).await
     }
     pub async fn goal_input_terminal(

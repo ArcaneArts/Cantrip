@@ -74,20 +74,23 @@ export function createChatTurnOutcomeRuntime({
       );
       if (goal) {
         if (goal.message) publishTaskMessage(goal.message, goal.chat);
-        publishChatTurnBoundary(
-          notification.chatId,
-          goal.chat.projectId,
-          goal.chat,
-        );
-        await synchronizeScheduledTaskGoal(
-          notification.chatId,
-          notification.taskDispatchFence!,
-          !notification.outcome.ok,
-          notification.outcome.ok
-            ? undefined
-            : new Error(notification.outcome.error),
-          goal.receipt,
-        );
+        if (!goal.historyOnly) {
+          if (goal.finished)
+            publishChatTurnBoundary(
+              notification.chatId,
+              goal.chat.projectId,
+              goal.chat,
+            );
+          await synchronizeScheduledTaskGoal(
+            notification.chatId,
+            notification.taskDispatchFence!,
+            !notification.outcome.ok,
+            notification.outcome.ok
+              ? undefined
+              : new Error(notification.outcome.error),
+            goal.receipt,
+          );
+        }
         app.log.info(
           {
             event: "chat.turn.outcome-recovered",
@@ -99,7 +102,7 @@ export function createChatTurnOutcomeRuntime({
           },
           "Recovered Task Goal input outcome from worker",
         );
-        queueTaskScheduleTick();
+        if (!goal.historyOnly) queueTaskScheduleTick();
         return;
       }
     } catch (error) {

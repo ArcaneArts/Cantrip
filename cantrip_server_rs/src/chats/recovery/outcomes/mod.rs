@@ -137,33 +137,39 @@ impl Service {
                         )
                         .await;
                 }
-                self.dependencies.live.publish_boundary(
-                    owner,
-                    text(&n["chatId"])?,
-                    &goal["chat"]["projectId"],
-                    Some(&goal["chat"]),
-                );
-                let error = (n["outcome"]["ok"] == false).then(|| {
-                    Arc::new(anyhow::anyhow!(
-                        n["outcome"]["error"]
-                            .as_str()
-                            .unwrap_or("Task Goal input failed.")
-                            .to_owned()
-                    ))
-                });
-                self.dependencies
-                    .goals
-                    .synchronize_goal_input(
-                        owner,
-                        text(&n["chatId"])?,
-                        &n["taskDispatchFence"],
-                        n["outcome"]["ok"] == false,
-                        error,
-                        Some(&goal["receipt"]),
-                    )
-                    .await?;
+                if goal["historyOnly"] != true {
+                    if goal["finished"] == true {
+                        self.dependencies.live.publish_boundary(
+                            owner,
+                            text(&n["chatId"])?,
+                            &goal["chat"]["projectId"],
+                            Some(&goal["chat"]),
+                        );
+                    }
+                    let error = (n["outcome"]["ok"] == false).then(|| {
+                        Arc::new(anyhow::anyhow!(
+                            n["outcome"]["error"]
+                                .as_str()
+                                .unwrap_or("Task Goal input failed.")
+                                .to_owned()
+                        ))
+                    });
+                    self.dependencies
+                        .goals
+                        .synchronize_goal_input(
+                            owner,
+                            text(&n["chatId"])?,
+                            &n["taskDispatchFence"],
+                            n["outcome"]["ok"] == false,
+                            error,
+                            Some(&goal["receipt"]),
+                        )
+                        .await?;
+                }
                 self.log("info","Recovered Task Goal input outcome from worker",json!({"event":"chat.turn.outcome-recovered","subsystem":"chat-execution","chatId":n["chatId"],"workerId":worker,"taskInferenceInputOperationId":goal["receipt"]["operationId"],"status":if goal["terminal"]["ok"]==true{"completed"}else{"failed"}}));
-                (self.dependencies.queue_tick)();
+                if goal["historyOnly"] != true {
+                    (self.dependencies.queue_tick)();
+                }
                 return Ok(());
             }
             Ok(None) => {}

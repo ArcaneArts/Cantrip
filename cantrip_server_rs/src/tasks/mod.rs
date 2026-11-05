@@ -6,6 +6,7 @@ mod edits;
 pub mod failure_kind;
 mod finish;
 mod goal_inference_inputs;
+mod goal_input_history;
 pub(crate) mod goal_observations;
 mod inference_inputs;
 mod operations;

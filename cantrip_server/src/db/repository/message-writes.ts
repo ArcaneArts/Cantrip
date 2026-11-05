@@ -491,11 +491,19 @@ export class MessageWriteRepository {
     chatId: string,
     input: TaskMessageOpaqueContent,
     attribution?: ChatExecutionAttribution,
+    options: { historical?: boolean } = {},
   ): Promise<TaskMessageOpaqueSummary | null> {
     if (attribution?.contextKind === "standalone") {
       throw new Error("Standalone Chats do not support Task messages.");
     }
     const message = taskMessageOpaqueContentSchema.parse(input);
+    if (
+      options.historical &&
+      (!attribution || message.classification.role !== "assistant")
+    )
+      throw new Error(
+        "Historical Task messages require an attributed assistant response.",
+      );
     const chat = await this.database
       .select({
         id: schema.chats.id,
@@ -510,10 +518,19 @@ export class MessageWriteRepository {
           eq(schema.projects.ownerId, ownerId),
         ),
       )
-      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          options.historical ? undefined : isNull(schema.chats.archivedAt),
+        ),
+      )
       .limit(1);
     if (!chat[0] || chat[0].experience !== "task") return null;
-    const worktreeId = requiredProjectChatWorktreeId(chat[0].worktreeId);
+    const worktreeId = requiredProjectChatWorktreeId(
+      options.historical && attribution
+        ? attribution.worktreeId
+        : chat[0].worktreeId,
+    );
 
     const activeLanes = attribution
       ? await this.database
@@ -544,7 +561,7 @@ export class MessageWriteRepository {
             ),
           )
           .limit(1);
-    if (attribution && !activeLanes[0]) return null;
+    if (attribution && !activeLanes[0] && !options.historical) return null;
 
     const existing = await this.database
       .select()
@@ -592,10 +609,11 @@ export class MessageWriteRepository {
         idempotencyKey: message.idempotencyKey,
       })
       .returning();
-    await this.database
-      .update(schema.chats)
-      .set({ updatedAt: new Date() })
-      .where(eq(schema.chats.id, chatId));
+    if (!options.historical)
+      await this.database
+        .update(schema.chats)
+        .set({ updatedAt: new Date() })
+        .where(eq(schema.chats.id, chatId));
     return toTaskMessage(firstOrThrow(result, "appending a Task message"));
   }
 
