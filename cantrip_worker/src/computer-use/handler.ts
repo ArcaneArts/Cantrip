@@ -177,6 +177,37 @@ export async function handleComputerUseOperation(
     }
     let data: Extract<ComputerUseResultContent, { status: "ok" }>["data"];
     switch (action.operation) {
+      case "clipboard.read":
+        data = await native().readClipboard(
+          scope,
+          action.sessionId,
+          target(action),
+          signal,
+        );
+        break;
+      case "clipboard.write":
+        data = {
+          session: await native().writeClipboard(
+            scope,
+            action.sessionId,
+            target(action),
+            action.text,
+            signal,
+          ),
+        };
+        break;
+      case "desktop.resize":
+        data = {
+          session: await native().resizeDesktop(
+            scope,
+            action.sessionId,
+            target(action),
+            action.width,
+            action.height,
+            signal,
+          ),
+        };
+        break;
       case "agent.sources.list":
         if (!dependencies.agentObservations)
           throw new CuaAuthorizationError("execution-unavailable");

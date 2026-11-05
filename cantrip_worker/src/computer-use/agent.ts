@@ -91,6 +91,9 @@ const operations: Record<
   CuaJavascriptAction["operation"],
   ComputerUseOperation
 > = {
+  readClipboard: "clipboard.read",
+  writeClipboard: "clipboard.write",
+  resizeDesktop: "desktop.resize",
   state: "session.state",
   wait: "session.state",
   targets: "targets.list",
@@ -529,7 +532,7 @@ export class CuaAgentCoordinator {
               : {}),
             images: images.map(({ native, model }) => ({ native, model })),
             coordinates:
-              "Target-local logical points. For model image pixels use x * logicalWidth / model.width and y * logicalHeight / model.height. Cursor movement never moves the system pointer.",
+              "Target-local logical points. For model image pixels use x * logicalWidth / model.width and y * logicalHeight / model.height. moveCursor changes the logical cursor only; movePointer sends actual pointer movement on the assigned Linux desktop.",
           }),
         },
         ...images.map((image) => image.content),

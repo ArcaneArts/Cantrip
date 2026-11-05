@@ -1643,3 +1643,58 @@ top-level `return`; the model corrected its script and succeeded. The session
 reported the captured chat, Worker, native thread and turn. Host Cantrip-window
 access remained disabled. Browser navigation and a native GUI file task are
 being exercised separately; this capture is not full Phase 4 acceptance.
+
+## Phase 4: clipboard, pointer and geometry checkpoint (2026-11-05)
+
+Remote package 0.3.0 adds plain UTF-8 clipboard reads/writes, explicit physical
+pointer movement and live RandR resizing to the first-party native CUA contract.
+The JavaScript SDK exposes `readClipboard`, `writeClipboard`, `pasteText`,
+`movePointer` and `resizeDesktop`. Existing logical `moveCursor` behavior is
+unchanged. Operations retain the captured workspace/session authority; the macOS
+backend rejects these Linux desktop operations without changing Host state.
+
+Both ARM64 Docker and the installed AMD64 VM passed the actual package lifecycle
+harness. New checks round-tripped more than 70,000 characters including 512
+distinct CJK characters, observed independent clipboards on two displays, queried
+the physical X pointer, and captured a resized 1280×720 desktop without changing
+its identity or generation. Stale clipboard and resize requests were rejected.
+The previous EOF, held-button cleanup, carrier/manager death, desktop retirement,
+service retirement, upgrade, disable/remove/purge/reinstall and retained-data
+checks also passed on both architectures.
+
+Each architecture passed both actual Worker integration cases, including the
+real packaged JavaScript SDK, HTTP MCP broker, coordinator, native lifetime and
+captured-placement routing. The SDK case exercised the new operations on the
+assigned desktop. The Host helper never launched. ARM64 took 32.81 seconds for
+the test bodies; the emulated AMD64 run took 38.18 seconds. These loaded-host
+acceptance timings are not streaming performance measurements.
+
+Native macOS tests passed all 224 cases across the library and integration
+suites. Linux passed formatting, 87 library tests and strict all-target Clippy.
+The focused Worker run passed 192 tests with 35 platform skips; its additional
+native-backed JavaScript run passed all 51 tests. All 1,094 protocol tests passed.
+Worker and App TypeScript checks passed, and both Rust Server CantripOS contract
+tests passed. The first SDK run exposed an omitted cursor action enum value;
+the corrected contract and complete session parse regression passed afterward.
+
+The initial Server TypeScript run reported a possibly-undefined `identity` at
+`native-logical-inputs.ts:378`, in a file unchanged by this cycle. After rebasing
+onto newer Main, both Worker and Server TypeScript checks passed. The initial
+required `pnpm check` stopped at decomposition budgets: `build-app.ts` 1503/1500
+and `chat-turn-runtime.ts` 2122/1999. These original failures remain recorded.
+The final rebased check again stopped at the budgets, now 1504/1500 and
+2175/1999 respectively, in files unchanged by this cycle.
+
+| Package architecture | Bytes   | SHA-256                                                            |
+| -------------------- | ------- | ------------------------------------------------------------------ |
+| ARM64                | 1343092 | `71940d4f9d7cfd5a3aee3537697348d77c841d6d0b27430cf91e7ebb2947dc01` |
+| AMD64                | 1546036 | `c9611b1721131bec030b1530713af234523026af1be4bfaca1f5c1e54122e0cd` |
+
+Clipboard support is text-only, bounded to 1 MiB, and scoped to the native helper
+and desktop lifetime. The existing JavaScript result limit remains 32 KiB.
+Resizing selects an actually supported RandR mode; unsupported modes report the
+real failure. Unconfirmed mutations have an unknown outcome and are not replayed.
+
+This checkpoint does not complete Phase 4. Integrated streaming, exclusive human
+takeover, managed SSH/SFTP/VNC/TCP, final real-agent GUI file acceptance and
+refreshed bootable media remain to be delivered and verified.

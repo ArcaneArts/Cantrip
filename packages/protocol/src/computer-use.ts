@@ -6,6 +6,7 @@ export const CUA_CHUNK_BYTES = 256 * 1024;
 export const CUA_MAX_CHUNKS = 64;
 export const CUA_CONTROL_BYTES = 16 * 1024 * 1024;
 export const CUA_MAX_SCRIPT_BYTES = 2 * 1024 * 1024;
+export const CUA_MAX_CLIPBOARD_BYTES = 1024 * 1024;
 export const CUA_MAX_TIMELINE_FRAMES = 131072;
 export const CUA_MAX_TIMELINE_MS = Number.MAX_SAFE_INTEGER;
 
@@ -92,6 +93,7 @@ export const cuaSessionSchema = z.strictObject({
           "background-coordinate",
           "background-text",
           "background-key",
+          "background-move",
           "system-media",
           "background-drag",
           "background-scroll",
@@ -155,6 +157,17 @@ export const cuaInventorySchema = z
   );
 export const cuaSessionResultSchema = z.strictObject({
   session: cuaSessionSchema,
+});
+const clipboardTextSchema = boundedText(CUA_MAX_CLIPBOARD_BYTES).refine(
+  (value) =>
+    ![...value].some((char) => {
+      const code = char.codePointAt(0)!;
+      return code >= 0xd800 && code <= 0xdfff;
+    }),
+);
+export const cuaClipboardResultSchema = z.strictObject({
+  session: cuaSessionSchema,
+  text: clipboardTextSchema.nullable(),
 });
 export const cuaImageSchema = z
   .strictObject({
@@ -392,6 +405,10 @@ export const cuaInputCommandSchema = z.discriminatedUnion("kind", [
     modifiers: cuaModifiersSchema,
   }),
   z.strictObject({
+    kind: z.literal("move"),
+    point: cuaPointSchema,
+  }),
+  z.strictObject({
     kind: z.literal("drag"),
     start: cuaPointSchema,
     end: cuaPointSchema,
@@ -415,6 +432,7 @@ export const cuaInputReceiptSchema = z.strictObject({
     "background-coordinate",
     "background-text",
     "background-key",
+    "background-move",
     "system-media",
     "background-drag",
     "background-scroll",
@@ -460,6 +478,9 @@ export const CUA_REQUIRED_OPERATIONS = [
 ] as const;
 
 export const computerUseOperationSchema = z.enum([
+  "clipboard.read",
+  "clipboard.write",
+  "desktop.resize",
   "capabilities.get",
   "controls.inspect",
   "input.press",
@@ -482,6 +503,24 @@ const sessionFields = { sessionId: cuaIdSchema };
 
 /** Decrypted action only. Execution authority is supplied separately by the server. */
 export const computerUseActionSchema = z.discriminatedUnion("operation", [
+  z.strictObject({
+    operation: z.literal("clipboard.read"),
+    ...sessionFields,
+    ...targetFields,
+  }),
+  z.strictObject({
+    operation: z.literal("clipboard.write"),
+    ...sessionFields,
+    ...targetFields,
+    text: clipboardTextSchema,
+  }),
+  z.strictObject({
+    operation: z.literal("desktop.resize"),
+    ...sessionFields,
+    ...targetFields,
+    width: z.number().int().min(32).max(8192),
+    height: z.number().int().min(32).max(8192),
+  }),
   z.strictObject({ operation: z.literal("capabilities.get") }),
   z.strictObject({ operation: z.literal("agent.sources.list") }),
   z.strictObject({
@@ -584,6 +623,9 @@ export const computerUseHttpResultSchema = z.strictObject({
 
 const closedSchema = z.strictObject({ closed: z.literal(true) });
 const resultDataSchemas = {
+  "clipboard.read": cuaClipboardResultSchema,
+  "clipboard.write": cuaSessionResultSchema,
+  "desktop.resize": cuaSessionResultSchema,
   "capabilities.get": cuaCapabilitiesSchema,
   "agent.sources.list": cuaAgentSourcesSchema,
   "agent.observation.get": cuaAgentObservationSchema,
@@ -609,6 +651,7 @@ export const computerUseResultContentSchema = z
       status: z.literal("ok"),
       operation: computerUseOperationSchema,
       data: z.union([
+        cuaClipboardResultSchema,
         cuaCapabilitiesSchema,
         cuaInventorySchema,
         cuaControlsResultSchema,

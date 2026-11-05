@@ -752,7 +752,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
         opts,
       );
       expect(help.value).toMatchObject({
-        apiVersion: 19,
+        apiVersion: 20,
         methods: { clickSequence: expect.any(String) },
         examples: { clickSequence: expect.any(String) },
       });
@@ -785,7 +785,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
         opts,
       );
       expect(result.value).toMatchObject({
-        apiVersion: 19,
+        apiVersion: 20,
         methods: { keyPress: expect.any(String), keyChord: expect.any(String) },
         examples: { commandK: expect.any(String) },
       });

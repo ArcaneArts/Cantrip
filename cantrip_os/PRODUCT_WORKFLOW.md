@@ -72,8 +72,11 @@ authorized agent/preview scopes, releasing the carrier after the last scope.
 Stopping an agent releases its held input; an independent shell keeps running.
 The Host Cantrip-window grant is unnecessary for the explicitly assigned Linux
 display. Missing remote support, changed generations or revoked policy fail
-without opening the Host desktop. Clipboard APIs and integrated human takeover
-are still being implemented.
+without opening the Host desktop. Remote package 0.3.0 adds plain UTF-8 clipboard
+read/write/paste, physical pointer movement and supported live desktop resizing
+through the SDK. Clipboard text is limited to 1 MiB and its selection owner lasts
+only for the helper/desktop lifetime; final JavaScript output retains its 32 KiB
+limit. Integrated human takeover remains in progress.
 
 ## Files and editor
 

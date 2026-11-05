@@ -19,6 +19,11 @@ export interface CuaPermissionDecision {
 }
 
 const operationClasses = {
+  // Clipboard reads can expose text outside the image; require the stronger
+  // existing native interaction grant for both clipboard directions and resize.
+  "clipboard.read": ["native-input"],
+  "clipboard.write": ["native-input"],
+  "desktop.resize": ["native-input"],
   // Capability discovery and Stop require the caller's authenticated execution
   // scope, but never a separate operation approval. Stop must remain available.
   "capabilities.get": [],

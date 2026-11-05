@@ -27,6 +27,14 @@ pub(super) fn perform(
         };
         let start = Instant::now();
         match command {
+            InputCommand::Move { point } => {
+                position = *point;
+                send(InputEvent::PointerMove {
+                    point: position,
+                    modifiers: vec![],
+                })?;
+                progress(position);
+            }
             InputCommand::PreparedPress {
                 point,
                 hold_ms,

@@ -18,6 +18,9 @@ const restricted: CuaPermissionProfile = {
 };
 
 const expectedClasses: Record<ComputerUseOperation, CuaPermissionClass[]> = {
+  "clipboard.read": ["native-input"],
+  "clipboard.write": ["native-input"],
+  "desktop.resize": ["native-input"],
   "capabilities.get": [],
   "agent.sources.list": [],
   "agent.observation.get": [],

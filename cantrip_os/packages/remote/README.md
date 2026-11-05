@@ -1,6 +1,6 @@
 # Optional native desktop package
 
-`cantrip-os-remote` 0.2.0 supplies the Linux X11 `cantrip-cua` helper and a
+`cantrip-os-remote` 0.3.0 supplies the Linux X11 `cantrip-cua` helper and a
 workspace-bound protected stdio carrier. It depends on the existing workspace
 and executor packages. Removing it leaves those packages, ordinary desktops,
 and workspace files available. No Worker, conversation database, scheduler,
@@ -8,7 +8,7 @@ or model-provider credentials are installed in the guest.
 
 The Worker routes normal agent CUA and human previews to their captured Linux
 placement. The MCP client, turn authorization and provider credentials stay on
-the Worker. Integrated Remote Desktop/takeover, clipboard APIs and managed
+the Worker. Integrated Remote Desktop/takeover and managed
 SSH/SFTP/VNC/TCP access require the following Phase 4 cycles. The independent
 local workspace viewer continues to work.
 
@@ -60,6 +60,37 @@ attach its exact ID/generation, then use screenshots and input. Launch applicati
 with `cantrip-desktop` through the ordinary Linux shell. Full-display access to
 this explicit guest target does not require the Host Cantrip-window grant. A
 missing package or stale placement reports an error without selecting Host.
+
+Version 0.3.0 adds assigned-desktop UTF-8 clipboard access, physical pointer
+motion and live RandR resize through the same authorized CUA session:
+
+```js
+await cua.movePointer({ x: 321, y: 234 });
+await cua.writeClipboard("日本語 café 🦀");
+const text = await cua.readClipboard();
+await cua.pasteText("A paragraph with many different Unicode characters");
+await cua.resizeDesktop(1280, 720);
+await cua.snapshot();
+```
+
+`movePointer` posts actual motion on Linux; `moveCursor` remains logical
+presentation. Clipboard and resize use the existing native interaction grant,
+not an inventory/capture-only grant. Text is limited to 1 MiB UTF-8; final
+JavaScript output retains its existing 32 KiB limit, so compare or slice large
+clipboard values before returning them. `pasteText` replaces the guest clipboard
+and sends Control+V to the focused application; it leaves that clipboard content
+in place. Clipboard selections belong to the desktop/helper lifetime and can
+disappear when their owning helper closes. Reading an unavailable selection
+reports an error. Binary/HTML clipboard formats are not provided.
+
+Resize uses a mode supported by the selected X server, such as 1280×720 or
+1920×1080 on the workspace TigerVNC server. It updates geometry without changing
+the desktop identity or restarting applications. Unsupported modes report the
+actual operation failure; no other display is substituted. The package adds
+Debian's small `xclip` utility and uses `xrandr` from `x11-xserver-utils`. Utilities
+receive the explicitly selected display; clipboard text travels only over pipes.
+Host backends reject these Linux operations without touching the Host clipboard
+or pointer.
 
 The Worker uses `remoteControl` and `remoteCommand` from its OS connection module.
 Local Docker uses non-TTY root `docker exec -i`; installed systems use strict

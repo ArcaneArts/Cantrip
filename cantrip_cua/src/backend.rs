@@ -31,6 +31,42 @@ impl Raster {
 }
 
 pub trait CaptureBackend: Send {
+    fn desktop_io(&self) -> bool {
+        false
+    }
+    fn clipboard_read(
+        &mut self,
+        _target: &Target,
+        _cancel: &Cancellation,
+    ) -> Result<Option<String>> {
+        Err(CuaError::new(
+            ErrorCode::Unsupported,
+            "Clipboard access is unavailable on this backend.",
+        ))
+    }
+    fn clipboard_write(
+        &mut self,
+        _target: &Target,
+        _text: &str,
+        _cancel: &Cancellation,
+    ) -> Result<()> {
+        Err(CuaError::new(
+            ErrorCode::Unsupported,
+            "Clipboard access is unavailable on this backend.",
+        ))
+    }
+    fn resize_desktop(
+        &mut self,
+        _target: &Target,
+        _width: u32,
+        _height: u32,
+        _cancel: &Cancellation,
+    ) -> Result<Target> {
+        Err(CuaError::new(
+            ErrorCode::Unsupported,
+            "Desktop resize is unavailable on this backend.",
+        ))
+    }
     /// Host displays can contain protected Cantrip windows. A backend bound by
     /// the guest carrier to an explicit owned desktop has no host display.
     fn protects_host_displays(&self) -> bool {

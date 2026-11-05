@@ -125,6 +125,35 @@ describe.skipIf(!transport)(
           activation: false,
           outcome: "dispatched",
         });
+        await service.writeClipboard(
+          scope,
+          id,
+          reference,
+          "Worker clipboard 日本語 café 🦀",
+        );
+        expect((await service.readClipboard(scope, id, reference)).text).toBe(
+          "Worker clipboard 日本語 café 🦀",
+        );
+        const motion = await service.perform(scope, id, reference, {
+          kind: "move",
+          point: { x: 321, y: 234 },
+        });
+        expect(motion.input).toMatchObject({
+          method: "background-move",
+          position: { x: 321, y: 234 },
+        });
+        const resized = await service.resizeDesktop(
+          scope,
+          id,
+          reference,
+          1280,
+          720,
+        );
+        expect(resized.target).toMatchObject({
+          pixelWidth: 1280,
+          pixelHeight: 720,
+        });
+        await service.resizeDesktop(scope, id, reference, 1440, 900);
         // These receipts prove dispatch/protocol compatibility. Actual xterm bytes
         // are checked by the separate native Linux and product acceptance tests.
       } finally {
@@ -294,7 +323,7 @@ describe.skipIf(!transport)(
             name: "js",
             arguments: {
               script:
-                "const p = await cua.targets(); const t = p.targets[0]; await cua.attach({targetId:t.id,targetGeneration:t.generation}); await cua.click({x:500,y:500}); await cua.keyPress('Escape'); await cua.snapshot(); await cua.getState()",
+                "const p = await cua.targets(); const t = p.targets[0]; await cua.attach({targetId:t.id,targetGeneration:t.generation}); await cua.click({x:500,y:500}); await cua.keyPress('Escape'); await cua.writeClipboard('Cantrip SDK 日本語 café 🦀'); const clipboard = await cua.readClipboard(); await cua.movePointer({x:321,y:234}); await cua.resizeDesktop(1280,720); await cua.snapshot(); await cua.resizeDesktop(1440,900); ({clipboard, session:(await cua.getState()).session})",
             },
             _meta: {
               threadId: "native-sdk-thread",
@@ -311,6 +340,9 @@ describe.skipIf(!transport)(
         const text = result.content.find((item) => item.type === "text");
         if (text?.type !== "text")
           throw new Error("Missing native SDK metadata");
+        expect(JSON.parse(text.text).value.clipboard).toBe(
+          "Cantrip SDK 日本語 café 🦀",
+        );
         expect(JSON.parse(text.text).value.session.target.id).toBe(
           `x11-:${desktop.display}-${desktop.desktop_generation}`,
         );

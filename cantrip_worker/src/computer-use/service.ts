@@ -25,10 +25,12 @@ import {
   cuaInventorySchema,
   cuaIdSchema,
   cuaSessionResultSchema,
+  cuaClipboardResultSchema,
   cuaSnapshotSchema,
   cuaControlsResultSchema,
   cuaInputResultSchema,
   cuaInputCommandSchema,
+  computerUseActionSchema,
   type CuaInputCommand,
   type CuaControlsResult,
   type CuaInputResult,
@@ -461,7 +463,13 @@ export class CantripCuaService {
     fields: object,
     signal: AbortSignal,
     snapshot = false,
-  ): Promise<CuaSession | CuaSnapshot | CuaControlsResult | CuaInputResult> {
+  ): Promise<
+    | CuaSession
+    | CuaSnapshot
+    | CuaControlsResult
+    | CuaInputResult
+    | z.infer<typeof cuaClipboardResultSchema>
+  > {
     const active = AbortSignal.any([signal, record.controller.signal]);
     const previous = record.queue;
     const work = (async () => {
@@ -494,7 +502,13 @@ export class CantripCuaService {
               operation === "input.click" ||
               operation === "input.perform"
             ? this.parse(record.runtime, cuaInputResultSchema, response.data)
-            : null;
+            : operation === "clipboard.read"
+              ? this.parse(
+                  record.runtime,
+                  cuaClipboardResultSchema,
+                  response.data,
+                )
+              : null;
       if (extra && "input" in extra) {
         const method =
           operation === "input.click" &&
@@ -532,11 +546,13 @@ export class CantripCuaService {
               )
             : command.kind === "prepared-press"
               ? (command.point ?? record.state?.cursor.position)
-              : command.kind === "drag"
-                ? command.end
-                : command.kind === "scroll"
-                  ? (command.point ?? record.state?.cursor.position)
-                  : record.state?.cursor.position
+              : command.kind === "move"
+                ? command.point
+                : command.kind === "drag"
+                  ? command.end
+                  : command.kind === "scroll"
+                    ? (command.point ?? record.state?.cursor.position)
+                    : record.state?.cursor.position
           : operation === "input.click"
             ? "position" in fields
               ? (fields.position as CuaPoint)
@@ -719,6 +735,72 @@ export class CantripCuaService {
       },
       signal,
     ) as Promise<CuaInputResult>;
+  }
+  readClipboard(
+    input: CuaScope,
+    sessionId: string,
+    target: CuaTargetReference,
+    signal?: AbortSignal,
+  ) {
+    return this.mutate(
+      input,
+      sessionId,
+      "clipboard.read",
+      cuaTargetReferenceSchema.parse(target),
+      signal,
+    ) as Promise<z.infer<typeof cuaClipboardResultSchema>>;
+  }
+  writeClipboard(
+    input: CuaScope,
+    sessionId: string,
+    target: CuaTargetReference,
+    text: string,
+    signal?: AbortSignal,
+  ) {
+    const action = computerUseActionSchema.parse({
+      operation: "clipboard.write",
+      sessionId,
+      ...target,
+      text,
+    });
+    if (action.operation !== "clipboard.write")
+      throw new Error("Invalid clipboard operation.");
+    return this.mutate(
+      input,
+      sessionId,
+      "clipboard.write",
+      { ...cuaTargetReferenceSchema.parse(target), text: action.text },
+      signal,
+    ) as Promise<CuaSession>;
+  }
+  resizeDesktop(
+    input: CuaScope,
+    sessionId: string,
+    target: CuaTargetReference,
+    width: number,
+    height: number,
+    signal?: AbortSignal,
+  ) {
+    const action = computerUseActionSchema.parse({
+      operation: "desktop.resize",
+      sessionId,
+      ...target,
+      width,
+      height,
+    });
+    if (action.operation !== "desktop.resize")
+      throw new Error("Invalid desktop operation.");
+    return this.mutate(
+      input,
+      sessionId,
+      "desktop.resize",
+      {
+        ...cuaTargetReferenceSchema.parse(target),
+        width: action.width,
+        height: action.height,
+      },
+      signal,
+    ) as Promise<CuaSession>;
   }
   click(
     input: CuaScope,

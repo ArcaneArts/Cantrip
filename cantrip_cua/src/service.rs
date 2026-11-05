@@ -117,6 +117,27 @@ pub enum Operation {
         target_generation: u64,
         position: Point,
     },
+    #[serde(rename = "clipboard.read", rename_all = "camelCase")]
+    ClipboardRead {
+        binding: SessionBinding,
+        target_id: String,
+        target_generation: u64,
+    },
+    #[serde(rename = "clipboard.write", rename_all = "camelCase")]
+    ClipboardWrite {
+        binding: SessionBinding,
+        target_id: String,
+        target_generation: u64,
+        text: String,
+    },
+    #[serde(rename = "desktop.resize", rename_all = "camelCase")]
+    DesktopResize {
+        binding: SessionBinding,
+        target_id: String,
+        target_generation: u64,
+        width: u32,
+        height: u32,
+    },
     #[serde(rename = "controls.inspect", rename_all = "camelCase")]
     ControlsInspect {
         binding: SessionBinding,
@@ -172,6 +193,9 @@ impl Operation {
             | Self::Snapshot { binding, .. }
             | Self::CursorConfigure { binding, .. }
             | Self::CursorMove { binding, .. }
+            | Self::ClipboardRead { binding, .. }
+            | Self::ClipboardWrite { binding, .. }
+            | Self::DesktopResize { binding, .. }
             | Self::ControlsInspect { binding, .. }
             | Self::InputPress { binding, .. }
             | Self::InputClick { binding, .. }
@@ -473,6 +497,7 @@ impl<B: CaptureBackend> CuaService<B> {
             }
         }
         let position = match &command {
+            crate::gesture::InputCommand::Move { point } => *point,
             crate::gesture::InputCommand::Drag { start, end, .. } => {
                 target.bounds.to_global(*end)?;
                 *start
@@ -644,6 +669,9 @@ impl<B: CaptureBackend> CuaService<B> {
                         "input.perform",
                     ]);
                 }
+                if self.backend.desktop_io() {
+                    operations.extend(["clipboard.read", "clipboard.write", "desktop.resize"]);
+                }
                 if self.javascript {
                     operations.extend(["javascript.evaluate", "javascript.reset"]);
                 }
@@ -774,6 +802,65 @@ impl<B: CaptureBackend> CuaService<B> {
                 cancel.check()?;
                 self.sessions.insert(binding.session_id, state.clone());
                 Ok(OperationResult::session(&state, "cursorChanged"))
+            }
+            Operation::ClipboardRead {
+                binding,
+                target_id,
+                target_generation,
+            } => {
+                let state = self.attached(&binding, &target_id, target_generation)?;
+                let text = self
+                    .backend
+                    .clipboard_read(state.target.as_ref().unwrap(), cancel)?;
+                Ok(OperationResult::json(
+                    json!({"session": state, "text": text}),
+                ))
+            }
+            Operation::ClipboardWrite {
+                binding,
+                target_id,
+                target_generation,
+                text,
+            } => {
+                if text.len() > 1024 * 1024 {
+                    return Err(CuaError::invalid("Clipboard text exceeds 1 MiB."));
+                }
+                let state = self.attached(&binding, &target_id, target_generation)?;
+                self.backend
+                    .clipboard_write(state.target.as_ref().unwrap(), &text, cancel)?;
+                Ok(OperationResult::session(&state, "clipboardChanged"))
+            }
+            Operation::DesktopResize {
+                binding,
+                target_id,
+                target_generation,
+                width,
+                height,
+            } => {
+                let mut state = self.attached(&binding, &target_id, target_generation)?;
+                let target = self.backend.resize_desktop(
+                    state.target.as_ref().unwrap(),
+                    width,
+                    height,
+                    cancel,
+                )?;
+                target.validate()?;
+                if target.id != target_id || target.generation != target_generation {
+                    return Err(CuaError::new(
+                        ErrorCode::StaleTarget,
+                        "Desktop resize changed its target identity.",
+                    ));
+                }
+                if !target.bounds.contains_local(state.cursor.position) {
+                    state
+                        .cursor
+                        .move_to(Point::default(), &target.bounds, now_ms)?;
+                }
+                state.cursor.trail_points.clear();
+                state.target = Some(target);
+                cancel.check()?;
+                self.sessions.insert(binding.session_id, state.clone());
+                Ok(OperationResult::session(&state, "desktopResized"))
             }
             Operation::Snapshot {
                 binding,

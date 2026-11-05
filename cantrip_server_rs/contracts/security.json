@@ -8388,6 +8388,9 @@
     {
       "type": "enum",
       "values": [
+        "clipboard.read",
+        "clipboard.write",
+        "desktop.resize",
         "capabilities.get",
         "controls.inspect",
         "input.press",
@@ -8579,6 +8582,7 @@
         "background-coordinate",
         "background-text",
         "background-key",
+        "background-move",
         "system-media",
         "background-drag",
         "background-scroll",
@@ -8681,6 +8685,7 @@
         "background-coordinate",
         "background-text",
         "background-key",
+        "background-move",
         "system-media",
         "background-drag",
         "background-scroll",
@@ -13478,6 +13483,9 @@
       "type": "enum",
       "name": "computerUseOperationSchema",
       "values": [
+        "clipboard.read",
+        "clipboard.write",
+        "desktop.resize",
         "capabilities.get",
         "controls.inspect",
         "input.press",

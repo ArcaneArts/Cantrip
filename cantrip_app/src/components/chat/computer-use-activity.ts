@@ -54,6 +54,9 @@ export function splitPreviewMessages(messages: readonly ChatMessage[]) {
 }
 
 const operationLabels: Record<string, string> = {
+  "clipboard.read": "Read clipboard",
+  "clipboard.write": "Write clipboard",
+  "desktop.resize": "Resize desktop",
   "capabilities.get": "Capabilities",
   "targets.list": "List targets",
   "session.open": "Open session",
