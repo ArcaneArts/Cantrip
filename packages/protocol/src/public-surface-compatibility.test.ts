@@ -590,8 +590,10 @@ const providerSetupAndLabelExports = [
 const endpointProviderExports = [
   "endpointModelInventoryItemSchema",
   "endpointModelInventorySchema",
+  "endpointProviderKinds",
   "isWorkerEndpointProviderKind",
   "nativeEndpointProviderKinds",
+  "providerUsesChatCompletions",
 ].sort();
 
 // Reviewed native recovery identities/results and additive timing metadata.
