@@ -727,7 +727,7 @@ See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 
 ## Phase 4 package checkpoint
 
-The optional `cantrip-os-remote` 0.7.0 package runs the first-party Linux CUA
+The optional `cantrip-os-remote` 0.8.0 package runs the first-party Linux CUA
 helper as the selected workspace account behind a protected root carrier.
 Docker and ISO scripts include it with the executor edition by default;
 `CANTRIP_OS_REMOTE=0` omits it. Its retained state uses a namespace inside the
@@ -788,3 +788,12 @@ Disconnect/Stop returns control only after confirmed guest cleanup or an actuall
 observed replacement epoch; uncertainty keeps the old lease blocked. The Native
 app exposes a loopback host/port for an ordinary VNC client. Explicit Guest-to-Host
 forwarding and remaining acceptance are still required.
+
+
+Remote 0.8.0 adds a protected guest-loopback listener carrier and a bounded
+Worker-host TCP bridge. It supports multiple clients and per-client half-close
+without Docker-specific Host addressing, and is retired with the remote package.
+This foundation does not yet expose saved Guest-to-Host routes in the product;
+that control-plane/UI integration remains the next Phase 4 milestone. Upgrades
+also invalidate package-owned timestamp bytecode so reproducible source changes
+actually execute the new code. Retained desktop/workspace state is preserved.

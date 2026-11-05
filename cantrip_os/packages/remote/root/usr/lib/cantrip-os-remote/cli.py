@@ -191,7 +191,12 @@ def connect(store, workspace, expected, connection_id, service=False, public_key
             raise RuntimeError(result.get("failure", "Remote connection failed"))
         if notify_ready:
             print("CANTRIP_OS_SERVICE_READY " + connection_id, file=sys.stderr, flush=True)
-        if service:
+        if service and expected.get("service", {}).get("kind") == "listen":
+            # The listener multiplex carries per-client FIN frames. Its outer
+            # carrier has no valid half-open state: Docker cannot propagate an
+            # individual stdout EOF until this process exits.
+            pump(sys.stdin.fileno(), sys.stdout.fileno(), connection.fileno(), connection.fileno())
+        elif service:
             stream_pump(sys.stdin.fileno(), sys.stdout.fileno(), connection.fileno(), connection.fileno(),
                         close_left=lambda: os.close(sys.stdout.fileno()),
                         close_right=lambda: connection.shutdown(socket.SHUT_WR))
