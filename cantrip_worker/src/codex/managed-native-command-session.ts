@@ -18,6 +18,7 @@ import {
 import type { NativeSettingsDelivery } from "../native-settings-delivery.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { managedNativeMethods } from "@cantrip/protocol";
 import {
   CodexNativeRpcError,
@@ -37,6 +38,8 @@ import type {
   PermissionTransition,
   NativeThreadSettings,
   InferenceJournalRecord,
+  NativeRuntimeHandoffQueuedSource,
+  NativeAutonomousAttempt,
 } from "@cantrip/protocol";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
 import { NativeCommandClient } from "../native-command-client.js";
@@ -74,6 +77,7 @@ interface Execution {
   goalEpoch?: string;
   nativeDecline?: ManagedExecutionDeclined;
   expectedTurnId?: string;
+  autonomousAttempt?: NativeAutonomousAttempt;
   guiPreparation?: boolean;
   logicalRoot?: Pick<
     NativeCommandReceipt,
@@ -147,7 +151,11 @@ export interface ManagedNativeCommandSessionOptions {
   beforeNativeDispatch?(
     method: string,
     session: NativeCommandSession,
-    intent?: { resumeAutonomy?: boolean; goalStatus?: "active" | "paused" },
+    intent?: {
+      resumeAutonomy?: boolean;
+      goalStatus?: "active" | "paused";
+      paused?: boolean;
+    },
   ): Promise<void>;
   /** Correlation-only diagnostics. Never log native frames or protected plaintext here. */
   onError(error: unknown, operationId: string): void;
@@ -506,9 +514,12 @@ export class ManagedNativeCommandSession {
   }
 
   /** Retain the exact source while the existing handoff records its deferral. */
-  withdrawGuiInference(
+  withdrawQueuedInference(
     handoffOperationId: string,
-    expected: { operationId: string; operationGeneration: string },
+    expected: Pick<
+      NativeRuntimeHandoffQueuedSource,
+      "operationId" | "operationGeneration" | "autonomousAttempt"
+    >,
     existingOnly = false,
   ): Promise<InferenceJournalRecord> {
     const execution = this.active;
@@ -516,8 +527,14 @@ export class ManagedNativeCommandSession {
       !execution ||
       execution.receipt.operationId !== expected.operationId ||
       execution.receipt.operationGeneration !== expected.operationGeneration ||
-      execution.logicalRoot?.operationId !== expected.operationId ||
-      execution.logicalRoot.operationGeneration !== expected.operationGeneration
+      (expected.autonomousAttempt
+        ? !isDeepStrictEqual(
+            execution.autonomousAttempt,
+            expected.autonomousAttempt,
+          )
+        : execution.logicalRoot?.operationId !== expected.operationId ||
+          execution.logicalRoot.operationGeneration !==
+            expected.operationGeneration)
     )
       throw new UnstartedInferenceUnavailableError(
         "The reserved queued input is no longer owned by this session.",
@@ -545,10 +562,26 @@ export class ManagedNativeCommandSession {
     return proof;
   }
 
-  acknowledgeGuiWithdrawal(handoffOperationId: string): void {
+  withdrawGuiInference(
+    handoffOperationId: string,
+    expected: { operationId: string; operationGeneration: string },
+    existingOnly = false,
+  ): Promise<InferenceJournalRecord> {
+    return this.withdrawQueuedInference(
+      handoffOperationId,
+      expected,
+      existingOnly,
+    );
+  }
+
+  acknowledgeQueuedWithdrawal(handoffOperationId: string): void {
     const withdrawal = this.active?.routeWithdrawal;
     if (withdrawal?.handoffOperationId === handoffOperationId)
       withdrawal.reason.acknowledge();
+  }
+
+  acknowledgeGuiWithdrawal(handoffOperationId: string): void {
+    this.acknowledgeQueuedWithdrawal(handoffOperationId);
   }
 
   /** Bind the actual accepted GUI command before it competes for capacity. */
@@ -767,7 +800,11 @@ export class ManagedNativeCommandSession {
     signal: AbortSignal,
     goalQueueHandoff?: NativeCommandAdmission["goalQueueHandoff"],
   ): Promise<void> {
-    if (session.threadId !== attempt.threadId || !session.runtimeGeneration)
+    if (
+      session.threadId !== attempt.threadId ||
+      !session.runtimeGeneration ||
+      attempt.trigger !== "goal"
+    )
       throw new Error(
         "The native attempt does not belong to this managed session.",
       );
@@ -788,6 +825,13 @@ export class ManagedNativeCommandSession {
       kind: "start",
       method: "turn/start",
       expectedTurnId: attempt.turnId,
+      autonomousAttempt: {
+        runnerGeneration: attempt.runnerGeneration,
+        attemptId: attempt.attemptId,
+        turnId: attempt.turnId,
+        trigger: "goal",
+        ...(attempt.goalEpoch ? { goalEpoch: attempt.goalEpoch } : {}),
+      },
       ...(goalQueueHandoff ? { goalQueueHandoff } : {}),
       frame: {
         method: "turn/start",
@@ -812,6 +856,9 @@ export class ManagedNativeCommandSession {
           message: "The native attempt was not dispatched.",
         },
       });
+      // The actual native gate was fenced before canonical deferral. There is
+      // no turn to fail or replay, and the Goal remains eligible after transfer.
+      if (error instanceof InferenceWithdrawalError) return;
       throw error;
     }
     let result: unknown;
@@ -848,6 +895,7 @@ export class ManagedNativeCommandSession {
         `native:${event.runnerGeneration}:${event.attemptId}`
     )
       return;
+    if (execution.routeWithdrawal) return;
     execution.nativeDecline = { ...event };
     execution.handle?.rejectInference?.();
     execution.handle?.fail(new Error(event.reason));
@@ -1006,6 +1054,8 @@ export class ManagedNativeCommandSession {
     );
     if (operation.expectedTurnId)
       intent.expectedTurnId = operation.expectedTurnId;
+    if (operation.autonomousAttempt)
+      intent.autonomousAttempt = operation.autonomousAttempt;
     if (operation.settingsBindingId !== undefined)
       intent.settingsBindingId = operation.settingsBindingId;
     const protectedContent = await protectNativeCommandContent({
@@ -1071,6 +1121,7 @@ export class ManagedNativeCommandSession {
       );
     const execution = this.createExecution(grant.receipt, session);
     execution.expectedTurnId = operation.expectedTurnId;
+    execution.autonomousAttempt = operation.autonomousAttempt;
     let publication: ManagedNativeExecutionPublication | null = null;
     let acceptance: Promise<void> = Promise.resolve();
     let resolveReceipt!: () => void;
@@ -1098,6 +1149,17 @@ export class ManagedNativeCommandSession {
       )
         throw new Error("The native mutation belongs to a replaced execution.");
     };
+    const awaitWithdrawal = async (): Promise<never> => {
+      const { reason } = execution.routeWithdrawal!;
+      try {
+        // Native gate invalidation may retire its pending request. Only this
+        // exact source's explicit cancellation can interrupt its ACK barrier.
+        await reason.wait(execution.inferenceAbort.signal);
+      } catch (error) {
+        if (!execution.inferenceAbort.signal.aborted) throw error;
+      }
+      throw reason;
+    };
 
     const finish = async (result: AgentTurnResult | null, error?: unknown) => {
       try {
@@ -1105,7 +1167,7 @@ export class ManagedNativeCommandSession {
         await acceptance;
         // The exact rejected RPC already settled this unconsumed attempt idle.
         // Releasing its local handle is not a failed model turn or user message.
-        if (execution.nativeDeferred) return;
+        if (execution.nativeDeferred || execution.routeWithdrawal) return;
         if (result) {
           execution.nativeTurnId ??= result.turnId;
           await publication?.complete(result);
@@ -1215,6 +1277,9 @@ export class ManagedNativeCommandSession {
                 this.options.onError(error, operation.operationId),
               );
           } catch (error) {
+            // Keep the canonical source/publication until the handoff records
+            // its no-start proof, including when native invalidation is retried.
+            if (execution.routeWithdrawal) return awaitWithdrawal();
             try {
               await releasePublication();
             } finally {
@@ -1254,6 +1319,7 @@ export class ManagedNativeCommandSession {
           }
           await this.options.beforeNativeDispatch?.(operation.method, session, {
             resumeAutonomy: intent.resumeAutonomy === true,
+            ...(intent.paused === undefined ? {} : { paused: intent.paused }),
             ...(intent.goalStatus ? { goalStatus: intent.goalStatus } : {}),
           });
           // Gate invalidation above releases a setter waiting on its first goal attempt.
@@ -1296,6 +1362,7 @@ export class ManagedNativeCommandSession {
             execution.inferenceForwarded = true;
           }
         } catch (error) {
+          if (execution.routeWithdrawal) return awaitWithdrawal();
           execution.handle?.fail(
             error instanceof Error
               ? error
@@ -1307,6 +1374,22 @@ export class ManagedNativeCommandSession {
       settle: (frame) =>
         (settlement ??= (async () => {
           resolveNativeResponse();
+          if (execution.routeWithdrawal) {
+            // The handoff/Stop transaction owns durable settlement. Do not
+            // overwrite its deferral with a generic rejected native response.
+            resolveReceipt();
+            if (execution.handle) {
+              execution.handle.rejectInference?.();
+              execution.handle.fail(execution.routeWithdrawal.reason);
+            } else {
+              try {
+                await releasePublication();
+              } finally {
+                this.clearExecution(execution);
+              }
+            }
+            return;
+          }
           if (intent.nativeSettingsOperationId && this.settings) {
             try {
               await this.settings.acknowledge(

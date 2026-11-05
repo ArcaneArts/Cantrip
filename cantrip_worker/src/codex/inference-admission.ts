@@ -499,8 +499,9 @@ export class CodexInferenceAdmission {
   }
 
   /** A route transition must retain the actual canonical source, not select an
-   * operation from a chat's UI status. Native gates and resumed turns have
-   * already forwarded input and cannot use this no-replay boundary. */
+   * operation from a chat's UI status. Private inference gates and resumed
+   * turns have already forwarded input and cannot use this no-replay boundary.
+   * The managed pre-start Goal gate has not forwarded its input yet. */
   withdrawUnstarted(
     source: InferenceOperationSource,
     reason?: Error,

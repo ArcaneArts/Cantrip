@@ -22,6 +22,22 @@ impl Admission<'_> {
         if input["intent"].get("goalStatus").is_some() && input["method"] != "thread/goal/set" {
             return reject("invalid-goal-status");
         }
+        if let Some(attempt) = input["intent"].get("autonomousAttempt") {
+            if input["origin"] != "autonomous"
+                || input["method"] != "turn/start"
+                || input["intent"].get("expectedTurnId") != attempt.get("turnId")
+                || input["operationId"]
+                    != format!(
+                        "native:{}:{}",
+                        text(&attempt["runnerGeneration"])?,
+                        text(&attempt["attemptId"])?
+                    )
+                || input["session"]["connectionId"]
+                    != format!("autonomous:{}", text(&attempt["runnerGeneration"])?)
+            {
+                return reject("invalid-autonomous-attempt");
+            }
+        }
         let mut goal_claim = None;
         if truthy(input.get("goalQueueHandoff")) {
             let handoff = &input["goalQueueHandoff"];

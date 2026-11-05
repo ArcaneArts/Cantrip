@@ -24,16 +24,15 @@ pub(super) async fn reserve(tx: &Transaction<'_>, source: &Value) -> Result<Valu
     if lanes.is_empty() && commands.is_empty() && claims.is_empty() {
         return Ok(Value::Null);
     }
-    if lanes.len() != 1 || commands.len() != 1 || claims.len() != 1 {
+    if lanes.len() != 1 || commands.len() != 1 {
         return reject("handoff-native-operation-pending");
     }
-    let (command, claim) = (&commands[0], &claims[0]);
+    let command = &commands[0];
+    let autonomous = autonomous_source::attempt(command)?;
     let session = &command["identity"];
     if command["status"] != "accepted"
-        || command["origin"] != "gui"
         || command["kind"] != "start"
         || command["method"] != "turn/start"
-        || command.get("logical_operation_id") != command.get("operation_id")
         || [
             "previous_operation_id",
             "logical_completed_at",
@@ -48,10 +47,6 @@ pub(super) async fn reserve(tx: &Transaction<'_>, source: &Value) -> Result<Valu
         .any(|key| truthy(command.get(key)))
         || command.get("worker_id") != source.get("workerId")
         || command.get("execution_lane_id") != lanes[0].get("id")
-        || claim["status"] != "accepted"
-        || truthy(claim.get("native_turn_id"))
-        || claim.get("operation_id") != command.get("operation_id")
-        || claim.get("operation_generation") != command.get("operation_generation")
         || [
             "chatId",
             "threadId",
@@ -74,9 +69,25 @@ pub(super) async fn reserve(tx: &Transaction<'_>, source: &Value) -> Result<Valu
     {
         return reject("handoff-native-operation-pending");
     }
-    Ok(
-        json!({"operationId":command["operation_id"],"operationGeneration":command["operation_generation"],"withdrawn":false}),
-    )
+    if autonomous.is_some() {
+        if !claims.is_empty() {
+            return reject("handoff-native-operation-pending");
+        }
+    } else if claims.len() != 1
+        || command["origin"] != "gui"
+        || command.get("logical_operation_id") != command.get("operation_id")
+        || claims[0]["status"] != "accepted"
+        || truthy(claims[0].get("native_turn_id"))
+        || claims[0].get("operation_id") != command.get("operation_id")
+        || claims[0].get("operation_generation") != command.get("operation_generation")
+    {
+        return reject("handoff-native-operation-pending");
+    }
+    let mut result = json!({"operationId":command["operation_id"],"operationGeneration":command["operation_generation"],"withdrawn":false});
+    if let Some(attempt) = autonomous {
+        result["autonomousAttempt"] = attempt;
+    }
+    Ok(result)
 }
 
 pub(super) async fn confirm(
@@ -108,6 +119,18 @@ pub(super) async fn confirm(
         &generation,
     )
     .await?;
+    if let Some(attempt) = queued.get("autonomousAttempt") {
+        autonomous_source::confirm(tx, &row["source"], &root, attempt, record).await?;
+        guards::assert_idle(tx, &text(&row["chat_id"])?).await?;
+        let mut queued = queued.clone();
+        queued["withdrawn"] = json!(true);
+        return update(
+            tx,
+            &row,
+            json!({"queuedSource":queued,"errorCode":Value::Null}),
+        )
+        .await;
+    }
     if root.get("chat_id") != row.get("chat_id")
         || root.get("logical_operation_id") != root.get("operation_id")
         || truthy(root.get("previous_operation_id"))

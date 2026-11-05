@@ -13,6 +13,10 @@ import type { ChatExecutionLaneRepository } from "./chat-execution-lanes.js";
 import { NativeCommandError } from "./native-command-errors.js";
 import { readNativeCommand } from "./native-command-context.js";
 import { deferGuiBeforeExecution } from "./native-undispatched-gui.js";
+import {
+  autonomousHandoffAttempt,
+  confirmAutonomousHandoffSource,
+} from "./native-handoff-autonomous-source.js";
 
 const pending = ["accepted", "dispatched", "uncertain"];
 const fail = (): never => {
@@ -109,17 +113,14 @@ export async function reserveHandoffQueuedSource(
       ),
     );
   if (!lanes.length && !commands.length && !claims.length) return null;
-  if (lanes.length !== 1 || commands.length !== 1 || claims.length !== 1)
-    fail();
+  if (lanes.length !== 1 || commands.length !== 1) fail();
   const command = commands[0]!;
-  const claim = claims[0]!;
+  const autonomousAttempt = autonomousHandoffAttempt(command);
   const session = command.identity as NativeCommandSession;
   if (
     command.status !== "accepted" ||
-    command.origin !== "gui" ||
     command.kind !== "start" ||
     command.method !== "turn/start" ||
-    command.logicalOperationId !== command.operationId ||
     command.previousOperationId ||
     command.logicalCompletedAt ||
     command.executionCompletedAt ||
@@ -130,10 +131,6 @@ export async function reserveHandoffQueuedSource(
     command.terminalEvidence ||
     command.workerId !== source.workerId ||
     command.executionLaneId !== lanes[0]!.id ||
-    claim.status !== "accepted" ||
-    claim.nativeTurnId ||
-    claim.operationId !== command.operationId ||
-    claim.operationGeneration !== command.operationGeneration ||
     session.chatId !== source.chatId ||
     session.threadId !== source.threadId ||
     session.runtimeGeneration !== source.runtimeGeneration ||
@@ -144,6 +141,22 @@ export async function reserveHandoffQueuedSource(
     session.placementId !== source.placementId
   )
     fail();
+  if (autonomousAttempt) {
+    if (claims.length) fail();
+  } else {
+    const claim = claims[0];
+    if (
+      claims.length !== 1 ||
+      !claim ||
+      command.origin !== "gui" ||
+      command.logicalOperationId !== command.operationId ||
+      claim.status !== "accepted" ||
+      claim.nativeTurnId ||
+      claim.operationId !== command.operationId ||
+      claim.operationGeneration !== command.operationGeneration
+    )
+      fail();
+  }
   const consumed = await tx
     .select({ id: schema.nativeCommandTurns.operationId })
     .from(schema.nativeCommandTurns)
@@ -154,6 +167,7 @@ export async function reserveHandoffQueuedSource(
     operationId: command.operationId,
     operationGeneration: command.operationGeneration,
     withdrawn: false,
+    ...(autonomousAttempt ? { autonomousAttempt } : {}),
   };
 }
 
@@ -175,6 +189,17 @@ export async function confirmHandoffQueuedSource(
     expected.operationId,
     expected.operationGeneration,
   );
+  if (expected.autonomousAttempt) {
+    await confirmAutonomousHandoffSource(
+      tx,
+      lanes,
+      source,
+      root,
+      expected.autonomousAttempt,
+      record,
+    );
+    return;
+  }
   if (
     root.chatId !== source.chatId ||
     root.logicalOperationId !== root.operationId ||

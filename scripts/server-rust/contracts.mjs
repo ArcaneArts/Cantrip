@@ -426,6 +426,7 @@ export const contractRoots = [
   "nativeCommandSessionSchema",
   "nativeCommandAdmissionSchema",
   "nativeCommandIntentSchema",
+  "nativeAutonomousAttemptSchema",
   "nativeCommandReceiptSchema",
   "nativeCommandDispatchSchema",
   "nativeCommandContinuationSchema",

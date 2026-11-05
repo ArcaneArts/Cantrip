@@ -31,6 +31,7 @@ import { protectNativeSettingsSnapshot } from "./native-settings-content.js";
 import type {
   NativeRuntimeHandoffConfiguration,
   NativeRuntimeHandoffState,
+  InferenceJournalRecord,
 } from "@cantrip/protocol";
 import {
   ManagedRuntimeNamespaces,
@@ -2644,6 +2645,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             commandSession.runtimeGeneration,
             intent?.resumeAutonomy === true,
             method === "thread/goal/clear" ||
+              (method === "turn/pause" && intent?.paused === true) ||
               (method === "thread/goal/set" && intent?.goalStatus === "paused"),
           );
       },
@@ -3234,6 +3236,24 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           ?.get(`${state.chatId}:${state.source.threadId}`);
         if (!entry)
           throw new Error("Published handoff has no managed command session.");
+        if (
+          state.phase === "cancelled" &&
+          state.queuedSource?.autonomousAttempt
+        ) {
+          const snapshot = await nativeQueueClient.read(
+            { session: entry.queueSession() },
+            managedGuiBridgeLifetime.signal,
+          );
+          if (!snapshot.paused)
+            await managedExecutionRunners
+              .get(runtime)
+              ?.get(state.chatId)
+              ?.resumeAfterProviderTransfer(
+                state.operationId,
+                state.source.threadId,
+                runtime.transportGeneration!,
+              );
+        }
         await entry.wakeQueue();
       },
     });
@@ -3308,8 +3328,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           runtime.transportGeneration ===
             (state.binding ?? state.source).runtimeGeneration
         ) {
+          let proof: InferenceJournalRecord;
           try {
-            return await entry.adapter.withdrawGuiInference(
+            proof = await entry.adapter.withdrawQueuedInference(
               state.operationId,
               queued,
               existingOnly,
@@ -3322,9 +3343,25 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               ...queued,
               chatId: state.chatId,
             });
-            if (recovered) return recovered;
-            throw error;
+            if (!recovered) throw error;
+            proof = recovered;
           }
+          if (queued.autonomousAttempt) {
+            const runner = managedExecutionRunners
+              .get(runtime)
+              ?.get(state.chatId);
+            if (!runner)
+              throw new Error("The queued Goal has no owning native runner.");
+            // Do not persist withdrawal.json until this actual native fence
+            // acknowledges. A lost response retries the same gate invalidation.
+            await runner.invalidateForProviderTransfer(
+              state.operationId,
+              queued.autonomousAttempt.runnerGeneration,
+              state.source.threadId,
+              runtime.transportGeneration!,
+            );
+          }
+          return proof;
         }
         return admission.withdrawalRecord({
           ...queued,
@@ -3342,7 +3379,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             .get(runtime)
             ?.get(`${state.chatId}:${state.source.threadId}`);
         if (entry) {
-          entry.adapter.acknowledgeGuiWithdrawal(state.operationId);
+          entry.adapter.acknowledgeQueuedWithdrawal(state.operationId);
           await entry.adapter.awaitExecutionReleased(signal);
         }
         retireQueuedWithdrawal(state);

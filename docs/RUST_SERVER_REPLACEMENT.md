@@ -7160,3 +7160,22 @@ The boundary review adds only the numeric inference-configuration command; all
 292 previous command classifications and all 535 route keys retain their exact
 reviewed contracts. The generated inventory and its check pass. These results
 do not establish full replacement, deployment or platform acceptance.
+
+## Queued managed Goal provider transfer: source implementation
+
+The shared handoff boundary now includes exact, worker-observed managed native
+Goal continuations that have not forwarded input and own no canonical queue
+claim. Node and Rust use a separate autonomous no-start deferral, preserving
+existing GUI claim checks, original Goal state and explicit cancellation.
+The worker must seal the original inference source and acknowledge actual native
+runner invalidation before recording withdrawal. First-cycle `awaitingGoal`
+claims, Task-private Goal channels and already-started turns remain outside this
+transition. See [the inference lifecycle guide](PROVIDER_INFERENCE_CONCURRENCY.md#provider-transfers-for-queued-managed-goal-continuations).
+
+This change received source review, formatting, mechanical protocol export and
+`git diff --check` only. No tests, builds, typechecks, benchmarks, native/helper
+execution, patch application, hosted validation or computer-use checks ran.
+The Rust boundary remains partially implemented and source-reviewed; historical
+validation above does not establish correctness of this extension or platform
+acceptance. The exported protocol now has 631 roots and 10,588 nodes; Run remains
+at 11 roots and 453 nodes. No route or worker-command surface was added.
