@@ -4,6 +4,7 @@ pub mod dashboard;
 mod dispatch_fence;
 mod edits;
 pub mod failure_kind;
+mod finalization_goal_outcomes;
 mod finish;
 mod goal_inference_inputs;
 mod inference_inputs;

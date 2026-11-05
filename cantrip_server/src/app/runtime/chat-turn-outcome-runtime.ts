@@ -106,6 +106,50 @@ export function createChatTurnOutcomeRuntime({
       if (error instanceof TaskDispatchConflictError) return;
       throw error;
     }
+    try {
+      const finalizer = await repository.tasks.recoverFinalizationGoalOutcome(
+        ownerId,
+        workerId,
+        notification,
+      );
+      if (finalizer) {
+        if (finalizer.state === "queued") {
+          publishTaskMessage(finalizer.message, finalizer.chat);
+          publishChatInvalidation(
+            notification.chatId,
+            "task",
+            null,
+            finalizer.chat,
+          );
+          publishChatInvalidation(
+            notification.chatId,
+            "agent-interaction",
+            null,
+            finalizer.chat,
+          );
+          publishChatTurnBoundary(
+            notification.chatId,
+            finalizer.chat.projectId,
+            finalizer.chat,
+          );
+          queueTaskScheduleTick();
+          app.log.info(
+            {
+              event: "task.goal.finalization-recovered",
+              subsystem: "task-scheduler",
+              chatId: notification.chatId,
+              cycleId: notification.taskDispatchFence!.cycleId,
+              workerId,
+            },
+            "Recovered finalization returned Goal startup to its canonical dispatch",
+          );
+        }
+        return;
+      }
+    } catch (error) {
+      if (error instanceof TaskDispatchConflictError) return;
+      throw error;
+    }
     const laneContext = await repository.getChatExecutionRecoveryContext(
       ownerId,
       notification.chatId,

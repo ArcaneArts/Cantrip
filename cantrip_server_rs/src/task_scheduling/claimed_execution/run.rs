@@ -118,10 +118,17 @@ impl Service {
         );
         self.operations.run(async move {
             let chat = text(&context["chatId"])?;
-            let guard = this
+            let guard = match this
                 .tasks
                 .goal_launch_guard(&owner, &chat, &claim["lease"])
-                .await?;
+                .await
+            {
+                Ok(guard) => guard,
+                Err(error) if downcast_ref::<task_dispatch::Conflict>(&error).is_some() => {
+                    return Ok(());
+                }
+                Err(error) => return Err(error),
+            };
             let launch: Result<()> = async {
                 this.dependencies.goals.retain(&claim["lease"]).await?;
                 this.dependencies

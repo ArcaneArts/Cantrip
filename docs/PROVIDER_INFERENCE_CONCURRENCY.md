@@ -781,3 +781,54 @@ ran. No protocol or migration change was needed. Runtime behavior is unverified.
 Unscheduled Goal launch authority, recovered-finalizer Goal dispatch ownership,
 autonomous checkpoint recovery and the remaining lifecycle/accounting/bounded
 state audit still require completion as part of the full goal.
+
+## Recovered finalization to Goal startup
+
+A receipt-bearing finalization outcome with a saved Goal now enters its own
+canonical recovery transaction before the generic lane-active outcome path.
+Finalizer completion is an intermediate phase: recovery must not mark the Task
+dispatch succeeded and then launch a Goal without its lease.
+
+Both servers lock the actual owner/current dispatch, original round receipt,
+project/chat, Task phase and exact lane activation. They validate the worker,
+original input, placement and protected result against that authority. The
+transaction uses the existing Task completion writer, persists the protected
+assistant message, fills any missing finalizer execution association, updates its
+runtime and settles only that lane activation. Pending interactions belonging to
+the ended lane are interrupted in the same transaction.
+
+It then returns the same dispatch cycle to queued (or paused when current intent
+requires it), advances its fence, clears the old lease and completed-turn ID, and
+preserves its FIFO age and selected placement/configuration metadata. The next
+ordinary claim continues the finalization attempt; recovery compensates its claim
+count once so this transition alone does not charge another attempt. No retry
+record, extra Goal cycle, second prompt queue or provider reservation is created.
+
+The existing scheduler finds the already-completed finalizer result and runs
+Goal setup under a fresh owned lease, scheduled completion hooks and explicit
+Goal input receipt. It does not rerun finalization. The Goal input joins the
+worker/provider queue normally; that original finalizer's provider reservation
+was settled by the worker, not by this server transaction.
+
+An inactive lane with the same captured activation remains eligible, covering a
+crash after live lane settlement but before Goal kickoff. Missing late execution
+association does not lose a result: recovery locates the round through the exact
+dispatch/receipt rather than relying on that unfinished callback's message index.
+A replaced activation, changed dispatch, cancelled/archived Task or newer planning
+operation cannot be retired by the old outcome. If implementation or its Goal
+input is already owned, the old finalizer outcome does not reset or relaunch it.
+An old live launcher losing to this committed transition retires quietly.
+
+Source acceptance review covers delivery before execution association, a
+previously settled lane, a crash between round/history writes, a crash after
+commit before wakeup/publication, duplicate outcomes, a live launcher winning
+first, pause during recovery, and the next claim's attempt count/FIFO behavior.
+The canonical transaction either commits all recovery state or rolls back; queue
+startup can recover it without another worker result. Direct formatting and
+`git diff --check` were used. No tests, typechecks, builds, benchmarks, native/helper
+execution, computer-use testing or hosted validation ran. Runtime behavior is
+unverified. No migration or protocol regeneration was required.
+
+Unscheduled/legacy Goal launch authority, outcomes without current receipts,
+autonomous checkpoint recovery, preparation-stage failure classification, and the
+remaining lifecycle/accounting/bounded-state audit remain part of the full goal.
