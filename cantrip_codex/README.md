@@ -675,3 +675,36 @@ The worker and native runtime require a paired update. This milestone used sourc
 review, direct formatting, mechanical patch authoring and diff checks only; no
 native helper, patch application verification, tests, builds or computer-use
 validation was run. Legacy outer-turn/helper retention remains separate work.
+
+Patch `0068` extends the private continuation contract to v5 for input accepted
+while a native turn is durably held. The checkpoint commits exact history-item
+digests before an explicit Goal instruction is appended to native history, and
+commits pending injected input before publishing acceptance to the live queue or
+acknowledging the Goal mutation. History remains the sole transcript. Unprepared,
+duplicated or reordered execution history still invalidates resumption; a prepared
+append that never reached history leaves the original recovery boundary usable.
+Checkpoint amendments advance the physical storage revision while retaining the
+confirmed capture identity returned to the caller.
+
+Final capture and injected input acceptance share a native mutation boundary. Goal
+accounting and steering are prepared under the existing Goal mutation permit,
+and capture acquires its input boundary after extension capture to preserve lock
+ordering. Fresh restoration installs the latest committed pending input, including
+input accepted after attaching the held thread, without starting another turn.
+Later user authorization is restored with its original acceptance order without
+appending its history item again. Actual persistence failures reject acceptance;
+they do not discard the last committed checkpoint or substitute a new turn.
+
+The v4 suspended format is retained for inspection and explicit Stop, but requires
+its matching runtime for Resume. No runtime upgrades a held continuation silently.
+This is a native input-boundary milestone. Background resource recovery and the
+server-owned, restart-persistent product pause controls remain separate required
+work before whole-worker durable pause is available.
+
+The verified 69-patch development runtime passed 42 native cases, including 30
+Goal cases covering accepted edits before and after pause, edits after fresh
+attachment, repeated cold resumes, actual checkpoint-path failures and repaired
+history evidence. Eight focused Core tests and 44 Goal accounting, backend and
+steering tests passed. Core unit checks used the upstream helper's 8 MiB test
+stack size after the initial notification test overflowed the default stack.
+Optimized product and whole-worker process-tree acceptance remain pending.

@@ -6,6 +6,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  rename,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -56,6 +57,20 @@ describe.skipIf(!binary)("durable native Goal accounting", () => {
     ["legacy", "cold-repaired-stop"],
     ["paginated", "cold-incompatible-stop"],
     ["legacy", "cold-incompatible-stop"],
+    ["paginated", "cold-user-edited-before"],
+    ["legacy", "cold-user-edited-before"],
+    ["paginated", "live-user-edited-after"],
+    ["legacy", "live-user-edited-after"],
+    ["paginated", "cold-user-edited-after"],
+    ["legacy", "cold-user-edited-after"],
+    ["paginated", "cold-user-edited-attached"],
+    ["legacy", "cold-user-edited-attached"],
+    ["paginated", "cold-user-edited-repeated"],
+    ["legacy", "cold-user-edited-repeated"],
+    ["paginated", "cold-user-edited-repaired"],
+    ["legacy", "cold-user-edited-repaired"],
+    ["paginated", "cold-user-write-failed"],
+    ["legacy", "cold-user-write-failed"],
   ] as const)(
     "preserves the original Goal turn with %s history across %s resume",
     async (historyMode, mode) => {
@@ -146,7 +161,15 @@ describe.skipIf(!binary)("durable native Goal accounting", () => {
             "stream_max_retries=0",
           ].join("\n"),
         );
-        const cycles = mode === "cold-repeat" ? 3 : 1;
+        const cycles =
+          mode === "cold-repeat" || mode === "cold-user-edited-repeated"
+            ? 3
+            : 1;
+        const cold = !mode.startsWith("live");
+        const userEdited = mode.includes("user-edited");
+        const editedObjective = "USER_GOAL_OBJECTIVE_ACCEPTED_WHILE_HELD";
+        const objectiveForCycle = (cycle: number) =>
+          cycles === 1 ? editedObjective : `${editedObjective}_${cycle}`;
         const stops = mode.endsWith("stop");
         const unflushed = mode === "cold-unflushed" || stops;
         const tokenBudget = cycles === 3 ? 50 : unflushed ? 35 : 20;
@@ -174,6 +197,14 @@ describe.skipIf(!binary)("durable native Goal accounting", () => {
           origin: "user",
           status: "active",
         });
+        const editUserGoal = (cycle = 0) =>
+          rpc("thread/goal/set", {
+            threadId,
+            origin: "user",
+            objective: objectiveForCycle(cycle),
+            status: "active",
+          });
+        if (mode === "cold-user-edited-before") await editUserGoal();
         for (let cycle = 0; cycle < cycles; cycle++) {
           const pausing = rpc("turn/suspension", {
             threadId,
@@ -217,6 +248,38 @@ describe.skipIf(!binary)("durable native Goal accounting", () => {
             paused: true,
             suspension: { threadId, turnId },
           });
+          if (
+            userEdited &&
+            mode !== "cold-user-edited-before" &&
+            mode !== "cold-user-edited-attached"
+          ) {
+            expect((await editUserGoal(cycle)).goal.objective).toBe(
+              objectiveForCycle(cycle),
+            );
+            expect(requests).toHaveLength(cycle + 1);
+          }
+          if (mode === "cold-user-write-failed") {
+            // Fault the actual owned checkpoint path, leaving its original bytes
+            // intact. A failed native write must fail the Goal RPC before acceptance.
+            const suspensionDirectory = path.join(home, "turn-suspensions");
+            const retainedDirectory = `${suspensionDirectory}-retained`;
+            await rename(suspensionDirectory, retainedDirectory);
+            await writeFile(
+              suspensionDirectory,
+              "actual checkpoint path failure",
+            );
+            try {
+              await expect(editUserGoal()).rejects.toThrow(
+                /directory|os error/i,
+              );
+              expect(
+                (await rpc("thread/goal/get", { threadId })).goal.objective,
+              ).toBe("Complete this native turn with durable accounting");
+            } finally {
+              await rm(suspensionDirectory);
+              await rename(retainedDirectory, suspensionDirectory);
+            }
+          }
           if (mode === "cold-edited") {
             // Actual Goal mutation while held must not bill paused time, reset
             // the original turn's accounting, or invalidate its safe boundary.
@@ -234,9 +297,39 @@ describe.skipIf(!binary)("durable native Goal accounting", () => {
             );
           }
           // Ordinary cold cases terminate immediately after durable confirmation.
-          if (mode !== "live") {
+          if (cold) {
             await kill();
             await start();
+            if (mode === "cold-user-edited-repaired") {
+              const checkpointFile = path.join(
+                home,
+                "turn-suspensions",
+                `${createHash("sha256").update(threadId).digest("hex")}.json`,
+              );
+              const original = await readFile(checkpointFile);
+              const envelope = JSON.parse(original.toString());
+              const record = JSON.parse(envelope.recordJson);
+              expect(
+                record.continuation.accepted_history.length,
+              ).toBeGreaterThan(0);
+              record.continuation.accepted_history = [];
+              envelope.recordJson = JSON.stringify(record);
+              envelope.sha256 = createHash("sha256")
+                .update(envelope.recordJson)
+                .digest("hex");
+              await writeFile(checkpointFile, JSON.stringify(envelope));
+              try {
+                await expect(
+                  rpc("turn/suspension", {
+                    threadId,
+                    operation: { type: "read" },
+                  }),
+                ).rejects.toThrow("history advanced");
+                expect(requests).toHaveLength(cycle + 1);
+              } finally {
+                await writeFile(checkpointFile, original);
+              }
+            }
             expect(
               await rpc("turn/suspension", {
                 threadId,
@@ -247,6 +340,24 @@ describe.skipIf(!binary)("durable native Goal accounting", () => {
               threadId,
               expectedSuspension: paused.suspension,
             });
+            if (mode === "cold-user-edited-attached") {
+              expect((await editUserGoal()).goal.objective).toBe(
+                editedObjective,
+              );
+              expect(requests).toHaveLength(cycle + 1);
+              await kill();
+              await start();
+              expect(
+                await rpc("turn/suspension", {
+                  threadId,
+                  operation: { type: "read" },
+                }),
+              ).toMatchObject(paused);
+              await rpc("thread/resume", {
+                threadId,
+                expectedSuspension: paused.suspension,
+              });
+            }
             expect(
               frames.filter((frame) => frame.method === "turn/started"),
             ).toHaveLength(0);
@@ -258,6 +369,8 @@ describe.skipIf(!binary)("durable native Goal accounting", () => {
             tokensUsed: 13 * (cycle + 1),
             tokenBudget,
           });
+          if (userEdited)
+            expect(capturedGoal.objective).toBe(objectiveForCycle(cycle));
           await new Promise((resolve) => setTimeout(resolve, 100));
           expect(requests).toHaveLength(cycle + 1);
           expect((await rpc("thread/goal/get", { threadId })).goal).toEqual(
@@ -270,6 +383,19 @@ describe.skipIf(!binary)("durable native Goal accounting", () => {
           const restored = requests[cycle + 1]!.body;
           expect(restored.model).toBe(requests[0]!.body.model);
           expect(restored.reasoning).toEqual(requests[0]!.body.reasoning);
+          if (userEdited) {
+            const editedMessages = restored.input
+              .filter(
+                (item: Json) =>
+                  item.type === "message" &&
+                  JSON.stringify(item.content).includes(editedObjective),
+              )
+              .map((item: Json) => JSON.stringify(item.content));
+            // Authorization and internal steering may both name the objective;
+            // neither accepted message may be duplicated during restoration.
+            expect(editedMessages).toHaveLength(2 * (cycle + 1));
+            expect(new Set(editedMessages).size).toBe(editedMessages.length);
+          }
           expect(
             JSON.stringify(restored.input).split("ORIGINAL_DURABLE_GOAL_INPUT")
               .length - 1,

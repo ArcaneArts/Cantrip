@@ -1,0 +1,1035 @@
+diff --git a/codex-rs/app-server/src/request_processors/thread_goal_processor.rs b/codex-rs/app-server/src/request_processors/thread_goal_processor.rs
+index 526db21..128778f 100644
+--- a/codex-rs/app-server/src/request_processors/thread_goal_processor.rs
++++ b/codex-rs/app-server/src/request_processors/thread_goal_processor.rs
+@@ -239,6 +239,10 @@ impl ThreadGoalRequestProcessor {
+             warn!("failed to persist goal update for live thread {thread_id}: {err}");
+         }
+ 
++        outcome
++            .apply_runtime_effects(&self.goal_service)
++            .await
++            .map_err(goal_service_error)?;
+         self.outgoing
+             .send_response(
+                 request_id.clone(),
+@@ -250,7 +254,6 @@ impl ThreadGoalRequestProcessor {
+             .await;
+         self.emit_thread_goal_updated_ordered(thread_id, goal, listener_command_tx)
+             .await;
+-        outcome.apply_runtime_effects(&self.goal_service).await;
+         Ok(())
+     }
+ 
+diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+index 367779b..b862d2a 100644
+--- a/codex-rs/core/src/codex_thread.rs
++++ b/codex-rs/core/src/codex_thread.rs
+@@ -843,6 +843,14 @@ impl CodexThread {
+         self.session.inject_if_running(items).await
+     }
+ 
++    /// Persists held input before success and reports actual storage failures.
++    pub async fn inject_if_running_checked(
++        &self,
++        items: Vec<ResponseItem>,
++    ) -> codex_protocol::error::Result<Result<(), Vec<ResponseItem>>> {
++        self.session.inject_if_running_checked(items).await
++    }
++
+     /// Environment selections captured by the active turn, before later settings updates.
+     /// Includes environments that are still starting or have failed. Hosts use this snapshot
+     /// to authorize steering against every executor that the active turn selected.
+@@ -1201,7 +1209,7 @@ impl CodexThread {
+         }
+         self.session
+             .inject_client_response_items(items, turn_context.as_ref())
+-            .await;
++            .await?;
+         Ok(())
+     }
+ 
+diff --git a/codex-rs/core/src/context_manager/history.rs b/codex-rs/core/src/context_manager/history.rs
+index 35e009d..839524e 100644
+--- a/codex-rs/core/src/context_manager/history.rs
++++ b/codex-rs/core/src/context_manager/history.rs
+@@ -286,6 +286,36 @@ impl ContextManager {
+         let mut retained = RetainedContext::default();
+         retained.restore(Some(saved), self.annotated_items());
+         self.retained_context = Arc::new(retained);
++        // A held user instruction can be newer than the original snapshot.
++        // Reuse the normal retained-message path without appending the item again.
++        let accepted = self
++            .annotated_items()
++            .iter()
++            .filter(|item| {
++                item.metadata
++                    .as_ref()
++                    .and_then(|m| m.user_input_order)
++                    .is_some_and(|order| saved.is_new_acceptance(order))
++            })
++            .cloned()
++            .collect::<Vec<_>>();
++        for item in accepted {
++            let captured = self.record_retained_message(
++                &item.item,
++                item.metadata.as_ref(),
++                user_authorization::RetainedMessageSource::Original,
++            );
++            if let Some(source) = item
++                .metadata
++                .as_ref()
++                .and_then(|m| m.retained_source.as_ref())
++                && captured.as_ref().is_some_and(|captured| {
++                    captured.id == source.id && captured.complete == source.complete
++                })
++            {
++                Arc::make_mut(&mut self.retained_context).restore_source_revision(source);
++            }
++        }
+     }
+ 
+     pub(crate) fn reserve_input_order(&mut self) -> u64 {
+diff --git a/codex-rs/core/src/context_manager/history_tests.rs b/codex-rs/core/src/context_manager/history_tests.rs
+index 7e80afe..64117bf 100644
+--- a/codex-rs/core/src/context_manager/history_tests.rs
++++ b/codex-rs/core/src/context_manager/history_tests.rs
+@@ -3773,3 +3773,48 @@ fn text_only_items_count_decoded_content() {
+ 
+     assert_eq!(estimated, "Hello, \"world\"!\nこんにちは".len() as i64);
+ }
++
++#[test]
++fn suspended_retained_context_keeps_later_accepted_authorization_without_reappending() {
++    let mut history = root_history();
++    let message = |id: &str, text: &str, order| ResponseItemEnvelope {
++        item: ResponseItem::Message {
++            status: None,
++            encrypted_content: None,
++            id: Some(ResponseItemId::with_suffix("msg", id)),
++            role: "user".to_owned(),
++            content: vec![ContentItem::InputText {
++                text: text.to_owned(),
++            }],
++            phase: None,
++            internal_chat_message_metadata_passthrough: Some(
++                InternalChatMessageMetadataPassthrough {
++                    turn_id: Some("held-turn".to_owned()),
++                    content_item_kinds: Some(vec![ContentItemKind("user.text".to_owned())]),
++                    ..Default::default()
++                },
++            ),
++        },
++        metadata: Some(CodexHarnessMetadata {
++            user_input_order: Some(order),
++            ..Default::default()
++        }),
++    };
++    history.record_annotated_items(
++        &mut [message("original", "Keep the original restriction.", 2)],
++        TruncationPolicy::Tokens(10_000),
++    );
++    let saved = history.retained_context().clone();
++    history.record_annotated_items(
++        &mut [message("later", "The accepted Goal now requires tests.", 7)],
++        TruncationPolicy::Tokens(10_000),
++    );
++    let expected = history.retained_context().clone();
++    let items = history.annotated_items().to_vec();
++    for _ in 0..2 {
++        history.restore_suspended_retained_context(&saved);
++        assert_eq!(history.retained_context(), &expected);
++        assert_eq!(history.annotated_items(), items);
++    }
++    assert_eq!(history.reserve_input_order(), 8);
++}
+diff --git a/codex-rs/core/src/guardian/review_session.rs b/codex-rs/core/src/guardian/review_session.rs
+index 65005cc..fbb8e12 100644
+--- a/codex-rs/core/src/guardian/review_session.rs
++++ b/codex-rs/core/src/guardian/review_session.rs
+@@ -789,7 +789,7 @@ async fn ensure_guardian_node_repl_policy(
+     review_session
+         .session
+         .inject_client_response_items(vec![item], turn_context.as_ref())
+-        .await;
++        .await?;
+ 
+     Ok(())
+ }
+diff --git a/codex-rs/core/src/session/durable_suspension.rs b/codex-rs/core/src/session/durable_suspension.rs
+index 6957cb0..a659e2a 100644
+--- a/codex-rs/core/src/session/durable_suspension.rs
++++ b/codex-rs/core/src/session/durable_suspension.rs
+@@ -37,7 +37,7 @@ use std::sync::atomic::AtomicBool;
+ use std::sync::atomic::AtomicU64;
+ use std::sync::atomic::Ordering;
+ 
+-pub(crate) const RUNTIME: &str = concat!(env!("CARGO_PKG_VERSION"), "/cantrip-suspension-v4");
++pub(crate) const RUNTIME: &str = concat!(env!("CARGO_PKG_VERSION"), "/cantrip-suspension-v5");
+ 
+ #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+ #[serde(rename_all = "camelCase", deny_unknown_fields)]
+@@ -172,6 +172,9 @@ pub(crate) struct SavedTurn {
+     pub(super) token_usage_at_turn_start: TokenUsage,
+     pub(super) token_usage_by_model: Vec<(String, TokenUsage)>,
+     history_items: usize,
++    /// Write-ahead evidence for exact authorization items accepted while held.
++    /// Only their digests live here; the native history remains the transcript.
++    accepted_history: Vec<String>,
+     extensions: Vec<SavedExtension>,
+ }
+ 
+@@ -197,6 +200,8 @@ pub(crate) struct DurableSuspension {
+     expected: Mutex<Option<NativeSuspension>>,
+     stopping: AtomicBool,
+     stop: tokio::sync::Mutex<()>,
++    pub(super) inputs: tokio::sync::Mutex<()>,
++    capture_pending: AtomicBool,
+     unrestorable_extension_capture: Mutex<Option<String>>,
+     restored_extensions: tokio::sync::Mutex<(String, std::collections::HashSet<&'static str>)>,
+ }
+@@ -675,6 +680,7 @@ impl DurableSuspension {
+         self.cancel_live_resume("native resumption was superseded by another pause");
+         let epoch = self.epoch.fetch_add(1, Ordering::AcqRel) + 1;
+         self.requested.store(true, Ordering::Release);
++        self.capture_pending.store(true, Ordering::Release);
+         if let Ok(mut boundary) = self.boundary.lock() {
+             *boundary = None;
+         }
+@@ -798,6 +804,7 @@ impl DurableSuspension {
+         if self.epoch.load(Ordering::Acquire) != epoch {
+             return;
+         }
++        self.capture_pending.store(false, Ordering::Release);
+         if let Ok(suspension) = &captured
+             && let Ok(mut expected) = self.expected.lock()
+             && expected.is_some()
+@@ -845,7 +852,7 @@ impl DurableSuspension {
+                 "durable suspension of native subagent trees is not available yet; the live turn remains paused",
+             ));
+         }
+-        let (pending, pending_injection, tool_calls, has_memory_citation) = {
++        {
+             let active = session.active_turn.lock().await;
+             let active = active
+                 .as_ref()
+@@ -872,18 +879,7 @@ impl DurableSuspension {
+             // Freeze under the same active-turn lock used by input acceptance.
+             // Stop cannot finish and then be refrozen by an older capture.
+             self.frozen.store(true, Ordering::Release);
+-            (
+-                state
+-                    .pending_input
+-                    .items
+-                    .iter()
+-                    .map(SavedInput::from)
+-                    .collect(),
+-                state.pending_input.has_pending_injection,
+-                state.tool_calls,
+-                state.has_memory_citation,
+-            )
+-        };
++        }
+         // Drain session-owned speculative inference and its usage accounting.
+         // A cancelled compaction candidate can be recomputed after explicit Resume.
+         super::async_compaction::suspend(session).await;
+@@ -910,6 +906,34 @@ impl DurableSuspension {
+             )
+         };
+         let extensions = capture_extensions(session, self, &turn.sub_id, epoch).await?;
++        // Contributors can require their own mutation permits. Never hold this
++        // boundary while acquiring those permits: Goal edits acquire them first.
++        let _inputs = self.inputs.lock().await;
++        let (pending, pending_injection, tool_calls, has_memory_citation) = {
++            let active = session.active_turn.lock().await;
++            let active = active
++                .as_ref()
++                .ok_or_else(|| invalid("suspended turn was stopped"))?;
++            if active
++                .task
++                .as_ref()
++                .is_none_or(|task| task.turn_context.sub_id != turn.sub_id)
++            {
++                return Err(invalid("suspended input belongs to a replaced turn"));
++            }
++            let state = active.turn_state.lock().await;
++            (
++                state
++                    .pending_input
++                    .items
++                    .iter()
++                    .map(SavedInput::from)
++                    .collect(),
++                state.pending_input.has_pending_injection,
++                state.tool_calls,
++                state.has_memory_citation,
++            )
++        };
+         let session_state = session.state.lock().await.suspension_snapshot();
+         let live = session
+             .live_thread_for_persistence("checkpoint suspended turn")
+@@ -956,6 +980,7 @@ impl DurableSuspension {
+             token_usage_at_turn_start,
+             token_usage_by_model,
+             history_items: history.len(),
++            accepted_history: Vec::new(),
+             extensions,
+         };
+         let thread_id = session.thread_id.to_string();
+@@ -987,12 +1012,113 @@ impl DurableSuspension {
+                 state: CheckpointState::Suspended,
+                 continuation: Some(saved),
+             };
++            if owner.epoch.load(Ordering::Acquire) != epoch {
++                return Err(invalid("suspension capture was superseded before commit"));
++            }
+             store.commit(expected, &record).map_err(io)?;
++            // File I/O never holds the control guard. Stop remains able to
++            // fence this attempt even if the actual persistence operation waits.
++            let _control = owner.control();
++            if owner.epoch.load(Ordering::Acquire) != epoch {
++                return Err(invalid("suspension capture was superseded during commit"));
++            }
++            owner.capture_pending.store(false, Ordering::Release);
+             Ok(descriptor(&record))
+         })
+         .await
+     }
+ 
++    /// Caller holds `inputs`. Commit data before publishing acceptance to live
++    /// memory or an RPC caller. Stable capture identity survives amendments.
++    async fn amend(
++        self: &Arc<Self>,
++        session: &Session,
++        change: impl FnOnce(&mut SavedTurn) -> Result<()> + Send + 'static,
++    ) -> Result<()> {
++        if !self.frozen.load(Ordering::Acquire) || self.capture_pending.load(Ordering::Acquire) {
++            // The actual final capture takes this same input boundary and will
++            // include everything accepted before it commits.
++            return Ok(());
++        }
++        let epoch = self.epoch.load(Ordering::Acquire);
++        let owner = Arc::clone(self);
++        self.with_store(session, move |store| {
++            if owner.epoch.load(Ordering::Acquire) != epoch
++                || !owner.frozen.load(Ordering::Acquire)
++                || owner.stopping.load(Ordering::Acquire)
++            {
++                return Err(invalid("held input acceptance was superseded"));
++            }
++            let mut record = store
++                .read(RUNTIME)
++                .map_err(io)?
++                .ok_or_else(|| invalid("held input requires its committed native checkpoint"))?;
++            if !record.state.retains_continuation() {
++                return Err(invalid(
++                    "held input cannot amend a retired native checkpoint",
++                ));
++            }
++            owner.validate_expected(Some(&record))?;
++            change(
++                record
++                    .continuation
++                    .as_mut()
++                    .ok_or_else(|| invalid("native continuation is missing"))?,
++            )?;
++            let revision = record.revision;
++            record.revision = revision
++                .checked_add(1)
++                .ok_or_else(|| invalid("checkpoint revision exhausted"))?;
++            if owner.epoch.load(Ordering::Acquire) != epoch {
++                return Err(invalid(
++                    "held input acceptance was superseded before commit",
++                ));
++            }
++            store.commit(Some(revision), &record).map_err(io)?;
++            let _control = owner.control();
++            if owner.epoch.load(Ordering::Acquire) != epoch
++                || !owner.frozen.load(Ordering::Acquire)
++                || owner.stopping.load(Ordering::Acquire)
++            {
++                return Err(invalid(
++                    "held input acceptance was superseded during commit",
++                ));
++            }
++            Ok(())
++        })
++        .await
++    }
++
++    pub(super) async fn prepare_history_acceptance(
++        self: &Arc<Self>,
++        session: &Session,
++        item: &ResponseItemEnvelope,
++    ) -> Result<()> {
++        let digest = history_digest(&[RolloutItem::ResponseItem(item.clone())])?;
++        self.amend(session, move |saved| {
++            saved.accepted_history.push(digest);
++            Ok(())
++        })
++        .await
++    }
++
++    pub(super) async fn persist_pending_acceptance(
++        self: &Arc<Self>,
++        session: &Session,
++        input: &[TurnInput],
++    ) -> Result<()> {
++        let pending = input.iter().map(SavedInput::from).collect::<Vec<_>>();
++        let injection = input
++            .iter()
++            .any(|item| matches!(item, TurnInput::ResponseItem(_)));
++        self.amend(session, move |saved| {
++            saved.pending.extend(pending);
++            saved.pending_injection |= injection;
++            Ok(())
++        })
++        .await
++    }
++
+     pub(crate) async fn read(
+         self: &Arc<Self>,
+         session: &Session,
+@@ -1079,6 +1205,7 @@ impl DurableSuspension {
+         epoch: u64,
+         ready: impl FnOnce() -> bool + Send,
+     ) -> Result<()> {
++        let _inputs = self.inputs.lock().await;
+         let active = session.active_turn.lock().await;
+         let _control = self.control();
+         if self.stopping.load(Ordering::Acquire)
+@@ -1400,10 +1527,7 @@ fn continuation_history_advanced(
+         .continuation
+         .as_ref()
+         .ok_or_else(|| invalid("suspension continuation is missing"))?;
+-    if saved.capture_revision == 0
+-        || saved.capture_revision > record.revision
+-        || (record.state == CheckpointState::Suspended && saved.capture_revision != record.revision)
+-    {
++    if saved.capture_revision == 0 || saved.capture_revision > record.revision {
+         return Err(invalid("the confirmed checkpoint revision is invalid"));
+     }
+     if saved.context.turn_id.as_deref() != Some(record.identity.turn_id.as_str()) {
+@@ -1419,23 +1543,38 @@ fn continuation_history_advanced(
+             "native history changed before its suspension boundary",
+         ));
+     }
+-    Ok(history[saved.history_items..]
+-        .iter()
+-        .any(|item| match item {
+-            RolloutItem::ResponseItem(_)
+-            | RolloutItem::Compacted(_)
++    history_suffix_advanced(&saved.accepted_history, &history[saved.history_items..])
++}
++
++fn history_suffix_advanced(accepted_history: &[String], suffix: &[RolloutItem]) -> Result<bool> {
++    let mut accepted = accepted_history.iter();
++    for item in suffix {
++        match item {
++            RolloutItem::ResponseItem(_) => {
++                let digest = history_digest(std::slice::from_ref(item))?;
++                if !accepted.any(|prepared| prepared == &digest) {
++                    return Ok(true);
++                }
++            }
++            RolloutItem::Compacted(_)
+             | RolloutItem::TokenUsageRecord(_)
+-            | RolloutItem::EventMsg(EventMsg::TurnStarted(_)) => true,
+-            RolloutItem::CanonicalHistory { event, .. } => matches!(
+-                event,
+-                EventMsg::TurnStarted(_)
+-                    | EventMsg::ItemStarted(_)
+-                    | EventMsg::ItemCompleted(_)
+-                    | EventMsg::TurnComplete(_)
+-                    | EventMsg::TurnAborted(_)
+-            ),
+-            _ => false,
+-        }))
++            | RolloutItem::EventMsg(EventMsg::TurnStarted(_)) => return Ok(true),
++            RolloutItem::CanonicalHistory { event, .. }
++                if matches!(
++                    event,
++                    EventMsg::TurnStarted(_)
++                        | EventMsg::ItemStarted(_)
++                        | EventMsg::ItemCompleted(_)
++                        | EventMsg::TurnComplete(_)
++                        | EventMsg::TurnAborted(_)
++                ) =>
++            {
++                return Ok(true);
++            }
++            _ => {}
++        }
++    }
++    Ok(false)
+ }
+ 
+ pub(crate) async fn validate_saved(
+@@ -2194,8 +2333,21 @@ pub(crate) async fn run_restored_turn(
+         Arc::clone(&active.turn_state)
+     };
+     {
++        let _inputs = restored.owner.inputs.lock().await;
++        let latest = restored
++            .owner
++            .read(&session)
++            .await?
++            .ok_or_else(|| invalid("native checkpoint disappeared during input restoration"))?;
++        if descriptor(&latest) != restored.identity {
++            return Err(invalid("native input restoration lost its checkpoint"));
++        }
++        let latest = latest
++            .continuation
++            .as_ref()
++            .ok_or_else(|| invalid("native pending continuation is missing"))?;
+         let mut turn = turn_state.lock().await;
+-        turn.pending_input = saved.restore_pending();
++        turn.pending_input = latest.restore_pending();
+         turn.tool_calls = saved.tool_calls;
+         turn.has_memory_citation = saved.has_memory_citation;
+         turn.token_usage_at_turn_start = saved.token_usage_at_turn_start.clone();
+@@ -2340,6 +2492,31 @@ mod tests {
+         assert!(validate_unfinished(&history, "replacement").is_ok());
+     }
+ 
++    #[test]
++    fn held_history_accepts_only_prepared_items_once_and_in_order() {
++        let message = |text: &str| {
++            RolloutItem::ResponseItem(ResponseItemEnvelope::new(
++            serde_json::from_value(serde_json::json!({
++                "type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]
++            })).expect("message")))
++        };
++        let one = message("first accepted authorization");
++        let two = message("second accepted authorization");
++        let proof = vec![
++            history_digest(std::slice::from_ref(&one)).unwrap(),
++            history_digest(std::slice::from_ref(&two)).unwrap(),
++        ];
++        assert!(!history_suffix_advanced(&proof, &[]).unwrap());
++        assert!(!history_suffix_advanced(&proof, std::slice::from_ref(&one)).unwrap());
++        assert!(!history_suffix_advanced(&proof, &[one.clone(), two.clone()]).unwrap());
++        // A prepared write that never appended does not poison the original boundary.
++        assert!(!history_suffix_advanced(&proof, std::slice::from_ref(&two)).unwrap());
++        assert!(history_suffix_advanced(&proof, &[two.clone(), one.clone()]).unwrap());
++        assert!(history_suffix_advanced(&proof, &[one.clone(), one]).unwrap());
++        assert!(history_suffix_advanced(&proof, &[message("unprepared authorization")]).unwrap());
++        assert!(history_suffix_advanced(&proof, &[started("another turn")]).unwrap());
++    }
++
+     #[test]
+     fn pending_tool_output_keeps_its_native_metadata_across_checkpoint_serialization() {
+         let item: ResponseItem = serde_json::from_value(serde_json::json!({
+diff --git a/codex-rs/core/src/session/inject.rs b/codex-rs/core/src/session/inject.rs
+index a7ddaf7..79b588a 100644
+--- a/codex-rs/core/src/session/inject.rs
++++ b/codex-rs/core/src/session/inject.rs
+@@ -9,61 +9,84 @@ use codex_protocol::models::ResponseItem;
+ use codex_protocol::openai_models::ModelInfo;
+ 
+ impl Session {
+-    /// Returns the input if there is no active turn to inject into.
++    /// Unaccepted input is returned unchanged, including actual persistence failures.
++    pub(crate) async fn inject_if_running<T: Into<ResponseItemEnvelope> + Clone>(
++        &self,
++        input: Vec<T>,
++    ) -> Result<(), Vec<T>> {
++        let rejected = input.clone();
++        match self.inject_if_running_checked(input).await {
++            Ok(result) => result,
++            Err(error) => {
++                tracing::warn!(%error, "native input persistence failed; injection was not accepted");
++                Err(rejected)
++            }
++        }
++    }
++
++    /// Separates an absent active turn from a storage failure; no input is
++    /// published to memory before its held continuation has committed it.
++    pub(crate) async fn inject_if_running_checked<T: Into<ResponseItemEnvelope>>(
++        &self,
++        input: Vec<T>,
++    ) -> codex_protocol::error::Result<Result<(), Vec<T>>> {
++        self.inject_if_running_with_task_requirement(input, false)
++            .await
++    }
++
+     #[expect(
+         clippy::await_holding_invalid_type,
+-        reason = "active turn checks and turn state updates must remain atomic"
++        reason = "active turn checks and durable input acceptance must remain atomic"
+     )]
+-    pub(crate) async fn inject_if_running<T: Into<ResponseItemEnvelope>>(
++    async fn inject_if_running_with_task_requirement<T: Into<ResponseItemEnvelope>>(
+         &self,
+         input: Vec<T>,
+-    ) -> Result<(), Vec<T>> {
++        require_task: bool,
++    ) -> codex_protocol::error::Result<Result<(), Vec<T>>> {
++        let owner = super::durable_suspension::coordinator(self);
++        let _inputs = owner.inputs.lock().await;
+         let mut active = self.active_turn.lock().await;
+-        match active.as_mut().filter(|turn| turn.finishing.is_none()) {
++        match active
++            .as_mut()
++            .filter(|turn| turn.finishing.is_none() && (!require_task || turn.task.is_some()))
++        {
+             Some(active_turn) => {
++                let input = input
++                    .into_iter()
++                    .map(Into::into)
++                    .map(PendingTurnInput::ResponseItem)
++                    .collect::<Vec<_>>();
++                owner.persist_pending_acceptance(self, &input).await?;
+                 self.input_queue
+                     .extend_pending_input_and_accept_mailbox_delivery_for_turn_state(
+                         active_turn.turn_state.as_ref(),
+-                        input
+-                            .into_iter()
+-                            .map(Into::into)
+-                            .map(PendingTurnInput::ResponseItem)
+-                            .collect(),
++                        input,
+                     )
+                     .await;
+-                Ok(())
++                Ok(Ok(()))
+             }
+-            None => Err(input),
++            None if owner.frozen.load(std::sync::atomic::Ordering::Acquire) => {
++                // A restored held turn has no live task yet. Its original
++                // continuation still owns accepted input; do not start a turn.
++                let input = input
++                    .into_iter()
++                    .map(Into::into)
++                    .map(PendingTurnInput::ResponseItem)
++                    .collect::<Vec<_>>();
++                owner.persist_pending_acceptance(self, &input).await?;
++                Ok(Ok(()))
++            }
++            None => Ok(Err(input)),
+         }
+     }
+ 
+     /// Injects hook context into the running turn atomically.
+-    #[expect(
+-        clippy::await_holding_invalid_type,
+-        reason = "active turn provenance and turn state updates must remain atomic"
+-    )]
+     pub(crate) async fn inject_hook_context_if_running(
+         &self,
+         input: Vec<ResponseItem>,
+-    ) -> Result<(), Vec<ResponseItem>> {
+-        let mut active = self.active_turn.lock().await;
+-        let Some(active_turn) = active.as_mut() else {
+-            return Err(input);
+-        };
+-        if active_turn.task.is_none() {
+-            return Err(input);
+-        }
+-        self.input_queue
+-            .extend_pending_input_and_accept_mailbox_delivery_for_turn_state(
+-                active_turn.turn_state.as_ref(),
+-                input
+-                    .into_iter()
+-                    .map(ResponseItemEnvelope::new)
+-                    .map(PendingTurnInput::ResponseItem)
+-                    .collect(),
+-            )
+-            .await;
+-        Ok(())
++    ) -> codex_protocol::error::Result<Result<(), Vec<ResponseItem>>> {
++        self.inject_if_running_with_task_requirement(input, true)
++            .await
+     }
+ 
+     /// Preserves trusted client provenance while items wait for an active turn.
+@@ -75,31 +98,44 @@ impl Session {
+         &self,
+         items: Vec<ResponseItem>,
+         turn_context: &TurnContext,
+-    ) {
++    ) -> codex_protocol::error::Result<()> {
++        let owner = super::durable_suspension::coordinator(self);
++        let _inputs = owner.inputs.lock().await;
+         let items = items
+             .into_iter()
+             .map(|item| self.annotate_client_response_item(item))
+             .collect::<Vec<_>>();
+         let mut active = self.active_turn.lock().await;
+         if let Some(active_turn) = active.as_mut().filter(|turn| turn.finishing.is_none()) {
++            let input = items
++                .into_iter()
++                .map(PendingTurnInput::ResponseItem)
++                .collect::<Vec<_>>();
++            owner.persist_pending_acceptance(self, &input).await?;
+             self.input_queue
+                 .extend_pending_input_and_accept_mailbox_delivery_for_turn_state(
+                     active_turn.turn_state.as_ref(),
+-                    items
+-                        .into_iter()
+-                        .map(PendingTurnInput::ResponseItem)
+-                        .collect(),
++                    input,
+                 )
+                 .await;
+-            return;
++            return Ok(());
+         }
+         let finishing = active.as_ref().and_then(|turn| turn.finishing.clone());
+         drop(active);
++        if owner.frozen.load(std::sync::atomic::Ordering::Acquire) {
++            let input = items
++                .into_iter()
++                .map(PendingTurnInput::ResponseItem)
++                .collect::<Vec<_>>();
++            return owner.persist_pending_acceptance(self, &input).await;
++        }
++        drop(_inputs);
+         if let Some(finishing) = finishing {
+             finishing.cancelled().await;
+         }
+         self.record_annotated_conversation_items(turn_context, turn_context.model_info(), items)
+             .await;
++        Ok(())
+     }
+ 
+     pub(crate) fn annotate_client_response_item(&self, item: ResponseItem) -> ResponseItemEnvelope {
+@@ -176,9 +212,28 @@ impl Session {
+         items: Vec<ResponseItem>,
+         current_turn_context: Option<&TurnContext>,
+     ) {
+-        let Err(items) = self.inject_if_running(items).await else {
+-            return;
++        let items = match self.inject_if_running_checked(items).await {
++            Ok(Ok(())) => return,
++            Ok(Err(items)) => items,
++            Err(error) => {
++                tracing::warn!(%error, "native input persistence failed; injection was not accepted");
++                return;
++            }
+         };
++        let owner = super::durable_suspension::coordinator(self);
++        let inputs = owner.inputs.lock().await;
++        if owner.frozen.load(std::sync::atomic::Ordering::Acquire) {
++            let input = items
++                .into_iter()
++                .map(ResponseItemEnvelope::new)
++                .map(PendingTurnInput::ResponseItem)
++                .collect::<Vec<_>>();
++            if let Err(error) = owner.persist_pending_acceptance(self, &input).await {
++                tracing::warn!(%error, "held native input was not accepted");
++            }
++            return;
++        }
++        drop(inputs);
+         let finishing = self
+             .active_turn
+             .lock()
+diff --git a/codex-rs/core/src/session/inject_tests.rs b/codex-rs/core/src/session/inject_tests.rs
+index b8a67a9..78f97e9 100644
+--- a/codex-rs/core/src/session/inject_tests.rs
++++ b/codex-rs/core/src/session/inject_tests.rs
+@@ -60,3 +60,22 @@ async fn harness_authored_configuration_updates_preserve_metadata_and_resume() {
+         .await;
+     assert_eq!(reconstructed.history, recorded);
+ }
++
++#[tokio::test]
++async fn hook_injection_requires_an_actual_task_outside_a_suspended_continuation() {
++    let (session, _turn, _events) = make_session_and_context_with_rx().await;
++    let reservation = crate::state::ActiveTurn::default();
++    let pending = std::sync::Arc::clone(&reservation.turn_state);
++    *session.active_turn.lock().await = Some(reservation);
++    let item = ResponseItem::ConfigurationUpdate {
++        reasoning: ConfigurationReasoning {
++            effort: ReasoningEffort::High,
++        },
++    };
++    let rejected = session
++        .inject_hook_context_if_running(vec![item.clone()])
++        .await
++        .expect("an ordinary task reservation requires no checkpoint I/O");
++    assert_eq!(rejected, Err(vec![item]));
++    assert!(pending.lock().await.pending_input.items.is_empty());
++}
+diff --git a/codex-rs/core/src/session/notification_tests.rs b/codex-rs/core/src/session/notification_tests.rs
+index eb8dfed..b3e68e0 100644
+--- a/codex-rs/core/src/session/notification_tests.rs
++++ b/codex-rs/core/src/session/notification_tests.rs
+@@ -70,7 +70,7 @@ async fn task_finish_preserves_notification_budget_and_queued_user_input() {
+         tokio::pin!(inject);
+         assert!(futures::poll!(inject.as_mut()).is_pending());
+         drop(state);
+-        inject.await;
++        inject.await.expect("late client injection");
+     });
+ 
+     let expected = vec![
+diff --git a/codex-rs/core/src/session/retained_context.rs b/codex-rs/core/src/session/retained_context.rs
+index 8c4203b..027fa93 100644
+--- a/codex-rs/core/src/session/retained_context.rs
++++ b/codex-rs/core/src/session/retained_context.rs
+@@ -85,6 +85,8 @@ impl Session {
+         &self,
+         update: UserGoalUpdate,
+     ) -> std::io::Result<()> {
++        let suspension = super::durable_suspension::coordinator(self);
++        let _inputs = suspension.inputs.lock().await;
+         // Goal metadata must not initialize a model step, even on a goal-first thread.
+         // Keep context construction off callers' stacks, including the TUI RPC dispatcher.
+         let context = Box::pin(self.new_inject_items_context()).await;
+@@ -101,6 +103,10 @@ impl Session {
+                 ..Default::default()
+             }),
+         };
++        suspension
++            .prepare_history_acceptance(self, &item)
++            .await
++            .map_err(std::io::Error::other)?;
+         if let Some(live_thread) = self.live_thread() {
+             // Capture settings under the same permit as the instruction, including when a
+             // goal creates the rollout. No fallible settings catch-up runs after publication.
+diff --git a/codex-rs/core/src/tools/code_mode/delegate.rs b/codex-rs/core/src/tools/code_mode/delegate.rs
+index 9e4429a..4155832 100644
+--- a/codex-rs/core/src/tools/code_mode/delegate.rs
++++ b/codex-rs/core/src/tools/code_mode/delegate.rs
+@@ -472,7 +472,7 @@ impl CoreTurnHost {
+             return Ok(());
+         }
+         self.session
+-            .inject_if_running(vec![ResponseItemEnvelope {
++            .inject_if_running_checked(vec![ResponseItemEnvelope {
+                 item: ResponseItem::CustomToolCallOutput {
+                     id: None,
+                     call_id,
+@@ -486,6 +486,9 @@ impl CoreTurnHost {
+                 }),
+             }])
+             .await
++            .map_err(|error| {
++                format!("failed to persist exec notify message for cell {cell_id}: {error}")
++            })?
+             .map_err(|_| {
+                 format!("failed to inject exec notify message for cell {cell_id}: no active turn")
+             })
+diff --git a/codex-rs/ext/goal/src/api.rs b/codex-rs/ext/goal/src/api.rs
+index ed8d381..ba7db37 100644
+--- a/codex-rs/ext/goal/src/api.rs
++++ b/codex-rs/ext/goal/src/api.rs
+@@ -61,7 +61,6 @@ pub struct GoalSetRequest<'a> {
+ pub struct GoalSetOutcome {
+     pub goal: ThreadGoal,
+     state_goal: codex_state::ThreadGoal,
+-    previous_goal: Option<PreviousGoalSnapshot>,
+ }
+ 
+ impl GoalSetOutcome {
+@@ -77,14 +76,17 @@ impl GoalSetOutcome {
+         }))
+     }
+ 
+-    pub async fn apply_runtime_effects(&self, goal_service: &GoalService) {
+-        if let Some(runtime) = goal_service.runtime_for_thread(self.goal.thread_id)
+-            && let Err(err) = runtime
+-                .apply_external_goal_set(self.state_goal.clone(), self.previous_goal.clone())
++    pub async fn apply_runtime_effects(
++        &self,
++        goal_service: &GoalService,
++    ) -> Result<(), GoalServiceError> {
++        if let Some(runtime) = goal_service.runtime_for_thread(self.goal.thread_id) {
++            runtime
++                .continue_after_external_goal_set()
+                 .await
+-        {
+-            tracing::warn!("failed to apply external goal status runtime effects: {err}");
++                .map_err(GoalServiceError::Internal)?;
+         }
++        Ok(())
+     }
+ }
+ 
+@@ -317,10 +319,17 @@ impl GoalService {
+         if objective.is_some() {
+             fill_empty_thread_preview_if_possible(state_db, thread_id, &goal).await;
+         }
++        if let Some(runtime) = runtime.as_ref() {
++            // Capture, Stop and other mutations share this actual Goal permit.
++            // Complete accounting and durable pending steering before releasing it.
++            runtime
++                .prepare_external_goal_set(goal.clone(), previous_goal)
++                .await
++                .map_err(GoalServiceError::Internal)?;
++        }
+         Ok(GoalSetOutcome {
+             goal: protocol_goal_from_state(goal.clone()),
+             state_goal: goal,
+-            previous_goal,
+         })
+     }
+ 
+diff --git a/codex-rs/ext/goal/src/extension.rs b/codex-rs/ext/goal/src/extension.rs
+index b187d40..b549d6e 100644
+--- a/codex-rs/ext/goal/src/extension.rs
++++ b/codex-rs/ext/goal/src/extension.rs
+@@ -560,7 +560,9 @@ where
+                 return;
+             }
+             let item = budget_limit_steering_item(&goal);
+-            runtime.inject_active_turn_steering(item).await;
++            if let Err(error) = runtime.inject_active_turn_steering(item).await {
++                tracing::warn!(%error, "Goal budget steering was not accepted");
++            }
+         })
+     }
+ }
+diff --git a/codex-rs/ext/goal/src/runtime.rs b/codex-rs/ext/goal/src/runtime.rs
+index ac0721f..09e413f 100644
+--- a/codex-rs/ext/goal/src/runtime.rs
++++ b/codex-rs/ext/goal/src/runtime.rs
+@@ -188,7 +188,7 @@ impl GoalRuntimeHandle {
+         Ok(())
+     }
+ 
+-    pub async fn apply_external_goal_set(
++    pub(crate) async fn prepare_external_goal_set(
+         &self,
+         goal: codex_state::ThreadGoal,
+         previous_goal: Option<PreviousGoalSnapshot>,
+@@ -236,33 +236,7 @@ impl GoalRuntimeHandle {
+                 }
+                 if objective_changed {
+                     let item = objective_updated_steering_item(&protocol_goal_from_state(goal));
+-                    self.inject_active_turn_steering(item).await;
+-                }
+-                let gate = if let Some(manager) = self.inner.thread_manager.upgrade() {
+-                    match manager.get_thread(self.thread_id()).await {
+-                        Ok(thread) => thread.managed_execution_gate().await,
+-                        Err(_) => None,
+-                    }
+-                } else {
+-                    None
+-                };
+-                if gate.as_ref().is_some_and(|gate| gate.is_inference_only()) {
+-                    // The Task owner sends its canonical kickoff/resume input.
+-                    // Later completed turns still continue through on_thread_idle.
+-                    return Ok(());
+-                }
+-                if gate.is_some() {
+-                    // The external goal mutation has already been acknowledged.
+-                    // Admission must not retain its thread RPC serialization slot.
+-                    // Read the current goal under its permit in the spawned task.
+-                    let runtime = self.clone();
+-                    tokio::spawn(async move {
+-                        if let Err(error) = runtime.continue_if_idle().await {
+-                            tracing::warn!("failed to continue managed goal: {error}");
+-                        }
+-                    });
+-                } else {
+-                    self.continue_if_idle().await?;
++                    self.inject_active_turn_steering(item).await?;
+                 }
+             }
+             codex_state::ThreadGoalStatus::BudgetLimited => {
+@@ -280,6 +254,40 @@ impl GoalRuntimeHandle {
+         Ok(())
+     }
+ 
++    /// Called after the mutation permit is released. Actual continuation reads
++    /// current Goal state again, and a held native turn stays held.
++    pub async fn continue_after_external_goal_set(&self) -> Result<(), String> {
++        if !self.is_enabled() {
++            return Ok(());
++        }
++        let gate = if let Some(manager) = self.inner.thread_manager.upgrade() {
++            match manager.get_thread(self.thread_id()).await {
++                Ok(thread) => thread.managed_execution_gate().await,
++                Err(_) => None,
++            }
++        } else {
++            None
++        };
++        if gate.as_ref().is_some_and(|gate| gate.is_inference_only()) {
++            // The Task owner sends its canonical kickoff/resume input.
++            // Later completed turns still continue through on_thread_idle.
++            return Ok(());
++        }
++        if gate.is_some() {
++            // Admission must not retain the thread RPC serialization slot.
++            // Read the current goal under its permit in the spawned task.
++            let runtime = self.clone();
++            tokio::spawn(async move {
++                if let Err(error) = runtime.continue_if_idle().await {
++                    tracing::warn!("failed to continue managed goal: {error}");
++                }
++            });
++        } else {
++            self.continue_if_idle().await?;
++        }
++        Ok(())
++    }
++
+     pub async fn apply_external_goal_clear(
+         &self,
+         goal: codex_state::ThreadGoal,
+@@ -561,18 +569,27 @@ impl GoalRuntimeHandle {
+         Ok(())
+     }
+ 
+-    pub(crate) async fn inject_active_turn_steering(&self, item: ResponseItem) {
++    pub(crate) async fn inject_active_turn_steering(
++        &self,
++        item: ResponseItem,
++    ) -> Result<(), String> {
+         let Some(thread_manager) = self.inner.thread_manager.upgrade() else {
+             tracing::debug!("skipping goal steering because thread manager is unavailable");
+-            return;
++            return Ok(());
+         };
+         let Ok(thread) = thread_manager.get_thread(self.inner.thread_id).await else {
+             tracing::debug!("skipping goal steering because live thread is unavailable");
+-            return;
++            return Ok(());
+         };
+-        if thread.inject_if_running(vec![item]).await.is_err() {
++        if thread
++            .inject_if_running_checked(vec![item])
++            .await
++            .map_err(|e| e.to_string())?
++            .is_err()
++        {
+             tracing::debug!("skipping goal steering because no turn is active");
+         }
++        Ok(())
+     }
+ 
+     pub(crate) async fn account_active_goal_progress(
+diff --git a/codex-rs/ext/goal/tests/goal_extension_backend.rs b/codex-rs/ext/goal/tests/goal_extension_backend.rs
+index 8faa045..e1d8f73 100644
+--- a/codex-rs/ext/goal/tests/goal_extension_backend.rs
++++ b/codex-rs/ext/goal/tests/goal_extension_backend.rs
+@@ -1360,7 +1360,7 @@ async fn goal_service_external_set_active_preserves_concurrent_usage() -> anyhow
+     child
+         .record_token_usage_with_last("child-turn", &child_usage, &child_usage)
+         .await;
+-    outcome.apply_runtime_effects(&harness.goal_service).await;
++    outcome.apply_runtime_effects(&harness.goal_service).await?;
+ 
+     harness
+         .record_token_usage(
+diff --git a/codex-rs/history/src/retained_context.rs b/codex-rs/history/src/retained_context.rs
+index 6418bd6..d1b1a5a 100644
+--- a/codex-rs/history/src/retained_context.rs
++++ b/codex-rs/history/src/retained_context.rs
+@@ -269,6 +269,11 @@ impl RetainedContext {
+     }
+ 
+     /// Reserves order without retaining pending input that hooks may reject or cancel.
++    /// Whether an accepted local instruction follows this checkpoint's boundary.
++    pub fn is_new_acceptance(&self, order: u64) -> bool {
++        order >= self.next_order
++    }
++
+     pub fn reserve_order(&mut self) -> u64 {
+         let order = self.next_order;
+         self.next_order = self.next_order.saturating_add(1);
