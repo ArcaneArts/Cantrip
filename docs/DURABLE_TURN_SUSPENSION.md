@@ -137,7 +137,9 @@ Resume report the actual missing/corrupt/incompatible-data error, and repair can
 be retried without replacing the original turn. A stale attachment request
 cannot freeze an unrelated running turn. Held threads skip idle lifecycle
 callbacks. Restoring Goal accounting and extension-owned turn bookkeeping still
-requires implementation and acceptance.
+requires an explicit extension contract. Patch `0066` adds this contract and
+native Goal snapshots; resource policies and product recovery remain separate
+requirements.
 
 The continuation retains pending accepted inputs with native metadata, the
 sampling-loop decisions, cumulative file diff, selected and pinned step settings,
@@ -151,13 +153,51 @@ Execution records after the bound prefix also invalidate an older checkpoint,
 even if they still name the same unfinished turn.
 
 The current native continuation contract is
-`0.166.0/cantrip-suspension-v3`. The confirmed capture revision is stored inside
+`0.166.0/cantrip-suspension-v4`. The confirmed capture revision is stored inside
 the continuation and remains stable across preparation retries. The store's
 physical revision still advances for each committed lifecycle write and supplies
 its compare-and-replace fencing. Native control descriptors identify the capture;
 they do not turn a newer lifecycle write into a replacement checkpoint.
 Earlier suspended contracts produce an explicit compatibility error and retain
 their bytes; Stop can still retire them using committed native history.
+
+Patch `0066` adds extension-owned bookkeeping to the private continuation. Core
+captures and restores registered contributors without replaying turn-start
+callbacks or depending on the Goal extension. Restoration applies each capture
+and contributor once in a loaded session. Its short control guard rejects stale
+preparation after Stop or a newer control generation. Async DB work never holds
+that guard, and successful fresh admission validates all contributors before
+thawing them or allowing the turn to advance.
+
+The Goal snapshot retains the original turn ID, per-turn usage and accounting
+baselines, descendant usage, Goal identities, failure/activity flags, automatic
+continuation and empty-turn streaks, and unflushed timing. It references the
+persisted Goal's identity, configuration revision and usage counters. Actual
+atomic counter changes distinguish a held delta already charged by a Goal
+mutation from still-unflushed usage; unexplained counter changes return a recovery
+error instead of charging it again. Current Goal state remains authoritative.
+No credentials or reusable execution grants are added to this data.
+
+Durably held and offline time is excluded from Goal elapsed usage. The clock
+retains its fractional unaccounted balance across repeated suspension; it does
+not persist a process-local `Instant`. The existing legacy memory-only pause path
+retains its behavior. Cold Stop settles reconstructible Goal usage before native
+terminal history retires the continuation, and fences Resume while that write is
+pending. A real DB failure preserves the hold and recovery data for a Stop retry.
+Stop can reconstruct cancellation bookkeeping directly from a repaired checkpoint
+without a successful Resume. Unsupported extension data is retained as an exact
+private inspection copy after terminal history commits, with a warning that its
+unreconstructible accounting could not be settled.
+
+Cold Stop also persists the existing Goal-continuation hold. Reopening the chat
+does not create a replacement Goal turn. A later explicit active Goal mutation or
+ordinary turn start clears that hold; the original stopped turn stays terminal.
+
+The v4 contract is intentionally incompatible with v3 suspended continuations.
+Their original bytes remain available for inspection and explicit Stop. A changed
+Goal runtime enablement or unsupported Goal payload produces a concrete restoration
+error. This milestone does not complete post-capture instruction/resource producer
+policies or connect Cantrip's product pause to durable recovery.
 
 Original initial, next-step and already-pinned
 pending-step settings are restored under the fresh runtime's constraints and
@@ -169,7 +209,7 @@ ordinary turn. Runtime credentials and inference admission are acquired afresh.
 A cold native attachment establishes the pause gate before model prewarm or
 automatic input admission. Explicit Resume uses the original-ID native recovery
 reservation and enters the shared sampling loop without repeating the turn-start
-lifecycle. Extension-owned continuation bookkeeping remains a separate milestone.
+lifecycle. Patch `0066` restores extension-owned continuation bookkeeping.
 It reconstructs fresh runtime handles, acquires fresh inference admission, and
 waits for restoration readiness before acknowledging resumption. It does not
 submit the original user prompt or emit another native TurnStarted event.
@@ -406,3 +446,22 @@ and packaged artifacts. Original native thread and turn IDs survived the tested
 native process-tree termination, without duplicate TurnStarted, accepted input,
 completed side effects or tool output. This remains component acceptance rather
 than the complete worker/server/client restart guarantee.
+
+Patch `0066` adds sixteen native Goal cases across paginated and legacy history:
+live and cold resumption, a budget edit while held, three repeated cold resumptions,
+unflushed accepted input and usage, and cold Stop. The Stop cases also cover a
+repaired Goal payload stopped before successful restoration, and an unsupported
+payload whose exact bytes remain archived with an accounting warning. Reopening
+after Stop must remain idle; a later explicit active Goal mutation starts a
+distinct new turn. Completed command effects and the original turn start remain
+unique before that new user intent.
+
+On macOS ARM64, the normal 67-patch development build and all 28 native cases
+passed: sixteen Goal cases, four suspension cases, two physical TUI cases and six
+shared-pause cases. Every direct native fixture verifies actual artifact hashes,
+the current patch fingerprint and generated protocol. The fifteen accounting
+tests, twenty-seven Goal backend tests and SQLite continuation-hold test also
+passed. An earlier optimized candidate built successfully and exposed the
+Stop/reopen Goal-startup defect; final acceptance of the corrected implementation
+used the development profile. Final optimized product validation and complete
+worker/server/client recovery remain required before feature completion.

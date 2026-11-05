@@ -1,0 +1,1970 @@
+diff --git a/codex-rs/core/src/session/durable_suspension.rs b/codex-rs/core/src/session/durable_suspension.rs
+index 40ac925..6957cb0 100644
+--- a/codex-rs/core/src/session/durable_suspension.rs
++++ b/codex-rs/core/src/session/durable_suspension.rs
+@@ -10,6 +10,7 @@ use crate::session::TurnInput;
+ use crate::session::UserInputMetadata;
+ use crate::tools::context::SharedTurnDiffTracker;
+ use crate::turn_diff_tracker::TurnDiffSnapshot;
++use codex_extension_api::DurableTurnControl;
+ use codex_history::CodexHarnessMetadata;
+ use codex_history::ResponseItemEnvelope;
+ use codex_history::RolloutItem;
+@@ -36,7 +37,7 @@ use std::sync::atomic::AtomicBool;
+ use std::sync::atomic::AtomicU64;
+ use std::sync::atomic::Ordering;
+ 
+-pub(crate) const RUNTIME: &str = concat!(env!("CARGO_PKG_VERSION"), "/cantrip-suspension-v3");
++pub(crate) const RUNTIME: &str = concat!(env!("CARGO_PKG_VERSION"), "/cantrip-suspension-v4");
+ 
+ #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+ #[serde(rename_all = "camelCase", deny_unknown_fields)]
+@@ -171,6 +172,15 @@ pub(crate) struct SavedTurn {
+     pub(super) token_usage_at_turn_start: TokenUsage,
+     pub(super) token_usage_by_model: Vec<(String, TokenUsage)>,
+     history_items: usize,
++    extensions: Vec<SavedExtension>,
++}
++
++/// Only extension bookkeeping is persisted; controls and grants remain live.
++#[derive(Clone, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++struct SavedExtension {
++    key: String,
++    payload: serde_json::Value,
+ }
+ 
+ /// Held by the live thread, including while sampling after an explicit Resume.
+@@ -185,6 +195,244 @@ pub(crate) struct DurableSuspension {
+     boundary: Mutex<Option<std::result::Result<NativeSuspension, String>>>,
+     live_resume: Mutex<Option<Arc<LiveResume>>>,
+     expected: Mutex<Option<NativeSuspension>>,
++    stopping: AtomicBool,
++    stop: tokio::sync::Mutex<()>,
++    unrestorable_extension_capture: Mutex<Option<String>>,
++    restored_extensions: tokio::sync::Mutex<(String, std::collections::HashSet<&'static str>)>,
++}
++
++struct ExtensionControl<'a> {
++    owner: &'a DurableSuspension,
++    epoch: u64,
++}
++
++impl codex_extension_api::DurableTurnControl for ExtensionControl<'_> {
++    fn acquire(
++        &self,
++    ) -> std::result::Result<Box<dyn codex_extension_api::DurableTurnGuard + '_>, String> {
++        let guard = self.owner.control();
++        if self.owner.epoch.load(Ordering::Acquire) != self.epoch
++            || !self.owner.frozen.load(Ordering::Acquire)
++        {
++            return Err("native continuation bookkeeping was superseded".into());
++        }
++        Ok(Box::new(guard))
++    }
++}
++
++fn hold_extensions(session: &Session) {
++    for contributor in session.services.extensions.durable_turn_contributors() {
++        contributor.hold(&session.services.thread_extension_data);
++    }
++}
++
++async fn capture_extensions(
++    session: &Session,
++    owner: &DurableSuspension,
++    turn_id: &str,
++    epoch: u64,
++) -> Result<Vec<SavedExtension>> {
++    let control = ExtensionControl { owner, epoch };
++    let thread_id = session.thread_id.to_string();
++    let mut seen = std::collections::HashSet::new();
++    let mut states = Vec::new();
++    for contributor in session.services.extensions.durable_turn_contributors() {
++        if !seen.insert(contributor.key()) {
++            return Err(invalid("duplicate durable extension namespace"));
++        }
++        let payload = contributor
++            .capture(codex_extension_api::DurableTurnInput {
++                thread_id: &thread_id,
++                turn_id,
++                thread_store: &session.services.thread_extension_data,
++                control: &control,
++            })
++            .await
++            .map_err(|error| invalid(format!("{}: {error}", contributor.key())))?;
++        states.push(SavedExtension {
++            key: contributor.key().into(),
++            payload,
++        });
++    }
++    Ok(states)
++}
++
++async fn restore_extensions(
++    session: &Session,
++    owner: &DurableSuspension,
++    record: &Checkpoint<SavedTurn>,
++    epoch: u64,
++) -> Result<()> {
++    let control = ExtensionControl { owner, epoch };
++    let mut restored = owner.restored_extensions.lock().await;
++    {
++        let _control = control.acquire().map_err(invalid)?;
++        owner.mark_unrestorable_extension(&record.identity.checkpoint_id, false);
++    }
++    let saved = record
++        .continuation
++        .as_ref()
++        .ok_or_else(|| invalid("native continuation is missing"))?;
++    let contributors = session.services.extensions.durable_turn_contributors();
++    let keys: std::collections::HashSet<_> = saved
++        .extensions
++        .iter()
++        .map(|state| state.key.as_str())
++        .collect();
++    if keys.len() != saved.extensions.len()
++        || keys.len() != contributors.len()
++        || contributors
++            .iter()
++            .any(|contributor| !keys.contains(contributor.key()))
++    {
++        let _control = control.acquire().map_err(invalid)?;
++        owner.mark_unrestorable_extension(&record.identity.checkpoint_id, true);
++        return Err(invalid(
++            "durable continuation extensions differ from the installed runtime",
++        ));
++    }
++    if restored.0 != record.identity.checkpoint_id {
++        restored.0.clone_from(&record.identity.checkpoint_id);
++        restored.1.clear();
++    }
++    for contributor in contributors {
++        if restored.1.contains(contributor.key()) {
++            continue;
++        }
++        let state = saved
++            .extensions
++            .iter()
++            .find(|state| state.key == contributor.key())
++            .ok_or_else(|| invalid("durable extension payload is missing"))?;
++        let result = contributor
++            .restore(
++                codex_extension_api::DurableTurnInput {
++                    thread_id: &record.identity.thread_id,
++                    turn_id: &record.identity.turn_id,
++                    thread_store: &session.services.thread_extension_data,
++                    control: &control,
++                },
++                &state.payload,
++            )
++            .await;
++        if let Err(error) = result {
++            if matches!(
++                &error,
++                codex_extension_api::DurableTurnRestoreError::Unrestorable(_)
++            ) {
++                let _control = control.acquire().map_err(invalid)?;
++                owner.mark_unrestorable_extension(&record.identity.checkpoint_id, true);
++            }
++            return Err(invalid(format!("{}: {error}", contributor.key())));
++        }
++        restored.1.insert(contributor.key());
++    }
++    Ok(())
++}
++
++async fn prepare_extensions_for_discard(
++    session: &Session,
++    owner: &Arc<DurableSuspension>,
++    turn_id: &str,
++    epoch: u64,
++) -> Result<()> {
++    // Core-unreadable records keep the existing terminal-history archival path.
++    let Ok(Some(record)) = owner.read(session).await else {
++        return Ok(());
++    };
++    if !record.state.retains_continuation() || record.identity.turn_id != turn_id {
++        return Ok(());
++    }
++    let control = ExtensionControl { owner, epoch };
++    let _restoration = owner.restored_extensions.lock().await;
++    let saved = record
++        .continuation
++        .as_ref()
++        .ok_or_else(|| invalid("native continuation is missing"))?;
++    let contributors = session.services.extensions.durable_turn_contributors();
++    let keys: std::collections::HashSet<_> = saved
++        .extensions
++        .iter()
++        .map(|state| state.key.as_str())
++        .collect();
++    let mut problems = Vec::new();
++    if keys.len() != saved.extensions.len()
++        || keys.len() != contributors.len()
++        || contributors
++            .iter()
++            .any(|contributor| !keys.contains(contributor.key()))
++    {
++        problems.push("continuation extensions differ from the installed runtime".to_string());
++    }
++    {
++        let _control = control.acquire().map_err(invalid)?;
++        owner.mark_unrestorable_extension(&record.identity.checkpoint_id, false);
++    }
++    for contributor in contributors {
++        let states: Vec<_> = saved
++            .extensions
++            .iter()
++            .filter(|state| state.key == contributor.key())
++            .collect();
++        if states.len() != 1 {
++            continue;
++        }
++        match contributor
++            .prepare_discard(
++                codex_extension_api::DurableTurnInput {
++                    thread_id: &record.identity.thread_id,
++                    turn_id,
++                    thread_store: &session.services.thread_extension_data,
++                    control: &control,
++                },
++                &states[0].payload,
++            )
++            .await
++        {
++            Ok(()) => {}
++            Err(codex_extension_api::DurableTurnRestoreError::Unrestorable(error)) => {
++                problems.push(format!("{}: {error}", contributor.key()))
++            }
++            Err(codex_extension_api::DurableTurnRestoreError::Failed(error)) => {
++                return Err(invalid(format!("{}: {error}", contributor.key())));
++            }
++        }
++    }
++    if !problems.is_empty() {
++        {
++            let _control = control.acquire().map_err(invalid)?;
++            owner.mark_unrestorable_extension(&record.identity.checkpoint_id, true);
++        }
++        session.send_event_raw(codex_protocol::protocol::Event {
++            id: turn_id.into(),
++            msg: EventMsg::Warning(codex_protocol::protocol::WarningEvent {
++                message: format!("Stop will preserve unsupported continuation data for inspection; unreconstructible extension accounting cannot be settled: {}", problems.join("; ")),
++            }),
++        }).await;
++    }
++    Ok(())
++}
++
++async fn discard_extensions(
++    session: &Session,
++    owner: &DurableSuspension,
++    turn_id: &str,
++    epoch: u64,
++) -> Result<()> {
++    let control = ExtensionControl { owner, epoch };
++    let thread_id = session.thread_id.to_string();
++    for contributor in session.services.extensions.durable_turn_contributors() {
++        contributor
++            .discard(codex_extension_api::DurableTurnInput {
++                thread_id: &thread_id,
++                turn_id,
++                thread_store: &session.services.thread_extension_data,
++                control: &control,
++            })
++            .await
++            .map_err(|error| invalid(format!("{}: {error}", contributor.key())))?;
++    }
++    Ok(())
+ }
+ 
+ pub(crate) struct LiveResume {
+@@ -261,6 +509,7 @@ pub(super) async fn preserve_for_shutdown(session: &Arc<Session>) -> bool {
+ /// autonomous input admission. Loading a suspended thread never advances it.
+ pub(super) async fn restore_gate_on_load(session: &Session) {
+     let owner = coordinator(session);
++    let load_epoch = owner.epoch.load(Ordering::Acquire);
+     let expected = session
+         .services
+         .thread_extension_data
+@@ -270,7 +519,9 @@ pub(super) async fn restore_gate_on_load(session: &Session) {
+         *hold = expected.clone();
+     }
+     if expected.is_some() {
++        let _control = owner.control();
+         owner.frozen.store(true, Ordering::Release);
++        hold_extensions(session);
+     }
+     let result = async {
+         let Some(record) = owner.read(session).await? else {
+@@ -298,6 +549,15 @@ pub(super) async fn restore_gate_on_load(session: &Session) {
+                 .await?;
+             return Ok(false);
+         }
++        {
++            let _control = owner.control();
++            if owner.epoch.load(Ordering::Acquire) != load_epoch {
++                return Err(invalid("native continuation attachment was superseded"));
++            }
++            owner.frozen.store(true, Ordering::Release);
++            hold_extensions(session);
++        }
++        restore_extensions(session, &owner, &record, load_epoch).await?;
+         Ok::<_, CodexErr>(true)
+     }
+     .await;
+@@ -317,9 +577,14 @@ pub(super) async fn restore_gate_on_load(session: &Session) {
+     };
+     // Missing, incompatible, or already-settled data must not clear the
+     // caller's explicit pause intent merely because attachment completed.
+-    owner
+-        .frozen
+-        .store(frozen || expected.is_some(), Ordering::Release);
++    let _control = owner.control();
++    if owner.epoch.load(Ordering::Acquire) == load_epoch {
++        let held = frozen || expected.is_some();
++        owner.frozen.store(held, Ordering::Release);
++        if held {
++            hold_extensions(session);
++        }
++    }
+ }
+ 
+ pub(crate) fn descriptor(record: &Checkpoint<SavedTurn>) -> NativeSuspension {
+@@ -343,6 +608,17 @@ fn history_digest(items: &[RolloutItem]) -> Result<String> {
+ }
+ 
+ impl DurableSuspension {
++    fn mark_unrestorable_extension(&self, checkpoint_id: &str, value: bool) {
++        let mut current = self
++            .unrestorable_extension_capture
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if value {
++            *current = Some(checkpoint_id.into());
++        } else if current.as_deref() == Some(checkpoint_id) {
++            *current = None;
++        }
++    }
+     fn control(&self) -> std::sync::MutexGuard<'_, ()> {
+         self.control
+             .lock()
+@@ -382,6 +658,7 @@ impl DurableSuspension {
+         self.epoch.fetch_add(1, Ordering::AcqRel);
+         self.requested.store(false, Ordering::Release);
+         self.frozen.store(false, Ordering::Release);
++        self.stopping.store(false, Ordering::Release);
+         if let Ok(mut boundary) = self.boundary.lock() {
+             *boundary = None;
+         }
+@@ -390,15 +667,18 @@ impl DurableSuspension {
+         }
+     }
+ 
+-    pub(crate) fn request(&self) -> u64 {
++    pub(crate) fn request(&self) -> Result<u64> {
+         let _control = self.control();
++        if self.stopping.load(Ordering::Acquire) {
++            return Err(invalid("Stop is being committed for this native turn"));
++        }
+         self.cancel_live_resume("native resumption was superseded by another pause");
+         let epoch = self.epoch.fetch_add(1, Ordering::AcqRel) + 1;
+         self.requested.store(true, Ordering::Release);
+         if let Ok(mut boundary) = self.boundary.lock() {
+             *boundary = None;
+         }
+-        epoch
++        Ok(epoch)
+     }
+ 
+     pub(crate) fn has_live_suspension(&self) -> bool {
+@@ -419,6 +699,9 @@ impl DurableSuspension {
+ 
+     fn begin_live_resume_at_epoch(&self, epoch: u64) -> Result<Arc<LiveResume>> {
+         let _control = self.control();
++        if self.stopping.load(Ordering::Acquire) {
++            return Err(invalid("Stop is being committed for this native turn"));
++        }
+         if self.epoch.load(Ordering::Acquire) != epoch {
+             return Err(invalid("native resumption was superseded"));
+         }
+@@ -562,14 +845,7 @@ impl DurableSuspension {
+                 "durable suspension of native subagent trees is not available yet; the live turn remains paused",
+             ));
+         }
+-        let (
+-            pending,
+-            pending_injection,
+-            tool_calls,
+-            has_memory_citation,
+-            token_usage_at_turn_start,
+-            token_usage_by_model,
+-        ) = {
++        let (pending, pending_injection, tool_calls, has_memory_citation) = {
+             let active = session.active_turn.lock().await;
+             let active = active
+                 .as_ref()
+@@ -606,13 +882,34 @@ impl DurableSuspension {
+                 state.pending_input.has_pending_injection,
+                 state.tool_calls,
+                 state.has_memory_citation,
+-                state.token_usage_at_turn_start.clone(),
+-                state.token_usage_by_model.suspension_snapshot(),
+             )
+         };
+         // Drain session-owned speculative inference and its usage accounting.
+         // A cancelled compaction candidate can be recomputed after explicit Resume.
+         super::async_compaction::suspend(session).await;
++        // Compaction cancellation can finish usage callbacks. Read final turn
++        // accounting only after those producers have actually joined.
++        let (token_usage_at_turn_start, token_usage_by_model) = {
++            let active = session.active_turn.lock().await;
++            let active = active
++                .as_ref()
++                .ok_or_else(|| invalid("suspended turn was stopped"))?;
++            let state = active.turn_state.lock().await;
++            let _control = self.control();
++            if self.epoch.load(Ordering::Acquire) != epoch
++                || active
++                    .task
++                    .as_ref()
++                    .is_none_or(|task| task.turn_context.sub_id != turn.sub_id)
++            {
++                return Err(invalid("suspended accounting no longer owns this turn"));
++            }
++            (
++                state.token_usage_at_turn_start.clone(),
++                state.token_usage_by_model.suspension_snapshot(),
++            )
++        };
++        let extensions = capture_extensions(session, self, &turn.sub_id, epoch).await?;
+         let session_state = session.state.lock().await.suspension_snapshot();
+         let live = session
+             .live_thread_for_persistence("checkpoint suspended turn")
+@@ -659,6 +956,7 @@ impl DurableSuspension {
+             token_usage_at_turn_start,
+             token_usage_by_model,
+             history_items: history.len(),
++            extensions,
+         };
+         let thread_id = session.thread_id.to_string();
+         let turn_id = turn.sub_id.clone();
+@@ -783,7 +1081,8 @@ impl DurableSuspension {
+     ) -> Result<()> {
+         let active = session.active_turn.lock().await;
+         let _control = self.control();
+-        if self.epoch.load(Ordering::Acquire) != epoch
++        if self.stopping.load(Ordering::Acquire)
++            || self.epoch.load(Ordering::Acquire) != epoch
+             || active
+                 .as_ref()
+                 .and_then(|active| active.task.as_ref())
+@@ -794,11 +1093,19 @@ impl DurableSuspension {
+             ));
+         }
+         let mut expected = self.expected.lock().map_err(io)?;
++        for contributor in session.services.extensions.durable_turn_contributors() {
++            contributor
++                .validate_resume(&session.services.thread_extension_data, turn_id)
++                .map_err(invalid)?;
++        }
+         if !ready() {
+             return Err(invalid(
+                 "native resumption no longer owns its readiness reply",
+             ));
+         }
++        for contributor in session.services.extensions.durable_turn_contributors() {
++            contributor.resume(&session.services.thread_extension_data);
++        }
+         self.requested.store(false, Ordering::Release);
+         self.frozen.store(false, Ordering::Release);
+         *expected = None;
+@@ -878,7 +1185,8 @@ impl DurableSuspension {
+     ) -> Result<bool> {
+         let mut active = session.active_turn.lock().await;
+         let _control = self.control();
+-        if self.epoch.load(Ordering::Acquire) != epoch
++        if self.stopping.load(Ordering::Acquire)
++            || self.epoch.load(Ordering::Acquire) != epoch
+             || active
+                 .as_ref()
+                 .and_then(|active| active.task.as_ref())
+@@ -918,17 +1226,22 @@ impl DurableSuspension {
+     async fn hold_restoration(&self, session: &Session, epoch: u64) -> Result<()> {
+         let active = session.active_turn.lock().await;
+         let _control = self.control();
+-        if self.epoch.load(Ordering::Acquire) != epoch || active.is_some() {
++        if self.stopping.load(Ordering::Acquire)
++            || self.epoch.load(Ordering::Acquire) != epoch
++            || active.is_some()
++        {
+             return Err(invalid("native restoration lost its idle reservation"));
+         }
+         self.frozen.store(true, Ordering::Release);
+         Ok(())
+     }
+ 
+-    fn fence_stop(&self) {
++    fn fence_stop(&self) -> u64 {
+         let _control = self.control();
+         self.cancel_live_resume("native resumption was stopped");
+-        self.epoch.fetch_add(1, Ordering::AcqRel);
++        self.stopping.store(true, Ordering::Release);
++        self.frozen.store(true, Ordering::Release);
++        self.epoch.fetch_add(1, Ordering::AcqRel) + 1
+     }
+ 
+     async fn retire_if_terminal(self: &Arc<Self>, session: &Session) -> Result<bool> {
+@@ -963,6 +1276,12 @@ impl DurableSuspension {
+                         return Ok(false);
+                     }
+                     if record.state.retains_continuation() {
++                        let unrestorable = owner.unrestorable_extension_capture.lock().map_err(io)?
++                            .as_deref() == Some(record.identity.checkpoint_id.as_str());
++                        if unrestorable {
++                            store.archive_after_terminal_history().map_err(io)?;
++                            return Ok(true);
++                        }
+                         let revision = record.revision;
+                         record.revision = revision
+                             .checked_add(1)
+@@ -1308,7 +1627,7 @@ impl crate::CodexThread {
+                 // not let a foreign turn ID fence its pending Resume.
+                 let history = self.load_continuation_history().await.map_err(io)?;
+                 validate_unfinished(&history, turn_id)?;
+-                (owner.request(), true)
++                (owner.request()?, true)
+             } else {
+                 if active
+                     .as_ref()
+@@ -1319,7 +1638,7 @@ impl crate::CodexThread {
+                         "durable pause does not identify the active native turn",
+                     ));
+                 }
+-                (owner.request(), false)
++                (owner.request()?, false)
+             }
+         };
+         // Fence even a repeated pause before waiting for checkpoint IO. An
+@@ -1454,6 +1773,7 @@ impl crate::CodexThread {
+     /// when an older/corrupt checkpoint cannot be decoded by this runtime.
+     pub async fn discard_durable_suspension(&self, turn_id: &str) -> Result<()> {
+         let owner = coordinator(&self.session);
++        let _stop = owner.stop.lock().await;
+         let active_guard = self.session.active_turn.lock().await;
+         let active = active_guard
+             .as_ref()
+@@ -1502,6 +1822,10 @@ impl crate::CodexThread {
+             if latest_terminal_turn(&history) == Some(turn_id) {
+                 // A retried Stop observes the original committed terminal event.
+                 // Do not append a second cancellation or reopen its lifecycle.
++                let stop_epoch = owner.fence_stop();
++                drop(active_guard);
++                prepare_extensions_for_discard(&self.session, &owner, turn_id, stop_epoch).await?;
++                discard_extensions(&self.session, &owner, turn_id, stop_epoch).await?;
+                 owner.retire_if_terminal(&self.session).await?;
+                 owner.release_live_gate();
+                 return Ok(());
+@@ -1509,7 +1833,18 @@ impl crate::CodexThread {
+             validate_unfinished(&history, turn_id)?;
+             // Fence a deferred Resume immediately, but retain the pause gate if
+             // persisting Stop fails. Only committed terminal history releases it.
+-            owner.fence_stop();
++            let stop_epoch = owner.fence_stop();
++            drop(active_guard);
++            // Goal settlement may await its real DB. Do not hold the active-turn
++            // lock across extension locks; frozen/stopping fence new execution.
++            prepare_extensions_for_discard(&self.session, &owner, turn_id, stop_epoch).await?;
++            discard_extensions(&self.session, &owner, turn_id, stop_epoch).await?;
++            let active_guard = self.session.active_turn.lock().await;
++            if owner.epoch.load(Ordering::Acquire) != stop_epoch || active_guard.is_some() {
++                return Err(invalid(
++                    "native cancellation was superseded before terminal commit",
++                ));
++            }
+             let started = history.iter().rev().find_map(|item| match item {
+                 RolloutItem::EventMsg(EventMsg::TurnStarted(event)) if event.turn_id == turn_id => {
+                     Some(event)
+@@ -1570,7 +1905,9 @@ impl crate::CodexThread {
+     ) -> Result<()> {
+         let active = self.session.active_turn.lock().await;
+         let owner = coordinator(&self.session);
+-        if owner.epoch.load(Ordering::Acquire) != resume_epoch {
++        if owner.stopping.load(Ordering::Acquire)
++            || owner.epoch.load(Ordering::Acquire) != resume_epoch
++        {
+             return Err(invalid("native resumption was superseded"));
+         }
+         if active.as_ref().is_none_or(|active| active.task.is_none()) {
+@@ -1647,7 +1984,9 @@ impl crate::CodexThread {
+         resume_epoch: u64,
+     ) -> Result<codex_protocol::turn_input::StartIfIdleSubmission> {
+         let owner = coordinator(&self.session);
+-        if owner.epoch.load(Ordering::Acquire) != resume_epoch {
++        if owner.stopping.load(Ordering::Acquire)
++            || owner.epoch.load(Ordering::Acquire) != resume_epoch
++        {
+             return Err(invalid("suspension resumption was superseded"));
+         }
+         let record = owner
+@@ -1716,6 +2055,7 @@ impl crate::CodexThread {
+                 root_turn_id,
+             });
+         }
++        restore_extensions(&self.session, &owner, &record, resume_epoch).await?;
+         let saved = record
+             .continuation
+             .ok_or_else(|| invalid("native continuation is missing"))?;
+diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
+index 3682823..856a557 100644
+--- a/codex-rs/core/src/session/handlers.rs
++++ b/codex-rs/core/src/session/handlers.rs
+@@ -567,10 +567,20 @@ pub(super) async fn submission_loop(
+                                 .await;
+                             }
+                         }
+-                    } else {
+-                        if paused && suspension.has_live_suspension() {
+-                            suspension.request();
++                    } else if paused && suspension.has_live_suspension() {
++                        match suspension.request() {
++                            Ok(_) => sess.set_turn_paused(true),
++                            Err(error) => {
++                                sess.send_event_raw(Event {
++                                    id: sub.id.clone(),
++                                    msg: EventMsg::Warning(WarningEvent {
++                                        message: format!("native pause was not applied: {error}"),
++                                    }),
++                                })
++                                .await;
++                            }
+                         }
++                    } else {
+                         sess.set_turn_paused(paused);
+                     }
+                     false
+diff --git a/codex-rs/ext/extension-api/src/durable_turn.rs b/codex-rs/ext/extension-api/src/durable_turn.rs
+new file mode 100644
+index 0000000..159fae6
+--- /dev/null
++++ b/codex-rs/ext/extension-api/src/durable_turn.rs
+@@ -0,0 +1,103 @@
++//! Extension-owned bookkeeping at a host's durable turn boundary.
++
++use crate::ExtensionData;
++use crate::ExtensionFuture;
++use serde_json::Value;
++
++/// Data incompatibility may be retired only by explicit Stop, preserving its
++/// original bytes. A storage/preparation failure remains retryable instead.
++#[derive(Debug)]
++pub enum DurableTurnRestoreError {
++    Unrestorable(String),
++    Failed(String),
++}
++
++impl std::fmt::Display for DurableTurnRestoreError {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        match self {
++            Self::Unrestorable(message) | Self::Failed(message) => f.write_str(message),
++        }
++    }
++}
++
++impl From<String> for DurableTurnRestoreError {
++    fn from(message: String) -> Self {
++        Self::Failed(message)
++    }
++}
++
++impl From<&str> for DurableTurnRestoreError {
++    fn from(message: &str) -> Self {
++        Self::Failed(message.into())
++    }
++}
++
++/// A lifetime-only guard retained during synchronous bookkeeping changes.
++/// Never retain this guard across an await.
++pub trait DurableTurnGuard {}
++
++impl<T> DurableTurnGuard for T {}
++
++/// The host's current turn/control generation, never serialized into a checkpoint.
++pub trait DurableTurnControl: Sync {
++    /// Locks and verifies the actual generation before applying prepared state.
++    fn acquire(&self) -> Result<Box<dyn DurableTurnGuard + '_>, String>;
++}
++
++#[derive(Clone, Copy)]
++pub struct DurableTurnInput<'a> {
++    pub thread_id: &'a str,
++    pub turn_id: &'a str,
++    pub thread_store: &'a ExtensionData,
++    pub control: &'a dyn DurableTurnControl,
++}
++
++/// Captures and restores bookkeeping without replaying turn-start callbacks.
++pub trait DurableTurnContributor: Send + Sync {
++    /// Stable extension-owned namespace. Payload versions belong to the extension.
++    fn key(&self) -> &'static str;
++
++    /// Freeze process-local bookkeeping, including when an expected record is
++    /// unreadable. This must not start work or perform I/O.
++    fn hold(&self, thread_store: &ExtensionData);
++
++    /// Drain accounting under the extension's real locks, then capture its state.
++    /// Acquire input.control after asynchronous preparation and retain it only
++    /// through synchronous mutation/serialization, so Stop fences late results.
++    fn capture<'a>(
++        &'a self,
++        input: DurableTurnInput<'a>,
++    ) -> ExtensionFuture<'a, Result<Value, String>>;
++
++    /// Restore a confirmed capture into a held runtime. The host serializes
++    /// restoration and calls this at most once successfully per capture/key.
++    fn restore<'a>(
++        &'a self,
++        input: DurableTurnInput<'a>,
++        payload: &'a Value,
++    ) -> ExtensionFuture<'a, Result<(), DurableTurnRestoreError>>;
++
++    /// Reconstruct only what cancellation needs, never live process resources.
++    /// Unlike Resume, this may settle original bookkeeping under changed settings.
++    fn prepare_discard<'a>(
++        &'a self,
++        input: DurableTurnInput<'a>,
++        payload: &'a Value,
++    ) -> ExtensionFuture<'a, Result<(), DurableTurnRestoreError>>;
++
++    /// Validate synchronously before any contributor is thawed or readiness is
++    /// acknowledged. The host holds its current admission/control lock.
++    fn validate_resume(&self, thread_store: &ExtensionData, turn_id: &str) -> Result<(), String>;
++
++    /// Thaw only after all validation and readiness ownership checks succeeded.
++    /// This cannot fail and must perform no I/O or turn-start callback.
++    fn resume(&self, thread_store: &ExtensionData);
++
++    /// Settle a cold held turn before the host commits terminal history and
++    /// retires its continuation. The host keeps new execution fenced and
++    /// serializes repeated Stop requests; failures retain the recovery data.
++    fn discard<'a>(
++        &'a self,
++        input: DurableTurnInput<'a>,
++    ) -> ExtensionFuture<'a, Result<(), String>>;
++}
+diff --git a/codex-rs/ext/extension-api/src/lib.rs b/codex-rs/ext/extension-api/src/lib.rs
+index fdb2d8d..b9497a0 100644
+--- a/codex-rs/ext/extension-api/src/lib.rs
++++ b/codex-rs/ext/extension-api/src/lib.rs
+@@ -1,6 +1,7 @@
+ mod capabilities;
+ mod catalog_refresh;
+ mod contributors;
++mod durable_turn;
+ mod inference_admission;
+ mod message_lifecycle;
+ mod registry;
+@@ -10,6 +11,11 @@ mod tool_policy;
+ mod turn_admission;
+ mod user_instructions;
+ 
++pub use durable_turn::DurableTurnContributor;
++pub use durable_turn::DurableTurnControl;
++pub use durable_turn::DurableTurnGuard;
++pub use durable_turn::DurableTurnInput;
++pub use durable_turn::DurableTurnRestoreError;
+ pub use inference_admission::InferenceQueueAdmission;
+ pub use message_lifecycle::MessageLifecycleContributor;
+ pub use message_lifecycle::MessageLifecycleInput;
+diff --git a/codex-rs/ext/extension-api/src/registry.rs b/codex-rs/ext/extension-api/src/registry.rs
+index 46fd6e6..c36940c 100644
+--- a/codex-rs/ext/extension-api/src/registry.rs
++++ b/codex-rs/ext/extension-api/src/registry.rs
+@@ -3,6 +3,7 @@ use std::sync::Arc;
+ use crate::ApprovalReviewContributor;
+ use crate::ConfigContributor;
+ use crate::ContextContributor;
++use crate::DurableTurnContributor;
+ use crate::ExtensionEventSink;
+ use crate::McpServerContributor;
+ use crate::MessageLifecycleContributor;
+@@ -30,6 +31,7 @@ impl<C: Sync> Default for ExtensionRegistryBuilder<C> {
+                 event_sink: Arc::new(NoopExtensionEventSink),
+                 turn_start_admission: None,
+                 thread_lifecycle_contributors: Vec::new(),
++                durable_turn_contributors: Vec::new(),
+                 turn_lifecycle_contributors: Vec::new(),
+                 config_contributors: Vec::new(),
+                 token_usage_contributors: Vec::new(),
+@@ -86,6 +88,11 @@ impl<C: Sync> ExtensionRegistryBuilder<C> {
+             .push(contributor);
+     }
+ 
++    /// Registers one durable turn bookkeeping contributor.
++    pub fn durable_turn_contributor(&mut self, contributor: Arc<dyn DurableTurnContributor>) {
++        self.registry.durable_turn_contributors.push(contributor);
++    }
++
+     /// Registers one turn-lifecycle contributor.
+     pub fn turn_lifecycle_contributor(&mut self, contributor: Arc<dyn TurnLifecycleContributor>) {
+         self.registry.turn_lifecycle_contributors.push(contributor);
+@@ -162,6 +169,7 @@ pub struct ExtensionRegistry<C: Sync> {
+     event_sink: Arc<dyn ExtensionEventSink>,
+     turn_start_admission: Option<Arc<dyn TurnStartAdmission>>,
+     thread_lifecycle_contributors: Vec<Arc<dyn ThreadLifecycleContributor<C>>>,
++    durable_turn_contributors: Vec<Arc<dyn DurableTurnContributor>>,
+     turn_lifecycle_contributors: Vec<Arc<dyn TurnLifecycleContributor>>,
+     config_contributors: Vec<Arc<dyn ConfigContributor<C>>>,
+     token_usage_contributors: Vec<Arc<dyn TokenUsageContributor>>,
+@@ -185,6 +193,7 @@ impl<C: Sync> ExtensionRegistry<C> {
+                 event_sink: self.event_sink.clone(),
+                 turn_start_admission: self.turn_start_admission.clone(),
+                 thread_lifecycle_contributors: self.thread_lifecycle_contributors.clone(),
++                durable_turn_contributors: self.durable_turn_contributors.clone(),
+                 turn_lifecycle_contributors: self.turn_lifecycle_contributors.clone(),
+                 config_contributors: self.config_contributors.clone(),
+                 token_usage_contributors: self.token_usage_contributors.clone(),
+@@ -221,6 +230,11 @@ impl<C: Sync> ExtensionRegistry<C> {
+         &self.thread_lifecycle_contributors
+     }
+ 
++    /// Returns the registered durable turn bookkeeping contributors.
++    pub fn durable_turn_contributors(&self) -> &[Arc<dyn DurableTurnContributor>] {
++        &self.durable_turn_contributors
++    }
++
+     /// Returns the registered turn-lifecycle contributors.
+     pub fn turn_lifecycle_contributors(&self) -> &[Arc<dyn TurnLifecycleContributor>] {
+         &self.turn_lifecycle_contributors
+diff --git a/codex-rs/ext/goal/src/accounting.rs b/codex-rs/ext/goal/src/accounting.rs
+index 65ea5e7..5c4c002 100644
+--- a/codex-rs/ext/goal/src/accounting.rs
++++ b/codex-rs/ext/goal/src/accounting.rs
+@@ -6,6 +6,8 @@ use codex_protocol::items::TurnItem;
+ use codex_protocol::models::MessagePhase;
+ use codex_protocol::protocol::TokenUsage;
+ use codex_state::ThreadGoalStatus;
++use serde::Deserialize;
++use serde::Serialize;
+ use std::collections::HashMap;
+ use std::sync::Mutex;
+ use std::sync::PoisonError;
+@@ -16,6 +18,10 @@ use std::time::Instant;
+ use tokio::sync::Semaphore;
+ use tokio::sync::SemaphorePermit;
+ 
++#[path = "accounting_suspension.rs"]
++mod suspension;
++pub(crate) use suspension::SavedGoalAccounting;
++
+ #[derive(Debug)]
+ pub(crate) struct GoalAccountingState {
+     inner: Mutex<GoalAccountingInner>,
+@@ -26,7 +32,8 @@ pub(crate) struct GoalAccountingState {
+     descendant_token_usage: AtomicI64,
+ }
+ 
+-#[derive(Debug)]
++#[derive(Debug, Clone, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
+ struct GoalAccountingInner {
+     current_turn_id: Option<String>,
+     interrupted_turn_id: Option<String>,
+@@ -40,7 +47,8 @@ struct GoalAccountingInner {
+     last_accounted_descendant_token_usage: i64,
+ }
+ 
+-#[derive(Debug)]
++#[derive(Debug, Clone, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
+ struct GoalTurnAccounting {
+     current_token_usage: TokenUsage,
+     last_accounted_token_usage: TokenUsage,
+@@ -52,9 +60,11 @@ struct GoalTurnAccounting {
+     has_activity: bool,
+ }
+ 
+-#[derive(Debug)]
++#[derive(Debug, Clone)]
+ struct GoalWallClockAccounting {
+     last_accounted_at: Instant,
++    elapsed_before_start: Duration,
++    suspended: bool,
+     active_goal_id: Option<String>,
+ }
+ 
+@@ -96,6 +106,7 @@ impl GoalAccountingState {
+     ) {
+         let turn_id = turn_id.into();
+         let mut inner = self.inner();
++        inner.wall_clock.resume();
+         if let Some(interrupted) = inner.interrupted_turn_id.take() {
+             inner.turns.remove(&interrupted);
+             inner.consecutive_empty_turns = 0;
+@@ -403,34 +414,11 @@ impl GoalAccountingState {
+     }
+ 
+     pub(crate) fn progress_snapshot(&self, turn_id: &str) -> Option<GoalProgressSnapshot> {
+-        let inner = self.inner();
+-        let turn = inner.turns.get(turn_id)?;
+-        if !turn.account_tokens {
+-            return None;
+-        }
+-        let expected_goal_id = turn.active_goal_id()?;
+-        let current_descendant_token_usage = self.descendant_token_usage.load(Ordering::Relaxed);
+-        let descendant_token_delta = current_descendant_token_usage
+-            .saturating_sub(inner.last_accounted_descendant_token_usage);
+-        let token_delta = turn
+-            .token_delta_since_last_accounting()
+-            .saturating_add(descendant_token_delta);
+-        let time_delta_seconds =
+-            if inner.wall_clock.active_goal_id.as_deref() == Some(expected_goal_id.as_str()) {
+-                inner.wall_clock.time_delta_since_last_accounting()
+-            } else {
+-                0
+-            };
+-        if time_delta_seconds == 0 && token_delta <= 0 {
+-            return None;
+-        }
+-        Some(GoalProgressSnapshot {
+-            current_token_usage: turn.current_token_usage.clone(),
+-            current_descendant_token_usage,
+-            expected_goal_id,
+-            time_delta_seconds,
+-            token_delta,
+-        })
++        goal_progress_snapshot(
++            &self.inner(),
++            turn_id,
++            self.descendant_token_usage.load(Ordering::Relaxed),
++        )
+     }
+ 
+     pub(crate) fn idle_progress_snapshot(&self) -> Option<IdleGoalProgressSnapshot> {
+@@ -549,6 +537,39 @@ impl Default for GoalAccountingState {
+     }
+ }
+ 
++fn goal_progress_snapshot(
++    inner: &GoalAccountingInner,
++    turn_id: &str,
++    current_descendant_token_usage: i64,
++) -> Option<GoalProgressSnapshot> {
++    let turn = inner.turns.get(turn_id)?;
++    if !turn.account_tokens {
++        return None;
++    }
++    let expected_goal_id = turn.active_goal_id()?;
++    let descendant_token_delta =
++        current_descendant_token_usage.saturating_sub(inner.last_accounted_descendant_token_usage);
++    let token_delta = turn
++        .token_delta_since_last_accounting()
++        .saturating_add(descendant_token_delta);
++    let time_delta_seconds =
++        if inner.wall_clock.active_goal_id.as_deref() == Some(expected_goal_id.as_str()) {
++            inner.wall_clock.time_delta_since_last_accounting()
++        } else {
++            0
++        };
++    if time_delta_seconds == 0 && token_delta <= 0 {
++        return None;
++    }
++    Some(GoalProgressSnapshot {
++        current_token_usage: turn.current_token_usage.clone(),
++        current_descendant_token_usage,
++        expected_goal_id,
++        time_delta_seconds,
++        token_delta,
++    })
++}
++
+ fn token_delta_since_last_accounting(last: &TokenUsage, current: &TokenUsage) -> i64 {
+     let delta = TokenUsage {
+         input_tokens: current.input_tokens.saturating_sub(last.input_tokens),
+@@ -637,12 +658,40 @@ impl GoalWallClockAccounting {
+     fn new() -> Self {
+         Self {
+             last_accounted_at: Instant::now(),
++            elapsed_before_start: Duration::ZERO,
++            suspended: false,
+             active_goal_id: None,
+         }
+     }
+ 
+     fn time_delta_since_last_accounting(&self) -> i64 {
+-        i64::try_from(self.last_accounted_at.elapsed().as_secs()).unwrap_or(i64::MAX)
++        i64::try_from(self.elapsed().as_secs()).unwrap_or(i64::MAX)
++    }
++
++    fn elapsed(&self) -> Duration {
++        self.elapsed_at(Instant::now())
++    }
++
++    fn elapsed_at(&self, now: Instant) -> Duration {
++        self.elapsed_before_start.saturating_add(if self.suspended {
++            Duration::ZERO
++        } else {
++            now.saturating_duration_since(self.last_accounted_at)
++        })
++    }
++
++    fn hold(&mut self) {
++        let now = Instant::now();
++        self.elapsed_before_start = self.elapsed_at(now);
++        self.last_accounted_at = now;
++        self.suspended = true;
++    }
++
++    fn resume(&mut self) {
++        if self.suspended {
++            self.last_accounted_at = Instant::now();
++            self.suspended = false;
++        }
+     }
+ 
+     fn mark_accounted(&mut self, accounted_seconds: i64) {
+@@ -650,14 +699,14 @@ impl GoalWallClockAccounting {
+             return;
+         }
+         let advance = Duration::from_secs(u64::try_from(accounted_seconds).unwrap_or(u64::MAX));
+-        self.last_accounted_at = self
+-            .last_accounted_at
+-            .checked_add(advance)
+-            .unwrap_or_else(Instant::now);
++        let now = Instant::now();
++        self.elapsed_before_start = self.elapsed_at(now).saturating_sub(advance);
++        self.last_accounted_at = now;
+     }
+ 
+     fn reset_baseline(&mut self) {
+         self.last_accounted_at = Instant::now();
++        self.elapsed_before_start = Duration::ZERO;
+     }
+ 
+     fn mark_active_goal(&mut self, goal_id: impl Into<String>) {
+diff --git a/codex-rs/ext/goal/src/accounting_suspension.rs b/codex-rs/ext/goal/src/accounting_suspension.rs
+new file mode 100644
+index 0000000..e803b5a
+--- /dev/null
++++ b/codex-rs/ext/goal/src/accounting_suspension.rs
+@@ -0,0 +1,252 @@
++//! Goal bookkeeping belongs to the original turn, not to a replacement start.
++
++use super::*;
++use codex_state::ThreadGoal;
++use serde::Deserializer;
++use serde::Serializer;
++
++#[derive(Clone, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++struct SavedClock {
++    elapsed: Duration,
++    active_goal_id: Option<String>,
++}
++
++impl Serialize for GoalWallClockAccounting {
++    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
++        SavedClock {
++            elapsed: self.elapsed(),
++            active_goal_id: self.active_goal_id.clone(),
++        }
++        .serialize(serializer)
++    }
++}
++
++impl<'de> Deserialize<'de> for GoalWallClockAccounting {
++    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
++        let saved = SavedClock::deserialize(deserializer)?;
++        Ok(Self {
++            last_accounted_at: Instant::now(),
++            elapsed_before_start: saved.elapsed,
++            suspended: true,
++            active_goal_id: saved.active_goal_id,
++        })
++    }
++}
++
++#[derive(Clone, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++struct GoalWatermark {
++    goal_id: String,
++    configuration_revision: i64,
++    tokens_used: i64,
++    time_used_seconds: i64,
++}
++
++impl From<&ThreadGoal> for GoalWatermark {
++    fn from(goal: &ThreadGoal) -> Self {
++        Self {
++            goal_id: goal.goal_id.clone(),
++            configuration_revision: goal.configuration_revision,
++            tokens_used: goal.tokens_used,
++            time_used_seconds: goal.time_used_seconds,
++        }
++    }
++}
++
++#[derive(Clone, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub(crate) struct SavedGoalAccounting {
++    version: u32,
++    thread_id: String,
++    turn_id: String,
++    enabled: bool,
++    inner: GoalAccountingInner,
++    descendant_token_usage: i64,
++    goal: Option<GoalWatermark>,
++}
++
++impl GoalAccountingState {
++    pub(crate) fn hold_suspension(&self) {
++        self.inner().wall_clock.hold();
++    }
++
++    pub(crate) fn is_suspended(&self) -> bool {
++        self.inner().wall_clock.suspended
++    }
++
++    pub(crate) fn resume_suspension(&self) {
++        self.inner().wall_clock.resume();
++    }
++
++    /// Caller holds goal-state, turn-start and progress permits. The DB read and
++    /// this snapshot consequently see the same completed accounting operation.
++    pub(crate) fn suspension_snapshot(
++        &self,
++        thread_id: &str,
++        turn_id: &str,
++        enabled: bool,
++        goal: Option<&ThreadGoal>,
++    ) -> Result<SavedGoalAccounting, String> {
++        let inner = self.inner();
++        if !inner.wall_clock.suspended {
++            return Err("Goal accounting was not held at the durable boundary".into());
++        }
++        if enabled && inner.current_turn_id.as_deref() != Some(turn_id) {
++            return Err("Goal accounting does not own the suspended native turn".into());
++        }
++        Ok(SavedGoalAccounting {
++            version: 1,
++            thread_id: thread_id.into(),
++            turn_id: turn_id.into(),
++            enabled,
++            inner: inner.clone(),
++            descendant_token_usage: self.descendant_token_usage.load(Ordering::Relaxed),
++            goal: goal.map(GoalWatermark::from),
++        })
++    }
++
++    /// Validate all persisted evidence before replacing process-local state.
++    /// Goal mutations may have charged the held delta after checkpoint commit;
++    /// the atomic DB counters distinguish that from still-unflushed usage.
++    pub(crate) fn restore_suspension(
++        &self,
++        saved: SavedGoalAccounting,
++        thread_id: &str,
++        turn_id: &str,
++        enabled: bool,
++        current_goal: Option<&ThreadGoal>,
++    ) -> Result<(), String> {
++        self.restore_accounting(saved, thread_id, turn_id, enabled, current_goal, false)
++    }
++
++    pub(crate) fn restore_for_discard(
++        &self,
++        saved: SavedGoalAccounting,
++        thread_id: &str,
++        turn_id: &str,
++        enabled: bool,
++        current_goal: Option<&ThreadGoal>,
++    ) -> Result<(), String> {
++        self.restore_accounting(saved, thread_id, turn_id, enabled, current_goal, true)
++    }
++
++    fn restore_accounting(
++        &self,
++        mut saved: SavedGoalAccounting,
++        thread_id: &str,
++        turn_id: &str,
++        enabled: bool,
++        current_goal: Option<&ThreadGoal>,
++        for_discard: bool,
++    ) -> Result<(), String> {
++        if saved.version != 1 {
++            return Err(format!(
++                "unsupported Goal continuation version {}",
++                saved.version
++            ));
++        }
++        if saved.thread_id != thread_id || saved.turn_id != turn_id {
++            return Err("Goal continuation belongs to another native thread or turn".into());
++        }
++        if !for_discard && saved.enabled != enabled {
++            return Err("Goal runtime configuration differs from the suspended turn".into());
++        }
++        if saved
++            .inner
++            .current_turn_id
++            .as_deref()
++            .is_some_and(|id| id != turn_id)
++            || (saved.enabled
++                && (saved.inner.current_turn_id.as_deref() != Some(turn_id)
++                    || !saved.inner.turns.contains_key(turn_id)))
++        {
++            return Err("Goal continuation has inconsistent turn bookkeeping".into());
++        }
++        if saved.inner.wall_clock.elapsed().as_secs() > i64::MAX as u64 {
++            return Err("Goal continuation clock exceeds the accounting range".into());
++        }
++        let unflushed = goal_progress_snapshot(&saved.inner, turn_id, saved.descendant_token_usage);
++        let same_goal = saved
++            .goal
++            .as_ref()
++            .zip(current_goal)
++            .filter(|(old, current)| old.goal_id == current.goal_id);
++        if let Some((old, current)) = same_goal {
++            if old.tokens_used < 0 || old.time_used_seconds < 0 {
++                return Err("Goal continuation has invalid usage counters".into());
++            }
++            let token_delta = current.tokens_used.checked_sub(old.tokens_used);
++            let time_delta = current.time_used_seconds.checked_sub(old.time_used_seconds);
++            match (token_delta, time_delta) {
++                (Some(0), Some(0)) => {}
++                (Some(tokens), Some(seconds))
++                    if unflushed.as_ref().is_some_and(|pending| {
++                        pending.expected_goal_id == current.goal_id
++                            && tokens == pending.token_delta.max(0)
++                            && seconds == pending.time_delta_seconds.max(0)
++                    }) =>
++                {
++                    if let Some(pending) = unflushed.as_ref() {
++                        if let Some(turn) = saved.inner.turns.get_mut(turn_id) {
++                            turn.last_accounted_token_usage = pending.current_token_usage.clone();
++                        }
++                        saved.inner.last_accounted_descendant_token_usage =
++                            pending.current_descendant_token_usage;
++                        saved
++                            .inner
++                            .wall_clock
++                            .mark_accounted(pending.time_delta_seconds);
++                    }
++                }
++                _ => {
++                    return Err(
++                        "persisted Goal usage differs from the suspended accounting boundary"
++                            .into(),
++                    );
++                }
++            }
++        }
++        let configuration_changed = match (saved.goal.as_ref(), current_goal) {
++            (Some(old), Some(current)) => {
++                old.goal_id != current.goal_id
++                    || old.configuration_revision != current.configuration_revision
++            }
++            (None, None) => false,
++            _ => true,
++        };
++        let same_goal = saved
++            .goal
++            .as_ref()
++            .zip(current_goal)
++            .is_some_and(|(old, current)| old.goal_id == current.goal_id);
++        saved.inner.wall_clock.hold();
++        *self.inner() = saved.inner;
++        self.descendant_token_usage
++            .store(saved.descendant_token_usage, Ordering::Relaxed);
++        if configuration_changed {
++            self.reset_empty_responses();
++        }
++        if for_discard {
++            if !same_goal {
++                // No old usage is reassigned to a replacement or cleared Goal.
++                self.clear_active_goal();
++            }
++            return Ok(());
++        }
++        match current_goal {
++            Some(goal)
++                if matches!(
++                    goal.status,
++                    ThreadGoalStatus::Active | ThreadGoalStatus::BudgetLimited
++                ) =>
++            {
++                if configuration_changed {
++                    self.mark_current_turn_goal_active(goal.goal_id.clone());
++                }
++            }
++            _ => self.clear_active_goal(),
++        }
++        Ok(())
++    }
++}
+diff --git a/codex-rs/ext/goal/src/api.rs b/codex-rs/ext/goal/src/api.rs
+index a1daa71..ed8d381 100644
+--- a/codex-rs/ext/goal/src/api.rs
++++ b/codex-rs/ext/goal/src/api.rs
+@@ -298,6 +298,18 @@ impl GoalService {
+                 .map(|goal| (goal, Some(previous_goal)))?
+         };
+ 
++        if status == Some(codex_state::ThreadGoalStatus::Active) {
++            // This explicit mutation is a new continuation intent. Keep its
++            // ordering with Stop under the same actual Goal mutation permit.
++            state_db
++                .thread_goals()
++                .clear_thread_goal_continuation_deferral(thread_id)
++                .await
++                .map_err(|err| {
++                    GoalServiceError::Internal(format!("failed to resume thread Goal: {err}"))
++                })?;
++        }
++
+         if let Some(runtime) = runtime.as_ref() {
+             runtime.clear_pending_turn_start_options().await;
+         }
+diff --git a/codex-rs/ext/goal/src/extension.rs b/codex-rs/ext/goal/src/extension.rs
+index aee1116..b187d40 100644
+--- a/codex-rs/ext/goal/src/extension.rs
++++ b/codex-rs/ext/goal/src/extension.rs
+@@ -1,6 +1,9 @@
+ use std::sync::Arc;
+ use std::sync::Weak;
+ 
++#[path = "suspension.rs"]
++mod suspension;
++
+ use codex_analytics::AnalyticsEventsClient;
+ use codex_core::ThreadManager;
+ use codex_core::TurnStartOptions;
+@@ -641,6 +644,7 @@ pub fn install_with_backend<C>(
+         goal_config,
+     ));
+     registry.thread_lifecycle_contributor(extension.clone());
++    registry.durable_turn_contributor(extension.clone());
+     registry.config_contributor(extension.clone());
+     registry.turn_lifecycle_contributor(extension.clone());
+     registry.token_usage_contributor(extension.clone());
+diff --git a/codex-rs/ext/goal/src/runtime.rs b/codex-rs/ext/goal/src/runtime.rs
+index 430135a..ac0721f 100644
+--- a/codex-rs/ext/goal/src/runtime.rs
++++ b/codex-rs/ext/goal/src/runtime.rs
+@@ -435,7 +435,7 @@ impl GoalRuntimeHandle {
+     }
+ 
+     pub async fn restore_after_resume(&self) -> Result<(), String> {
+-        if !self.is_enabled() {
++        if !self.is_enabled() || self.inner.accounting_state.is_suspended() {
+             return Ok(());
+         }
+ 
+diff --git a/codex-rs/ext/goal/src/suspension.rs b/codex-rs/ext/goal/src/suspension.rs
+new file mode 100644
+index 0000000..6e07da7
+--- /dev/null
++++ b/codex-rs/ext/goal/src/suspension.rs
+@@ -0,0 +1,199 @@
++use super::GoalExtension;
++use super::goal_runtime_handle;
++use crate::accounting::SavedGoalAccounting;
++use codex_extension_api::DurableTurnContributor;
++use codex_extension_api::DurableTurnInput;
++use codex_extension_api::DurableTurnRestoreError;
++use codex_extension_api::ExtensionData;
++use codex_extension_api::ExtensionFuture;
++use serde_json::Value;
++
++impl<C: Send + Sync + 'static> DurableTurnContributor for GoalExtension<C> {
++    fn key(&self) -> &'static str {
++        "codex.goal.accounting"
++    }
++
++    fn hold(&self, thread_store: &ExtensionData) {
++        if let Some(runtime) = goal_runtime_handle(thread_store) {
++            runtime.accounting_state().hold_suspension();
++        }
++    }
++
++    fn capture<'a>(
++        &'a self,
++        input: DurableTurnInput<'a>,
++    ) -> ExtensionFuture<'a, Result<Value, String>> {
++        Box::pin(async move {
++            let runtime = goal_runtime_handle(input.thread_store)
++                .ok_or("Goal runtime is missing at the durable boundary")?;
++            if runtime.thread_id().to_string() != input.thread_id {
++                return Err("Goal runtime belongs to another native thread".into());
++            }
++            let accounting = runtime.accounting_state();
++            let _goal_permit = runtime.goal_state_permit().await?;
++            let _turn_permit = accounting
++                .turn_start_permit()
++                .await
++                .map_err(|e| e.to_string())?;
++            let _progress_permit = accounting
++                .progress_accounting_permit()
++                .await
++                .map_err(|e| e.to_string())?;
++            {
++                let _control = input.control.acquire()?;
++                accounting.hold_suspension();
++            }
++            let goal = self
++                .state_dbs
++                .thread_goals()
++                .get_thread_goal(runtime.thread_id())
++                .await
++                .map_err(|e| e.to_string())?;
++            let _control = input.control.acquire()?;
++            let saved = accounting.suspension_snapshot(
++                input.thread_id,
++                input.turn_id,
++                runtime.is_enabled(),
++                goal.as_ref(),
++            )?;
++            serde_json::to_value(saved).map_err(|e| e.to_string())
++        })
++    }
++
++    fn restore<'a>(
++        &'a self,
++        input: DurableTurnInput<'a>,
++        payload: &'a Value,
++    ) -> ExtensionFuture<'a, Result<(), DurableTurnRestoreError>> {
++        restore_goal(self, input, payload, false)
++    }
++
++    fn prepare_discard<'a>(
++        &'a self,
++        input: DurableTurnInput<'a>,
++        payload: &'a Value,
++    ) -> ExtensionFuture<'a, Result<(), DurableTurnRestoreError>> {
++        restore_goal(self, input, payload, true)
++    }
++
++    fn validate_resume(&self, thread_store: &ExtensionData, turn_id: &str) -> Result<(), String> {
++        let runtime =
++            goal_runtime_handle(thread_store).ok_or("Goal runtime is missing during admission")?;
++        let accounting = runtime.accounting_state();
++        if !accounting.is_suspended() {
++            return Ok(());
++        }
++        if runtime.is_enabled() && accounting.current_turn_id().as_deref() != Some(turn_id) {
++            return Err("Goal accounting no longer owns the resumed native turn".into());
++        }
++        Ok(())
++    }
++
++    fn resume(&self, thread_store: &ExtensionData) {
++        if let Some(runtime) = goal_runtime_handle(thread_store) {
++            runtime.accounting_state().resume_suspension();
++        }
++    }
++
++    fn discard<'a>(
++        &'a self,
++        input: DurableTurnInput<'a>,
++    ) -> ExtensionFuture<'a, Result<(), String>> {
++        Box::pin(async move {
++            let runtime = goal_runtime_handle(input.thread_store)
++                .ok_or("Goal runtime is missing during native cancellation")?;
++            let accounting = runtime.accounting_state();
++            let _goal_permit = runtime.goal_state_permit().await?;
++            let _turn_permit = accounting
++                .turn_start_permit()
++                .await
++                .map_err(|e| e.to_string())?;
++            // Stop ends this turn; reopening its still-active Goal must not
++            // launch a replacement. A later explicit active Goal mutation or
++            // ordinary turn start clears the persisted continuation hold.
++            self.state_dbs
++                .thread_goals()
++                .defer_thread_goal_continuation(runtime.thread_id())
++                .await
++                .map_err(|e| e.to_string())?;
++            match accounting.current_turn_id().as_deref() {
++                None => return Ok(()), // An unreadable/older capture has no reconstructible accounting.
++                Some(id) if id == input.turn_id => {}
++                Some(_) => return Err("Goal cancellation belongs to another native turn".into()),
++            }
++            {
++                let _control = input.control.acquire()?;
++            }
++            for mode in [
++                codex_state::GoalAccountingMode::ActiveOrComplete,
++                codex_state::GoalAccountingMode::ActiveOrStopped,
++            ] {
++                runtime
++                    .account_active_goal_progress(
++                        input.turn_id,
++                        &format!("{}:durable-discard", input.turn_id),
++                        mode,
++                        crate::accounting::BudgetLimitedGoalDisposition::ClearActive,
++                    )
++                    .await?;
++            }
++            let _control = input.control.acquire()?;
++            accounting.finish_turn(input.turn_id);
++            input.thread_store.remove::<codex_core::TurnStartOptions>();
++            Ok(())
++        })
++    }
++}
++
++fn restore_goal<'a, C: Send + Sync + 'static>(
++    extension: &'a GoalExtension<C>,
++    input: DurableTurnInput<'a>,
++    payload: &'a Value,
++    for_discard: bool,
++) -> ExtensionFuture<'a, Result<(), DurableTurnRestoreError>> {
++    Box::pin(async move {
++        let saved: SavedGoalAccounting = serde_json::from_value(payload.clone()).map_err(|e| {
++            DurableTurnRestoreError::Unrestorable(format!("invalid Goal continuation: {e}"))
++        })?;
++        let runtime = goal_runtime_handle(input.thread_store)
++            .ok_or("Goal runtime is missing during native restoration")?;
++        if runtime.thread_id().to_string() != input.thread_id {
++            return Err("Goal runtime belongs to another native thread".into());
++        }
++        let accounting = runtime.accounting_state();
++        let _goal_permit = runtime.goal_state_permit().await?;
++        let _turn_permit = accounting
++            .turn_start_permit()
++            .await
++            .map_err(|e| e.to_string())?;
++        let _progress_permit = accounting
++            .progress_accounting_permit()
++            .await
++            .map_err(|e| e.to_string())?;
++        let goal = extension
++            .state_dbs
++            .thread_goals()
++            .get_thread_goal(runtime.thread_id())
++            .await
++            .map_err(|e| e.to_string())?;
++        let _control = input.control.acquire()?;
++        let result = if for_discard {
++            accounting.restore_for_discard(
++                saved,
++                input.thread_id,
++                input.turn_id,
++                runtime.is_enabled(),
++                goal.as_ref(),
++            )
++        } else {
++            accounting.restore_suspension(
++                saved,
++                input.thread_id,
++                input.turn_id,
++                runtime.is_enabled(),
++                goal.as_ref(),
++            )
++        };
++        result.map_err(DurableTurnRestoreError::Unrestorable)
++    })
++}
+diff --git a/codex-rs/ext/goal/tests/accounting.rs b/codex-rs/ext/goal/tests/accounting.rs
+index 78867a5..7a5a716 100644
+--- a/codex-rs/ext/goal/tests/accounting.rs
++++ b/codex-rs/ext/goal/tests/accounting.rs
+@@ -284,3 +284,304 @@ fn token_usage(
+         codex_rollout_budget_units: None,
+     }
+ }
++
++fn suspension_goal() -> codex_state::ThreadGoal {
++    let now = chrono::Utc::now();
++    codex_state::ThreadGoal {
++        thread_id: codex_protocol::ThreadId::from_string("00000000-0000-0000-0000-000000000123")
++            .expect("thread id"),
++        goal_id: "goal-1".into(),
++        configuration_revision: 1,
++        objective: "durable accounting fixture".into(),
++        status: ThreadGoalStatus::Active,
++        token_budget: Some(1000),
++        tokens_used: 10,
++        time_used_seconds: 5,
++        created_at: now,
++        updated_at: now,
++    }
++}
++
++fn suspended_accounting(goal: &codex_state::ThreadGoal) -> accounting::SavedGoalAccounting {
++    let state = GoalAccountingState::default();
++    state.start_turn("original-turn", ModeKind::Default, &TokenUsage::default());
++    state.mark_turn_goal_active("original-turn", goal.goal_id.clone());
++    state.record_token_usage("original-turn", &token_usage(40, 0, 2, 0, 42));
++    state.record_descendant_token_usage(&token_usage(5, 0, 0, 0, 5));
++    state.hold_suspension();
++    let saved = state
++        .suspension_snapshot(
++            &goal.thread_id.to_string(),
++            "original-turn",
++            true,
++            Some(goal),
++        )
++        .expect("capture");
++    let mut encoded = serde_json::to_value(saved).expect("encode");
++    // A real process can die with a fractional, still-unflushed clock balance.
++    encoded["inner"]["wall_clock"]["elapsed"] = serde_json::json!({"secs":3,"nanos":995_000_000});
++    serde_json::from_value(encoded).expect("decode original continuation")
++}
++
++#[test]
++fn durable_accounting_restores_unflushed_usage_and_excludes_offline_time() {
++    let goal = suspension_goal();
++    let restored = GoalAccountingState::default();
++    restored
++        .restore_suspension(
++            suspended_accounting(&goal),
++            &goal.thread_id.to_string(),
++            "original-turn",
++            true,
++            Some(&goal),
++        )
++        .expect("restore");
++    assert_eq!(Some("original-turn".into()), restored.current_turn_id());
++    assert!(restored.is_suspended());
++    std::thread::sleep(std::time::Duration::from_millis(20));
++    let pending = restored
++        .progress_snapshot("original-turn")
++        .expect("unflushed progress");
++    assert_eq!(47, pending.token_delta);
++    assert_eq!(3, pending.time_delta_seconds);
++    restored.resume_suspension();
++    std::thread::sleep(std::time::Duration::from_millis(20));
++    assert!(
++        restored
++            .progress_snapshot("original-turn")
++            .expect("resumed progress")
++            .time_delta_seconds
++            >= 4
++    );
++}
++
++#[test]
++fn durable_accounting_does_not_charge_a_post_capture_goal_mutation_twice() {
++    let mut goal = suspension_goal();
++    let saved = suspended_accounting(&goal);
++    goal.tokens_used += 47;
++    goal.time_used_seconds += 3;
++    goal.configuration_revision += 1;
++    let restored = GoalAccountingState::default();
++    restored
++        .restore_suspension(
++            saved,
++            &goal.thread_id.to_string(),
++            "original-turn",
++            true,
++            Some(&goal),
++        )
++        .expect("reconcile actual atomic DB accounting");
++    assert!(restored.progress_snapshot("original-turn").is_none());
++    restored.record_token_usage("original-turn", &token_usage(48, 0, 2, 0, 50));
++    assert_eq!(
++        8,
++        restored
++            .progress_snapshot("original-turn")
++            .expect("new usage only")
++            .token_delta
++    );
++}
++
++#[test]
++fn incompatible_goal_accounting_does_not_replace_live_bookkeeping() {
++    let mut goal = suspension_goal();
++    let saved = suspended_accounting(&goal);
++    goal.tokens_used += 48;
++    let restored = GoalAccountingState::default();
++    assert!(
++        restored
++            .restore_suspension(
++                saved.clone(),
++                &goal.thread_id.to_string(),
++                "original-turn",
++                true,
++                Some(&goal)
++            )
++            .is_err()
++    );
++    assert_eq!(None, restored.current_turn_id());
++    assert!(
++        restored
++            .restore_suspension(
++                saved,
++                &goal.thread_id.to_string(),
++                "different-turn",
++                true,
++                Some(&goal)
++            )
++            .is_err()
++    );
++    assert_eq!(None, restored.current_turn_id());
++}
++
++#[test]
++fn replacing_a_goal_does_not_reassign_its_unflushed_usage() {
++    let mut goal = suspension_goal();
++    let saved = suspended_accounting(&goal);
++    goal.goal_id = "replacement-goal".into();
++    goal.tokens_used = 0;
++    goal.time_used_seconds = 0;
++    let restored = GoalAccountingState::default();
++    restored
++        .restore_suspension(
++            saved,
++            &goal.thread_id.to_string(),
++            "original-turn",
++            true,
++            Some(&goal),
++        )
++        .expect("use current Goal authority");
++    assert!(restored.progress_snapshot("original-turn").is_none());
++    restored.record_token_usage("original-turn", &token_usage(48, 0, 2, 0, 50));
++    let progress = restored
++        .progress_snapshot("original-turn")
++        .expect("replacement usage");
++    assert_eq!("replacement-goal", progress.expected_goal_id);
++    assert_eq!(8, progress.token_delta);
++}
++
++#[test]
++fn suspension_preserves_execution_failure_streak_without_starting_a_new_turn() {
++    let goal = suspension_goal();
++    let state = GoalAccountingState::default();
++    for turn in ["prior-1", "prior-2", "original-turn"] {
++        state.start_turn(turn, ModeKind::Default, &TokenUsage::default());
++        state.mark_turn_goal_active(turn, goal.goal_id.clone());
++        state.record_tool_outcome(
++            turn,
++            &ToolName::plain("exec"),
++            ToolCallOutcome::Failed {
++                handler_executed: true,
++            },
++        );
++        if turn != "original-turn" {
++            assert_eq!(None, state.execution_failure_goal(turn));
++            state.finish_turn(turn);
++        }
++    }
++    state.hold_suspension();
++    let saved = state
++        .suspension_snapshot(
++            &goal.thread_id.to_string(),
++            "original-turn",
++            true,
++            Some(&goal),
++        )
++        .expect("capture streak");
++    let decoded =
++        serde_json::from_value(serde_json::to_value(saved).expect("encode")).expect("decode");
++    let restored = GoalAccountingState::default();
++    restored
++        .restore_suspension(
++            decoded,
++            &goal.thread_id.to_string(),
++            "original-turn",
++            true,
++            Some(&goal),
++        )
++        .expect("restore streak");
++    assert_eq!(
++        Some(goal.goal_id),
++        restored.execution_failure_goal("original-turn")
++    );
++}
++
++#[test]
++fn suspension_preserves_automatic_empty_turn_streak() {
++    let goal = suspension_goal();
++    let state = GoalAccountingState::default();
++    for turn in ["prior-1", "prior-2", "original-turn"] {
++        state.start_turn(turn, ModeKind::Default, &TokenUsage::default());
++        state.mark_turn_goal_active(turn, goal.goal_id.clone());
++        state.mark_goal_continuation(turn.into());
++        state.record_item(
++            turn,
++            &TurnItem::AgentMessage(AgentMessageItem {
++                id: format!("empty-{turn}"),
++                content: vec![AgentMessageContent::Text {
++                    text: String::new(),
++                }],
++                phase: Some(MessagePhase::FinalAnswer),
++                questions: None,
++                memory_citation: None,
++                delivery: None,
++            }),
++        );
++        if turn != "original-turn" {
++            assert_eq!(None, state.empty_response_goal(turn));
++            state.finish_turn(turn);
++        }
++    }
++    state.hold_suspension();
++    let saved = state
++        .suspension_snapshot(
++            &goal.thread_id.to_string(),
++            "original-turn",
++            true,
++            Some(&goal),
++        )
++        .expect("capture streak");
++    let decoded =
++        serde_json::from_value(serde_json::to_value(saved).expect("encode")).expect("decode");
++    let restored = GoalAccountingState::default();
++    restored
++        .restore_suspension(
++            decoded,
++            &goal.thread_id.to_string(),
++            "original-turn",
++            true,
++            Some(&goal),
++        )
++        .expect("restore streak");
++    assert_eq!(
++        Some(goal.goal_id),
++        restored.empty_response_goal("original-turn")
++    );
++}
++
++#[test]
++fn unsupported_goal_payload_version_keeps_existing_accounting_untouched() {
++    let goal = suspension_goal();
++    let mut saved = serde_json::to_value(suspended_accounting(&goal)).expect("encode");
++    saved["version"] = 999.into();
++    let restored = GoalAccountingState::default();
++    let result = restored.restore_suspension(
++        serde_json::from_value(saved).expect("typed envelope"),
++        &goal.thread_id.to_string(),
++        "original-turn",
++        true,
++        Some(&goal),
++    );
++    assert!(
++        result
++            .expect_err("unsupported payload")
++            .contains("unsupported Goal continuation version 999")
++    );
++    assert_eq!(None, restored.current_turn_id());
++}
++
++#[test]
++fn stop_can_settle_original_cost_under_changed_goal_settings_without_thawing() {
++    let mut goal = suspension_goal();
++    let saved = suspended_accounting(&goal);
++    goal.status = ThreadGoalStatus::Paused;
++    goal.configuration_revision += 1;
++    let stopped = GoalAccountingState::default();
++    stopped
++        .restore_for_discard(
++            saved,
++            &goal.thread_id.to_string(),
++            "original-turn",
++            false,
++            Some(&goal),
++        )
++        .expect("prepare only original accounting");
++    assert!(stopped.is_suspended());
++    let pending = stopped
++        .progress_snapshot("original-turn")
++        .expect("past work still needs accounting");
++    assert_eq!(47, pending.token_delta);
++    assert_eq!(3, pending.time_delta_seconds);
++    assert_eq!("goal-1", pending.expected_goal_id);
++}
+diff --git a/codex-rs/state/src/runtime/goals.rs b/codex-rs/state/src/runtime/goals.rs
+index 4568cc4..2307781 100644
+--- a/codex-rs/state/src/runtime/goals.rs
++++ b/codex-rs/state/src/runtime/goals.rs
+@@ -194,6 +194,20 @@ SELECT EXISTS(
+         .map_err(Into::into)
+     }
+ 
++    /// Keep an explicitly stopped thread idle across process restart without
++    /// changing its Goal, usage counters, or authorization history.
++    pub async fn defer_thread_goal_continuation(&self, thread_id: ThreadId) -> anyhow::Result<()> {
++        sqlx::query(
++            "INSERT INTO thread_goal_continuation_deferrals(thread_id) \
++             SELECT thread_id FROM thread_goals WHERE thread_id = ? \
++             ON CONFLICT(thread_id) DO NOTHING",
++        )
++        .bind(thread_id.to_string())
++        .execute_with_busy_retry(self.pool.as_ref())
++        .await?;
++        Ok(())
++    }
++
+     pub async fn clear_thread_goal_continuation_deferral(
+         &self,
+         thread_id: ThreadId,
+@@ -884,6 +898,69 @@ mod tests {
+         );
+     }
+ 
++    #[tokio::test]
++    async fn stop_defers_only_existing_goal_without_rewriting_it() {
++        let runtime = test_runtime().await;
++        let thread_id = test_thread_id();
++        upsert_test_thread(&runtime, thread_id).await;
++        runtime
++            .thread_goals()
++            .defer_thread_goal_continuation(thread_id)
++            .await
++            .unwrap();
++        assert!(
++            !runtime
++                .thread_goals()
++                .has_thread_goal_continuation_deferral(thread_id)
++                .await
++                .unwrap()
++        );
++        let goal = runtime
++            .thread_goals()
++            .replace_thread_goal(
++                thread_id,
++                "keep original accounting",
++                crate::ThreadGoalStatus::Active,
++                Some(100),
++            )
++            .await
++            .unwrap();
++        for _ in 0..2 {
++            runtime
++                .thread_goals()
++                .defer_thread_goal_continuation(thread_id)
++                .await
++                .unwrap();
++            assert!(
++                runtime
++                    .thread_goals()
++                    .has_thread_goal_continuation_deferral(thread_id)
++                    .await
++                    .unwrap()
++            );
++            assert_eq!(
++                runtime
++                    .thread_goals()
++                    .get_thread_goal(thread_id)
++                    .await
++                    .unwrap(),
++                Some(goal.clone())
++            );
++        }
++        runtime
++            .thread_goals()
++            .clear_thread_goal_continuation_deferral(thread_id)
++            .await
++            .unwrap();
++        assert!(
++            !runtime
++                .thread_goals()
++                .has_thread_goal_continuation_deferral(thread_id)
++                .await
++                .unwrap()
++        );
++    }
++
+     #[tokio::test]
+     async fn insert_thread_goal_applies_budget_limit_immediately() {
+         let runtime = test_runtime().await;
