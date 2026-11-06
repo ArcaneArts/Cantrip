@@ -607,8 +607,8 @@ capture, versioned manifests, staged/verified restore, retained originals and
 explicit rollback. It preserves package enablement and records workspace-wide
 interruption. This is a guest administration checkpoint, not completion of private
 backups: private Worker encryption/transfer primitives are now exercised, while
-Server-owned backup admissions and a catalogue API are implemented. Product
-controls remain required. See [the package guide](../cantrip_os/packages/recovery/README.md) and
+Server-owned backup admissions, catalogue and client controls are implemented.
+See [the package guide](../cantrip_os/packages/recovery/README.md) and
 [private backup format](../cantrip_os/BACKUPS.md).
 
 Recovery 0.2.0 and durable Worker jobs add pinned account/runtime checks,
@@ -618,8 +618,11 @@ repeat an uncertain capture, upload or directory exchange. Guest spool cleanup
 retains rollback evidence. Both Servers now persist immutable backup admissions,
 paginated catalogue entries and protected outcomes. Explicit continuation can
 authorize a fresh runtime on the same attachment without rewriting its original
-admission; actual guest receipt/activation checks still apply. Client controls
-and real product encryption-grant acceptance remain the next backup milestone.
+admission; actual guest receipt/activation checks still apply. Cantrip's capture,
+history, restore, rollback and recovery controls are exercised against the full
+Worker and production grants in Docker. Restored-source adoption, installed-system
+product controls and broader remote/lifecycle acceptance remain required. This
+checkpoint does not complete Phase 5.
 
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output

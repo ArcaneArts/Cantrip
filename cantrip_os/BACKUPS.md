@@ -6,8 +6,10 @@ optional package without a Worker, network listener or model credentials.
 
 Worker private archive helpers, durable jobs and real Docker/SSH roundtrips are implemented.
 Both Server implementations now own durable admissions and a paginated private
-catalogue. Cantrip backup/restore controls and real grant-delivery acceptance
-remain pending; the backend API is not a completed user workflow.
+catalogue. Cantrip's project settings now expose capture, history, restore,
+rollback and explicit recovery. The browser/full Worker Docker checkpoint uses
+production Server grants; restored-source adoption, installed-system controls
+and broader remote/lifecycle acceptance remain required.
 See [the guest command guide](packages/recovery/README.md) for local administration.
 
 ## Format and keys
@@ -159,7 +161,12 @@ filesystem executor. The fixture uses ephemeral key material through the same
 grant interface; it is not acceptance of actual Server grant delivery or product
 controls. See [acceptance](ACCEPTANCE.md) for exact results.
 
-Still required: Cantrip controls, actual grant delivery and full
-product/agent/remote acceptance, instance
+The client checkpoint additionally exercises actual Server grant delivery through
+the full Worker and Cantrip's browser controls, including a full Worker SIGKILL
+and historical capture observation. It is separate from the earlier ephemeral-key
+fixtures. See [the product workflow](PRODUCT_WORKFLOW.md#private-workspace-backups).
+
+Still required: restored-source adoption, installed-system product controls,
+full product/agent/remote acceptance, instance
 lifecycle and upgrade/customization preservation, and final recorded Docker/ISO
 distribution artifacts. A local VM reached over SSH is not cloud acceptance.
