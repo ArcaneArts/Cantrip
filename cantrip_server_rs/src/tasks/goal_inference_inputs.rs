@@ -414,15 +414,19 @@ impl Repository {
             let task=&row["task"];
             if (execution.is_null() && !(s["failedBeforeDispatch"]==true && s["firstDispatchedOperationId"].is_null() && task["state"]=="failed")) ||
                 (!execution.is_null() && !projection["threadId"].is_null() && execution["threadId"]!=projection["threadId"]) || task["row_version"]!=version || (!s["terminal"]["threadId"].is_null() && row["lane"]["codex_thread_id"]!=s["terminal"]["threadId"]) {return stale();}
+            // Keep an unconfirmed paused receipt available for later reconciliation.
+            if task["state"]=="paused" && (execution["status"]!="idle" || execution["pausedAndIdleRevision"]!=row["chat"]["managed_input_revision"]) {return stale();}
             if task["state"]=="failed" {
                 super::retries::note_failure_in(tx,&owner,&chat,&format!("goal-input:{}",text(&r["operationId"])?),
                     super::failure_kind::classify(&task["last_error"]["code"]),&guard).await?;
             }else if matches!(task["state"].as_str(),Some("complete"|"blocked")) {
                 super::retries::clear_pending_in(tx,&owner,&chat,&guard).await?;
             }
-            if execution["status"]!="running" && matches!(task["state"].as_str(),Some("complete"|"blocked"|"failed")) {
+            if execution["status"]!="running" && (matches!(task["state"].as_str(),Some("complete"|"blocked"|"failed")) || (task["state"]=="paused" && execution["status"]=="idle")) {
+                let mut options=json!({"expectedActivatedAt":r["executionLaneActivatedAt"]});
+                if task["state"]=="paused" {options["markUnreadCompletion"]=json!(false);}
                 crate::chats::execution_lanes::finish_in_transaction(tx,&chat,&text(&r["executionLaneId"])?,
-                    if task["state"]=="failed"{"failed"}else{"idle"},&json!({"expectedActivatedAt":r["executionLaneActivatedAt"]})).await?;
+                    if task["state"]=="failed"{"failed"}else{"idle"},&options).await?;
             }
             let mut state=s.clone();state["terminal"]["projectedAt"]=now();
             let id=text(&c["id"])?;write(tx,&id,&state).await?;

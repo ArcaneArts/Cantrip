@@ -8044,8 +8044,29 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           provider: provider(),
           threadId: command.threadId,
         });
-        const execution = command.observeExecution
+        const pauseProof =
+          command.observeExecution && command.taskContext?.automationPaused
+            ? taskPauseControls.captureAppliedPause(
+                command.chatId,
+                command.threadId,
+                runtime,
+                command.taskContext.nativeCycle,
+              )
+            : undefined;
+        const observedExecution = command.observeExecution
           ? await runtime.readThreadExecution(command.threadId)
+          : undefined;
+        const pausedAndIdleRevision = observedExecution?.nativeIdle
+          ? pauseProof?.()
+          : undefined;
+        const execution = observedExecution
+          ? {
+              threadId: observedExecution.threadId,
+              status: observedExecution.status,
+              ...(pausedAndIdleRevision !== undefined
+                ? { pausedAndIdleRevision }
+                : {}),
+            }
           : undefined;
         return command.taskContext
           ? {
