@@ -27,6 +27,7 @@ import { CantripOsAttachForm } from "./cantrip-os-attach-form";
 import { CantripOsSourceForm } from "./cantrip-os-source-form";
 import { CantripOsWorktreeForm } from "./cantrip-os-worktree-form";
 import { CantripOsBackupControls } from "./cantrip-os-backup-controls";
+import { CantripOsDesktopControls } from "./cantrip-os-desktop-controls";
 import { CantripOsPowerControls } from "./cantrip-os-power-controls";
 
 export function CantripOsSettings({
@@ -70,6 +71,7 @@ export function CantripOsSettings({
   const refreshLists = () => {
     void queryClient.invalidateQueries({ queryKey: ["cantrip-os"] });
     void queryClient.invalidateQueries({ queryKey: ["cantrip-os-power"] });
+    void queryClient.invalidateQueries({ queryKey: ["cantrip-os-desktop"] });
     void queryClient.invalidateQueries({ queryKey: ["cantrip-os-workspaces"] });
     void queryClient.invalidateQueries({
       queryKey: ["cantrip-os-bindings", project.id],
@@ -295,6 +297,14 @@ export function CantripOsSettings({
               </Button>
             </form>
           </div>
+          {workspace ? (
+            <CantripOsDesktopControls
+              key={`desktop:${selected.id}:${workspace.id}`}
+              instance={selected}
+              workspace={workspace}
+              onChanged={refreshLists}
+            />
+          ) : null}
           {workspace ? (
             <CantripOsSourceForm
               key={workspace.id}

@@ -141,6 +141,46 @@ with tempfile.TemporaryDirectory(prefix="cantrip-service-test-") as directory:
     assert child.returncode == 0 and output == reply, (child.returncode, len(output), error)
     print("PASS actual guest-loopback TCP: >1 MiB binary transfer and reply after request half-close", flush=True)
 
+    # Keep one admitted stream open while only the selected desktop changes.
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    live_context = info("tcp", port=listener.getsockname()[1])
+    errors = []
+
+    def echo_until_closed():
+        try:
+            with listener:
+                connection, _ = listener.accept()
+                with connection:
+                    connection.settimeout(30)
+                    while body := connection.recv(65536):
+                        connection.sendall(body)
+        except BaseException as error:
+            errors.append(error)
+
+    server = threading.Thread(target=echo_until_closed)
+    server.start()
+    child = subprocess.Popen(carrier(live_context), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        for index, action in enumerate(("open", "stop", "open", "stop")):
+            command("cantrip-workspaces", action, args.workspace)
+            assert child.poll() is None
+            marker = f"same-tcp-stream-{index}\n".encode()
+            child.stdin.write(marker)
+            child.stdin.flush()
+            assert read_exact(child.stdout, len(marker)) == marker
+        child.stdin.close()
+        child.wait(timeout=30)
+        assert child.returncode == 0
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait(timeout=10)
+        server.join(timeout=10)
+    assert not server.is_alive() and not errors, errors
+    print("PASS the same admitted TCP stream exchanges ordered bytes across desktop stop/start", flush=True)
+
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     listener.listen(1)
@@ -185,8 +225,9 @@ with tempfile.TemporaryDirectory(prefix="cantrip-service-test-") as directory:
     assert width >= 800 and height >= 600
     read_exact(vnc.stdout, struct.unpack("!I", init[20:24])[0])
     command("cantrip-workspaces", "stop", args.workspace)
-    vnc.stdin.close()
+    # Keep the client input open: desktop retirement must close this stream.
     vnc.wait(timeout=30)
+    vnc.stdin.close()
     rejected = subprocess.run(carrier(vnc_context), input=b"", capture_output=True, timeout=40)
     assert rejected.returncode != 0
     assert command("ssh", *ssh_options(), user, "id -u").stdout.strip() == str(ssh_context["uid"])

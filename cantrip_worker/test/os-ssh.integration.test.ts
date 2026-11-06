@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { OsTunnelServices } from "../src/os-executor/tunnel-services.js";
 import {
   remoteControl,
+  workspaceControl,
   type OsExecutorTransport,
 } from "../src/os-executor/connection.js";
 import {
@@ -194,9 +195,19 @@ describe.skipIf(!transport)("actual managed workspace SSH / SFTP", () => {
       ).rejects.toMatchObject({ code: 255 });
       idle = spawn(
         "ssh",
-        [...options, "-p", String(port), target, "echo READY; exec sleep 60"],
-        { stdio: ["ignore", "pipe", "pipe"] },
+        [
+          ...options,
+          "-p",
+          String(port),
+          target,
+          'python3 -u -c \'import os,sys; print("READY:"+str(os.getpid()),flush=True); [print("ACK:"+line.strip(),flush=True) for line in sys.stdin]\'',
+        ],
+        { stdio: ["pipe", "pipe", "pipe"] },
       );
+      let liveOutput = "";
+      idle.stdout!.on("data", (chunk) => {
+        liveOutput += String(chunk);
+      });
       const exited = once(idle, "exit");
       const ready = await Promise.race([
         once(idle.stdout!, "data").then(([bytes]) => String(bytes)),
@@ -212,6 +223,27 @@ describe.skipIf(!transport)("actual managed workspace SSH / SFTP", () => {
         }),
       ]);
       expect(ready).toContain("READY");
+      const admittedPid = /READY:(\d+)/u.exec(ready)?.[1];
+      expect(admittedPid).toMatch(/^\d+$/u);
+      await workspaceControl(transport!, ["open", "cua-a"]);
+      for (const [command, marker] of [
+        [null, "before-stop"],
+        ["stop", "while-stopped"],
+        ["open", "after-start"],
+      ] as const) {
+        if (command) await workspaceControl(transport!, [command, "cua-a"]);
+        expect(idle.exitCode).toBeNull();
+        idle.stdin!.write(marker + "\n");
+        await expect
+          .poll(() => liveOutput, { timeout: 5000 })
+          .toContain(`ACK:${marker}\n`);
+      }
+      expect(liveOutput.match(/READY:\d+/gu)).toEqual([`READY:${admittedPid}`]);
+      expect(liveOutput.match(/ACK:[^\n]+/gu)).toEqual([
+        "ACK:before-stop",
+        "ACK:while-stopped",
+        "ACK:after-start",
+      ]);
       await services.revoke(fixture.attachmentId, fixture.grantId);
       const [code] = await Promise.race([
         exited,

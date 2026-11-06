@@ -1,6 +1,6 @@
 # Optional native desktop package
 
-`cantrip-os-remote` 0.9.0 supplies the Linux X11 `cantrip-cua` helper and a
+`cantrip-os-remote` 0.10.0 supplies the Linux X11 `cantrip-cua` helper and a
 workspace-bound protected stdio carrier. It depends on the existing workspace
 and executor packages. Removing it leaves those packages, ordinary desktops,
 and workspace files available. No Worker, conversation database, scheduler,
@@ -345,6 +345,14 @@ carriers retain their duplex half-close behavior. The root lifetime guardian
 retires listeners and clients on manager death, disable, attachment/runtime
 retirement or carrier loss. Workspace files and the ordinary desktop remain.
 
+Version 0.10.0 also ends a VNC carrier on either EOF. A stopped or replaced
+desktop must end that connection even while its client keeps stdin open;
+waiting for client EOF prevented Docker from reporting the retired connection.
+SSH and ordinary TCP retain their existing duplex half-close behavior. A desktop
+stop/start leaves those independent admitted connections available. Actual
+service acceptance keeps one SSH session and one TCP stream open across these
+transitions, and keeps VNC client input open while checking desktop retirement.
+
 Package upgrade/removal clears only this package's generated Python bytecode.
 The CLI suppresses new bytecode writes. This prevents equal-size source changes
 with reproducible timestamps from executing a previous version's cached code;
@@ -374,3 +382,7 @@ cgroup ownership and the existing package cleanup protocol. It does not disable
 cleanup or use `KillMode=process`/`none`. See systemd's
 [kill semantics](https://github.com/systemd/systemd/blob/main/man/systemd.kill.xml).
 Docker continues to use the same package-owned guardians without systemd.
+
+The SSH and CUA integration suites share their named disposable guest profiles.
+When selecting both suites in one Vitest command, add `--no-file-parallelism` so
+one suite's intentional desktop transitions do not invalidate the other's target.

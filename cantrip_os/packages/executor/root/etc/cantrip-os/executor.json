@@ -1,4 +1,5 @@
 {
   "state_dir": "/var/lib/cantrip-os-executor",
-  "runtime_dir": "/run/cantrip-os-executor"
+  "runtime_dir": "/run/cantrip-os-executor",
+  "session_retention_seconds": 86400
 }

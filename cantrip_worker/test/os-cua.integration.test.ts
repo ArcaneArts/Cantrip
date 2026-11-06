@@ -29,6 +29,7 @@ import { CantripCuaService } from "../src/computer-use/service.js";
 import {
   remoteCommand,
   remoteControl,
+  workspaceControl,
   type OsExecutorTransport,
 } from "../src/os-executor/connection.js";
 
@@ -84,6 +85,10 @@ describe.skipIf(!transport)(
         threadId: "os-cua-fixture-thread",
         turnId: "os-cua-fixture-turn",
       };
+      let desktopRetired = false;
+      let replacement:
+        | { context: Desktop; connectionId: string; service: CantripCuaService }
+        | undefined;
       try {
         const capabilities = await service.capabilities(scope);
         expect(capabilities.backend).toBe("linux-x11");
@@ -161,18 +166,88 @@ describe.skipIf(!transport)(
           pixelHeight: 720,
         });
         await service.resizeDesktop(scope, id, reference, 1440, 900);
+        await workspaceControl(transport!, ["stop", context.workspace_id]);
+        desktopRetired = true;
+        await expect(async () =>
+          service.snapshot(scope, id, reference),
+        ).rejects.toThrow();
+        const fresh = await remoteControl<Desktop>(transport!, [
+          "open",
+          context.workspace_id,
+        ]);
+        expect(fresh.desktop_generation).not.toBe(context.desktop_generation);
+        // The old helper must stay retired after another desktop exists.
+        await expect(async () =>
+          service.snapshot(scope, id, reference),
+        ).rejects.toThrow();
+        const freshConnectionId = randomUUID();
+        const freshCommand = remoteCommand(transport!, [
+          "connect",
+          fresh.workspace_id,
+          "--expect",
+          JSON.stringify(fresh),
+          "--connection-id",
+          freshConnectionId,
+        ]);
+        const freshService = new CantripCuaService({
+          workerId: fresh.worker_id,
+          binary: freshCommand.command,
+          args: freshCommand.args,
+        });
+        replacement = {
+          context: fresh,
+          connectionId: freshConnectionId,
+          service: freshService,
+        };
+        const [freshTarget] = await freshService.targets(scope);
+        expect(freshTarget.id).not.toBe(reference.targetId);
+        const freshReference = {
+          targetId: freshTarget.id,
+          targetGeneration: freshTarget.generation,
+        };
+        const freshSession = await freshService.open(scope, freshReference);
+        const freshCapture = await freshService.snapshot(
+          scope,
+          freshSession.binding.sessionId,
+          freshReference,
+        );
+        expect(freshCapture.payload.subarray(0, 8)).toEqual(
+          capture.payload.subarray(0, 8),
+        );
+        await expect(async () =>
+          freshService.snapshot(
+            scope,
+            freshSession.binding.sessionId,
+            reference,
+          ),
+        ).rejects.toThrow();
+        process.stdout.write(
+          "Linux desktop lifecycle acceptance: old capture retired, fresh desktop requires fresh target authority\n",
+        );
         // These receipts prove dispatch/protocol compatibility. Actual xterm bytes
         // are checked by the separate native Linux and product acceptance tests.
       } finally {
         await service.close();
-        await remoteControl(transport!, [
-          "close",
-          context.workspace_id,
-          "--expect",
-          JSON.stringify(context),
-          "--connection-id",
-          connectionId,
-        ]);
+        if (replacement) {
+          await replacement.service.close();
+          await remoteControl(transport!, [
+            "close",
+            replacement.context.workspace_id,
+            "--expect",
+            JSON.stringify(replacement.context),
+            "--connection-id",
+            replacement.connectionId,
+          ]);
+        }
+        if (!desktopRetired)
+          await remoteControl(transport!, [
+            "close",
+            context.workspace_id,
+            "--expect",
+            JSON.stringify(context),
+            "--connection-id",
+            connectionId,
+          ]);
       }
     }, 120_000);
     it("executes real Linux SDK capture/input through MCP, turn authorization and shared placement routing", async () => {

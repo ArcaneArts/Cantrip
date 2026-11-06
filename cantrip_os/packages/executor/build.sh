@@ -21,4 +21,4 @@ chmod 0755 "$stage/usr/lib/cantrip-os-executor/runtime/codex-exec-server" \
 cp "$source_dir"/debian/* "$stage/DEBIAN/"
 sed -i "s/@ARCH@/$arch/" "$stage/DEBIAN/control"
 find "$stage" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
-dpkg-deb --root-owner-group --uniform-compression -Zxz -z6 --build "$stage" "$output_dir/cantrip-os-executor_0.10.0_${arch}.deb"
+dpkg-deb --root-owner-group --uniform-compression -Zxz -z6 --build "$stage" "$output_dir/cantrip-os-executor_0.11.0_${arch}.deb"

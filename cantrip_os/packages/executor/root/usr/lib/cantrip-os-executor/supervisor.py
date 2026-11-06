@@ -47,6 +47,7 @@ with (Path(runtime) / (record["id"] + ".lock")).open("a") as lock:
                        cwd=record["home"], env=env, check=True)
         child = subprocess.Popen(["runuser", "-u", record["user"], "--",
                                   "/usr/lib/cantrip-os-executor/runtime/codex-exec-server",
+                                  "--detached-session-retention-seconds", str(data["session_retention_seconds"]),
                                   "--listen", "ws://127.0.0.1:0", "--ws-auth", "capability-token",
                                   "--ws-token-sha256", digest], cwd=record["home"], env=env,
                                  stdin=subprocess.DEVNULL, stdout=subprocess.PIPE)

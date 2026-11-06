@@ -31,14 +31,14 @@ requested.
 Workspace support remains enabled by default. Including the executor requires
 the workspace package; apt enforces that dependency.
 
-Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.10.0_<arch>.deb`.
+Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.11.0_<arch>.deb`.
 It contains the source/patch fingerprint manifest, binary hashes, licenses, and
 sandbox helper. Docker and ISO recipes install the same package.
 
 Inside Linux, after copying the package there:
 
 ```sh
-sudo apt install ./cantrip-os-executor_0.10.0_arm64.deb  # amd64 for the VM edition
+sudo apt install ./cantrip-os-executor_0.11.0_arm64.deb  # amd64 for the VM edition
 sudo cantrip-executor enable
 sudo cantrip-executor status
 sudo cantrip-executor attach OWNER_ID WORKER_ID
@@ -69,6 +69,29 @@ owner/worker, workspace and runtime generations. It does not start an executor
 or select a fallback. Native `initialize`/`initialized` establishes the session;
 the native session ID supports explicit reconnect. Disconnect is not process
 cancellation: use native `process/terminate`. The carrier never replays requests.
+
+Version 0.11.0 configures detached-session retention through the root-owned
+`session_retention_seconds` setting in `/etc/cantrip-os/executor.json`.
+The default is 86400 seconds (24 hours), including when an older retained
+conffile omits the setting. `cantrip-executor status` reports the effective
+value. Values must be positive integers no greater than 4294967295. Restart
+the executor service to apply a change; this interrupts its existing processes
+and creates fresh runtime generations. Package upgrades preserve administrator
+conffiles using Debian's normal configuration handling.
+
+The package passes the policy through the trusted native startup option
+`--detached-session-retention-seconds`. Ordinary executor startup without this
+option retains its 30-second default. This is a recovery window for disconnected
+sessions on a still-running executor, not process persistence through a guest or
+executor restart. Reconnection retains exclusive session attachment and cannot
+extend another connection's authority. Expiration terminates the detached
+session's process tree; reconnect reports the original session as unavailable
+and never repeats its commands.
+
+Worker terminal carriers treat PTY hangup and stdin EOF as disconnection.
+Explicit terminal close and cancellation still terminate the selected guest
+process tree. A Worker restart can resume the recorded process during the
+recovery window; retained output remains subject to the separate bounds below.
 
 Version 0.10.0 adds optional `outputEvictedThroughSeq` metadata to native
 `process/read`. This is the last output sequence actually discarded by the

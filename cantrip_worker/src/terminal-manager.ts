@@ -804,7 +804,13 @@ export class TerminalManager {
     }
     session.removeAfterExit = true;
     if (session.process) {
-      session.process.kill();
+      // SIGHUP means carrier loss for Linux. An explicit close must send the
+      // separate termination intent so its guest process tree is still stopped.
+      session.process.kill(
+        session.launch.type === "os-shell" && process.platform !== "win32"
+          ? "SIGTERM"
+          : undefined,
+      );
       return;
     }
     this.#finalizeSession(

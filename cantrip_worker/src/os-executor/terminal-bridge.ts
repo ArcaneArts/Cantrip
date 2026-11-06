@@ -91,8 +91,18 @@ const terminate = () => {
     void connection.close();
   });
 };
-for (const signal of ["SIGTERM", "SIGHUP", "SIGINT"] as const)
+// A dead Host PTY sends SIGHUP/EOF even when the Linux process is healthy.
+// Only an explicit close/interrupt owns guest termination; losing the carrier
+// preserves the admitted process for observation and never resends input.
+const disconnect = () => {
+  failure ??= new Error("The Linux terminal carrier disconnected.");
+  void connection.close().catch((cause) => {
+    failure = cause;
+  });
+};
+for (const signal of ["SIGTERM", "SIGINT"] as const)
   process.on(signal, terminate);
+process.on("SIGHUP", disconnect);
 process.on("SIGWINCH", () => {
   void resize().catch((cause) => {
     failure = cause;
@@ -177,7 +187,7 @@ try {
         void connection.close();
       });
     });
-    process.stdin.on("end", terminate);
+    process.stdin.on("end", disconnect);
     process.stdin.resume();
     let afterSeq: number | null = null;
     const writeOutput = async (data: string | Buffer) => {

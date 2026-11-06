@@ -16,7 +16,7 @@ import uuid
 sys.path.insert(0, "/usr/lib/cantrip-os-workspaces")
 from service import Store, atomic_json, request as workspace_request
 
-VERSION = "0.10.0"
+VERSION = "0.11.0"
 CONFIG = "/etc/cantrip-os/executor.json"
 HERE = Path(__file__).parent
 
@@ -44,6 +44,9 @@ def stopped(store):
 class Manager:
     def __init__(self, store):
         self.store = store
+        self.session_retention_seconds = store.config.get("session_retention_seconds", 86400)
+        if type(self.session_retention_seconds) is not int or not 1 <= self.session_retention_seconds <= 4294967295:
+            raise ValueError("session_retention_seconds must be a positive 32-bit integer")
         self.path = store.state / "instance.json"
         try:
             self.identity = json.loads(self.path.read_text())
@@ -68,6 +71,7 @@ class Manager:
 
     def status(self):
         return {"service": "running", "version": VERSION, "enabled": self.store.preferences()["enabled"],
+                "session_retention_seconds": self.session_retention_seconds,
                 "instance_id": self.identity["instance_id"], "generation": self.generation,
                 "attachment": self.identity["attachment"],
                 "workspaces": {name: {"status": "running" if child.poll() is None else "exited",
@@ -116,7 +120,8 @@ class Manager:
                                      stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         self.children[name] = child
         try:
-            child.stdin.write(json.dumps({"workspace": workspace, "token": token}).encode())
+            child.stdin.write(json.dumps({"workspace": workspace, "token": token,
+                                         "session_retention_seconds": self.session_retention_seconds}).encode())
             child.stdin.close()
             for _ in range(600):
                 if self.is_stopping():

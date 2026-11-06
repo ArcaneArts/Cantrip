@@ -223,6 +223,14 @@ authority. They do not themselves retire independent shells, Runs, other desktop
 or ordinary SSH/TCP routes. Desktop-bound viewing/input/VNC cleanup and fresh GUI
 authority are separately required product behavior, not implied by these APIs.
 
+Cantrip's workspace desktop panel supplies confirmation, saved-request recovery
+and paginated history. The client saves an account-bound original admission
+before sending it and only observes a submitted request after uncertain delivery.
+See [the product workflow](PRODUCT_WORKFLOW.md#workspace-desktop-lifecycle).
+Actual Docker acceptance includes independent terminal/Run survival across
+desktop stop/start, lost-reply observation after Worker death, held-input cleanup
+and fresh viewing authority. Installed-system acceptance remains separate.
+
 Run the real Worker/native desktop check against an explicitly selected disposable
 container with the workspace and executor packages installed:
 

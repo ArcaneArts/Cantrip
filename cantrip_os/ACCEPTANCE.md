@@ -3524,3 +3524,95 @@ under ignored `cantrip_os/artifacts/phase5-desktop-admissions/backend/`. Product
 controls, actual model/CUA and held-input/service recovery, installed-system lifecycle,
 resets/upgrades, real remote acceptance and final recorded distributions remain
 required. Phase 5 remains active.
+
+## Phase 5 desktop controls and process recovery (2026-11-06)
+
+This checkpoint adds the product desktop panel, executor 0.11.0 and remote
+0.10.0. It is Docker acceptance with the full external Worker and Node Server;
+installed-system, live-model, real remote/cloud and final distribution acceptance
+remain separate requirements.
+
+In Codex's in-app browser, the selected workspace was stopped, started and
+restarted through confirmation and retained operation history. A real restart
+completed before its Worker reply was withheld. The full Worker was killed and
+the client reloaded; observing the saved request recovered the same admission
+without another restart. A separate Run process and the other desktop retained
+their identities. The first terminal failed on carrier SIGHUP, exposing a real
+termination bug. The corrected carrier detaches on SIGHUP/stdin EOF and keeps
+explicit close as termination. Windows PTYs receive their supported ordinary
+close, followed by the existing native termination path; Windows execution was
+not exercised here.
+
+Longer testing exposed the native executor's ordinary 30-second detached-session
+expiration. Reviewed patch 0088 adds a trusted positive-integer startup policy;
+the optional OS package supplies a configurable 24-hour default. Native tests
+verify expiration, exclusive attachment and stale detach/timer fencing. All 25
+executor CLI tests passed, including its reviewed help snapshot. An installed
+2-second policy actually removed the original session and its running process.
+The real terminal suite then passed with 45 seconds between hangup and resume,
+including unchanged admission, output eviction, explicit close and cancellation
+of root descendants (58.82 seconds total).
+
+The product test killed the owning Worker while a human held the guest's left
+mouse button. Independent X11 observation recorded mask 256 before the kill and
+0 after it, released within 133 ms while the browser's 12-second press remained
+held. The Worker stayed offline and the client reloaded. At 175 seconds both
+original processes and all desktop profiles were unchanged. The first native
+resume occurred after 224 seconds and read 621 ordered ticks, 0 through 620.
+After Worker restart, **Reconnect to Linux** resumed the original terminal;
+the Run reconciled its original process. Both kernel process IDs/start times,
+the terminal admission and its startup counter of one were retained. Desktop
+**Retry** resumed viewing at 30 FPS, and a fresh human-control lease succeeded
+without replaying held input. Product stop/start was repeated with executor
+0.11.0 and remote 0.10.0: only the selected desktop advanced to generation 5;
+the terminal, Run, other desktops and executor runtime remained intact.
+
+The stricter VNC test initially failed with client stdin still open after desktop
+stop. Remote 0.10.0 fixes the outer carrier's EOF handling. Actual protected
+service tests now require server-driven VNC retirement and retain one SSH session
+and one TCP stream across desktop stop/start. They also exercise real SFTP,
+binary transfer/half-close, rejected identities and retirement cleanup. Worker
+SSH/CUA tests passed three cases in 9.07 seconds, including stale capture rejection,
+fresh desktop authority, MCP/SDK routing, physical held-input release and human
+takeover. These suites share guest profiles and must run together with
+`--no-file-parallelism`; an earlier combined parallel invocation invalidated its
+own active display and is preserved as a harness failure.
+
+Both actual executor upgrades preserved the exact administrator conffile bytes,
+instance identity and selected checkout bytes/modes/UID/GID. A retained legacy
+conffile without the new field used 86400 seconds; a configured value of 120
+remained effective. Upgrading the executor deliberately interrupted old runtime
+work and required explicit recovery/source verification. This is configuration
+preservation acceptance, not failed-upgrade or arbitrary system-image recovery.
+
+Normal builds verified all 9,191 upstream source files and 89 reviewed patches.
+The full Host dev build produced all four binaries and passed executable/hash
+and generated-protocol verification. Before rebasing, the normal ARM64 executor package was
+16,273,264 bytes, SHA-256
+`2b3e87b862093b91f222f681d17958a5f2308705a370dd02ddcc5a2f5b3e2954`.
+The initially installed package was
+`1b1217bcc74a53d5e941428fdfaeb70f5fb2dbe7d68bbb3c1181a290f04f5e15`;
+comparison of every payload file and mode finds only the native build manifest
+changed after adding the CLI help test snapshot. All runtime/helper bytes are
+identical. The normal remote package is 1,841,776 bytes, SHA-256
+`037b851586602ccae728025467aafb54cfb2edbf36c70e79a0d64a7e33ad20e4`.
+
+After rebasing onto Main `a550c761a`, the full Host bundle verified again with
+unchanged native inputs. The normal executor build reused its native compiler
+layer and rebuilt the shared file/Run helpers from the rebased source. This
+package was actually reinstalled in both disposable guests: 16,270,596 bytes,
+SHA-256 `b3b343728d727cec29a0c550ffa7ba823f8ed67054677c7013249ec24a690145`.
+The remote package rebuilt with the same checksum. Worker types, all 45 focused
+client tests and the production build passed again, as did 34 terminal/history
+tests. Actual packaged file operations, Run execution/recovery and the terminal
+suite (including its 45-second disconnection) passed three cases in 83.48 seconds.
+
+Client regression coverage passed 45 tests and its production build. Worker
+types, terminal regressions, Python syntax and diff checks passed. Root
+`pnpm check` stops at the existing Server decomposition budgets (1531/1500 and
+2286/1999); this checkpoint does not repair those unrelated files. Private
+package/build records, failure logs, browser screenshots and process/operation
+proofs are retained under ignored `cantrip_os/artifacts/phase5-desktop-controls/`.
+One Codex test tab crashed before Worker fault injection; its replacement kept
+the original admitted guest work, and the subsequent outage scenario passed.
+No hosted validation ran. Phase 5 remains in progress.
