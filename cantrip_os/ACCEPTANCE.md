@@ -3208,3 +3208,31 @@ desktop packages and native executor source did not change in this cycle; no new
 guest package, OCI image or ISO is claimed. Current-runtime model acceptance,
 broader reconnect/lifecycle and failed-upgrade recovery, real remote acceptance
 and final recorded distribution artifacts remain required for Phase 5.
+
+## Phase 5: retained Docker lifecycle carrier (2026-11-06)
+
+The shared host library now journals exact-ID retained-container start, stop and
+restart without creating/removing containers or replacing their images/volumes.
+Repeated admissions only observe. A changed named container is rejected before
+mutation, Engine refusals remain failures, and uncertain delivery is reconciled
+from actual carrier state without a second POST. Historical completion and
+current observation are separate. See [the lifecycle guide](INSTANCE_LIFECYCLE.md).
+
+Eight focused tests cover private receipts, exact-ID mutation, changed admission,
+lost response, historical completion after removal, actual API refusal, interrupted
+dispatch and damaged completion evidence. All 15 enabled foundation checks passed;
+the separately enabled real Docker test is skipped in that default run.
+
+The actual test ran against disposable `cantrip-os-phase5-backups`. It wrote a
+root configuration file under `/etc` and a file in the workspace data volume,
+both mode 0640. Stop/start retained their exact bytes/modes, the actual Debian
+package inventory, container ID, image and mounts. A real restart completed but
+its response was deliberately dropped; the journal reported unknown, observation
+recovered it and repeated admission did not issue another restart. The earlier
+stop remained historically ready while its current observation reported running.
+The complete real-container check passed in 24.91 seconds and left it running.
+
+This is host-carrier acceptance, not full Worker SIGKILL or product acceptance.
+Server-owned power-target admission, operation history and client controls are
+still required. So are desktop/reset/image/upgrade semantics and the rest of the
+full Phase 5 acceptance matrix. No guest package, OCI image or ISO changed here.
