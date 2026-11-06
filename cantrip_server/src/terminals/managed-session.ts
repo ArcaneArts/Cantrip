@@ -81,29 +81,19 @@ export function managedConsoleSessionContext(
     : undefined;
 }
 
-/** One console configuration path for creation, direct, relay and WorkerLink. */
-export async function prepareManagedTurnLaunch(
+/** Resolve execution configuration without loading a thread or binding a chat. */
+export async function prepareManagedTurnConfiguration(
   context: ChatExecutionContext,
   runtime: ModelRuntime,
   dependencies: ManagedConsoleRouting & {
     ownerId: string;
-    bridge: Pick<WorkerCommandBus, "request">;
     repository: Pick<
       ServerRepository,
-      | "listEffectiveMcpServers"
-      | "setChatModel"
-      | "updateChatRuntime"
-      | "nativeSuspensions"
+      "listEffectiveMcpServers" | "nativeSuspensions"
     >;
   },
-): Promise<
-  Extract<
-    Extract<WorkerCommand, { type: "terminal.open" }>["launch"],
-    { type: "codex" }
-  >
-> {
-  const { ownerId, bridge, repository, routePairsForConfiguration } =
-    dependencies;
+) {
+  const { ownerId, repository, routePairsForConfiguration } = dependencies;
   const { runtime: root, subagentDefaults } =
     await resolveManagedSessionModelProfile(
       context,
@@ -138,6 +128,32 @@ export async function prepareManagedTurnLaunch(
     ),
     ...(session ? { session } : {}),
   };
+  return { runtime: root, configuration: configurationFields };
+}
+
+/** One console configuration path for creation, direct, relay and WorkerLink. */
+export async function prepareManagedTurnLaunch(
+  context: ChatExecutionContext,
+  runtime: ModelRuntime,
+  dependencies: Parameters<typeof prepareManagedTurnConfiguration>[2] & {
+    bridge: Pick<WorkerCommandBus, "request">;
+    repository: Pick<
+      ServerRepository,
+      | "listEffectiveMcpServers"
+      | "nativeSuspensions"
+      | "setChatModel"
+      | "updateChatRuntime"
+    >;
+  },
+): Promise<
+  Extract<
+    Extract<WorkerCommand, { type: "terminal.open" }>["launch"],
+    { type: "codex" }
+  >
+> {
+  const { ownerId, bridge, repository } = dependencies;
+  const { runtime: root, configuration: configurationFields } =
+    await prepareManagedTurnConfiguration(context, runtime, dependencies);
   let threadId = context.threadId;
   if (!threadId || context.contextKind === "standalone") {
     const result = (await bridge.request(

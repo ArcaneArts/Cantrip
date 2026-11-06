@@ -65,12 +65,21 @@ impl Service {
         {
             task_context["nativeCycle"] = cycle;
         }
-        let result = self.request(&context["workerId"], json!({
+        let mut command = json!({
             "type":"chat.goal.create", "chatId":context["chatId"], "cwd":context["cwd"],
             "threadId":if super::super::runtime_telemetry::RuntimeTelemetry::can_resume(context,runtime){context["threadId"].clone()}else{Value::Null},
-            "objective":objective, "tokenBudget":Value::Null, "model":runtime["model"], "provider":runtime["provider"],
-            "permissionProfileId":managed_console::permission_profile(context)["effectiveId"], "taskContext":task_context
-        }), "taskGoalWorkerResultSchema").await?;
+            "objective":objective, "tokenBudget":Value::Null, "taskContext":task_context
+        });
+        let mut goal_context = context.clone();
+        goal_context["modelConfiguration"] = configuration.clone();
+        goal_context["reasoningEffort"] = configuration["reasoningEffort"].clone();
+        self.dependencies
+            .console
+            .configure_task_goal_command(owner, &goal_context, runtime, &mut command)
+            .await?;
+        let result = self
+            .request(&context["workerId"], command, "taskGoalWorkerResultSchema")
+            .await?;
         let failure = result["task"]["classification"]["lastError"]["code"]
             .as_str()
             .unwrap_or("");

@@ -4,6 +4,7 @@ import {
   type ManagedConsoleRouting,
 } from "../../terminals/managed-session.js";
 import { randomUUID } from "node:crypto";
+import { prepareTaskGoalConfiguration } from "../runtime/task-goal-configuration.js";
 
 import {
   chatGoalClearSchema,
@@ -329,6 +330,14 @@ export function installChatGoalRoutes(
                 kind: "resume" as const,
               }
             : null;
+        const taskConfiguration =
+          input.data.status === "active"
+            ? await prepareTaskGoalConfiguration(context, runtime, {
+                ownerId: applicationOwnerId(),
+                repository,
+                routePairsForConfiguration,
+              })
+            : undefined;
         const result = taskGoalWorkerResultSchema.parse(
           await bridge.request(context.workerId, {
             type: "chat.goal.update",
@@ -341,6 +350,7 @@ export function installChatGoalRoutes(
             provider: runtime.provider,
             permissionProfileId:
               effectivePermissionProfile(context).effectiveId,
+            ...taskConfiguration,
             taskContext: {
               task: taskContentFromSummary(task),
               ...(task.dispatch

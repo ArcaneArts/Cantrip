@@ -184,6 +184,12 @@ async fn update_task(
         Value::Null
     };
     let mut command = command(context, runtime, "chat.goal.update");
+    if input["status"] == "active" {
+        service
+            .managed_console
+            .configure_task_goal_command(owner, context, runtime, &mut command)
+            .await?;
+    }
     for key in ["status", "protectedObjective"] {
         if let Some(value) = input.get(key) {
             command[key] = value.clone();
