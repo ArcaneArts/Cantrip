@@ -2946,3 +2946,41 @@ was direct formatting, mechanical protocol contract export and
 `git diff --check`. No tests, builds, typechecks, benchmarks, native/helper
 execution, hosted validation or computer-use testing ran. Runtime behavior remains
 unverified; the full lifecycle and acceptance audit continues.
+
+### Stop fences unused planning-round input before worker cancellation
+
+The owning Stop transaction now examines the canonical planning/finalizer round
+as well as Goal input. It defers an enforced unused round receipt only when its
+cycle, operation, lease owner and fencing token still match and no attempt has
+dispatched input. That revocation precedes the worker Stop command and serializes
+with the actual before-send dispatch RPC. It also covers a receipt whose worker
+command has not claimed it yet. A late command cannot become valid merely because
+the user subsequently pressed Resume.
+
+Deferral reuses the existing round recovery transition: retain the original
+encrypted round and message, retire only its captured lane activation, restore
+the pre-wait attempt count and pause its existing dispatch cycle. No new prompt
+queue or replay authority is created. Already-dispatched input and legacy work
+without enforced receipt evidence stay under actual native cleanup and settlement.
+The transaction never releases a provider ticket, including a title helper that
+may still be running before response dispatch.
+
+Stop advances the existing canonical queue episode for every Task cycle. Newly
+prepared round receipts carry that episode; after Stop, worker recovery identifies
+the round's new episode separately from an older still-unacknowledged queue record.
+Epoch zero and legacy receipts keep their existing FIFO identity. Route retries
+within the same episode still preserve their place. A positively deferred unused
+receipt preserves enforcement history even if it was revoked before the worker
+claimed it, allowing a subsequent Stop to revoke the replacement safely.
+
+Node and Rust servers implement the same receipt conditions and deferral. The
+wire schema already supports the optional episode field; no schema shape,
+migration or new native API is introduced. Source review covered unclaimed and
+claimed unused receipts, dispatched/uncertain work, stale lease/round ownership,
+replacement receipts, delayed worker cancellation and FIFO recovery identity.
+This milestone covers materialized round receipts; earlier launch preparation
+remains part of the continuing lifecycle audit.
+
+Validation was direct formatting and `git diff --check`. No tests, typechecks,
+builds, benchmarks, native/helper execution, hosted validation or computer-use
+testing ran. Runtime behavior remains unverified.

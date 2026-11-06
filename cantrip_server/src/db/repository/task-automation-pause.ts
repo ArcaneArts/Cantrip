@@ -4,14 +4,14 @@ import * as schema from "../schema.js";
 import type { RepositoryDatabase, RepositoryTransaction } from "./database.js";
 import { projectChatExecutionLock } from "./chat-execution-lock.js";
 import { nativeCommandContext } from "./native-command-context.js";
-import type { TaskGoalInferenceInputRepository } from "../task-goal-inference-inputs.js";
+import type { TaskInferenceInputRepository } from "../task-inference-inputs.js";
 
 /** Durable Task control order shares the canonical chat lock and revision.
  * It neither schedules work nor owns a provider semaphore. */
 export class TaskAutomationPauseRepository {
   constructor(
     private readonly database: RepositoryDatabase,
-    private readonly goalInputs: TaskGoalInferenceInputRepository,
+    private readonly inputs: TaskInferenceInputRepository,
   ) {}
 
   private async scope(
@@ -68,7 +68,7 @@ export class TaskAutomationPauseRepository {
   }
 
   /** Called after the actual transfer settles and only for the original Stop.
-   * A resumed Goal cannot adopt an unused pre-Stop cycle's old FIFO ordinal. */
+   * Resumed Task input cannot adopt its pre-Stop cycle's old FIFO ordinal. */
   async fenceInterrupt(owner: string, chat: string, revision: number) {
     return this.database.transaction(async (tx) => {
       await tx
@@ -95,11 +95,13 @@ export class TaskAutomationPauseRepository {
         )
         .for("update")
         .limit(1);
-      if (cycle?.operationKind === "finalize") {
+      if (cycle) {
+        await this.inputs.deferForInterrupt(tx, owner, cycle);
         // Seal unused canonical input before the worker cancels its SDK wait.
         // A dispatch that already won this same owner/cycle lock stays physical
         // work and must settle through the native Stop path instead.
-        await this.goalInputs.deferForInterrupt(tx, owner, cycle);
+        if (cycle.operationKind === "finalize")
+          await this.inputs.goals.deferForInterrupt(tx, owner, cycle);
         const marker = cycle.goalCycleRecovery;
         await tx
           .update(schema.taskDispatchCycles)

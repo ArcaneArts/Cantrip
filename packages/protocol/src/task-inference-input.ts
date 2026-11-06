@@ -10,8 +10,9 @@ export const taskInferenceInputReceiptSchema = z
     operationId: z.uuid(),
     // Omitted for existing round receipts, preserving their journal identity.
     kind: z.literal("goal").optional(),
-    // Canonical Goal queue episode. Omission preserves legacy receipt identity;
-    // recovery compares it as epoch zero, never rewrites the stored receipt.
+    // Canonical Task input queue episode. Goal cycles and stopped planning
+    // rounds cannot adopt a pre-Stop FIFO ordinal. Omission is legacy epoch zero;
+    // recovery never rewrites the stored receipt.
     queueOrderEpoch: z
       .number()
       .int()

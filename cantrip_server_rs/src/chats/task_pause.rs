@@ -47,16 +47,17 @@ impl Repository {
             let cycles=tx.query("SELECT to_jsonb(c)::text FROM task_dispatch_cycles c WHERE owner_id=$1 AND chat_id=$2 ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE",&[&owner,&chat]).await?;
             if let Some(row)=cycles.first() {
                 let cycle:Value=serde_json::from_str(&row.get::<String>(0)?)?;
+                crate::tasks::Repository::defer_round_input_for_interrupt(tx,&owner,&cycle).await?;
                 if cycle["operation_kind"]=="finalize" {
                     crate::tasks::Repository::defer_goal_input_for_interrupt(tx,&owner,&cycle).await?;
-                    let mut marker=cycle["goal_cycle_recovery"].clone();
-                    if !marker.is_null() && marker["settled"].is_null() {
-                        marker["admission"]=Value::Null;
-                        marker["settled"]=json!({"reason":"ineligible","turnId":marker["turnId"],"operationId":Value::Null});
-                    }
-                    tx.query("UPDATE task_dispatch_cycles SET goal_order_epoch=goal_order_epoch+1,goal_cycle_recovery=NULLIF($2::text::jsonb,'null'::jsonb) WHERE id=$1",
-                        &[&cycle["id"].as_str().ok_or_else(||anyhow::anyhow!("Task interrupt cycle"))?,&marker.stringify()]).await?;
                 }
+                let mut marker=cycle["goal_cycle_recovery"].clone();
+                if !marker.is_null() && marker["settled"].is_null() {
+                    marker["admission"]=Value::Null;
+                    marker["settled"]=json!({"reason":"ineligible","turnId":marker["turnId"],"operationId":Value::Null});
+                }
+                tx.query("UPDATE task_dispatch_cycles SET goal_order_epoch=goal_order_epoch+1,goal_cycle_recovery=NULLIF($2::text::jsonb,'null'::jsonb) WHERE id=$1",
+                    &[&cycle["id"].as_str().ok_or_else(||anyhow::anyhow!("Task interrupt cycle"))?,&marker.stringify()]).await?;
             }
             intent(tx,&owner,&chat).await
         })).await
