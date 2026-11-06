@@ -205,7 +205,7 @@ async function finish(
 }
 
 describe("durable native command admission", () => {
-  it.each(["skills/list", "hooks/list"])(
+  it.each(["skills/list", "hooks/list", "thread/resume", "thread/unsubscribe"])(
     "keeps %s discovery admitted across a first-turn activation",
     async (method) => {
       const context = await database.repository.getChatExecutionContext(
@@ -258,6 +258,45 @@ describe("durable native command admission", () => {
       );
       expect(current.receipt.status).toBe("accepted");
       expect(current.receipt.activationGeneration).toBeNull();
+      const replacement = {
+        ...during,
+        operationId: randomUUID(),
+        session: {
+          ...during.session,
+          runtimeGeneration: "replacement-observer-runtime",
+          connectionId: "replacement-observer-view",
+        },
+      };
+      const attached = await database.repository.nativeCommands.admit(
+        LOCAL_USER_ID,
+        replacement,
+      );
+      expect(attached.receipt.status).toBe("accepted");
+      expect(attached.receipt.activationGeneration).toBeNull();
+      await dispatch(replacement, attached.receipt);
+      const replay = await database.repository.nativeCommands.admit(
+        LOCAL_USER_ID,
+        replacement,
+      );
+      expect(replay.execution).not.toBeNull();
+      const staleControl = {
+        ...replacement,
+        operationId: randomUUID(),
+        method: "turn/interrupt",
+        expectedActivationGeneration: started.receipt.activationGeneration,
+      };
+      expect(
+        (
+          await database.repository.nativeCommands.admit(
+            LOCAL_USER_ID,
+            staleControl,
+          )
+        ).receipt,
+      ).toMatchObject({
+        status: "rejected",
+        rejectionCode: "stale-activation",
+      });
+      await finish(replacement, attached.receipt);
       await finish(input, started.receipt);
       await dispatch(during, current.receipt);
       await finish(during, current.receipt);

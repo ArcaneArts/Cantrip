@@ -131,6 +131,14 @@ before native recovery or prewarm. Attachment may succeed while the checkpoint
 file is missing or damaged; it must remain idle. Explicit restoration separately
 inspects the actual checkpoint and reports compatibility or storage errors.
 
+The native TUI's `thread/resume` attaches a view; explicit turn Resume is a
+separate operation. Managed attach/detach commands use the current session,
+placement, thread and provider scope without requiring or replacing an execution
+activation. The worker rejects settings and history overrides on this path.
+This lets a replacement TUI observe a held turn while the server retains the
+original execution bookkeeping. Opening that view neither acquires execution
+capacity nor releases the hold; explicit Resume still needs fresh admission.
+
 Worker restoration also carries the execution profile used to start the native
 process. A standalone chat must not be reopened as an IDE runtime. The
 process-isolated worker fixture covers both profiles, two whole-worker-tree
@@ -233,8 +241,8 @@ are idempotent, including when native completion precedes Stop acknowledgement.
 encryption, normal server HTTP routes, the built production worker entrypoint,
 provider admission and the verified patched native runtime. Only the public
 model HTTP responses are controlled. It performs two durable Pause/SIGKILL/
-restart/explicit Resume cycles on a GUI-originated project chat with a completed
-native command and accepted pending steering.
+restart/explicit Resume cycles on GUI-originated and native-TUI-originated
+project chats with a completed native command and accepted pending steering.
 
 The test freezes supervisors, records descendants and owned process groups,
 including native helpers and the shared TUI, then sends SIGKILL and verifies
@@ -273,6 +281,22 @@ application, reopens the paused chat and clicks Resume. It also checks that the
 final answer is visible in the mounted transcript. The same original-rollout
 and inference assertions apply to both servers.
 
+Add `--terminal-origin` to enter the original prompt through the production
+native Codex PTY instead of the GUI send API. With `--mounted-ui`, Pause and
+Resume still use the shared Cantrip controls. After each process-tree kill,
+the test reattaches the same console before Resume, checks the original prompt
+and completed command result in its rendered history, and verifies that opening
+the view starts no inference. The final answer must appear in both the native
+TUI and the GUI. Reattachment restores committed history; preview text from a
+cancelled provider stream is not a committed history item.
+
+Managed project preparation enables canonical native history. Console sync reads
+the actual native history metadata and leaves canonical turns to the encrypted
+history pipeline, preserving native lifecycle status in its response. This
+prevents a TUI input from acquiring both a legacy `codex-sync` message and a
+canonical history message. Unmanaged and legacy history keep their existing
+sync path.
+
 Both composer and linked console controls use authoritative suspension phases.
 Restoration errors preserve the chat and expose an explicit retry; Stop intent
 cannot offer Resume. Pause persistence failure keeps Retry Pause and the
@@ -281,11 +305,14 @@ original correlated turn start and saved pause timing, including offline time;
 accepted steering does not start another clock, and later turns cannot inherit
 an older turn's pause total.
 
-The mounted path is qualified in a desktop browser. Recovery-error controls and
+Both input origins and paused native-TUI reattachment are qualified through the
+mounted desktop browser on Node and Rust servers. The linked console endpoint
+returns its existing durable terminal identity on repeated creation requests.
+Recovery-error controls and
 timing have focused component coverage. Cold Stop also has mounted coverage with
 missing, corrupt and incompatible native checkpoints. Actual Resume failure UI
 flows remain part of the broader error matrix. This does not qualify
-native-terminal-originated production input, Task/Goal recovery, or the complete resource/error matrix.
+Task/Goal recovery or the complete resource/error matrix.
 Those remain separate acceptance requirements.
 
 ### Cold Stop before continuation restoration

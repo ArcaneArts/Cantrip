@@ -180,10 +180,17 @@ const scopedMutations = new Set([
   "fuzzyFileSearch/sessionStop",
 ]);
 
-// Startup discovery reads files under the admitted session/permission scope.
-// Its validity does not depend on an idle or active model turn. Keep ordinary
-// mutations, replies and input tied to their exact activation.
-const sessionDiscoveryMethods = new Set(["skills/list", "hooks/list"]);
+// Discovery and view attachment use the admitted session/permission scope,
+// independently of the execution activation. In particular, a replacement TUI
+// must be able to observe a held turn before explicit Resume acquires ownership.
+// The worker restricts thread/resume to observation-only parameters. Mutations,
+// replies and input remain tied to their exact execution activation.
+const sessionDiscoveryMethods = new Set([
+  "skills/list",
+  "hooks/list",
+  "thread/resume",
+  "thread/unsubscribe",
+]);
 
 /** Server policy classifies the actual method, independently of a caller's labels. */
 export function nativeCommandPolicy(input: NativeCommandAdmission): {
