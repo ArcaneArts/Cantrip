@@ -9,6 +9,7 @@ import type {
   ProjectSummary,
   ProjectTabLayoutSummary,
   ProjectWorktreeSummary,
+  RemoteDesktopSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
 import { useMutation, type QueryClient } from "@tanstack/react-query";
@@ -267,6 +268,7 @@ export function useSidebarExplorerModel({
   openCreatedTab,
   selectedProjectId,
   selectedSurface,
+  remoteDesktop,
   tabLayout,
   worktrees,
 }: {
@@ -280,33 +282,41 @@ export function useSidebarExplorerModel({
   openCreatedTab: OpenCreatedTab;
   selectedProjectId: string | null;
   selectedSurface: ProjectSurface | undefined;
+  remoteDesktop?: RemoteDesktopSummary;
   tabLayout: ProjectTabLayoutSummary | undefined;
   worktrees: ProjectWorktreeSummary[] | undefined;
 }) {
   const { explorerFileTarget, popoutTarget, projectOverviewPopoutTarget } =
     environment;
+  const selectedWorktreeId = surfaceWorktreeId(selectedSurface, remoteDesktop);
   const sidebarDesiredWorktreeId =
     revealedWorktreeId ??
-    surfaceWorktreeId(selectedSurface) ??
+    selectedWorktreeId ??
     primaryWorktreeId(worktrees ?? []);
   const sidebarOsPlacement =
-    revealedWorktreeId &&
-    revealedWorktreeId !== surfaceWorktreeId(selectedSurface)
+    revealedWorktreeId && revealedWorktreeId !== selectedWorktreeId
       ? {}
-      : surfaceOsFilePlacement(selectedSurface);
-  const sidebarDesiredWorkerId = sidebarOsPlacement.cantripOsBindingId
+      : surfaceOsFilePlacement(selectedSurface, remoteDesktop);
+  const sidebarDesiredWorkerId = sidebarOsPlacement?.cantripOsBindingId
     ? selectedSurface?.kind === "file"
       ? selectedSurface.entity.workerId
-      : selectedSurface?.kind === "chat" || selectedSurface?.kind === "explorer"
+      : selectedSurface?.kind === "chat" ||
+          selectedSurface?.kind === "explorer" ||
+          selectedSurface?.kind === "terminal"
         ? selectedSurface.entity.activeWorkerId
-        : null
+        : selectedSurface?.kind === "remote-desktop"
+          ? remoteDesktop?.workerId
+          : null
     : null;
-  const sidebarExplorer = preferredSidebarExplorer({
-    desiredOsPlacement: sidebarOsPlacement,
-    desiredWorktreeId: sidebarDesiredWorktreeId,
-    explorers: explorers ?? [],
-    layout: tabLayout,
-  });
+  const sidebarExplorer =
+    sidebarOsPlacement === null
+      ? null
+      : preferredSidebarExplorer({
+          desiredOsPlacement: sidebarOsPlacement,
+          desiredWorktreeId: sidebarDesiredWorktreeId,
+          explorers: explorers ?? [],
+          layout: tabLayout,
+        });
   const connectedExplorerPaneIds = useMemo(() => {
     if (projectOverviewPopoutTarget || explorerFileTarget) {
       return new Set<string>();
@@ -346,6 +356,10 @@ export function useSidebarExplorerModel({
     sidebarExplorer,
     sidebarOsPlacement,
     sidebarDesiredWorkerId,
+    sidebarFileDestinationError:
+      sidebarOsPlacement === null
+        ? "The selected surface's file destination is unavailable."
+        : null,
   } as const;
 }
 
@@ -360,7 +374,7 @@ export function sidebarExplorerProvisioningDetails({
   sidebarDesiredWorktreeId,
   sidebarExplorer,
 }: {
-  sidebarOsPlacement?: OsFilePlacement;
+  sidebarOsPlacement?: OsFilePlacement | null;
   sidebarDesiredWorkerId?: string | null;
   onlineWorkerIds: ReadonlySet<string>;
   selectedProject: ProjectSummary | undefined;
@@ -376,6 +390,7 @@ export function sidebarExplorerProvisioningDetails({
     sidebarFileWorkerId && onlineWorkerIds.has(sidebarFileWorkerId),
   );
   const sidebarExplorerCreationInput =
+    sidebarOsPlacement !== null &&
     selectedProject?.setupStatus === "ready" &&
     selectedProject.source &&
     (!selectedProject.capabilities.worktrees || sidebarDesiredWorktreeId)
@@ -388,11 +403,12 @@ export function sidebarExplorerProvisioningDetails({
         }
       : null;
   const sidebarExplorerCreationKey = sidebarExplorerCreationInput
-    ? `${sidebarExplorerCreationInput.projectId}:${sidebarExplorerCreationInput.worktreeId ?? "default"}${sidebarOsPlacement.cantripOsBindingId ? `:${sidebarOsPlacement.cantripOsBindingId}:${sidebarOsPlacement.cantripOsRuntimeGeneration}` : ""}`
+    ? `${sidebarExplorerCreationInput.projectId}:${sidebarExplorerCreationInput.worktreeId ?? "default"}${sidebarOsPlacement?.cantripOsBindingId ? `:${sidebarOsPlacement.cantripOsBindingId}:${sidebarOsPlacement.cantripOsRuntimeGeneration}` : ""}`
     : null;
   const sidebarHasDesiredExplorer = Boolean(
     sidebarExplorerCreationInput &&
     sidebarExplorer &&
+    sidebarOsPlacement &&
     sameOsFilePlacement(sidebarExplorer, sidebarOsPlacement) &&
     (!sidebarDesiredWorktreeId ||
       sidebarExplorer.worktreeId === sidebarDesiredWorktreeId),

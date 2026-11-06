@@ -6,6 +6,7 @@ import type {
   ProjectSummary,
   ProjectTabLayoutSummary,
   ProjectWorktreeSummary,
+  RemoteDesktopSummary,
 } from "@cantrip/protocol";
 import { QueryClient } from "@tanstack/react-query";
 import type { ProjectSurface } from "@/lib/project-surface";
@@ -326,6 +327,106 @@ describe("sidebar Explorer provisioning", () => {
 });
 
 describe("sidebar tree ownership", () => {
+  it("keeps desktop focus on its captured Linux files, including unavailable runtimes and unresolved queries", async () => {
+    const host = { id: "host", worktreeId: "primary" } as ExplorerSummary;
+    const hostAtLinuxTree = {
+      ...host,
+      id: "host-linux-tree",
+      worktreeId: "linux-tree",
+    };
+    const linux = {
+      ...hostAtLinuxTree,
+      id: "linux",
+      cantripOsBindingId: "binding",
+      cantripOsRuntimeGeneration: "old-runtime",
+    };
+    const newRuntime = {
+      ...linux,
+      id: "new-runtime",
+      cantripOsRuntimeGeneration: "new-runtime",
+    };
+    const selectedSurface = {
+      kind: "remote-desktop",
+      projectId: project.id,
+      entity: { id: "desktop", projectId: project.id, worktreeId: null },
+    } as ProjectSurface;
+    const desktop = {
+      id: "desktop",
+      projectId: project.id,
+      workerId: "linux-worker",
+      status: "unavailable",
+      osSource: {
+        worktreeId: "linux-tree",
+        bindingId: "binding",
+        runtimeGeneration: "old-runtime",
+      },
+    } as unknown as RemoteDesktopSummary;
+    let model!: ReturnType<typeof useSidebarExplorerModel>;
+    function Probe({
+      remoteDesktop,
+    }: {
+      remoteDesktop?: RemoteDesktopSummary;
+    }) {
+      model = useSidebarExplorerModel({
+        unavailablePaneIds: new Set(),
+        environment: {
+          explorerFileTarget: null,
+          popoutTarget: null,
+          projectOverviewPopoutTarget: null,
+        },
+        explorers: [host, hostAtLinuxTree, newRuntime, linux],
+        openCreatedTab: vi.fn(),
+        selectedProjectId: project.id,
+        selectedSurface,
+        remoteDesktop,
+        tabLayout: undefined,
+        worktrees: [
+          { id: "primary", isPrimary: true },
+        ] as ProjectWorktreeSummary[],
+      });
+      return null;
+    }
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(createElement(Probe));
+    });
+    const details = () =>
+      sidebarExplorerProvisioningDetails({
+        ...model,
+        onlineWorkerIds: new Set(["worker-project", "linux-worker"]),
+        selectedProject: project,
+        selectedProjectWorkerId: "worker-project",
+      });
+    expect(model.sidebarExplorer).toBeNull();
+    expect(model.sidebarFileDestinationError).toContain("unavailable");
+    expect(details().sidebarExplorerCreationInput).toBeNull();
+    await act(async () =>
+      renderer.update(createElement(Probe, { remoteDesktop: desktop })),
+    );
+    expect(model.sidebarExplorer).toBe(linux);
+    expect(model.sidebarDesiredWorktreeId).toBe("linux-tree");
+    expect(details()).toMatchObject({
+      sidebarFileWorkerId: "linux-worker",
+      sidebarExplorerCreationInput: {
+        projectId: project.id,
+        worktreeId: "linux-tree",
+        cantripOsBindingId: "binding",
+        cantripOsRuntimeGeneration: "old-runtime",
+      },
+    });
+    // A previous query result must not turn another unresolved desktop into Host.
+    await act(async () =>
+      renderer.update(
+        createElement(Probe, {
+          remoteDesktop: { ...desktop, id: "other-desktop" },
+        }),
+      ),
+    );
+    expect(model.sidebarExplorer).toBeNull();
+    expect(details().sidebarExplorerCreationInput).toBeNull();
+    await act(async () => renderer.unmount());
+  });
+
   it("never repurposes a tabbed Explorer as the sidebar tree under Strict Mode", async () => {
     const pinned = {
       id: "explorer-pinned",
