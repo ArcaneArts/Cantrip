@@ -676,44 +676,70 @@
     "cantripOsPowerSummarySchema": 11318,
     "cantripOsPowerListQuerySchema": 11333,
     "cantripOsPowerPageSchema": 11339,
-    "cantripOsRecoveryRequestSchema": 11344,
-    "cantripOsRecoveryResultSchema": 11349,
-    "cantripOsWorkspaceCreateSchema": 11381,
-    "cantripOsBindingCreateSchema": 11389,
-    "cantripOsProvisionSchema": 11413,
+    "cantripOsPackageTargetSummarySchema": 11344,
+    "cantripOsPackageStatusSchema": 11352,
+    "cantripOsPackageCreateSchema": 11364,
+    "cantripOsPackageControlSchema": 11371,
+    "cantripOsPackageSummarySchema": 11375,
+    "cantripOsPackageListQuerySchema": 11392,
+    "cantripOsPackagePageSchema": 11398,
+    "cantripOsGuestPackageRecordSchema": 11403,
+    "cantripOsGuestPackageRequestSchema": 11406,
+    "cantripOsPackageArtifactSchema": 6204,
+    "cantripOsPackageArtifactsSchema": 6203,
+    "cantripOsPackageCatalogResultSchema": 11435,
+    "cantripOsPackageCryptoContextSchema": 11441,
+    "cantripOsPackageExpectedSchema": 6185,
+    "cantripOsPackageInstalledSchema": 11450,
+    "cantripOsPackageManifestSchema": 11452,
+    "cantripOsPackageNameSchema": 6205,
+    "cantripOsPackageOperationCommandSchema": 6197,
+    "cantripOsPackageOperationResultSchema": 11457,
+    "cantripOsPackagePrivateResultSchema": 11470,
+    "cantripOsPackageProbeSchema": 11476,
+    "cantripOsPackageProtectedResultSchema": 11388,
+    "cantripOsPackageScopeSchema": 6180,
+    "cantripOsPackageShaSchema": 6208,
+    "cantripOsPackageTargetSchema": 6183,
+    "cantripOsPackageWorkerCommandSchema": 11483,
+    "cantripOsRecoveryRequestSchema": 11484,
+    "cantripOsRecoveryResultSchema": 11489,
+    "cantripOsWorkspaceCreateSchema": 11521,
+    "cantripOsBindingCreateSchema": 11529,
+    "cantripOsProvisionSchema": 11553,
     "cantripOsGuestPathSchema": 2990,
-    "projectSourceLocationSchema": 11417,
+    "projectSourceLocationSchema": 11557,
     "cantripOsTransportSchema": 3002,
     "cantripOsDependencyOverlaySchema": 2992,
     "cantripOsDependencyOverlaysSchema": 2991,
-    "cantripOsAttachSchema": 11425,
+    "cantripOsAttachSchema": 11565,
     "cantripOsWorkspaceObservationSchema": 10955,
-    "cantripOsInstanceSummarySchema": 11350,
-    "cantripOsWorkspaceSummarySchema": 11362,
-    "cantripOsProjectSourceSummarySchema": 11430,
-    "cantripOsProjectWorktreeSummarySchema": 11437,
-    "cantripOsSourceBindingSummarySchema": 11439,
+    "cantripOsInstanceSummarySchema": 11490,
+    "cantripOsWorkspaceSummarySchema": 11502,
+    "cantripOsProjectSourceSummarySchema": 11570,
+    "cantripOsProjectWorktreeSummarySchema": 11577,
+    "cantripOsSourceBindingSummarySchema": 11579,
     "cantripOsRunDefinitionRequestSchema": 6283,
-    "cantripOsRunDefinitionApiSchema": 11451,
-    "cantripOsRunDefinitionResponseSchema": 11458,
-    "cantripOsRunPrimarySchema": 11459,
-    "cantripOsRunRootsSchema": 11467,
-    "cantripOsRunLaunchSchema": 11469,
+    "cantripOsRunDefinitionApiSchema": 11591,
+    "cantripOsRunDefinitionResponseSchema": 11598,
+    "cantripOsRunPrimarySchema": 11599,
+    "cantripOsRunRootsSchema": 11607,
+    "cantripOsRunLaunchSchema": 11609,
     "cantripOsRunCaptureSchema": 6321,
     "cantripOsRunSelectionSchema": 7507,
-    "cantripOsRunSourceSchema": 11471,
-    "desktopUpdateActiveWorkSummarySchema": 11475,
-    "providerConnectionTestResultSchema": 11480,
-    "workerProviderConnectionTestResultSchema": 11489,
+    "cantripOsRunSourceSchema": 11611,
+    "desktopUpdateActiveWorkSummarySchema": 11615,
+    "providerConnectionTestResultSchema": 11620,
+    "workerProviderConnectionTestResultSchema": 11629,
     "policyCliWireListResultSchema": 5567,
-    "policyCliWireReadResultSchema": 11492,
+    "policyCliWireReadResultSchema": 11632,
     "executionTargetResourceKindSchema": 1252,
     "executionTargetSchema": 1220,
-    "taskGoalOutcomeDeliverySchema": 11494,
-    "taskGoalOutcomeCommitSchema": 11503,
+    "taskGoalOutcomeDeliverySchema": 11634,
+    "taskGoalOutcomeCommitSchema": 11643,
     "workerChatTurnOutcomeNotificationSchema": 2326,
     "inferenceCommandTimingSchema": 1574,
-    "remoteSurfaceFrameHeaderSchema": 11514,
+    "remoteSurfaceFrameHeaderSchema": 11654,
     "workerCommandSchema": 2603,
     "workerEventSchema": 1566,
     "workerNotificationSchema": 2264,
@@ -67932,9 +67958,16 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "name": "cantripOsRecoveryRequestSchema",
-      "shape": { "attachmentGeneration": 11345, "runtimeGeneration": 11346 },
-      "catchall": 11348,
+      "name": "cantripOsPackageTargetSummarySchema",
+      "shape": {
+        "generation": 11345,
+        "instanceId": 11346,
+        "workerId": 11347,
+        "attachmentGeneration": 11348,
+        "architecture": 11349,
+        "verifiedAt": 11350
+      },
+      "catchall": 11351,
       "checks": []
     },
     {
@@ -67950,7 +67983,981 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 11347, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 64, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsPackageStatusSchema",
+      "shape": {
+        "target": 11353,
+        "installed": 11354,
+        "available": 11359,
+        "unavailable": 11360,
+        "error": 11361
+      },
+      "catchall": 11363,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 11344, "checks": [] },
+    {
+      "type": "array",
+      "element": 11355,
+      "checks": [{ "check": "max_length", "maximum": 4, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": { "name": 6205, "exitCode": 11356, "status": 11357 },
+      "catchall": 11358,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "element": 6204,
+      "checks": [{ "check": "max_length", "maximum": 256, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 11362, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 4000, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsPackageCreateSchema",
+      "shape": {
+        "operationId": 11365,
+        "attachmentGeneration": 11366,
+        "targetGeneration": 11367,
+        "action": 11368,
+        "configuration": 11369,
+        "packages": 6203
+      },
+      "catchall": 11370,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "cantrip-os-package-repair",
+          "messageAfterPath": true,
+          "message": "Configuration replacement requires explicit repair"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "enum", "values": ["upgrade", "repair"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["preserve", "package-defaults"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsPackageControlSchema",
+      "shape": { "attachmentGeneration": 11372, "targetGeneration": 11373 },
+      "catchall": 11374,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsPackageSummarySchema",
+      "shape": {
+        "operationId": 11376,
+        "instanceId": 11377,
+        "workerId": 11378,
+        "attachmentGeneration": 11379,
+        "targetGeneration": 11380,
+        "action": 11381,
+        "configuration": 11382,
+        "packages": 6203,
+        "state": 11383,
+        "phase": 11384,
+        "createdAt": 11385,
+        "updatedAt": 11386,
+        "protectedResult": 11387,
+        "error": 11389
+      },
+      "catchall": 11391,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "enum", "values": ["upgrade", "repair"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["preserve", "package-defaults"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["admitted", "running", "ready", "failed", "unknown"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 11388, "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsPackageProtectedResultSchema",
+      "shape": {
+        "version": 30,
+        "algorithm": 31,
+        "keyRevision": 32,
+        "nonce": 33,
+        "ciphertext": 34
+      },
+      "catchall": 35,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "cantrip-os-package-envelope",
+          "messageAfterPath": true,
+          "message": "Protected package outcome exceeds its byte limit"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 11390, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 4000, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsPackageListQuerySchema",
+      "shape": { "limit": 11393, "cursor": 11395 },
+      "catchall": 11397,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 11394,
+      "defaultValue": 25,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "coerce": true,
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 11396,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsPackagePageSchema",
+      "shape": { "items": 11399, "nextCursor": 11400 },
+      "catchall": 11402,
+      "checks": []
+    },
+    { "type": "array", "element": 11375, "checks": [] },
+    { "type": "nullable", "innerType": 11401, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsGuestPackageRecordSchema",
+      "shape": {
+        "format": 11404,
+        "version": 11405,
+        "request": 11406,
+        "requestSha256": 6208,
+        "state": 11416,
+        "phase": 11417,
+        "createdAt": 11418,
+        "updatedAt": 11419,
+        "received": 11420,
+        "process": 11421,
+        "installer": 11421,
+        "receipt": 11427,
+        "error": 11429,
+        "active": 11431,
+        "installerActive": 11432,
+        "diagnostics": 11433
+      },
+      "catchall": 11434,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["cantrip-os-package-operation"],
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsGuestPackageRequestSchema",
+      "shape": {
+        "version": 11407,
+        "operationId": 11408,
+        "scopeKey": 6208,
+        "action": 11409,
+        "configuration": 11410,
+        "expected": 11411,
+        "packages": 6203
+      },
+      "catchall": 11415,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "cantrip-os-package-repair",
+          "messageAfterPath": true,
+          "message": "Configuration replacement requires explicit repair"
+        }
+      ]
+    },
+    { "type": "literal", "values": [2], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "enum", "values": ["upgrade", "repair"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["preserve", "package-defaults"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "guestInstanceId": 6186,
+        "ownerId": 6187,
+        "workerId": 6188,
+        "identityPath": 2990,
+        "bootId": 11412,
+        "initStart": 11413
+      },
+      "catchall": 11414,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9]{1,30}$",
+          "flags": "",
+          "displayPattern": "/^[0-9]{1,30}$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "enum",
+      "values": ["staged", "running", "ready", "failed", "unknown"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "number", "checks": [] },
+    { "type": "number", "checks": [] },
+    {
+      "type": "array",
+      "element": 6208,
+      "checks": [{ "check": "max_length", "maximum": 4, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 11422, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "pid": 11423, "start": 11424, "boot": 11425 },
+      "catchall": 11426,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 11428, "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "nullable", "innerType": 11430, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 16384, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 16384, "when": "length" }]
+    },
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsPackageCatalogResultSchema",
+      "shape": {
+        "target": 6183,
+        "available": 11436,
+        "unavailable": 11437,
+        "installed": 11438
+      },
+      "catchall": 11440,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 6204,
+      "checks": [{ "check": "max_length", "maximum": 256, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 11439,
+      "checks": [{ "check": "max_length", "maximum": 4, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": { "name": 6205, "exitCode": 11356, "status": 11357 },
+      "catchall": 11358,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsPackageCryptoContextSchema",
+      "shape": {
+        "ownerId": 11442,
+        "serverId": 11443,
+        "workerId": 11444,
+        "instanceId": 11445,
+        "attachmentGeneration": 11446,
+        "targetGeneration": 11447,
+        "operationId": 11448
+      },
+      "catchall": 11449,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsPackageInstalledSchema",
+      "shape": {
+        "name": 6205,
+        "exitCode": 11356,
+        "status": 11357,
+        "diagnostic": 11451
+      },
+      "catchall": 11358,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2048, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "cantripOsPackageManifestSchema",
+      "shape": {
+        "format": 11453,
+        "version": 11454,
+        "file": 11455,
+        "artifact": 6204
+      },
+      "catchall": 11456,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": ["cantrip-os-package-artifact"],
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*\\.deb$",
+          "flags": "",
+          "displayPattern": "/^[A-Za-z0-9][A-Za-z0-9._+-]*\\.deb$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsPackageOperationResultSchema",
+      "shape": {
+        "operationId": 11458,
+        "targetGeneration": 11459,
+        "action": 11460,
+        "configuration": 11461,
+        "state": 11462,
+        "phase": 11463,
+        "startedAt": 11464,
+        "updatedAt": 11465,
+        "protectedResult": 11466,
+        "error": 11467
+      },
+      "catchall": 11469,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "cantrip-os-package-outcome",
+          "messageAfterPath": true,
+          "message": "A ready installation requires its protected outcome"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "enum", "values": ["upgrade", "repair"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["preserve", "package-defaults"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["running", "ready", "failed", "unknown"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 11388, "checks": [] },
+    { "type": "nullable", "innerType": 11468, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 4000, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsPackagePrivateResultSchema",
+      "shape": {
+        "version": 11471,
+        "request": 11406,
+        "record": 11472,
+        "diagnostic": 11473
+      },
+      "catchall": 11475,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    { "type": "nullable", "innerType": 11403, "checks": [] },
+    { "type": "nullable", "innerType": 11474, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 32768, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsPackageProbeSchema",
+      "shape": {
+        "version": 11477,
+        "expected": 6185,
+        "bootId": 11478,
+        "initStart": 11479,
+        "architecture": 11480,
+        "packages": 11481
+      },
+      "catchall": 11482,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9]{1,30}$",
+          "flags": "",
+          "displayPattern": "/^[0-9]{1,30}$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 64, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 11450,
+      "checks": [{ "check": "max_length", "maximum": 4, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "cantripOsPackageWorkerCommandSchema",
+      "options": [6179, 6197],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "cantripOsRecoveryRequestSchema",
+      "shape": { "attachmentGeneration": 11485, "runtimeGeneration": 11486 },
+      "catchall": 11488,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 11487, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -67962,8 +68969,8 @@
     {
       "type": "object",
       "name": "cantripOsRecoveryResultSchema",
-      "shape": { "instance": 11350, "workspaces": 11361, "recovery": 11367 },
-      "catchall": 11380,
+      "shape": { "instance": 11490, "workspaces": 11501, "recovery": 11507 },
+      "catchall": 11520,
       "checks": []
     },
     {
@@ -67973,15 +68980,15 @@
         "id": 3005,
         "ownerId": 3005,
         "workerId": 3005,
-        "guestInstanceId": 11351,
+        "guestInstanceId": 11491,
         "attachmentGeneration": 3005,
-        "name": 11352,
-        "status": 11353,
-        "runtimeGeneration": 11354,
-        "lastError": 11355,
-        "lastObservedAt": 11357,
-        "createdAt": 11359,
-        "updatedAt": 11360
+        "name": 11492,
+        "status": 11493,
+        "runtimeGeneration": 11494,
+        "lastError": 11495,
+        "lastObservedAt": 11497,
+        "createdAt": 11499,
+        "updatedAt": 11500
       },
       "checks": []
     },
@@ -68011,12 +69018,12 @@
       "checks": []
     },
     { "type": "nullable", "innerType": 3005, "checks": [] },
-    { "type": "nullable", "innerType": 11356, "checks": [] },
+    { "type": "nullable", "innerType": 11496, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 4000, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 11358, "checks": [] },
+    { "type": "nullable", "innerType": 11498, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -68053,7 +69060,7 @@
         }
       ]
     },
-    { "type": "array", "element": 11362, "checks": [] },
+    { "type": "array", "element": 11502, "checks": [] },
     {
       "type": "object",
       "name": "cantripOsWorkspaceSummarySchema",
@@ -68062,11 +69069,11 @@
         "instanceId": 3005,
         "workerId": 3005,
         "guestWorkspaceId": 3005,
-        "uid": 11363,
-        "gid": 11364,
+        "uid": 11503,
+        "gid": 11504,
         "homeGuestPath": 2990,
-        "createdAt": 11365,
-        "updatedAt": 11366
+        "createdAt": 11505,
+        "updatedAt": 11506
       },
       "checks": []
     },
@@ -68111,15 +69118,15 @@
     {
       "type": "object",
       "shape": {
-        "kind": 11368,
-        "previousRuntimeGeneration": 11369,
-        "observedRuntimeGeneration": 11371,
-        "workerContinuity": 11373,
-        "previousWorkerProcessGeneration": 11374,
-        "observedWorkerProcessGeneration": 11376,
-        "message": 11378
+        "kind": 11508,
+        "previousRuntimeGeneration": 11509,
+        "observedRuntimeGeneration": 11511,
+        "workerContinuity": 11513,
+        "previousWorkerProcessGeneration": 11514,
+        "observedWorkerProcessGeneration": 11516,
+        "message": 11518
       },
-      "catchall": 11379,
+      "catchall": 11519,
       "checks": []
     },
     {
@@ -68133,7 +69140,7 @@
       ],
       "checks": []
     },
-    { "type": "nullable", "innerType": 11370, "checks": [] },
+    { "type": "nullable", "innerType": 11510, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -68141,7 +69148,7 @@
         { "check": "max_length", "maximum": 200, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 11372, "checks": [] },
+    { "type": "nullable", "innerType": 11512, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -68159,7 +69166,7 @@
       ],
       "checks": []
     },
-    { "type": "nullable", "innerType": 11375, "checks": [] },
+    { "type": "nullable", "innerType": 11515, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -68167,7 +69174,7 @@
         { "check": "max_length", "maximum": 200, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 11377, "checks": [] },
+    { "type": "nullable", "innerType": 11517, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -68188,12 +69195,12 @@
       "type": "object",
       "name": "cantripOsWorkspaceCreateSchema",
       "shape": {
-        "guestWorkspaceId": 11382,
-        "operationId": 11383,
-        "attachmentGeneration": 11384,
-        "runtimeGeneration": 11386
+        "guestWorkspaceId": 11522,
+        "operationId": 11523,
+        "attachmentGeneration": 11524,
+        "runtimeGeneration": 11526
       },
-      "catchall": 11388,
+      "catchall": 11528,
       "checks": []
     },
     {
@@ -68225,7 +69232,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 11385,
+      "innerType": 11525,
       "checks": []
     },
     {
@@ -68245,7 +69252,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 11387,
+      "innerType": 11527,
       "checks": []
     },
     {
@@ -68265,19 +69272,19 @@
     {
       "type": "union",
       "name": "cantripOsBindingCreateSchema",
-      "options": [11390, 11395, 11400, 11407],
+      "options": [11530, 11535, 11540, 11547],
       "discriminator": "mode",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "mode": 11391,
-        "workspaceId": 11392,
-        "worktreeId": 11393,
+        "mode": 11531,
+        "workspaceId": 11532,
+        "worktreeId": 11533,
         "dependencyOverlays": 2991
       },
-      "catchall": 11394,
+      "catchall": 11534,
       "checks": []
     },
     { "type": "literal", "values": ["linked"], "checks": [] },
@@ -68310,8 +69317,8 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "mode": 11396, "workspaceId": 11397, "sourceKind": 11398 },
-      "catchall": 11399,
+      "shape": { "mode": 11536, "workspaceId": 11537, "sourceKind": 11538 },
+      "catchall": 11539,
       "checks": []
     },
     { "type": "literal", "values": ["linux-owned"], "checks": [] },
@@ -68334,13 +69341,13 @@
       "type": "object",
       "name": "cantripOsExistingSourceCreateSchema",
       "shape": {
-        "mode": 11401,
-        "operationId": 11402,
-        "workspaceId": 11403,
-        "sourceKind": 11404,
-        "relativePath": 11405
+        "mode": 11541,
+        "operationId": 11542,
+        "workspaceId": 11543,
+        "sourceKind": 11544,
+        "relativePath": 11545
       },
-      "catchall": 11406,
+      "catchall": 11546,
       "checks": []
     },
     { "type": "literal", "values": ["linux-existing"], "checks": [] },
@@ -68382,12 +69389,12 @@
     {
       "type": "object",
       "shape": {
-        "mode": 11408,
-        "sourceBindingId": 11409,
-        "expectedRuntimeGeneration": 11410,
-        "operationId": 11411
+        "mode": 11548,
+        "sourceBindingId": 11549,
+        "expectedRuntimeGeneration": 11550,
+        "operationId": 11551
       },
-      "catchall": 11412,
+      "catchall": 11552,
       "checks": []
     },
     { "type": "literal", "values": ["linux-worktree"], "checks": [] },
@@ -68435,11 +69442,11 @@
       "type": "object",
       "name": "cantripOsProvisionSchema",
       "shape": {
-        "operationId": 11414,
-        "bindingGeneration": 11415,
+        "operationId": 11554,
+        "bindingGeneration": 11555,
         "protectedRequest": 4770
       },
-      "catchall": 11416,
+      "catchall": 11556,
       "checks": []
     },
     {
@@ -68472,14 +69479,14 @@
     {
       "type": "union",
       "name": "projectSourceLocationSchema",
-      "options": [11418, 11422],
+      "options": [11558, 11562],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 11419, "workerPath": 11420 },
-      "catchall": 11421,
+      "shape": { "kind": 11559, "workerPath": 11560 },
+      "catchall": 11561,
       "checks": []
     },
     { "type": "literal", "values": ["worker-local"], "checks": [] },
@@ -68491,12 +69498,12 @@
     {
       "type": "object",
       "shape": {
-        "kind": 11423,
+        "kind": 11563,
         "instanceId": 3005,
         "workspaceId": 3005,
         "guestPath": 2990
       },
-      "catchall": 11424,
+      "catchall": 11564,
       "checks": []
     },
     { "type": "literal", "values": ["cantrip-os"], "checks": [] },
@@ -68506,12 +69513,12 @@
       "name": "cantripOsAttachSchema",
       "shape": {
         "workerId": 3005,
-        "guestInstanceId": 11426,
-        "name": 11427,
+        "guestInstanceId": 11566,
+        "name": 11567,
         "transport": 3002,
-        "expectedAttachmentGeneration": 11428
+        "expectedAttachmentGeneration": 11568
       },
-      "catchall": 11429,
+      "catchall": 11569,
       "checks": []
     },
     {
@@ -68547,13 +69554,13 @@
         "instanceId": 3005,
         "workspaceId": 3005,
         "guestPath": 2990,
-        "ownershipKind": 11431,
-        "repositoryFingerprint": 11432,
-        "primaryWorktreeId": 11433,
-        "createdAt": 11434,
-        "updatedAt": 11435
+        "ownershipKind": 11571,
+        "repositoryFingerprint": 11572,
+        "primaryWorktreeId": 11573,
+        "createdAt": 11574,
+        "updatedAt": 11575
       },
-      "catchall": 11436,
+      "catchall": 11576,
       "checks": []
     },
     { "type": "enum", "values": ["cantrip", "user"], "checks": [] },
@@ -68611,7 +69618,7 @@
         "workspaceId": 3005,
         "guestPath": 2990
       },
-      "catchall": 11438,
+      "catchall": 11578,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -68627,23 +69634,23 @@
         "worktreeId": 3005,
         "instanceId": 3005,
         "workspaceId": 3005,
-        "mode": 11440,
-        "linkedWorkerPath": 11441,
+        "mode": 11580,
+        "linkedWorkerPath": 11581,
         "guestPath": 2990,
         "bindingGeneration": 3005,
-        "provisionedAttachmentGeneration": 11443,
-        "provisionedRuntimeGeneration": 11444,
-        "state": 11445,
-        "lastError": 11446,
+        "provisionedAttachmentGeneration": 11583,
+        "provisionedRuntimeGeneration": 11584,
+        "state": 11585,
+        "lastError": 11586,
         "dependencyOverlays": 2991,
-        "createdAt": 11448,
-        "updatedAt": 11449
+        "createdAt": 11588,
+        "updatedAt": 11589
       },
-      "catchall": 11450,
+      "catchall": 11590,
       "checks": []
     },
     { "type": "enum", "values": ["linked", "linux-owned"], "checks": [] },
-    { "type": "nullable", "innerType": 11442, "checks": [] },
+    { "type": "nullable", "innerType": 11582, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -68655,7 +69662,7 @@
       "values": ["provisioning", "ready", "failed", "unknown", "retired"],
       "checks": []
     },
-    { "type": "nullable", "innerType": 11447, "checks": [] },
+    { "type": "nullable", "innerType": 11587, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 4000, "when": "length" }]
@@ -68689,19 +69696,19 @@
       "type": "object",
       "name": "cantripOsRunDefinitionApiSchema",
       "shape": {
-        "bindingGeneration": 11452,
-        "attachmentGeneration": 11454,
-        "runtimeGeneration": 11456,
+        "bindingGeneration": 11592,
+        "attachmentGeneration": 11594,
+        "runtimeGeneration": 11596,
         "request": 6283
       },
-      "catchall": 11457,
+      "catchall": 11597,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 11453,
+      "innerType": 11593,
       "checks": []
     },
     {
@@ -68721,7 +69728,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 11455,
+      "innerType": 11595,
       "checks": []
     },
     {
@@ -68754,21 +69761,21 @@
     {
       "type": "object",
       "name": "cantripOsRunDefinitionResponseSchema",
-      "shape": { "source": 11459, "result": 11465 },
-      "catchall": 11466,
+      "shape": { "source": 11599, "result": 11605 },
+      "catchall": 11606,
       "checks": []
     },
     {
       "type": "object",
       "name": "cantripOsRunPrimarySchema",
       "shape": {
-        "bindingId": 11460,
-        "worktreeId": 11461,
-        "projectSourceId": 11462,
-        "runtimeGeneration": 11463,
+        "bindingId": 11600,
+        "worktreeId": 11601,
+        "projectSourceId": 11602,
+        "runtimeGeneration": 11603,
         "guestPath": 2990
       },
-      "catchall": 11464,
+      "catchall": 11604,
       "checks": []
     },
     {
@@ -68835,7 +69842,7 @@
       "type": "object",
       "name": "cantripOsRunRootsSchema",
       "shape": { "definitions": 2983, "target": 2983 },
-      "catchall": 11468,
+      "catchall": 11608,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -68848,7 +69855,7 @@
         "identity": 4052,
         "protectedSecrets": 4059
       },
-      "catchall": 11470,
+      "catchall": 11610,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -68856,13 +69863,13 @@
       "type": "object",
       "name": "cantripOsRunSourceSchema",
       "shape": {
-        "binding": 11439,
-        "instance": 11350,
-        "workspace": 11362,
-        "target": 11472,
-        "available": 11473
+        "binding": 11579,
+        "instance": 11490,
+        "workspace": 11502,
+        "target": 11612,
+        "available": 11613
       },
-      "catchall": 11474,
+      "catchall": 11614,
       "checks": []
     },
     {
@@ -68885,10 +69892,10 @@
       "type": "object",
       "name": "desktopUpdateActiveWorkSummarySchema",
       "shape": {
-        "activeChats": 11476,
-        "queuedPrompts": 11477,
-        "terminalServices": 11478,
-        "backgroundJobs": 11479
+        "activeChats": 11616,
+        "queuedPrompts": 11617,
+        "terminalServices": 11618,
+        "backgroundJobs": 11619
       },
       "checks": []
     },
@@ -68928,12 +69935,12 @@
       "type": "object",
       "name": "providerConnectionTestResultSchema",
       "shape": {
-        "ok": 11481,
-        "stage": 11482,
-        "message": 11483,
-        "workerId": 11484,
-        "modelName": 11486,
-        "durationMs": 11488
+        "ok": 11621,
+        "stage": 11622,
+        "message": 11623,
+        "workerId": 11624,
+        "modelName": 11626,
+        "durationMs": 11628
       },
       "checks": []
     },
@@ -68960,12 +69967,12 @@
         { "check": "max_length", "maximum": 20000, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 11485, "checks": [] },
+    { "type": "nullable", "innerType": 11625, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 11487, "checks": [] },
+    { "type": "nullable", "innerType": 11627, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -68980,7 +69987,7 @@
     {
       "type": "object",
       "name": "workerProviderConnectionTestResultSchema",
-      "shape": { "accepted": 11490, "durationMs": 11491 },
+      "shape": { "accepted": 11630, "durationMs": 11631 },
       "checks": []
     },
     { "type": "literal", "values": [true], "checks": [] },
@@ -68995,7 +70002,7 @@
       "type": "object",
       "name": "policyCliWireReadResultSchema",
       "shape": { "policy": 6473 },
-      "catchall": 11493,
+      "catchall": 11633,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -69003,22 +70010,22 @@
       "type": "object",
       "name": "taskGoalOutcomeDeliverySchema",
       "shape": {
-        "version": 11495,
-        "inputKind": 11496,
-        "deliveryId": 11498,
-        "serverId": 11499,
-        "ownerId": 11500,
-        "workerId": 11501,
+        "version": 11635,
+        "inputKind": 11636,
+        "deliveryId": 11638,
+        "serverId": 11639,
+        "ownerId": 11640,
+        "workerId": 11641,
         "notification": 2326
       },
-      "catchall": 11502,
+      "catchall": 11642,
       "checks": []
     },
     { "type": "literal", "values": [1], "checks": [] },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 11497,
+      "innerType": 11637,
       "defaultValue": "goal",
       "checks": []
     },
@@ -69052,18 +70059,18 @@
     {
       "type": "union",
       "name": "taskGoalOutcomeCommitSchema",
-      "options": [11504, 11509],
+      "options": [11644, 11649],
       "discriminator": "committed",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "deliveryId": 11505,
-        "taskInferenceInputOperationId": 11506,
-        "committed": 11507
+        "deliveryId": 11645,
+        "taskInferenceInputOperationId": 11646,
+        "committed": 11647
       },
-      "catchall": 11508,
+      "catchall": 11648,
       "checks": []
     },
     {
@@ -69097,12 +70104,12 @@
     {
       "type": "object",
       "shape": {
-        "deliveryId": 11505,
-        "taskInferenceInputOperationId": 11506,
-        "committed": 11510,
-        "retiredReason": 11511
+        "deliveryId": 11645,
+        "taskInferenceInputOperationId": 11646,
+        "committed": 11650,
+        "retiredReason": 11651
       },
-      "catchall": 11513,
+      "catchall": 11653,
       "checks": []
     },
     { "type": "literal", "values": [false], "checks": [] },
@@ -69110,7 +70117,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 11512,
+      "innerType": 11652,
       "checks": []
     },
     {
@@ -69127,11 +70134,11 @@
       "type": "object",
       "name": "remoteSurfaceFrameHeaderSchema",
       "shape": {
-        "protocolVersion": 11515,
-        "surfaceId": 11516,
-        "attachmentId": 11517,
-        "sequence": 11518,
-        "channel": 11519
+        "protocolVersion": 11655,
+        "surfaceId": 11656,
+        "attachmentId": 11657,
+        "sequence": 11658,
+        "channel": 11659
       },
       "checks": []
     },

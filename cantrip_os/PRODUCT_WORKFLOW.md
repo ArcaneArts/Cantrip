@@ -12,8 +12,9 @@ use the source-aware product workflows described below.
 Package updates and broken-helper repair currently have a separate
 [administrative Docker/SSH path](PACKAGE_RECOVERY.md). The external Worker also
 provides verified package candidates and durable, encrypted operation results,
-including with a broken installed executor. Server-owned package
-admissions and product controls remain a dependent Phase 5 checkpoint; the
+including with a broken installed executor. Both Servers provide owned
+[package admissions, history and explicit observation/continuation](PACKAGE_RECOVERY.md#server-owned-package-admissions).
+Package interface controls remain a dependent Phase 5 checkpoint; the
 existing power, desktop, backup and workspace-reset controls do not imply that
 shared-system replacement or package upgrade is available through their UI.
 

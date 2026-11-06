@@ -4008,3 +4008,64 @@ acceptance remain dependent work. No current full image, ISO, Host bundle,
 provider/model or cloud acceptance is claimed. The VM is local. Full Phase 5
 still requires shared-system preservation/replacement, clone identity handling,
 broader lifecycle/remote acceptance and final recorded distributions.
+
+## Phase 5: Server-owned package targets and admissions (2026-11-06)
+
+Both Node and native Server now expose authenticated package inventory, immutable
+create admissions, paginated owned history, retained outcomes and explicit
+observe/continue/abandon routes. Migration 0280 stores private verified catalogues
+and original Worker commands, with independent inventory and operation observation
+revisions. Public contracts contain opaque target generations and exact artifact
+metadata, without private identity paths, transports, container IDs or boot facts.
+Diagnostic receipts remain protected under the existing package encryption purpose.
+
+No live executor generation is invented or required. An actual owning Worker
+inventory can authorize package administration while the attachment's runtime is
+null. Admission consumes verified target/artifact selection and clears execution
+authority before dispatch. The first terminal outcome fences old runtime replies
+again. Repeated terminal reads preserve the same ciphertext and perform no new
+Worker dispatch. Late inventory and running-result replies cannot replace newer
+target or terminal facts. A changed attachment rejects continuation; historical
+observation retains its original SSH/Docker command instead of using the current
+transport. New explicit repair after uncertainty still reaches actual guest locks.
+
+The Node HTTP/persistent-PGlite test closes and reopens the Server's database,
+observes the original lost-reply admission without another execute, rejects
+changed intent/artifacts, tests staged controls and history, and checks private
+projection and foreign-owner rejection. It rejects a real delayed refresh after
+package admission, then allows explicit fresh runtime recovery. A separate pair
+of inventory contexts proves late target replies are fenced. The broader Node OS
+suite passes 15 tests with two opt-in integrations skipped. Its modern-repository
+migration fixture now loads current migrations; four historical migration cases
+retain their isolated schema. The previous omitted-column failure was reproduced
+on Primary before fixing that fixture.
+
+Native acceptance uses actual managed PostgreSQL, the HTTP router and Worker
+bridge, including an AuthService restart, null executor runtime, immutable retry,
+private projection, staged continuation/abandonment, history and attachment
+replacement. Separate direct database observations prove stale inventory and
+operation results cannot overwrite newer facts. The actual source oracle matches
+14,515 generated validation cases, plus seven explicit uniqueness, repair-policy,
+ready-proof and ciphertext-bound cases. The latter includes the real maximum
+encoded private-envelope length and one byte beyond it. Native HTTP and all-target
+Clippy pass. Another 1,442 inherited Worker package-command comparisons also
+match Source after rebasing onto Main's parity fix. App types and focused
+protocol/OS surface checks pass. The broad protocol suite passes 1,114 tests and
+retains four pre-existing public-surface count failures (source/emitted copies);
+the explicit reviewed OS exports pass. `pnpm check` stops at unchanged Server
+decomposition budgets, 1531/1500 and 2286/1999.
+
+The native exporter registers the new public and private package schemas and
+regenerates the normal tracked security manifest. The cycle reuses Main's package
+command parity fix rather than maintaining duplicate policy handlers. The fixture
+encrypted bytes in HTTP/schema tests are deliberately opaque samples; real
+cryptography and real Docker/SSH dpkg/Manager failure cases are recorded in the
+preceding checkpoint. These tests do not claim a full Worker process or client
+failure roundtrip.
+
+No guest package version, full image, ISO or Host bundle changes in this Server
+checkpoint. Private logs and source metadata are retained under
+`cantrip_os/artifacts/phase5-package-server`. Cantrip's package controls and full
+Worker/browser recovery testing remain next, alongside the wider Phase 5
+system-preservation, clone identity, actual remote/model and final distribution
+requirements. Phase 5 is not complete.

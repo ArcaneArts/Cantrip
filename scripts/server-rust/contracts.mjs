@@ -698,6 +698,32 @@ export const contractRoots = [
   "cantripOsPowerSummarySchema",
   "cantripOsPowerListQuerySchema",
   "cantripOsPowerPageSchema",
+  "cantripOsPackageTargetSummarySchema",
+  "cantripOsPackageStatusSchema",
+  "cantripOsPackageCreateSchema",
+  "cantripOsPackageControlSchema",
+  "cantripOsPackageSummarySchema",
+  "cantripOsPackageListQuerySchema",
+  "cantripOsPackagePageSchema",
+  "cantripOsGuestPackageRecordSchema",
+  "cantripOsGuestPackageRequestSchema",
+  "cantripOsPackageArtifactSchema",
+  "cantripOsPackageArtifactsSchema",
+  "cantripOsPackageCatalogResultSchema",
+  "cantripOsPackageCryptoContextSchema",
+  "cantripOsPackageExpectedSchema",
+  "cantripOsPackageInstalledSchema",
+  "cantripOsPackageManifestSchema",
+  "cantripOsPackageNameSchema",
+  "cantripOsPackageOperationCommandSchema",
+  "cantripOsPackageOperationResultSchema",
+  "cantripOsPackagePrivateResultSchema",
+  "cantripOsPackageProbeSchema",
+  "cantripOsPackageProtectedResultSchema",
+  "cantripOsPackageScopeSchema",
+  "cantripOsPackageShaSchema",
+  "cantripOsPackageTargetSchema",
+  "cantripOsPackageWorkerCommandSchema",
   "cantripOsRecoveryRequestSchema",
   "cantripOsRecoveryResultSchema",
   "cantripOsWorkspaceCreateSchema",
@@ -910,6 +936,21 @@ function registerChecks(schema, tags) {
     );
   tags.forEach((tag, index) => registerCustom(schema, index, tag));
 }
+registerChecks(protocol.cantripOsPackageProtectedResultSchema, [
+  "cantrip-os-package-envelope",
+]);
+registerChecks(protocol.cantripOsPackageArtifactsSchema, [
+  "cantrip-os-unique-packages",
+]);
+for (const schema of [
+  protocol.cantripOsGuestPackageRequestSchema,
+  protocol.cantripOsPackageOperationCommandSchema,
+  protocol.cantripOsPackageCreateSchema,
+])
+  registerChecks(schema, ["cantrip-os-package-repair"]);
+registerChecks(protocol.cantripOsPackageOperationResultSchema, [
+  "cantrip-os-package-outcome",
+]);
 for (const schema of [
   taskOperations.taskOpaqueMutationSchema.shape.draftAttachmentIds.unwrap(),
   taskOperations.taskOpaqueSummarySchema.shape.draftAttachmentIds,

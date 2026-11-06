@@ -2,6 +2,8 @@
 mod backups;
 #[path = "desktop_coordinator.rs"]
 mod desktop;
+#[path = "package_coordinator.rs"]
+mod packages;
 #[path = "power_coordinator.rs"]
 mod power;
 #[path = "workspace_operation_coordinator.rs"]
