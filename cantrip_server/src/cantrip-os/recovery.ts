@@ -102,7 +102,7 @@ export async function recoverCantripOsInstance(input: {
         instance.attachmentGeneration,
         workspace,
       );
-  const observed = await repository.cantripOs.observe(
+  let observed = await repository.cantripOs.observe(
     ownerId,
     instanceId,
     instance.attachmentGeneration,
@@ -118,6 +118,22 @@ export async function recoverCantripOsInstance(input: {
     previousWorker,
     attachment.powerEpoch,
   );
+  if (identityMatches && actual?.powerTarget && transport.kind === "docker") {
+    await repository.cantripOs.power.recordTarget(
+      ownerId,
+      instanceId,
+      instance.attachmentGeneration,
+      actual.runtimeGeneration,
+      actual.powerTarget.containerId,
+      attachment.powerEpoch,
+    );
+    const current = await repository.cantripOs.attachment(ownerId, instanceId);
+    if (!current)
+      throw new CantripOsPlacementError(
+        "The OS attachment changed during recovery observation.",
+      );
+    observed = current.instance;
+  }
   return cantripOsRecoveryResultSchema.parse({
     instance: observed,
     workspaces: await repository.cantripOs.listWorkspaces(ownerId, instanceId),

@@ -184,11 +184,15 @@ export function CantripOsPowerControls({
       </div>
       <p className="text-sm text-muted-foreground" role="status">
         Power:{" "}
-        {power.data?.observation
-          ? power.data.observation.running
-            ? "Running"
-            : "Stopped"
-          : "Unverified"}
+        {power.isFetching
+          ? "Checking"
+          : power.isError
+            ? "Unverified"
+            : power.data?.observation
+              ? power.data.observation.running
+                ? "Running"
+                : "Stopped"
+              : "Unverified"}
         {" · "}Linux: {instance.status}
       </p>
       {power.data?.error ? (
@@ -330,7 +334,9 @@ export function CantripOsPowerControls({
           {labels[result.action]}: {states[result.state]}.
           {result.error ? ` ${result.error}` : ""}
           {result.state === "ready" && result.action !== "stop"
-            ? " Use Check recovery to verify Linux, then verify the intended project source before opening fresh work."
+            ? instance.status === "connected"
+              ? " Verify the intended project source before opening fresh work."
+              : " Use Check recovery to verify Linux, then verify the intended project source before opening fresh work."
             : ""}
         </p>
       ) : null}

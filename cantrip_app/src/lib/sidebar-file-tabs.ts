@@ -1,9 +1,14 @@
-import { sameOsFilePlacement, type OsFilePlacement } from "./os-file-placement";
+import {
+  sameOsFilePlacement,
+  surfaceRemoteDesktop,
+  type OsFilePlacement,
+} from "./os-file-placement";
 import type {
   ExplorerSummary,
   ProjectPaneSummary,
   ProjectTabLayoutSummary,
   ProjectWorktreeSummary,
+  RemoteDesktopSummary,
 } from "@cantrip/protocol";
 
 import type { ProjectSurface } from "./project-surface";
@@ -55,8 +60,17 @@ export function tabbedExplorerIds(
   );
 }
 
-export function surfaceWorktreeId(surface: ProjectSurface | undefined) {
+export function surfaceWorktreeId(
+  surface: ProjectSurface | undefined,
+  remoteDesktop?: RemoteDesktopSummary,
+) {
   if (!surface) return null;
+  if (surface.kind === "remote-desktop") {
+    const desktop = surfaceRemoteDesktop(surface, remoteDesktop);
+    return desktop
+      ? (desktop.osSource?.worktreeId ?? surface.entity.worktreeId)
+      : null;
+  }
   if (surface.kind === "chat") return surface.entity.activeWorktreeId;
   if (
     surface.kind === "terminal" ||

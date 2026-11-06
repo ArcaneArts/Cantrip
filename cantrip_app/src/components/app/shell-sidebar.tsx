@@ -163,6 +163,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     sidebarCollapsed,
     sidebarExpanded,
     sidebarExplorer,
+    sidebarFileDestinationError,
     sidebarFileWorkerId,
     sidebarFileWorkerOnline,
     sidebarRef,
@@ -516,10 +517,11 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                           null
                         }
                         fileTreeError={
-                          !sidebarExplorer &&
+                          sidebarFileDestinationError ??
+                          (!sidebarExplorer &&
                           createSidebarExplorerMutation.isError
                             ? errorText(createSidebarExplorerMutation.error)
-                            : null
+                            : null)
                         }
                         fileTreeLoading={
                           explorers.isLoading ||

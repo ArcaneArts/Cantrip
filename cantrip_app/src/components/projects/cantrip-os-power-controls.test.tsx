@@ -198,6 +198,16 @@ it("offers actual carrier operations with unknown observation, and no power-on f
   expect(text()).toContain("SSH does not provide power-on");
 });
 
+it("does not present a cached running state as current after observation fails", async () => {
+  await mount();
+  mocks.status.mockRejectedValue(new Error("Observation unavailable"));
+  await click("Refresh power");
+  expect(text()).toContain("Unverified");
+  expect(text()).toContain("Observation unavailable");
+  expect(text()).not.toContain("Running");
+  expect(button("Stop instance").props.disabled).toBeFalsy();
+});
+
 it("rejects a stale confirmation across a server change even if instance IDs coincide", async () => {
   await mount();
   await click("Restart instance");

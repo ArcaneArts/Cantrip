@@ -141,8 +141,11 @@ it(
         (
           await app.inject({
             method: "POST",
-            url: `${base}/refresh`,
-            payload: {},
+            url: `${base}/recovery`,
+            payload: {
+              attachmentGeneration: instance.attachmentGeneration,
+              runtimeGeneration: instance.runtimeGeneration,
+            },
           })
         ).statusCode,
       ).toBe(200);

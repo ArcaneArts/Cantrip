@@ -3,7 +3,7 @@
 - Status: Phase 3 execution and source ownership implemented and exercised in Docker
   and an installed VM. Phase 4 Linux computer use, integrated human control and
   managed SSH/SFTP/VNC/TCP are implemented and accepted on the documented Docker/VM matrix.
-- Updated: 2026-11-05.
+- Updated: 2026-11-06.
 - Scope: a customized, bootable Linux distribution for one Cantrip owner's
   agents, also distributed as a directly runnable Docker image.
 
@@ -638,9 +638,14 @@ identity in both Server implementations. Worker jobs preserve original operation
 scope and observe lost receipts without replay, including while the guest helper
 is unavailable. Active admissions fence execution; observation epochs reject stale
 refresh/recovery replies arriving after a completed transition. Actual Manager
-acceptance covers retained root state and lost restart replies. Client controls,
-full Worker-process failure and independent desktop lifecycle remain required;
-SSH attachment alone does not provide power-on.
+acceptance covers retained root state and lost restart replies. Cantrip now exposes
+confirmation, saved-request recovery and paginated power history. Actual product
+acceptance kills the full Worker after a real Docker restart with a withheld reply,
+reloads the client and observes the same admission without another restart. Fresh
+recovery/source verification restores explicitly opened files and viewing; Linux
+desktop focus retains its file destination without Host fallback. Independent
+desktop lifecycle, held-input/service cleanup and the remaining lifecycle/upgrade
+matrix remain required. SSH attachment alone does not provide power-on.
 
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output

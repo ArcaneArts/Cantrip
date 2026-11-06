@@ -69,6 +69,7 @@ export function CantripOsSettings({
   });
   const refreshLists = () => {
     void queryClient.invalidateQueries({ queryKey: ["cantrip-os"] });
+    void queryClient.invalidateQueries({ queryKey: ["cantrip-os-power"] });
     void queryClient.invalidateQueries({ queryKey: ["cantrip-os-workspaces"] });
     void queryClient.invalidateQueries({
       queryKey: ["cantrip-os-bindings", project.id],
@@ -252,7 +253,7 @@ export function CantripOsSettings({
             </p>
           ) : null}
           <CantripOsPowerControls
-            key={selected.id}
+            key={`power:${selected.id}`}
             instance={selected}
             onChanged={refreshLists}
           />
