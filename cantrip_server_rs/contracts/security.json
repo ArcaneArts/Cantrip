@@ -707,7 +707,7 @@
     "taskGoalOutcomeCommitSchema": 11407,
     "workerChatTurnOutcomeNotificationSchema": 2319,
     "inferenceCommandTimingSchema": 1567,
-    "remoteSurfaceFrameHeaderSchema": 11285,
+    "remoteSurfaceFrameHeaderSchema": 11418,
     "workerCommandSchema": 2596,
     "workerEventSchema": 1559,
     "workerNotificationSchema": 2257
@@ -68390,11 +68390,11 @@
       "type": "object",
       "name": "remoteSurfaceFrameHeaderSchema",
       "shape": {
-        "protocolVersion": 11286,
-        "surfaceId": 11287,
-        "attachmentId": 11288,
-        "sequence": 11289,
-        "channel": 11290
+        "protocolVersion": 11419,
+        "surfaceId": 11420,
+        "attachmentId": 11421,
+        "sequence": 11422,
+        "channel": 11423
       },
       "checks": []
     },
