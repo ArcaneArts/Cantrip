@@ -4397,6 +4397,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "cantrip-os.desktop.status":
       case "cantrip-os.desktop.operation":
         return osDesktop.handle(command);
+      case "cantrip-os.backup.reset":
       case "cantrip-os.backup.capture":
       case "cantrip-os.backup.restore":
       case "cantrip-os.backup.rollback":

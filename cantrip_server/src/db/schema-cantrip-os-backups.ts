@@ -40,7 +40,7 @@ export const cantripOsBackupOperations = pgTable(
       .notNull()
       .references(() => cantripOsWorkspaces.id, { onDelete: "restrict" }),
     action: text("action")
-      .$type<"capture" | "restore" | "rollback">()
+      .$type<"capture" | "restore" | "rollback" | "reset">()
       .notNull(),
     backupId: text("backup_id"),
     restoreOperationId: text("restore_operation_id"),
@@ -82,7 +82,7 @@ export const cantripOsBackupOperations = pgTable(
     }).onDelete("restrict"),
     check(
       "cantrip_os_backup_action_check",
-      sql`(${table.action} = 'capture' AND ${table.backupId} IS NULL AND ${table.restoreOperationId} IS NULL) OR (${table.action} = 'restore' AND ${table.backupId} IS NOT NULL AND ${table.restoreOperationId} IS NULL) OR (${table.action} = 'rollback' AND ${table.backupId} IS NULL AND ${table.restoreOperationId} IS NOT NULL)`,
+      sql`(${table.action} IN ('capture', 'reset') AND ${table.backupId} IS NULL AND ${table.restoreOperationId} IS NULL) OR (${table.action} = 'restore' AND ${table.backupId} IS NOT NULL AND ${table.restoreOperationId} IS NULL) OR (${table.action} = 'rollback' AND ${table.backupId} IS NULL AND ${table.restoreOperationId} IS NOT NULL)`,
     ),
     check("cantrip_os_backup_revision_check", sql`${table.revision} >= 0`),
   ],

@@ -656,6 +656,8 @@ export const contractRoots = [
   "cantripOsBackupPrivateRequestSchema",
   "cantripOsBackupPrivateResultSchema",
   "cantripOsBackupWorkspaceSchema",
+  "cantripOsResetPathsSchema",
+  "cantripOsBackupResetCommandSchema",
   "cantripOsBackupAdmissionSchema",
   "cantripOsBackupRecoverySchema",
   "cantripOsBackupListQuerySchema",
@@ -801,6 +803,8 @@ export function sourceContractSchema(name) {
 const refinements = new Map([
   [protocol.nativeSuspensionRecordSchema, "native-suspension-record"],
   [protocol.cantripOsGuestPathSchema, "cantrip-os-guest-path"],
+  [protocol.cantripOsResetPathsSchema.element, "cantrip-os-reset-path"],
+  [protocol.cantripOsResetPathsSchema, "cantrip-os-reset-paths"],
   [
     protocol.cantripOsDependencyOverlaySchema.shape.path,
     "cantrip-os-overlay-path",

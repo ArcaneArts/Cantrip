@@ -46,6 +46,46 @@ type Status = {
   attachment: { owner_id: string; worker_id: string } | null;
 };
 
+async function readRetainedFile(transport: OsExecutorTransport, path: string) {
+  if (transport.kind === "docker") {
+    return (
+      await execute("docker", [
+        "exec",
+        "--user",
+        "0",
+        "--",
+        transport.container,
+        "cat",
+        "--",
+        path,
+      ])
+    ).stdout;
+  }
+  const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
+  return (
+    await execute("ssh", [
+      "-T",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "StrictHostKeyChecking=yes",
+      "-o",
+      "ForwardAgent=no",
+      "-o",
+      "IdentitiesOnly=yes",
+      "-o",
+      `UserKnownHostsFile=${transport.knownHostsFile}`,
+      "-i",
+      transport.identityFile,
+      "-p",
+      String(transport.port),
+      "--",
+      `${transport.user}@${transport.host}`,
+      ["sudo", "-n", "--", "cat", "--", path].map(quote).join(" "),
+    ])
+  ).stdout;
+}
+
 async function fixture() {
   const source: OsExecutorTransport = process.env.CANTRIP_OS_TEST_TRANSPORT
     ? JSON.parse(await readFile(process.env.CANTRIP_OS_TEST_TRANSPORT, "utf8"))
@@ -146,6 +186,7 @@ async function fixture() {
     transport: OsExecutorTransport,
     account: CantripOsBackupWorkspace,
     values?: Map<string, Buffer>,
+    readName = ".env",
   ) => {
     const binding = await executorControl<OsExecutorBinding>(transport, [
       "open",
@@ -175,7 +216,7 @@ async function fixture() {
           ).dataBase64,
           "base64",
         );
-      return values ? null : await get(".env");
+      return values ? null : await get(readName);
     } finally {
       await connection.close();
     }
@@ -295,6 +336,168 @@ async function fixture() {
 }
 
 describe.skipIf(!enabled)("real Worker backup admissions", () => {
+  it("resets selected state and undoes it while retaining writes made after reset", async () => {
+    const f = await fixture();
+    try {
+      const workspace = await f.workspace(f.source, "mr-reset");
+      await f.files(
+        f.source,
+        workspace,
+        new Map([
+          [".env", Buffer.from("DUMMY_KEEP=original\n")],
+          ["reset-me.txt", Buffer.from("private reset value 日本\n")],
+        ]),
+      );
+      const operationId = randomUUID();
+      const command = {
+        type: "cantrip-os.backup.reset" as const,
+        scope: await f.scope(f.source),
+        transport: f.source,
+        operationId,
+        workspace,
+        protectedRequest: await f.request(operationId, {
+          action: "reset",
+          workspaceId: workspace.id,
+          paths: ["reset-me.txt"],
+        }),
+      };
+      const result = await f.manager().handle(command);
+      expect(result.state).toBe("ready");
+      expect(await f.openResult(operationId, result)).toMatchObject({
+        action: "reset",
+        receipt: {
+          reset_paths: ["reset-me.txt"],
+          shared_system_state_changed: false,
+        },
+      });
+      expect(await f.files(f.source, workspace)).toEqual(
+        Buffer.from("DUMMY_KEEP=original\n"),
+      );
+      await expect(
+        f.files(f.source, workspace, undefined, "reset-me.txt"),
+      ).rejects.toThrow();
+      await f.files(
+        f.source,
+        workspace,
+        new Map([["later.txt", Buffer.from("AFTER_RESET=retain\n")]]),
+      );
+      const undoId = randomUUID();
+      const undone = await f.manager().handle({
+        type: "cantrip-os.backup.rollback",
+        operationId: undoId,
+        scope: await f.scope(f.source),
+        transport: f.source,
+        workspace,
+        restoreOperationId: operationId,
+        protectedRequest: await f.request(undoId, {
+          action: "rollback",
+          workspaceId: workspace.id,
+          restoreOperationId: operationId,
+        }),
+      });
+      expect(undone.state).toBe("ready");
+      expect(
+        await f.files(f.source, workspace, undefined, "reset-me.txt"),
+      ).toEqual(Buffer.from("private reset value 日本\n"));
+      const privateUndo = await f.openResult(undoId, undone);
+      expect(privateUndo.action).toBe("rollback");
+      if (privateUndo.action !== "rollback")
+        throw new Error("Missing private undo receipt");
+      expect(privateUndo.receipt.retained_replaced_home).toBeTruthy();
+      expect(
+        await readRetainedFile(
+          f.source,
+          `${String(privateUndo.receipt.retained_replaced_home)}/later.txt`,
+        ),
+      ).toBe("AFTER_RESET=retain\n");
+      const original = await recoveryControl({
+        transport: f.source,
+        args: ["inspect", operationId],
+      });
+      expect(original.state).toBe("reset");
+      expect(f.calls.filter((args) => args.includes("reset"))).toHaveLength(1);
+    } finally {
+      await f.close();
+    }
+  }, 90_000);
+
+  it("recovers actual whole-home reset after killing its Worker before the reply without a second exchange", async () => {
+    const f = await fixture();
+    try {
+      const workspace = await f.workspace(f.source, "mr-killed");
+      await f.files(
+        f.source,
+        workspace,
+        new Map([[".env", Buffer.from("DUMMY_RESET=retained\n")]]),
+      );
+      const operationId = randomUUID();
+      const command = {
+        type: "cantrip-os.backup.reset" as const,
+        scope: await f.scope(f.source),
+        transport: f.source,
+        operationId,
+        workspace,
+        protectedRequest: await f.request(operationId, {
+          action: "reset",
+          workspaceId: workspace.id,
+          paths: ["."],
+        }),
+      };
+      await f.killAt(command, "reset");
+      const before = await recoveryControl({
+        transport: f.source,
+        args: ["inspect", operationId],
+      });
+      expect(before).toMatchObject({
+        version: 2,
+        state: "reset",
+        maintenance: { released: true },
+      });
+      const repeated = await f.manager().handle(command);
+      expect(repeated.state).toBe("unknown");
+      const observed = await f.manager().handle({
+        type: "cantrip-os.backup.observe",
+        scope: command.scope,
+        operationId,
+        action: "reset",
+        mode: "recover",
+      });
+      expect(observed.state).toBe("ready");
+      expect(await f.openResult(operationId, observed)).toMatchObject({
+        action: "reset",
+        receipt: before.receipt,
+      });
+      expect(
+        await recoveryControl({
+          transport: f.source,
+          args: ["inspect", operationId],
+        }),
+      ).toEqual(before);
+      expect(f.calls.filter((args) => args.includes("reset"))).toHaveLength(0);
+      await expect(f.files(f.source, workspace)).rejects.toThrow();
+      const undoId = randomUUID();
+      const undone = await f.manager().handle({
+        type: "cantrip-os.backup.rollback",
+        operationId: undoId,
+        scope: await f.scope(f.source),
+        transport: f.source,
+        workspace,
+        restoreOperationId: operationId,
+        protectedRequest: await f.request(undoId, {
+          action: "rollback",
+          workspaceId: workspace.id,
+          restoreOperationId: operationId,
+        }),
+      });
+      expect(undone.state).toBe("ready");
+      expect(await f.files(f.source, workspace)).toEqual(
+        Buffer.from("DUMMY_RESET=retained\n"),
+      );
+    } finally {
+      await f.close();
+    }
+  }, 90_000);
+
   it("continues an already received archive after executor restart with explicit fresh runtime authority", async () => {
     const f = await fixture();
     try {

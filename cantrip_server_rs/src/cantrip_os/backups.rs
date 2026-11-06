@@ -71,13 +71,13 @@ impl Repository {
             if action=="capture" {
                 let sources=decode(tx.query("SELECT jsonb_build_object('binding',to_jsonb(b),'common',s.git_common_guest_path)::text FROM cantrip_os_source_bindings b LEFT JOIN cantrip_os_project_sources s ON s.id=b.project_source_id WHERE b.owner_id=$1 AND b.workspace_id=$2 AND b.retired_at IS NULL ORDER BY b.id", &[&owner,&text(w,"id")?]).await?)?;
                 command["sources"]=Value::Array(sources.iter().map(|v|{let b=&v["binding"];json!({"bindingId":b["id"],"projectId":b["project_id"],"projectSourceId":b["project_source_id"],"worktreeId":b["worktree_id"],"mode":b["mode"],"guestPath":b["guest_path"],"gitCommonGuestPath":if b["mode"]=="linux-owned" {v["common"].clone()} else {Value::Null}})}).collect());
-            } else {
+            } else if action != "reset" {
                 let reference=if action=="restore" {text(&input,"backupId")?} else {text(&input,"restoreOperationId")?};
                 let references=decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_backup_operations o WHERE operation_id=$1 AND owner_id=$2", &[&reference,&owner]).await?)?;
                 let r=references.first().context("The referenced backup operation belongs to another target or storage Worker.")?;
-                ensure!(r["worker_id"]==i["worker_id"] && r["action"]==if action=="restore" {"capture"} else {"restore"},"The referenced backup operation belongs to another target or storage Worker.");
+                ensure!(r["worker_id"]==i["worker_id"] && (if action=="restore" {r["action"]=="capture"} else {r["action"]=="restore" || r["action"]=="reset"}),"The referenced backup operation belongs to another target or storage Worker.");
                 if action=="restore" {command["backupId"]=input["backupId"].clone();command["backupScope"]=r["command"]["scope"].clone();command["replace"]=input["replace"].clone();}
-                else {ensure!(r["instance_id"]==i["id"] && r["workspace_id"]==w["id"],"Rollback must target the original restore workspace.");command["restoreOperationId"]=input["restoreOperationId"].clone();}
+                else {ensure!(r["instance_id"]==i["id"] && r["workspace_id"]==w["id"] && r["command"]["scope"]["guestInstanceId"]==i["guest_instance_id"] && r["command"]["scope"]["attachmentGeneration"]==i["attachment_generation"],"Rollback must target the original restore workspace.");command["restoreOperationId"]=input["restoreOperationId"].clone();}
             }
             let command=checked("workerRequestEnvelopeSchema",json!({"kind":"request","requestId":"backup-admission","command":command}))?["command"].clone();
             let values=Json(json!({"owner":owner,"instance":instance,"worker":i["worker_id"],"workspace":w["id"],"input":input,"command":command}));

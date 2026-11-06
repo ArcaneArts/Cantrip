@@ -42,9 +42,47 @@ export const cantripOsBackupSourceSchema = z
   })
   .strict();
 
+/** Explicit Linux home-relative selections; "." selects the complete home. */
+export const cantripOsResetPathsSchema = z
+  .array(
+    z
+      .string()
+      .min(1)
+      .max(8192)
+      .refine(
+        (value) =>
+          value === "." ||
+          (!value.includes("\0") &&
+            value
+              .split("/")
+              .every((part) => part !== "" && part !== "." && part !== "..")),
+        "Reset paths must be canonical and home-relative",
+      ),
+  )
+  .min(1)
+  .max(128)
+  .refine(
+    (paths) =>
+      new Set(paths).size === paths.length &&
+      !(paths.includes(".") && paths.length !== 1) &&
+      !paths.some((path) =>
+        paths.some(
+          (parent) => path !== parent && path.startsWith(parent + "/"),
+        ),
+      ),
+    "Reset paths must be distinct and cannot overlap",
+  );
+
 export const cantripOsBackupPrivateRequestSchema = z.discriminatedUnion(
   "action",
   [
+    z
+      .object({
+        action: z.literal("reset"),
+        workspaceId: z.uuid(),
+        paths: cantripOsResetPathsSchema,
+      })
+      .strict(),
     z
       .object({
         action: z.literal("capture"),
@@ -84,6 +122,9 @@ export const cantripOsBackupCaptureCommandSchema = base
     sources: z.array(cantripOsBackupSourceSchema).max(10000),
   })
   .strict();
+export const cantripOsBackupResetCommandSchema = base
+  .extend({ type: z.literal("cantrip-os.backup.reset") })
+  .strict();
 export const cantripOsBackupRestoreCommandSchema = base
   .extend({
     type: z.literal("cantrip-os.backup.restore"),
@@ -103,13 +144,14 @@ export const cantripOsBackupObserveCommandSchema = z
     type: z.literal("cantrip-os.backup.observe"),
     scope: cantripOsDispatchScopeSchema,
     operationId: z.uuid(),
-    action: z.enum(["capture", "restore", "rollback"]),
+    action: z.enum(["capture", "restore", "rollback", "reset"]),
     mode: z.enum(["observe", "recover", "continue"]),
     continuationScope: cantripOsDispatchScopeSchema.optional(),
   })
   .strict();
 export const workerCantripOsBackupCommandSchemas = [
   cantripOsBackupCaptureCommandSchema,
+  cantripOsBackupResetCommandSchema,
   cantripOsBackupRestoreCommandSchema,
   cantripOsBackupRollbackCommandSchema,
   cantripOsBackupObserveCommandSchema,
@@ -126,13 +168,14 @@ export const cantripOsBackupPhaseSchema = z.enum([
   "receiving",
   "activating",
   "rolling-back",
+  "resetting",
   "complete",
   "recovery-required",
 ]);
 const operationResultBase = z
   .object({
     operationId: z.uuid(),
-    action: z.enum(["capture", "restore", "rollback"]),
+    action: z.enum(["capture", "restore", "rollback", "reset"]),
     phase: cantripOsBackupPhaseSchema,
     startedAt: z.string().datetime().nullable(),
     updatedAt: z.string().datetime(),
@@ -162,8 +205,16 @@ export const cantripOsBackupPrivateResultSchema = z.discriminatedUnion(
   [
     z
       .object({
+        action: z.literal("reset"),
+        receipt: z.record(z.string(), z.unknown()),
+        interruption: z.record(z.string(), z.unknown()).nullable(),
+        cleanupWarnings: z.array(z.string().max(1000)),
+      })
+      .strict(),
+    z
+      .object({
         action: z.literal("error"),
-        operationAction: z.enum(["capture", "restore", "rollback"]),
+        operationAction: z.enum(["capture", "restore", "rollback", "reset"]),
         message: z.string().max(8192),
       })
       .strict(),

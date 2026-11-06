@@ -698,6 +698,15 @@ mount permission failure. This is the guest administration foundation. Server/
 Worker reset authority and Cantrip reset controls remain required, alongside the
 remaining system-preservation, upgrade, clone and distribution work.
 
+Both Servers and the Worker now admit reset through the existing private recovery
+operation flow. Explicit selections remain encrypted; durable original admissions
+pin the workspace account and attachment. Worker recovery observes the original
+guest exchange without resetting again, and rollback accepts retained resets as
+well as restores. Actual Worker-process failure and selected/whole-home reset
+roundtrips are exercised in Docker and over strict SSH to the installed VM.
+Dedicated product reset controls and full Worker/browser acceptance remain next.
+See [reset admissions](../cantrip_os/BACKUPS.md#workspace-reset-admissions).
+
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output
 recovery, and worker-offline behavior. Deliver workspace backups/restores,

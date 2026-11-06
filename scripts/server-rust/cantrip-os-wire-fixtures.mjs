@@ -139,6 +139,21 @@ export function cantripOsWireFixtures() {
 export function cantripOsWireCases(name) {
   return (
     {
+      cantripOsResetPathsSchema: [
+        [],
+        ["a", "a/b"],
+        ["../etc"],
+        ["/etc"],
+        ["a//b"],
+        ["a/./b"],
+        ["a/"],
+        ["a", "a"],
+        [".", "Documents"],
+        ["a\0b"],
+        ["\0"],
+        ["x".repeat(8193)],
+        Array.from({ length: 129 }, (_, i) => String(i)),
+      ],
       cantripOsGuestPathSchema: ["relative", "C:\\project", "/with\0nul"],
       projectSourceLocationSchema: [
         { kind: "cantrip-os", workerPath: "/host/accident" },

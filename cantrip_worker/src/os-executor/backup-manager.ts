@@ -12,6 +12,7 @@ import type { BackupKeyAccess } from "./private-backup-file.js";
 import { OsExecutorDeliveryError } from "./connection.js";
 import { captureWorkspace } from "./backup-capture.js";
 import { restoreWorkspace, rollbackWorkspace } from "./backup-restore.js";
+import { resetWorkspace } from "./backup-reset.js";
 import { protectBackupResult } from "./backup-result.js";
 import {
   assertBackupAccount,
@@ -93,6 +94,8 @@ export class CantripOsBackupManager {
     switch (ctx.command.type) {
       case "cantrip-os.backup.capture":
         return captureWorkspace(ctx);
+      case "cantrip-os.backup.reset":
+        return resetWorkspace(ctx);
       case "cantrip-os.backup.restore":
         return restoreWorkspace(ctx);
       case "cantrip-os.backup.rollback":
@@ -101,7 +104,7 @@ export class CantripOsBackupManager {
   }
 
   private async result(
-    action: "capture" | "restore" | "rollback",
+    action: "capture" | "restore" | "rollback" | "reset",
     operationId: string,
     record: OsOperationRecord | null,
   ) {
@@ -174,7 +177,7 @@ export class CantripOsBackupManager {
     }
     await privateBackupRequest({ command, keys: this.keys });
     const action = command.type.slice("cantrip-os.backup.".length) as
-      "capture" | "restore" | "rollback";
+      "capture" | "restore" | "rollback" | "reset";
     const record = await this.controller.operations.execute(
       command.scope,
       command.operationId,
@@ -184,12 +187,17 @@ export class CantripOsBackupManager {
         const ctx = this.context(record, save, "new");
         try {
           const receipt = await this.run(ctx);
+          if (!receipt && ctx.record.state === "failed")
+            throw new Error(
+              ctx.record.error ?? "The guest recovery operation failed.",
+            );
           if (!receipt)
             throw new OsExecutorDeliveryError(
               "Guest operation did not return a completed receipt.",
             );
           return receipt;
         } catch (error) {
+          if (ctx.record.state === "failed") throw error;
           if (!["admitted", "verifying"].includes(ctx.checkpoint.phase)) {
             const unknown = new OsExecutorDeliveryError(
               "The admitted guest operation requires observation or recovery: " +
