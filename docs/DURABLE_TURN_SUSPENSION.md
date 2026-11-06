@@ -197,6 +197,29 @@ reusable execution grants. Restoring native state and obtaining fresh runtime
 capacity remain worker responsibilities; this endpoint alone does not prove
 that a checkpoint is readable or that native resumption succeeded.
 
+## Restored observer publication
+
+`ManagedNativeCommandSession.restoreSuspendedExecution` connects fresh observer
+admission to the ordinary protected publication and native terminal settlement
+pipeline. It dispatches the current server generation before restoring the
+held observer and joins duplicate preparation for that exact admission,
+checkpoint and saved bookkeeping. It submits no prompt or native Resume.
+
+The original operation remains the history/output provenance. Native events,
+interactions, MCP and computer-use authority belong to the fresh execution
+grant. Publication must flush before the native terminal receipt settles.
+Observer loss or failed restoration cannot stand in for native completion.
+Explicit Resume and Stop can carry the exact suspension control ID alongside
+the activation generation, preventing an older Resume from replacing a newer
+Stop intent.
+
+The component integration exercises actual authenticated server admission,
+native process replacement, GUI and terminal inputs, accepted steering, held
+preparation and original native turn identity. Production server-to-worker
+Resume delivery and automatic logical-input completion after the original GUI
+caller disappears still need to invoke this lifecycle. Whole-worker restart
+acceptance remains separate from this native-process component test.
+
 ## Managed worker capture and source locator
 
 An admitted managed `turn/pause` with `paused: true` forwards the exact stronger

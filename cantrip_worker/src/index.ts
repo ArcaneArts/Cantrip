@@ -2802,7 +2802,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             error: workerLogError(error),
           },
         ),
-      beginExecution: async (grant, commandSession) => {
+      beginExecution: async (grant, commandSession, source = grant.receipt) => {
         const execution = grant.execution;
         if (
           !execution ||
@@ -2824,8 +2824,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             threadId: options.threadId,
             provenance: {
               kind: "command",
-              operationId: grant.receipt.operationId,
-              operationGeneration: grant.receipt.operationGeneration,
+              operationId: source.operationId,
+              operationGeneration: source.operationGeneration,
             },
           });
         const sealer = new EncryptedChatEventSealer(
@@ -2852,9 +2852,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                         threadId: options.threadId,
                         provenance: {
                           kind: "command",
-                          operationId: grant.receipt.operationId,
-                          operationGeneration:
-                            grant.receipt.operationGeneration,
+                          operationId: source.operationId,
+                          operationGeneration: source.operationGeneration,
                         },
                       },
               })

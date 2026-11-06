@@ -59,6 +59,7 @@ import type {
   PrepareAdmittedNativeExecutionOptions,
 } from "./app-server.js";
 import type { CodexAppServer } from "./app-server.js";
+import type { WorkerTurnContinuation } from "./worker-turn-continuation.js";
 import type {
   ManagedNativeAdmission,
   ManagedNativeOperation,
@@ -118,11 +119,21 @@ export interface ManagedNativeExecutionPublication {
   failed(error: unknown): Promise<void>;
   release(): Promise<void>;
 }
+type SuspendedExecutionGrant = Awaited<
+  ReturnType<NativeCommandClient["admitSuspendedExecution"]>
+>;
+export interface ManagedRestoredExecution {
+  receipt: NativeCommandReceipt;
+  /** Settles only after protected publication and the server terminal receipt. */
+  completion: Promise<void>;
+  assertCurrent(): void;
+}
 export interface ManagedNativeCommandSessionOptions {
   identity: ManagedSessionIdentity;
   runtime: Pick<
     CodexAppServer,
     | "prepareAdmittedNativeExecution"
+    | "prepareRestoredNativeExecution"
     | "awaitPendingAdmittedNativeReply"
     | "resolveAdmittedNativeReply"
     | "transportGeneration"
@@ -170,6 +181,8 @@ export interface ManagedNativeCommandSessionOptions {
   beginExecution(
     grant: NativeCommandAdmissionResult,
     session: NativeCommandSession,
+    /** Original history/output provenance; execution authority is still grant. */
+    source?: Pick<NativeCommandReceipt, "operationId" | "operationGeneration">,
   ): Promise<ManagedNativeExecutionPublication>;
   /** Runs after durable dispatch and before the exact native mutation, e.g. cancelling an autonomous gate before Stop. */
   beforeNativeDispatch?(
@@ -191,6 +204,11 @@ const object = (value: unknown): value is NativeRpcFrame =>
 /** Shares the current admitted root across GUI and all attached terminal views. */
 export class ManagedNativeCommandSession {
   private active: Execution | null = null;
+  private restored: {
+    signature: unknown;
+    execution: Execution;
+    pending: Promise<ManagedRestoredExecution>;
+  } | null = null;
   private readonly goalRecoveryObservers = new Set<() => void>();
   private readonly pendingGoalOperations = new Map<string, Promise<void>>();
   private revoked = false;
@@ -198,6 +216,7 @@ export class ManagedNativeCommandSession {
   private goalMutationResponse: Promise<void> | null = null;
   private readonly expectedActivation = new AsyncLocalStorage<{
     generation: string | null;
+    suspensionControlId?: string;
   }>();
 
   get currentActivationGeneration(): string | null {
@@ -357,9 +376,13 @@ export class ManagedNativeCommandSession {
   withExpectedActivationGeneration<T>(
     expected: string | null,
     dispatch: () => Promise<T>,
+    suspensionControlId?: string,
   ): Promise<T> {
     this.assertActivationGeneration(expected);
-    return this.expectedActivation.run({ generation: expected }, dispatch);
+    return this.expectedActivation.run(
+      { generation: expected, suspensionControlId },
+      dispatch,
+    );
   }
   private readonly settings: ManagedNativeSettings | null;
   constructor(private readonly options: ManagedNativeCommandSessionOptions) {
@@ -498,6 +521,7 @@ export class ManagedNativeCommandSession {
 
   private clearExecution(execution: Execution): void {
     if (this.active === execution) this.active = null;
+    if (this.restored?.execution === execution) this.restored = null;
     execution.removeBridgeListener?.();
     execution.removeBridgeListener = undefined;
     execution.inferenceAbort.abort(
@@ -629,6 +653,253 @@ export class ManagedNativeCommandSession {
       } catch (error) {
         this.options.onError(error, execution.receipt.operationId);
       }
+    }
+  }
+
+  private async publishExecutionResult(
+    execution: Execution,
+    publication: ManagedNativeExecutionPublication | null,
+    releasePublication: () => Promise<void>,
+    result: AgentTurnResult | null,
+    error: unknown,
+    acceptance: "applied" | "rejected" | "uncertain",
+    requireNativeTerminal = false,
+  ): Promise<void> {
+    if (result) {
+      execution.nativeTerminalStatus = "completed";
+      execution.nativeTurnId ??= result.turnId;
+      await publication?.complete(result);
+      await releasePublication();
+      await this.persistResult(
+        execution,
+        result,
+        "applied",
+        true,
+        "idle",
+        true,
+      );
+      return;
+    }
+    if (error instanceof CodexTurnFailureError && !execution.nativeDecline) {
+      execution.nativeTurnId = error.turnId;
+      execution.nativeTerminalStatus = error.terminalStatus;
+      acceptance = "applied";
+    }
+    await publication?.failed(error);
+    await releasePublication();
+    if (requireNativeTerminal && !(error instanceof CodexTurnFailureError)) {
+      // Observer/transport failure is not evidence that the saved native turn
+      // ended. Keep its durable owner/checkpoint retryable on the server.
+      await this.persistResult(
+        execution,
+        { observationLost: true },
+        "uncertain",
+      );
+      throw error instanceof Error
+        ? error
+        : new Error("The restored native execution observer was lost.");
+    }
+    const interrupted =
+      error instanceof CodexTurnFailureError &&
+      error.terminalStatus === "interrupted";
+    await this.persistResult(
+      execution,
+      interrupted ? { interrupted: true } : { failed: true },
+      execution.nativeDecline ? "rejected" : acceptance,
+      true,
+      interrupted ? "idle" : "failed",
+      true,
+    );
+  }
+
+  /** Join fresh server admission to the ordinary publication lifecycle. This
+   * reconstructs an idle observer; the caller must separately authorize Resume. */
+  async restoreSuspendedExecution(
+    grant: SuspendedExecutionGrant,
+    session: NativeCommandSession,
+    continuation: WorkerTurnContinuation,
+    workerSignal?: AbortSignal,
+  ): Promise<ManagedRestoredExecution> {
+    workerSignal?.throwIfAborted();
+    this.assertTransport(session);
+    const evidence = grant.suspension.checkpoint;
+    const owner = grant.suspension.executionOwner;
+    if (
+      !evidence ||
+      grant.suspension.action !== "resume" ||
+      grant.suspension.phase !== "resuming" ||
+      grant.suspension.target.workerId !== this.options.identity.workerId ||
+      grant.suspension.target.originalOperationId !==
+        grant.source.operationId ||
+      grant.receipt.method !== "thread/resume" ||
+      !grant.receipt.startsExecution ||
+      !["accepted", "dispatched", "applied", "uncertain"].includes(
+        grant.receipt.status,
+      ) ||
+      grant.receipt.chatId !== session.chatId ||
+      grant.receipt.threadId !== session.threadId ||
+      evidence.suspension.threadId !== session.threadId ||
+      owner?.operationId !== grant.receipt.operationId ||
+      owner.operationGeneration !== grant.receipt.operationGeneration ||
+      owner.runtimeGeneration !== session.runtimeGeneration
+    )
+      throw new Error(
+        "The restored observer requires its current suspension admission.",
+      );
+    const signature = {
+      operationId: grant.receipt.operationId,
+      operationGeneration: grant.receipt.operationGeneration,
+      activationGeneration: grant.receipt.activationGeneration,
+      payloadDigest: grant.receipt.payloadDigest,
+      controlId: grant.suspension.controlId,
+      suspension: evidence.suspension,
+      source: grant.source,
+      logicalRoot: grant.logicalRoot,
+      session,
+      continuation,
+    };
+    if (this.restored) {
+      if (!isDeepStrictEqual(this.restored.signature, signature))
+        throw new Error("Another restored observer owns this managed session.");
+      const handle = await this.restored.pending;
+      handle.assertCurrent();
+      return handle;
+    }
+    if (this.active)
+      throw new Error("Another native execution owns this managed session.");
+    const execution = this.createExecution(grant.receipt, { ...session });
+    execution.nativeTurnId = evidence.suspension.turnId;
+    execution.expectedTurnId = evidence.suspension.turnId;
+    if (grant.logicalRoot) execution.logicalRoot = { ...grant.logicalRoot };
+    this.active = execution;
+    this.bindGuiBridge(execution, workerSignal);
+    const pending = this.restoreSuspendedExecutionOwned(
+      grant,
+      execution,
+      evidence.suspension,
+      continuation,
+    );
+    this.restored = {
+      signature: structuredClone(signature),
+      execution,
+      pending,
+    };
+    void pending.catch(() => {
+      if (this.restored?.execution === execution) this.restored = null;
+    });
+    return pending;
+  }
+
+  private async restoreSuspendedExecutionOwned(
+    grant: SuspendedExecutionGrant,
+    execution: Execution,
+    suspension: NativeTurnSuspension,
+    continuation: WorkerTurnContinuation,
+  ): Promise<ManagedRestoredExecution> {
+    let publication: ManagedNativeExecutionPublication | null = null;
+    let released: Promise<void> | undefined;
+    const release = () =>
+      (released ??= publication?.release() ?? Promise.resolve());
+    let prepared!: () => void;
+    const preparation = new Promise<void>((resolve) => {
+      prepared = resolve;
+    });
+    let preparationFailed = false;
+    try {
+      await this.options.client.dispatch({
+        operationId: grant.receipt.operationId,
+        operationGeneration: grant.receipt.operationGeneration,
+        payloadDigest: grant.receipt.payloadDigest,
+        session: execution.session,
+      });
+      execution.inferenceSource.assertCurrent();
+      publication = await this.options.beginExecution(
+        grant,
+        execution.session,
+        grant.source,
+      );
+      execution.inferenceSource.assertCurrent();
+      const native = await this.options.runtime.prepareRestoredNativeExecution(
+        {
+          ...publication.options,
+          operationGeneration: grant.receipt.operationGeneration,
+          threadId: suspension.threadId,
+          expectedTurnId: suspension.turnId,
+          inferenceSource: execution.inferenceSource,
+          inferenceSignal: execution.inferenceAbort.signal,
+          onInferenceQueued: async () => {
+            execution.inferenceQueued = true;
+            for (const observe of this.goalRecoveryObservers) observe();
+          },
+          recoveryKey: `native-command:${grant.receipt.operationId}`,
+          recovery: {
+            commandId: grant.receipt.operationId,
+            commandGeneration: grant.receipt.operationGeneration,
+            threadId: suspension.threadId,
+            turnId: suspension.turnId,
+          },
+        },
+        suspension,
+        continuation,
+      );
+      execution.handle = native;
+      const completion = native.completion
+        .then(
+          (result) => ({ result, error: undefined }),
+          (error: unknown) => ({ result: null, error }),
+        )
+        .then(async ({ result, error }) => {
+          await preparation;
+          try {
+            if (!preparationFailed)
+              await this.publishExecutionResult(
+                execution,
+                publication,
+                release,
+                result,
+                error,
+                "applied",
+                true,
+              );
+          } finally {
+            try {
+              await release();
+            } finally {
+              this.clearExecution(execution);
+            }
+          }
+        });
+      void completion.catch((error: unknown) =>
+        this.options.onError(error, grant.receipt.operationId),
+      );
+      native.assertCurrent();
+      execution.inferenceSource.assertCurrent();
+      // This receipt confirms the actual held restoration. It cannot release
+      // the server pause hold or substitute for a native Resume acknowledgement.
+      await this.persistResult(execution, { restored: suspension }, "applied");
+      prepared();
+      return {
+        receipt: grant.receipt,
+        completion,
+        assertCurrent: () => {
+          execution.inferenceSource.assertCurrent();
+          native.assertCurrent();
+        },
+      };
+    } catch (error) {
+      preparationFailed = true;
+      execution.handle?.fail(
+        error instanceof Error
+          ? error
+          : new Error("Native restoration failed."),
+      );
+      prepared();
+      try {
+        await release();
+      } finally {
+        this.clearExecution(execution);
+      }
+      throw error;
     }
   }
 
@@ -1294,6 +1565,8 @@ export class ManagedNativeCommandSession {
     const root = this.active;
     const expected = this.expectedActivation.getStore();
     if (expected) this.assertActivationGeneration(expected.generation);
+    if (expected?.suspensionControlId && intent.durableSuspension)
+      intent.expectedSuspensionControlId = expected.suspensionControlId;
     if (operation.reply) {
       if (!root)
         throw new Error("The native reply has no active admitted execution.");
@@ -1437,44 +1710,14 @@ export class ManagedNativeCommandSession {
         // The exact rejected RPC already settled this unconsumed attempt idle.
         // Releasing its local handle is not a failed model turn or user message.
         if (execution.nativeDeferred || execution.routeWithdrawal) return;
-        if (result) {
-          execution.nativeTerminalStatus = "completed";
-          execution.nativeTurnId ??= result.turnId;
-          await publication?.complete(result);
-          await releasePublication();
-          await this.persistResult(
-            execution,
-            result,
-            "applied",
-            true,
-            "idle",
-            true,
-          );
-        } else {
-          if (
-            error instanceof CodexTurnFailureError &&
-            !execution.nativeDecline
-          ) {
-            execution.nativeTurnId = error.turnId;
-            execution.nativeTerminalStatus = error.terminalStatus;
-            nativeAcceptance = "applied";
-          }
-          await publication?.failed(error);
-          await releasePublication();
-          // Stop ends a turn without leaving the chat failed. Use the native
-          // outcome, not error text that a real provider failure may also contain.
-          const interrupted =
-            error instanceof CodexTurnFailureError &&
-            error.terminalStatus === "interrupted";
-          await this.persistResult(
-            execution,
-            interrupted ? { interrupted: true } : { failed: true },
-            execution.nativeDecline ? "rejected" : nativeAcceptance,
-            true,
-            interrupted ? "idle" : "failed",
-            true,
-          );
-        }
+        await this.publishExecutionResult(
+          execution,
+          publication,
+          releasePublication,
+          result,
+          error,
+          nativeAcceptance,
+        );
       } finally {
         try {
           await releasePublication();
