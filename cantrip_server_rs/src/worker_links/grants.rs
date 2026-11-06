@@ -9,6 +9,45 @@ struct Prepared {
     token: String,
     grant: Grant,
 }
+// resourceKeyOf reads .length before schema validation. Replicated operations
+// accept a loose input record, so malformed fields must return that Source
+// property error rather than panic while the coordinator lock is held.
+fn input_resource_key(owner: &Value, input: &Value) -> Result<Vec<u16>> {
+    let mut key = Vec::new();
+    for part in [
+        Some(owner),
+        input.get("resourceKind"),
+        input.get("resourceId"),
+    ] {
+        let part = part.ok_or_else(|| {
+            anyhow::anyhow!("Cannot read properties of undefined (reading 'length')")
+        })?;
+        if part.is_null() {
+            return Err(
+                anyhow::anyhow!("Cannot read properties of null (reading 'length')").into(),
+            );
+        }
+        let length = match part {
+            Value::String(s) => Some(json!(s.len())),
+            Value::Array(a) => Some(json!(a.len())),
+            Value::Object(o) => o.get("length").cloned(),
+            _ => None,
+        };
+        let coerce = |value| {
+            wire::coercion::string(value)
+                .map_err(|_| anyhow::anyhow!("Cannot convert object to primitive value"))
+        };
+        let length = length
+            .as_ref()
+            .map(coerce)
+            .transpose()?
+            .unwrap_or_else(|| "undefined".into());
+        key.extend_from_slice(length.units());
+        key.push(u16::from(b':'));
+        key.extend_from_slice(coerce(part)?.units());
+    }
+    Ok(key)
+}
 impl Coordinator {
     pub async fn issue_grant(self: &Arc<Self>, input: Value) -> Result<Value> {
         self.assert_open()?;
@@ -50,11 +89,7 @@ impl Coordinator {
         let root = self.state.lock().unwrap();
         let state = ready_state(&root, &session_id)?;
         let session = state.lock().unwrap().session.clone();
-        let key = resource_key(
-            &session["identity"]["ownerId"],
-            &input["resourceKind"],
-            &input["resourceId"],
-        );
+        let key = input_resource_key(&session["identity"]["ownerId"], input)?;
         if root.resource_fences.contains_key(&key) {
             return Err(unavailable("The WorkerLink resource is being revoked."));
         }
@@ -166,6 +201,15 @@ impl Coordinator {
         grant_id: &str,
         reason: &str,
     ) -> bool {
+        self.revoke_grant_value(session_id, grant_id, Value::String(reason.into()))
+            .await
+    }
+    pub(crate) async fn revoke_grant_value(
+        self: &Arc<Self>,
+        session_id: &str,
+        grant_id: &str,
+        reason: Value,
+    ) -> bool {
         let state = self.state.lock().unwrap().sessions.get(session_id).cloned();
         let Some(state) = state else { return false };
         let (session, grant) = {
@@ -176,7 +220,7 @@ impl Coordinator {
             (state.session.clone(), grant)
         };
         let generation = grant.lock().unwrap()["binding"]["grantGeneration"].clone();
-        self.best_effort(session["identity"]["workerId"].clone(),json!({"type":"worker-link.grant.revoke","sessionId":session_id,"grantId":grant_id,"grantGeneration":generation,"revocation":revocation(reason,self.now())}),session["identity"]["ownerId"].clone()).await;
+        self.best_effort(session["identity"]["workerId"].clone(),json!({"type":"worker-link.grant.revoke","sessionId":session_id,"grantId":grant_id,"grantGeneration":generation,"revocation":revocation_value(reason,self.now())}),session["identity"]["ownerId"].clone()).await;
         true
     }
 }

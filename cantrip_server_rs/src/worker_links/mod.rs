@@ -1,5 +1,6 @@
 //! WorkerLink authority. Worker processes own transports and resources; the
 //! server installs short-lived, generation-bound capabilities and fences revocation.
+pub mod authority;
 pub mod frame;
 mod grants;
 mod lifecycle;
@@ -29,13 +30,13 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Clone, Debug)]
 pub enum Error {
-    Unavailable(String),
+    Unavailable(JsString),
     Failure(Arc<anyhow::Error>),
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unavailable(v) => f.write_str(v),
+            Self::Unavailable(v) => f.write_str(&v.lossy()),
             Self::Failure(v) => v.fmt(f),
         }
     }
@@ -79,6 +80,9 @@ fn lease(current: &Value, duration: f64, now: i64, parent: f64) -> Result<Value>
     )
 }
 fn revocation(reason: &str, now: i64) -> Value {
+    revocation_value(Value::String(reason.into()), now)
+}
+fn revocation_value(reason: Value, now: i64) -> Value {
     json!({"reason":reason,"revokedAt":crate::auth::iso(chrono::DateTime::from_timestamp_millis(now).unwrap())})
 }
 fn id(value: &Value, field: &str) -> String {
@@ -291,9 +295,9 @@ impl Coordinator {
             .await
             .map_err(Error::from)?;
         if !matches!(&result, Value::Object(_)) || result["accepted"] != true {
-            return Err(Error::Unavailable(format!(
-                "Worker did not acknowledge {kind}."
-            )));
+            return Err(Error::Unavailable(
+                format!("Worker did not acknowledge {kind}.").into(),
+            ));
         }
         Ok(())
     }

@@ -90,11 +90,15 @@ impl Coordinator {
         }
     }
     pub async fn revoke_session(self: &Arc<Self>, id: &str, reason: &str) -> bool {
+        self.revoke_session_value(id, Value::String(reason.into()))
+            .await
+    }
+    pub(crate) async fn revoke_session_value(self: &Arc<Self>, id: &str, reason: Value) -> bool {
         let state = self.state.lock().unwrap().sessions.get(id).cloned();
         let Some(state) = state else { return false };
         let session = state.lock().unwrap().session.clone();
         self.remove_session(id, &state);
-        self.best_effort(session["identity"]["workerId"].clone(),json!({"type":"worker-link.session.revoke","sessionId":id,"revocation":revocation(reason,self.now())}),session["identity"]["ownerId"].clone()).await;
+        self.best_effort(session["identity"]["workerId"].clone(),json!({"type":"worker-link.session.revoke","sessionId":id,"revocation":revocation_value(reason,self.now())}),session["identity"]["ownerId"].clone()).await;
         true
     }
     pub(super) async fn revoke_sessions_where(
@@ -117,6 +121,10 @@ impl Coordinator {
             .count()
     }
     pub async fn revoke_scope(self: &Arc<Self>, scope: Scope, reason: &str) -> usize {
+        self.revoke_scope_value(scope, Value::String(reason.into()))
+            .await
+    }
+    pub(crate) async fn revoke_scope_value(self: &Arc<Self>, scope: Scope, reason: Value) -> usize {
         let fence = self.fence(scope);
         match &fence.scope {
             Scope::Owner(owner) => {
@@ -163,7 +171,9 @@ impl Coordinator {
                     }
                 }
                 futures::future::join_all(
-                    matches.iter().map(|(s, g)| self.revoke_grant(s, g, reason)),
+                    matches
+                        .iter()
+                        .map(|(s, g)| self.revoke_grant_value(s, g, reason.clone())),
                 )
                 .await
                 .into_iter()
