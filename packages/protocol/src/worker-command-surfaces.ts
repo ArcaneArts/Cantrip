@@ -151,6 +151,8 @@ export const workerSurfaceCommandSchemas = [
         z.object({
           type: z.literal("codex"),
           session: managedSessionContextSchema.optional(),
+          /** Task console identity is not managed input authority. */
+          taskChatId: z.string().min(1).optional(),
           subagentDefaults: managedSessionSubagentDefaultsSchema
             .nullable()
             .optional(),

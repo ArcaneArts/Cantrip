@@ -2,6 +2,17 @@
 use super::*;
 use sha2::{Digest, Sha256};
 
+/// Resolve the current logical binding without changing the immutable keeper
+/// Source or inventing a new physical inference scope.
+pub(crate) fn current_binding(marker: &Value) -> Value {
+    let cycle = &marker["cycle"];
+    let binding = marker.get("binding").filter(|value| !value.is_null());
+    json!({"cycleId":cycle["cycleId"],"goalEpoch":cycle["goalEpoch"],
+        "modelRouteId":binding.map_or_else(||cycle["modelRouteId"].clone(),|b|b["modelRouteId"].clone()),
+        "providerAccountId":binding.map_or_else(||cycle["providerAccountId"].clone(),|b|b["providerAccountId"].clone()),
+        "orderEpoch":binding.map_or_else(||cycle["orderEpoch"].clone(),|b|b["orderEpoch"].clone())})
+}
+
 async fn locked(tx: &Transaction<'_>, owner: &str, chat: &str) -> Result<Option<Value>> {
     if !lock_user(tx, owner).await? {
         return Ok(None);
@@ -36,6 +47,14 @@ async fn locked(tx: &Transaction<'_>, owner: &str, chat: &str) -> Result<Option<
     if row["context"].is_null() {
         return Ok(None);
     }
+    row["handoff"] = Value::Bool(
+        tx.query_opt(
+            "SELECT operation_id FROM native_runtime_handoffs WHERE owner_id=$1 AND chat_id=$2 AND phase IN ('preparing','prepared','committed') LIMIT 1",
+            &[&owner, &chat],
+        )
+        .await?
+        .is_some(),
+    );
     Ok(Some(row))
 }
 fn same_binding(
@@ -60,6 +79,7 @@ fn same_binding(
         && c.get("codex_thread_id") == Some(thread)
         && c.get("model_route_id") == cycle.get("modelRouteId")
         && c.get("provider_account_id") == cycle.get("providerAccountId")
+        && c.get("goal_order_epoch") == cycle.get("orderEpoch")
         && row["route"].get("provider_id") == Some(provider)
         && context.get("workerId") == Some(worker)
         && context.get("threadId") == Some(thread)
@@ -71,7 +91,8 @@ fn same_binding(
 fn eligible(row: &Value) -> bool {
     let (t, c, ch) = (&row["task"], &row["cycle"], &row["chat"]);
     let input = &c["goal_input"];
-    !matches!(t["state"].as_str(), Some("complete" | "failed" | "paused"))
+    row["handoff"] != true
+        && !matches!(t["state"].as_str(), Some("complete" | "failed" | "paused"))
         && ch["automation_paused"] != true
         && ch["managed_autonomy_stopped"] != true
         && row["project"]["task_scheduling_paused"] != true
@@ -133,7 +154,7 @@ impl Repository {
                             &row["context"]["workerId"],
                             &marker["providerId"],
                             &marker["threadId"],
-                            &marker["cycle"],
+                            &current_binding(marker),
                         )
                     {
                         return Ok(None);
@@ -194,7 +215,15 @@ impl Repository {
             let Some(row) = locked(tx,&owner,&chat).await? else {
                 result["disposition"] = json!("retired"); return Ok(result);
             };
-            if !same_binding(&row,&input["workerId"],&record["identity"]["providerId"],&identity["threadId"],cycle) ||
+            let retained = &row["cycle"]["goal_cycle_recovery"];
+            let same_episode = !retained.is_null() &&
+                retained.get("providerId") == record["identity"].get("providerId") &&
+                retained.get("threadId") == identity.get("threadId") &&
+                retained["cycle"].get("cycleId") == cycle.get("cycleId") &&
+                retained["cycle"].get("goalEpoch") == cycle.get("goalEpoch") &&
+                retained["cycle"].get("orderEpoch") == cycle.get("orderEpoch");
+            let binding = if same_episode {current_binding(retained)} else {cycle.clone()};
+            if !same_binding(&row,&input["workerId"],&record["identity"]["providerId"],&identity["threadId"],&binding) ||
                 (truthy(record["identity"].get("projectId")) &&
                     record["identity"].get("projectId") != row["context"].get("projectId")) ||
                 row["task"]["state"] == "complete" || !row["chat"]["archived_at"].is_null() {
@@ -256,8 +285,8 @@ impl Repository {
             if marker.is_null() || marker.get("sourceKey") != input.get("sourceKey") ||
                 marker["cycle"].get("goalEpoch") != input["cycle"].get("goalEpoch") ||
                 marker.get("providerId") != input.get("providerId") ||
-                marker["cycle"].get("orderEpoch") != input["cycle"].get("orderEpoch") ||
-                marker["settled"]["reason"] == "ineligible" ||
+                current_binding(&marker).get("orderEpoch") != input["cycle"].get("orderEpoch") ||
+                (truthy(marker.get("settled")) && marker["settled"]["reason"] != "dispatched") ||
                 (truthy(marker.get("settled")) &&
                     (marker["settled"].get("operationId") != input.get("operationId") ||
                         marker["settled"].get("turnId") != input.get("turnId"))) { return stale(); }
@@ -288,7 +317,7 @@ impl Repository {
             if marker.is_null() || truthy(marker.get("settled")) ||
                 marker.get("sourceKey") != source.get("sourceKey") ||
                 receipt.get("sourceKey") != marker.get("sourceKey") ||
-                !same_binding(&row,&row["context"]["workerId"],&marker["providerId"],&marker["threadId"],&marker["cycle"]) ||
+                !same_binding(&row,&row["context"]["workerId"],&marker["providerId"],&marker["threadId"],&current_binding(&marker)) ||
                 !eligible(&row) { return Ok(None); }
             if receipt["status"] == "scheduled" {
                 let admission = json!({"operationId":receipt["admission"]["operationId"],
@@ -302,8 +331,8 @@ impl Repository {
                 return Ok(None);
             }
             if receipt.get("threadId") != marker.get("threadId") ||
-                receipt.get("modelRouteId") != marker["cycle"].get("modelRouteId") ||
-                receipt.get("providerAccountId") != marker["cycle"].get("providerAccountId") ||
+                receipt.get("modelRouteId") != current_binding(&marker).get("modelRouteId") ||
+                receipt.get("providerAccountId") != current_binding(&marker).get("providerAccountId") ||
                 (receipt.get("observedGoalEpoch") == marker["cycle"].get("goalEpoch") &&
                     receipt["observedGoalStatus"] == "active") { return Ok(None); }
             marker["settled"] = json!({"reason":"ineligible","operationId":Value::Null,"turnId":marker["turnId"]});

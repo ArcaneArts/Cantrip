@@ -1,0 +1,228 @@
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+--- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+@@ -2684,2 +2684,5 @@
+     pub expected_goal_epoch: Option<String>,
++    /// Exact owning root hold; waiting must not seal a later transfer.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub expected_handoff_operation: Option<String>,
+ }
+diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
+--- a/codex-rs/app-server/src/request_processors/turn_processor.rs
++++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
+@@ -203,2 +203,3 @@
+                 params.expected_goal_epoch.as_deref(),
++                params.expected_handoff_operation.as_deref(),
+             )
+diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+--- a/codex-rs/core/src/codex_thread.rs
++++ b/codex-rs/core/src/codex_thread.rs
+@@ -1087,8 +1087,13 @@
+         &self,
+         expected_last_turn_id: Option<&str>,
+         expected_goal_epoch: Option<&str>,
++        expected_handoff_operation: Option<&str>,
+     ) -> CodexResult<codex_thread_store::PortableThreadHistory> {
+         self.session
+-            .export_managed_history(expected_last_turn_id, expected_goal_epoch)
++            .export_managed_history(
++                expected_last_turn_id,
++                expected_goal_epoch,
++                expected_handoff_operation,
++            )
+             .await
+     }
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+--- a/codex-rs/core/src/managed_execution.rs
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -48 +48,2 @@
+     handoff_goal_mutations: usize,
++    handoff_waiters: Vec<oneshot::Sender<()>>,
+@@ -114 +115,4 @@
+         state.handoff_goal_mutations = state.handoff_goal_mutations.saturating_sub(1);
++        for waiter in std::mem::take(&mut state.handoff_waiters) {
++            let _ = waiter.send(());
++        }
+@@ -480,3 +484,6 @@
++        for waiter in std::mem::take(&mut state.handoff_waiters) {
++            let _ = waiter.send(());
++        }
+         Ok((state.handoff_revision, state.handoff_operation.clone()))
+     }
+ 
+@@ -490,18 +497,48 @@
+-    /// Called only while the actual tree execution coordinator is locked and
+-    /// has confirmed no live execution, auxiliary producer or suspension hold.
+-    pub fn seal_handoff_export(&self, thread_id: ThreadId) -> Result<(), String> {
++    /// Subscribe before inspecting tree readiness. Any notification is only a
++    /// reason to inspect again; the actual root and execution lock decide.
++    pub fn handoff_change(
++        &self,
++        thread_id: ThreadId,
++        operation: &str,
++    ) -> Result<oneshot::Receiver<()>, String> {
+         let mut state = self
+             .state
+             .lock()
+             .unwrap_or_else(std::sync::PoisonError::into_inner);
+-        if state.thread_id != Some(thread_id) || state.inherited {
+-            return Err("history export targets another native root".into());
++        if state.closed
++            || state.inherited
++            || state.thread_id != Some(thread_id)
++            || state.handoff_operation.as_deref() != Some(operation)
++        {
++            return Err("native handoff ownership changed while waiting for export".into());
++        }
++        state.handoff_waiters.retain(|waiter| !waiter.is_closed());
++        let (send, receive) = oneshot::channel();
++        state.handoff_waiters.push(send);
++        Ok(receive)
++    }
++
++    /// Called only while the actual tree admission lock is held. False means a
++    /// Goal mutation still owns its permit; drop the tree lock before waiting.
++    pub fn seal_handoff_export(
++        &self,
++        thread_id: ThreadId,
++        operation: &str,
++    ) -> Result<bool, String> {
++        let mut state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state.closed
++            || state.thread_id != Some(thread_id)
++            || state.inherited
++            || state.handoff_operation.as_deref() != Some(operation)
++        {
++            return Err("history export targets another native handoff".into());
+         }
+         if state.handoff_goal_mutations != 0 {
+-            return Err("cannot migrate history while native Goal state is changing".into());
++            return Ok(false);
+         }
+-        if state.handoff_operation.is_some() {
+-            state.handoff_export_sealed = true;
+-        }
+-        Ok(())
++        state.handoff_export_sealed = true;
++        Ok(true)
+     }
+@@ -820,2 +857,3 @@
+             state.closed = true;
++            state.handoff_waiters.clear();
+             state.resource_requests.clear();
+diff --git a/codex-rs/core/src/session/security_transitions.rs b/codex-rs/core/src/session/security_transitions.rs
+--- a/codex-rs/core/src/session/security_transitions.rs
++++ b/codex-rs/core/src/session/security_transitions.rs
+@@ -92,2 +92,3 @@
+     state: Mutex<TransitionState>,
++    history_changed: tokio::sync::Notify,
+ }
+@@ -153,7 +154,20 @@
+-    pub(crate) async fn history_export_guard(&self) -> CodexResult<HistoryExportGuard<'_>> {
+-        let state = self.state.lock().await;
+-        if !state.active.is_empty() {
+-            return Err(CodexErr::InvalidRequest(
+-                "cannot migrate history while the native agent tree is executing".into(),
+-            ));
+-        }
++    pub(crate) async fn history_export_guard(
++        &self,
++        wait: bool,
++    ) -> CodexResult<HistoryExportGuard<'_>> {
++        let state = loop {
++            let changed = self.history_changed.notified();
++            tokio::pin!(changed);
++            changed.as_mut().enable();
++            let state = self.state.lock().await;
++            if state.active.is_empty() {
++                break state;
++            }
++            if !wait {
++                return Err(CodexErr::InvalidRequest(
++                    "cannot migrate history while the native agent tree is executing".into(),
++                ));
++            }
++            drop(state);
++            changed.await;
++        };
+@@ -340,3 +354,4 @@
+         let members: Vec<_> = state.sessions.values().filter_map(Weak::upgrade).collect();
+         drop(state);
++        self.history_changed.notify_waiters();
+         for member in members {
+diff --git a/codex-rs/core/src/session/managed_context.rs b/codex-rs/core/src/session/managed_context.rs
+--- a/codex-rs/core/src/session/managed_context.rs
++++ b/codex-rs/core/src/session/managed_context.rs
+@@ -6,17 +6,42 @@
+         &self,
+         expected_last_turn_id: Option<&str>,
+         expected_goal_epoch: Option<&str>,
++        expected_handoff_operation: Option<&str>,
+     ) -> CodexResult<codex_thread_store::PortableThreadHistory> {
+-        // Native execution leases cover children, auxiliary producers and final
+-        // hooks even after the root clears active_turn. Keep admission locked
+-        // through the actual history/settings capture, not an earlier read.
+-        let _tree = self
+-            .services
+-            .local_agent_runtime
+-            .security_transitions
+-            .history_export_guard()
+-            .await?;
+-        if let Some(gate) = self.managed_execution_gate().await {
+-            gate.seal_handoff_export(self.thread_id())
+-                .map_err(CodexErr::InvalidRequest)?;
+-        }
++        let coordinator = &self.services.local_agent_runtime.security_transitions;
++        let gate = self.managed_execution_gate().await;
++        let _tree = if let Some(operation) = expected_handoff_operation {
++            let gate = gate.as_ref().ok_or_else(|| {
++                CodexErr::InvalidRequest("history export has no native transfer owner".into())
++            })?;
++            loop {
++                let mut changed = gate
++                    .handoff_change(self.thread_id(), operation)
++                    .map_err(CodexErr::InvalidRequest)?;
++                let tree = tokio::select! {
++                    result = coordinator.history_export_guard(true) => result?,
++                    _ = &mut changed => continue,
++                };
++                if gate
++                    .seal_handoff_export(self.thread_id(), operation)
++                    .map_err(CodexErr::InvalidRequest)?
++                {
++                    break tree;
++                }
++                // A Goal writer can need the tree lock. Never retain that lock
++                // while waiting for its actual mutation permit to settle.
++                drop(tree);
++                let _ = changed.await;
++            }
++        } else {
++            let tree = coordinator.history_export_guard(false).await?;
++            if gate
++                .as_ref()
++                .is_some_and(|gate| gate.root_producer_held(self.thread_id()))
++            {
++                return Err(CodexErr::InvalidRequest(
++                    "history export requires its current transfer identity".into(),
++                ));
++            }
++            tree
++        };
+@@ -66 +91,13 @@
++        if let Some(operation) = expected_handoff_operation {
++            if !gate
++                .as_ref()
++                .expect("export owns its root gate")
++                .seal_handoff_export(self.thread_id(), operation)
++                .map_err(CodexErr::InvalidRequest)?
++            {
++                return Err(CodexErr::InvalidRequest(
++                    "native Goal changed during export".into(),
++                ));
++            }
++        }
+         Ok(snapshot)

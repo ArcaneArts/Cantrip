@@ -39,6 +39,7 @@ import { errorMessage, invalidBody } from "../../http/request-helpers.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 import { GOAL_RESUME_PROMPT } from "../shared/constants.js";
 import { boundManagedRuntime } from "../../terminals/bound-managed-runtime.js";
+import { settleTaskGoalHandoffForControl } from "../../terminals/task-goal-handoff-control.js";
 
 interface GoalResumeTurnInput {
   customSubagentModel?: boolean;
@@ -104,6 +105,7 @@ export interface ChatGoalRouteDependencies {
     | "updateChatRuntime"
     | "getModelRuntimeByRoute"
     | "listModelProviderAccountRuntimes"
+    | "nativeRuntimeHandoffs"
   >;
   routePairsForConfiguration: ManagedConsoleRouting["routePairsForConfiguration"];
   resolveModelId: (context: ChatExecutionContext) => Promise<string>;
@@ -284,6 +286,15 @@ export function installChatGoalRoutes(
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
+    try {
+      await settleTaskGoalHandoffForControl(
+        applicationOwnerId(),
+        request.params.chatId,
+        { repository, bridge },
+      );
+    } catch (error) {
+      return reply.code(409).send({ error: errorMessage(error) });
+    }
     const context = await repository.getChatExecutionContext(
       applicationOwnerId(),
       request.params.chatId,
@@ -332,6 +343,14 @@ export function installChatGoalRoutes(
               effectivePermissionProfile(context).effectiveId,
             taskContext: {
               task: taskContentFromSummary(task),
+              ...(task.dispatch
+                ? {
+                    nativeCycle: {
+                      cycleId: task.dispatch.id,
+                      orderEpoch: task.dispatch.goalOrderEpoch ?? 0,
+                    },
+                  }
+                : {}),
               automationPaused: context.automationPaused,
               chatStatus: context.status,
               message,
@@ -464,6 +483,15 @@ export function installChatGoalRoutes(
   app.delete<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/goal",
     async (request, reply) => {
+      try {
+        await settleTaskGoalHandoffForControl(
+          applicationOwnerId(),
+          request.params.chatId,
+          { repository, bridge },
+        );
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
       const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
         request.params.chatId,

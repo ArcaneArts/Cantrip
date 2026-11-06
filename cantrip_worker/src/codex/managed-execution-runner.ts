@@ -3,6 +3,7 @@ import type {
   CodexAppServer,
   ManagedExecutionGateHandler,
 } from "./app-server.js";
+import { ManagedRootProducerHold } from "./managed-root-producer-hold.js";
 
 type RunnerRuntime = Pick<
   CodexAppServer,
@@ -23,11 +24,7 @@ export class ManagedExecutionRunner {
   private invalidated = false;
   private revoked = false;
   private pendingBind: { previous: string; next: string } | null = null;
-  private providerTransfer: {
-    operationId: string;
-    generation: string;
-    revision: string | null;
-  } | null = null;
+  private readonly providerTransfer: ManagedRootProducerHold;
   private mutations: Promise<void> = Promise.resolve();
 
   constructor(
@@ -35,6 +32,7 @@ export class ManagedExecutionRunner {
     threadId: string | null,
     private readonly handler: ManagedExecutionGateHandler,
   ) {
+    this.providerTransfer = new ManagedRootProducerHold(runtime);
     this.threadId = threadId;
     this.transport = runtime.transportGeneration;
     this.register();
@@ -88,7 +86,7 @@ export class ManagedExecutionRunner {
   /** Revokes this actual runner registration; a queue wake cannot reopen it. */
   revoke(): void {
     this.revoked = true;
-    this.providerTransfer = null;
+    this.providerTransfer.discard();
     this.controller.abort(new Error("The managed resource was removed."));
   }
 
@@ -112,8 +110,8 @@ export class ManagedExecutionRunner {
         this.transport !== transport ||
         this.generation !== runnerGeneration ||
         this.pendingBind ||
-        (this.providerTransfer &&
-          this.providerTransfer.operationId !== operationId)
+        (this.providerTransfer.heldBy &&
+          this.providerTransfer.heldBy !== operationId)
       )
         throw new Error(
           "The provider transfer belongs to another native runner.",
@@ -127,35 +125,12 @@ export class ManagedExecutionRunner {
         );
         return;
       }
-      const transfer = (this.providerTransfer ??= {
+      await this.providerTransfer.hold(
         operationId,
-        generation: runnerGeneration,
-        revision: null,
-      });
-      if (transfer.revision === null) {
-        const observed = await this.runtime.controlManagedRootProducer(
-          { threadId, runnerGeneration, action: "read" },
-          transport,
-        );
-        if (observed.heldBy && observed.heldBy !== operationId)
-          throw new Error("Another provider transfer holds this native root.");
-        transfer.revision = observed.revision;
-      }
-      const held = await this.runtime.controlManagedRootProducer(
-        {
-          threadId,
-          runnerGeneration,
-          action: "hold",
-          operationId,
-          expectedRevision: transfer.revision,
-        },
+        runnerGeneration,
+        threadId,
         transport,
       );
-      if (held.heldBy !== operationId)
-        throw new Error(
-          "The native root did not acknowledge its transfer hold.",
-        );
-      transfer.revision = held.revision;
     });
   }
 
@@ -167,44 +142,20 @@ export class ManagedExecutionRunner {
     transport: string,
   ): Promise<void> {
     return this.mutate(async () => {
-      const transfer = this.providerTransfer;
-      if (!transfer || transfer.operationId !== operationId || this.revoked)
-        return;
+      if (this.providerTransfer.heldBy !== operationId || this.revoked) return;
       this.prepared(threadId);
       if (
         this.transport !== transport ||
         this.pendingBind ||
-        this.generation !== transfer.generation ||
         this.controller.signal.aborted
       )
         return;
-      const observed = await this.runtime.controlManagedRootProducer(
-        {
-          threadId,
-          runnerGeneration: transfer.generation,
-          action: "read",
-        },
+      await this.providerTransfer.release(
+        operationId,
+        this.generation,
+        threadId,
         transport,
       );
-      if (observed.heldBy && observed.heldBy !== operationId)
-        throw new Error("Another provider transfer holds this native root.");
-      // Even a hold whose response was lost has an exact native revision. If
-      // it has not arrived yet, release seals the old revision against it.
-      const released = await this.runtime.controlManagedRootProducer(
-        {
-          threadId,
-          runnerGeneration: transfer.generation,
-          action: "release",
-          operationId,
-          expectedRevision: observed.heldBy
-            ? observed.revision
-            : (transfer.revision ?? observed.revision),
-        },
-        transport,
-      );
-      if (released.heldBy !== null)
-        throw new Error("The native root still holds a provider transfer.");
-      this.providerTransfer = null;
     });
   }
 
@@ -261,7 +212,7 @@ export class ManagedExecutionRunner {
           "The native command belongs to a replaced runner transport.",
         );
       if (method === "turn/interrupt" || cancelGoalAttempt) {
-        this.providerTransfer = null;
+        this.providerTransfer.discard();
         this.controller.abort(
           new Error("The managed runner was explicitly stopped."),
         );
@@ -282,7 +233,7 @@ export class ManagedExecutionRunner {
           transport,
         );
       } else if (this.invalidated && resumeAutonomy) {
-        this.providerTransfer = null;
+        this.providerTransfer.discard();
         await this.rebind(threadId, transport);
       }
     });

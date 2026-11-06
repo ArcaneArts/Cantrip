@@ -923,6 +923,13 @@ export const taskMessageRelayResultSchema = z
 
 export const taskGoalSyncContextSchema = z
   .object({
+    nativeCycle: z
+      .object({
+        cycleId: z.string().uuid(),
+        orderEpoch: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+      })
+      .strict()
+      .optional(),
     runtimeFailure: z
       .object({ kind: taskFailureKindSchema, occurredAt: z.iso.datetime() })
       .strict()

@@ -3,16 +3,16 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "0c679466a4e3dc1c2eca48d160644ad680fe639e6b6eca946798f39bd436343d",
-    "baselineCommit": "50e2760be",
+    "sha256": "940b3cb255424ce0f024bad250e34e2063ffd852634f15895ee477d11f700f5e",
+    "baselineCommit": "1582ac9dd",
     "counts": {
-      "routes": 544,
-      "workerCommands": 300,
+      "routes": 552,
+      "workerCommands": 307,
       "durableTables": 116,
       "repositoryMethods": 367,
       "liveResources": 47
     },
-    "workingTreeNote": "Integration with50e2760be reviews one new authenticated Goal recovery fence and chat.goal.recover command. Existing content classifications and all other reviewed contract-set digests are unchanged. Declared table count remains116; current full native product/platform and replacement acceptance remain required.",
+    "workingTreeNote": "Source-only reconciliation atop1582ac9dd adds the Task Goal handoff source endpoint and reviews previously merged Task cycle dispatch, suspension execution, Goal claim/recovery and CantripOS backup contracts. The backup URL tuple is read from its literal source because the existing static parser does not resolve destructured loop bindings. Route and worker-command digests reflect the reviewed source set; no boundary audit, tests, builds, native patch application or runtime acceptance ran. Declared table count remains116; full native product/platform and replacement acceptance remain required.",
     "migrationBackedTableCount": 122
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
@@ -5275,6 +5275,20 @@
           "scripts/server-rust/cli-context-oracle.mjs",
           "cantrip_server_rs/src/cli/tests.rs",
           "docs/RUST_SERVER_CLI.md"
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/runtime-handoffs/source",
+        "implementation": "cantrip_server_rs/src/http/native_handoffs.rs",
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/src/native_handoffs/task_goal_capture.rs",
+          "cantrip_server_rs/src/native_handoffs/task_goal.rs"
+        ],
+        "remaining": [
+          "Source reviewed only: actual native private-scope capture, transfer, cancellation, restart recovery and platform behavior have not been executed.",
+          "Native0083/0084 patches were authored and formatted but not applied, compiled or run."
         ]
       }
     ]

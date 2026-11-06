@@ -176,6 +176,7 @@ export function toTaskDispatchCycleSummary(
     selectedTaskWorkerId: row.selectedTaskWorkerId,
     taskWorkerRevision: row.taskWorkerRevision,
     continuityFamily: row.continuityFamily,
+    ...(row.goalOrderEpoch > 0 ? { goalOrderEpoch: row.goalOrderEpoch } : {}),
     modelConfiguration: row.modelConfiguration,
     modelRouteId: row.modelRouteId,
     providerAccountId: row.providerAccountId,

@@ -87,6 +87,27 @@ rearms an explicit Stop/Pause. The worker-private RPC is consumed by the existin
 handoff coordinator and managed execution runner. Source review, direct source
 formatting and `git diff --check` were used; native patch application, builds,
 tests and runtime execution were not performed.
+Patch `0083` couples the Goal runtime's existing mutation permit to the native
+root's export seal. Export refuses a live Goal mutation rather than waiting on
+its async permit while holding tree admission; sealed roots reject later Goal
+mutations until the owning transfer releases its hold. An optional exact Goal
+epoch is compared against the actual portable snapshot before publication.
+The worker persists that expectation in its export plan for retry/recovery.
+This is a native checkpoint boundary; the Task provider-transfer server and UI
+integration remains separate. Only source review, formatting of new fragments,
+and `git diff --check` were performed. The native patch was not assembled,
+applied, compiled or executed.
+Patch `0084` lets an owned transfer wait for actual native tree lease release
+and Goal mutation settlement before sealing its snapshot. It registers wakeups
+before inspecting state, then repeats the real locked readiness check. It never
+treats an acknowledgement, timeout or notification as settlement. Cancellation
+and native invalidation wake the waiter; an exact transfer identity prevents a
+late export from sealing a subsequent transfer. Goal permit waits release tree
+admission first. The worker's export observer can be cancelled promptly while
+native I/O remains fenced, and this settlement wait has no inference deadline.
+Ordinary RPC and inference deadlines remain unchanged. These changes received
+source review and direct fragment formatting only; native application, builds
+and runtime behavior remain unverified.
 The new item payload wrapper retains lifecycle timestamps, and history replay
 keeps upstream's bounded, cancellable projection pipeline. Cold resume keeps
 acknowledged owned settings and upstream's current permission constraints.

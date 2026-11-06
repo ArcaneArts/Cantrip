@@ -111,6 +111,12 @@ pub(crate) fn summary(row: &Value) -> Result<Value> {
     ] {
         value[name] = row[column].clone();
     }
+    if row["goal_order_epoch"]
+        .as_f64()
+        .is_some_and(|epoch| epoch > 0.0)
+    {
+        value["goalOrderEpoch"] = row["goal_order_epoch"].clone();
+    }
     for (name, column) in [
         ("fifoCreatedAt", "fifo_created_at"),
         ("leaseExpiresAt", "lease_expires_at"),

@@ -45,7 +45,14 @@ pub(super) async fn apply(
         prior["providerAccountId"] = row["target_provider_account_id"].clone();
         prior
     };
-    guards::assert_source(tx, owner, &prior).await?;
+    guards::assert_source(
+        tx,
+        owner,
+        &prior,
+        &row["queued_source"],
+        row["cancel_requested"] == true,
+    )
+    .await?;
     guards::assert_idle(tx, &chat, &row["queued_source"]).await?;
     let (route, account) = if side == "source" {
         (

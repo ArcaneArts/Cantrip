@@ -79,6 +79,20 @@ async fn read(
         Err(cause) => failure(&service, &context.id, cause),
     }
 }
+async fn task_source(
+    State(service): State<Arc<AuthService>>,
+    Extension(context): Extension<Arc<Context>>,
+    Path(chat): Path<String>,
+) -> Response {
+    match service
+        .native_handoffs
+        .read_task_source(owner(&context), &chat)
+        .await
+    {
+        Ok(value) => json_response(StatusCode::OK, value),
+        Err(cause) => failure(&service, &context.id, cause),
+    }
+}
 async fn start(
     State(service): State<Arc<AuthService>>,
     Extension(context): Extension<Arc<Context>>,
@@ -286,6 +300,10 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         .route(
             "/api/chats/{chatId}/runtime-handoffs",
             get(inventory).post(start),
+        )
+        .route(
+            "/api/chats/{chatId}/runtime-handoffs/source",
+            post(task_source),
         )
         .route(
             "/api/chats/{chatId}/runtime-handoffs/{operationId}",

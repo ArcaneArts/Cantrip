@@ -49,6 +49,7 @@ import { TaskInteractionRequests } from "./task-interaction-requests";
 import { TaskListBackButton } from "./task-list-back-button";
 import { TaskOverviewSummary } from "./task-overview-summary";
 import { TaskQueuedProviderTransfer } from "./task-queued-provider-transfer";
+import { TaskGoalProviderTransfer } from "./task-goal-provider-transfer";
 import { TaskRetryStatus, taskRetryFailureLabel } from "./task-retry-status";
 
 const goalLabels: Record<TaskGoalSnapshot["status"], string> = {
@@ -582,7 +583,13 @@ export function TaskImplementationDashboard({
             }
             visible={visible}
           />
-        ) : null}
+        ) : (
+          <TaskGoalProviderTransfer
+            chatId={chat.id}
+            queued={Boolean(inferenceQueue.data)}
+            visible={visible}
+          />
+        )}
         <TaskOverviewSummary
           chat={chat}
           task={task}

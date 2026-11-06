@@ -2666,3 +2666,50 @@ patch execution, hosted validation, or computer-use testing ran. The migration
 was not applied. Runtime and platform behavior remain unverified. Task-private
 provider transfers and the remaining full lifecycle audit are still part of the
 active concurrency goal.
+
+## Queued Task Goal provider transfers
+
+A Task with an existing active native Goal can transfer its actual unused private
+cycle through the same durable handoff used by Agent chats. Opening the control
+reads the owning worker's real SDK keeper record, native inference claim and
+protected settings snapshot. Begin captures that Source again outside the
+transaction, then rechecks the canonical Task cycle and binding under its normal
+lock. A browser never supplies an invented native Source or a copied Goal prompt.
+
+The worker withdraws only a positively unused inference scope, holds the exact
+native root producer, and exports after actual tree execution and Goal mutations
+settle. Existing children retain their gates while settling. Native patches0083
+and0084 bind the export to the Goal epoch and exact handoff operation; notification
+or request cancellation alone is not settlement. An owned export can wait beyond
+the ordinary RPC observation deadline. Cancelling its observation permits the
+existing coordinator to restore/release the exact hold; native I/O remains
+fenced by the original transfer identity.
+
+Commit changes the Task and dispatch-cycle root model configuration with the
+canonical route/account. Changing accounts or models within one provider retains
+the Source ordering episode and current-binding alias. Moving to another provider
+increments the durable Goal order epoch, retires the old Source as transferred,
+and lets the destination obtain a fresh FIFO position. Neither server grants a
+ticket. Task consoles and external-thread observation follow the acknowledged
+runtime. Publication never sends a Goal setter or replays input. Goal controls
+first settle an outstanding transfer so its export seal cannot strand a control
+against the old root. Pause/Stop and cold child portability still require the
+remaining full lifecycle audit.
+
+The Task view reuses the existing provider/account/model transfer editor. Handoff
+status uses scoped chat/task live invalidations and snapshot reads on reopen,
+rather than periodic whole-view polling. Explicit first-input Task Goal retargeting
+is not included in this milestone: a pending first setter and an already-applied
+setter need their own input-receipt handling and must never be replayed as an
+ordinary queued prompt.
+
+Validation for this milestone: source review, direct formatting, mechanical
+protocol-source export (671 roots, 11,131 nodes; Run export 11 roots, 453 nodes), and
+`git diff --check`. Route/command metadata was reconciled from reviewed source,
+including previously merged contracts missing from the old inventory. The
+existing static route parser cannot resolve the backup route's destructured
+literal tuple; its two literal URLs were read directly for this bookkeeping.
+No boundary audit, tests, builds, typechecks, benchmarks, native patch application
+or checks, native/helper execution, hosted validation, or computer-use testing
+ran. The migration and native patches remain unexecuted, and runtime/platform
+behavior remains unverified. The complete concurrency goal remains active.

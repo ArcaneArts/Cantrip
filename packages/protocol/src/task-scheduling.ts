@@ -175,6 +175,12 @@ export const taskDispatchCycleSummarySchema = z
     selectedTaskWorkerId: z.string().uuid().nullable(),
     taskWorkerRevision: z.number().int().positive().nullable(),
     continuityFamily: taskWorkerContinuityFamilySchema.nullable(),
+    goalOrderEpoch: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
     modelConfiguration: modelConfigurationSchema.nullable(),
     modelRouteId: z.string().min(1).max(200).nullable(),
     providerAccountId: z.string().min(1).max(200).nullable(),

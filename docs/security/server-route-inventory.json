@@ -26,6 +26,7 @@
       "cantrip_server/src/app/routes/auth-sessions.ts",
       "cantrip_server/src/app/routes/browser-management.ts",
       "cantrip_server/src/app/routes/browser-service-discovery.ts",
+      "cantrip_server/src/app/routes/cantrip-os-backups.ts",
       "cantrip_server/src/app/routes/cantrip-os.ts",
       "cantrip_server/src/app/routes/chat-archive-lifecycle.ts",
       "cantrip_server/src/app/routes/chat-attachments.ts",
@@ -72,6 +73,7 @@
       "cantrip_server/src/app/routes/internal-native-queue.ts",
       "cantrip_server/src/app/routes/internal-native-runtime-handoffs.ts",
       "cantrip_server/src/app/routes/internal-native-settings.ts",
+      "cantrip_server/src/app/routes/internal-native-suspension-execution.ts",
       "cantrip_server/src/app/routes/internal-native.ts",
       "cantrip_server/src/app/routes/internal-provider-credentials.ts",
       "cantrip_server/src/app/routes/internal-worker-automations.ts",
@@ -174,6 +176,7 @@
       "cantrip_server/src/app/runtime/project-goal-observations.ts",
       "cantrip_server/src/app/runtime/project-task-pause-runtime.ts",
       "cantrip_server/src/app/runtime/protect-chat-input.ts",
+      "cantrip_server/src/app/runtime/retain-suspended-chat-turn.ts",
       "cantrip_server/src/app/runtime/run-configuration-os-source.ts",
       "cantrip_server/src/app/runtime/run-configuration-runtime.ts",
       "cantrip_server/src/app/runtime/session-socket-runtime.ts",
@@ -213,20 +216,20 @@
     "workerCommands": "packages/protocol/src/index.ts"
   },
   "summary": {
-    "application-principal": 493,
+    "application-principal": 499,
     "external-credential": 1,
     "public-authentication": 3,
     "public-bootstrap": 3,
-    "worker-control": 44,
-    "http": 537,
+    "worker-control": 46,
+    "http": 545,
     "legacyLocalOwnerRoutes": 0,
-    "requestPrincipalRoutes": 429,
-    "total": 544,
+    "requestPrincipalRoutes": 430,
+    "total": 552,
     "websocket": 7,
-    "workerCredentialRoutes": 44,
+    "workerCredentialRoutes": 46,
     "durableTables": 116,
     "agentOperations": 56,
-    "workerCommands": 300,
+    "workerCommands": 307,
     "liveResources": 47,
     "clientControlCommands": 4,
     "cliCommands": 35,
@@ -242,11 +245,11 @@
   },
   "contractSetDigests": {
     "agentOperations": "c01cedeb5ad07aa7eeee81033073509e4be8826ed45621e68200d85a2c5c61b9",
-    "applicationRoutes": "f15e0198b428cf14d381532a7fce481a82c66a617c6cd2ae60de79c07c7b8929",
+    "applicationRoutes": "80275783889fa50d9562a615c4cc2bd79effbd471ba2953cd89a02dd5261f6b1",
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
-    "workerCommands": "f969b38a6d8847725852fbd8b0e9b2a4b8f5c9b33dfe3847ecb580e145aa0847",
+    "workerCommands": "ab1e2075557184067fca4ab0f1a600f6c42f9b0a4adddc14617d72f54965a144",
     "tunnelFrameKinds": "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8"
   },
   "durableTables": [
@@ -1277,7 +1280,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/cantrip-os.ts",
-      "line": 73,
+      "line": 75,
       "method": "GET",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/cantrip-os",
@@ -1289,8 +1292,21 @@
     },
     {
       "boundary": "application-principal",
+      "ownerEvidence": "delegated-or-missing-review",
+      "file": "cantrip_server/src/app/routes/cantrip-os-backups.ts",
+      "line": 53,
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/backup-operations",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "endpoint-protected",
+        "rationale": "owner-resolved backup operations carry endpoint-encrypted request/result envelopes; instance, operation, revision and phase are routing metadata, and archives remain on authorized endpoints"
+      }
+    },
+    {
+      "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/cantrip-os.ts",
-      "line": 106,
+      "line": 108,
       "method": "POST",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/cantrip-os/:instanceId/recovery",
@@ -1303,7 +1319,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/cantrip-os.ts",
-      "line": 112,
+      "line": 114,
       "method": "POST",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/cantrip-os/:instanceId/refresh",
@@ -1316,7 +1332,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/cantrip-os.ts",
-      "line": 118,
+      "line": 120,
       "method": "GET",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/cantrip-os/:instanceId/workspaces",
@@ -1329,7 +1345,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/cantrip-os.ts",
-      "line": 134,
+      "line": 136,
       "method": "POST",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/cantrip-os/:instanceId/workspaces",
@@ -1342,7 +1358,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/cantrip-os.ts",
-      "line": 100,
+      "line": 102,
       "method": "POST",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/cantrip-os/attach",
@@ -1354,8 +1370,60 @@
     },
     {
       "boundary": "application-principal",
+      "ownerEvidence": "delegated-or-missing-review",
+      "file": "cantrip_server/src/app/routes/cantrip-os-backups.ts",
+      "line": 42,
+      "method": "GET",
+      "path": "/api/cantrip-os/backup-operations",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "endpoint-protected",
+        "rationale": "owner-resolved backup operations carry endpoint-encrypted request/result envelopes; instance, operation, revision and phase are routing metadata, and archives remain on authorized endpoints"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "ownerEvidence": "delegated-or-missing-review",
+      "file": "cantrip_server/src/app/routes/cantrip-os-backups.ts",
+      "line": 48,
+      "method": "GET",
+      "path": "/api/cantrip-os/backup-operations/:operationId",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "endpoint-protected",
+        "rationale": "owner-resolved backup operations carry endpoint-encrypted request/result envelopes; instance, operation, revision and phase are routing metadata, and archives remain on authorized endpoints"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "ownerEvidence": "delegated-or-missing-review",
+      "file": "cantrip_server/src/app/routes/cantrip-os-backups.ts",
+      "line": 64,
+      "method": "POST",
+      "path": "/api/cantrip-os/backup-operations/:operationId/recovery",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "endpoint-protected",
+        "rationale": "owner-resolved backup operations carry endpoint-encrypted request/result envelopes; instance, operation, revision and phase are routing metadata, and archives remain on authorized endpoints"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "ownerEvidence": "delegated-or-missing-review",
+      "file": "cantrip_server/src/app/routes/cantrip-os-backups.ts",
+      "line": 42,
+      "method": "GET",
+      "path": "/api/cantrip-os/backups",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "endpoint-protected",
+        "rationale": "owner-resolved backup operations carry endpoint-encrypted request/result envelopes; instance, operation, revision and phase are routing metadata, and archives remain on authorized endpoints"
+      }
+    },
+    {
+      "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/cantrip-os.ts",
-      "line": 94,
+      "line": 96,
       "method": "POST",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/cantrip-os/inspect",
@@ -1511,7 +1579,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-execution-control.ts",
-      "line": 57,
+      "line": 58,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/compact",
@@ -1823,7 +1891,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-goals.ts",
-      "line": 463,
+      "line": 483,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/goal",
@@ -1836,7 +1904,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-goals.ts",
-      "line": 149,
+      "line": 152,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/goal",
@@ -1849,7 +1917,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-goals.ts",
-      "line": 278,
+      "line": 281,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/goal",
@@ -1862,7 +1930,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-goals.ts",
-      "line": 226,
+      "line": 229,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/goal",
@@ -1875,7 +1943,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-execution-control.ts",
-      "line": 141,
+      "line": 142,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/interrupt",
@@ -2252,7 +2320,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-runtime-handoffs.ts",
-      "line": 23,
+      "line": 63,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/runtime-handoffs",
@@ -2265,7 +2333,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-runtime-handoffs.ts",
-      "line": 84,
+      "line": 124,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/runtime-handoffs",
@@ -2278,7 +2346,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-runtime-handoffs.ts",
-      "line": 109,
+      "line": 150,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/runtime-handoffs/:operationId",
@@ -2291,7 +2359,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-runtime-handoffs.ts",
-      "line": 134,
+      "line": 175,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/runtime-handoffs/:operationId/cancel",
@@ -2304,10 +2372,23 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-runtime-handoffs.ts",
-      "line": 120,
+      "line": 161,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/runtime-handoffs/:operationId/retry",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "endpoint-protected",
+        "rationale": "owner/chat/worker-bound migration reservation and generations; prepared settings snapshots and provider configuration contain protected envelopes; native artifacts stay on the worker"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "ownerEvidence": "request-principal",
+      "file": "cantrip_server/src/app/routes/chat-runtime-handoffs.ts",
+      "line": 44,
+      "method": "POST",
+      "path": "/api/chats/:chatId/runtime-handoffs/source",
       "transport": "http",
       "contentBoundary": {
         "classification": "endpoint-protected",
@@ -2915,7 +2996,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 619,
+      "line": 682,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/admit",
@@ -2928,7 +3009,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 619,
+      "line": 682,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/bind-preparation",
@@ -2941,7 +3022,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 619,
+      "line": 682,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/continue",
@@ -2954,7 +3035,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 619,
+      "line": 682,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/dispatch",
@@ -2967,7 +3048,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 438,
+      "line": 501,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/events",
@@ -2980,7 +3061,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 302,
+      "line": 359,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/goal-recovery-fence",
@@ -2993,7 +3074,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 351,
+      "line": 408,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/inference-recovery",
@@ -3006,7 +3087,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 74,
+      "line": 77,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/inference-resource-authorize",
@@ -3019,7 +3100,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 580,
+      "line": 643,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/pending",
@@ -3032,7 +3113,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 404,
+      "line": 467,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/permission-transition",
@@ -3045,7 +3126,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 619,
+      "line": 682,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/receipt",
@@ -3058,7 +3139,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 619,
+      "line": 682,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/settings-evidence",
@@ -3096,8 +3177,34 @@
     },
     {
       "boundary": "worker-control",
+      "ownerEvidence": "worker-credential",
+      "file": "cantrip_server/src/app/routes/internal-native-suspension-execution.ts",
+      "line": 24,
+      "method": "POST",
+      "path": "/api/internal/native-commands/suspension-execution",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "endpoint-protected",
+        "rationale": "worker-authenticated exact native suspension and session identities with a digest and protected payload; the actual admitted native checkpoint governs resumption, not copied plaintext tool or prompt content"
+      }
+    },
+    {
+      "boundary": "worker-control",
+      "ownerEvidence": "worker-credential",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 147,
+      "line": 309,
+      "method": "POST",
+      "path": "/api/internal/native-commands/task-goal-cycle-dispatch",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "worker-authenticated current owner/server/process and canonical Task cycle, Goal epoch, route and FIFO identity; accepted metadata only, without Goal text, prompt replay or server-owned capacity"
+      }
+    },
+    {
+      "boundary": "worker-control",
+      "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
+      "line": 154,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/task-goal-outcome",
@@ -3110,7 +3217,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-native-commands.ts",
-      "line": 252,
+      "line": 259,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/native-commands/task-input-dispatch",
@@ -3812,7 +3919,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/cantrip-os.ts",
-      "line": 140,
+      "line": 142,
       "method": "GET",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/projects/:projectId/cantrip-os/bindings",
@@ -3825,7 +3932,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/cantrip-os.ts",
-      "line": 146,
+      "line": 148,
       "method": "POST",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/projects/:projectId/cantrip-os/bindings",
@@ -3838,7 +3945,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/cantrip-os.ts",
-      "line": 152,
+      "line": 154,
       "method": "POST",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/projects/:projectId/cantrip-os/bindings/:bindingId/provision",
@@ -3851,7 +3958,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/cantrip-os.ts",
-      "line": 163,
+      "line": 165,
       "method": "POST",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/projects/:projectId/cantrip-os/bindings/:bindingId/recover",
@@ -3864,7 +3971,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/cantrip-os.ts",
-      "line": 83,
+      "line": 85,
       "method": "POST",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/projects/:projectId/cantrip-os/bindings/:bindingId/run-definitions",
@@ -3877,7 +3984,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/cantrip-os.ts",
-      "line": 173,
+      "line": 175,
       "method": "POST",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/projects/:projectId/cantrip-os/bindings/:bindingId/verify",
@@ -3890,7 +3997,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/cantrip-os.ts",
-      "line": 77,
+      "line": 79,
       "method": "GET",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/projects/:projectId/cantrip-os/run-sources",
@@ -7023,7 +7130,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/terminal-relay-websocket.ts",
-      "line": 82,
+      "line": 83,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/terminals/:terminalId/connect",
@@ -7036,7 +7143,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/terminal-direct-attachments.ts",
-      "line": 72,
+      "line": 73,
       "method": "POST",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/terminals/:terminalId/direct",
@@ -7439,7 +7546,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/worker-link-terminal-grants.ts",
-      "line": 71,
+      "line": 72,
       "method": "POST",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/worker-links/:sessionId/terminals/:terminalId/grant",
@@ -8199,6 +8306,10 @@
     "automation.dispatch.protect",
     "browser.services.discover",
     "cantrip-os.attach",
+    "cantrip-os.backup.capture",
+    "cantrip-os.backup.observe",
+    "cantrip-os.backup.restore",
+    "cantrip-os.backup.rollback",
     "cantrip-os.inspect",
     "cantrip-os.operation.inspect",
     "cantrip-os.run-definition",
@@ -8216,6 +8327,7 @@
     "chat.automation.resume",
     "chat.compact",
     "chat.files.references",
+    "chat.goal.claim-recover",
     "chat.goal.clear",
     "chat.goal.create",
     "chat.goal.get",
@@ -8449,6 +8561,8 @@
     "surface.resume",
     "surface.suspend",
     "surface.tunnel.os-prepare",
+    "task.goal.recover",
+    "task.goal.source",
     "task.message.protect",
     "task.operation.prepare",
     "terminal.close",
@@ -8546,6 +8660,26 @@
       "rationale": "authorized OS transport and workspace routing, canonical source scopes, lifecycle generations and receipts; source provision content uses a separate protected request"
     },
     {
+      "command": "cantrip-os.backup.capture",
+      "classification": "endpoint-protected",
+      "rationale": "server-derived owned instance/workspace dispatch and operation identities accompany endpoint-encrypted private backup intent and results; archive contents and native execution remain worker-local"
+    },
+    {
+      "command": "cantrip-os.backup.observe",
+      "classification": "endpoint-protected",
+      "rationale": "owned backup scope and operation identity select observation or recovery of an existing operation; result details remain in the endpoint-protected result envelope"
+    },
+    {
+      "command": "cantrip-os.backup.restore",
+      "classification": "endpoint-protected",
+      "rationale": "server-derived owned instance/workspace dispatch and operation identities accompany endpoint-encrypted private backup intent and results; archive contents and native execution remain worker-local"
+    },
+    {
+      "command": "cantrip-os.backup.rollback",
+      "classification": "endpoint-protected",
+      "rationale": "server-derived owned instance/workspace dispatch and operation identities accompany endpoint-encrypted private backup intent and results; archive contents and native execution remain worker-local"
+    },
+    {
       "command": "cantrip-os.inspect",
       "classification": "intentionally-public-control-plane",
       "rationale": "authorized OS transport and workspace routing, canonical source scopes, lifecycle generations and receipts; source provision content uses a separate protected request"
@@ -8629,6 +8763,11 @@
       "command": "chat.files.references",
       "classification": "intentionally-public-control-plane",
       "rationale": "reviewed worker lifecycle or capability contract"
+    },
+    {
+      "command": "chat.goal.claim-recover",
+      "classification": "endpoint-protected",
+      "rationale": "owner-bound original Goal claim and managed session retain protected provider/MCP configuration; the worker recovers the actual native claim without replaying a Goal setter or prompt"
     },
     {
       "command": "chat.goal.clear",
@@ -9794,6 +9933,16 @@
       "command": "surface.tunnel.os-prepare",
       "classification": "endpoint-protected",
       "rationale": "captured server/project/guest authority and expiring attachment/grant identity carry an opaque tunnel record; only the owning worker opens the target and prepares the captured guest service, with WorkerLink protecting forwarded content"
+    },
+    {
+      "command": "task.goal.recover",
+      "classification": "endpoint-protected",
+      "rationale": "canonical Task Goal recovery and FIFO identities plus protected model/MCP configuration; no Goal setter or prompt is replayed, and only the owning worker may obtain a provider ticket"
+    },
+    {
+      "command": "task.goal.source",
+      "classification": "endpoint-protected",
+      "rationale": "owned chat/project/thread, provider route and canonical Task cycle identities only; the actual worker captures private-scope journal metadata and endpoint-encrypted native settings without preparing or granting inference"
     },
     {
       "command": "task.message.protect",
@@ -13137,7 +13286,11 @@
         "method": "PATCH",
         "path": "/api/project-views/:viewId"
       },
-      { "contract": "opaque-list", "method": "GET", "path": "/api/projects" },
+      {
+        "contract": "opaque-list",
+        "method": "GET",
+        "path": "/api/projects"
+      },
       {
         "contract": "opaque-archive-list",
         "method": "GET",

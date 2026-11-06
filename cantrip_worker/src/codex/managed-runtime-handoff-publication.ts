@@ -14,7 +14,10 @@ interface PreparedPublication {
   executionProfile: PrepareManagedThreadOptions["executionProfile"];
   codexHome: string;
   activate(): void;
-  gateway(upstreamUrl: string): Promise<ManagedNativeGateway>;
+  /** Agent consoles use their managed input gateway. Task consoles retain
+   * their existing native input path and its private inference gate. */
+  gateway: ((upstreamUrl: string) => Promise<ManagedNativeGateway>) | null;
+  legacyTaskSource?: Parameters<TerminalManager["retargetManagedCodex"]>[2];
 }
 
 /** Publish only the acknowledged runtime. Failed attachment retains every old
@@ -70,14 +73,20 @@ export class ManagedRuntimeHandoffPublication {
           executionProfile: prepared.executionProfile,
         },
       );
-      const gateway = await prepared.gateway(upstreamUrl);
-      await this.dependencies.terminals.retargetManagedCodex(state.chatId, {
-        threadId: prepared.threadId,
-        remoteUrl: gateway.url,
-        model,
-        provider,
-        codexHome: prepared.codexHome,
-      });
+      const remoteUrl = prepared.gateway
+        ? (await prepared.gateway(upstreamUrl)).url
+        : upstreamUrl;
+      await this.dependencies.terminals.retargetManagedCodex(
+        state.chatId,
+        {
+          threadId: prepared.threadId,
+          remoteUrl,
+          model,
+          provider,
+          codexHome: prepared.codexHome,
+        },
+        prepared.legacyTaskSource,
+      );
     }
     prepared.activate();
     obsolete.delete(prepared.runtime);

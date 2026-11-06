@@ -190,6 +190,9 @@ async fn update_task(
         }
     }
     command["taskContext"] = json!({"task":goals::content_from_summary(&task),"automationPaused":context["automationPaused"],"chatStatus":context["status"],"message":message});
+    if let Some(cycle) = goals::native_cycle_from_summary(&task) {
+        command["taskContext"]["nativeCycle"] = cycle;
+    }
     let response = request(service, context, command, "taskGoalWorkerResultSchema").await?;
     anyhow::ensure!(
         response["goal"]["chatId"] == context["chatId"]
@@ -326,6 +329,19 @@ async fn execute(
     input: Option<Value>,
     encrypted: bool,
 ) -> Result<Response> {
+    if !matches!(method, Method::GET | Method::HEAD | Method::POST) {
+        let handoffs = crate::native_handoffs::Repository::new(service.repository.database.clone());
+        if let Err(cause) = crate::native_handoffs::service::settle_task_control(
+            &handoffs,
+            &service.workers.commands,
+            &owner,
+            &chat,
+        )
+        .await
+        {
+            return Ok(error(409, crate::settings::operation_error_message(&cause)));
+        }
+    }
     let Some(context) = chats::Repository::new(service.repository.database.clone())
         .execution_context(&owner, &chat)
         .await?

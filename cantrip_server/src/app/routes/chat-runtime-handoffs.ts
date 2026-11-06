@@ -1,11 +1,13 @@
 import {
   nativeRuntimeHandoffRequestSchema,
+  taskGoalCycleCaptureSchema,
   type NativeRuntimeHandoffRequest,
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 import type { ServerRepository } from "../../db/repository.js";
 import { NativeCommandError } from "../../db/repository/native-command-errors.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
+import type { TaskGoalCaptureReader } from "../../db/repository/native-runtime-handoffs.js";
 
 /** Reserve the route change durably before asking the worker to perform it.
  * Browser disconnection does not cancel the native transfer. A retry resumes the
@@ -15,11 +17,49 @@ export function installChatRuntimeHandoffRoutes(
   dependencies: {
     applicationOwnerId(): string;
     repository: Pick<ServerRepository, "nativeRuntimeHandoffs">;
-    bridge: Pick<WorkerCommandBus, "request">;
+    bridge: Pick<WorkerCommandBus, "request" | "connectionIdentity">;
     publishChatInvalidation(chatId: string, resource: "chat"): void;
   },
 ) {
   const { repository, bridge } = dependencies;
+  const taskCapture =
+    (ownerId: string): TaskGoalCaptureReader =>
+    async (scope, cycleId) => {
+      // Attempt the actual read. A cached availability flag is not a gate.
+      const captured = taskGoalCycleCaptureSchema.parse(
+        await bridge.request(
+          scope.workerId,
+          { type: "task.goal.source", scope, cycleId },
+          { ownerId, timeoutMs: 10_000 },
+        ),
+      );
+      const connection = bridge.connectionIdentity?.(scope.workerId);
+      if (
+        connection?.ownerId !== ownerId ||
+        connection.workerProcessGeneration !== captured.record.workerGeneration
+      )
+        throw new NativeCommandError("handoff-task-goal-worker-replaced");
+      return captured;
+    };
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/runtime-handoffs/source",
+    async (request, reply) => {
+      const ownerId = dependencies.applicationOwnerId();
+      try {
+        return await repository.nativeRuntimeHandoffs.readTaskSource(
+          ownerId,
+          request.params.chatId,
+          taskCapture(ownerId),
+        );
+      } catch (error) {
+        if (error instanceof NativeCommandError)
+          return reply
+            .code(error.statusCode)
+            .send({ code: error.code, error: error.message });
+        throw error;
+      }
+    },
+  );
   app.get<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/runtime-handoffs",
     async (request, reply) => {
@@ -93,6 +133,7 @@ export function installChatRuntimeHandoffRoutes(
           ownerId,
           request.params.chatId,
           input.data,
+          taskCapture(ownerId),
         );
         dispatch(ownerId, state);
         dependencies.publishChatInvalidation(state.chatId, "chat");
@@ -166,6 +207,7 @@ export function installChatRuntimeHandoffRoutes(
         ownerId,
         chatId,
         input,
+        taskCapture(ownerId),
       );
       dependencies.publishChatInvalidation(chatId, "chat");
       await dispatch(ownerId, state);

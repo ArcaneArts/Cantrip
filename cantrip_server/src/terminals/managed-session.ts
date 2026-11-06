@@ -172,7 +172,12 @@ export async function prepareManagedTurnLaunch(
       context.scratchRootId,
     );
   }
-  return { type: "codex", threadId, ...configurationFields };
+  return {
+    type: "codex",
+    threadId,
+    ...configurationFields,
+    ...(context.experience === "task" ? { taskChatId: context.chatId } : {}),
+  };
 }
 
 /** Linked terminals retain their narrower project capability. */

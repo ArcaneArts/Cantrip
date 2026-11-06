@@ -18,7 +18,10 @@ import type {
   WorkerInferenceAdmission,
 } from "../inference-admission.js";
 import { trackInferenceCommandOperation } from "../inference-command.js";
-import { UnstartedInferenceUnavailableError } from "../inference-withdrawal.js";
+import {
+  InferenceWithdrawalError,
+  UnstartedInferenceUnavailableError,
+} from "../inference-withdrawal.js";
 
 interface Operation {
   operationId: string;
@@ -45,6 +48,7 @@ interface Operation {
   settlement: Promise<void>;
   resolveSettlement(): void;
   withdrawal?: Promise<InferenceJournalRecord>;
+  withdrawalReason?: InferenceWithdrawalError;
 }
 
 export interface CodexInferenceExecution {
@@ -393,7 +397,7 @@ export class CodexInferenceAdmission {
       operation.settled = true;
       this.operations.delete(operation);
       operation.resolveSettlement();
-      throw error;
+      throw operation.withdrawalReason ?? error;
     }
     return {
       settled: () => operation.settlement,
@@ -968,12 +972,14 @@ export class CodexInferenceAdmission {
         );
         input.signal.throwIfAborted();
       }
+      execution.dispatched();
     } catch (error) {
       // This newly acquired operation has not forwarded model execution yet.
       execution.notDispatched();
-      throw error;
+      const owner =
+        entry.lifetime && this.lifetimeOperations.get(entry.lifetime);
+      throw owner?.withdrawalReason ?? error;
     }
-    execution.dispatched();
   }
 
   queuedTaskGoalCycle(
@@ -995,6 +1001,119 @@ export class CodexInferenceAdmission {
           runtimeGeneration: this.runtime.generation,
         }
       : null;
+  }
+
+  /** Locate an existing Task runtime; this alone is not unused-source proof. */
+  hasTaskGoalScope(chatId: string, threadId: string, cycleId: string): boolean {
+    return [...this.operations].some(
+      (operation) =>
+        !operation.settled &&
+        operation.chatId === chatId &&
+        operation.threadId === threadId &&
+        operation.taskGoalCycle?.cycleId === cycleId,
+    );
+  }
+
+  /** The keeper read and second owner check bracket asynchronous grant and
+   * dispatch; capture itself neither withdraws nor grants that source. */
+  async captureTaskGoalSource(input: {
+    chatId: string;
+    threadId: string;
+    cycleId: string;
+  }): Promise<InferenceJournalRecord> {
+    const candidates = [...this.operations].filter(
+      (operation) =>
+        operation.chatId === input.chatId &&
+        operation.threadId === input.threadId &&
+        operation.taskGoalCycle?.cycleId === input.cycleId &&
+        operation.queued &&
+        !operation.settled,
+    );
+    if (candidates.length !== 1)
+      throw new UnstartedInferenceUnavailableError(
+        "The Task has no unique queued private Goal source.",
+      );
+    const operation = candidates[0]!;
+    const record = await operation.ticket.privateTaskGoalSource();
+    if (this.unusedTaskGoalOperation(record) !== operation)
+      throw new UnstartedInferenceUnavailableError(
+        "The private Task Goal source changed during capture.",
+      );
+    return record;
+  }
+
+  /** Only this fresh Core Task begin may use its never-allowed scope as a
+   * withdrawal boundary. A restored turn, child or dependency resume cannot. */
+  withdrawTaskGoalSource(
+    record: InferenceJournalRecord,
+    reason: InferenceWithdrawalError,
+  ): Promise<InferenceJournalRecord> {
+    const operation = this.unusedTaskGoalOperation(record);
+    if (operation.withdrawal) return operation.withdrawal;
+    operation.withdrawalReason = reason;
+    try {
+      operation.withdrawal =
+        operation.ticket.withdrawTaskGoalBeforeAllow(reason);
+    } catch (error) {
+      operation.withdrawalReason = undefined;
+      throw error;
+    }
+    this.settle(operation, "never-started");
+    return operation.withdrawal;
+  }
+
+  private unusedTaskGoalOperation(record: InferenceJournalRecord): Operation {
+    const identity = record.identity;
+    const recovery = identity.recovery;
+    const cycle = recovery?.taskGoalCycle;
+    const entry = cycle
+      ? this.nativeEntries.get(
+          JSON.stringify([recovery!.threadId, recovery!.turnId, cycle.scopeId]),
+        )
+      : undefined;
+    const operation = entry?.lifetime
+      ? this.lifetimeOperations.get(entry.lifetime)
+      : undefined;
+    if (
+      this.exited ||
+      !cycle ||
+      !entry?.confirmed ||
+      entry.independent ||
+      !entry.goal?.inferenceOnly ||
+      entry.goal.epoch !== cycle.goalEpoch ||
+      entry.gateAttemptId !== cycle.gateAttemptId ||
+      identity.runtimeGeneration !== this.generation ||
+      !operation ||
+      operation.operationId !== identity.operationId ||
+      operation.chatId !== identity.chatId ||
+      operation.threadId !== recovery?.threadId ||
+      operation.turnId !== recovery?.turnId ||
+      operation.nativeScopeId !== cycle.scopeId ||
+      operation.ticket.status().providerId !== identity.providerId ||
+      recoveryIdentity({
+        threadId: operation.threadId,
+        turnId: operation.turnId,
+        taskGoalCycle: operation.taskGoalCycle,
+      }) !== recoveryIdentity(recovery)
+    )
+      throw new UnstartedInferenceUnavailableError(
+        "The captured Task Goal source has no current private gate owner.",
+      );
+    if (
+      !operation.withdrawal &&
+      (operation.settled ||
+        operation.revoked ||
+        operation.dispatched ||
+        operation.inputDispatching ||
+        operation.leaseStarted ||
+        operation.observedStart ||
+        operation.preparing ||
+        !operation.queued)
+    )
+      throw new UnstartedInferenceUnavailableError(
+        "The captured private Task Goal begin is no longer unused.",
+      );
+    return operation;
   }
 
   /** Called only after Core establishes that no inference can run before resume. */

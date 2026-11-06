@@ -54,10 +54,23 @@ const planSchema = z
     sourceBindingId: id,
     sourceHome: absolutePath,
     expectedLastTurnId: id.nullable(),
+    expectedGoalEpoch: id.optional(),
     previousOperationId: z.string().uuid().nullable(),
   })
   .strict();
 export type ManagedRuntimeHandoffPlan = z.infer<typeof planSchema>;
+
+/** The immutable Source determines this expectation, never a later UI read or
+ * a newly resumed Goal. Progress accounting does not change the native epoch. */
+function sourceGoalEpoch(state: NativeRuntimeHandoffState) {
+  const source = state.queuedSource;
+  return (
+    source?.taskGoal?.identity.recovery?.taskGoalCycle?.goalEpoch ??
+    source?.goalRecovery?.goalEpoch ??
+    source?.goalClaim?.goalEpoch ??
+    source?.autonomousAttempt?.goalEpoch
+  );
+}
 const receiptSchema = z
   .object({
     version: z.literal(1),
@@ -254,7 +267,13 @@ export class ManagedRuntimeHandoffJournal {
           plan.chatId !== state.chatId ||
           plan.threadId !== state.source.threadId ||
           plan.operationId !== state.operationId ||
-          plan.sourceBindingId !== state.source.bindingId
+          plan.sourceBindingId !== state.source.bindingId ||
+          // Task private transfer was introduced with the exact Goal boundary.
+          // Older managed-agent journals remain readable without that field.
+          (state.queuedSource?.taskGoal !== undefined &&
+            plan.expectedGoalEpoch !== sourceGoalEpoch(state)) ||
+          (plan.expectedGoalEpoch !== undefined &&
+            plan.expectedGoalEpoch !== sourceGoalEpoch(state))
         )
           throw new Error("Handoff journal reservation changed.");
         return plan;
@@ -271,6 +290,9 @@ export class ManagedRuntimeHandoffJournal {
         operationId: state.operationId,
         sourceBindingId: state.source.bindingId,
         ...(await capture()),
+        ...(sourceGoalEpoch(state)
+          ? { expectedGoalEpoch: sourceGoalEpoch(state) }
+          : {}),
       });
       await ensureHistoryDirectory(root);
       await this.publish(path.join(root, "plan.json"), plan);
@@ -311,7 +333,11 @@ export class ManagedRuntimeHandoffJournal {
         const result = await exporter({
           threadId: plan.threadId,
           transferId: plan.operationId,
+          expectedHandoffOperation: plan.operationId,
           expectedLastTurnId: plan.expectedLastTurnId,
+          ...(plan.expectedGoalEpoch
+            ? { expectedGoalEpoch: plan.expectedGoalEpoch }
+            : {}),
         });
         if (
           result.threadId !== plan.threadId ||

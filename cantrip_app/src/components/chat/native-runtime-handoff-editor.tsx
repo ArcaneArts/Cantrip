@@ -12,11 +12,15 @@ export function NativeRuntimeHandoffEditor({
   binding,
   identity,
   disabled,
+  allowSameProviderModelChange = false,
+  description,
 }: {
   controller: ReturnType<typeof useRuntimeHandoff>;
   binding: NativeSettingsBinding;
   identity: ClientSessionIdentitySnapshot;
   disabled: boolean;
+  allowSameProviderModelChange?: boolean;
+  description?: string;
 }) {
   const { query, latest, active, busy, error, unconfirmed, run } = controller;
   const [providerId, setProviderId] = useState("");
@@ -70,7 +74,8 @@ export function NativeRuntimeHandoffEditor({
       provider.accounts.some((account) => account.id === accountId)) &&
     !(
       provider.id === sourceProvider?.id &&
-      (provider.requiresAccount ? accountId : null) === sourceAccount
+      (provider.requiresAccount ? accountId : null) === sourceAccount &&
+      (!allowSameProviderModelChange || routeId === binding.modelRouteId)
     );
   const locked =
     disabled ||
@@ -89,10 +94,14 @@ export function NativeRuntimeHandoffEditor({
     >
       <p className="font-medium">Provider and account</p>
       <p className="text-xs text-muted-foreground">
-        Move this conversation to another provider or account. History and
-        session settings are retained. Transfer while idle or waiting for
-        provider capacity. Queued messages continue automatically after
-        transfer.
+        {description ?? (
+          <>
+            Move this conversation to another provider or account. History and
+            session settings are retained. Transfer while idle or waiting for
+            provider capacity. Queued messages continue automatically after
+            transfer.
+          </>
+        )}
       </p>
       <p className="text-xs">
         Current: {sourceProvider?.name ?? "Current provider"}
