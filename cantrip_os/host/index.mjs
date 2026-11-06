@@ -1,5 +1,6 @@
 export { LocalDocker, DockerApiError, DockerDeliveryError } from "./docker.mjs";
 export { withInstanceLock } from "./lock.mjs";
+export { registerBuiltPackage } from "./package-artifacts.mjs";
 export {
   rootGuestCommand,
   packageJobSource,

@@ -3941,3 +3941,70 @@ shared-system export/replacement, clone identity handling, actual remote/cloud
 and current model acceptance, and final current Host/Linux/OCI/ISO artifacts
 remain required. The VM is local, not cloud evidence. No full image or ISO was
 rebuilt here; no hosted ordinary-PR validation was used. Phase 5 remains active.
+
+## Phase 5: Worker package admissions and artifact snapshots (2026-11-06)
+
+The normal builder now produces recovery 0.5.0, architecture `all`, 21,484 bytes,
+SHA256 `dc2e2c7173c5769890861ef23c1a5e9fe89c4379720cbd8b52b3642dec07e5a1`.
+Its canonical rescue source SHA256 is
+`53541e3d4d93053aa16dbf3f4f07b30d86443a6f6c1164c35aa7624764ec0364`.
+Normal builders for all four optional packages register actual artifact metadata
+and SHA-named sidecars. Worker catalogues verify and retain immutable bytes, so a
+same-version development rebuild cannot change an original admitted operation.
+Malformed unrelated manifests do not hide valid candidates; errors stay private.
+An extracted normal `@cantrip/os-host` tarball contains the exact rescue source
+and artifact registration API. That extracted client probes both actual targets
+successfully without repository-local imports.
+
+Worker status and operation commands now pin canonical account, logical Server,
+Worker, persistent OS and attachment. The private target additionally pins exact
+Docker identity or strict SSH transport, actual kernel boot ID and PID 1 start
+time. Package administration omits live executor generation: a stopped or broken
+executor does not make its own repair unavailable. The raw carrier reads actual
+configured identity, supports a legitimate state-directory relocation and rejects
+a valid foreign identity despite an old matching locator. A broken configuration
+or read can use the previously verified locator for repair.
+
+Private guest proof and diagnostics use repository-content encryption under a
+distinct package-operation purpose and complete ownership/target/operation AAD.
+Terminal ciphertext is committed once and returned unchanged across Manager
+restarts. Immutable original commands fence operation-ID reuse. Observation
+never admits, transfers or starts a guest mutation. Explicit continuation can
+finish original staging; pre-start abandonment reserves the launch claim without
+installing. Missing Worker journals recover only from matching original guest
+proof, without requiring the old artifact cache.
+
+The actual seven-case Manager integration passes in ARM64 Docker (27.62s) and
+the installed AMD64 VM over strict SSH (84.02s). It exercises real failed Debian
+configuration, broken helper entrypoints and failed ordinary reinstall, followed
+by external repair preserving customized conffiles and dirty/ignored/Unicode Git
+data, browser SQLite data, account/home identity, permissions and root changes.
+It also breaks the real executor CLI while raw package inventory and repair
+continue. Separate actual Node Manager processes are killed during dpkg and after
+upload. Recovery retains original process/counter identities and terminal
+ciphertext without new dispatch; staged continuation sends only the remaining
+original work, while abandonment fences a delayed start. Actual foreign-owner
+and stale-init targets are rejected before guest admission. Relocation and
+missing-Worker-journal cases pass on both transports. The fixture restores original
+executor identity/configuration and recovery conffiles, then verifies retained
+data again.
+
+The original seven-case administrative suite also passes with the final 0.5.0
+artifact in Docker (16.56s) and the installed VM (80.86s), retaining version 1
+administration compatibility, actual locks and no-replay failure behavior.
+Crypto passes 103 tests; Worker OS units pass 94; ordinary OS tests pass 15 with
+two opt-in integrations skipped. Worker build and Server/App type checks pass.
+The public-surface fixture now explicitly reviews OS additions while retaining
+legacy fingerprints. Its remaining count failures also occur on Primary:
+18 unrelated runtime exports and four unrelated command additions are not yet
+represented. `pnpm check` stops at the unchanged Server decomposition budgets,
+`build-app.ts` 1531/1500 and `chat-turn-runtime.ts` 2286/1999.
+
+Private logs, artifact metadata and per-transport records are retained under
+`cantrip_os/artifacts/phase5-package-admissions`. These tests exercise the Worker
+Manager and separate Manager processes, not the full Worker/Server/client
+workflow. Server-owned package admissions, UI controls and full product failure
+acceptance remain dependent work. No current full image, ISO, Host bundle,
+provider/model or cloud acceptance is claimed. The VM is local. Full Phase 5
+still requires shared-system preservation/replacement, clone identity handling,
+broader lifecycle/remote acceptance and final recorded distributions.

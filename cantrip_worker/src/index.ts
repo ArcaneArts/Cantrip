@@ -373,6 +373,7 @@ import { CantripOsPowerManager } from "./os-executor/power.js";
 import { CantripOsDesktopManager } from "./os-executor/desktop.js";
 import { CapturedDesktopDriver } from "./os-executor/desktop-driver.js";
 import { CantripOsBackupManager } from "./os-executor/backup-manager.js";
+import { CantripOsPackageManager } from "./os-executor/package-manager.js";
 import { OsTerminalLauncher } from "./os-executor/terminal-launcher.js";
 import { OsFileOperations } from "./os-executor/files.js";
 import { OsRunDefinitionOperations } from "./os-executor/run-definitions.js";
@@ -1047,6 +1048,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     config.workerId,
     cantripOs,
     workerEncryption,
+  );
+  const osPackages = new CantripOsPackageManager(
+    config.dataDirectory,
+    config.workerId,
+    workerEncryption,
+    process.env.CANTRIP_OS_PACKAGE_DIRECTORY,
   );
   const osPower = new CantripOsPowerManager(
     config.dataDirectory,
@@ -4394,6 +4401,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "cantrip-os.power.status":
       case "cantrip-os.power.operation":
         return osPower.handle(command);
+      case "cantrip-os.packages.status":
+      case "cantrip-os.packages.operation":
+        return osPackages.handle(command);
       case "cantrip-os.desktop.status":
       case "cantrip-os.desktop.operation":
         return osDesktop.handle(command);

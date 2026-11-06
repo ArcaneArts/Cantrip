@@ -67,7 +67,10 @@ def canonical_id(value):
 
 def validate_request(value):
     fields = {"version", "operationId", "scopeKey", "action", "configuration", "packages"}
-    if not isinstance(value, dict) or set(value) != fields or value["version"] != 1:
+    if isinstance(value, dict) and value.get("version") == 2:
+        fields.add("expected")
+        validate_expected(value["expected"], require_boot=True)
+    if not isinstance(value, dict) or set(value) != fields or type(value["version"]) is not int or value["version"] not in (1, 2):
         raise ValueError("Unsupported package admission; original state was preserved")
     canonical_id(value["operationId"])
     if not isinstance(value["scopeKey"], str) or not re.fullmatch(r"[0-9a-f]{64}", value["scopeKey"]):
@@ -95,6 +98,81 @@ def validate_request(value):
         if type(package["bytes"]) is not int or not 0 < package["bytes"] <= 2 * 1024**3:
             raise ValueError("Invalid package byte length")
     return value
+
+
+def validate_expected(value, require_boot=False):
+    fields = {"guestInstanceId", "ownerId", "workerId", "identityPath"}
+    if require_boot:
+        fields.add("bootId")
+        fields.add("initStart")
+    if not isinstance(value, dict) or set(value) != fields:
+        raise ValueError("An exact persistent package target is required")
+    canonical_id(value["guestInstanceId"])
+    if require_boot:
+        canonical_id(value["bootId"])
+        if not isinstance(value["initStart"], str) or not re.fullmatch(r"[0-9]{1,30}", value["initStart"]):
+            raise ValueError("An actual init-process boot identity is required")
+    for key in ("ownerId", "workerId"):
+        if not isinstance(value[key], str) or not 1 <= len(value[key]) <= 200 or "\0" in value[key]:
+            raise ValueError("Invalid package attachment identity")
+    path = value["identityPath"]
+    if not isinstance(path, str) or not path.startswith("/") or ".." in PurePosixPath(path).parts or str(PurePosixPath(path)) != path:
+        raise ValueError("A canonical pinned guest identity path is required")
+    return value
+
+
+def configured_identity_path():
+    config = json.loads(Path("/etc/cantrip-os/executor.json").read_text())
+    state = Path(config["state_dir"])
+    if not state.is_absolute():
+        raise ValueError("The configured executor state location is not absolute")
+    return str(state.resolve() / "instance.json")
+
+
+def actual_identity(expected=None):
+    try:
+        path = configured_identity_path()
+    except (FileNotFoundError, ValueError, UnicodeDecodeError, KeyError, TypeError):
+        if expected is None:
+            raise
+        path = expected["identityPath"]
+    try:
+        actual = json.loads(Path(path).read_text())
+    except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError):
+        if expected is None or path == expected["identityPath"]:
+            raise
+        path = expected["identityPath"]
+        actual = json.loads(Path(path).read_text())
+    return path, actual
+
+
+def verify_expected(value, require_boot=False):
+    if value is None:
+        return
+    validate_expected(value, require_boot)
+    # Read the actual configured identity, including a deliberate state-dir
+    # relocation. Only a broken configuration/read can use the known locator;
+    # a valid foreign identity never falls back to an old matching file.
+    path, actual = actual_identity(value)
+    if not isinstance(actual, dict) or actual.get("version") != 1 or actual.get("instance_id") != value["guestInstanceId"]:
+        raise ValueError("The package target's persistent OS identity changed")
+    if actual.get("attachment") != {"owner_id": value["ownerId"], "worker_id": value["workerId"]}:
+        raise ValueError("The package target's owning attachment changed")
+    if require_boot and (value["bootId"] != BOOT_ID or value["initStart"] != process_identity(1)["start"]):
+        raise ValueError("The admitted package target boot changed")
+    return {key: val for key, val in {**value, "identityPath": path}.items() if key not in ("bootId", "initStart")}
+
+
+def probe(expected):
+    if expected is None:
+        path, actual = actual_identity()
+        attachment = actual["attachment"]
+        expected = {"guestInstanceId": actual["instance_id"], "ownerId": attachment["owner_id"],
+                    "workerId": attachment["worker_id"], "identityPath": path}
+    expected = verify_expected(expected)
+    return {"version": 1, "expected": expected, "bootId": BOOT_ID, "initStart": process_identity(1)["start"],
+            "architecture": subprocess.check_output(["/usr/bin/dpkg", "--print-architecture"], text=True).strip(),
+            "packages": package_status([{"name": name} for name in sorted(ALLOWED)])}
 
 
 def process_identity(pid):
@@ -131,6 +209,8 @@ class Store:
         request = validate_request(value["request"])
         if request["operationId"] != operation or value["requestSha256"] != request_hash(request):
             raise ValueError("The saved package admission changed")
+        expected = request.get("expected")
+        verify_expected({key: val for key, val in expected.items() if key not in ("bootId", "initStart")} if expected else None)
         return value
 
     def save(self, record):
@@ -141,7 +221,7 @@ class Store:
         value = self.read(operation)
         driver, installer = (bool(identity and process_identity(identity["pid"]) == identity)
                              for identity in (value.get("process"), value.get("installer")))
-        if value["state"] == "running" and not driver:
+        if (value["state"] == "running" and not driver) or (value["state"] == "staged" and (self.directory(operation) / "start.claim").exists()):
             value["state"] = "unknown"
             value["error"] = "The package coordinator ended without a committed outcome; no installation was repeated"
         value["active"] = driver or installer
@@ -157,6 +237,7 @@ class Store:
 
     def admit(self, request):
         request = validate_request(request)
+        verify_expected(request.get("expected"), require_boot=request["version"] == 2)
         directory = self.directory(request["operationId"])
         try:
             directory.mkdir(mode=0o700)
@@ -177,6 +258,7 @@ class Store:
     def receive(self, operation, sha256):
         with self.lock(operation):
             value = self.read(operation)
+            verify_expected(value["request"].get("expected"), require_boot=value["request"]["version"] == 2)
             package = next((p for p in value["request"]["packages"] if p["sha256"] == sha256), None)
             if package is None:
                 raise ValueError("Artifact is not in this package admission")
@@ -220,6 +302,7 @@ class Store:
             claim = self.directory(operation) / "start.claim"
             if claim.exists() or value["state"] != "staged":
                 return self.inspect(operation)
+            verify_expected(value["request"].get("expected"), require_boot=value["request"]["version"] == 2)
             if value["phase"] != "ready-to-install":
                 raise ValueError("The admitted artifacts have not all been received")
             # This reservation precedes the only fork. A crash in this boundary
@@ -245,6 +328,21 @@ class Store:
                 finally:
                     os._exit(0)
         return self.inspect(operation)
+
+    def abandon(self, operation):
+        with self.lock(operation):
+            value = self.read(operation)
+            claim = self.directory(operation) / "start.claim"
+            if claim.exists() or value["state"] != "staged":
+                return self.inspect(operation)
+            with claim.open("x") as stream:
+                stream.write(value["requestSha256"] + "\nabandoned\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            sync_directory(claim.parent)
+            value.update(state="failed", phase="abandoned", error="Staged installation explicitly abandoned; no installer was launched")
+            self.save(value)
+            return self.inspect(operation)
 
 
 def package_control(archive):
@@ -445,6 +543,7 @@ def execute_job(store, operation):
     try:
         with (store.root / "package.lock").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
+            verify_expected(record["request"].get("expected"), require_boot=record["request"]["version"] == 2)
             packages = record["request"]["packages"]
             archives = [(package, directory / (package["sha256"] + ".deb")) for package in packages]
             for package, archive in archives:
@@ -496,17 +595,23 @@ def execute_job(store, operation):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state-dir", default=DEFAULT_ROOT)
+    parser.add_argument("--expect", type=json.loads)
     actions = parser.add_subparsers(dest="action", required=True)
+    actions.add_parser("probe")
     actions.add_parser("admit").add_argument("request", type=json.loads)
     receive = actions.add_parser("receive")
     receive.add_argument("operation")
     receive.add_argument("sha256")
-    for action in ("start", "inspect"):
+    for action in ("start", "inspect", "abandon"):
         actions.add_parser(action).add_argument("operation")
     args = parser.parse_args()
     if os.geteuid() != 0:
         parser.error("Use sudo for guest package administration")
     os.umask(0o077)
+    verify_expected(args.expect)
+    if args.action == "probe":
+        print(json.dumps(probe(args.expect)))
+        return
     store = Store(args.state_dir)
     if args.action == "admit":
         value = store.admit(args.request)
@@ -514,6 +619,8 @@ def main():
         value = store.receive(args.operation, args.sha256)
     elif args.action == "start":
         value = store.start(args.operation)
+    elif args.action == "abandon":
+        value = store.abandon(args.operation)
     else:
         value = store.inspect(args.operation)
     print(json.dumps(value))

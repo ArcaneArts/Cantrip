@@ -726,6 +726,22 @@ shared system-image preservation/replacement, clone identities and final current
 distributions remain required; this checkpoint does not complete Phase 5.
 See [package recovery](../cantrip_os/PACKAGE_RECOVERY.md).
 
+Recovery 0.5.0 adds owner/instance and boot/init-pinned package requests, raw
+identity/inventory probing and durable abandonment before installation starts.
+The external Worker now snapshots normal-build artifacts into a verified
+content-addressed cache and journals immutable package commands. Observation
+never uploads or starts; explicit continuation only finishes the original
+staging. Terminal encrypted receipts remain identical across Manager restarts.
+Actual Docker and installed-VM strict-SSH acceptance kills a Manager during dpkg
+and after upload, rejects changed identities/boot epochs, exercises configured
+identity relocation and reconstructs a missing Worker journal from matching
+guest proof without replay. Package administration deliberately needs no live
+executor generation and still works with the actual executor CLI broken.
+This is the Worker/protocol foundation; Server/client package controls and full
+Worker/product failure acceptance remain dependent work. Shared-system
+preservation/replacement, clone identities, remote/model acceptance and final
+current distributions remain required for the full Phase 5 goal.
+
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output
 recovery, and worker-offline behavior. Deliver workspace backups/restores,

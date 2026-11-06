@@ -48,7 +48,7 @@ test(
     const bytes = await readFile(artifactFile);
     const good = {
       name: "cantrip-os-recovery",
-      version: "0.4.0",
+      version: process.env.CANTRIP_OS_TEST_PACKAGE_VERSION ?? "0.5.0",
       architecture: "all",
       bytes: bytes.length,
       sha256: createHash("sha256").update(bytes).digest("hex"),

@@ -3,6 +3,7 @@ import { cp, mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { root, run } from "./os.mjs";
+import { registerBuiltPackage } from "../host/index.mjs";
 
 export async function prepareExecutor(architecture, options = {}) {
   if (!["arm64", "amd64"].includes(architecture))
@@ -44,6 +45,11 @@ export async function prepareExecutor(architecture, options = {}) {
   );
   const name = `cantrip-os-executor_0.11.0_${architecture}.deb`;
   await cp(resolve(output, name), resolve(context, name));
+  await registerBuiltPackage(resolve(output, name), {
+    name: "cantrip-os-executor",
+    version: "0.11.0",
+    architecture,
+  });
   console.log(`Executor package: ${output}/${name}`);
   return context;
 }

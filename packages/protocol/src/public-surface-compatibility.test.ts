@@ -535,6 +535,28 @@ const agentChatExports = [
 ].sort();
 
 const cantripOsExports = [
+  "CANTRIP_OS_PACKAGE_PRIVATE_BYTES",
+  "cantripOsGuestPackageRecordSchema",
+  "cantripOsGuestPackageRequestSchema",
+  "cantripOsPackageArtifactSchema",
+  "cantripOsPackageArtifactsSchema",
+  "cantripOsPackageCatalogResultSchema",
+  "cantripOsPackageCryptoContextSchema",
+  "cantripOsPackageExpectedSchema",
+  "cantripOsPackageInstalledSchema",
+  "cantripOsPackageManifestSchema",
+  "cantripOsPackageNameSchema",
+  "cantripOsPackageOperationCommandSchema",
+  "cantripOsPackageOperationResultSchema",
+  "cantripOsPackagePrivateResultSchema",
+  "cantripOsPackageProbeSchema",
+  "cantripOsPackageProtectedResultSchema",
+  "cantripOsPackageScopeSchema",
+  "cantripOsPackageShaSchema",
+  "cantripOsPackageTargetSchema",
+  "cantripOsPackageWorkerCommandSchema",
+  "workerCantripOsPackageCommandSchemas",
+
   "cantripOsDesktopActionSchema",
   "cantripOsGuestDesktopTargetSchema",
   "cantripOsDesktopScopeSchema",
@@ -574,6 +596,29 @@ const cantripOsExports = [
   "CANTRIP_OS_BACKUP_CHUNK_BYTES",
   "CANTRIP_OS_BACKUP_METADATA_BYTES",
   "CANTRIP_OS_BACKUP_END_BYTES",
+  "cantripOsBackupAdmissionSchema",
+  "cantripOsBackupCaptureCommandSchema",
+  "cantripOsBackupListQuerySchema",
+  "cantripOsBackupObserveCommandSchema",
+  "cantripOsBackupOperationResultSchema",
+  "cantripOsBackupPageSchema",
+  "cantripOsBackupPhaseSchema",
+  "cantripOsBackupPrivateRequestSchema",
+  "cantripOsBackupPrivateResultSchema",
+  "cantripOsBackupRecoverySchema",
+  "cantripOsBackupRequestEnvelopeSchema",
+  "cantripOsBackupRequestSequence",
+  "cantripOsBackupResetCommandSchema",
+  "cantripOsBackupResponseEnvelopeSchema",
+  "cantripOsBackupResponseSequence",
+  "cantripOsBackupRestoreCommandSchema",
+  "cantripOsBackupRollbackCommandSchema",
+  "cantripOsBackupSourceSchema",
+  "cantripOsBackupSummarySchema",
+  "cantripOsBackupWorkerCommandSchema",
+  "cantripOsBackupWorkspaceSchema",
+  "cantripOsResetPathsSchema",
+  "workerCantripOsBackupCommandSchemas",
   "cantripOsBackupCryptoContextSchema",
   "cantripOsBackupFrameSchema",
   "cantripOsBackupFileHeaderSchema",
@@ -715,6 +760,14 @@ const nativeResourceAndTimingExports = [
 ].sort();
 
 describe("protocol public surface compatibility", () => {
+  it("advertises the reviewed CantripOS additions independently of legacy snapshots", () => {
+    expect(
+      Object.keys(protocol)
+        .filter((name) => cantripOsExports.includes(name))
+        .sort(),
+    ).toEqual(cantripOsExports);
+  });
+
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
     const currentExportNames = Object.keys(protocol).sort();
     expect(
@@ -925,6 +978,22 @@ describe("protocol public surface compatibility", () => {
         type.startsWith("cantrip-os.desktop."),
       ),
     ).toEqual(["cantrip-os.desktop.status", "cantrip-os.desktop.operation"]);
+    expect(
+      advertisedCommandTypes.filter((type) =>
+        type.startsWith("cantrip-os.packages."),
+      ),
+    ).toEqual(["cantrip-os.packages.status", "cantrip-os.packages.operation"]);
+    expect(
+      advertisedCommandTypes.filter((type) =>
+        type.startsWith("cantrip-os.backup."),
+      ),
+    ).toEqual([
+      "cantrip-os.backup.capture",
+      "cantrip-os.backup.reset",
+      "cantrip-os.backup.restore",
+      "cantrip-os.backup.rollback",
+      "cantrip-os.backup.observe",
+    ]);
     // Reviewed additive OS preparation leaves every legacy order/fingerprint intact.
     expect(
       advertisedCommandTypes.filter(
@@ -955,6 +1024,8 @@ describe("protocol public surface compatibility", () => {
         type !== "inference.task-revoke" &&
         type !== "chat.suspension.resume" &&
         !type.startsWith("cantrip-os.power.") &&
+        !type.startsWith("cantrip-os.packages.") &&
+        !type.startsWith("cantrip-os.backup.") &&
         !type.startsWith("cantrip-os.desktop."),
     );
     expect(inferenceStatusCommandTypes).toHaveLength(296);
