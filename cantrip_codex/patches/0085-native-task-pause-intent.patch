@@ -194,7 +194,7 @@ diff --git a/codex-rs/core/src/session/durable_suspension.rs b/codex-rs/core/src
 +        let owner = coordinator(&self.session);
 +        let mut resume = None;
 +        let applied = gate
-+            .task_pause_control(self.thread_id(), revision, paused, || {
++            .task_pause_control(self.session.thread_id(), revision, paused, || {
 +                if !paused && owner.has_live_suspension() {
 +                    resume = Some(
 +                        owner
@@ -212,10 +212,10 @@ diff --git a/codex-rs/core/src/session/durable_suspension.rs b/codex-rs/core/src
 +            return Ok(applied);
 +        }
 +        let Some(changed) = gate
-+            .task_pause_change(self.thread_id(), revision)
++            .task_pause_change(self.session.thread_id(), revision)
 +            .map_err(invalid)?
 +        else {
-+            return gate.task_pause_state(self.thread_id()).map_err(invalid);
++            return gate.task_pause_state(self.session.thread_id()).map_err(invalid);
 +        };
 +        if paused {
 +            tokio::select! {
@@ -228,6 +228,6 @@ diff --git a/codex-rs/core/src/session/durable_suspension.rs b/codex-rs/core/src
 +                _ = changed => {},
 +            }
 +        }
-+        gate.task_pause_state(self.thread_id()).map_err(invalid)
++        gate.task_pause_state(self.session.thread_id()).map_err(invalid)
 +    }
      /// Opt in before requesting pause; the boundary acknowledgement alone remains
