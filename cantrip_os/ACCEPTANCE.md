@@ -3006,3 +3006,13 @@ Required root-check results and final rebased checks are recorded below.
 Cantrip controls, actual Server grants/full Worker workflow, real remote
 acceptance, lifecycle/upgrade preservation and final recorded OCI/ISO artifacts
 remain required for the full Phase 5 goal.
+
+After rebasing, the backup migration is `0272`; Main owns the intervening Goal
+migration. Feature `3b3990d12` keeps the tested backup implementation unchanged.
+The two Node suites passed again (11.29s), all 30 focused Worker cases passed
+(9.02s), and Worker/fixture type checks passed. Server type checking also passes
+on this newer Main without a feature-side repair to the earlier overload error.
+Native backup HTTP passed (6.00s), existing source/recovery HTTP passed (6.36s),
+and all 33,682 protocol vectors matched again (66.91s). Root `pnpm check` still
+stops at unchanged Server budgets, now 1527/1500 and 2249/1999. No hosted ordinary
+validation or new distribution artifact is claimed by this checkpoint.
