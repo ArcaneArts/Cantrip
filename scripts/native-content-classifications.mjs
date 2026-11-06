@@ -35,6 +35,14 @@ const control = (rationale) =>
 
 export function nativeRouteContentClassification({ path }) {
   if (
+    /^\/api\/cantrip-os\/:instanceId\/(?:power|power-operations(?:\/:operationId(?:\/observe)?)?)$/u.test(
+      path,
+    )
+  )
+    return control(
+      "owner-resolved retained Docker power target, operation identity, action and observed lifecycle metadata; no prompt or private file content is carried",
+    );
+  if (
     path.startsWith("/api/cantrip-os/backup") ||
     path === "/api/cantrip-os/:instanceId/backup-operations"
   )
@@ -162,9 +170,15 @@ export function nativeRouteContentClassification({ path }) {
 }
 
 export function nativeWorkerCommandContentClassification(command) {
+  if (
+    ["cantrip-os.power.status", "cantrip-os.power.operation"].includes(command)
+  )
+    return control(
+      "server-derived owner/worker/guest scope, retained Docker carrier generation and operation/action identity; actual container lifecycle remains worker-owned",
+    );
   if (command === "task.goal.source")
     return protectedContract(
-      "owned chat/project/thread, provider route and canonical Task cycle identities only; the actual worker captures private-scope journal metadata and endpoint-encrypted native settings without preparing or granting inference",
+      "owned chat/project/thread, provider route, canonical Task cycle and optional unused first-input receipt identities only; the worker captures actual keeper metadata and endpoint-encrypted native settings without granting inference or replaying the applied Goal setter",
     );
   if (
     [

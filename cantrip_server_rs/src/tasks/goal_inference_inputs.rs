@@ -118,6 +118,35 @@ async fn write(tx: &Transaction<'_>, id: &str, state: &Value) -> Result<()> {
     .await?;
     Ok(())
 }
+async fn handoff(tx: &Transaction<'_>, owner: &str, chat: &str) -> Result<Option<Value>> {
+    one(Executor::Transaction(tx),
+        "SELECT jsonb_build_object('phase',h.phase,'source',h.queued_source)::text FROM native_runtime_handoffs h WHERE owner_id=$1 AND chat_id=$2 AND phase IN ('preparing','prepared','committed') LIMIT 1",
+        &[&owner,&chat]).await
+}
+// Reserving a transfer does not seal its source. Only that exact accepted
+// input can still win dispatch until the worker confirms its withdrawal.
+async fn assert_handoff_input(
+    tx: &Transaction<'_>,
+    owner: &str,
+    receipt: &Value,
+    source: bool,
+) -> Result<()> {
+    let Some(active) = handoff(tx, owner, &text(&receipt["chatId"])?).await? else {
+        return Ok(());
+    };
+    if source
+        && active["phase"] == "preparing"
+        && truthy(active["source"].get("taskGoalInput"))
+        && active["source"]["withdrawn"] != true
+        && crate::native_commands::managed_queue::deep_equal(
+            &active["source"]["taskGoal"]["identity"]["recovery"]["taskInput"],
+            receipt,
+        )
+    {
+        return Ok(());
+    }
+    stale()
+}
 async fn defer_locked(tx: &Transaction<'_>, owner: &str, c: &Value, state: &Value) -> Result<()> {
     if state["failedBeforeDispatch"] == true {
         return stale();
@@ -449,11 +478,13 @@ impl Repository {
             let c=cycle(tx,&owner,&chat,Some(&id)).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?;
             if c["operation_kind"]!="finalize" || c["physical_worker_id"]!=r["workerId"] || c["worktree_id"]!=r["worktreeId"] {return stale();}
             let row=context(tx,&owner,&r,true,false).await?;
+            assert_handoff_input(tx,&owner,&r,false).await?;
             if row["chat"]["automation_paused"]==true || row["project"]["task_scheduling_paused"]==true || row["task"]["state"]=="paused" || row["lane"]["state"]!="active" {return stale();}
             let old=&c["goal_input"];
             if old["failedBeforeDispatch"]==true && old["receipt"]["dispatch"]["fencingToken"]==r["dispatch"]["fencingToken"] {return stale();}
             let same=old["receipt"]["clientMessageId"]==r["clientMessageId"];
-            let state=json!({"receipt":r,"deferred":false,"failedBeforeDispatch":false,"accepted":false,"dispatched":false,"allAttemptsEnforced":!same || (old["accepted"]==true && old["allAttemptsEnforced"]==true),"firstDispatchedOperationId":if same{old["firstDispatchedOperationId"].clone()}else{Value::Null},"multipleDispatched":same && old["multipleDispatched"]==true,"attemptCountBefore":c["attempt_count"]});
+            let mut state=json!({"receipt":r,"deferred":false,"failedBeforeDispatch":false,"accepted":false,"dispatched":false,"allAttemptsEnforced":!same || (old["accepted"]==true && old["allAttemptsEnforced"]==true),"firstDispatchedOperationId":if same{old["firstDispatchedOperationId"].clone()}else{Value::Null},"multipleDispatched":same && old["multipleDispatched"]==true,"attemptCountBefore":c["attempt_count"]});
+            if same && let Some(change)=old.get("routeChange") {state["routeChange"]=change.clone();}
             write(tx,&id,&state).await?;
             tx.query("UPDATE task_dispatch_cycles SET model_route_id=$2,provider_account_id=$3 WHERE id=$1",&[&id,&text(&r["modelRouteId"])?,&r["providerAccountId"].as_str()]).await?;
             Ok(r)
@@ -500,6 +531,7 @@ impl Repository {
                         return stale();
                     }
                     let row = context(tx, &owner, &r, true, false).await?;
+                    assert_handoff_input(tx, &owner, &r, true).await?;
                     if row["chat"]["automation_paused"] == true
                         || row["project"]["task_scheduling_paused"] == true
                         || row["task"]["state"] == "paused"
@@ -660,7 +692,8 @@ impl Repository {
             || r["chatId"] != record["identity"]["chatId"]
             || r["clientMessageId"] != record["identity"]["recovery"]["messageId"]
             || r["providerId"] != record["identity"]["providerId"]
-            || record["workerGeneration"] == input["workerGeneration"]
+            || (record["workerGeneration"] == input["workerGeneration"]
+                && !(record["state"] == "released" && record["outcome"] == "never-started"))
         {
             return Ok(result("unresolved", false));
         }
@@ -672,6 +705,11 @@ impl Repository {
             let Some(c)=c else{return Ok(result("retired",false));};let mut s=c["goal_input"].clone();
             if s.is_null() || !matches!(c["state"].as_str(),Some("claimed"|"running"|"queued"|"paused"|"expired")) || s["failedBeforeDispatch"]==true || s["receipt"]["clientMessageId"]!=r["clientMessageId"] || s["receipt"]["workerId"]!=input["workerId"] || s["receipt"]["providerId"]!=r["providerId"]{return Ok(result("retired",false));}
             if s["accepted"]!=true || s["allAttemptsEnforced"]!=true{return Ok(result("unresolved",false));}
+            if handoff(tx,&owner,&text(&r["chatId"])?).await?.is_some(){return Ok(result("unresolved",false));}
+            if s["routeChange"]["phase"]=="completed" {
+                let route=one(Executor::Transaction(tx),"SELECT to_jsonb(r)::text FROM model_routes r WHERE id=$1",&[&text(&s["routeChange"]["targetModelRouteId"])?]).await?;
+                if route.as_ref().is_none_or(|route|route.get("provider_id")!=record["identity"].get("providerId")){return Ok(result("retired",false));}
+            }
             if !s["firstDispatchedOperationId"].is_null(){
                 let never_started=(record["everGranted"]==false && record["state"]!="granted") || (record["state"]=="released" && record["outcome"]=="never-started");
                 if s["firstDispatchedOperationId"]!=r["operationId"] || s["multipleDispatched"]==true || !never_started{return Ok(result("unresolved",false));}

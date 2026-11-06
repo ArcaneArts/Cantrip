@@ -534,6 +534,9 @@ export class TaskDispatchRepository {
             and(
               eq(schema.taskDispatchCycles.ownerId, ownerId),
               eq(schema.taskDispatchCycles.state, "queued"),
+              sql`NOT EXISTS (SELECT 1 FROM native_runtime_handoffs h
+                WHERE h.chat_id=${schema.taskDispatchCycles.chatId}
+                  AND h.phase IN ('preparing','prepared','committed'))`,
               sql`NOT EXISTS (SELECT 1 FROM task_planning_rounds r
                 WHERE r.chat_id=${schema.taskDispatchCycles.chatId}
                   AND r.inference_input->'routeChange'->>'phase'='draining')`,
@@ -877,6 +880,9 @@ export class TaskDispatchRepository {
           and(
             eq(schema.taskDispatchCycles.ownerId, ownerId),
             eq(schema.taskDispatchCycles.state, "paused"),
+            sql`NOT EXISTS (SELECT 1 FROM native_runtime_handoffs h
+              WHERE h.chat_id=${schema.taskDispatchCycles.chatId}
+                AND h.phase IN ('preparing','prepared','committed'))`,
             sql`NOT EXISTS (SELECT 1 FROM task_planning_rounds r
               WHERE r.chat_id=${schema.taskDispatchCycles.chatId}
                 AND r.inference_input->'routeChange'->>'phase'='draining')`,

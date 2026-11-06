@@ -3,6 +3,7 @@ import type {
   InferenceFailureEvidence,
   TaskGoalCycleIdentity,
   TaskGoalCycleRecovery,
+  TaskInferenceInputReceipt,
 } from "@cantrip/protocol";
 import {
   recoveryIdentity,
@@ -38,6 +39,7 @@ interface Operation {
   initialNativePaused?: boolean;
   nativeScopeId: string | null;
   taskGoalCycle?: TaskGoalCycleIdentity;
+  taskInput?: TaskInferenceInputReceipt | null;
   queued: boolean;
   rejectedInput: boolean;
   nativeFailureBeforeOutput: boolean;
@@ -387,6 +389,7 @@ export class CodexInferenceAdmission {
       nativeBoundary: Boolean(input.nativeScopeId),
       nativeScopeId: input.nativeScopeId ?? null,
       taskGoalCycle: input.recovery?.taskGoalCycle,
+      taskInput: input.recovery?.taskInput,
       queued: false,
       rejectedInput: false,
       nativeFailureBeforeOutput: false,
@@ -1066,6 +1069,87 @@ export class CodexInferenceAdmission {
         "The private Task Goal source changed during capture.",
       );
     return record;
+  }
+
+  private unusedTaskGoalInputOperation(input: TaskInferenceInputReceipt) {
+    const candidates = [...this.operations].filter(
+      (operation) =>
+        operation.taskInput?.kind === "goal" &&
+        operation.operationId === input.operationId &&
+        JSON.stringify(operation.taskInput) === JSON.stringify(input) &&
+        operation.queued &&
+        !operation.settled &&
+        !operation.dispatched &&
+        !operation.inputDispatching &&
+        !operation.leaseStarted &&
+        !operation.preparing &&
+        !operation.nativeBoundary &&
+        operation.nativeScopeId === null,
+    );
+    if (candidates.length !== 1)
+      throw new UnstartedInferenceUnavailableError(
+        "The Task has no unique unused first Goal input.",
+      );
+    return candidates[0]!;
+  }
+
+  hasTaskGoalInputScope(
+    chatId: string,
+    threadId: string,
+    input: TaskInferenceInputReceipt,
+  ): boolean {
+    return [...this.operations].some(
+      (operation) =>
+        !operation.settled &&
+        operation.chatId === chatId &&
+        operation.threadId === threadId &&
+        operation.taskInput?.kind === "goal" &&
+        operation.operationId === input.operationId &&
+        JSON.stringify(operation.taskInput) === JSON.stringify(input),
+    );
+  }
+
+  async captureTaskGoalInputSource(input: TaskInferenceInputReceipt) {
+    const operation = this.unusedTaskGoalInputOperation(input);
+    const source = await operation.ticket.unstartedSource();
+    if (this.unusedTaskGoalInputOperation(input) !== operation)
+      throw new UnstartedInferenceUnavailableError(
+        "The Task Goal input changed during its keeper read.",
+      );
+    return source;
+  }
+
+  withdrawTaskGoalInputSource(
+    source: InferenceJournalRecord,
+    reason: InferenceWithdrawalError,
+    queueRevision: number,
+  ) {
+    const input = source.identity.recovery?.taskInput;
+    if (!input || input.kind !== "goal" || source.nativeExecution)
+      throw new UnstartedInferenceUnavailableError(
+        "The transfer has no unused Task Goal input receipt.",
+      );
+    const operation = this.unusedTaskGoalInputOperation(input);
+    if (
+      source.identity.runtimeGeneration !== this.generation ||
+      source.identity.chatId !== operation.chatId ||
+      source.identity.recovery?.threadId !== operation.threadId
+    )
+      throw new UnstartedInferenceUnavailableError(
+        "The Task Goal input changed its physical owner.",
+      );
+    operation.withdrawalReason = reason;
+    try {
+      operation.withdrawal = operation.ticket.withdrawUnstarted(
+        reason,
+        queueRevision,
+      );
+      this.settle(operation, "never-started");
+      return operation.withdrawal;
+    } catch (error) {
+      operation.withdrawalReason = undefined;
+      throw error;
+    }
   }
 
   /** Only this fresh Core Task begin may use its never-allowed scope as a

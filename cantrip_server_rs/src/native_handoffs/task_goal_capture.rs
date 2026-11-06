@@ -3,7 +3,7 @@
 use super::*;
 use futures::future::BoxFuture;
 pub(crate) type TaskGoalCaptureReader =
-    Arc<dyn Fn(Value, String) -> BoxFuture<'static, Result<Value>> + Send + Sync>;
+    Arc<dyn Fn(Value, String, Option<Value>) -> BoxFuture<'static, Result<Value>> + Send + Sync>;
 impl Repository {
     pub(super) async fn capture_task_goal(
         &self,
@@ -15,7 +15,7 @@ impl Repository {
         let (owner, chat, input) = (owner.to_owned(), chat.to_owned(), input.cloned());
         let (first_owner, first_chat) = (owner.clone(), chat.clone());
         let before = self.database.transaction(|tx|Box::pin(async move {
-            context::lock_chat(tx,&first_owner,&first_chat).await?;
+            lock_handoff_chat(tx,&first_owner,&first_chat).await?;
             if let Some(input) = &input {
                 let existing = tx.query("SELECT operation_id FROM native_runtime_handoffs WHERE operation_id=$1",&[&text(&input["operationId"])?]).await?;
                 if !existing.is_empty() {return Ok(None);}
@@ -25,13 +25,20 @@ impl Repository {
             let state = settings_persistence::get(Executor::Transaction(tx),&first_owner,&first_chat).await?.unwrap_or(Value::Null);
             if input.as_ref().is_some_and(|i|state["binding"].get("bindingId") != i.get("bindingId")) {return reject("handoff-source-replaced");}
             Ok(Some(json!({"scope":row["scope"],"cycleId":row["cycle"]["id"],
+                "input":if row["inputSource"]==true {row["cycle"]["goal_input"]["receipt"].clone()}else{Value::Null},
+                "controlRevision":row["context"]["managedInputRevision"],
                 "bindingId":state["binding"].get("bindingId").cloned().unwrap_or(Value::Null)})))
         })).await?;
         let Some(mut captured) = before else {
             return Ok(None);
         };
-        let value = read(captured["scope"].clone(), text(&captured["cycleId"])?).await?;
-        captured["value"] = parse("taskGoalCycleCaptureSchema", &value)?;
+        let value = read(
+            captured["scope"].clone(),
+            text(&captured["cycleId"])?,
+            captured.get("input").filter(|v| !v.is_null()).cloned(),
+        )
+        .await?;
+        captured["value"] = parse("taskGoalHandoffCaptureSchema", &value)?;
         Ok(Some(captured))
     }
     pub async fn read_task_source(
@@ -47,7 +54,7 @@ impl Repository {
         self.database
             .transaction(|tx| {
                 Box::pin(async move {
-                    context::lock_chat(tx, &owner, &chat).await?;
+                    lock_handoff_chat(tx, &owner, &chat).await?;
                     let (scope, value, before_id) = (
                         &captured["scope"],
                         &captured["value"],
@@ -65,7 +72,17 @@ impl Repository {
                     let Some(row) = task_goal::read(tx, &owner, &chat, false).await? else {
                         return reject("handoff-task-goal-source-replaced");
                     };
-                    task_goal::assert_record(&row, scope, &value["record"], None)?;
+                    if row["context"].get("managedInputRevision") != captured.get("controlRevision")
+                    {
+                        return reject("handoff-task-goal-controls-replaced");
+                    }
+                    task_goal::assert_record(
+                        &row,
+                        scope,
+                        &value["record"],
+                        None,
+                        &value["taskGoalInput"],
+                    )?;
                     if ["workerId", "chatId", "threadId"]
                         .iter()
                         .any(|key| snapshot["context"].get(key) != scope.get(key))
@@ -122,7 +139,7 @@ impl Repository {
         let (owner, state, provider) = (owner.to_owned(), state.clone(), provider.clone());
         self.database.transaction(|tx|Box::pin(async move {
             let chat = text(&state["chatId"])?;
-            context::lock_chat(tx,&owner,&chat).await?;
+            lock_handoff_chat(tx,&owner,&chat).await?;
             let stored = one(Executor::Transaction(tx),"SELECT to_jsonb(h)::text FROM native_runtime_handoffs h WHERE operation_id=$1 AND owner_id=$2",&[&text(&state["operationId"])?,&owner]).await?;
             let Some(stored) = stored else {return reject("handoff-phase-conflict")};
             let current = wire(&stored)?;
@@ -131,7 +148,7 @@ impl Repository {
             guards::assert_source(tx,&owner,binding,&stored["queued_source"],stored["cancel_requested"]==true).await?;
             let Some(row) = task_goal::read(tx,&owner,&chat,stored["cancel_requested"]==true).await? else {return reject("handoff-task-goal-source-replaced")};
             let source = &state["queuedSource"]["taskGoal"];
-            let cycle = &source["identity"]["recovery"]["taskGoalCycle"];
+            let cycle = task_goal::handoff_cycle(&state["queuedSource"]);
             let epoch = cycle["orderEpoch"].as_i64().context("Task Goal queue order")? + i64::from(provider != source["identity"]["providerId"]);
             let mut result = json!({"chatId":chat,"projectId":row["context"]["projectId"],
                 "worktreeId":row["context"]["worktreeId"],"rootKind":row["context"]["rootKind"],

@@ -151,6 +151,9 @@ pub(super) async fn finish(tx: &Transaction<'_>, row: Value, outcome: &str) -> R
     )
     .await?;
     let chat = text(&row["chat_id"])?;
+    if outcome == "cancelled" {
+        task_goal_input::cancel(tx, &row).await?;
+    }
     tx.query(
         "INSERT INTO managed_queue_states(chat_id) VALUES($1) ON CONFLICT DO NOTHING",
         &[&chat],

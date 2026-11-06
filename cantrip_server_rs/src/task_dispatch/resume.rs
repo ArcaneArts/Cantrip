@@ -13,7 +13,7 @@ impl Repository {
         self.database.transaction(|tx|Box::pin(async move {
             if !lock_owner(tx,&owner).await? { return Ok(None); }
             let ex=Executor::Transaction(tx);
-            let candidates=all(ex,"SELECT json_build_object('cycle',to_jsonb(d),'projectId',p.id,'projectPaused',p.task_scheduling_paused)::text FROM task_dispatch_cycles d JOIN chats c ON c.id=d.chat_id JOIN projects p ON p.id=c.project_id AND p.owner_id=$1 WHERE d.owner_id=$1 AND d.state='paused' AND NOT EXISTS(SELECT 1 FROM task_planning_rounds r WHERE r.chat_id=d.chat_id AND r.inference_input->'routeChange'->>'phase'='draining') ORDER BY d.fifo_created_at ASC,d.id ASC",&[&owner]).await?;
+            let candidates=all(ex,"SELECT json_build_object('cycle',to_jsonb(d),'projectId',p.id,'projectPaused',p.task_scheduling_paused)::text FROM task_dispatch_cycles d JOIN chats c ON c.id=d.chat_id JOIN projects p ON p.id=c.project_id AND p.owner_id=$1 WHERE d.owner_id=$1 AND d.state='paused' AND NOT EXISTS(SELECT 1 FROM native_runtime_handoffs h WHERE h.chat_id=d.chat_id AND h.phase IN ('preparing','prepared','committed')) AND NOT EXISTS(SELECT 1 FROM task_planning_rounds r WHERE r.chat_id=d.chat_id AND r.inference_input->'routeChange'->>'phase'='draining') ORDER BY d.fifo_created_at ASC,d.id ASC",&[&owner]).await?;
             for candidate in candidates {
                 let row=&candidate["cycle"]; let cycle=summary(row)?;
                 if candidate["projectPaused"]==true { continue; }

@@ -65,6 +65,7 @@ export type ManagedRuntimeHandoffPlan = z.infer<typeof planSchema>;
 function sourceGoalEpoch(state: NativeRuntimeHandoffState) {
   const source = state.queuedSource;
   return (
+    source?.taskGoalInput?.goalEpoch ??
     source?.taskGoal?.identity.recovery?.taskGoalCycle?.goalEpoch ??
     source?.goalRecovery?.goalEpoch ??
     source?.goalClaim?.goalEpoch ??

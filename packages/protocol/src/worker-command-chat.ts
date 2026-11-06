@@ -92,6 +92,7 @@ export const workerChatCommandSchemas = [
       type: z.literal("task.goal.source"),
       scope: nativeSettingsReadScopeSchema,
       cycleId: z.string().min(1).max(255),
+      input: taskInferenceInputReceiptSchema.optional(),
     })
     .strict(),
   z.object({
