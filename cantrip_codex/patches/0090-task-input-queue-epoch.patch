@@ -1,0 +1,14 @@
+diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/cantrip_inference_journal.rs
+--- a/codex-rs/cli/src/cantrip_inference_journal.rs
++++ b/codex-rs/cli/src/cantrip_inference_journal.rs
+@@ -78,6 +78,10 @@
+ struct TaskInput {
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     kind: Option<TaskInputKind>,
++    // Preserve the canonical queue episode, including explicit epoch zero.
++    // Omission keeps legacy receipts byte-for-byte unchanged on round trip.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    queue_order_epoch: Option<u64>,
+     operation_id: String,
+     chat_id: String,
+     client_message_id: String,

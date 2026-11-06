@@ -896,3 +896,19 @@ stores report that operation as unavailable. The worker accepts both artifact
 versions. This is a paired native/worker change, authored from tracked source
 fragments and formatted only. No patch application/checks, compilation, tests or
 native execution ran; runtime and platform behavior remain unverified.
+
+## Task input queue epochs
+
+Patch `0090` preserves the existing canonical Task receipt's optional
+`queueOrderEpoch` in keeper admission metadata. The server includes this field
+for new Task rounds, including epoch zero; the previous strict native decoder
+rejected those rounds before their first provider request. Omitted legacy epochs
+remain omitted, and explicit zero/later epochs retain their exact identity.
+
+The normal 91-patch macOS ARM64 development build and both runtime/archive
+verifications passed. All 121 focused worker cases passed, including actual
+keeper round trips for omitted, zero and later epochs. Real tool-using Tasks
+completed on Node and Rust, and native-terminal chat turns passed two cold
+suspension cycles on each server with their original thread and turn IDs.
+The separate Task cold-suspension target still fails as documented in the
+[suspension contract](../docs/DURABLE_TURN_SUSPENSION.md#task-recovery-qualification).
