@@ -78,6 +78,8 @@ export interface InferenceRequest {
   recovery?: InferenceRecoveryIdentity | null;
   /** The execution owner's signal, never the lifetime of an observing UI. */
   signal?: AbortSignal;
+  /** Actual native request is blocked at its first permission boundary. */
+  initiallySuspended?: boolean;
 }
 
 export type InferenceSettlement =
@@ -106,6 +108,12 @@ export interface InferenceTicket {
   readonly ready: Promise<InferenceLease>;
   status(): InferenceOperationStatus;
   cancel(reason?: Error): void;
+  /** Only the native request owner may park a still-waiting permission request.
+   * No granted or running model permission can be parked by this operation. */
+  pauseWaiting(): boolean;
+  /** Requeue a parked permission request at the tail, keeping its original
+   * pending promise and native scope. Does not wait for provider capacity. */
+  resumeWaiting(): void;
   /** Seal this exact unused reservation before returning durable no-start
    * evidence. This is not permission to replay its canonical input. */
   withdrawUnstarted(reason?: Error): Promise<InferenceJournalRecord>;
@@ -177,6 +185,10 @@ interface Ticket {
   handle: InferenceTicket;
   lease: InferenceLease;
   resuming?: Promise<void>;
+  parkedWaiting: boolean;
+  queueRevision: number;
+  journalEnqueued?: Promise<void>;
+  journalRequeue?: Promise<boolean>;
   observe?: (state: InferenceTicketState) => void;
   admitted?: () => void;
   journalKey: string | null;
@@ -1114,7 +1126,9 @@ export class WorkerInferenceAdmission {
         ...input,
         recovery: input.recovery ? { ...input.recovery } : null,
       },
-      state: "waiting",
+      state: input.initiallySuspended ? "suspended" : "waiting",
+      parkedWaiting: input.initiallySuspended === true,
+      queueRevision: 0,
       stateSince: performance.now(),
       timing: { queueWaitMs: 0, reservedMs: 0, executionMs: 0, suspendedMs: 0 },
       controller: new AbortController(),
@@ -1140,6 +1154,8 @@ export class WorkerInferenceAdmission {
         ready,
         status: () => this.status(ticket),
         cancel: (reason) => this.cancel(ticket, reason),
+        pauseWaiting: () => this.pauseWaiting(ticket),
+        resumeWaiting: () => this.resumeWaiting(ticket),
         withdrawUnstarted: (reason) => this.withdrawUnstarted(ticket, reason),
         privateTaskGoalSource: () => this.privateTaskGoalSource(ticket),
         withdrawTaskGoalBeforeAllow: (reason) => {
@@ -1163,7 +1179,8 @@ export class WorkerInferenceAdmission {
     };
     runtime.records.set(input.operationId, ticket);
     lifetime.ticket = ticket;
-    pool.queue.push(ticket);
+    if (ticket.parkedWaiting) pool.suspended.add(ticket);
+    else pool.queue.push(ticket);
     // An accepted input can arrive before its durable queue notice. Reconcile
     // this chat's physically ended Goal aliases, including an older Task cycle
     // that a newly accepted canonical input may have replaced.
@@ -1183,24 +1200,25 @@ export class WorkerInferenceAdmission {
       this.wakeRecovery(input.chatId ?? undefined);
     this.diagnose(ticket, "queued");
     if (this.journal && ticket.journalKey) {
-      void this.journal
-        .enqueue(ticket.journalKey, {
-          operationId: input.operationId,
-          providerId: input.providerId,
-          runtimeGeneration: runtime.generation,
-          recoveryKey: input.recoveryKey ?? null,
-          recovery: ticket.input.recovery ?? null,
-          chatId: input.chatId ?? null,
-          projectId: input.projectId ?? null,
-        })
+      ticket.journalEnqueued = this.journal.enqueue(ticket.journalKey, {
+        operationId: input.operationId,
+        providerId: input.providerId,
+        runtimeGeneration: runtime.generation,
+        recoveryKey: input.recoveryKey ?? null,
+        recovery: ticket.input.recovery ?? null,
+        chatId: input.chatId ?? null,
+        projectId: input.projectId ?? null,
+      });
+      void ticket.journalEnqueued
         .then(() => {
-          if (ticket.state !== "waiting") return;
+          if (ticket.state !== "waiting" && !ticket.parkedWaiting) return;
           // Waiting phase alone precedes durable storage. Only this positive
           // journal ACK allows the relay to release its dispatch counter.
           ticket.admitted?.();
           ticket.admitted = undefined;
           ticket.resolveQueued();
-          ticket.durableQueueReady = !ticket.recoveryPending;
+          if (ticket.queueRevision === 0)
+            ticket.durableQueueReady = !ticket.recoveryPending;
           this.drain(pool);
           this.changed();
         })
@@ -1438,6 +1456,80 @@ export class WorkerInferenceAdmission {
     return ticket.withdrawal;
   }
 
+  /** The owning Core request cannot infer until this exact pending promise
+   * grants. Parking changes eligibility, never claims that a holder settled. */
+  private pauseWaiting(ticket: Ticket): boolean {
+    if (ticket.parkedWaiting && ticket.state === "suspended") return true;
+    if (ticket.state !== "waiting" || ticket.controller.signal.aborted)
+      return false;
+    ticket.parkedWaiting = true;
+    ticket.queueRevision++;
+    this.transition(ticket, "suspended");
+    ticket.pool.queue = ticket.pool.queue.filter((entry) => entry !== ticket);
+    ticket.pool.suspended.add(ticket);
+    this.diagnose(ticket, "suspended");
+    ticket.observe?.(ticket.state);
+    this.drain(ticket.pool);
+    this.changed();
+    return true;
+  }
+
+  private resumeWaiting(ticket: Ticket): void {
+    if (!ticket.parkedWaiting) return;
+    if (ticket.state !== "suspended" || ticket.controller.signal.aborted)
+      throw new Error("The parked native inference is no longer available.");
+    ticket.parkedWaiting = false;
+    this.requeueSuspended(ticket);
+  }
+
+  /** Both a resident native suspension and an unused parked request rejoin
+   * FIFO. The latter retains its original unresolved acquisition promise. */
+  private requeueSuspended(ticket: Ticket): void {
+    this.transition(ticket, "waiting");
+    ticket.pool.suspended.delete(ticket);
+    ticket.sequence = ++this.sequence;
+    ticket.restoredOrder = null;
+    ticket.enqueuedAt = Date.now();
+    const revision = ++ticket.queueRevision;
+    ticket.durableQueueReady = !this.journal;
+    ticket.pool.queue.push(ticket);
+    this.diagnose(ticket, "resumed");
+    if (this.journal && ticket.journalKey && !ticket.recoveryPending)
+      void this.persistRequeue(ticket, revision).catch((error) => {
+        this.cancel(ticket, error);
+        this.reportJournalError(error);
+      });
+    ticket.observe?.(ticket.state);
+    this.adoptRestorations();
+    this.drain(ticket.pool);
+    this.changed();
+  }
+
+  private async persistRequeue(
+    ticket: Ticket,
+    revision: number,
+  ): Promise<void> {
+    const preceding = ticket.journalRequeue;
+    const update = (async () => {
+      await ticket.journalEnqueued;
+      await preceding;
+      if (
+        ticket.state !== "waiting" ||
+        ticket.queueRevision !== revision ||
+        ticket.recoveryPending
+      )
+        return false;
+      await this.journal!.requeue(ticket.journalKey!);
+      return true;
+    })();
+    ticket.journalRequeue = update;
+    if (!(await update)) return;
+    if (ticket.state !== "waiting" || ticket.queueRevision !== revision) return;
+    ticket.durableQueueReady = !ticket.recoveryPending;
+    this.drain(ticket.pool);
+    this.changed();
+  }
+
   private suspend(ticket: Ticket): void {
     if (ticket.state === "suspended") return;
     if (ticket.state !== "running" && ticket.state !== "cancelling")
@@ -1472,30 +1564,7 @@ export class WorkerInferenceAdmission {
         if (ticket.resuming === resuming) ticket.resuming = undefined;
       })
       .catch(() => {});
-    this.transition(ticket, "waiting");
-    ticket.pool.suspended.delete(ticket);
-    ticket.sequence = ++this.sequence;
-    ticket.restoredOrder = null;
-    ticket.enqueuedAt = Date.now();
-    ticket.durableQueueReady = !this.journal;
-    ticket.pool.queue.push(ticket);
-    this.diagnose(ticket, "resumed");
-    if (this.journal && ticket.journalKey)
-      void this.journal
-        .requeue(ticket.journalKey)
-        .then(() => {
-          if (ticket.state !== "waiting") return;
-          ticket.durableQueueReady = true;
-          this.drain(ticket.pool);
-          this.changed();
-        })
-        .catch((error) => {
-          this.cancel(ticket, error);
-          this.reportJournalError(error);
-        });
-    ticket.observe?.(ticket.state);
-    this.drain(ticket.pool);
-    this.changed();
+    this.requeueSuspended(ticket);
     return resuming;
   }
 
@@ -2153,12 +2222,18 @@ export class WorkerInferenceAdmission {
         new Set(waiter.goalInputNotDispatched),
         new Set(waiter.taskGoalCycleNotDispatched),
       )
-        .then(() => {
+        .then(async () => {
           for (const record of records) this.removeRestoration(record.key);
           waiter.claimed = null;
           ticket.recoveryPending = false;
-          if (ticket.state === "waiting")
-            ticket.durableQueueReady = waiter.records.length === 0;
+          if (ticket.state === "waiting") {
+            if (ticket.queueRevision > 0) {
+              // A Resume during source adoption must not regain the Source's
+              // old ordinal after its fresh FIFO enqueue. Adoption settles first.
+              ticket.restoredOrder = null;
+              await this.persistRequeue(ticket, ticket.queueRevision);
+            } else ticket.durableQueueReady = waiter.records.length === 0;
+          }
           this.adoptRestorations();
           for (const pool of this.pools.values()) this.drain(pool);
           this.changed();
@@ -2189,7 +2264,10 @@ export class WorkerInferenceAdmission {
     ]);
     for (;;) {
       signal.throwIfAborted();
-      if (ticket.state !== "waiting")
+      if (
+        ticket.state !== "waiting" &&
+        !(ticket.parkedWaiting && ticket.state === "suspended")
+      )
         throw new Error("Recovered admission is no longer waiting.");
       try {
         await this.journal!.adopt(

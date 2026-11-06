@@ -376,7 +376,41 @@ export class TaskGoalCycleRecoveryRepository {
           "The native Task Goal binding changed.",
           "stale-lease",
         );
-      const marker = row.cycle.goalCycleRecovery;
+      let marker = row.cycle.goalCycleRecovery;
+      if (input.freshRuntimeGeneration) {
+        // The current worker read its actual never-allowed keeper record after
+        // binding this exact native scope. It owns capacity; this transaction
+        // checks the canonical Task controls before Core can receive allow.
+        const key = createHash("sha256")
+          .update(
+            JSON.stringify([
+              input.workerGeneration,
+              input.freshRuntimeGeneration,
+              input.operationId,
+            ]),
+          )
+          .digest("hex");
+        if (
+          key !== input.sourceKey ||
+          (marker && marker.sourceKey !== input.sourceKey && !marker.settled)
+        )
+          throw new TaskDispatchConflictError(
+            "The Task Goal Source changed.",
+            "stale-lease",
+          );
+        if (marker?.sourceKey !== input.sourceKey)
+          marker = taskGoalCycleRecoverySchema.parse({
+            sourceKey: input.sourceKey,
+            workerGeneration: input.workerGeneration,
+            runtimeGeneration: input.freshRuntimeGeneration,
+            operationId: input.operationId,
+            workerId: input.workerId,
+            providerId: input.providerId,
+            threadId: input.threadId,
+            turnId: input.turnId,
+            cycle: input.cycle,
+          });
+      }
       if (
         !marker ||
         marker.sourceKey !== input.sourceKey ||

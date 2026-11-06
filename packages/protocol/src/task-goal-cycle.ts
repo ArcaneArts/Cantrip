@@ -69,6 +69,8 @@ export const taskGoalCycleRecoverySchema = z
 export const taskGoalCycleDispatchSchema = z
   .object({
     sourceKey: z.string().regex(/^[a-f0-9]{64}$/u),
+    /** Present only for the actual fresh keeper Source, not a recovered alias. */
+    freshRuntimeGeneration: z.uuid().optional(),
     serverId: id,
     workerId: id,
     workerGeneration: z.uuid(),

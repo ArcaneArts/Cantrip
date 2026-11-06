@@ -5,6 +5,7 @@ import type {
   NativeGoalRecovery,
   TaskGoalCycleRecovery,
   NativeGoalClaimRecovery,
+  TaskPauseIntent,
 } from "@cantrip/protocol";
 /** A durable revision cursor makes lost queue notices recoverable without replaying input. */
 export function createManagedQueueDelivery(options: {
@@ -13,6 +14,10 @@ export function createManagedQueueDelivery(options: {
   publish: (ownerId: string, chatId: string) => void;
   onError: (error: unknown) => void;
   dispatch?: (ownerId: string, chatId: string) => Promise<void>;
+  readTaskPause?: (
+    ownerId: string,
+    chatId: string,
+  ) => Promise<TaskPauseIntent | null>;
   recoverGoal?: (
     ownerId: string,
     chatId: string,
@@ -58,6 +63,10 @@ export function createManagedQueueDelivery(options: {
             const entry = entries[next++]!;
             try {
               options.publish(entry.ownerId, entry.chatId);
+              const taskPause = await options.readTaskPause?.(
+                entry.ownerId,
+                entry.chatId,
+              );
               // A moved/archived chat can still have a restored FIFO position
               // on its previous worker. One durable revision covers all notices.
               const workers = [
@@ -73,6 +82,9 @@ export function createManagedQueueDelivery(options: {
                         type: "chat.queue.changed",
                         chatId: entry.chatId,
                         revision: entry.revision,
+                        ...(taskPause?.scope.workerId === workerId
+                          ? { taskPause }
+                          : {}),
                       },
                       { ownerId: entry.ownerId, timeoutMs: 10000 },
                     );

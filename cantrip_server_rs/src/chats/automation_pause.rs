@@ -16,6 +16,8 @@ use crate::{
 use anyhow::{Context, Result};
 use futures::future::BoxFuture;
 use std::sync::Arc;
+#[path = "automation_pause_task.rs"]
+mod task;
 #[derive(Debug)]
 pub struct PauseError {
     pub status_code: u16,
@@ -144,6 +146,11 @@ impl Service {
                 "The project worker is offline. This chat remains paused so its next action is not lost.",
             ));
         }
+        if context["experience"] == "task" {
+            return self
+                .set_task_pause(owner, &chat, paused, resume_automation)
+                .await;
+        }
         let native = managed_console::turn_session_context(context).is_some();
         let suspension = if native {
             self.chats.native_suspension(owner, &chat).await?
@@ -165,14 +172,15 @@ impl Service {
                 .durable_resume(owner, context, &control, resume_automation)
                 .await;
         }
-        let resumed = if native && !paused && !durable_resume {
+        let resume_before_worker = !paused && native && !durable_resume;
+        let resumed = if resume_before_worker {
             self.chats
                 .set_automation_paused(owner, &chat, false)
                 .await?
         } else {
             None
         };
-        if native && !paused && !durable_resume && resumed.is_none() {
+        if resume_before_worker && resumed.is_none() {
             return Err(failure(404, "Chat source not found."));
         }
         if native && !paused && !durable_resume {
@@ -205,7 +213,7 @@ impl Service {
             match acknowledged {
                 Ok(value) => active = value,
                 Err(error) => {
-                    if !paused && native {
+                    if resume_before_worker {
                         self.chats.set_automation_paused(owner, &chat, true).await?;
                         self.publish(owner, context);
                     }
