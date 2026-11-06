@@ -75,3 +75,5 @@ export * from "./cantrip-os-run-source.js";
 export * from "./native-suspensions.js";
 
 export * from "./cantrip-os-backup-api.js";
+
+export * from "./task-pause.js";

@@ -35,6 +35,7 @@ interface Operation {
   preparationEnded?: () => void;
   observedStart: boolean;
   nativeBoundary: boolean;
+  initialNativePaused?: boolean;
   nativeScopeId: string | null;
   taskGoalCycle?: TaskGoalCycleIdentity;
   queued: boolean;
@@ -95,6 +96,7 @@ interface Request {
   expectedTurnId?: string;
   nativeScopeId?: string;
   signal?: AbortSignal;
+  initiallySuspended?: boolean;
   recoveryKey?: string | null;
   recovery?: InferenceRecoveryIdentity | null;
 }
@@ -147,13 +149,16 @@ interface NativeRequest {
   onTaskGoalCycleDispatch?: (
     cycle: TaskGoalCycleIdentity,
     operationId: string,
-    recovery: TaskGoalCycleRecovery,
+    recovery: TaskGoalCycleRecovery | null,
+    source: InferenceJournalRecord | null,
   ) => Promise<void>;
   threadId: string;
   turnId: string;
   scopeId: string;
   provider: Request["provider"];
   signal: AbortSignal;
+  /** Read synchronously when this actual pending native request enqueues. */
+  isPaused?: () => boolean;
   rootThreadId?: string | null;
   /** Thread-owned association survives the preceding cycle's ticket release. */
   chatId?: string | null;
@@ -174,6 +179,17 @@ export interface RevokedInferenceExecution {
  * One instance belongs to one launched native process, captured by its exit hook.
  */
 export class CodexInferenceAdmission {
+  private readonly pausedTasks = new Set<string>();
+
+  setTaskPaused(chatId: string, paused: boolean): void {
+    if (paused) this.pausedTasks.add(chatId);
+    else this.pausedTasks.delete(chatId);
+    for (const operation of this.operations) {
+      if (operation.chatId !== chatId || operation.settled) continue;
+      if (paused) operation.ticket.pauseWaiting();
+      else operation.ticket.resumeWaiting();
+    }
+  }
   private readonly runtime: InferenceRuntime;
   private readonly operations = new Set<Operation>();
   private readonly completed = new Set<string>();
@@ -350,6 +366,9 @@ export class CodexInferenceAdmission {
       signal: input.signal,
       recoveryKey: input.recoveryKey,
       recovery: input.recovery,
+      initiallySuspended:
+        input.initiallySuspended ||
+        Boolean(input.chatId && this.pausedTasks.has(input.chatId)),
     });
     let resolveSettlement!: () => void;
     const settlement = new Promise<void>((resolve) => {
@@ -867,6 +886,11 @@ export class CodexInferenceAdmission {
           throw new Error(
             "Native inference owner changed during confirmation.",
           );
+        if (operation.initialNativePaused) {
+          await operation.lease!.resume();
+          input.signal.throwIfAborted();
+          operation.initialNativePaused = false;
+        }
         operation.observedStart = true;
         operation.nativeBoundary = true;
         operation.nativeScopeId = input.scopeId;
@@ -947,6 +971,7 @@ export class CodexInferenceAdmission {
             ) ?? Promise.resolve()
         : undefined,
       signal: input.signal,
+      initiallySuspended: input.isPaused?.() === true,
     });
     try {
       const operation = this.findNative(
@@ -960,7 +985,7 @@ export class CodexInferenceAdmission {
       await operation.lease.bindNative(binding);
       input.signal.throwIfAborted();
       const recovery = operation.lease.taskGoalRecovery();
-      if (taskGoalCycle && recovery) {
+      if (taskGoalCycle) {
         if (!input.onTaskGoalCycleDispatch)
           throw new Error(
             "Task Goal inference has no canonical dispatch check.",
@@ -969,6 +994,7 @@ export class CodexInferenceAdmission {
           taskGoalCycle,
           operationId,
           recovery,
+          recovery ? null : await operation.ticket.privateTaskGoalSource(),
         );
         input.signal.throwIfAborted();
       }
@@ -1114,6 +1140,76 @@ export class CodexInferenceAdmission {
         "The captured private Task Goal begin is no longer unused.",
       );
     return operation;
+  }
+
+  /** Called only for the actual still-pending Core begin/resume request. A
+   * waiting worker ticket owns no permission; a grant winning first is handled
+   * by the normal native Pause boundary instead. */
+  pauseNativeWait(threadId: string, turnId: string, scopeId: string) {
+    const entry = this.nativeEntries.get(
+      JSON.stringify([threadId, turnId, scopeId]),
+    );
+    const independent = entry?.independent === true;
+    const operation =
+      this.findNative(threadId, turnId, scopeId) ??
+      (entry?.operation &&
+      !entry.operation.settled &&
+      entry.operation.nativeScopeId === null
+        ? entry.operation
+        : undefined);
+    if (operation)
+      return {
+        parked:
+          operation.ticket.pauseWaiting() ||
+          Boolean(
+            operation.lease && operation.ticket.status().state === "suspended",
+          ),
+        independent,
+      };
+    // Confirmation/preparation can precede enqueue. A root reservation that was
+    // already forwarded cannot use this path; its actual native pause must ACK.
+    return {
+      independent,
+      parked: ![...this.operations].some(
+        (candidate) =>
+          candidate.threadId === threadId &&
+          (!candidate.turnId || candidate.turnId === turnId) &&
+          candidate.dispatched &&
+          !candidate.settled,
+      ),
+    };
+  }
+
+  /** The caller just confirmed this exact main Core begin is still pending.
+   * A sequential title has settled, but its root reservation may already be
+   * running before the first native model gate. Suspend only that unbound root;
+   * independent/model scopes and overlapping preparation cannot use this path. */
+  pauseInitialNativeBoundary(threadId: string, turnId: string): boolean {
+    const candidates = [...this.operations].filter(
+      (operation) =>
+        operation.threadId === threadId &&
+        (!operation.turnId || operation.turnId === turnId) &&
+        operation.dispatched &&
+        operation.nativeScopeId === null &&
+        !operation.preparing &&
+        !operation.inputDispatching &&
+        !operation.settled &&
+        operation.lease,
+    );
+    if (candidates.length !== 1) return false;
+    const operation = candidates[0]!;
+    const state = operation.ticket.status().state;
+    if (operation.initialNativePaused && state === "suspended") return true;
+    if (state !== "running" && state !== "cancelling") return false;
+    operation.lease!.suspend();
+    operation.initialNativePaused = true;
+    return true;
+  }
+
+  resumePausedNative(chatId: string): void {
+    for (const operation of this.operations)
+      if (!operation.settled && operation.chatId === chatId)
+        operation.ticket.resumeWaiting();
   }
 
   /** Called only after Core establishes that no inference can run before resume. */

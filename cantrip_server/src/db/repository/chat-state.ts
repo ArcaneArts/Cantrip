@@ -196,12 +196,27 @@ export class ChatStateRepository {
     return this.database.transaction(async (tx) => {
       const rows = await tx
         .update(schema.chats)
-        .set({ automationPaused: paused, updatedAt: new Date() })
+        .set({
+          automationPaused: paused,
+          managedInputRevision: sql`CASE WHEN ${schema.chats.experience} = 'task' THEN ${schema.chats.managedInputRevision}+1 ELSE ${schema.chats.managedInputRevision} END`,
+          updatedAt: new Date(),
+        })
         .where(
           and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
         )
         .returning();
-      if (rows[0])
+      if (rows[0]?.experience === "task")
+        await tx
+          .insert(schema.managedQueueStates)
+          .values({ chatId, revision: 1 })
+          .onConflictDoUpdate({
+            target: schema.managedQueueStates.chatId,
+            set: {
+              revision: sql`${schema.managedQueueStates.revision}+1`,
+              notificationDueAt: sql`now()`,
+            },
+          });
+      else if (rows[0])
         await tx
           .update(schema.managedQueueStates)
           .set({ revision: sql`${schema.managedQueueStates.revision}+1` })

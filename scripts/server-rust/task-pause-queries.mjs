@@ -27,7 +27,11 @@ const fence = () =>
 const queries = {
   chat: db
     .update(schema.chats)
-    .set({ automationPaused: true, updatedAt: at })
+    .set({
+      automationPaused: true,
+      managedInputRevision: sql`CASE WHEN ${schema.chats.experience} = 'task' THEN ${schema.chats.managedInputRevision}+1 ELSE ${schema.chats.managedInputRevision} END`,
+      updatedAt: at,
+    })
     .where(and(eq(schema.chats.id, "chat"), eq(schema.chats.ownerId, "owner")))
     .returning(),
   queue: db

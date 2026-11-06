@@ -46,6 +46,8 @@ export const contractRoots = [
   "nativeInferenceResourceAuthorizationSchema",
   "nativeInferenceResourceAuthorizationResultSchema",
   "taskInferenceInputReceiptSchema",
+  "taskPauseScopeSchema",
+  "taskPauseIntentSchema",
   "taskInferenceInputDispatchSchema",
   "taskInferenceInputDispatchResultSchema",
   "taskGoalCycleIdentitySchema",

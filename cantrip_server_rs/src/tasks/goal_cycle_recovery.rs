@@ -282,6 +282,20 @@ impl Repository {
                 !eligible(&row) || input["operationId"].as_str() !=
                     Some(operation(&input["threadId"],&input["turnId"],&input["cycle"])?.as_str()) { return stale(); }
             let mut marker = row["cycle"]["goal_cycle_recovery"].clone();
+            if let Some(runtime) = input.get("freshRuntimeGeneration").filter(|value| !value.is_null()) {
+                let key = hex::encode(Sha256::digest(
+                    json!([input["workerGeneration"], runtime.clone(), input["operationId"]]).stringify().as_bytes(),
+                ));
+                if input["sourceKey"] != key.as_str() || (!marker.is_null() && marker.get("sourceKey") != input.get("sourceKey") && !truthy(marker.get("settled"))) {return stale();}
+                if marker.get("sourceKey") != input.get("sourceKey") {
+                marker = parse("taskGoalCycleRecoverySchema", &json!({
+                    "sourceKey":input["sourceKey"],"workerGeneration":input["workerGeneration"],
+                    "runtimeGeneration":runtime,"operationId":input["operationId"],
+                    "workerId":input["workerId"],"providerId":input["providerId"],
+                    "threadId":input["threadId"],"turnId":input["turnId"],"cycle":input["cycle"]
+                }))?;
+                }
+            }
             if marker.is_null() || marker.get("sourceKey") != input.get("sourceKey") ||
                 marker["cycle"].get("goalEpoch") != input["cycle"].get("goalEpoch") ||
                 marker.get("providerId") != input.get("providerId") ||

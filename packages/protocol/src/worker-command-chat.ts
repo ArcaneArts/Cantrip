@@ -1,3 +1,4 @@
+import { taskPauseScopeSchema, taskPauseIntentSchema } from "./task-pause.js";
 import {
   cantripOsExecutionSchema,
   cantripOsDesktopPlacement,
@@ -489,6 +490,8 @@ export const workerChatCommandSchemas = [
     .strict(),
   z.object({
     type: z.literal("chat.pause.set"),
+    task: taskPauseScopeSchema.optional(),
+    waitForBoundary: z.boolean().optional(),
     nativeActivationGeneration: z.string().min(1).nullable().optional(),
     chatId: z.string().min(1),
     paused: z.boolean(),
@@ -541,6 +544,7 @@ export const workerChatCommandSchemas = [
       type: z.literal("chat.queue.changed"),
       chatId: z.string().min(1),
       revision: z.number().int().nonnegative(),
+      taskPause: taskPauseIntentSchema.optional(),
     })
     .strict(),
   z

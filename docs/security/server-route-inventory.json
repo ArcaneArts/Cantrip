@@ -229,7 +229,7 @@
     "workerCredentialRoutes": 46,
     "durableTables": 116,
     "agentOperations": 56,
-    "workerCommands": 307,
+    "workerCommands": 308,
     "liveResources": 47,
     "clientControlCommands": 4,
     "cliCommands": 35,
@@ -249,7 +249,7 @@
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
-    "workerCommands": "ab1e2075557184067fca4ab0f1a600f6c42f9b0a4adddc14617d72f54965a144",
+    "workerCommands": "e61aa36d3e6ad4cf3793235764a7d726c13c7e113d7416ef15617d981f78a888",
     "tunnelFrameKinds": "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8"
   },
   "durableTables": [
@@ -8362,6 +8362,7 @@
     "chat.settings.read",
     "chat.settings.update",
     "chat.steer",
+    "chat.suspension.resume",
     "chat.sync",
     "chat.thread.ensure",
     "chat.turn",
@@ -8832,7 +8833,7 @@
     {
       "command": "chat.pause.set",
       "classification": "intentionally-public-control-plane",
-      "rationale": "reviewed worker lifecycle or capability contract"
+      "rationale": "server-derived Task pause revision and current worker/project/worktree/thread/cycle routing, desired pause state and queue revision only; no prompt, checkpoint contents, title or credentials"
     },
     {
       "command": "chat.permissions.update",
@@ -8852,7 +8853,7 @@
     {
       "command": "chat.queue.changed",
       "classification": "intentionally-public-control-plane",
-      "rationale": "chat-bound operation/generation, queue revision or handoff intent only; no transcript, native artifact or credentials"
+      "rationale": "server-derived Task pause revision and current worker/project/worktree/thread/cycle routing, desired pause state and queue revision only; no prompt, checkpoint contents, title or credentials"
     },
     {
       "command": "chat.queue.execute",
@@ -8938,6 +8939,11 @@
       "command": "chat.steer",
       "classification": "intentionally-public-control-plane",
       "rationale": "reviewed worker lifecycle or capability contract"
+    },
+    {
+      "command": "chat.suspension.resume",
+      "classification": "endpoint-protected",
+      "rationale": "authorized checkpoint/control and runtime identities plus worker routing and protected MCP/provider configuration; saved turn content remains in endpoint-owned continuation storage"
     },
     {
       "command": "chat.sync",

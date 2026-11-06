@@ -1,0 +1,233 @@
+diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
+--- a/codex-rs/app-server-protocol/src/protocol/common.rs
++++ b/codex-rs/app-server-protocol/src/protocol/common.rs
+@@ -720,1 +720,6 @@
++    ManagedExecutionTaskPause => "thread/managedExecution/taskPause" {
++        params: v2::ManagedExecutionTaskPauseParams,
++        serialization: None,
++        response: v2::ManagedExecutionTaskPauseResponse,
++    },
+     ManagedExecutionHandoff => "thread/managedExecution/handoff" {
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs b/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
+--- a/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
+@@ -114,1 +114,19 @@
++/// Ordered Task control on an actual private root; no model grant or input.
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionTaskPauseParams {
++    pub thread_id: String,
++    pub runner_generation: String,
++    pub revision: u64,
++    pub paused: bool,
++    pub wait_boundary: bool,
++}
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionTaskPauseResponse {
++    pub revision: u64,
++    pub paused: bool,
++}
+ /// Worker-owned transfer control; it never grants inference.
+diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
+--- a/codex-rs/app-server/src/message_processor.rs
++++ b/codex-rs/app-server/src/message_processor.rs
+@@ -1495,1 +1495,4 @@
++            ClientRequest::ManagedExecutionTaskPause { params, .. } => {
++                self.turn_processor.managed_execution_task_pause(&request_id, params).await
++            }
+             ClientRequest::ManagedExecutionHandoff { params, .. } => {
+diff --git a/codex-rs/app-server/src/request_processors/managed_execution.rs b/codex-rs/app-server/src/request_processors/managed_execution.rs
+--- a/codex-rs/app-server/src/request_processors/managed_execution.rs
++++ b/codex-rs/app-server/src/request_processors/managed_execution.rs
+@@ -270,1 +270,29 @@
++    pub(crate) async fn managed_execution_task_pause(
++        &self,
++        request_id: &ConnectionRequestId,
++        params: codex_app_server_protocol::ManagedExecutionTaskPauseParams,
++    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
++        if params.revision == 0 || params.revision > 2_147_483_647 {
++            return Err(invalid_params("invalid Task pause revision"));
++        }
++        self.outgoing.check_managed_execution_owner(
++            &params.runner_generation,
++            request_id.connection_id,
++            false,
++        )?;
++        let (_, thread) = self.load_thread(&params.thread_id).await?;
++        let (revision, paused) = thread
++            .set_task_pause_intent(
++                &params.runner_generation,
++                params.revision,
++                params.paused,
++                params.wait_boundary,
++            )
++            .await
++            .map_err(|error| invalid_request(error.to_string()))?;
++        Ok(Some(
++            codex_app_server_protocol::ManagedExecutionTaskPauseResponse { revision, paused }
++                .into(),
++        ))
++    }
+     pub(crate) async fn managed_execution_handoff(
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+--- a/codex-rs/core/src/managed_execution.rs
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -49,1 +49,4 @@
++    task_pause_revision: u64,
++    task_paused: bool,
++    task_pause_waiters: Vec<oneshot::Sender<()>>,
+     handoff_waiters: Vec<oneshot::Sender<()>>,
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+--- a/codex-rs/core/src/managed_execution.rs
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -500,1 +500,81 @@
++    /// Revision comparison and the actual native watch mutation share this lock.
++    /// A late request cannot apply an older intent after a newer Resume/Pause.
++    pub fn task_pause_control(
++        &self,
++        thread_id: ThreadId,
++        revision: u64,
++        paused: bool,
++        apply: impl FnOnce() -> Result<(), String>,
++    ) -> Result<(u64, bool), String> {
++        let mut state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state.closed
++            || state.inherited
++            || state.thread_id != Some(thread_id)
++            || !self.inference_only
++        {
++            return Err("Task pause does not own the current private root".into());
++        }
++        if revision < state.task_pause_revision {
++            return Ok((state.task_pause_revision, state.task_paused));
++        }
++        if revision == state.task_pause_revision && paused != state.task_paused {
++            return Err("Task pause revision changed its intent".into());
++        }
++        apply()?;
++        if revision != state.task_pause_revision {
++            state.task_pause_revision = revision;
++            state.task_paused = paused;
++            for waiter in std::mem::take(&mut state.task_pause_waiters) {
++                let _ = waiter.send(());
++            }
++        }
++        Ok((state.task_pause_revision, state.task_paused))
++    }
++
++    pub fn task_pause_state(&self, thread_id: ThreadId) -> Result<(u64, bool), String> {
++        let state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state.closed
++            || state.inherited
++            || state.thread_id != Some(thread_id)
++            || !self.inference_only
++        {
++            return Err("Task pause root was replaced".into());
++        }
++        Ok((state.task_pause_revision, state.task_paused))
++    }
++
++    /// Subscribe before waiting for a boundary or a live checkpoint resumption.
++    /// A newer intent wakes old observers; waking is never settlement evidence.
++    pub fn task_pause_change(
++        &self,
++        thread_id: ThreadId,
++        revision: u64,
++    ) -> Result<Option<oneshot::Receiver<()>>, String> {
++        let mut state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state.closed
++            || state.inherited
++            || state.thread_id != Some(thread_id)
++            || !self.inference_only
++        {
++            return Err("Task pause root was replaced".into());
++        }
++        if state.task_pause_revision != revision {
++            return Ok(None);
++        }
++        state
++            .task_pause_waiters
++            .retain(|waiter| !waiter.is_closed());
++        let (send, receive) = oneshot::channel();
++        state.task_pause_waiters.push(send);
++        Ok(Some(receive))
++    }
+     pub fn handoff_change(
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+--- a/codex-rs/core/src/managed_execution.rs
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -860,1 +860,2 @@
++            state.task_pause_waiters.clear();
+             state.handoff_waiters.clear();
+diff --git a/codex-rs/core/src/session/durable_suspension.rs b/codex-rs/core/src/session/durable_suspension.rs
+--- a/codex-rs/core/src/session/durable_suspension.rs
++++ b/codex-rs/core/src/session/durable_suspension.rs
+@@ -895,1 +895,56 @@
++    /// Task controls retain native turn state; they neither grant model capacity
++    /// nor create input authority. Only the owning inference-only gate may apply.
++    pub async fn set_task_pause_intent(
++        &self,
++        runner_generation: &str,
++        revision: u64,
++        paused: bool,
++        wait_boundary: bool,
++    ) -> Result<(u64, bool)> {
++        let gate = self
++            .managed_execution_gate()
++            .await
++            .ok_or_else(|| invalid("Task pause has no private native gate"))?;
++        if gate.runner_generation != runner_generation {
++            return Err(invalid("Task pause belongs to another native gate"));
++        }
++        let owner = coordinator(&self.session);
++        let mut resume = None;
++        let applied = gate
++            .task_pause_control(self.thread_id(), revision, paused, || {
++                if !paused && owner.has_live_suspension() {
++                    resume = Some(
++                        owner
++                            .begin_live_resume()
++                            .map_err(|error| error.to_string())?,
++                    );
++                }
++                if *self.session.subscribe_turn_pause_state().borrow() != paused {
++                    self.session.set_turn_paused(paused);
++                }
++                Ok(())
++            })
++            .map_err(invalid)?;
++        if applied.0 != revision || !wait_boundary {
++            return Ok(applied);
++        }
++        let Some(changed) = gate
++            .task_pause_change(self.thread_id(), revision)
++            .map_err(invalid)?
++        else {
++            return gate.task_pause_state(self.thread_id()).map_err(invalid);
++        };
++        if paused {
++            tokio::select! {
++                result = self.wait_until_turn_pause_boundary() => result?,
++                _ = changed => {},
++            }
++        } else if let Some(resume) = resume {
++            tokio::select! {
++                result = resume.wait() => result?,
++                _ = changed => {},
++            }
++        }
++        gate.task_pause_state(self.thread_id()).map_err(invalid)
++    }
+     /// Opt in before requesting pause; the boundary acknowledgement alone remains

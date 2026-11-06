@@ -1,3 +1,4 @@
+import { setTaskAutomationPause } from "./task-automation-pause-runtime.js";
 import type { FastifyInstance } from "fastify";
 import {
   chatPauseRuntimeStateSchema,
@@ -37,6 +38,7 @@ export interface ChatAutomationPauseRouteDependencies {
     | "listEffectiveMcpServers"
     | "setChatModel"
     | "updateChatRuntime"
+    | "taskAutomationPause"
   >;
   resumeChatAutomation: (chatId: string) => Promise<void>;
   runtimeForContext: (
@@ -45,14 +47,8 @@ export interface ChatAutomationPauseRouteDependencies {
   routePairsForConfiguration: ManagedConsoleRouting["routePairsForConfiguration"];
 }
 
-export class ChatAutomationPauseError extends Error {
-  constructor(
-    readonly statusCode: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+export { ChatAutomationPauseError } from "./chat-automation-pause-error.js";
+import { ChatAutomationPauseError } from "./chat-automation-pause-error.js";
 
 /** Shares durable pause state and native controls across Chat and Task-list actions. */
 export function createChatAutomationPauseRuntime(
@@ -113,6 +109,13 @@ export function createChatAutomationPauseRuntime(
       );
     }
 
+    if (context.experience === "task")
+      return setTaskAutomationPause(ownerId, chatId, paused, resumeAutomation, {
+        repository,
+        bridge,
+        publishChatSummary,
+        resumeChatAutomation,
+      });
     const managedNative = managedTurnSessionContext(context) !== undefined;
     const suspension = managedNative
       ? await repository.nativeSuspensions.read(ownerId, context.chatId)
@@ -142,15 +145,11 @@ export function createChatAutomationPauseRuntime(
     }
     // Native goal/queue resume may start execution, so admission must observe
     // the user's durable unpause before the worker forwards that mutation.
-    const resumed =
-      managedNative && !paused && !durableResume
-        ? await repository.setChatAutomationPaused(
-            ownerId,
-            context.chatId,
-            false,
-          )
-        : null;
-    if (managedNative && !paused && !durableResume && !resumed)
+    const resumeBeforeWorker = !paused && managedNative && !durableResume;
+    const resumed = resumeBeforeWorker
+      ? await repository.setChatAutomationPaused(ownerId, context.chatId, false)
+      : null;
+    if (resumeBeforeWorker && !resumed)
       throw new ChatAutomationPauseError(404, "Chat source not found.");
     if (managedNative && !paused && !durableResume)
       await repository.nativeCommands.resumeAutonomy(ownerId, context.chatId);
@@ -184,7 +183,7 @@ export function createChatAutomationPauseRuntime(
           );
         active = receipt.active;
       } catch (error) {
-        if (!paused && managedNative) {
+        if (resumeBeforeWorker) {
           await repository.setChatAutomationPaused(
             ownerId,
             context.chatId,

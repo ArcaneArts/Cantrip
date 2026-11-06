@@ -1,3 +1,4 @@
+import type { TaskPauseScope } from "@cantrip/protocol";
 import { CodexInteractions } from "./interactions.js";
 import { ManagedExecutionGates } from "./managed-execution-gates.js";
 import { ManagedRootProducerHold } from "./managed-root-producer-hold.js";
@@ -1822,6 +1823,9 @@ export class CodexAppServer implements CodexRuntime {
   >();
 
   readonly #pausedChats = new Set<string>();
+  readonly #pausedTaskChats = new Set<string>();
+  readonly #privatePauseWaiters = new Map<string, Set<() => void>>();
+  readonly #privatePauseObservers = new Map<string, Set<() => void>>();
   readonly #restoredTurns = new Map<
     string,
     {
@@ -1841,7 +1845,10 @@ export class CodexAppServer implements CodexRuntime {
       threadId: string;
       turnId: string;
       runnerGeneration: string;
+      attemptId: string;
       scopeId: string;
+      rootThreadId: string;
+      phase: "begin" | "begin-independent" | "suspend" | "resume";
       denied: Promise<void>;
       confirmDenial(): void;
       rejectDenial(reason: unknown): void;
@@ -1907,6 +1914,8 @@ export class CodexAppServer implements CodexRuntime {
           signal: AbortSignal,
         ) => Promise<void>)
       | null = null,
+    private readonly taskRootPrepared:
+      ((chatId: string) => Promise<void>) | null = null,
   ) {}
 
   private workspaceContext(cwd: string) {
@@ -2289,6 +2298,284 @@ export class CodexAppServer implements CodexRuntime {
       this.#pausedChats.add(chatId);
     } else {
       this.#pausedChats.delete(chatId);
+      for (const wake of this.#privatePauseWaiters.get(chatId) ?? []) wake();
+    }
+  }
+
+  setTaskChatPaused(chatId: string, paused: boolean): void {
+    if (paused) this.#pausedTaskChats.add(chatId);
+    else this.#pausedTaskChats.delete(chatId);
+    this.setChatPaused(chatId, paused);
+    this.#inference?.setTaskPaused(chatId, paused);
+  }
+
+  private privateTaskRoot(chatId: string) {
+    return [...this.#managedThreadOverlays.entries()].filter(
+      ([, overlay]) =>
+        overlay.epoch === this.#preparationEpoch &&
+        overlay.chatId === chatId &&
+        overlay.options.executionGate?.inferenceOnly === true &&
+        !overlay.inferenceRevocation.signal.aborted,
+    );
+  }
+
+  /** A fresh/continued private request is still blocked in Core here. Waiting
+   * for Resume owns no provider ticket and is cancelled with the exact request. */
+  private async waitForPrivateTaskResume(
+    rootThreadId: string,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const overlay = this.#managedThreadOverlays.get(rootThreadId);
+    const chatId = overlay?.chatId;
+    if (!chatId || overlay.options.executionGate?.inferenceOnly !== true)
+      return;
+    while (this.#pausedChats.has(chatId)) {
+      signal.throwIfAborted();
+      await new Promise<void>((resolve, reject) => {
+        const wake = () => {
+          cleanup();
+          resolve();
+        };
+        const abort = () => {
+          cleanup();
+          reject(signal.reason);
+        };
+        const cleanup = () => {
+          signal.removeEventListener("abort", abort);
+          const waiters = this.#privatePauseWaiters.get(chatId);
+          waiters?.delete(wake);
+          if (!waiters?.size) this.#privatePauseWaiters.delete(chatId);
+        };
+        let waiters = this.#privatePauseWaiters.get(chatId);
+        if (!waiters)
+          this.#privatePauseWaiters.set(chatId, (waiters = new Set()));
+        waiters.add(wake);
+        signal.addEventListener("abort", abort, { once: true });
+        if (signal.aborted) abort();
+        else if (!this.#pausedChats.has(chatId)) wake();
+      });
+    }
+    signal.throwIfAborted();
+  }
+
+  private taskPauseRoots(chatId: string, scope: TaskPauseScope) {
+    const roots = this.privateTaskRoot(chatId).filter(
+      ([, overlay]) =>
+        overlay.projectId === scope.projectId &&
+        (!overlay.taskGoalCycle ||
+          (overlay.taskGoalCycle.cycleId === scope.cycleId &&
+            overlay.taskGoalCycle.modelRouteId === scope.modelRouteId &&
+            overlay.taskGoalCycle.providerAccountId ===
+              scope.providerAccountId)),
+    );
+    if (scope.threadId)
+      return roots.filter(([thread]) => thread === scope.threadId);
+    const matching = roots.filter(
+      ([, overlay]) => overlay.taskGoalCycle?.cycleId === scope.cycleId,
+    );
+    return matching.length ? matching : roots;
+  }
+
+  matchesTaskPauseScope(chatId: string, scope: TaskPauseScope): boolean {
+    return this.taskPauseRoots(chatId, scope).length > 0;
+  }
+
+  taskPauseTargetKey(chatId: string, scope: TaskPauseScope): string {
+    return JSON.stringify(
+      this.taskPauseRoots(chatId, scope)
+        .map(([thread, overlay]) => [
+          thread,
+          overlay.options.executionGate?.runnerGeneration,
+        ])
+        .sort(),
+    );
+  }
+
+  /** A Task control carries the canonical intent revision and current source.
+   * Native mutation is fenced at its actual gate, independently of RPC order. */
+  async setTaskPauseIntent(
+    chatId: string,
+    paused: boolean,
+    scope: TaskPauseScope,
+    isCurrent: () => boolean,
+    onApplied: () => void,
+  ): Promise<{ threadId: string; turnId: string } | null> {
+    if (!isCurrent()) throw new Error("The Task control was superseded.");
+    const roots = this.taskPauseRoots(chatId, scope);
+    if (!roots.length) {
+      // A queued input may not have prepared its native Task root yet. The
+      // worker latch and canonical Task controls still block its first grant.
+      onApplied();
+      return null;
+    }
+    let applied = 0;
+    const results = await Promise.all(
+      roots.map(([threadId]) =>
+        this.setPrivateTaskPaused(
+          chatId,
+          threadId,
+          paused,
+          scope.revision,
+          isCurrent,
+          () => {
+            if (++applied === roots.length) onApplied();
+          },
+        ),
+      ),
+    );
+    return results.find((result) => result !== null) ?? null;
+  }
+
+  private async setPrivateTaskPaused(
+    chatId: string,
+    threadId: string,
+    paused: boolean,
+    revision: number,
+    isCurrent: () => boolean,
+    onApplied: () => void,
+  ) {
+    const transport = this.transportGeneration;
+    const overlay = this.#managedThreadOverlays.get(threadId);
+    const runnerGeneration = overlay?.options.executionGate?.runnerGeneration;
+    if (!transport || !runnerGeneration)
+      throw new Error("The native Task owner is disconnected.");
+    const assertCurrent = () => {
+      this.assertManagedExecutionTransport(transport);
+      const current = this.#managedThreadOverlays.get(threadId);
+      if (
+        !isCurrent() ||
+        current?.chatId !== chatId ||
+        current.options.executionGate?.runnerGeneration !== runnerGeneration ||
+        current.options.executionGate.inferenceOnly !== true ||
+        current.inferenceRevocation.signal.aborted
+      )
+        throw new Error("The private Task root or control was replaced.");
+    };
+    const native = async (waitBoundary: boolean) => {
+      assertCurrent();
+      const result = z
+        .object({ revision: z.number().int().positive(), paused: z.boolean() })
+        .parse(
+          await this.request(
+            "thread/managedExecution/taskPause",
+            {
+              threadId,
+              runnerGeneration,
+              revision,
+              paused,
+              waitBoundary,
+            },
+            waitBoundary ? CODEX_PAUSE_BOUNDARY_TIMEOUT_MS : undefined,
+          ),
+        );
+      assertCurrent();
+      if (result.revision !== revision || result.paused !== paused)
+        throw new Error("The native Task control was superseded.");
+      return result;
+    };
+    let version = 0;
+    let wake: (() => void) | undefined;
+    const changed = () => {
+      version++;
+      wake?.();
+    };
+    let observers = this.#privatePauseObservers.get(threadId);
+    if (!observers)
+      this.#privatePauseObservers.set(threadId, (observers = new Set()));
+    observers.add(changed);
+    const parkedRoot = async () => {
+      for (const pending of this.#nativeInferenceWaits.values()) {
+        if (
+          pending.rootThreadId !== threadId ||
+          pending.threadId !== threadId ||
+          pending.phase === "begin-independent" ||
+          pending.phase === "suspend" ||
+          pending.controller.signal.aborted
+        )
+          continue;
+        const proof = this.#inference?.pauseNativeWait(
+          pending.threadId,
+          pending.turnId,
+          pending.scopeId,
+        );
+        if (proof?.parked && !proof.independent) return pending.turnId;
+        if (pending.phase !== "begin" || proof?.independent) continue;
+        // A first-turn reservation may already cover a settled sequential title.
+        // Read the actual main Core claim before suspending that unbound owner.
+        const claim = z
+          .object({
+            claimed: z.boolean(),
+            inferenceOnly: z.boolean().optional(),
+          })
+          .parse(
+            await this.request("thread/managedExecution/inferenceClaim", {
+              threadId,
+              turnId: pending.turnId,
+              scopeId: pending.scopeId,
+              runnerGeneration: pending.runnerGeneration,
+              attemptId: pending.attemptId,
+            }),
+          );
+        assertCurrent();
+        if (
+          !pending.controller.signal.aborted &&
+          claim.claimed &&
+          claim.inferenceOnly &&
+          this.#nativeInferenceWaits.get(pending.attemptId) === pending &&
+          this.#inference?.pauseInitialNativeBoundary(threadId, pending.turnId)
+        )
+          return pending.turnId;
+      }
+      return null;
+    };
+    try {
+      // Apply first, without waiting for a provider slot or a checkpoint resume.
+      await native(false);
+      onApplied();
+      if (!paused) this.#inference?.resumePausedNative(chatId);
+      let observed: Promise<void> | undefined;
+      for (;;) {
+        const before = version;
+        const parked = paused ? await parkedRoot() : null;
+        assertCurrent();
+        const history = await this.readNativeHistory(threadId);
+        assertCurrent();
+        if (history.thread.id !== threadId)
+          throw new Error("Task control observed another native thread.");
+        const active = history.thread.turns.filter(
+          (turn) => turn.status === "inProgress",
+        );
+        if (active.length > 1)
+          throw new Error(
+            "Task control observed multiple current native turns.",
+          );
+        if (!active.length) return null;
+        if (paused && parked === active[0]!.id)
+          return { threadId, turnId: parked };
+        // Keep one actual native observer. If a new pending private scope arrives
+        // while it waits, re-read that actual boundary rather than polling.
+        observed ??= native(true).then(() => undefined);
+        void observed.catch(() => {});
+        const newer = new Promise<void>((resolve) => {
+          wake = resolve;
+          if (version !== before) resolve();
+        });
+        const outcome = await Promise.race([
+          observed.then(() => "native" as const),
+          newer.then(() => "scope" as const),
+        ]);
+        wake = undefined;
+        assertCurrent();
+        if (outcome === "scope") continue;
+        return { threadId, turnId: active[0]!.id };
+      }
+    } finally {
+      observers.delete(changed);
+      if (
+        !observers.size &&
+        this.#privatePauseObservers.get(threadId) === observers
+      )
+        this.#privatePauseObservers.delete(threadId);
     }
   }
 
@@ -7012,6 +7299,8 @@ export class CodexAppServer implements CodexRuntime {
       if (retained && options.projectId !== undefined)
         retained.projectId = options.projectId;
       if (retained) retained.taskGoalCycle = taskGoalCycle;
+      if (options.executionGate?.inferenceOnly && options.chatId)
+        await this.taskRootPrepared?.(options.chatId);
       return;
     }
     this.#managedConfigApplications.delete(threadId);
@@ -7063,6 +7352,8 @@ export class CodexAppServer implements CodexRuntime {
       epoch: this.#preparationEpoch,
       fingerprint,
     });
+    if (options.executionGate?.inferenceOnly && options.chatId)
+      await this.taskRootPrepared?.(options.chatId);
   }
 
   private async loadAgentOperationThread(
@@ -7395,6 +7686,8 @@ export class CodexAppServer implements CodexRuntime {
     }
     this.#child = child;
     this.#inference = inference;
+    for (const chatId of this.#pausedTaskChats)
+      inference?.setTaskPaused(chatId, true);
     // A launcher exit only begins reconciliation. The captured real native
     // process must release its OS lease before capacity can be reclaimed.
     const reconcileExit = () => {
@@ -7799,6 +8092,8 @@ export class CodexAppServer implements CodexRuntime {
     const pending = {
       ...base,
       scopeId,
+      rootThreadId: rootThreadId ?? base.threadId,
+      phase,
       controller: new AbortController(),
       denied,
       confirmDenial,
@@ -7811,17 +8106,26 @@ export class CodexAppServer implements CodexRuntime {
       ? AbortSignal.any([pending.controller.signal, resourceSignal])
       : pending.controller.signal;
     this.#nativeInferenceWaits.set(base.attemptId, pending);
+    for (const changed of this.#privatePauseObservers.get(
+      pending.rootThreadId,
+    ) ?? [])
+      changed();
     try {
       signal.throwIfAborted();
       if (
         phase === "begin" ||
         phase === "begin-independent" ||
         phase === "resume"
-      )
+      ) {
         await this.beforeNativeInference?.(
           { threadId: base.threadId, rootThreadId, phase },
           signal,
         );
+        await this.waitForPrivateTaskResume(
+          rootThreadId ?? base.threadId,
+          signal,
+        );
+      }
       if (phase === "begin" || phase === "begin-independent") {
         const provider = this.#managedModelInventoryProvider;
         if (!provider)
@@ -7879,7 +8183,16 @@ export class CodexAppServer implements CodexRuntime {
             for (const observer of this.#taskGoalQueueObservers.get(key) ?? [])
               observer({ operationId, runtimeGeneration });
           },
-          onTaskGoalCycleDispatch: async (cycle, operationId, recovery) => {
+          onTaskGoalCycleDispatch: async (
+            cycle,
+            operationId,
+            recovery,
+            source,
+          ) => {
+            if (!recovery && !source)
+              throw new Error(
+                "The private Task Goal has no actual keeper Source.",
+              );
             const chatId = this.#managedThreadOverlays.get(
               base.threadId,
             )?.chatId;
@@ -7901,7 +8214,13 @@ export class CodexAppServer implements CodexRuntime {
               );
             await this.dispatchTaskGoalCycle(
               {
-                sourceKey: recovery.sourceKey,
+                sourceKey: recovery?.sourceKey ?? source!.key,
+                ...(recovery
+                  ? {}
+                  : {
+                      freshRuntimeGeneration:
+                        source!.identity.runtimeGeneration,
+                    }),
                 chatId,
                 providerId: provider.id,
                 threadId: base.threadId,
@@ -7914,6 +8233,15 @@ export class CodexAppServer implements CodexRuntime {
             this.assertManagedExecutionTransport(transport);
           },
           independent: phase === "begin-independent",
+          isPaused: () => {
+            const overlay = this.#managedThreadOverlays.get(
+              rootThreadId ?? base.threadId,
+            );
+            return (
+              overlay?.options.executionGate?.inferenceOnly === true &&
+              Boolean(overlay.chatId && this.#pausedChats.has(overlay.chatId))
+            );
+          },
           provider,
           signal,
         });

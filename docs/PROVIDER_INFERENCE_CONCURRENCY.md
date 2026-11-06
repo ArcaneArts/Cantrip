@@ -2713,3 +2713,49 @@ No boundary audit, tests, builds, typechecks, benchmarks, native patch applicati
 or checks, native/helper execution, hosted validation, or computer-use testing
 ran. The migration and native patches remain unexecuted, and runtime/platform
 behavior remains unverified. The complete concurrency goal remains active.
+
+## Private Task pause and FIFO resumption
+
+Task pause/resume persists its intent before contacting the worker, using the
+canonical chat lock and managed input revision. The command includes the current
+Task project, worker, worktree, thread and dispatch cycle. Both server runtimes
+re-read that intent after asynchronous acknowledgements. A failed Resume can
+request a compensating Pause only if its revision is still current. A later
+device's control is never overwritten by an older HTTP acknowledgement.
+
+The worker retains one control record per live Task and server owner, coalesces
+redelivery, and reapplies intent when an actual private root is prepared or
+replaced. Native patch `0085` compares revisions and mutates the actual pause
+watch under the same root gate lock. This fences late native RPCs as well as
+worker callbacks. Controls neither grant inference nor manufacture Task input.
+
+An unused waiting permission can be parked without resolving its original
+acquisition promise. It owns no slot while paused. Resume puts it at the FIFO
+tail, preserving its input and physical native scope. Journal enqueue, adoption
+and requeue acknowledgements cannot restore an obsolete queue episode. An outer
+first-turn reservation can be suspended only after the worker confirms the
+exact pending main Core gate and sequential title preparation has settled.
+Running inference still requires the actual native model/tool pause boundary;
+setting a pause flag or receiving a notification never frees its ticket.
+
+Existing durable queue revision notices carry Task intent to its current worker,
+including after reconnect. Notices acknowledge the actual native intent apply,
+while an explicit control can await the safe boundary. Retries share the same
+boundary observer, rather than accumulating observers behind a long tool. A
+superseding intent or native invalidation wakes the older observation. The
+server retains configuration, intent and delivery state; the worker remains the
+only provider semaphore owner.
+
+Every fresh autonomous Task Goal scope also checks current canonical Task and
+project controls immediately before native allow. Its actual keeper Source
+identifies the request; an explicit first Goal input retains its own separate
+dispatch authority. Goal cycles still acquire separately and never reserve a
+future cycle's place.
+
+Validation is restricted to source review, direct formatting, mechanical source
+contract/diagnostic exports (673 protocol roots, 11,168 nodes; Run 11 roots,
+453 nodes) and `git diff --check`. Tests, builds, typechecks,
+benchmarks, native patch application/checks, runtime execution and computer-use
+testing are prohibited and were not performed. Explicit first-input Goal route
+changes, cold child portability and the final all-entrypoint lifecycle audit
+remain separate work in the active concurrency goal.

@@ -108,6 +108,15 @@ native I/O remains fenced, and this settlement wait has no inference deadline.
 Ordinary RPC and inference deadlines remain unchanged. These changes received
 source review and direct fragment formatting only; native application, builds
 and runtime behavior remain unverified.
+Patch `0085` adds the private, connection-owned Task pause intent RPC. The actual
+inference-only root compares the canonical control revision and changes its
+pause watch under one gate lock. An older request cannot apply after a newer
+Pause or Resume. Intent acceptance is separate from a model/tool boundary or
+live checkpoint resumption; superseding controls wake the older observer.
+Worker queue notices acknowledge acceptance without retaining one command per
+long-running tool. No ticket is released by an intent acknowledgement. The
+worker and native runtime need a paired update. This patch is source-authored
+only; it has not been applied, built or executed.
 The new item payload wrapper retains lifecycle timestamps, and history replay
 keeps upstream's bounded, cancellable projection pipeline. Cold resume keeps
 acknowledged owned settings and upstream's current permission constraints.

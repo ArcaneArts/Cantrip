@@ -1,3 +1,4 @@
+import { TaskAutomationPauseRepository } from "./repository/task-automation-pause.js";
 import { ProjectAlertRepository } from "./repository/project-alerts.js";
 import { NativeSuspensionRepository } from "./repository/native-suspensions.js";
 import { InferenceResourceRevocationRepository } from "./repository/inference-resource-revocations.js";
@@ -367,6 +368,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   readonly workspaceRepositoryDiscoveryJobs: WorkspaceRepositoryDiscoveryJobRepository;
   readonly standaloneChatRootJobs: StandaloneChatRootJobRepository;
   readonly projectGithubConversionJobs: ProjectGithubConversionJobRepository;
+  readonly taskAutomationPause: TaskAutomationPauseRepository;
   readonly tabLayouts: ProjectTabLayoutRepository;
   readonly workspaceLayouts: WorkspaceLayoutRepository;
 
@@ -737,6 +739,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
       listProjectReplicas: (ownerId, projectId) =>
         this.listProjectReplicas(ownerId, projectId),
     });
+    this.taskAutomationPause = new TaskAutomationPauseRepository(database);
     this.tabLayouts = new ProjectTabLayoutRepository(database);
     this.workspaceLayouts = new WorkspaceLayoutRepository(database);
   }

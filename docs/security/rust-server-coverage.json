@@ -3,16 +3,16 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "940b3cb255424ce0f024bad250e34e2063ffd852634f15895ee477d11f700f5e",
-    "baselineCommit": "1582ac9dd",
+    "sha256": "31fe40dd09b3f51047abe5ab75289e8ae6f3f98218350559fa87913cc8fb0452",
+    "baselineCommit": "0dcc5ddc4",
     "counts": {
       "routes": 552,
-      "workerCommands": 307,
+      "workerCommands": 308,
       "durableTables": 116,
       "repositoryMethods": 367,
       "liveResources": 47
     },
-    "workingTreeNote": "Source-only reconciliation atop1582ac9dd adds the Task Goal handoff source endpoint and reviews previously merged Task cycle dispatch, suspension execution, Goal claim/recovery and CantripOS backup contracts. The backup URL tuple is read from its literal source because the existing static parser does not resolve destructured loop bindings. Route and worker-command digests reflect the reviewed source set; no boundary audit, tests, builds, native patch application or runtime acceptance ran. Declared table count remains116; full native product/platform and replacement acceptance remain required.",
+    "workingTreeNote": "Source-only reconciliation atop0dcc5ddc4 adds ordered Task pause scope and intent delivery to existing commands and includes the merged chat.suspension.resume command. The backup URL tuple remains read from literal source because the static parser does not resolve its destructured binding. No routes were added or removed. Contract and diagnostic exports, direct formatting and diff checks are the only validation; no audit, tests, builds, typechecks, native patch application/checks or runtime acceptance ran. Declared table count remains116; full native product/platform and replacement acceptance remain required.",
     "migrationBackedTableCount": 122
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
@@ -6251,6 +6251,53 @@
         "evidence": ["cantrip_worker/src/task-input-executions.ts"],
         "remaining": [
           "Exact-source cancellation and physical settlement delivery are source-reviewed only; runtime/platform acceptance has not been run."
+        ]
+      },
+      {
+        "command": "chat.pause.set",
+        "status": "partial",
+        "implementation": [
+          "cantrip_server_rs/src/chats/automation_pause_task.rs",
+          "cantrip_server_rs/src/chats/task_pause.rs",
+          "cantrip_worker/src/task-pause-controls.ts"
+        ],
+        "evidence": [
+          "cantrip_server_rs/src/chats/automation_pause_task.rs",
+          "cantrip_server_rs/src/chats/task_pause.rs",
+          "cantrip_worker/src/task-pause-controls.ts"
+        ],
+        "remaining": [
+          "Source-reviewed integration only for this milestone; compilation, actual worker/native lifecycle behavior and supported-platform acceptance were not executed."
+        ]
+      },
+      {
+        "command": "chat.queue.changed",
+        "status": "partial",
+        "implementation": [
+          "cantrip_server_rs/src/native_commands/runtime/delivery/native.rs",
+          "cantrip_worker/src/task-pause-controls.ts"
+        ],
+        "evidence": [
+          "cantrip_server_rs/src/native_commands/runtime/delivery/native.rs",
+          "cantrip_worker/src/task-pause-controls.ts"
+        ],
+        "remaining": [
+          "Source-reviewed integration only for this milestone; compilation, actual worker/native lifecycle behavior and supported-platform acceptance were not executed."
+        ]
+      },
+      {
+        "command": "chat.suspension.resume",
+        "status": "partial",
+        "implementation": [
+          "cantrip_server_rs/src/chats/automation_pause/durable_resume.rs",
+          "cantrip_worker/src/codex/managed-suspension-resume.ts"
+        ],
+        "evidence": [
+          "cantrip_server_rs/src/chats/automation_pause/durable_resume.rs",
+          "cantrip_worker/src/codex/managed-suspension-resume.ts"
+        ],
+        "remaining": [
+          "Source-reviewed integration only for this milestone; compilation, actual worker/native lifecycle behavior and supported-platform acceptance were not executed."
         ]
       }
     ]

@@ -11,6 +11,7 @@ import { dispatchRepositoryOperation } from "./repository-operation-dispatch.js"
 import { BrowserSurfaceWebRuntime } from "./browser/surface-web-runtime.js";
 import { generatePrivateLabel } from "./automatic-labeling.js";
 import { TaskInputExecutions } from "./task-input-executions.js";
+import { TaskPauseControls } from "./task-pause-controls.js";
 import { ClaimedInferenceSource } from "./inference-source.js";
 import { createNativeHistoryOutputModeResolver } from "./native-history-output-mode.js";
 import { managedNativePathsMatch } from "./codex/managed-native-policy.js";
@@ -1645,6 +1646,25 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     ownerId: workerEncryption.ownerId(),
     workerId: config.workerId,
   });
+  const taskPauseControls = new TaskPauseControls({
+    scope: nativeNamespaceScope,
+    selected: (chatId) => managedCurrentRuntimes.get(chatId),
+    runtimes: () =>
+      [...codexRuntimes.values()].filter((runtime) =>
+        runtime.ownsInferenceAdmission(inferenceAdmissionForWorker()),
+      ),
+    setPaused: (chatId, paused) => {
+      if (paused) pausedChats.add(chatId);
+      else pausedChats.delete(chatId);
+    },
+    onError: (error) =>
+      workerLogger.event("warn", "Task pause boundary could not be confirmed", {
+        event: "task.pause.boundary-failed",
+        subsystem: "chat-execution",
+        operation: "task-pause",
+        error: workerLogError(error),
+      }),
+  });
   // This belongs to the worker, outside the per-project/per-model runtime maps.
   const nativeCommands = new NativeCommandClient({
     serverUrl: config.serverUrl,
@@ -1995,6 +2015,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         },
         (input, signal) =>
           handoffStaging.waitInference(runtime!, input, signal),
+        (chatId) => taskPauseControls.prepared(chatId),
       );
       runtime.setGoalObserver((threadId, goal) => {
         if (runtime && handoffStaging.held(runtime, threadId)) return;
@@ -2040,6 +2061,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       });
       codexRuntimes.set(runtimeId, runtime);
+    }
+    // A runtime prepared during a pending Task pause inherits the same local
+    // control latch; transferring/creating an engine cannot bypass Resume.
+    if (command.chatId) {
+      runtime.setChatPaused(command.chatId, pausedChats.has(command.chatId));
+      taskPauseControls.seedRuntime(command.chatId, runtime);
     }
     return runtime;
   };
@@ -4214,6 +4241,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           }
         }
         for (const chatId of chatIds) {
+          taskPauseControls.forget(chatId);
           managedGuiPreparations.cancelChat(chatId);
           computerUseAgents.cancelChat(chatId);
           computerUsePreviews.cancelChat(chatId);
@@ -5856,6 +5884,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return codec.normalizePrompt(command.prompt);
       }
       case "chat.queue.changed": {
+        if (command.taskPause)
+          await taskPauseControls.request(command.chatId, command.taskPause)
+            .applied;
         for (const admission of inferenceAdmissions.values())
           admission.wakeRecovery(command.chatId);
         const current = managedCurrentRuntimes.get(command.chatId);
@@ -7350,6 +7381,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return result;
       }
       case "chat.pause.set": {
+        if (command.task) {
+          const control = taskPauseControls.request(command.chatId, {
+            paused: command.paused,
+            scope: command.task,
+          });
+          if (command.waitForBoundary !== false) return control.settled;
+          await control.applied;
+          return { paused: control.intent.paused, active: null };
+        }
         const previouslyPaused = pausedChats.has(command.chatId);
         try {
           const activeTurns = await Promise.all(
