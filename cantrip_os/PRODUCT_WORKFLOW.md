@@ -241,8 +241,15 @@ match the recorded admission. Retained output is replayed into the new Worker's
 Run buffer with redaction; the command and preparation are not repeated. Missing
 or changed native sessions remain unknown. Explicit Stop still owns termination.
 An already confirmed completion remains recorded even if output cannot be
-recovered, with an explanatory output message. The guest's retained output is
-bounded; explicit retention-boundary reporting is a subsequent Phase 5 cycle.
+recovered, with an explanatory output message and truncation flag. Executor
+0.10.0 reports its actual output eviction boundary. If the resumed reader has
+missed output, the terminal/Run emits a notice and continues observing the same
+process. Run output retains its truncation flag even after the notice scrolls
+out of the output buffer. Lifecycle sequence gaps alone do not indicate loss.
+Older executors display that retention coverage is unavailable on recovery;
+they are not rejected merely for lacking this metadata. Native output is
+bounded, and completed process history expires; no recovery action reruns a
+command to recreate missing history.
 
 The Files sidebar follows the focused Run's captured target. Its files and editor
 use the same Linux directory, including Linux dependency overlays. Identically
