@@ -50,7 +50,8 @@ for the actual tested builds and platform limits. Iterate in Docker first; build
 the ISO when you want the same source configuration as bootable media.
 
 Phase 5's optional [recovery package](packages/recovery/README.md) supplies local
-workspace capture, staged restore, interruption recovery and rollback commands.
+workspace capture, staged restore, selected home-state reset, interruption
+recovery and rollback commands.
 Docker/ISO scripts include it with the executor edition;
 `CANTRIP_OS_RECOVERY=0` omits it independently. The package is an administrative
 foundation. [Private Worker archive encryption/transfer and Server admissions](BACKUPS.md)

@@ -1,7 +1,7 @@
 # Optional workspace recovery package
 
-`cantrip-os-recovery` 0.2.0 supplies root administration commands for consistent
-workspace capture, staged restore and rollback. It has no daemon, network
+`cantrip-os-recovery` 0.3.0 supplies root administration commands for consistent
+workspace capture, staged restore, explicit home-state reset and rollback. It has no daemon, network
 listener, Worker, model credentials or scheduler. Docker and ISO launch scripts
 include it with the executor edition; `CANTRIP_OS_RECOVERY=0` omits it. The ordinary
 OS remains selectable with `CANTRIP_OS_WORKSPACES=0`.
@@ -20,8 +20,8 @@ node cantrip_os/scripts/recovery-package.mjs
 ```
 
 The architecture-independent output is
-`cantrip_os/artifacts/packages/cantrip-os-recovery_0.2.0_all.deb`. Install it with
-`sudo apt install ./cantrip-os-recovery_0.2.0_all.deb`. Dependencies are the existing
+`cantrip_os/artifacts/packages/cantrip-os-recovery_0.3.0_all.deb`. Install it with
+`sudo apt install ./cantrip-os-recovery_0.3.0_all.deb`. Dependencies are the existing
 workspace and executor packages plus Python. No extra desktop environment or
 full Worker is installed. Package configuration is a Debian conffile at
 `/etc/cantrip-os/recovery.json`.
@@ -147,6 +147,69 @@ Rollback has its own durable admission and retains the replaced home rather than
 deleting either copy. It requires the actual directory identities from that
 restore; it cannot exchange an unrelated subsequently replaced home.
 
+## Reset selected home state
+
+Reset keeps the same Linux account, UID/GID and absolute home. Shared installed
+packages, `/etc` configuration, machine/enrollment identities and SSH host keys
+are outside this operation. Use a fresh UUID and explicitly select canonical
+home-relative paths:
+
+```sh
+sudo cantrip-recovery reset "$RESET_ID" example \
+  --request '{"paths":[".config/chromium","Documents"]}'
+```
+
+The selected entries are removed from a verified staged copy of the home.
+`Documents` and `Downloads` are recreated as empty account-owned directories,
+matching a newly created workspace. Other absent entries are recreated by their
+applications when needed. To reset the entire home to those fresh workspace
+defaults, explicitly use `{"paths":["."]}`. Empty, absolute, overlapping, parent
+traversal and noncanonical selections are rejected. A selected symlink itself
+can be removed; selecting through a symlink ancestor is rejected. Its external
+target is never copied or reset.
+
+Selected reset stages the full home using the existing archive consistency and
+verification path, preserving unselected ordinary files, dirty/ignored Git data,
+internal hard links, modes, numeric ownership and extended attributes. Existing
+Git pointers remain verbatim because the account and absolute home do not move.
+The staged copy has new inode identities; open processes and handles are not
+retained. A real mounted filesystem at or inside the home must be detached
+explicitly before either reset mode: exchanging the home must not silently move
+that attachment. Partial reset rejects an unselected special entry it cannot
+preserve, rather than dropping it. The complete original home remains active
+when staging fails.
+
+As with capture/restore, maintenance interrupts **all managed Cantrip workspace
+processes and desktops on this instance**. Other workspace files and the ordinary
+personal desktop are retained. A service restart establishes fresh runtime
+handles; use explicit product recovery and source verification afterwards.
+
+The final directory exchange retains the complete original home privately beside
+the active home. The receipt records selected paths, the actual account and the
+retained path. `inspect` and repeating the same reset ID only observe; they never
+reset a newer home again. Undo is explicit:
+
+```sh
+sudo cantrip-recovery rollback "$UNDO_ID" "$RESET_ID"
+```
+
+Undo exchanges the retained original back into place and retains the replaced
+home too, including files written since reset. It does not merge later work.
+Both paths must still be the actual recorded directories; substituting a symlink
+is rejected. `forget` can discard partial-reset transfer staging after release,
+but preserves the reset outcome and retained home required for undo.
+
+Reset journals use record version 2. Existing capture/restore/rollback journals
+remain version 1. An older 0.2.0 helper rejects reset records without modifying
+them; reinstall 0.3.0 or newer to inspect/recover them. An interrupted staging or
+exchange is recovered from actual process/directory identities without replay.
+Package removal releases interrupted reset maintenance before removing the helper
+and retains both workspace data and operation records.
+
+This is the guest administration foundation. Worker/Server reset admissions and
+product reset controls are a separate dependent checkpoint; the existing Cantrip
+backup controls continue to use the unchanged version-1 operations.
+
 ## Interruption and removal
 
 `inspect` is read-only. A dead command with an unfinished admission reports
@@ -195,3 +258,19 @@ stops services/writers, injects abrupt process exits around the actual exchange,
 and removes/reinstalls recovery. It is destructive test administration; do not
 run it against a user's working OS. See `cantrip_os/ACCEPTANCE.md` for recorded
 Docker/installed results and remaining Phase 5 product work.
+
+Reset acceptance is a separate actual-guest suite. Copy
+`test/reset_integration.py`, the normal 0.3.0 package and the prior normal 0.2.0
+package to the disposable guest as `/tmp/reset-integration.py`,
+`/tmp/recovery.deb` and `/tmp/recovery-old.deb`, then run as root:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 /tmp/reset-integration.py
+```
+
+This exercises selected/full-home reset, undo, metadata and ignored-file
+preservation, real process kills around staging/exchange, unsupported old-helper
+records and removal/reinstallation. The bind-mount case attempts the actual
+mount; ordinary Docker without the required kernel permission skips that case.
+Installed-system acceptance exercises it with a real mount. Retained originals
+and test accounts are intentionally kept for inspection.

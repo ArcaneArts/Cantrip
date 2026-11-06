@@ -6,7 +6,7 @@ import { root, run } from "./os.mjs";
 
 export async function prepareRecovery(options = {}) {
   const output = resolve(root, "artifacts/packages");
-  const context = resolve(root, ".build/recovery-packages/0.2.0");
+  const context = resolve(root, ".build/recovery-packages/0.3.0");
   await mkdir(output, { recursive: true });
   await mkdir(context, { recursive: true });
   await run(
@@ -21,7 +21,7 @@ export async function prepareRecovery(options = {}) {
     ],
     options,
   );
-  const name = "cantrip-os-recovery_0.2.0_all.deb";
+  const name = "cantrip-os-recovery_0.3.0_all.deb";
   await cp(resolve(output, name), resolve(context, name));
   console.log(`Recovery package: ${output}/${name}`);
   return context;

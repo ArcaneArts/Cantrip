@@ -137,7 +137,7 @@ def main():
     actions = parser.add_subparsers(dest="action", required=True)
     actions.add_parser("status")
     actions.add_parser("release-maintenance")
-    for action in ("capture", "receive"):
+    for action in ("capture", "receive", "reset"):
         sub = actions.add_parser(action)
         sub.add_argument("operation_id")
         sub.add_argument("workspace")
@@ -179,6 +179,10 @@ def main():
             elif args.action == "capture":
                 request = {**args.request, "expected_workspace": args.expect_workspace} if args.expect_workspace is not None else args.request
                 result = capture(store, args.operation_id, args.workspace, request)
+            elif args.action == "reset":
+                from reset import reset
+                request = {**args.request, "expected_workspace": args.expect_workspace} if args.expect_workspace is not None else args.request
+                result = reset(store, args.operation_id, args.workspace, request)
             elif args.action == "receive":
                 request = {**args.request, "expected_workspace": args.expect_workspace} if args.expect_workspace is not None else args.request
                 result = receive(store, args.operation_id, args.workspace, request)
@@ -194,13 +198,15 @@ def main():
                 record = store.read(args.operation_id)
                 if record.get("maintenance") and not record["maintenance"].get("released"):
                     raise ValueError("Recover the maintenance operation before forgetting its capture")
+                if record["action"] == "reset" and record["state"] not in ("reset", "failed"):
+                    raise ValueError("Recover the reset operation before forgetting its staging")
                 # Retained original homes are never deleted by this command or
                 # package removal. Only bounded transfer staging is discarded.
                 for name in ("archive.tar", "incoming.tar", "files.jsonl", "manifest.json"):
                     (store.directory(args.operation_id) / name).unlink(missing_ok=True)
                 # Spool availability is separate from the committed outcome.
                 # Retain successful restore evidence needed by later rollback.
-                if record["state"] not in ("captured", "restored", "rolled-back", "failed"):
+                if record["state"] not in ("captured", "restored", "reset", "rolled-back", "failed"):
                     record["state"] = "forgotten"
                 record["spool_forgotten"] = True
                 store.save(record)

@@ -14,7 +14,9 @@ from state import sha256, sync_directory, workspace
 
 
 def identity(path):
-    info = Path(path).stat()
+    info = Path(path).lstat()
+    if not stat.S_ISDIR(info.st_mode):
+        raise ValueError("Home exchange requires real directories, not symlinks")
     return [info.st_dev, info.st_ino]
 
 
@@ -186,7 +188,7 @@ def observe_exchange(store, record):
     current = identity(swap["home"])
     retained = identity(swap["staged_home"])
     if current == swap["new_identity"] and retained == swap["old_identity"]:
-        record["state"] = "rolled-back" if record["action"] == "rollback" else "restored"
+        record["state"] = {"rollback": "rolled-back", "reset": "reset"}.get(record["action"], "restored")
         record["receipt"] = record["proposed_receipt"]
         for root in record["maintenance"]["roots"]:
             if root["path"] == swap["home"]:
@@ -207,7 +209,7 @@ def observe_exchange(store, record):
 def reconcile(store, record):
     if not record.get("swap"):
         record["state"] = "failed"
-        record["error"] = "Restore did not reach its admitted home exchange"
+        record["error"] = "The operation did not reach its admitted home exchange"
         store.save(record)
         return
     observe_exchange(store, record)
@@ -274,10 +276,10 @@ def activate(store, operation_id, expected=None):
 
 def rollback(store, operation_id, restore_operation_id, expected=None):
     previous = store.read(restore_operation_id)
-    completed = previous["state"] == "restored" or (
+    completed = previous["state"] in ("restored", "reset") or (
         previous["state"] == "forgotten" and previous.get("receipt") and previous.get("swap"))
-    if previous["action"] != "restore" or not completed or not previous["maintenance"].get("released"):
-        raise ValueError("Rollback requires a completed, released restore")
+    if previous["action"] not in ("restore", "reset") or not completed or not previous["maintenance"].get("released"):
+        raise ValueError("Rollback requires a completed, released restore or reset")
     target = workspace(previous["request"]["workspace"], previous["request"].get("expected_workspace"))
     if expected is not None:
         workspace(target["id"], expected)
