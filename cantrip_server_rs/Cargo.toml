@@ -48,6 +48,7 @@ icu_locale_core = "2.4"
 sys-locale = "0.3.2"
 jiff = { version = "0.2.37", features = ["tzdb-bundle-always"] }
 num-bigint = "0.4"
+redis = { version = "1", default-features = false, features = ["tokio-native-tls-comp", "connection-manager"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_Storage_FileSystem"] }
