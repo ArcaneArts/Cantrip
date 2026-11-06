@@ -301,6 +301,12 @@ fn execute<'a>(
             ))
         }
         .boxed(),
+        Some("native-command-suspension-execution") => async move {
+            repository
+                .admit_suspended_execution(owner, &input["input"])
+                .await
+        }
+        .boxed(),
         Some("native-command-suspended-execution") => async move {
             Ok(repository
                 .suspended_execution(

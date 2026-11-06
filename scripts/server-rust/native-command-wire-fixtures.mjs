@@ -1,3 +1,4 @@
+import { record as suspensionRecord } from "./native-suspension-oracle.mjs";
 import { nativeGoalRecoveryWireFixtures } from "./native-goal-recovery-fixtures.mjs";
 export const autonomousAttempts = [
   {
@@ -257,5 +258,46 @@ export function nativeCommandWireFixtures(timestamp) {
     method: "turn/pause",
     intent: suspensionIntent,
   });
+  const restoredSuspension = {
+    controlId: suspensionRecord.controlId,
+    checkpoint: suspensionRecord.checkpoint.suspension,
+    source: {
+      operationId: "original",
+      operationGeneration: "original-generation",
+    },
+  };
+  fixtures.nativeCommandIntentSchema.push({
+    scope: "thread",
+    restoredSuspension,
+    expectedSuspensionControlId: suspensionRecord.controlId,
+  });
+  fixtures.nativeSuspensionExecutionAdmissionSchema = [
+    {
+      workerId: "worker",
+      workerGeneration,
+      operationId: "fresh-observer",
+      controlId: suspensionRecord.controlId,
+      checkpoint: suspensionRecord.checkpoint,
+      session,
+      payloadDigest: "a".repeat(64),
+      protectedPayload:
+        fixtures.nativeCommandAdmissionSchema[0].protectedPayload,
+    },
+  ];
+  fixtures.nativeSuspensionExecutionAdmissionResultSchema = [
+    {
+      receipt: { ...receipt, method: "thread/resume", startsExecution: true },
+      execution: null,
+      computerUseAuthority: null,
+      suspension: {
+        ...suspensionRecord,
+        action: "resume",
+        phase: "resuming",
+        executionOwner: suspensionRecord.actor,
+      },
+      source: restoredSuspension.source,
+      logicalRoot: restoredSuspension.source,
+    },
+  ];
   return fixtures;
 }

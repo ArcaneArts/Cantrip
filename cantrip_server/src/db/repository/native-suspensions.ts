@@ -29,7 +29,7 @@ const terminal = new Set<State["phase"]>([
   "failed",
   "idle",
 ]);
-function sameSource(
+export function sameNativeSuspensionSource(
   context: ChatExecutionContext | null,
   chat: Chat,
   state: State,
@@ -220,7 +220,7 @@ export class NativeSuspensionRepository {
       const context = await nativeCommandContext(tx, ownerId, chatId);
       if (!context) conflict("suspension-source-unavailable");
       let source = current && !terminal.has(current.phase) ? current : null;
-      if (source && !sameSource(context, chat, source))
+      if (source && !sameNativeSuspensionSource(context, chat, source))
         conflict("suspension-authority-changed");
       if (!source) {
         const [activation] = await tx
@@ -284,15 +284,25 @@ export class NativeSuspensionRepository {
     expectedActor: State["actor"],
     actor: NativeSuspensionActor,
     active: NativeSuspensionActiveTurn | null,
+    executionOwner?: NativeSuspensionActor,
   ): Promise<Change> {
     expectedActor = nativeSuspensionActorSchema.nullable().parse(expectedActor);
     actor = nativeSuspensionActorSchema.parse(actor);
     active = nativeSuspensionActiveTurnSchema.nullable().parse(active);
+    if (executionOwner)
+      executionOwner = nativeSuspensionActorSchema.parse(executionOwner);
     return this.change(ownerId, chatId, async (tx, chat, current) => {
       const state = this.current(current, controlId);
       if (
+        executionOwner &&
+        (state.phase !== "resuming" ||
+          !state.checkpoint ||
+          !sameActor(actor, executionOwner))
+      )
+        conflict("invalid-suspension-execution-owner");
+      if (
         state.phase !== "stopping" &&
-        !sameSource(
+        !sameNativeSuspensionSource(
           await nativeCommandContext(tx, ownerId, chatId),
           chat,
           state,
@@ -304,7 +314,9 @@ export class NativeSuspensionRepository {
       if (
         sameActor(state.actor, actor) &&
         sameTurn(state.active, active) &&
-        state.actorControlId === controlId
+        state.actorControlId === controlId &&
+        (!executionOwner ||
+          sameActor(state.executionOwner ?? null, executionOwner))
       )
         return { state, changed: false };
       if (!sameActor(state.actor, expectedActor))
@@ -316,7 +328,13 @@ export class NativeSuspensionRepository {
       )
         conflict("suspension-turn-mismatch");
       return {
-        state: { ...state, actor, active, actorControlId: controlId },
+        state: {
+          ...state,
+          actor,
+          active,
+          actorControlId: controlId,
+          ...(executionOwner ? { executionOwner } : {}),
+        },
         changed: true,
       };
     });
@@ -347,7 +365,7 @@ export class NativeSuspensionRepository {
         conflict("suspension-actor-unclaimed");
       if (
         ["paused", "running"].includes(next.state.phase) &&
-        !sameSource(
+        !sameNativeSuspensionSource(
           await nativeCommandContext(tx, ownerId, chatId),
           chat,
           state,

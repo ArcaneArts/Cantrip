@@ -102,6 +102,9 @@ export const nativeSuspensionRecordSchema = z
     active: nativeSuspensionActiveTurnSchema.nullable(),
     checkpoint: nativeSuspensionEvidenceSchema.nullable(),
     actor: nativeSuspensionActorSchema.nullable(),
+    /** Current physical observer owner after cold adoption. Correlation only;
+     * the original native input/provenance remains bound to target. */
+    executionOwner: nativeSuspensionActorSchema.optional(),
     /** Set only by an explicit claim in this control epoch. */
     actorControlId: z.uuid().nullable(),
     error: nativeSuspensionErrorSchema.nullable(),

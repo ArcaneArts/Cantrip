@@ -34,11 +34,8 @@ pub(super) async fn retained_execution(
                 && row["terminal_evidence"]["runtimeGeneration"]
                     == row["identity"]["runtimeGeneration"])
             && row["kind"] == "start"
-            && state["target"]["workerId"] == row["worker_id"]
-            && state["target"]["originalOperationId"] == row["operation_id"]
-            && state["target"]["executionLaneId"] == row["execution_lane_id"]
+            && owns_execution(state, row)
             && state["active"]["threadId"] == row["identity"]["threadId"]
-            && state["actor"]["runtimeGeneration"] == row["identity"]["runtimeGeneration"]
     }))
 }
 
@@ -71,9 +68,41 @@ impl super::Repository {
                 (head["operation_id"] == row["operation_id"] ||
                 (row["logical_operation_id"] == row["operation_id"] && head["logical_operation_id"] == row["operation_id"]))
             ) else { return Ok(None); };
-            retained_execution(tx, &owner, &head).await
+            let held = retained_execution(tx, &owner, &head).await?;
+            if held.is_some() { return Ok(held); }
+            if row["operation_id"] != head["operation_id"] { return retained_logical_input(tx, &owner, &head).await; }
+            Ok(None)
         })).await
     }
+}
+
+pub(super) fn owns_execution(state: &Value, row: &Value) -> bool {
+    state["target"]["workerId"] == row["worker_id"]
+        && state["target"]["executionLaneId"] == row["execution_lane_id"]
+        && if state["executionOwner"].is_null() {
+            state["target"]["originalOperationId"] == row["operation_id"]
+                && state["actor"]["runtimeGeneration"] == row["identity"]["runtimeGeneration"]
+        } else {
+            state["executionOwner"]["operationId"] == row["operation_id"]
+                && state["executionOwner"]["operationGeneration"] == row["operation_generation"]
+                && state["executionOwner"]["runtimeGeneration"]
+                    == row["identity"]["runtimeGeneration"]
+        }
+}
+pub(super) async fn retained_logical_input(
+    tx: &Transaction<'_>,
+    owner: &str,
+    row: &Value,
+) -> Result<Option<Value>> {
+    let current = chat(tx, owner, &text(&row["chat_id"])?).await?;
+    Ok(read(&current)?.filter(|s| {
+        !s["executionOwner"].is_null()
+            && !s["active"].is_null()
+            && owns_execution(s, row)
+            && !terminal(s)
+            && row["method"] == "thread/resume"
+            && truthy(row["intent"].get("restoredSuspension"))
+    }))
 }
 
 fn terminal(state: &Value) -> bool {
@@ -82,7 +111,7 @@ fn terminal(state: &Value) -> bool {
         Some("stopped" | "completed" | "failed" | "idle")
     )
 }
-async fn chat(tx: &Transaction<'_>, owner: &str, id: &str) -> Result<Value> {
+pub(super) async fn chat(tx: &Transaction<'_>, owner: &str, id: &str) -> Result<Value> {
     raw_one(
         tx,
         "SELECT to_jsonb(c)::text FROM chats c WHERE owner_id=$1 AND id=$2",
@@ -91,7 +120,7 @@ async fn chat(tx: &Transaction<'_>, owner: &str, id: &str) -> Result<Value> {
     .await?
     .context("Suspension chat not found")
 }
-fn read(chat: &Value) -> Result<Option<Value>> {
+pub(super) fn read(chat: &Value) -> Result<Option<Value>> {
     if chat["native_suspension_state"].is_null() {
         return Ok(None);
     }
@@ -102,7 +131,7 @@ fn read(chat: &Value) -> Result<Option<Value>> {
     .map(Some)
     .map_err(|_| super::CommandError::new("suspension-state-unreadable", None, 409).into())
 }
-fn same_source(state: &Value, chat: &Value, context: &Value) -> bool {
+pub(super) fn same_source(state: &Value, chat: &Value, context: &Value) -> bool {
     let target = &state["target"];
     [
         "workerId",
@@ -123,7 +152,7 @@ fn same_source(state: &Value, chat: &Value, context: &Value) -> bool {
         && target["placementRevision"] == chat["placement_revision"]
         && target["cantripOsBindingId"] == chat["cantrip_os_binding_id"]
 }
-async fn save(
+pub(super) async fn save(
     tx: &Transaction<'_>,
     owner: &str,
     id: &str,
@@ -166,6 +195,11 @@ pub(super) async fn dispatch(
     let id = text(&row["chat_id"])?;
     let chat = chat(tx, owner, &id).await?;
     let previous = read(&chat)?;
+    if truthy(intent.get("expectedSuspensionControlId"))
+        && previous.as_ref().map(|s| &s["controlId"]) != intent.get("expectedSuspensionControlId")
+    {
+        return reject("suspension-control-stale");
+    }
     let stopping =
         row["method"] == "turn/interrupt" && previous.as_ref().is_some_and(|s| !terminal(s));
     if !truthy(intent.get("durableSuspension")) {
@@ -392,7 +426,7 @@ pub(super) async fn finish(
     if state["actor"].is_null()
         || state["active"].is_null()
         || state["action"] == "stop"
-        || state["target"]["originalOperationId"] != row["operation_id"]
+        || !owns_execution(&state, row)
         || state["active"]["turnId"] != input["reconciliation"]["nativeTurnId"]
         || state["actor"]["runtimeGeneration"] != input["reconciliation"]["runtimeGeneration"]
         || state["actor"]["runtimeGeneration"] != row["identity"]["runtimeGeneration"]
@@ -434,12 +468,9 @@ pub(super) async fn assert_terminal_proof(
     }
     let id = text(&row["chat_id"])?;
     let current = chat(tx, owner, &id).await?;
-    if read(&current)?.is_some_and(|s| {
-        !s["active"].is_null()
-            && s["target"]["originalOperationId"] == row["operation_id"]
-            && s["actor"]["runtimeGeneration"] == row["identity"]["runtimeGeneration"]
-            && !terminal(&s)
-    }) {
+    if read(&current)?
+        .is_some_and(|s| !s["active"].is_null() && owns_execution(&s, row) && !terminal(&s))
+    {
         return reject("suspended-execution-not-terminal");
     }
     Ok(())

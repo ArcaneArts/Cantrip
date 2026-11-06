@@ -51,7 +51,7 @@ pub(super) async fn read(tx: &Transaction<'_>, owner: &str, chat: &str) -> Resul
         .filter(|p| !p.is_null())
         .unwrap_or(&current["scratchRootId"]);
     let session = json!({"chatId":chat,"threadId":current["threadId"],"contextKind":current["contextKind"],"projectId":current["projectId"],"placementId":placement,
-      "modelRouteId":current["modelRouteId"],"providerAccountId":current["providerAccountId"],"runtimeGeneration":generation,"connectionId":null});
+      "modelRouteId":current["modelRouteId"],"providerAccountId":current["providerAccountId"],"runtimeGeneration":generation,"connectionId":Value::Null});
     if !goal_handoff::session_matches(tx, owner, &worker, claim, &parent["identity"], &session)
         .await?
     {

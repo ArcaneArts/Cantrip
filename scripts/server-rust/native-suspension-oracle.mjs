@@ -77,6 +77,18 @@ for (const [schema, value] of [
     add(schema, missing);
   }
 }
+add("nativeSuspensionRecordSchema", {
+  ...record,
+  executionOwner: { ...actor, operationId: "fresh-physical" },
+});
+add("nativeSuspensionRecordSchema", {
+  ...record,
+  executionOwner: { ...actor, grant: "must-not-persist" },
+});
+add("nativeSuspensionRecordSchema", {
+  ...record,
+  executionOwner: { ...actor, operationGeneration: "" },
+});
 for (const phase of protocol.nativeSuspensionPhaseSchema.options) {
   add("nativeSuspensionRecordSchema", { ...record, phase });
   add("nativeSuspensionRecordSchema", { ...record, phase, checkpoint: null });
