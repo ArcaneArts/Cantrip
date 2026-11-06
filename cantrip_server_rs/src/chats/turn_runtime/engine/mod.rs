@@ -243,6 +243,9 @@ impl Runtime {
             match result {
                 Ok(()) => return Ok(()),
                 Err(error) => {
+                    if self.retain_suspension(&turn).await? {
+                        return Ok(());
+                    }
                     if let Some(CommandFailure::Limit(limit)) =
                         error.downcast_ref::<CommandFailure>()
                         && limit.not_dispatched()

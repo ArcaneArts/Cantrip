@@ -5,6 +5,7 @@ import {
   validateChatTurnInput,
 } from "./chat-turn-configuration.js";
 import { finishManagedGui } from "./finish-managed-gui.js";
+import { retainSuspendedChatTurn } from "./retain-suspended-chat-turn.js";
 import {
   prepareAutomaticTitle,
   finishPreparedAutomaticTitle,
@@ -1963,6 +1964,15 @@ export function createChatTurnRuntime({
             return;
           } catch (error) {
             if (
+              await retainSuspendedChatTurn(
+                { repository, app, publishChatSummary },
+                ownerId,
+                execution.workerId,
+                nativeCommandReceipt,
+              )
+            )
+              return;
+            if (
               nativeCommandReceipt &&
               error instanceof RelayLimitError &&
               error.notDispatched &&
@@ -2134,6 +2144,15 @@ export function createChatTurnRuntime({
           }
         }
       } catch (error: unknown) {
+        if (
+          await retainSuspendedChatTurn(
+            { repository, app, publishChatSummary },
+            ownerId,
+            execution.workerId,
+            nativeCommandReceipt,
+          )
+        )
+          return;
         if (
           options.taskDispatchLease &&
           (encryptedTaskRelay || (turnMode === "goal" && encryptedTaskMessages))

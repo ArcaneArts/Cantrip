@@ -21,6 +21,8 @@ import { lockNativeCommandChat } from "./native-command-lock.js";
 import { nativeCommandReceipt as receipt } from "./native-command-receipt.js";
 import { settleQueueClaim } from "./native-command-queue.js";
 import { rememberNativeCommandTurn } from "./native-command-turns.js";
+import { retainedNativeSuspension } from "./native-suspended-execution.js";
+import { NativeSuspensionRepository } from "./native-suspensions.js";
 import type { NativeCommandAdmissionResult } from "./native-commands.js";
 
 /** Transactional continuation and completion of one accepted logical GUI input. */
@@ -438,6 +440,14 @@ export class NativeLogicalInputRepository {
         head.logicalOperationId !== root.operationId ||
         head.executionLaneId !== root.executionLaneId ||
         !head.executionLaneId
+      )
+        return false;
+      if (
+        await retainedNativeSuspension(
+          new NativeSuspensionRepository(this.database).inTransaction(tx),
+          ownerId,
+          head,
+        )
       )
         return false;
       const finished = activation.active

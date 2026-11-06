@@ -84,12 +84,21 @@ try {
     await fixture.seed(
       "INSERT INTO chat_runtime_sessions(id,chat_id,worker_id,worktree_id,codex_thread_id) VALUES('runtime-session','chat','alpha','github-alpha-main','thread')",
     );
-    for (const ending of ["complete", "stop"]) {
-      const rootId = "root-" + ending;
-      const active = { threadId: "thread", turnId: "turn-" + ending };
+    for (const [origin, ending] of [
+      ["gui", "complete"],
+      ["terminal", "complete"],
+      ["gui", "stop"],
+      ["terminal", "stop"],
+    ]) {
+      await fixture.seed(
+        "UPDATE chats SET automation_paused=false,managed_autonomy_stopped=false WHERE id='chat'",
+      );
+      const key = origin + "-" + ending;
+      const rootId = "root-" + key;
+      const active = { threadId: "thread", turnId: "turn-" + key };
       const start = command({
         operationId: rootId,
-        origin: "terminal",
+        origin,
         session,
       });
       const admitted = await call("admit", start);
@@ -124,7 +133,7 @@ try {
       await call("settle", rootAck);
       const control = async (name, method, paused = true) => {
         const input = command({
-          operationId: ending + "-" + name,
+          operationId: key + "-" + name,
           origin: "terminal",
           method,
           session,
@@ -164,7 +173,7 @@ try {
       const evidence = {
         suspension: {
           ...active,
-          checkpointId: "checkpoint-" + ending,
+          checkpointId: "checkpoint-" + key,
           revision: 1,
         },
         storageId: "00000000-0000-4000-8000-000000000001",
@@ -178,6 +187,32 @@ try {
       await call("settle", pauseAck);
       await call("settle", pauseAck);
       await snapshot("paused", active, evidence);
+      const observe = async (op, expected) => {
+        const result = await fixture.request({
+          op: "native-command-" + op,
+          owner,
+          worker: "alpha",
+          operation: rootId,
+          generation: receipt.operationGeneration,
+          status: "failed",
+          transportEnded: true,
+        });
+        run.steps++;
+        assert.equal(result.rejected, false, JSON.stringify(result));
+        if (expected !== undefined) assert.deepEqual(result.value, expected);
+        return result.value;
+      };
+      assert.deepEqual(
+        (await observe("suspended-execution")).checkpoint,
+        evidence,
+      );
+      await observe("finish-execution", false);
+      if (origin === "gui") await observe("logical-finish", false);
+      await snapshot("paused", active, evidence);
+      const rootState = await query(
+        `SELECT jsonb_build_object('completed',execution_completed_at,'logical',logical_completed_at) result FROM native_commands WHERE operation_id='${rootId}'`,
+      );
+      assert.deepEqual(rootState, { completed: null, logical: null });
       const terminal = {
         ...rootAck,
         resultDigest: null,
@@ -192,6 +227,12 @@ try {
       await call("settle", terminal, "suspended-execution-not-terminal");
       const resume = await control("resume", "turn/pause", false);
       await snapshot("resuming", active, evidence);
+      assert.deepEqual(
+        (await observe("suspended-execution")).checkpoint,
+        evidence,
+      );
+      await observe("finish-execution", false);
+      if (origin === "gui") await observe("logical-finish", false);
       await call("settle", pauseAck, "suspension-actor-stale");
       await call(
         "settle",
@@ -224,6 +265,9 @@ try {
       await call("settle", resume);
       await call("settle", resume);
       await snapshot("running", active, evidence);
+      // Running retains historical evidence, without extending the durable
+      // pause guarantee to unconfirmed termination of active inference.
+      await observe("suspended-execution", null);
       if (ending === "complete") {
         await call("settle", {
           ...terminal,
@@ -236,9 +280,38 @@ try {
       } else {
         const stop = await control("stop", "turn/interrupt");
         await snapshot("stopping", active, evidence);
+        assert.deepEqual(
+          (await observe("suspended-execution")).checkpoint,
+          evidence,
+        );
+        await observe("finish-execution", false);
+        if (origin === "gui") await observe("logical-finish", false);
+        await call("settle", {
+          ...terminal,
+          reconciliation: {
+            ...terminal.reconciliation,
+            terminalStatus: "interrupted",
+          },
+        });
+        // Native terminal proof can arrive before the Stop control receipt.
+        await observe("suspended-execution", null);
+        assert.equal(
+          (
+            await query(
+              "SELECT jsonb_build_object('status',status) result FROM chats WHERE id='chat'",
+            )
+          ).status,
+          "idle",
+        );
         await call("settle", stop);
         await snapshot("stopped", active, null);
       }
+      await observe("suspended-execution", null);
+      if (origin === "gui") await observe("logical-finish");
+      const finished = await query(
+        "SELECT jsonb_build_object('status',status) result FROM chats WHERE id='chat'",
+      );
+      assert.equal(finished.status, "idle");
     }
     await fixture.close();
     fixture = undefined;

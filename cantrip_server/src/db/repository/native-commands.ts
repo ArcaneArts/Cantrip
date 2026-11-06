@@ -8,6 +8,10 @@ import { reconcileNativeThreadObservation } from "./native-thread-observation.js
 import { NativeCommandRecoveryRepository } from "./native-command-recovery.js";
 import { NativeSuspensionRepository } from "./native-suspensions.js";
 import {
+  NativeSuspendedExecutionRepository,
+  retainedNativeSuspension,
+} from "./native-suspended-execution.js";
+import {
   dispatchNativeSuspension,
   settleNativeSuspension,
   finishNativeSuspension,
@@ -1584,6 +1588,11 @@ export class NativeCommandRepository {
       this,
     ).recoveryContext(ownerId, chatId);
   }
+  suspendedExecution(
+    ...args: Parameters<NativeSuspendedExecutionRepository["read"]>
+  ) {
+    return new NativeSuspendedExecutionRepository(this.database).read(...args);
+  }
   recoverExecution(
     ...args: Parameters<NativeCommandRecoveryRepository["recoverExecution"]>
   ) {
@@ -1665,6 +1674,14 @@ export class NativeCommandRepository {
         !row.executionLaneId ||
         !activation?.active ||
         activation.generation !== row.activationGeneration
+      )
+        return false;
+      if (
+        await retainedNativeSuspension(
+          new NativeSuspensionRepository(this.database).inTransaction(tx),
+          ownerId,
+          row,
+        )
       )
         return false;
       const finished = await this.lanes

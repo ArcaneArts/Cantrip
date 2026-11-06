@@ -192,6 +192,7 @@ export async function nativeCommandFixture(repository, input) {
       operation,
       generation,
       input.status,
+      input.transportEnded ?? false,
     );
   if (input.op === "native-command-logical-deferred")
     return repository.nativeCommands.hasDeferredLogicalGui(
@@ -265,6 +266,13 @@ export async function nativeCommandFixture(repository, input) {
       operation,
       generation,
       input.status,
+    );
+  if (input.op === "native-command-suspended-execution")
+    return repository.nativeCommands.suspendedExecution(
+      owner,
+      worker,
+      operation,
+      generation,
     );
   if (input.op === "native-command-dispatch")
     return repository.nativeCommands.dispatch(owner, input.input);

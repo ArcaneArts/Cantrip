@@ -301,6 +301,20 @@ fn execute<'a>(
             ))
         }
         .boxed(),
+        Some("native-command-suspended-execution") => async move {
+            Ok(repository
+                .suspended_execution(
+                    owner,
+                    worker,
+                    operation,
+                    input["generation"]
+                        .as_str()
+                        .context("Suspension generation")?,
+                )
+                .await?
+                .unwrap_or(Value::Null))
+        }
+        .boxed(),
         Some("native-command-dispatch") => {
             async move { repository.dispatch(owner, &input["input"]).await }.boxed()
         }

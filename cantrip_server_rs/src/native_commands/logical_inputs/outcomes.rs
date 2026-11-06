@@ -138,6 +138,12 @@ pub(super) async fn finish(
     }) else {
         return Ok(false);
     };
+    if super::super::suspension::retained_execution(tx, owner, &head)
+        .await?
+        .is_some()
+    {
+        return Ok(false);
+    }
     let finished = if truthy(active.get("active")) {
         execution_lanes::finish_in_transaction(
             tx,

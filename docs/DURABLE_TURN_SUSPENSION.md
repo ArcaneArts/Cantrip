@@ -195,6 +195,30 @@ terminal proof. Stop retains the existing input/Goal cancellation fence and
 clears checkpoint resumability on acknowledgement. A previous completed turn's
 record cannot absorb Stop for a different active native turn.
 
+The server also retains the current physical root and logical GUI input when
+worker submission or transport ends with a committed suspension still held.
+Both implementations read the actual suspension and current activation under
+the chat lock. Administrative finish cannot close that lane, stamp logical
+completion, or enqueue completion delivery. The submission failure path skips
+provider failover and failure callbacks while this exact root is retained.
+Native terminal proof permits cleanup even if it precedes the Stop receipt;
+ordinary terminal settlement or acknowledged Stop retires the checkpoint.
+This preserves the owner needed for subsequent cold adoption;
+it does not yet acquire that fresh owner or implement product cold Resume.
+Running records retain historical evidence without extending this hold to
+unconfirmed termination of active inference. These guards cover managed agent
+Chats, including their Goal turns. Task-experience turns use a separate admission
+path and remain part of the pending integration.
+
+Retention validation passed 91 focused server cases, server typecheck, and an
+actual Rust server build. The database compatibility harness passed 107
+operations per implementation, including held GUI/terminal closure attempts,
+Resume and Stop ordering, and a real failed SQL write with retry. All seven
+cold-worker/shared-control native cases passed against the unchanged verified
+80-patch development runtime. Four broader Task test failures reproduce on
+the pristine merged baseline. The standard check still stops at application
+decomposition limits; its later stages were not run.
+
 Worker persistence failure records a fixed public control error while retaining
 native recovery bytes. The complete cold path still needs original-home
 selection, fresh execution admission/adoption, restoration errors, duplicate

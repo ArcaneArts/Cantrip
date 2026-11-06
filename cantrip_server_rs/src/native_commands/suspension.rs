@@ -5,11 +5,76 @@ use super::{
     context, queue,
 };
 use crate::{
-    database::Transaction,
+    database::{Executor, Transaction},
     settings::parse_response,
     wire::{Value, coercion::truthy, value::json},
 };
 use anyhow::{Context, Result};
+
+/** Committed suspension retains the original unfinished root across transport
+ * loss. Administrative closure is not native terminal evidence. */
+pub(super) async fn retained_execution(
+    tx: &Transaction<'_>,
+    owner: &str,
+    row: &Value,
+) -> Result<Option<Value>> {
+    let current = chat(tx, owner, &text(&row["chat_id"])?).await?;
+    Ok(read(&current)?.filter(|state| {
+        !state["checkpoint"].is_null()
+            && !state["active"].is_null()
+            && !state["actor"].is_null()
+            && !terminal(state)
+            && state["phase"] != "running"
+            && !(row["terminal_evidence"]["kind"] == "terminal"
+                && matches!(
+                    row["terminal_evidence"]["terminalStatus"].as_str(),
+                    Some("completed" | "failed" | "interrupted")
+                )
+                && row["terminal_evidence"]["nativeTurnId"] == state["active"]["turnId"]
+                && row["terminal_evidence"]["runtimeGeneration"]
+                    == row["identity"]["runtimeGeneration"])
+            && row["kind"] == "start"
+            && state["target"]["workerId"] == row["worker_id"]
+            && state["target"]["originalOperationId"] == row["operation_id"]
+            && state["target"]["executionLaneId"] == row["execution_lane_id"]
+            && state["active"]["threadId"] == row["identity"]["threadId"]
+            && state["actor"]["runtimeGeneration"] == row["identity"]["runtimeGeneration"]
+    }))
+}
+
+impl super::Repository {
+    pub async fn suspended_execution(
+        &self,
+        owner: &str,
+        worker: &str,
+        operation: &str,
+        generation: &str,
+    ) -> Result<Option<Value>> {
+        let (owner, worker, operation, generation) = (
+            owner.to_owned(),
+            worker.to_owned(),
+            operation.to_owned(),
+            generation.to_owned(),
+        );
+        self.database.transaction(|tx| Box::pin(async move {
+            let captured = context::read(Executor::Transaction(tx), &owner, &worker, &operation, &generation).await?;
+            let id = text(&captured["chat_id"])?;
+            context::lock_chat(tx, &owner, &id).await?;
+            let row = context::read(Executor::Transaction(tx), &owner, &worker, &operation, &generation).await?;
+            let active = raw_one(tx, "SELECT to_jsonb(a)::text FROM native_command_activations a WHERE chat_id=$1", &[&id]).await?.unwrap_or(Value::Null);
+            if !truthy(active.get("active")) || active["worker_id"] != worker || active["execution_lane_id"] != row["execution_lane_id"] { return Ok(None); }
+            let head = raw_one(tx, "SELECT to_jsonb(n)::text FROM native_commands n WHERE operation_id=$1", &[&text(&active["operation_id"])?]).await?;
+            let Some(head) = head.filter(|head|
+                head["owner_id"] == owner && head["worker_id"] == worker && head["chat_id"] == row["chat_id"] &&
+                head["activation_generation"] == active["generation"] &&
+                head["execution_lane_id"] == row["execution_lane_id"] &&
+                (head["operation_id"] == row["operation_id"] ||
+                (row["logical_operation_id"] == row["operation_id"] && head["logical_operation_id"] == row["operation_id"]))
+            ) else { return Ok(None); };
+            retained_execution(tx, &owner, &head).await
+        })).await
+    }
+}
 
 fn terminal(state: &Value) -> bool {
     matches!(
