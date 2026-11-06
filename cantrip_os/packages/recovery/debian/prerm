@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+case "$1" in
+    remove|upgrade|deconfigure)
+        # Execute the real release under its maintenance lock. A live root
+        # operation must finish before its own recovery implementation goes away.
+        cantrip-recovery release-maintenance >/dev/null
+        find /usr/lib/cantrip-os-recovery -type d -name __pycache__ -prune -exec rm -rf {} +
+        ;;
+esac

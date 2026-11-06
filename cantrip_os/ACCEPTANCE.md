@@ -2723,3 +2723,68 @@ The rebased root check reports `build-app.ts` at 1519/1500 and
 `chat-turn-runtime.ts` at 2230/1999; the repository check reports
 `native-commands.ts` at 2143/2000. Those files are unchanged by this cycle.
 Formatting and diff checks passed on the final source.
+
+## Phase 5: guest workspace recovery package (2026-11-05)
+
+The optional `cantrip-os-recovery` 0.1.0 package supplies command-only guest
+capture, receive/export, inspect, staged restore, interruption recovery and
+rollback. Docker/ISO scripts select it with the executor edition and allow
+`CANTRIP_OS_RECOVERY=0`. It is not yet the encrypted product backup workflow:
+Worker encryption/storage, Server admissions and Cantrip backup controls remain
+required, alongside the rest of Phase 5.
+
+Actual disposable ARM64 Docker tests passed all 10 cases (25.125s): a real
+workspace writer stopped before capture; dirty/untracked/ignored files and
+Unicode names; explicit cache exclusion and linked-source omission; Chromium
+SQLite profile bytes; root/numeric ownership, modes, named POSIX ACL remapping,
+extended attributes, hard links and symlinks; real Git worktree relocation;
+omitted external Git metadata becoming inactive references; corrupted payloads;
+abrupt root-process death before/after actual directory exchange; interrupted
+capture release; explicit replacement/rollback retaining both homes; and actual
+package removal/reinstall releasing interrupted maintenance while retaining
+desktop, files and modified conffile preferences. A real shutdown plus injected
+lost acknowledgement verifies that recovery observes stopped state without
+issuing a second stop.
+
+Earlier runs exposed intermittent nonzero remote-service stop replies before
+data staging. The original remained active and maintenance was released. The
+package now records that error and accepts stopped state only after the package's
+actual status/lock confirms it. Focused repeats and the final Docker run passed;
+the earlier failures are not recorded as passes.
+
+Installed AMD64 Debian/QEMU acceptance initially passed seven package tests
+(118.188s). A subsequent nine-case run passed the eight data/recovery cases but
+failed its removal assertion because the fixture assumed Docker's personal
+browser port also existed in an installed OS. The installed personal X desktop
+and retained files had passed. The fixture now checks that browser endpoint only
+in the container edition; the final installed run is recorded below.
+
+The final installed AMD64/QEMU run passed all 10 cases (144.315s), including
+actual remove/reinstall, conffile preservation and independent personal X
+desktop operation. It used recovery 0.1.0 with executor/remote 0.9.0. This is an
+installed local VM over strict SSH, not real remote/cloud product acceptance.
+
+The final architecture-independent recovery package SHA-256 is
+`0c89db5a0f6275558eabf9134ba3ed3bc5a4da2d0dc0dcbfb269ef325238167a`.
+The fresh ARM64 OCI recipe built with recovery enabled and remote omitted:
+`cantrip-os-phase5-recovery-foundation:dev`, image ID
+`sha256:218011d91526178db401b382bedcf50cc6072792c6bb7a3d9ba67f19bacea97e`.
+Its actual fresh instance completed capture with only workspace/executor services
+present, and retained a working personal X desktop and browser viewer. A second
+recipe build with recovery omitted confirmed that its command was absent while
+IceWM and the executor remained installed. These package-wiring checks reused
+the existing executor 0.9.0 Debian artifact; they are not the final Phase 5
+distribution of the changed native executor.
+
+The package spools plaintext under root-private permissions in the retained
+executor volume; retained original homes stay privately staged in the workspace
+volume. It does not back up machine enrollment, host keys, runtime handles or
+arbitrary shared root customization. Managed workspaces are interrupted for
+capture; trusted independent root writers are not an isolation boundary. Browser
+profile bytes are covered, not guaranteed portable authenticated sessions.
+
+Three existing launcher/lock/cancellation tests passed (131ms). Node, Python and
+shell syntax checks passed. Required `pnpm check` stops at unchanged baseline
+Server budgets: `build-app.ts` 1519/1500 and `chat-turn-runtime.ts` 2230/1999.
+No hosted ordinary validation was run. A fresh ISO is still required for final
+Phase 5 distribution acceptance; script wiring alone is not ISO boot evidence.

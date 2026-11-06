@@ -10,6 +10,7 @@ COPY images/iso/ /source/images/iso/
 COPY scripts/configure-system.sh /source/scripts/configure-system.sh
 COPY packages/ /source/packages/
 RUN /source/packages/workspaces/build.sh /source/debs
+RUN /source/packages/recovery/build.sh /source/recovery-debs
 COPY --from=executor / /source/executor-debs/
 COPY --from=remote / /source/remote-debs/
 ENTRYPOINT ["/bin/bash", "/source/images/iso/build.sh"]

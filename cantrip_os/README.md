@@ -49,6 +49,13 @@ Phase 3 execution and distribution acceptance is recorded. See [acceptance resul
 for the actual tested builds and platform limits. Iterate in Docker first; build
 the ISO when you want the same source configuration as bootable media.
 
+Phase 5's optional [recovery package](packages/recovery/README.md) supplies local
+workspace capture, staged restore, interruption recovery and rollback commands.
+Docker/ISO scripts include it with the executor edition;
+`CANTRIP_OS_RECOVERY=0` omits it independently. The package is an administrative
+foundation: encrypted Worker backup storage and Cantrip's backup controls are
+still pending. Guest transfer staging is root-private plaintext.
+
 From the repository root, with Node 22.13+ (or Node 24) and a running Docker engine:
 
 ```sh

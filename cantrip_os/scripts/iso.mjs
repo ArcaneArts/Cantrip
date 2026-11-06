@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { root, run, executorEdition, remoteEdition } from "./os.mjs";
+import {
+  root,
+  run,
+  executorEdition,
+  remoteEdition,
+  recoveryEdition,
+} from "./os.mjs";
 import { withInstanceLock } from "./lock.mjs";
 
 await withInstanceLock("cantrip-os-iso-build", async () => {
@@ -45,6 +51,8 @@ await withInstanceLock("cantrip-os-iso-build", async () => {
     `CANTRIP_OS_EXECUTOR=${executor}`,
     "-e",
     `CANTRIP_OS_REMOTE=${remote}`,
+    "-e",
+    `CANTRIP_OS_RECOVERY=${recoveryEdition()}`,
     "--platform",
     "linux/amd64",
     "--mount",

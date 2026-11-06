@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+if [ "$1" = configure ]; then
+    install -d -m 0700 /var/lib/cantrip-os-executor/recovery
+    find /usr/lib/cantrip-os-recovery -type d -name __pycache__ -prune -exec rm -rf {} +
+fi
