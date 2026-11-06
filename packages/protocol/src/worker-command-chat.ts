@@ -7,6 +7,7 @@ import {
   nativePermissionUpdateCommandSchema,
 } from "./native-settings-update.js";
 import { nativeSettingsReadScopeSchema } from "./native-settings-state.js";
+import { taskGoalCycleRecoverySchema } from "./task-goal-cycle.js";
 import { queuedPromptOpaqueContentSchema } from "./communication-content.js";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
 import { nativeCommandReceiptSchema } from "./native-commands.js";
@@ -587,8 +588,29 @@ export const workerChatCommandSchemas = [
       permissionProfileId: permissionProfileIdSchema,
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("task.goal.recover"),
+      osExecution: cantripOsExecutionSchema.optional(),
+      recovery: taskGoalCycleRecoverySchema,
+      subagentDefaults: managedSessionSubagentDefaultsSchema.nullable(),
+      mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200),
+      planMode: planModeSchema,
+      chatId: z.string().min(1),
+      projectId: z.string().min(1),
+      worktreeId: z.string().min(1),
+      rootKind: z.enum(["folder-root", "git-worktree"]),
+      computerUseEnabled: z.boolean(),
+      cwd: z.string().min(1),
+      threadId: z.string().min(1),
+      model: workerRuntimeModelSchema,
+      provider: workerRuntimeProviderSchema,
+      permissionProfileId: permissionProfileIdSchema,
+    })
+    .strict(),
   z.object({
     type: z.literal("chat.goal.get"),
+    osExecution: cantripOsExecutionSchema.optional(),
     observeExecution: z.boolean().optional(),
     protectObjective: z.boolean().optional(),
     chatId: z.string().min(1),

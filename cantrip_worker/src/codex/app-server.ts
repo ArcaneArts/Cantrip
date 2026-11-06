@@ -15,6 +15,9 @@ import {
   nativeSettingsVersionSchema,
   type NativeTurnSuspension,
   isWorkerEndpointProviderKind,
+  type TaskGoalCycleDispatch,
+  type TaskGoalCycleIdentity,
+  type TaskGoalCycleRecovery,
 } from "@cantrip/protocol";
 import {
   recordInferenceFailure,
@@ -67,7 +70,11 @@ import {
   CodexRpcRequests,
   type NativeRpcSettlementObserver,
 } from "./rpc-requests.js";
-import { parseCodexRpcMessage, CodexNativeRpcError } from "./rpc-protocol.js";
+import {
+  parseCodexRpcMessage,
+  CodexNativeRpcError,
+  CodexRpcObservationError,
+} from "./rpc-protocol.js";
 import {
   launchCodexProcess,
   readCodexProcessEndpoint,
@@ -1707,6 +1714,10 @@ export class CodexAppServer implements CodexRuntime {
   #externalThreadChangeObserver:
     ((change: CodexExternalThreadChange) => void) | null = null;
   readonly #goals = new Map<string, ThreadGoal>();
+  readonly #taskGoalQueueObservers = new Map<
+    string,
+    Set<(admission: { operationId: string; runtimeGeneration: string }) => void>
+  >();
   #goalObserver: ((threadId: string, goal: ThreadGoal | null) => void) | null =
     null;
   readonly #managedQueueResumers = new Map<
@@ -1737,6 +1748,11 @@ export class CodexAppServer implements CodexRuntime {
     {
       epoch: number;
       chatId?: string;
+      projectId?: string | null;
+      taskGoalCycle?: Pick<
+        TaskGoalCycleIdentity,
+        "cycleId" | "modelRouteId" | "providerAccountId" | "orderEpoch"
+      >;
       inferenceRevocation: AbortController;
       options: Pick<
         PrepareManagedThreadOptions,
@@ -1850,6 +1866,15 @@ export class CodexAppServer implements CodexRuntime {
     private readonly nativeEnvironment: CodexNativeEnvironment | null = null,
     private readonly inferenceAdmission: WorkerInferenceAdmission | null = null,
     private readonly resourceProtection: NativeResourceProtection | null = null,
+    private readonly dispatchTaskGoalCycle:
+      | ((
+          input: Omit<
+            TaskGoalCycleDispatch,
+            "serverId" | "workerId" | "workerGeneration"
+          >,
+          signal: AbortSignal,
+        ) => Promise<void>)
+      | null = null,
   ) {}
 
   private workspaceContext(cwd: string) {
@@ -4460,6 +4485,121 @@ export class CodexAppServer implements CodexRuntime {
     return { ...goal, nativeEpoch };
   }
 
+  /** Configure the retained Task runtime completely, then wake its existing
+   * native Goal. No setter, synthetic Resume input or provider ticket is made
+   * by this control command; the actual private begin competes in FIFO. */
+  async recoverTaskGoalCycle(
+    options: GoalRuntimeOptions & {
+      threadId: string;
+      chatId: string;
+      recovery: TaskGoalCycleRecovery;
+      planMode: PlanMode;
+      subagentDefaults: RuntimeSubagentDefaults | null;
+    },
+  ) {
+    const queueKey = JSON.stringify([
+      options.threadId,
+      options.recovery.cycle.cycleId,
+      options.recovery.cycle.goalEpoch,
+    ]);
+    const queued = () =>
+      this.#inference?.queuedTaskGoalCycle(
+        options.threadId,
+        options.recovery.cycle.cycleId,
+        options.recovery.cycle.goalEpoch,
+      ) ?? null;
+    const existing = queued();
+    if (existing) return { status: "scheduled" as const, admission: existing };
+    const configured = this.taskInferenceOptions({
+      ...options,
+      taskGoalCycleId: options.recovery.cycle.cycleId,
+      executionProfile: "ide" as const,
+    });
+    await this.prepareManagedThread({
+      ...configured,
+      subagentDefaults: options.subagentDefaults,
+      planMode: options.planMode,
+      intent: "configure",
+    });
+    const generation = this.transportGeneration;
+    if (!generation)
+      throw new Error("Task Goal recovery has no native transport.");
+    const observation = await this.readManagedGoalRecovery(
+      options.threadId,
+      generation,
+    );
+    if (
+      observation.goalEpoch !== options.recovery.cycle.goalEpoch ||
+      observation.goal?.status !== "active"
+    )
+      return {
+        status: "ineligible" as const,
+        threadId: options.threadId,
+        modelRouteId: options.model.routeId,
+        providerAccountId: options.provider.accountId ?? null,
+        nativeEpoch: observation.nativeEpoch,
+        observedGoalEpoch: observation.goalEpoch,
+        observedGoalStatus: observation.goal?.status ?? null,
+      };
+    const gate = this.#managedThreadOverlays.get(options.threadId)?.options
+      .executionGate;
+    if (gate?.inferenceOnly !== true)
+      throw new Error("Task Goal recovery lost its private inference gate.");
+    let resolve!: (admission: {
+      operationId: string;
+      runtimeGeneration: string;
+    }) => void;
+    let reject!: (error: Error) => void;
+    const observed = new Promise<{
+      operationId: string;
+      runtimeGeneration: string;
+    }>((yes, no) => {
+      resolve = yes;
+      reject = no;
+    });
+    void observed.catch(() => {});
+    let listeners = this.#taskGoalQueueObservers.get(queueKey);
+    if (!listeners)
+      this.#taskGoalQueueObservers.set(queueKey, (listeners = new Set()));
+    listeners.add(resolve);
+    const signal = inferenceCommandSignal();
+    const aborted = () =>
+      reject(
+        new CodexRpcObservationError(
+          "Task Goal queue observation ended without an enqueue receipt.",
+        ),
+      );
+    signal?.addEventListener("abort", aborted, { once: true });
+    const timer = setTimeout(aborted, 8_000);
+    timer.unref();
+    try {
+      if (signal?.aborted) aborted();
+      const existing = queued();
+      if (existing) resolve(existing);
+      else
+        await this.wakeManagedExecution(
+          {
+            threadId: options.threadId,
+            runnerGeneration: gate.runnerGeneration,
+          },
+          generation,
+        );
+      // This is enqueue acknowledgement, never a wait for provider capacity.
+      const admission = await observed;
+      this.assertManagedExecutionTransport(generation);
+      return { status: "scheduled" as const, admission };
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", aborted);
+      listeners.delete(resolve);
+      if (
+        !listeners.size &&
+        this.#taskGoalQueueObservers.get(queueKey) === listeners
+      )
+        this.#taskGoalQueueObservers.delete(queueKey);
+    }
+  }
+
   /** Read native lifecycle without exporting transcript content or resuming it. */
   async readThreadExecution(threadId: string) {
     const response = (await this.request("thread/read", {
@@ -6059,8 +6199,10 @@ export class CodexAppServer implements CodexRuntime {
       preserveSubagentSettings?: boolean;
       chatId?: string;
       adoptImportedProvider?: boolean;
+      projectId?: string | null;
       executionGate?: PrepareManagedThreadOptions["executionGate"];
       canonicalHistory?: PrepareManagedThreadOptions["canonicalHistory"];
+      taskGoalCycleId?: string | null;
     },
     create = true,
     intent: "configure" | "preserve" = "configure",
@@ -6452,9 +6594,13 @@ export class CodexAppServer implements CodexRuntime {
 
   private async applyManagedThreadConfiguration(
     threadId: string,
-    options: Pick<RunAgentTurnOptions, "cwd" | "mcpServers"> & {
+    options: Pick<
+      RunAgentTurnOptions,
+      "cwd" | "mcpServers" | "model" | "provider" | "projectId"
+    > & {
       preserveSubagentSettings?: boolean;
       chatId?: string;
+      taskGoalCycleId?: string | null;
       executionGate?: PrepareManagedThreadOptions["executionGate"];
       canonicalHistory?: PrepareManagedThreadOptions["canonicalHistory"];
       executionProfile?: RunAgentTurnOptions["executionProfile"];
@@ -6482,6 +6628,20 @@ export class CodexAppServer implements CodexRuntime {
       preserveSubagentSettings,
     );
     const fingerprint = JSON.stringify(config);
+    const previousOverlay = this.#managedThreadOverlays.get(threadId);
+    const taskGoalCycle =
+      options.executionGate?.inferenceOnly !== true
+        ? undefined
+        : options.taskGoalCycleId === undefined
+          ? previousOverlay?.taskGoalCycle
+          : options.taskGoalCycleId === null
+            ? undefined
+            : {
+                cycleId: options.taskGoalCycleId,
+                modelRouteId: options.model.routeId,
+                providerAccountId: options.provider.accountId ?? null,
+                orderEpoch: 0,
+              };
     const previous = this.#managedConfigApplications.get(threadId);
     if (
       previous?.epoch === this.#preparationEpoch &&
@@ -6489,6 +6649,9 @@ export class CodexAppServer implements CodexRuntime {
     ) {
       const retained = this.#managedThreadOverlays.get(threadId);
       if (retained && options.chatId) retained.chatId = options.chatId;
+      if (retained && options.projectId !== undefined)
+        retained.projectId = options.projectId;
+      if (retained) retained.taskGoalCycle = taskGoalCycle;
       return;
     }
     this.#managedConfigApplications.delete(threadId);
@@ -6511,6 +6674,8 @@ export class CodexAppServer implements CodexRuntime {
       this.#managedSecurityOwners.add(threadId);
     this.#managedThreadOverlays.set(threadId, {
       epoch: this.#preparationEpoch,
+      taskGoalCycle,
+      projectId: options.projectId ?? previousOverlay?.projectId,
       inferenceRevocation,
       chatId:
         options.chatId ?? this.#managedThreadOverlays.get(threadId)?.chatId,
@@ -7187,6 +7352,7 @@ export class CodexAppServer implements CodexRuntime {
       );
     const payload = z
       .object({
+        goalEpoch: z.string().min(1).nullable().optional(),
         input: z.object({
           phase: z.enum([
             "begin",
@@ -7287,13 +7453,76 @@ export class CodexAppServer implements CodexRuntime {
               CODEX_RPC_TIMEOUT_MS,
             );
             this.assertManagedExecutionTransport(transport);
-            return z.object({ claimed: z.boolean() }).strict().parse(result)
-              .claimed;
+            return z
+              .object({
+                claimed: z.boolean(),
+                goalEpoch: z.string().min(1).nullable().optional(),
+                inferenceOnly: z.boolean().optional(),
+              })
+              .strict()
+              .parse(result);
           },
+          goalEpoch: payload.data.goalEpoch ?? undefined,
           scopeId,
           rootThreadId,
           chatId: this.#managedThreadOverlays.get(rootThreadId ?? base.threadId)
             ?.chatId,
+          projectId: this.#managedThreadOverlays.get(
+            rootThreadId ?? base.threadId,
+          )?.projectId,
+          taskGoalCycle:
+            rootThreadId === base.threadId
+              ? this.#managedThreadOverlays.get(base.threadId)?.taskGoalCycle
+              : undefined,
+          onTaskGoalCycleQueued: async (
+            cycle,
+            operationId,
+            runtimeGeneration,
+          ) => {
+            signal.throwIfAborted();
+            this.assertManagedExecutionTransport(transport);
+            const key = JSON.stringify([
+              base.threadId,
+              cycle.cycleId,
+              cycle.goalEpoch,
+            ]);
+            for (const observer of this.#taskGoalQueueObservers.get(key) ?? [])
+              observer({ operationId, runtimeGeneration });
+          },
+          onTaskGoalCycleDispatch: async (cycle, operationId, recovery) => {
+            const chatId = this.#managedThreadOverlays.get(
+              base.threadId,
+            )?.chatId;
+            if (!chatId || !this.dispatchTaskGoalCycle)
+              throw new Error(
+                "Task Goal inference lost its canonical association.",
+              );
+            const goal = await this.readManagedGoalRecovery(
+              base.threadId,
+              transport,
+            );
+            signal.throwIfAborted();
+            if (
+              goal.goalEpoch !== cycle.goalEpoch ||
+              goal.goal?.status !== "active"
+            )
+              throw new Error(
+                "The queued Task Goal epoch is no longer active.",
+              );
+            await this.dispatchTaskGoalCycle(
+              {
+                sourceKey: recovery.sourceKey,
+                chatId,
+                providerId: provider.id,
+                threadId: base.threadId,
+                turnId: base.turnId,
+                operationId,
+                cycle,
+              },
+              signal,
+            );
+            this.assertManagedExecutionTransport(transport);
+          },
           independent: phase === "begin-independent",
           provider,
           signal,

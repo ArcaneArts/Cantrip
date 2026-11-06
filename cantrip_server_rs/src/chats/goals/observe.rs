@@ -52,6 +52,11 @@ impl Service {
         for key in ["chatId", "cwd", "threadId"] {
             command[key] = context[key].clone();
         }
+        if !options.activate
+            && let Some(os) = context.get("osExecution")
+        {
+            command["osExecution"] = os.clone();
+        }
         command["model"] = runtime["model"].clone();
         command["provider"] = runtime["provider"].clone();
         command["permissionProfileId"] =

@@ -23,6 +23,7 @@ import {
   type InferenceNativeExecution,
   type NativeInferenceRecoveryResult,
   type NativeGoalRecovery,
+  type TaskGoalCycleRecovery,
   type InferenceOperationStatus,
   type InferencePoolStatus,
   type InferenceTicketState,
@@ -83,6 +84,8 @@ export type InferenceSettlement =
   "completed" | "failed" | "interrupted" | "runtime-exited" | "never-started";
 
 export interface InferenceLease {
+  /** Canonical unused Task cycle actually adopted by this ticket, if any. */
+  taskGoalRecovery(): TaskGoalCycleRecovery | null;
   readonly id: string;
   /** Cancellation asks the owner to stop; it does not free running capacity. */
   readonly signal: AbortSignal;
@@ -98,6 +101,8 @@ export interface InferenceLease {
 }
 
 export interface InferenceTicket {
+  /** Actual durable enqueue acknowledgement, independent of capacity grant. */
+  readonly queued: Promise<void>;
   readonly ready: Promise<InferenceLease>;
   status(): InferenceOperationStatus;
   cancel(reason?: Error): void;
@@ -143,6 +148,7 @@ interface Pool {
 }
 
 interface Ticket {
+  taskGoalRecovery: TaskGoalCycleRecovery | null;
   sequence: number;
   restoredOrder: number | null;
   recoveryPending: boolean;
@@ -158,6 +164,8 @@ interface Ticket {
   startedAt: number | null;
   resolve(lease: InferenceLease): void;
   reject(error: Error): void;
+  resolveQueued(): void;
+  rejectQueued(error: Error): void;
   stopListening(): void;
   handle: InferenceTicket;
   lease: InferenceLease;
@@ -219,15 +227,17 @@ interface RestoredWaiter {
   records: InferenceJournalRecord[];
   taskInputNotDispatched: Set<string>;
   goalInputNotDispatched: Set<string>;
+  taskGoalCycleNotDispatched: Set<string>;
   enqueuedAt: number;
   claimed: Ticket | null;
   goalRecovery?: NativeGoalRecovery;
+  taskGoalRecovery?: TaskGoalCycleRecovery;
 }
 
 interface GoalRecoveryPreparation {
   chatId: string;
   providerId: string;
-  recovery: NativeGoalRecovery;
+  recovery: NativeGoalRecovery | TaskGoalCycleRecovery;
   preparing: boolean;
   unavailable: boolean;
 }
@@ -235,8 +245,19 @@ interface GoalRecoveryPreparation {
 function goalPreparationKey(
   chatId: string,
   providerId: string,
-  recovery: NativeGoalRecovery,
+  recovery: NativeGoalRecovery | TaskGoalCycleRecovery,
 ): string {
+  if ("cycle" in recovery)
+    return JSON.stringify([
+      "task-goal",
+      chatId,
+      providerId,
+      recovery.sourceKey,
+      recovery.cycle.cycleId,
+      recovery.threadId,
+      recovery.cycle.goalEpoch,
+      recovery.cycle.orderEpoch,
+    ]);
   const source = recovery.source;
   return JSON.stringify([
     chatId,
@@ -255,8 +276,16 @@ function goalPreparationEpisode(
   threadId: string,
   goalEpoch: string,
   orderEpoch: number,
+  taskCycleId?: string,
 ): string {
-  return JSON.stringify([chatId, providerId, threadId, goalEpoch, orderEpoch]);
+  return JSON.stringify([
+    chatId,
+    providerId,
+    threadId,
+    goalEpoch,
+    orderEpoch,
+    ...(taskCycleId ? ["task-goal", taskCycleId] : []),
+  ]);
 }
 
 /**
@@ -352,7 +381,7 @@ export class WorkerInferenceAdmission {
   beginGoalRecoveryPreparation(input: {
     chatId: string;
     providerId: string;
-    recovery: NativeGoalRecovery;
+    recovery: NativeGoalRecovery | TaskGoalCycleRecovery;
   }): { succeeded(): void; failed(): void; unconfirmed(): void } {
     const key = goalPreparationKey(
       input.chatId,
@@ -397,12 +426,13 @@ export class WorkerInferenceAdmission {
   }
 
   private goalPreparationFor(waiter: RestoredWaiter) {
-    return waiter.goalRecovery && waiter.record.identity.chatId
+    const recovery = waiter.taskGoalRecovery ?? waiter.goalRecovery;
+    return recovery && waiter.record.identity.chatId
       ? this.goalPreparations.get(
           goalPreparationKey(
             waiter.record.identity.chatId,
             waiter.record.identity.providerId,
-            waiter.goalRecovery,
+            recovery,
           ),
         )
       : undefined;
@@ -411,15 +441,17 @@ export class WorkerInferenceAdmission {
   private pruneGoalPreparations(): void {
     if (!this.goalPreparations.size) return;
     const retained = new Set<string>();
-    for (const waiter of new Set(this.restored.values()))
-      if (waiter.goalRecovery && waiter.record.identity.chatId)
+    for (const waiter of new Set(this.restored.values())) {
+      const recovery = waiter.taskGoalRecovery ?? waiter.goalRecovery;
+      if (recovery && waiter.record.identity.chatId)
         retained.add(
           goalPreparationKey(
             waiter.record.identity.chatId,
             waiter.record.identity.providerId,
-            waiter.goalRecovery,
+            recovery,
           ),
         );
+    }
     const pending = new Set<string>();
     for (const record of this.journal?.recoverySnapshot() ?? []) {
       const recovery = record.identity.recovery;
@@ -427,15 +459,17 @@ export class WorkerInferenceAdmission {
         this.recoveryPending.has(record.key) &&
         record.identity.chatId &&
         recovery?.threadId &&
-        recovery.autonomousGoal
+        (recovery.autonomousGoal || recovery.taskGoalCycle)
       )
         pending.add(
           goalPreparationEpisode(
             record.identity.chatId,
             record.identity.providerId,
             recovery.threadId,
-            recovery.autonomousGoal.goalEpoch,
-            recovery.autonomousGoal.orderEpoch ?? 0,
+            (recovery.taskGoalCycle ?? recovery.autonomousGoal)!.goalEpoch,
+            (recovery.taskGoalCycle ?? recovery.autonomousGoal)!.orderEpoch ??
+              0,
+            recovery.taskGoalCycle?.cycleId,
           ),
         );
     }
@@ -444,14 +478,18 @@ export class WorkerInferenceAdmission {
       // A real preparation may fail before its canonical metadata response
       // reaches refreshRecovery. Keep that attempt only through the matching
       // in-flight read; a retired/different source cannot inherit its failure.
+      const taskRecovery = "cycle" in state.recovery ? state.recovery : null;
+      const managedRecovery =
+        "source" in state.recovery ? state.recovery : null;
       if (
         !pending.has(
           goalPreparationEpisode(
             state.chatId,
             state.providerId,
-            state.recovery.source.threadId,
-            state.recovery.source.goalEpoch,
-            state.recovery.orderEpoch ?? 0,
+            taskRecovery?.threadId ?? managedRecovery!.source.threadId,
+            taskRecovery?.cycle.goalEpoch ?? managedRecovery!.source.goalEpoch,
+            taskRecovery?.cycle.orderEpoch ?? managedRecovery?.orderEpoch ?? 0,
+            taskRecovery?.cycle.cycleId,
           ),
         )
       )
@@ -1009,9 +1047,17 @@ export class WorkerInferenceAdmission {
       resolve = yes;
       reject = no;
     });
+    let resolveQueued!: () => void;
+    let rejectQueued!: (error: Error) => void;
+    const queued = new Promise<void>((yes, no) => {
+      resolveQueued = yes;
+      rejectQueued = no;
+    });
+    void queued.catch(() => {});
     // Admission can be cancelled before its owner starts awaiting it.
     void ready.catch(() => {});
     const ticket: Ticket = {
+      taskGoalRecovery: null,
       sequence: ++this.sequence,
       restoredOrder: null,
       recoveryPending: false,
@@ -1030,6 +1076,8 @@ export class WorkerInferenceAdmission {
       startedAt: null,
       resolve,
       reject,
+      resolveQueued,
+      rejectQueued,
       stopListening: () => {},
       observe: observeInferenceCommand(input.providerId),
       admitted: observeInferenceCommandAdmission(),
@@ -1041,12 +1089,14 @@ export class WorkerInferenceAdmission {
       releaseReceipt: null,
       withdrawal: null,
       handle: {
+        queued,
         ready,
         status: () => this.status(ticket),
         cancel: (reason) => this.cancel(ticket, reason),
         withdrawUnstarted: (reason) => this.withdrawUnstarted(ticket, reason),
       },
       lease: {
+        taskGoalRecovery: () => ticket.taskGoalRecovery,
         id: randomUUID(),
         get signal() {
           return ticket.controller.signal;
@@ -1061,19 +1111,20 @@ export class WorkerInferenceAdmission {
     runtime.records.set(input.operationId, ticket);
     lifetime.ticket = ticket;
     pool.queue.push(ticket);
-    // A retry can arrive before the durable queue notice. Reconcile matching
-    // physically ended Goal aliases before its new ticket can obtain a grant.
+    // An accepted input can arrive before its durable queue notice. Reconcile
+    // this chat's physically ended Goal aliases, including an older Task cycle
+    // that a newly accepted canonical input may have replaced.
     if (
-      input.recovery?.autonomousGoal &&
+      input.chatId &&
+      input.recovery &&
       this.journal
         ?.recoverySnapshot()
         .some(
           (record) =>
             this.recoverable(record) &&
-            recoveryQueueIdentity(
-              record.identity.chatId,
-              record.identity.recovery,
-            ) === recoveryQueueIdentity(input.chatId, input.recovery),
+            record.identity.chatId === input.chatId &&
+            (record.identity.recovery?.autonomousGoal ||
+              record.identity.recovery?.taskGoalCycle),
         )
     )
       this.wakeRecovery(input.chatId ?? undefined);
@@ -1095,6 +1146,7 @@ export class WorkerInferenceAdmission {
           // journal ACK allows the relay to release its dispatch counter.
           ticket.admitted?.();
           ticket.admitted = undefined;
+          ticket.resolveQueued();
           ticket.durableQueueReady = !ticket.recoveryPending;
           this.drain(pool);
           this.changed();
@@ -1104,6 +1156,7 @@ export class WorkerInferenceAdmission {
           this.reportJournalError(error);
         });
     }
+    if (!this.journal) ticket.resolveQueued();
     if (input.signal) {
       const signal = input.signal;
       const cancel = () =>
@@ -1332,14 +1385,20 @@ export class WorkerInferenceAdmission {
   }
 
   private release(ticket: Ticket, outcome: InferenceSettlement): void {
+    ticket.rejectQueued(
+      new Error("Inference ended before its enqueue acknowledgement."),
+    );
     this.transition(ticket, "released");
     this.diagnose(ticket, "released", outcome);
     if (this.journal && ticket.journalKey) {
       const recoverGoal =
-        ticket.input.recovery?.autonomousGoal &&
-        !ticket.nativeExecution &&
+        (ticket.input.recovery?.autonomousGoal ||
+          ticket.input.recovery?.taskGoalCycle) &&
+        (!ticket.nativeExecution || outcome === "never-started") &&
         recoveryQueueIdentity(ticket.input.chatId, ticket.input.recovery) &&
-        ticket.input.operationId === ticket.input.recovery.commandGeneration &&
+        (ticket.input.recovery.taskGoalCycle ||
+          ticket.input.operationId ===
+            ticket.input.recovery.commandGeneration) &&
         ["never-started", "runtime-exited"].includes(outcome);
       if (recoverGoal)
         this.recoveryPending.set(ticket.journalKey, ticket.input.providerId);
@@ -1613,6 +1672,20 @@ export class WorkerInferenceAdmission {
 
   private recoverable(record: InferenceJournalRecord): boolean {
     const identity = record.identity.recovery;
+    if (identity?.taskGoalCycle)
+      return (
+        (record.workerGeneration !== this.scope.workerGeneration ||
+          (record.state === "released" &&
+            ["never-started", "runtime-exited"].includes(
+              record.outcome ?? "",
+            ))) &&
+        (!record.nativeExecution ||
+          (record.state === "released" &&
+            record.outcome === "never-started")) &&
+        Boolean(recoveryQueueIdentity(record.identity.chatId, identity)) &&
+        record.identity.operationId ===
+          `native-inference:${identity.threadId}:${identity.turnId}:${identity.taskGoalCycle.scopeId}:${identity.taskGoalCycle.gateAttemptId}`
+      );
     if (identity?.autonomousGoal)
       return (
         (record.workerGeneration !== this.scope.workerGeneration ||
@@ -1749,6 +1822,31 @@ export class WorkerInferenceAdmission {
                   this.diagnoseRecovery(record, "recovery-retired");
                 }
               } else if (result.disposition === "requeued") {
+                const taskCycle = record.identity.recovery?.taskGoalCycle;
+                if (
+                  taskCycle &&
+                  (result.taskGoalCycleNotDispatched !== true ||
+                    !result.taskGoalRecovery ||
+                    result.taskGoalRecovery.settled ||
+                    result.taskGoalRecovery.workerId !== this.scope.workerId ||
+                    result.taskGoalRecovery.providerId !==
+                      record.identity.providerId ||
+                    result.taskGoalRecovery.threadId !==
+                      record.identity.recovery?.threadId ||
+                    result.taskGoalRecovery.cycle.cycleId !==
+                      taskCycle.cycleId ||
+                    result.taskGoalRecovery.cycle.goalEpoch !==
+                      taskCycle.goalEpoch ||
+                    result.taskGoalRecovery.cycle.orderEpoch !==
+                      taskCycle.orderEpoch ||
+                    result.taskGoalRecovery.cycle.modelRouteId !==
+                      taskCycle.modelRouteId ||
+                    result.taskGoalRecovery.cycle.providerAccountId !==
+                      taskCycle.providerAccountId)
+                )
+                  throw new Error(
+                    "Recovery returned another unused Task Goal cycle.",
+                  );
                 const goal = record.identity.recovery?.autonomousGoal;
                 if (
                   result.goalRecovery &&
@@ -1790,6 +1888,7 @@ export class WorkerInferenceAdmission {
                     records: [],
                     taskInputNotDispatched: new Set<string>(),
                     goalInputNotDispatched: new Set<string>(),
+                    taskGoalCycleNotDispatched: new Set<string>(),
                     enqueuedAt: Date.now(),
                     claimed: null,
                   };
@@ -1804,6 +1903,8 @@ export class WorkerInferenceAdmission {
                     record.identity.recovery?.autonomousGoal
                   )
                     waiter.goalInputNotDispatched.add(record.key);
+                  if (result.taskGoalCycleNotDispatched === true && taskCycle)
+                    waiter.taskGoalCycleNotDispatched.add(record.key);
                   if (record.order < waiter.record.order)
                     waiter.record = record;
                   this.restored.set(record.key, waiter);
@@ -1812,6 +1913,8 @@ export class WorkerInferenceAdmission {
                 const waiter = this.restored.get(record.key)!;
                 if (result.goalRecovery)
                   waiter.goalRecovery = result.goalRecovery;
+                if (result.taskGoalRecovery)
+                  waiter.taskGoalRecovery = result.taskGoalRecovery;
               } else {
                 // Uncertain input is not eligible for whole-prompt replay. Keep
                 // its evidence for canonical runtime reconciliation, not a slot.
@@ -1892,6 +1995,7 @@ export class WorkerInferenceAdmission {
         );
       if (!ticket?.journalKey) continue;
       waiter.claimed = ticket;
+      ticket.taskGoalRecovery = waiter.taskGoalRecovery ?? null;
       ticket.recoveryPending = true;
       ticket.durableQueueReady = false;
       const sameProvider = waiter.records.filter(
@@ -1918,6 +2022,7 @@ export class WorkerInferenceAdmission {
         records,
         new Set(waiter.taskInputNotDispatched),
         new Set(waiter.goalInputNotDispatched),
+        new Set(waiter.taskGoalCycleNotDispatched),
       )
         .then(() => {
           for (const record of records) this.removeRestoration(record.key);
@@ -1946,6 +2051,7 @@ export class WorkerInferenceAdmission {
     records: readonly InferenceJournalRecord[],
     taskInputNotDispatched: ReadonlySet<string>,
     goalInputNotDispatched: ReadonlySet<string>,
+    taskGoalCycleNotDispatched: ReadonlySet<string>,
   ): Promise<void> {
     let delay = 1_000;
     const signal = AbortSignal.any([
@@ -1965,6 +2071,7 @@ export class WorkerInferenceAdmission {
           signal,
           taskInputNotDispatched,
           goalInputNotDispatched,
+          taskGoalCycleNotDispatched,
         );
         return;
       } catch (error) {
@@ -1984,6 +2091,7 @@ export class WorkerInferenceAdmission {
     if (!waiter) return;
     waiter.taskInputNotDispatched.delete(key);
     waiter.goalInputNotDispatched.delete(key);
+    waiter.taskGoalCycleNotDispatched.delete(key);
     waiter.records = waiter.records.filter((record) => record.key !== key);
     if (waiter.records.length)
       waiter.record = waiter.records.reduce((a, b) =>

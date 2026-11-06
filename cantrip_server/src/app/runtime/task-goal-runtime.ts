@@ -13,6 +13,8 @@ import {
   taskDispatchWorkerLeaseSchema,
   nativeGoalRecoveryReceiptSchema,
   type NativeGoalRecovery,
+  type TaskGoalCycleRecovery,
+  taskGoalCycleRecoveryReceiptSchema,
   type AgentTurnResult,
   type ChatMessage,
   type ChatTurnCreate,
@@ -813,6 +815,9 @@ export function createTaskGoalRuntime({
         chatId: context.chatId,
         cwd: context.cwd,
         threadId: context.threadId,
+        ...(!activateGoal && context.osExecution
+          ? { osExecution: context.osExecution }
+          : {}),
         model: runtime.model,
         provider: runtime.provider,
         permissionProfileId: effectivePermissionProfile(context).effectiveId,
@@ -1109,6 +1114,136 @@ export function createTaskGoalRuntime({
     },
     taskDispatchLease: lease,
   });
+
+  const recoverTaskGoalCycle = async (
+    chatId: string,
+    recovery: TaskGoalCycleRecovery,
+  ): Promise<void> => {
+    const ownerId = applicationOwnerId();
+    const context = await repository.getChatExecutionContext(ownerId, chatId);
+    const task = await repository.tasks.get(ownerId, chatId);
+    const current = await repository.tasks.inferenceInputs.goalCycles.pending(
+      ownerId,
+      chatId,
+    );
+    if (
+      !context ||
+      context.experience !== "task" ||
+      !task?.dispatch ||
+      context.threadId !== recovery.threadId ||
+      current?.sourceKey !== recovery.sourceKey
+    )
+      return;
+    // Reuse the Task's observation/CAS and retained control lease; none of this
+    // grants a provider slot or creates another Goal input.
+    const observation = await readEncryptedTaskGoal(
+      context,
+      task,
+      null,
+      true,
+      false,
+      undefined,
+      true,
+    );
+    if (!observation.observationFence)
+      throw new Error(
+        "Task Goal recovery requires its native observation scope.",
+      );
+    const lease = await repository.taskDispatch.recoverStartedGoal(
+      ownerId,
+      task.dispatch,
+      continuationLeaseOwner,
+      new Date(),
+      {
+        allowSettled: true,
+        assertObservation: (tx) =>
+          repository.tasks.goalObservations.assertInTransaction(
+            tx,
+            ownerId,
+            chatId,
+            observation.observationFence!,
+          ),
+      },
+    );
+    await retainTaskGoalLease(lease);
+    const runtime = await runtimeForContext(context);
+    if (!runtime)
+      throw new Error("Selected Task Goal recovery model was not found.");
+    const prepared = await prepareManagedConsoleLaunch(context, runtime, {
+      ownerId,
+      bridge,
+      repository,
+      routePairsForConfiguration,
+    });
+    if (
+      prepared.model.routeId !== recovery.cycle.modelRouteId ||
+      prepared.provider.id !== recovery.providerId ||
+      (prepared.provider.accountId ?? null) !== recovery.cycle.providerAccountId
+    )
+      throw new Error("The Task Goal recovery route changed.");
+    const command = {
+      type: "task.goal.recover" as const,
+      ...(context.osExecution ? { osExecution: context.osExecution } : {}),
+      chatId,
+      projectId: context.projectId!,
+      worktreeId: context.worktreeId!,
+      rootKind: context.rootKind!,
+      computerUseEnabled: context.computerUseEnabled === true,
+      cwd: context.cwd,
+      threadId: recovery.threadId,
+      recovery: current,
+      model: prepared.model,
+      provider: prepared.provider,
+      subagentDefaults: prepared.subagentDefaults ?? null,
+      mcpServers: prepared.mcpServers ?? [],
+      planMode: prepared.planMode ?? ("default" as const),
+      permissionProfileId: effectivePermissionProfile(context).effectiveId,
+    };
+    const receipt = taskGoalCycleRecoveryReceiptSchema.parse(
+      await bridge.request(context.workerId, command, {
+        ownerId,
+        timeoutMs: 10_000,
+      }),
+    );
+    const connection = bridge.connectionIdentity(context.workerId);
+    if (
+      receipt.sourceKey !== current.sourceKey ||
+      connection?.ownerId !== ownerId ||
+      connection.workerProcessGeneration !== receipt.workerGeneration
+    )
+      throw new Error(
+        "Task Goal recovery belongs to a replaced worker connection.",
+      );
+    const retired =
+      await repository.tasks.inferenceInputs.goalCycles.confirmRecovery(
+        ownerId,
+        chatId,
+        current,
+        receipt,
+      );
+    if (retired) {
+      publishChatInvalidation(chatId, "task");
+      const latestContext = await repository.getChatExecutionContext(
+        ownerId,
+        chatId,
+      );
+      const latestTask = await repository.tasks.get(ownerId, chatId);
+      if (
+        latestContext?.experience === "task" &&
+        latestTask &&
+        latestContext.threadId === current.threadId
+      ) {
+        const projected = await readEncryptedTaskGoal(
+          latestContext,
+          latestTask,
+          null,
+          true,
+        );
+        await reconcileTaskGoalDispatch(projected.task, projected.task.state);
+      }
+      queueTaskScheduleTick();
+    }
+  };
 
   const recoverManagedGoal = async (
     chatId: string,
@@ -1481,6 +1616,7 @@ export function createTaskGoalRuntime({
     retainTaskGoalLease,
     resumeChatAutomation,
     recoverManagedGoal,
+    recoverTaskGoalCycle,
     scheduledTaskGoalTurnOptions,
     synchronizeScheduledTaskGoal,
     startGoalTurn,
