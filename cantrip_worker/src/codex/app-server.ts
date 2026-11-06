@@ -3080,6 +3080,7 @@ export class CodexAppServer implements CodexRuntime {
       threadId: options.threadId,
       expectedTurnId: options.expectedTurnId,
       signal: options.inferenceSignal,
+      onQueued: options.onInferenceQueued,
       recovery: options.recovery,
       recoveryKey: options.recoveryKey,
     });

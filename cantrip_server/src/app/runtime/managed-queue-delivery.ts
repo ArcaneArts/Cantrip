@@ -4,6 +4,7 @@ import { WorkerUnavailableError } from "../../workers/bridge.js";
 import type {
   NativeGoalRecovery,
   TaskGoalCycleRecovery,
+  NativeGoalClaimRecovery,
 } from "@cantrip/protocol";
 /** A durable revision cursor makes lost queue notices recoverable without replaying input. */
 export function createManagedQueueDelivery(options: {
@@ -15,7 +16,8 @@ export function createManagedQueueDelivery(options: {
   recoverGoal?: (
     ownerId: string,
     chatId: string,
-    recovery: NativeGoalRecovery | TaskGoalCycleRecovery,
+    recovery:
+      NativeGoalRecovery | TaskGoalCycleRecovery | NativeGoalClaimRecovery,
   ) => Promise<void>;
 }) {
   let stopped = false;
@@ -86,7 +88,10 @@ export function createManagedQueueDelivery(options: {
                   }
                 }),
               );
-              const recovery = entry.taskGoalRecovery ?? entry.goalRecovery;
+              const recovery =
+                entry.taskGoalRecovery ??
+                entry.goalRecovery ??
+                entry.goalClaimRecovery;
               if (recovery) {
                 if (!options.recoverGoal)
                   throw new Error(

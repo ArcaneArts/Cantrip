@@ -2175,6 +2175,10 @@ export class NativeCommandRepository {
           input.reconciliation?.nativeTurnId ?? null,
           input.goalEpoch,
         );
+      if (goalEvidence && current.status !== "applied")
+        // The applied setter is durable before Core requests a first cycle.
+        // Repeated receipts must not create perpetual queue notices.
+        await queueStateChanged(tx, row.chatId);
       return {
         ...receipt(updated),
         ...(input.deferred

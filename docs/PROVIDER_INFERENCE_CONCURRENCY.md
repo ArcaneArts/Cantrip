@@ -2551,3 +2551,47 @@ patch execution, hosted validation, or computer-use testing ran. The migration
 was not applied; runtime and platform behavior remain unverified. Recovery of an
 applied setter whose first child was never admitted and Task-private provider
 transfers remain subsequent milestones of the active concurrency goal.
+
+## Applied setters before the first native cycle
+
+An applied Goal setter can survive a worker exit before Core requests its first
+cycle. That pending first claim now uses the existing durable queue notice to
+prepare the current managed runtime, read its actual Goal, and wake the existing
+native Goal. The original input remains on its canonical claim and is never
+resubmitted to `thread/goal/set`. A distinct claim identity names the parent,
+prompt revision and Goal epoch; it does not pretend that a child or journal
+Source already exists. The applied receipt schedules this notice atomically,
+and repeated receipts do not continually rearm it.
+
+The worker confirms actual keeper ownership before preparing the runtime. An
+active matching Goal schedules its first cycle through ordinary native managed
+admission and worker FIFO. The acknowledgement observes the real journal enqueue,
+not a provider grant, so a saturated pool remains queued past the short control
+deadline. The observer has an eight-second deadline and releases its listeners
+when it ends; it neither cancels the native cycle nor releases its ticket.
+Unconfirmed delivery retains the existing durable notice for retry.
+
+If a real first child was accepted before a crash but has no journal write yet,
+the canonical claim carries that actual child admission. Only a replacement
+worker after actual keeper takeover may fence it. The server validates the
+unchanged claim, applied parent, exact child/generation, native attempt and lack
+of contradictory dispatch evidence under the existing lock, then transitions
+the positively unused child into ordinary Goal Source recovery. It invents no
+journal ordinal. If an old journal actor does exist, its normal reconciliation
+still preserves the actual ordinal before replacement capacity is granted.
+
+A negative actual Goal read can consume only the unchanged applied first claim
+with no admitted child. The worker brackets that read with native settings reads;
+the servers compare the complete current placement, route, account, transport
+and Core epoch. Stop/Pause, an edited input, a replaced binding, a different child,
+or a deadline alone cannot retire another source. Existing permission and handoff
+eligibility transitions also rearm these pending claims and retained Task Goal
+markers through the same queue cursor. No model invocation is moved to the server.
+
+Validation: source review, direct Prettier/rustfmt, mechanical protocol source
+export (660 roots, 10,970 nodes; Run export 11 roots, 453 nodes), and
+`git diff --check`. No tests, builds, typechecks, benchmarks, native/helper or
+patch execution, hosted validation, or computer-use testing ran. The migration
+was not applied. Runtime and platform behavior remain unverified. Task-private
+provider transfers and the remaining full lifecycle audit are still part of the
+active concurrency goal.

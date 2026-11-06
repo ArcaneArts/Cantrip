@@ -48,6 +48,7 @@ import type {
   NativeGoalRecoverySource,
   NativeGoalRecoveryAdmission,
   NativeGoalRecovery,
+  NativeGoalClaimRecovery,
 } from "@cantrip/protocol";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
 import { NativeCommandClient } from "../native-command-client.js";
@@ -90,6 +91,8 @@ interface Execution {
   expectedTurnId?: string;
   autonomousAttempt?: NativeAutonomousAttempt;
   goalRecovery?: NativeGoalRecoverySource;
+  goalQueueHandoff?: NativeCommandAdmission["goalQueueHandoff"];
+  inferenceQueued?: boolean;
   guiPreparation?: boolean;
   logicalRoot?: Pick<
     NativeCommandReceipt,
@@ -256,6 +259,50 @@ export class ManagedNativeCommandSession {
     source: NativeGoalRecoverySource,
     signal?: AbortSignal,
   ) {
+    return this.waitForGoalAdmission(
+      () => this.goalRecoveryAdmission(source),
+      signal,
+    );
+  }
+
+  goalClaimAdmission(
+    claim: NativeGoalClaimRecovery,
+  ): Omit<NativeGoalRecoveryAdmission, "workerGeneration"> | null {
+    const execution = this.active;
+    const handoff = execution?.goalQueueHandoff;
+    if (
+      this.revoked ||
+      !execution?.inferenceQueued ||
+      !handoff ||
+      execution.inferenceAbort.signal.aborted ||
+      execution.session.runtimeGeneration !==
+        this.options.runtime.transportGeneration ||
+      handoff.claimId !== claim.claimId ||
+      handoff.operationId !== claim.operationId ||
+      handoff.operationGeneration !== claim.operationGeneration ||
+      handoff.goalEpoch !== claim.goalEpoch
+    )
+      return null;
+    return {
+      operationId: execution.receipt.operationId,
+      operationGeneration: execution.receipt.operationGeneration,
+    };
+  }
+
+  waitForGoalClaimAdmission(
+    claim: NativeGoalClaimRecovery,
+    signal?: AbortSignal,
+  ) {
+    return this.waitForGoalAdmission(
+      () => this.goalClaimAdmission(claim),
+      signal,
+    );
+  }
+
+  private waitForGoalAdmission(
+    read: () => Omit<NativeGoalRecoveryAdmission, "workerGeneration"> | null,
+    signal?: AbortSignal,
+  ) {
     return new Promise<Omit<NativeGoalRecoveryAdmission, "workerGeneration">>(
       (resolve, reject) => {
         const cleanup = () => {
@@ -271,7 +318,7 @@ export class ManagedNativeCommandSession {
           );
         };
         const observe = () => {
-          const admitted = this.goalRecoveryAdmission(source);
+          const admitted = read();
           if (admitted) {
             cleanup();
             resolve(admitted);
@@ -1326,6 +1373,7 @@ export class ManagedNativeCommandSession {
     execution.expectedTurnId = operation.expectedTurnId;
     execution.autonomousAttempt = operation.autonomousAttempt;
     execution.goalRecovery = operation.goalRecovery;
+    execution.goalQueueHandoff = operation.goalQueueHandoff;
     let publication: ManagedNativeExecutionPublication | null = null;
     let acceptance: Promise<void> = Promise.resolve();
     let resolveReceipt!: () => void;
@@ -1497,6 +1545,10 @@ export class ManagedNativeCommandSession {
                 },
                 threadId: session.threadId!,
                 expectedTurnId: operation.expectedTurnId,
+                onInferenceQueued: async () => {
+                  execution.inferenceQueued = true;
+                  for (const observe of this.goalRecoveryObservers) observe();
+                },
                 inferenceSignal: inferenceSignal
                   ? AbortSignal.any([
                       inferenceSignal,

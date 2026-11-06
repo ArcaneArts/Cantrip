@@ -46,7 +46,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
   nativeGoalRecoveryReceiptSchema,
+  nativeGoalClaimRecoveryReceiptSchema,
   type NativeGoalRecoveryReceipt,
+  type NativeGoalClaimRecoveryReceipt,
 } from "@cantrip/protocol";
 import { lstat, mkdtemp, realpath, rm, readFile } from "node:fs/promises";
 import os from "node:os";
@@ -3747,6 +3749,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     string,
     Promise<NativeGoalRecoveryReceipt>
   >();
+  const managedGoalClaimRecoveries = new Map<
+    string,
+    Promise<NativeGoalClaimRecoveryReceipt>
+  >();
   const handleCommand = async (
     command: WorkerCommand,
     emit: (event: WorkerEvent) => void,
@@ -7092,6 +7098,171 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           },
           rollback,
         );
+      }
+      case "chat.goal.claim-recover": {
+        if (
+          command.claim.threadId !== command.threadId ||
+          command.session.chatId !== command.chatId
+        )
+          throw new Error(
+            "Goal claim recovery belongs to another managed session.",
+          );
+        const key = JSON.stringify([
+          nativeNamespaceScope(),
+          command.chatId,
+          command.claim,
+        ]);
+        const pending = managedGoalClaimRecoveries.get(key);
+        if (pending) return pending;
+        const recovery = (async (): Promise<NativeGoalClaimRecoveryReceipt> => {
+          const signal = inferenceCommandSignal();
+          const admission = inferenceAdmissionForWorker();
+          // This reads/takes over the actual keeper. A surviving former worker
+          // must be fenced before a new native Goal is allowed to request work.
+          await admission.confirmNativeOwnership();
+          signal?.throwIfAborted();
+          const prepared = await prepareManagedMutation(command, provider());
+          if (!prepared)
+            throw new Error("Goal claim recovery has no prepared session.");
+          const { runtime, threadId } = prepared;
+          const entry = managedCommandSessions
+            .get(runtime)
+            ?.get(`${command.chatId}:${threadId}`);
+          if (!entry || entry.generation !== runtime.transportGeneration)
+            throw new Error("Goal claim recovery lost its native transport.");
+          const queued = (value: {
+            operationId: string;
+            operationGeneration: string;
+          }): NativeGoalClaimRecoveryReceipt => ({
+            status: "queued",
+            claim: command.claim,
+            admission: { ...value, workerGeneration: workerProcessGeneration },
+          });
+          const existing = entry.adapter.goalClaimAdmission(command.claim);
+          if (existing) return queued(existing);
+          const snapshot = await nativeQueueClient.read(
+            { session: entry.queueSession() },
+            signal,
+          );
+          const claim = snapshot.claims.find(
+            (claim) => claim.id === command.claim.claimId,
+          );
+          const deferred = (): NativeGoalClaimRecoveryReceipt => ({
+            status: "deferred",
+            claim: command.claim,
+            workerGeneration: workerProcessGeneration,
+          });
+          if (
+            snapshot.paused ||
+            snapshot.goalRecovery ||
+            !claim ||
+            claim.goalCancelled ||
+            !claim.awaitingGoal ||
+            claim.operationId !== command.claim.operationId ||
+            claim.operationGeneration !== command.claim.operationGeneration ||
+            claim.goalEpoch !== command.claim.goalEpoch ||
+            claim.promptId !== command.claim.promptId ||
+            claim.promptRevision !== command.claim.promptRevision ||
+            claim.nativeTurnId ||
+            !["dispatched", "uncertain"].includes(claim.status)
+          )
+            return deferred();
+          const old = command.claim.admission;
+          if (old && old.workerGeneration !== workerProcessGeneration) {
+            if (
+              claim.goalOperationId !== old.operationId ||
+              claim.goalOperationGeneration !== old.operationGeneration
+            )
+              return deferred();
+            const source = {
+              operationId: old.operationId,
+              operationGeneration: old.operationGeneration,
+              threadId,
+              goalEpoch: command.claim.goalEpoch,
+            };
+            const result = await nativeCommands.fenceGoalRecoveryAdmission(
+              {
+                serverId: entry.queueScope.identity.serverId,
+                workerGeneration: workerProcessGeneration,
+                source,
+                admission: old,
+                firstClaim: command.claim,
+              },
+              signal,
+            );
+            if (!isDeepStrictEqual(result.recovery?.source, source))
+              return deferred();
+            admission.wakeRecovery(command.chatId);
+            return {
+              status: "recovering",
+              claim: command.claim,
+              workerGeneration: workerProcessGeneration,
+            };
+          }
+          const observed = await runtime.readManagedGoalRecovery(
+            threadId,
+            entry.generation,
+          );
+          if (
+            observed.goalEpoch !== command.claim.goalEpoch ||
+            observed.goal?.status !== "active"
+          ) {
+            // A claimed child retains its own settlement authority. This read
+            // can retire only the applied setter with no admitted child yet.
+            if (claim.goalOperationId || claim.goalOperationGeneration)
+              return deferred();
+            const session = entry.queueSession();
+            return {
+              status: "ineligible",
+              claim: command.claim,
+              workerGeneration: workerProcessGeneration,
+              observation: {
+                chatId: command.chatId,
+                workerId: config.workerId,
+                threadId,
+                contextKind: session.contextKind,
+                projectId: session.projectId,
+                placementId: session.placementId,
+                modelRouteId: session.modelRouteId,
+                providerAccountId: session.providerAccountId,
+                runtimeGeneration: entry.generation,
+                nativeEpoch: observed.nativeEpoch,
+                goalEpoch: observed.goalEpoch,
+                goalStatus: observed.goal?.status ?? null,
+              },
+            };
+          }
+          const runner = managedExecutionRunners
+            .get(runtime)
+            ?.get(command.chatId);
+          if (!runner)
+            throw new Error("Goal claim recovery has no native runner.");
+          const observation = new AbortController();
+          const wait = entry.adapter.waitForGoalClaimAdmission(
+            command.claim,
+            signal
+              ? AbortSignal.any([signal, observation.signal])
+              : observation.signal,
+          );
+          void wait.catch(() => {});
+          try {
+            await runtime.wakeManagedExecution(
+              { threadId, ...runner.configuration },
+              entry.generation,
+            );
+            return queued(await wait);
+          } finally {
+            observation.abort(new Error("Goal claim observation ended."));
+          }
+        })().then((value) => nativeGoalClaimRecoveryReceiptSchema.parse(value));
+        managedGoalClaimRecoveries.set(key, recovery);
+        void recovery
+          .finally(() => {
+            if (managedGoalClaimRecoveries.get(key) === recovery)
+              managedGoalClaimRecoveries.delete(key);
+          })
+          .catch(() => {});
+        return recovery;
       }
       case "chat.goal.recover": {
         if (
