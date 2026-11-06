@@ -754,7 +754,18 @@
     "chatRelocationHydrationBeginResultSchema": 11743,
     "chatRelocationHydrationResultSchema": 11749,
     "workerAttachmentReadResultSchema": 11754,
-    "workerAttachmentUploadResultSchema": 11755
+    "workerAttachmentUploadResultSchema": 11755,
+    "chatImportJobSummarySchema": 11757,
+    "chatImportJobListSchema": 11813,
+    "chatImportCreateSchema": 11814,
+    "chatImportJobRetrySchema": 11833,
+    "externalChatImportReferenceSchema": 11835,
+    "externalChatAttachmentSchema": 11840,
+    "externalChatTranscriptSchema": 11843,
+    "externalChatReadWorkerResultSchema": 11846,
+    "externalChatAttachmentReadResultSchema": 11847,
+    "externalChatDiscoveryWorkerResultSchema": 11853,
+    "projectExternalChatDiscoverySchema": 11872
   },
   "nodes": [
     {
@@ -70838,6 +70849,867 @@
       "shape": { "sizeBytes": 495, "verified": 11756 },
       "checks": []
     },
-    { "type": "literal", "values": [true], "checks": [] }
+    { "type": "literal", "values": [true], "checks": [] },
+    {
+      "type": "object",
+      "name": "chatImportJobSummarySchema",
+      "shape": {
+        "id": 11758,
+        "projectId": 11759,
+        "chatId": 11760,
+        "sourceKind": 4136,
+        "sourceWorkerId": 11762,
+        "sourceId": 4137,
+        "sourceThreadId": 4138,
+        "targetPlacement": 1208,
+        "managedThreadId": 11763,
+        "targetModelRouteId": 11765,
+        "targetProviderAccountId": 11767,
+        "state": 11769,
+        "stateRevision": 11770,
+        "idempotencyKey": 11771,
+        "attempt": 11772,
+        "progress": 11773,
+        "error": 11777,
+        "sourceMetadata": 11781,
+        "attachmentCount": 11805,
+        "attachmentWarningCount": 11806,
+        "createdAt": 11807,
+        "updatedAt": 11808,
+        "startedAt": 11809,
+        "completedAt": 11811
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 11761, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 11764, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 11766, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 11768, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "chatImportStateSchema",
+      "values": [
+        "queued",
+        "reading",
+        "importing",
+        "awaiting-hydration",
+        "hydrating",
+        "succeeded",
+        "blocked",
+        "failed",
+        "cancelled"
+      ],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "chatImportProgressSchema",
+      "shape": { "stage": 11774, "percent": 11775, "updatedAt": 11776 },
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "chatImportProgressStageSchema",
+      "values": [
+        "queued",
+        "reading",
+        "importing",
+        "awaiting-hydration",
+        "hydrating",
+        "blocked",
+        "failed",
+        "succeeded"
+      ],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 11778, "checks": [] },
+    {
+      "type": "object",
+      "name": "chatImportJobErrorSchema",
+      "shape": { "code": 11779, "retryable": 11780 },
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": [
+        "worker-offline",
+        "capability-missing",
+        "source-not-found",
+        "source-changed",
+        "project-mismatch",
+        "runtime-incompatible",
+        "target-not-found",
+        "stale-attempt",
+        "worker-error"
+      ],
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 11782, "checks": [] },
+    {
+      "type": "object",
+      "name": "externalChatTranscriptMetadataSchema",
+      "shape": {
+        "sourceThreadId": 4138,
+        "preview": 11783,
+        "cwd": 11784,
+        "createdAt": 11785,
+        "updatedAt": 11786,
+        "source": 11787,
+        "status": 11788,
+        "modelProvider": 11789,
+        "cliVersion": 11790,
+        "git": 11792,
+        "match": 11800
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "enum", "values": ["cli", "vscode"], "checks": [] },
+    {
+      "type": "enum",
+      "name": "externalChatThreadStatusSchema",
+      "values": ["not-loaded", "idle", "system-error"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 11791, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 11793, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "branch": 11794, "sha": 11796, "originUrl": 11798 },
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 11795, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 11797, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 11799, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 4000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "externalChatThreadMatchSchema",
+      "shape": {
+        "kind": 11801,
+        "projectReplicaId": 11802,
+        "worktreeId": 11803
+      },
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["worktree-path", "replica-path", "git-origin"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 11804, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 11810, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 11812, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "array",
+      "name": "chatImportJobListSchema",
+      "element": 11757,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "chatImportCreateSchema",
+      "shape": { "imports": 11815 },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 11816,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 50, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "chatImportSelectionSchema",
+      "shape": {
+        "sourceKind": 4136,
+        "sourceWorkerId": 11817,
+        "sourceId": 4137,
+        "sourceThreadId": 4138,
+        "idempotencyKey": 11818,
+        "target": 11819,
+        "modelId": 11820,
+        "modelRouteId": 11823,
+        "providerAccountId": 11826,
+        "permissionProfileId": 11829,
+        "planMode": 11832
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1220,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 11821,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 11822, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 11824,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 11825, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 11827,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 11828, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 11830,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 11831, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5082,
+      "defaultValue": "default",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "chatImportJobRetrySchema",
+      "shape": { "stateRevision": 11834 },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "externalChatImportReferenceSchema",
+      "shape": {
+        "jobId": 11836,
+        "projectId": 11837,
+        "chatId": 11838,
+        "state": 11769
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 11839, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "externalChatAttachmentSchema",
+      "shape": {
+        "id": 4145,
+        "sourceAttachmentId": 4144,
+        "itemId": 11841,
+        "sizeBytes": 495,
+        "status": 11842,
+        "protectedMetadata": 497
+      },
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "external-chat-attachment",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": ["available", "missing", "unsafe", "unsupported"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "externalChatTranscriptSchema",
+      "shape": {
+        "sourceId": 4137,
+        "sourceThreadId": 4138,
+        "metadata": 11782,
+        "titleProtection": 1187,
+        "sync": 10650,
+        "attachments": 11844
+      },
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "external-chat-transcript",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 11845,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 11840,
+      "checks": [{ "check": "max_length", "maximum": 20, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "externalChatReadWorkerResultSchema",
+      "shape": { "transcript": 11843 },
+      "checks": []
+    },
+    {
+      "type": "union",
+      "name": "externalChatAttachmentReadResultSchema",
+      "options": [11848, 11850],
+      "discriminator": "status",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "status": 11849, "chunk": 5008, "sizeBytes": 495 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["available"], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "status": 11851, "reasonCode": 11852 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["unavailable"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["missing", "changed", "invalid"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "externalChatDiscoveryWorkerResultSchema",
+      "shape": { "sources": 11854, "truncated": 11871 },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 11855,
+      "checks": [{ "check": "max_length", "maximum": 8, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "externalChatSourceSchema",
+      "shape": {
+        "kind": 4136,
+        "sourceId": 4137,
+        "name": 11856,
+        "platform": 11857,
+        "homeLabel": 11858,
+        "availability": 11859,
+        "message": 11860,
+        "runtimeVersion": 11862,
+        "threads": 11864,
+        "truncated": 11870
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "enum", "values": ["darwin", "win32"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "externalChatSourceAvailabilitySchema",
+      "values": ["available", "unavailable", "incompatible"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 11861, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 11863, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 11865,
+      "checks": [{ "check": "max_length", "maximum": 5000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "externalChatThreadMetadataSchema",
+      "shape": {
+        "sourceThreadId": 4138,
+        "title": 11866,
+        "preview": 11783,
+        "cwd": 11784,
+        "createdAt": 11785,
+        "updatedAt": 11786,
+        "archived": 11867,
+        "source": 11787,
+        "status": 11788,
+        "modelProvider": 11789,
+        "cliVersion": 11790,
+        "git": 11792,
+        "match": 11800,
+        "existingImport": 11868
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 11869,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 11835, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectExternalChatDiscoverySchema",
+      "shape": {
+        "projectId": 11873,
+        "observedAt": 11874,
+        "partial": 11875,
+        "truncated": 11876,
+        "workers": 11877
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "array",
+      "element": 11878,
+      "checks": [{ "check": "max_length", "maximum": 64, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "externalChatDiscoveryWorkerSchema",
+      "shape": {
+        "workerId": 11879,
+        "workerName": 11880,
+        "platform": 11881,
+        "status": 11882,
+        "sources": 11883,
+        "error": 11884
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "externalChatDiscoveryWorkerStatusSchema",
+      "values": ["ok", "offline", "unsupported", "timed-out", "error"],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 11855,
+      "checks": [{ "check": "max_length", "maximum": 8, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 11885, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "code": 11886, "message": 11887 },
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": [
+        "worker-offline",
+        "capability-missing",
+        "worker-timeout",
+        "worker-error"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    }
   ]
 }

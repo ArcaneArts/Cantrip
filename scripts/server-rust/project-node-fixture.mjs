@@ -15,6 +15,7 @@ import { gitManagedOperationContext } from "../../cantrip_server/src/app/shared/
 import { worktreeCoordinatorFixture } from "./worktree-coordinator-node-fixture.mjs";
 import { conversionFixture } from "./conversion-node-fixture.mjs";
 import { chatRelocationFixture } from "./chat-relocation-node-fixture.mjs";
+import { chatImportFixture } from "./chat-import-node-fixture.mjs";
 import { discoveryFixture } from "./discovery-node-fixture.mjs";
 import { scratchRootFixture } from "./scratch-root-node-fixture.mjs";
 import { chatForkFixture } from "./chat-fork-node-fixture.mjs";
@@ -27,6 +28,12 @@ import { NativeCommandError } from "../../cantrip_server/src/db/repository/nativ
 import { ExecutionLaneConflictError } from "../../cantrip_server/src/db/repository/chat-execution-lanes.ts";
 import { AgentInteractionConflictError } from "../../cantrip_server/src/db/repository/agent-interactions.ts";
 import { projectAutomationFixture } from "./project-automation-node-fixture.mjs";
+// readline also recognizes Unicode line separators. Keep replies one record
+// without changing any decoded string, including lone UTF-16 surrogates.
+const replyJson = (value) =>
+  JSON.stringify(value)
+    .replaceAll("\u2028", "\\u2028")
+    .replaceAll("\u2029", "\\u2029");
 console.error(JSON.stringify({ event: "repository-fixture.database.opening" }));
 const database = await connectDatabase(readServerConfig());
 console.error(JSON.stringify({ event: "repository-fixture.database.ready" }));
@@ -47,7 +54,12 @@ try {
       // Seeding owns only this disposable fixture. Runtime TS private storage is
       // used solely to exercise the actual connector on both PostgreSQL and PGlite.
       let value;
-      if (request.op.startsWith("relocation-")) {
+      if (request.op.startsWith("chat-import-")) {
+        value = await chatImportFixture(
+          database.repository.chatImportJobs,
+          request,
+        );
+      } else if (request.op.startsWith("relocation-")) {
         value = await chatRelocationFixture(
           database.repository.chatRelocationJobs,
           request,
@@ -886,7 +898,7 @@ try {
                 : false;
       } else value = await database.repository.listProjects(request.owner);
       console.log(
-        JSON.stringify({
+        replyJson({
           id: request.id,
           rejected: false,
           value,
@@ -895,7 +907,7 @@ try {
       );
     } catch (error) {
       console.log(
-        JSON.stringify({
+        replyJson({
           id: request.id,
           rejected: true,
           ...(error.name === "TaskDispatchConflictError"
@@ -940,6 +952,7 @@ try {
               }
             : {}),
           ...((request.op === "sql" ||
+            request.op.startsWith("chat-import-") ||
             request.op.startsWith("project-surface-") ||
             request.op.startsWith("discovery-") ||
             request.op.startsWith("tunnel-") ||
@@ -991,6 +1004,9 @@ try {
             : {}),
           ...(request.op.startsWith("relocation-")
             ? { relocationError: error.constructor.name }
+            : {}),
+          ...(request.op.startsWith("chat-import-")
+            ? { importError: error.constructor.name }
             : {}),
           ...(request.op.startsWith("scratch-")
             ? { scratchError: error.constructor.name }

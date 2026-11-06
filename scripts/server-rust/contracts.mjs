@@ -777,6 +777,17 @@ export const contractRoots = [
   "chatRelocationHydrationResultSchema",
   "workerAttachmentReadResultSchema",
   "workerAttachmentUploadResultSchema",
+  "chatImportJobSummarySchema",
+  "chatImportJobListSchema",
+  "chatImportCreateSchema",
+  "chatImportJobRetrySchema",
+  "externalChatImportReferenceSchema",
+  "externalChatAttachmentSchema",
+  "externalChatTranscriptSchema",
+  "externalChatReadWorkerResultSchema",
+  "externalChatAttachmentReadResultSchema",
+  "externalChatDiscoveryWorkerResultSchema",
+  "projectExternalChatDiscoverySchema",
 ];
 
 // Keep independently added roots self-contained. Numeric graph references must
@@ -838,6 +849,8 @@ export function sourceContractSchema(name) {
 }
 
 const refinements = new Map([
+  [protocol.externalChatAttachmentSchema, "external-chat-attachment"],
+  [protocol.externalChatTranscriptSchema, "external-chat-transcript"],
   [protocol.nativeSuspensionRecordSchema, "native-suspension-record"],
   [protocol.taskInferenceInputDispatchSchema, "task-input-native-binding"],
   [protocol.cantripOsGuestPathSchema, "cantrip-os-guest-path"],

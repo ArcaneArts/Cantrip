@@ -13,6 +13,7 @@ export async function repositoryFixture({
   databaseUrl,
   nodeScript = "scripts/server-rust/project-node-fixture.mjs",
   requestTimeoutMs = 15000,
+  onReplyLine,
 }) {
   const environment = {
     ...fixtureEnvironment(path.join(root, kind)),
@@ -42,6 +43,7 @@ export async function repositoryFixture({
   let sequence = 0;
   const lines = createInterface({ input: server.child.stdout });
   lines.on("line", (line) => {
+    onReplyLine?.(line);
     let result;
     try {
       result = JSON.parse(line);

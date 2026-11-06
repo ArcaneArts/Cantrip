@@ -397,6 +397,7 @@ async fn run(
     service.folder_setup.worker_connected(worker.clone());
     service.project_replicas.worker_connected(worker.clone());
     service.chat_relocations.worker_connected(worker.clone());
+    service.chat_imports.worker_connected(worker.clone());
     service.github_conversion.worker_connected(worker.clone());
     service.workspace_discovery.worker_connected(worker.clone());
     service.scratch_roots.worker_connected(worker.clone());

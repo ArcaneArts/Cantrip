@@ -5,7 +5,7 @@ use anyhow::{Context, Result, bail};
 use clap::Parser;
 use std::{
     ffi::OsStr,
-    fs::File,
+    fs::{File, OpenOptions},
     io::{Read, Write},
     os::unix::process::CommandExt,
     path::{Path, PathBuf},
@@ -100,6 +100,42 @@ fn parent_pipe() -> Result<oneshot::Receiver<()>> {
             let _ = send.send(());
         })?;
     Ok(receive)
+}
+
+async fn ownership(root: &Path, parent: &mut oneshot::Receiver<()>) -> Result<Option<File>> {
+    use std::os::{fd::AsRawFd, unix::fs::OpenOptionsExt};
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(root.join("owner.lock"))
+        .context("open private PostgreSQL ownership lock")?;
+    let mut waiting_logged = false;
+    loop {
+        if parent.try_recv().is_ok() {
+            return Ok(None);
+        }
+        // This is the actual lifetime lock, not a check of a PID file. The old
+        // owner retains it until its PostgreSQL child is stopped and reaped,
+        // so immediate parent-death restart cannot race that child's shutdown.
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return Ok(Some(file));
+        }
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::WouldBlock {
+            return Err(error).context("acquire private PostgreSQL ownership lock");
+        }
+        if !waiting_logged {
+            eprintln!("{{\"event\":\"database.private-owner.waiting\"}}");
+            waiting_logged = true;
+        }
+        tokio::select! {
+            _ = &mut *parent => return Ok(None),
+            _ = tokio::time::sleep(Duration::from_millis(25)) => {}
+        }
+    }
 }
 
 fn signal(child: &Child, signal: i32, group: bool) -> Result<()> {
@@ -199,6 +235,9 @@ pub(super) async fn run_if_requested() -> Result<bool> {
     }
     let args = Arguments::try_parse_from(std::iter::once(executable).chain(raw))?;
     let mut parent = parent_pipe()?;
+    let Some(_ownership) = ownership(&args.data_dir, &mut parent).await? else {
+        return Ok(true);
+    };
     if !initialize(&args, &mut parent).await? {
         return Ok(true);
     }

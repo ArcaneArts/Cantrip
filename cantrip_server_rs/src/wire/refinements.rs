@@ -7,6 +7,9 @@ pub(super) fn apply(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<(), ValidationError> {
+    if super::external_chats::refine(tag, result, path)? {
+        return Ok(());
+    }
     if super::native_suspensions::refine(tag, result, path)? {
         return Ok(());
     }

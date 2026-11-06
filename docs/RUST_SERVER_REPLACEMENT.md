@@ -1,5 +1,13 @@
 # Rust server replacement
 
+Native external Chat imports and history discovery now include their SQL
+repository, durable executor, HTTP routes, opaque attachment relay, hydration,
+ordered Live publication and crash recovery. Local comparison passes all three
+storage modes and authentication modes; real interruption tests also corrected
+atomic publication and private PostgreSQL ownership handoff. See the
+[Chat import qualification](RUST_SERVER_CHAT_IMPORTS.md) for exact evidence and
+remaining product/platform acceptance. The full replacement remains in progress.
+
 The native durable Chat relocation server now has repository, hydration, HTTP,
 job, Live, recovery and shutdown implementations. Local storage/authentication
 comparisons and real PostgreSQL interruption tests also reproduce and correct
