@@ -629,6 +629,13 @@ worktrees in Docker and an installed VM. Current-runtime model acceptance,
 installed-system product controls and broader remote/lifecycle acceptance remain
 required. These checkpoints do not complete Phase 5.
 
+The [retained-instance lifecycle carrier](../cantrip_os/INSTANCE_LIFECYCLE.md)
+now journals exact-ID Docker start/stop/restart, observes uncertain delivery
+without replay, and keeps historical completion separate from current state.
+Actual Docker acceptance retains root customization, package inventory and
+volumes. Server-owned power admission, lifecycle history and product controls
+remain required; SSH attachment alone does not provide power-on.
+
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output
 recovery, and worker-offline behavior. Deliver workspace backups/restores,
