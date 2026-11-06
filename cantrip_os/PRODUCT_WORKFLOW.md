@@ -410,3 +410,18 @@ bridge alive. Losing it retires the bridge; start again explicitly. Saved source
 captures do not follow an OS replacement automatically. Stop attachments before
 editing a route; the server checks again while holding its mutation lock, so
 an attachment admitted concurrently cannot be silently changed or deleted.
+
+## Private backup backend checkpoint
+
+Both Server implementations provide owned backup admissions and a paginated
+catalogue through the [backup API](BACKUPS.md#server-admissions-and-catalogue).
+Requests retain immutable operation identities and opaque intent. Repeating an
+admission observes its original Worker job, including after Server restart.
+Restore uses the original backup scope and a freshly selected destination;
+rollback targets the original restore workspace.
+
+Explicit continuation can activate an already received archive after executor
+restart, using a separately recorded runtime authorization. It cannot change
+the instance, attachment, account or Worker. File restoration leaves source
+rebinding and captured chats deliberate. Cantrip controls and actual product
+encryption-grant acceptance are still required; no backup UI is claimed here.

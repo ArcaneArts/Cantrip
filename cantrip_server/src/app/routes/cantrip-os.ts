@@ -1,3 +1,4 @@
+import { installCantripOsBackupRoutes } from "./cantrip-os-backups.js";
 import {
   cantripOsRunDefinitionApiSchema,
   cantripOsAttachSchema,
@@ -28,6 +29,7 @@ export function installCantripOsRoutes(
       Partial<Pick<WorkerCommandBus, "connectionIdentity" | "isConnected">>;
   },
 ) {
+  installCantripOsBackupRoutes(app, dependencies);
   const { repository, applicationOwnerId: owner } = dependencies;
   const coordinator = new CantripOsCoordinator(
     repository,

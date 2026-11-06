@@ -1,4 +1,5 @@
 //! Optional guest execution remains an arm of the owning worker.
+mod backups;
 pub mod chats;
 mod control;
 pub mod coordinator;

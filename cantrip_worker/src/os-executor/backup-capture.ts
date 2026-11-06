@@ -82,7 +82,7 @@ export async function captureWorkspace(ctx: BackupContext) {
     guest = await ctx.ports.control({
       transport: command.transport,
       args: [
-        ...expectedArguments(command, true),
+        ...expectedArguments(command, true, ctx.mutationScope),
         "capture",
         command.operationId,
         command.workspace.guestWorkspaceId,

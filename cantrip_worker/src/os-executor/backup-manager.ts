@@ -6,6 +6,7 @@ import {
   type CantripOsBackupWorkerCommand,
 } from "@cantrip/protocol/cantrip-os-backup-operations";
 import type { CantripOsController } from "./controller.js";
+import type { CantripOsDispatchScope } from "@cantrip/protocol";
 import type { OsOperationRecord } from "./operations.js";
 import type { BackupKeyAccess } from "./private-backup-file.js";
 import { OsExecutorDeliveryError } from "./connection.js";
@@ -40,6 +41,7 @@ export class CantripOsBackupManager {
     record: OsOperationRecord,
     save: () => Promise<void>,
     mode: BackupContext["mode"],
+    continuationScope?: CantripOsDispatchScope,
   ): BackupContext {
     const checkpoint = backupCheckpointSchema.parse(record.checkpoint);
     const command = checkpoint.command;
@@ -54,6 +56,21 @@ export class CantripOsBackupManager {
     )
       throw new Error("Stored backup admission has changed or is incomplete.");
     record.checkpoint = checkpoint;
+    if (
+      continuationScope &&
+      (mode !== "continue" ||
+        !isDeepStrictEqual(
+          {
+            ...command.scope,
+            runtimeGeneration: continuationScope.runtimeGeneration,
+          },
+          continuationScope,
+        ))
+    )
+      throw new Error(
+        "Continuation cannot change the saved attachment, instance, owner or Worker.",
+      );
+    const mutationScope = continuationScope ?? command.scope;
     return {
       directory: this.directory,
       command,
@@ -63,10 +80,11 @@ export class CantripOsBackupManager {
       checkpoint,
       save,
       mode,
+      mutationScope,
       assertCurrent: () =>
         this.controller.assertAdministrativeScope(
           command.transport,
-          command.scope,
+          mutationScope,
         ),
     };
   }
@@ -147,7 +165,9 @@ export class CantripOsBackupManager {
         command.scope,
         command.operationId,
         async (record, save) => {
-          await this.run(this.context(record, save, command.mode));
+          await this.run(
+            this.context(record, save, command.mode, command.continuationScope),
+          );
         },
       );
       return this.result(command.action, command.operationId, record);

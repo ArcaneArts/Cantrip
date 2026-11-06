@@ -64,6 +64,7 @@ export interface BackupContext {
   checkpoint: BackupCheckpoint;
   save: () => Promise<void>;
   mode: "new" | "observe" | "recover" | "continue";
+  mutationScope: CantripOsDispatchScope;
   assertCurrent: () => Promise<void>;
 }
 
@@ -123,8 +124,8 @@ export async function prepareBackupDirectory(
 export function expectedArguments(
   command: MutableBackupCommand,
   mutation = false,
+  scope = command.scope,
 ) {
-  const scope = command.scope;
   return [
     "--expect",
     JSON.stringify({

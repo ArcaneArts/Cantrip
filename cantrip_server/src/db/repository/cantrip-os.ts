@@ -1,3 +1,4 @@
+import { CantripOsBackupRepository } from "./cantrip-os-backups.js";
 import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import {
@@ -73,7 +74,10 @@ const fail = (message: string): never => {
  * filesystem or retries guest mutations. Observations must come from the owning
  * authenticated worker; clients cannot supply UID/path or success receipts. */
 export class CantripOsRepository {
-  constructor(private readonly database: RepositoryDatabase) {}
+  readonly backups: CantripOsBackupRepository;
+  constructor(private readonly database: RepositoryDatabase) {
+    this.backups = new CantripOsBackupRepository(database);
+  }
 
   runPrimary(
     ownerId: string,
@@ -594,7 +598,11 @@ export class CantripOsRepository {
           state: "provisioning",
         })
         .returning();
-      const { removedAt: _removed, ...sourceSummary } = source!;
+      const {
+        removedAt: _removed,
+        gitCommonGuestPath: _common,
+        ...sourceSummary
+      } = source!;
       return {
         source: cantripOsProjectSourceSummarySchema.parse({
           ...sourceSummary,
@@ -936,6 +944,7 @@ export class CantripOsRepository {
             .update(schema.cantripOsProjectSources)
             .set({
               repositoryFingerprint: receipt.repositoryFingerprint,
+              gitCommonGuestPath: receipt.gitCommonGuestPath,
               updatedAt: new Date(),
             })
             .where(
