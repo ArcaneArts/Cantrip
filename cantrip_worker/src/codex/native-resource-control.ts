@@ -4,7 +4,10 @@ import {
 } from "../native-resource-protection.js";
 
 interface ResourceControlPorts {
-  owner(): { transport: string; runner: string } | null;
+  owner(request: {
+    threadId: string;
+    runnerGeneration: string;
+  }): { transport: string; runner: string } | null;
   protection: NativeResourceProtection | null;
   resolve(params: unknown): Promise<unknown>;
 }
@@ -15,7 +18,7 @@ export async function handleNativeResourceProtection(
   ports: ResourceControlPorts,
 ): Promise<void> {
   const request = nativeResourceProtectionRequestSchema.parse(raw);
-  const owner = ports.owner();
+  const owner = ports.owner(request);
   if (!owner || owner.runner !== request.runnerGeneration) return;
   const binding = {
     threadId: request.threadId,
@@ -32,7 +35,7 @@ export async function handleNativeResourceProtection(
   } catch {
     // Explicit denial. Errors and private values never enter diagnostic payloads.
   }
-  const current = ports.owner();
+  const current = ports.owner(request);
   if (
     !current ||
     current.transport !== owner.transport ||

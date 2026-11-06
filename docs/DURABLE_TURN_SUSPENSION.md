@@ -313,6 +313,28 @@ worker checkpoint locator. They enter the native continuation only through an
 explicit steer with current execution admission after Resume. Queue acceptance
 does not release the pause or authorize inference.
 
+Add `--completed-session` to retain an actual yielded command session. A controlled
+release lets the command finish before capture, leaving unread terminal output.
+After the first worker-tree kill and cold Resume, the model polls the original
+session ID with native `write_stdin`. The response must contain the retained
+unread output and exit code once, without repeating previously drained output or
+executing the command again. A second cold cycle retains the poll result in the
+original turn's context and history.
+
+Private resource callbacks use the current runner bound to their native thread;
+the process-wide inference generation is only a fallback for threads without
+their own gate. Ownership is checked again after actual encryption or decryption.
+A replacement transport or runner cannot receive an older result. The existing
+worker component grant protects completed output; no reusable execution authority
+or new plaintext resource file is introduced.
+
+Completed-session cold recovery is qualified through both input origins and both
+servers. Active commands correctly refuse durable capture and show their concrete
+reason with live controls. Production validation has exposed a separate server
+failure when using live Resume after that refusal; that recovery transition is
+still being integrated. Do not treat the enabled control as a qualified recovery
+path until its actual request succeeds.
+
 Both composer and linked console controls use authoritative suspension phases.
 Restoration errors preserve the chat and expose an explicit retry; Stop intent
 cannot offer Resume. Pause persistence failure keeps Retry Pause and the

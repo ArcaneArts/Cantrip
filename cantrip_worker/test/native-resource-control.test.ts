@@ -105,6 +105,41 @@ describe("native private resource control", () => {
     expect(resolve).not.toHaveBeenCalled();
   });
 
+  it("does not protect a foreign thread using another thread's runner", async () => {
+    const encryption = await fixture();
+    const owners = new Map([[binding.threadId, owner]]);
+    const seal = vi.spyOn(encryption.protection, "seal");
+    const resolve = vi.fn(async () => ({}));
+    await handleNativeResourceProtection(
+      { ...request, threadId: "foreign-thread" },
+      {
+        owner: ({ threadId }) => owners.get(threadId) ?? null,
+        protection: encryption.protection,
+        resolve,
+      },
+    );
+    expect(seal).not.toHaveBeenCalled();
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it("does not return data after the same thread acquires a replacement runner", async () => {
+    const encryption = await fixture();
+    const owners = new Map([[binding.threadId, owner]]);
+    const seal = encryption.protection.seal.bind(encryption.protection);
+    encryption.protection.seal = async (...args) => {
+      const value = await seal(...args);
+      owners.set(binding.threadId, { ...owner, runner: "replacement-runner" });
+      return value;
+    };
+    const resolve = vi.fn(async () => ({}));
+    await handleNativeResourceProtection(request, {
+      owner: ({ threadId }) => owners.get(threadId) ?? null,
+      protection: encryption.protection,
+      resolve,
+    });
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
   it("intercepts resource notifications before App Server diagnostics and observers", async () => {
     const runtime = new CodexAppServer(
       "/unused/codex",
