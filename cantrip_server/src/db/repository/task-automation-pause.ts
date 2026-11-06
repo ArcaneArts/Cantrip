@@ -20,7 +20,7 @@ export class TaskAutomationPauseRepository {
       !context ||
       context.experience !== "task" ||
       context.contextKind !== "project" ||
-      context.managedInputRevision <= 0
+      context.managedInputRevision! <= 0
     )
       return null;
     const [cycle] = await tx

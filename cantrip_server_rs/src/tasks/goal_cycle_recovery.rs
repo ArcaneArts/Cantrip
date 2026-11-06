@@ -283,8 +283,8 @@ impl Repository {
                     Some(operation(&input["threadId"],&input["turnId"],&input["cycle"])?.as_str()) { return stale(); }
             let mut marker = row["cycle"]["goal_cycle_recovery"].clone();
             if let Some(runtime) = input.get("freshRuntimeGeneration").filter(|value| !value.is_null()) {
-                let key = hex::encode(Sha256::digest(
-                    json!([input["workerGeneration"], runtime.clone(), input["operationId"]]).stringify().as_bytes(),
+                let key = format!("{:x}", Sha256::digest(
+                    json!([input["workerGeneration"].clone(), runtime.clone(), input["operationId"].clone()]).stringify().as_bytes(),
                 ));
                 if input["sourceKey"] != key.as_str() || (!marker.is_null() && marker.get("sourceKey") != input.get("sourceKey") && !truthy(marker.get("settled"))) {return stale();}
                 if marker.get("sourceKey") != input.get("sourceKey") {

@@ -187,7 +187,7 @@ interface Ticket {
   resuming?: Promise<void>;
   parkedWaiting: boolean;
   queueRevision: number;
-  journalEnqueued?: Promise<void>;
+  journalEnqueued?: Promise<InferenceJournalRecord>;
   journalRequeue?: Promise<boolean>;
   observe?: (state: InferenceTicketState) => void;
   admitted?: () => void;

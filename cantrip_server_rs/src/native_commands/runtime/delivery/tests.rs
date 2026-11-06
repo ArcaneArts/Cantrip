@@ -102,11 +102,14 @@ impl Backend for Control {
         Ok(())
     }
     fn request(&self, entry: Value) -> BoxFuture<'_, Result<()>> {
-        let command = json!({"type":"chat.queue.changed","chatId":entry["chatId"],"revision":entry["revision"]});
-        let options = json!({"ownerId":entry["ownerId"],"timeoutMs":10000});
-        let result=self.issue("request",json!({"chatId":entry["chatId"],"workerId":entry["workerId"],"command":command,"options":options}));
         async move {
-            result.await?;
+            // Source now awaits even an absent readTaskPause callback. The
+            // production Native backend awaits its actual database lookup;
+            // retain that boundary in this controlled request backend too.
+            tokio::task::yield_now().await;
+            let command = json!({"type":"chat.queue.changed","chatId":entry["chatId"],"revision":entry["revision"]});
+            let options = json!({"ownerId":entry["ownerId"],"timeoutMs":10000});
+            self.issue("request",json!({"chatId":entry["chatId"],"workerId":entry["workerId"],"command":command,"options":options})).await?;
             Ok(())
         }
         .boxed()
