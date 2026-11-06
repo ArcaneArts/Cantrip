@@ -859,3 +859,28 @@ episode after Stop; no Goal setter or prompt is replayed. The native runtime,
 worker and server need the matching update. This patch was mechanically authored
 from reviewed tracked fragments and formatted only. It was not applied, checked,
 built, tested or executed; runtime/platform behavior remains unverified.
+
+## Portable native child trees
+
+Patch `0087` adds a version 3 managed-transfer artifact containing the selected
+thread, persisted descendants, and their actual spawn edges, including closed
+edges and graph-only child identities. The existing native tree export guard
+remains held during capture. Each saved member retains its history, frozen fork
+visibility, queue, Goal state and native ID. An unfinished saved turn keeps the
+transfer reserved for actual settlement or explicit native Stop; it is never
+replayed as a new turn.
+
+Import merges compatible shared rollout prefixes into canonical files, preserves
+archive locations, and restores children and exact topology before the root.
+Immutable manifests and a final receipt support interrupted publication without
+reopening a newer edge or resetting a completed import. Destination metadata uses
+the current provider for every saved member; historical segments retain their
+original provenance. Existing native lazy child restoration uses the imported
+persisted graph and does not acquire capacity merely to restore identities.
+
+Version 2 single-thread artifacts and their original import/recovery path remain
+supported. New managed exports use the explicit tree operation; unsupported
+stores report that operation as unavailable. The worker accepts both artifact
+versions. This is a paired native/worker change, authored from tracked source
+fragments and formatted only. No patch application/checks, compilation, tests or
+native execution ran; runtime and platform behavior remain unverified.
