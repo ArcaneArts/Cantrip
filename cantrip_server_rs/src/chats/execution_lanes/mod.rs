@@ -1,5 +1,5 @@
 //! Authoritative execution-lane transitions, including nested command savepoints.
-mod branch_leases;
+pub(crate) mod branch_leases;
 mod mcp_queries;
 mod mutations;
 mod reads;

@@ -743,7 +743,18 @@
     "workerCommandSchema": 2603,
     "workerEventSchema": 1566,
     "workerNotificationSchema": 2264,
-    "workerLinkResourceKindSchema": 2850
+    "workerLinkResourceKindSchema": 2850,
+    "chatRelocationJobSummarySchema": 11660,
+    "chatRelocationJobListSchema": 11693,
+    "chatRelocationSnapshotSummarySchema": 11694,
+    "chatRelocationContextPayloadSchema": 11709,
+    "chatRelocationCreateSchema": 11736,
+    "chatRelocationJobRetrySchema": 11739,
+    "chatRelocationJobCancelSchema": 11741,
+    "chatRelocationHydrationBeginResultSchema": 11743,
+    "chatRelocationHydrationResultSchema": 11749,
+    "workerAttachmentReadResultSchema": 11754,
+    "workerAttachmentUploadResultSchema": 11755
   },
   "nodes": [
     {
@@ -70175,6 +70186,658 @@
       "name": "remoteSurfaceChannelSchema",
       "values": ["control", "frame", "cursor", "clipboard", "webrtc-signal"],
       "checks": []
-    }
+    },
+    {
+      "type": "object",
+      "name": "chatRelocationJobSummarySchema",
+      "shape": {
+        "id": 11661,
+        "projectId": 11662,
+        "chatId": 11663,
+        "state": 11664,
+        "stateRevision": 11665,
+        "idempotencyKey": 11666,
+        "sourcePlacement": 1208,
+        "sourcePlacementRevision": 11667,
+        "targetPlacement": 1208,
+        "contextSnapshotId": 11668,
+        "targetRuntimeThreadId": 11669,
+        "targetModelRouteId": 11671,
+        "targetProviderAccountId": 11673,
+        "attempt": 11676,
+        "progress": 11677,
+        "error": 11681,
+        "createdAt": 11685,
+        "updatedAt": 11686,
+        "startedAt": 11687,
+        "cancellationUnsafeAt": 11689,
+        "completedAt": 11691
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "chatRelocationStateSchema",
+      "values": [
+        "queued",
+        "waiting-for-idle",
+        "validating",
+        "preparing-replica",
+        "transferring-attachments",
+        "hydrating-runtime",
+        "ready-to-commit",
+        "succeeded",
+        "blocked",
+        "failed",
+        "cancelled"
+      ],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 11670, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 11672, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 11674,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 11675, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "chatRelocationProgressSchema",
+      "shape": { "stage": 11678, "percent": 11679, "updatedAt": 11680 },
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "chatRelocationProgressStageSchema",
+      "values": [
+        "queued",
+        "waiting-for-idle",
+        "recovering",
+        "validating",
+        "preparing-replica",
+        "transferring-attachments",
+        "hydrating-runtime",
+        "ready-to-commit",
+        "blocked",
+        "failed",
+        "succeeded",
+        "cancelled"
+      ],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 11682, "checks": [] },
+    {
+      "type": "object",
+      "name": "chatRelocationJobErrorSchema",
+      "shape": { "code": 11683, "retryable": 11684 },
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "chatRelocationErrorCodeSchema",
+      "values": [
+        "target-not-found",
+        "target-mismatch",
+        "worker-offline",
+        "capability-missing",
+        "replica-not-ready",
+        "worktree-dirty",
+        "revision-diverged",
+        "attachment-unavailable",
+        "runtime-incompatible",
+        "stale-attempt",
+        "policy-denied",
+        "worker-error"
+      ],
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 11688, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 11690, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 11692, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "array",
+      "name": "chatRelocationJobListSchema",
+      "element": 11660,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "chatRelocationSnapshotSummarySchema",
+      "shape": {
+        "id": 11695,
+        "chatId": 11696,
+        "sourcePlacement": 1208,
+        "throughSequence": 11697,
+        "transcriptSha256": 11698,
+        "messageCount": 11699,
+        "attachmentCount": 11700,
+        "modelId": 11701,
+        "modelRouteId": 11703,
+        "permissionProfileId": 11705,
+        "requiredRevision": 11707,
+        "createdAt": 11708
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 11702, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 11704, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 11706, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "lowercase" },
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{40,64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{40,64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "chatRelocationContextPayloadSchema",
+      "options": [11710, 11726, 11731],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "version": 11711,
+        "kind": 11712,
+        "messages": 11714,
+        "attachments": 11721
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 11713,
+      "defaultValue": "visible",
+      "checks": []
+    },
+    { "type": "literal", "values": ["visible"], "checks": [] },
+    {
+      "type": "array",
+      "element": 11715,
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "chatRelocationContextMessageSchema",
+      "shape": {
+        "sequence": 11716,
+        "role": 5261,
+        "mode": 3185,
+        "reasoningEffort": 11717,
+        "content": 11719,
+        "createdAt": 11720
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 11718,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 1279, "checks": [] },
+    {
+      "type": "array",
+      "name": "chatMessageContentSchema",
+      "element": 5263,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 11722,
+      "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "chatRelocationAttachmentAvailabilitySchema",
+      "shape": {
+        "attachment": 492,
+        "sourceWorkerId": 11723,
+        "availableWorkerIds": 11724
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 11725,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "version": 11727,
+        "kind": 11728,
+        "messages": 11729,
+        "attachments": 11730
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    { "type": "literal", "values": ["task-encrypted"], "checks": [] },
+    {
+      "type": "array",
+      "element": 9284,
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 11722,
+      "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "version": 11732,
+        "kind": 11733,
+        "messages": 11734,
+        "attachments": 11735
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    { "type": "literal", "values": ["chat-encrypted"], "checks": [] },
+    {
+      "type": "array",
+      "element": 5444,
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 11722,
+      "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "chatRelocationCreateSchema",
+      "shape": { "target": 1220, "approved": 11737, "idempotencyKey": 11738 },
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "chatRelocationJobRetrySchema",
+      "shape": { "stateRevision": 11740 },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "chatRelocationJobCancelSchema",
+      "shape": { "stateRevision": 11742 },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "chatRelocationHydrationBeginResultSchema",
+      "options": [11744, 11746],
+      "discriminator": "status",
+      "checks": []
+    },
+    { "type": "object", "shape": { "status": 11745 }, "checks": [] },
+    { "type": "literal", "values": ["upload"], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "status": 11747, "threadId": 11748 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["hydrated"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "chatRelocationHydrationResultSchema",
+      "shape": {
+        "snapshotId": 11750,
+        "transcriptSha256": 11751,
+        "threadId": 11752,
+        "reused": 11753
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "workerAttachmentReadResultSchema",
+      "shape": { "chunk": 5008, "sizeBytes": 495 },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "workerAttachmentUploadResultSchema",
+      "shape": { "sizeBytes": 495, "verified": 11756 },
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] }
   ]
 }

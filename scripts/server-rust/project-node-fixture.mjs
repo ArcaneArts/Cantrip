@@ -14,6 +14,7 @@ import { managedConsoleFixture } from "./managed-console-node-fixture.mjs";
 import { gitManagedOperationContext } from "../../cantrip_server/src/app/shared/git-managed-operations.ts";
 import { worktreeCoordinatorFixture } from "./worktree-coordinator-node-fixture.mjs";
 import { conversionFixture } from "./conversion-node-fixture.mjs";
+import { chatRelocationFixture } from "./chat-relocation-node-fixture.mjs";
 import { discoveryFixture } from "./discovery-node-fixture.mjs";
 import { scratchRootFixture } from "./scratch-root-node-fixture.mjs";
 import { chatForkFixture } from "./chat-fork-node-fixture.mjs";
@@ -46,7 +47,12 @@ try {
       // Seeding owns only this disposable fixture. Runtime TS private storage is
       // used solely to exercise the actual connector on both PostgreSQL and PGlite.
       let value;
-      if (request.op.startsWith("automation-")) {
+      if (request.op.startsWith("relocation-")) {
+        value = await chatRelocationFixture(
+          database.repository.chatRelocationJobs,
+          request,
+        );
+      } else if (request.op.startsWith("automation-")) {
         value = await projectAutomationFixture(database.repository, request);
       } else if (request.op.startsWith("preparation-")) {
         value = await managedPreparationFixture(database.repository, request);
@@ -982,6 +988,9 @@ try {
             : {}),
           ...(request.op.startsWith("conversion-")
             ? { conversionError: error.constructor.name }
+            : {}),
+          ...(request.op.startsWith("relocation-")
+            ? { relocationError: error.constructor.name }
             : {}),
           ...(request.op.startsWith("scratch-")
             ? { scratchError: error.constructor.name }

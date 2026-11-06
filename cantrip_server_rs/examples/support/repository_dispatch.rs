@@ -21,6 +21,9 @@ impl Dispatcher<'_> {
         if operation.starts_with("automation-") {
             return project_automations::run(self.database.clone(), request).boxed();
         }
+        if operation.starts_with("relocation-") {
+            return chat_relocations::run(self.database.clone(), request).boxed();
+        }
         if operation.starts_with("preparation-") {
             return managed_preparation::run(self.database.clone(), request).boxed();
         }

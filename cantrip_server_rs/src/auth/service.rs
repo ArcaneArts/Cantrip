@@ -74,6 +74,7 @@ pub struct AuthService {
     pub provider_catalogs: Arc<crate::settings::catalog_runtime::CatalogRuntime>,
     pub mutation_audits: Arc<super::audit::AuditService>,
     pub project_replicas: Arc<crate::projects::replicas::service::ReplicaService>,
+    pub chat_relocations: Arc<crate::chats::relocations::service::Service>,
     pub github_conversion: Arc<crate::projects::github_conversion::service::ConversionService>,
     pub workspace_discovery: Arc<crate::projects::workspace_discovery::service::DiscoveryService>,
     pub folder_setup: Arc<crate::projects::folders::service::FolderService>,
@@ -323,6 +324,28 @@ impl AuthService {
         project_replicas
             .start_with_recovery(force_job_recovery)
             .await?;
+        let chat_relocations = crate::chats::relocations::service::Service::with_dependencies(
+            repository.database.clone(),
+            crate::chats::relocations::service::Dependencies {
+                commands: workers.commands.clone(),
+                publish: {
+                    let live = live.clone();
+                    Arc::new(move |event| live.publish_event(event))
+                },
+                publishing_enabled: {
+                    let live = live.clone();
+                    Arc::new(move || live.publishing_enabled())
+                },
+                queue_replica_jobs: {
+                    let replicas = project_replicas.clone();
+                    Arc::new(move || replicas.queue())
+                },
+                logger: crate::operations::logging::server_logger(),
+            },
+        );
+        chat_relocations
+            .start_with_recovery(force_job_recovery)
+            .await?;
         let github_conversion = crate::projects::github_conversion::service::ConversionService::new(
             repository.database.clone(),
             workers.commands.clone(),
@@ -496,6 +519,7 @@ impl AuthService {
             mutation_audits,
             folder_setup,
             project_replicas,
+            chat_relocations,
             github_conversion,
             workspace_discovery,
             scratch_roots,

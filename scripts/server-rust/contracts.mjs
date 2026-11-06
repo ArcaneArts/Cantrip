@@ -766,6 +766,17 @@ export const contractRoots = [
   "workerEventSchema",
   "workerNotificationSchema",
   "workerLinkResourceKindSchema",
+  "chatRelocationJobSummarySchema",
+  "chatRelocationJobListSchema",
+  "chatRelocationSnapshotSummarySchema",
+  "chatRelocationContextPayloadSchema",
+  "chatRelocationCreateSchema",
+  "chatRelocationJobRetrySchema",
+  "chatRelocationJobCancelSchema",
+  "chatRelocationHydrationBeginResultSchema",
+  "chatRelocationHydrationResultSchema",
+  "workerAttachmentReadResultSchema",
+  "workerAttachmentUploadResultSchema",
 ];
 
 // Keep independently added roots self-contained. Numeric graph references must

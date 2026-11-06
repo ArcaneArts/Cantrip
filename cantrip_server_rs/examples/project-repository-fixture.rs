@@ -17,8 +17,12 @@ mod browsers;
 mod chat_console;
 #[path = "support/chat_forks.rs"]
 mod chat_forks;
+#[path = "support/chat_hydration.rs"]
+mod chat_hydration;
 #[path = "support/chat_messages.rs"]
 mod chat_messages;
+#[path = "support/chat_relocations.rs"]
+mod chat_relocations;
 #[path = "support/conversions.rs"]
 mod conversions;
 #[path = "support/discovery.rs"]
@@ -294,6 +298,11 @@ async fn run() -> Result<()> {
                         }
                         .into(),
                     );
+                }
+                if let Some(error) =
+                    error.downcast_ref::<cantrip_server::chats::relocations::Error>()
+                {
+                    reply["relocationError"] = Value::String(error.class_name().into());
                 }
                 if error.is::<cantrip_server::projects::workspaces::WorkspaceInvariant>() {
                     reply["discoveryError"] =
