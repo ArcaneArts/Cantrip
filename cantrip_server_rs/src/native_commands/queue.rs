@@ -14,19 +14,52 @@ pub(crate) async fn changed(tx: &Transaction<'_>, chat: &str) -> Result<()> {
 }
 pub(super) async fn cancel_goal_handoffs(tx: &Transaction<'_>, chat: &str) -> Result<()> {
     let removed = tx.query("UPDATE managed_queue_states SET goal_recovery=NULL WHERE chat_id=$1 AND goal_recovery IS NOT NULL RETURNING chat_id", &[&chat]).await?;
-    let rows=tx.query("UPDATE managed_queue_claims SET status='rejected' WHERE chat_id=$1 AND awaiting_goal=true AND goal_operation_id IS NULL AND status IN ('accepted','dispatched','uncertain') RETURNING to_jsonb(managed_queue_claims)::text",&[&chat]).await?;
+    let rows=tx.query("SELECT to_jsonb(c)::text FROM managed_queue_claims c WHERE chat_id=$1 AND awaiting_goal=true AND goal_operation_id IS NULL AND status IN ('accepted','dispatched','uncertain')",&[&chat]).await?;
     for row in &rows {
+        use super::admit::{raw_one, text};
         let claim: Value = serde_json::from_str(&row.get::<String>(0)?)?;
-        if truthy(claim.get("operation_id")) {
+        let parent = if truthy(claim.get("operation_id"))
+            && truthy(claim.get("operation_generation"))
+        {
+            raw_one(tx,"SELECT to_jsonb(n)::text FROM native_commands n WHERE operation_id=$1 AND operation_generation=$2 AND chat_id=$3 AND method='thread/goal/set'", &[&text(&claim["operation_id"])?,&text(&claim["operation_generation"])?,&chat]).await?
+        } else {
+            None
+        };
+        let consumed = parent.as_ref().is_some_and(|p| p["status"] == "applied");
+        let rejected = parent
+            .as_ref()
+            .is_some_and(|p| matches!(p["status"].as_str(), Some("accepted" | "rejected")));
+        // A dispatched setter with no response remains claimed and uncertain.
+        // Cancelling the first cycle cannot turn missing evidence into replay.
+        if parent.as_ref().is_some_and(|p| p["status"] == "accepted") {
             let operation = super::admit::text(&claim["operation_id"])?;
             let generation = super::admit::optional(&claim["operation_generation"])?;
             let now = crate::auth::now();
             tx.query("UPDATE native_commands SET status='rejected',rejection_code='queue-goal-handoff-cancelled',updated_at=$1 WHERE operation_id=$2 AND operation_generation=$3 AND status='accepted'",&[&now,&operation,&generation]).await?;
         }
-        let prompt = super::admit::text(&claim["prompt_id"])?;
+        let status = if consumed {
+            "consumed"
+        } else if rejected {
+            "rejected"
+        } else {
+            "uncertain"
+        };
         tx.query(
-            "UPDATE queued_prompts SET state='pending' WHERE id=$1",
-            &[&prompt],
+            "UPDATE managed_queue_claims SET goal_cancelled=true,status=$1 WHERE id=$2",
+            &[&status, &text(&claim["id"])?],
+        )
+        .await?;
+        let prompt = super::admit::text(&claim["prompt_id"])?;
+        let state = if consumed {
+            "consumed"
+        } else if rejected {
+            "pending"
+        } else {
+            "claimed"
+        };
+        tx.query(
+            "UPDATE queued_prompts SET state=$1,updated_at=$2 WHERE id=$3 AND chat_id=$4 AND revision::text=$5 AND state='claimed'",
+            &[&state,&crate::auth::now(),&prompt,&chat,&claim["prompt_revision"].stringify()],
         )
         .await?;
     }
@@ -85,7 +118,7 @@ pub(super) async fn settle(
     {
         return reject("goal-epoch-required");
     }
-    let consumed = !parent_goal
+    let consumed = (!parent_goal || truthy(claim.get("goal_cancelled")))
         && row["status"] == "applied"
         && truthy(row.get("protected_result"))
         && truthy(row.get("result_digest"));
@@ -95,6 +128,10 @@ pub(super) async fn settle(
             .get("kind")
             .is_some_and(|k| *k == "deferred");
     let rejected = row["status"] == "rejected" && !deferred;
+    let mut applied_goal = parent_goal && row["status"] == "applied";
+    if truthy(claim.get("awaiting_goal")) && !parent_goal && truthy(claim.get("operation_id")) {
+        applied_goal = raw_one(tx,"SELECT to_jsonb(n)::text FROM native_commands n WHERE operation_id=$1 AND operation_generation=$2 AND chat_id=$3 AND owner_id=$4 AND method='thread/goal/set'", &[&text(&claim["operation_id"])?,&text(&claim["operation_generation"])?,&text(&claim["chat_id"])?,&text(&row["owner_id"])?]).await?.is_some_and(|p| p["status"] == "applied");
+    }
     let status = if deferred {
         "deferred"
     } else if consumed {
@@ -121,13 +158,17 @@ pub(super) async fn settle(
         .await?;
     }
     if consumed || rejected || deferred {
-        let state = if consumed { "consumed" } else { "pending" };
+        let state = if consumed || applied_goal {
+            "consumed"
+        } else {
+            "pending"
+        };
         let prompt = text(&claim["prompt_id"])?;
         let chat = text(&claim["chat_id"])?;
         let now = crate::auth::now();
         tx.query(
-            "UPDATE queued_prompts SET state=$1,updated_at=$2 WHERE id=$3",
-            &[&state, &now, &prompt],
+            "UPDATE queued_prompts SET state=$1,updated_at=$2 WHERE id=$3 AND chat_id=$4 AND revision::text=$5 AND state='claimed'",
+            &[&state, &now, &prompt, &chat, &claim["prompt_revision"].stringify()],
         )
         .await?;
         changed(tx, &chat).await?;

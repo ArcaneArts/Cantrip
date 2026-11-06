@@ -53,6 +53,7 @@ impl Admission<'_> {
                 .zip(parent.as_ref())
                 .is_some_and(|(claim, parent)| {
                     truthy(claim.get("awaiting_goal"))
+                        && !truthy(claim.get("goal_cancelled"))
                         && !truthy(claim.get("goal_operation_id"))
                         && claim["chat_id"] == input["session"]["chatId"]
                         && claim["operation_id"] == handoff["operationId"]

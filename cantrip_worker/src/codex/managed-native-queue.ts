@@ -125,6 +125,7 @@ export function managedQueueGoalHandoff(
   const claim = snapshot.claims.find(
     (candidate) =>
       candidate.awaitingGoal &&
+      !candidate.goalCancelled &&
       candidate.goalEpoch === goalEpoch &&
       !candidate.goalOperationId &&
       (candidate.status === "dispatched" || candidate.status === "uncertain"),

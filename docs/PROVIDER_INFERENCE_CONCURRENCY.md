@@ -2516,4 +2516,38 @@ from tracked source fragments; it has not been applied, checked or executed.
 No tests, builds, typechecks, benchmarks, native/helper execution, hosted
 validation, or computer-use testing ran. Runtime/platform behavior remains
 unverified. The full concurrency goal remains active while the remaining
-provider-transfer, control and entry-point audits continue.
+provider-transfer, first-claim recovery and lifecycle audits continue.
+
+## Goal controls retain applied input ownership
+
+Stop, native Goal Clear and native Goal Pause can cancel an unused first-cycle
+claim after its `thread/goal/set` parent already applied. That input has changed
+native Goal state. These controls now consume the exact original input revision
+instead of returning the setter to the prompt dispatcher. A failed or deferred
+first child likewise cannot make its already-applied parent prompt pending.
+The child's actual terminal status and native receipt remain unchanged.
+
+A parent still accepted by the server can be revoked before forwarding through
+the existing command transaction. A dispatched or uncertain parent remains
+claimed and uncertain, with a durable `goalCancelled` flag; cancelling a cycle
+does not prove that a native setter stopped or failed. A subsequent actual
+applied receipt consumes that cancelled claim. A confirmed rejected receipt
+retains the existing explicit retry behavior. The new flag is optional on the
+wire for older snapshots, and excludes cancelled first claims from native
+handoff admission and worker first-cycle matching. None of this frees a worker
+inference ticket; physical execution still owns settlement.
+
+The migration also consumes older rejected first claims whose exact unchanged
+pending/claimed prompt already has an applied Goal setter. Edited revisions,
+native history, protected input and receipt digests remain unchanged. Both
+servers use the same transitions. Provider-transfer withdrawal acknowledgements
+remain idempotent if a control consumed the retained claim after the unused
+source had already been positively withdrawn.
+
+Validation: source review, direct Prettier/rustfmt, mechanical protocol source
+export (653 roots, 10,822 nodes; Run export 11 roots, 453 nodes), and
+`git diff --check`. No tests, builds, typechecks, benchmarks, native/helper or
+patch execution, hosted validation, or computer-use testing ran. The migration
+was not applied; runtime and platform behavior remain unverified. Recovery of an
+applied setter whose first child was never admitted and Task-private provider
+transfers remain subsequent milestones of the active concurrency goal.
