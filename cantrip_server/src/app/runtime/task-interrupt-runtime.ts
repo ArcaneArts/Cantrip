@@ -45,6 +45,7 @@ export async function interruptTask(
         current.scope.workerId,
         {
           type: "chat.interrupt",
+          executionProfile: "ide",
           chatId,
           threadId: current.scope.threadId,
           task: current.scope,
