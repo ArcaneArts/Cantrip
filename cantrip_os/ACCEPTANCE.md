@@ -2943,3 +2943,13 @@ An initial focused Worker run lacked built logging output; building its normal
 dependency resolved that setup failure. Required root validation still fails on
 the unchanged Server line budgets (1519/1500 and 2230/1999). No hosted ordinary
 validation ran.
+
+Rebased feature `a005a7aa5` preserves the tested backup/recovery implementation.
+Final rebased checks passed 30 Worker cases (7.49s), two Crypto cases, Worker and
+fixture type checks, scoped formatting and Rust formatting. Native validation
+matched the same 31,466 vectors (57.88s) and all 305 current command fixtures
+(1.32s). Main's new Task Goal recovery command lacked an inventory fixture; its
+canonical fixture was added while regenerating exhaustive union/enum coverage.
+Root validation on this newer base reports unchanged Server budgets of
+1524/1500 and 2249/1999. The preceding counts describe their recorded revisions,
+rather than claiming these unrelated baseline failures were repaired.

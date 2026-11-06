@@ -368,38 +368,34 @@ describe.skipIf(!enabled)("real Worker backup admissions", () => {
         ]),
       );
       const replaceId = randomUUID();
-      const replaced = await f
-        .manager()
-        .handle({
-          ...restore,
-          operationId: replaceId,
-          scope: await f.scope(f.target),
-          workspace: replacement,
+      const replaced = await f.manager().handle({
+        ...restore,
+        operationId: replaceId,
+        scope: await f.scope(f.target),
+        workspace: replacement,
+        replace: true,
+        protectedRequest: await f.request(replaceId, {
+          action: "restore",
+          workspaceId: replacement.id,
+          backupId: captureId,
           replace: true,
-          protectedRequest: await f.request(replaceId, {
-            action: "restore",
-            workspaceId: replacement.id,
-            backupId: captureId,
-            replace: true,
-          }),
-        });
+        }),
+      });
       expect(replaced.state).toBe("ready");
       const rollbackId = randomUUID();
-      const rolled = await f
-        .manager()
-        .handle({
-          type: "cantrip-os.backup.rollback",
-          operationId: rollbackId,
-          scope: await f.scope(f.target),
-          transport: f.target,
-          workspace: replacement,
+      const rolled = await f.manager().handle({
+        type: "cantrip-os.backup.rollback",
+        operationId: rollbackId,
+        scope: await f.scope(f.target),
+        transport: f.target,
+        workspace: replacement,
+        restoreOperationId: replaceId,
+        protectedRequest: await f.request(rollbackId, {
+          action: "rollback",
+          workspaceId: replacement.id,
           restoreOperationId: replaceId,
-          protectedRequest: await f.request(rollbackId, {
-            action: "rollback",
-            workspaceId: replacement.id,
-            restoreOperationId: replaceId,
-          }),
-        });
+        }),
+      });
       expect(rolled.state).toBe("ready");
       expect(await f.files(f.target, replacement)).toEqual(
         Buffer.from("DUMMY_PRIVATE=destination-original\n"),
@@ -442,15 +438,13 @@ describe.skipIf(!enabled)("real Worker backup admissions", () => {
           [".env", Buffer.from("DUMMY_CAPTURE=changed-after-capture\n")],
         ]),
       );
-      const recovered = await f
-        .manager()
-        .handle({
-          type: "cantrip-os.backup.observe",
-          action: "capture",
-          operationId: captureId,
-          scope: originalScope,
-          mode: "observe",
-        });
+      const recovered = await f.manager().handle({
+        type: "cantrip-os.backup.observe",
+        action: "capture",
+        operationId: captureId,
+        scope: originalScope,
+        mode: "observe",
+      });
       expect(recovered.state).toBe("ready");
       expect(
         f.calls.some(
@@ -466,24 +460,22 @@ describe.skipIf(!enabled)("real Worker backup admissions", () => {
       const restoreId = randomUUID();
       expect(
         (
-          await f
-            .manager()
-            .handle({
-              type: "cantrip-os.backup.restore",
-              operationId: restoreId,
-              scope: await f.scope(f.target),
-              transport: f.target,
-              workspace: destination,
+          await f.manager().handle({
+            type: "cantrip-os.backup.restore",
+            operationId: restoreId,
+            scope: await f.scope(f.target),
+            transport: f.target,
+            workspace: destination,
+            backupId: captureId,
+            backupScope: originalScope,
+            replace: false,
+            protectedRequest: await f.request(restoreId, {
+              action: "restore",
+              workspaceId: destination.id,
               backupId: captureId,
-              backupScope: originalScope,
               replace: false,
-              protectedRequest: await f.request(restoreId, {
-                action: "restore",
-                workspaceId: destination.id,
-                backupId: captureId,
-                replace: false,
-              }),
-            })
+            }),
+          })
         ).state,
       ).toBe("ready");
       expect(await f.files(f.target, destination)).toEqual(
@@ -507,22 +499,20 @@ describe.skipIf(!enabled)("real Worker backup admissions", () => {
         originalScope = await f.scope(f.source);
       expect(
         (
-          await f
-            .manager()
-            .handle({
-              type: "cantrip-os.backup.capture",
-              operationId: captureId,
-              scope: originalScope,
-              transport: f.source,
-              workspace: original,
-              sources: [],
-              protectedRequest: await f.request(captureId, {
-                action: "capture",
-                workspaceId: original.id,
-                label: "Activation recovery",
-                exclusions: [],
-              }),
-            })
+          await f.manager().handle({
+            type: "cantrip-os.backup.capture",
+            operationId: captureId,
+            scope: originalScope,
+            transport: f.source,
+            workspace: original,
+            sources: [],
+            protectedRequest: await f.request(captureId, {
+              action: "capture",
+              workspaceId: original.id,
+              label: "Activation recovery",
+              exclusions: [],
+            }),
+          })
         ).state,
       ).toBe("ready");
       const destination = await f.workspace(f.target, "mb-activated");
@@ -553,15 +543,13 @@ describe.skipIf(!enabled)("real Worker backup admissions", () => {
         "restore",
       );
       f.calls.splice(0);
-      const observed = await f
-        .manager()
-        .handle({
-          type: "cantrip-os.backup.observe",
-          action: "restore",
-          operationId: restoreId,
-          scope: targetScope,
-          mode: "observe",
-        });
+      const observed = await f.manager().handle({
+        type: "cantrip-os.backup.observe",
+        action: "restore",
+        operationId: restoreId,
+        scope: targetScope,
+        mode: "observe",
+      });
       expect(observed.state).toBe("ready");
       expect(
         f.calls.some(
@@ -580,21 +568,19 @@ describe.skipIf(!enabled)("real Worker backup admissions", () => {
       const rollbackId = randomUUID();
       expect(
         (
-          await f
-            .manager()
-            .handle({
-              type: "cantrip-os.backup.rollback",
-              operationId: rollbackId,
-              scope: await f.scope(f.target),
-              transport: f.target,
-              workspace: destination,
+          await f.manager().handle({
+            type: "cantrip-os.backup.rollback",
+            operationId: rollbackId,
+            scope: await f.scope(f.target),
+            transport: f.target,
+            workspace: destination,
+            restoreOperationId: restoreId,
+            protectedRequest: await f.request(rollbackId, {
+              action: "rollback",
+              workspaceId: destination.id,
               restoreOperationId: restoreId,
-              protectedRequest: await f.request(rollbackId, {
-                action: "rollback",
-                workspaceId: destination.id,
-                restoreOperationId: restoreId,
-              }),
-            })
+            }),
+          })
         ).state,
       ).toBe("ready");
       expect(await f.files(f.target, destination)).toEqual(
@@ -638,15 +624,13 @@ describe.skipIf(!enabled)("real Worker backup admissions", () => {
         await execute("docker", ["stop", f.source.container]);
         stopped = true;
       }
-      const observed = await f
-        .manager()
-        .handle({
-          type: "cantrip-os.backup.observe",
-          operationId: captureId,
-          scope: originalScope,
-          action: "capture",
-          mode: "observe",
-        });
+      const observed = await f.manager().handle({
+        type: "cantrip-os.backup.observe",
+        operationId: captureId,
+        scope: originalScope,
+        action: "capture",
+        mode: "observe",
+      });
       expect(observed.state).toBe("ready");
       expect(f.calls).toHaveLength(0);
       const result = await f.openResult(captureId, observed);
