@@ -177,6 +177,14 @@ export class CantripOsController {
     return this.open(transport, scope);
   }
 
+  /** Instance administration does not start a native workspace process. */
+  async assertAdministrativeScope(
+    transport: OsExecutorTransport,
+    scope: CantripOsDispatchScope,
+  ) {
+    await this.assertScope(transport, scope);
+  }
+
   private result(record: OsOperationRecord) {
     // Private scope/argv/transport/session records never leave the worker.
     return cantripOsOperationResultSchema.parse({

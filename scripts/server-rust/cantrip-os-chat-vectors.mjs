@@ -1,6 +1,9 @@
 import * as protocol from "../../packages/protocol/dist/index.js";
 import commands from "./worker-command-fixtures.json" with { type: "json" };
-import { osDispatchFixtures } from "./cantrip-os-dispatch-fixtures.mjs";
+import {
+  osCommands,
+  osDispatchFixtures,
+} from "./cantrip-os-dispatch-fixtures.mjs";
 import { fileDocumentWireFixtures } from "./file-document-wire-fixtures.mjs";
 import { projectChatWireFixtures } from "./project-chat-wire-fixtures.mjs";
 const os = osDispatchFixtures().cantripOsExecutionSchema[0];
@@ -30,6 +33,38 @@ function add(schema, input) {
       ? { ok: result.data }
       : { issues: result.error.issues },
   });
+}
+for (const command of osCommands.filter((value) =>
+  value.type.startsWith("cantrip-os.backup."),
+)) {
+  const envelope = { ...original, command };
+  add("workerRequestEnvelopeSchema", envelope);
+  if (!cases.at(-1).outcome.ok)
+    throw new Error("Backup fixture was not accepted by the actual protocol");
+  const variants = command.protectedRequest
+    ? [
+        {
+          ...command,
+          protectedRequest: { ...command.protectedRequest, sequence: 0 },
+        },
+        {
+          ...command,
+          protectedRequest: { ...command.protectedRequest, sequence: 2 },
+        },
+        {
+          ...command,
+          protectedRequest: { ...command.protectedRequest, kind: "chunk" },
+        },
+        { ...command, workspace: { ...command.workspace, uid: 0 } },
+      ]
+    : [{ ...command, mode: "replay" }];
+  for (const variant of variants) {
+    add("workerRequestEnvelopeSchema", { ...envelope, command: variant });
+    if (cases.at(-1).outcome.ok)
+      throw new Error(
+        "Invalid backup fixture was accepted by the actual protocol",
+      );
+  }
 }
 add("workerRequestEnvelopeSchema", turn);
 const computerUseAuthority = {

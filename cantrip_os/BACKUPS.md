@@ -4,7 +4,7 @@ The Phase 5 guest package captures and restores data; the existing external
 Worker owns transport, encryption and storage. `cantrip-os-recovery` remains an
 optional package without a Worker, network listener or model credentials.
 
-Worker private archive helpers and real Docker/SSH roundtrips are implemented.
+Worker private archive helpers, durable jobs and real Docker/SSH roundtrips are implemented.
 Durable Server backup admissions, a product catalogue and Cantrip backup/restore
 controls are still pending. These helpers are not a completed user workflow.
 See [the guest command guide](packages/recovery/README.md) for local administration.
@@ -52,8 +52,9 @@ Opening a backup publishes a verified private plaintext transfer archive only
 after the complete file authenticates. Its caller must delete that temporary
 archive after staged transfer/restore. Normal thrown failures clean partials;
 hard process loss can leave root/user-private staging for operation recovery.
-Durable product operation tracking and its cleanup policy belong to the pending
-Server/Worker orchestration cycle. Active workspace data is ordinary plaintext;
+Durable Worker jobs retain private checkpoints and clean local transfer staging
+after a confirmed completed or failed restore. An uncertain receive retains its
+staging for inspection. Active workspace data is ordinary plaintext;
 these encrypted files are private backups, distinct from reusable OS templates.
 
 `recovery-carrier.ts` uses the existing strict authenticated SSH or owning Docker
@@ -64,11 +65,46 @@ successfully. Capture/restore control requests have no speculative availability
 gate, generic short control timeout or automatic mutation retry. Lost carriers
 remain uncertain admissions to inspect by their original ID.
 
-Current guest `--expect` pins persistent instance/attachment identity. Full
-product admission must additionally resolve the selected canonical generations,
-retain its operation identity and authorize explicit recovery after the package
-restarts guest services. Source bindings and old runtime handles are not silently
-retargeted by the archive helpers.
+Guest 0.2.0 checks persistent instance/attachment identity, the admitted runtime
+for mutations, and the exact workspace account under its actual maintenance
+lock. Full product admission must resolve these canonical generations and
+authorize explicit recovery after maintenance restarts guest services. Source
+bindings and old runtime handles are not silently retargeted.
+
+## Durable Worker jobs
+
+Capture, restore and rollback have immutable operation IDs, canonical placement
+and encrypted private intent. Their records are atomically published and synced
+before guest effects. Checkpoints and transport/account details stay in the
+Worker-private journal; public results contain state, phase, timestamps and an
+encrypted receipt. Requests, responses and file metadata occupy separate
+authenticated frame positions and cannot substitute for one another.
+Actual failure diagnostics are encrypted too, because they can contain private
+paths. If the account key is unavailable, the redacted recorded outcome remains
+observable without exposing those diagnostics.
+
+A repeated admission returns the original result; changing its intent or scope
+fails. Observation opens only the saved admission, including its original scope;
+it does not create a missing job or reauthorize another runtime. Actual guest
+receipts establish completion. If an encrypted archive was already published,
+the Worker authenticates the entire file and its captured placement before
+recovering completion, even while the source OS is unavailable.
+
+Read-only observation can finish encryption from a completed capture or record
+an already completed activation, without recapturing, uploading, exchanging
+homes, releasing guest maintenance or deleting guest spool files. Missing
+cleanup is reported as a warning. Explicit recovery may release a dead guest
+operation's maintenance, and explicit continuation may finish pre-receive
+verification or activate a known received archive while its admitted runtime
+remains valid. An uncertain receive is never uploaded again automatically.
+Changed mutation authority fails; it requires the product recovery path rather
+than substituting a fresh runtime into the old admission.
+
+Restore requires a fully authenticated backup and saves its exact archive digest
+before upload. Its guest receipt must match that digest and the admitted target
+account. Replacement retains the original home, and rollback uses a separate
+admission and actual directory identities. Guest spool cleanup preserves the
+restore outcome and rollback evidence, including older retained receipts.
 
 ## Evidence and remaining work
 
@@ -82,7 +118,7 @@ filesystem executor. The fixture uses ephemeral key material through the same
 grant interface; it is not acceptance of actual Server grant delivery or product
 controls. See [acceptance](ACCEPTANCE.md) for exact results.
 
-Still required: durable authorized backup operations/catalogue and UI, recovery
-after actual Worker failure, full product/agent/remote acceptance, instance
+Still required: Server-authorized backup admissions/catalogue and UI, full
+product/agent/remote acceptance, instance
 lifecycle and upgrade/customization preservation, and final recorded Docker/ISO
 distribution artifacts. A local VM reached over SSH is not cloud acceptance.

@@ -3,6 +3,7 @@ export * from "./anonymous-recovery.js";
 export * from "./attachment-content.js";
 export * from "./bytes.js";
 export * from "./cantrip-os-backup.js";
+export * from "./cantrip-os-backup-message.js";
 export * from "./communication-content.js";
 export * from "./computer-use.js";
 export * from "./endpoint-content.js";

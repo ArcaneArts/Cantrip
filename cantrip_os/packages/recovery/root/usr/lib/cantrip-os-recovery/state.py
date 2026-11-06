@@ -11,7 +11,8 @@ import tempfile
 import time
 import uuid
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
+BOOT_ID = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
 
 
 def write_json(path, value):
@@ -47,7 +48,8 @@ def sha256(path):
 
 def process_identity(pid):
     try:
-        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
+        started = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
+        return f"{BOOT_ID}:{started}"
     except (FileNotFoundError, ProcessLookupError):
         return None
 
@@ -57,7 +59,7 @@ def command(program, *arguments, json_output=False):
     return json.loads(completed.stdout) if json_output else completed.stdout
 
 
-def workspace(name):
+def workspace(name, expected=None):
     if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9-]{0,23}", name):
         raise ValueError("Invalid workspace identity")
     config = json.loads(Path("/etc/cantrip-os/workspaces.json").read_text())
@@ -76,6 +78,8 @@ def workspace(name):
         raise ValueError("The recorded workspace account changed")
     if home.is_symlink() or home.stat().st_uid != record["uid"]:
         raise ValueError("The workspace home identity changed")
+    if expected is not None and expected != {key: record[key] for key in ("uid", "gid", "home")}:
+        raise ValueError("The admitted workspace account changed")
     return record
 
 

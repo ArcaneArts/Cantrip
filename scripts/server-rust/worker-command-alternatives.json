@@ -1619,186 +1619,216 @@
       "kind": "union",
       "path": ["command"],
       "index": 269,
-      "case": 261
+      "case": 1163
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 270,
-      "case": 262
+      "case": 261
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 271,
-      "case": 263
+      "case": 262
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 272,
-      "case": 264
+      "case": 263
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 273,
-      "case": 265
+      "case": 264
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 274,
-      "case": 266
+      "case": 265
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 275,
-      "case": 267
+      "case": 266
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 276,
-      "case": 268
+      "case": 267
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 277,
-      "case": 269
+      "case": 268
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 278,
-      "case": 270
+      "case": 269
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 279,
-      "case": 271
+      "case": 270
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 280,
-      "case": 272
+      "case": 271
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 281,
-      "case": 273
+      "case": 272
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 282,
-      "case": 274
+      "case": 273
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 283,
-      "case": 275
+      "case": 274
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 284,
-      "case": 276
+      "case": 275
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 285,
-      "case": 277
+      "case": 276
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 286,
-      "case": 944
+      "case": 277
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 287,
-      "case": 946
+      "case": 944
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 288,
-      "case": 948
+      "case": 946
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 289,
-      "case": 950
+      "case": 948
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 290,
-      "case": 952
+      "case": 950
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 291,
-      "case": 960
+      "case": 952
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 292,
-      "case": 968
+      "case": 960
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 293,
-      "case": 1026
+      "case": 968
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 294,
-      "case": 1075
+      "case": 1164
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 295,
-      "case": 1076
+      "case": 1165
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 296,
-      "case": 1077
+      "case": 1166
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 297,
-      "case": 1078
+      "case": 1167
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 298,
-      "case": 1079
+      "case": 1026
     },
     {
       "kind": "union",
       "path": ["command"],
       "index": 299,
+      "case": 1075
+    },
+    {
+      "kind": "union",
+      "path": ["command"],
+      "index": 300,
+      "case": 1076
+    },
+    {
+      "kind": "union",
+      "path": ["command"],
+      "index": 301,
+      "case": 1077
+    },
+    {
+      "kind": "union",
+      "path": ["command"],
+      "index": 302,
+      "case": 1078
+    },
+    {
+      "kind": "union",
+      "path": ["command"],
+      "index": 303,
+      "case": 1079
+    },
+    {
+      "kind": "union",
+      "path": ["command"],
+      "index": 304,
       "case": 1080
     },
     {
@@ -11867,6 +11897,46 @@
         "command",
         "options",
         "269",
+        "recovery",
+        "settled",
+        "innerType",
+        "reason"
+      ],
+      "index": 0,
+      "case": 1168
+    },
+    {
+      "kind": "enum",
+      "path": [
+        "command",
+        "options",
+        "269",
+        "recovery",
+        "settled",
+        "innerType",
+        "reason"
+      ],
+      "index": 1,
+      "case": 1169
+    },
+    {
+      "kind": "enum",
+      "path": ["command", "options", "269", "rootKind"],
+      "index": 0,
+      "case": 1170
+    },
+    {
+      "kind": "enum",
+      "path": ["command", "options", "269", "rootKind"],
+      "index": 1,
+      "case": 1171
+    },
+    {
+      "kind": "enum",
+      "path": [
+        "command",
+        "options",
+        "270",
         "taskContext",
         "innerType",
         "chatStatus"
@@ -11879,7 +11949,7 @@
       "path": [
         "command",
         "options",
-        "269",
+        "270",
         "taskContext",
         "innerType",
         "chatStatus"
@@ -11892,7 +11962,7 @@
       "path": [
         "command",
         "options",
-        "269",
+        "270",
         "taskContext",
         "innerType",
         "chatStatus"
@@ -11905,7 +11975,7 @@
       "path": [
         "command",
         "options",
-        "269",
+        "270",
         "taskContext",
         "innerType",
         "chatStatus"
@@ -11918,7 +11988,7 @@
       "path": [
         "command",
         "options",
-        "269",
+        "270",
         "taskContext",
         "innerType",
         "chatStatus"
@@ -11931,7 +12001,7 @@
       "path": [
         "command",
         "options",
-        "269",
+        "270",
         "taskContext",
         "innerType",
         "message",
@@ -11947,7 +12017,7 @@
       "path": [
         "command",
         "options",
-        "269",
+        "270",
         "taskContext",
         "innerType",
         "message",
@@ -11960,13 +12030,13 @@
     },
     {
       "kind": "union",
-      "path": ["command", "options", "270", "objective"],
+      "path": ["command", "options", "271", "objective"],
       "index": 0,
       "case": 262
     },
     {
       "kind": "union",
-      "path": ["command", "options", "270", "objective"],
+      "path": ["command", "options", "271", "objective"],
       "index": 1,
       "case": 928
     },
@@ -11975,7 +12045,7 @@
       "path": [
         "command",
         "options",
-        "270",
+        "271",
         "objective",
         "options",
         "1",
@@ -11990,7 +12060,7 @@
       "path": [
         "command",
         "options",
-        "270",
+        "271",
         "objective",
         "options",
         "1",
@@ -12005,7 +12075,7 @@
       "path": [
         "command",
         "options",
-        "270",
+        "271",
         "objective",
         "options",
         "1",
@@ -12020,7 +12090,7 @@
       "path": [
         "command",
         "options",
-        "270",
+        "271",
         "objective",
         "options",
         "1",
@@ -12035,7 +12105,7 @@
       "path": [
         "command",
         "options",
-        "270",
+        "271",
         "objective",
         "options",
         "1",
@@ -12050,7 +12120,7 @@
       "path": [
         "command",
         "options",
-        "270",
+        "271",
         "objective",
         "options",
         "1",
@@ -12062,151 +12132,199 @@
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "271", "status", "innerType"],
+      "path": ["command", "options", "272", "status", "innerType"],
       "index": 0,
       "case": 934
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "271", "status", "innerType"],
+      "path": ["command", "options", "272", "status", "innerType"],
       "index": 1,
       "case": 935
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "280", "executionProfile", "innerType"],
+      "path": ["command", "options", "281", "executionProfile", "innerType"],
       "index": 0,
       "case": 272
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "280", "executionProfile", "innerType"],
+      "path": ["command", "options", "281", "executionProfile", "innerType"],
       "index": 1,
       "case": 936
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "281", "executionProfile", "innerType"],
+      "path": ["command", "options", "282", "executionProfile", "innerType"],
       "index": 0,
       "case": 273
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "281", "executionProfile", "innerType"],
+      "path": ["command", "options", "282", "executionProfile", "innerType"],
       "index": 1,
       "case": 937
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "282", "executionProfile", "innerType"],
+      "path": ["command", "options", "283", "executionProfile", "innerType"],
       "index": 0,
       "case": 274
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "282", "executionProfile", "innerType"],
+      "path": ["command", "options", "283", "executionProfile", "innerType"],
       "index": 1,
       "case": 938
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "283", "executionProfile", "innerType"],
+      "path": ["command", "options", "284", "executionProfile", "innerType"],
       "index": 0,
       "case": 275
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "283", "executionProfile", "innerType"],
+      "path": ["command", "options", "284", "executionProfile", "innerType"],
       "index": 1,
       "case": 939
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "284", "executionProfile", "innerType"],
+      "path": ["command", "options", "285", "executionProfile", "innerType"],
       "index": 0,
       "case": 276
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "284", "executionProfile", "innerType"],
+      "path": ["command", "options", "285", "executionProfile", "innerType"],
       "index": 1,
       "case": 940
     },
     {
       "kind": "union",
-      "path": ["command", "options", "290", "scope"],
+      "path": ["command", "options", "291", "scope"],
       "index": 0,
       "case": 952
     },
     {
       "kind": "union",
-      "path": ["command", "options", "290", "scope"],
+      "path": ["command", "options", "291", "scope"],
       "index": 1,
       "case": 956
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "291", "sourceKind"],
+      "path": ["command", "options", "292", "sourceKind"],
       "index": 0,
       "case": 960
     },
     {
       "kind": "enum",
-      "path": ["command", "options", "291", "sourceKind"],
+      "path": ["command", "options", "292", "sourceKind"],
       "index": 1,
       "case": 962
     },
     {
+      "kind": "enum",
+      "path": ["command", "options", "294", "sources", "element", "mode"],
+      "index": 0,
+      "case": 1172
+    },
+    {
+      "kind": "enum",
+      "path": ["command", "options", "294", "sources", "element", "mode"],
+      "index": 1,
+      "case": 1173
+    },
+    {
+      "kind": "enum",
+      "path": ["command", "options", "297", "action"],
+      "index": 0,
+      "case": 1174
+    },
+    {
+      "kind": "enum",
+      "path": ["command", "options", "297", "action"],
+      "index": 1,
+      "case": 1175
+    },
+    {
+      "kind": "enum",
+      "path": ["command", "options", "297", "action"],
+      "index": 2,
+      "case": 1176
+    },
+    {
+      "kind": "enum",
+      "path": ["command", "options", "297", "mode"],
+      "index": 0,
+      "case": 1177
+    },
+    {
+      "kind": "enum",
+      "path": ["command", "options", "297", "mode"],
+      "index": 1,
+      "case": 1178
+    },
+    {
+      "kind": "enum",
+      "path": ["command", "options", "297", "mode"],
+      "index": 2,
+      "case": 1179
+    },
+    {
       "kind": "union",
-      "path": ["command", "options", "293", "request"],
+      "path": ["command", "options", "298", "request"],
       "index": 0,
       "case": 1026
     },
     {
       "kind": "union",
-      "path": ["command", "options", "293", "request"],
+      "path": ["command", "options", "298", "request"],
       "index": 1,
       "case": 1032
     },
     {
       "kind": "union",
-      "path": ["command", "options", "293", "request"],
+      "path": ["command", "options", "298", "request"],
       "index": 2,
       "case": 1038
     },
     {
       "kind": "union",
-      "path": ["command", "options", "293", "request"],
+      "path": ["command", "options", "298", "request"],
       "index": 3,
       "case": 1044
     },
     {
       "kind": "union",
-      "path": ["command", "options", "293", "request"],
+      "path": ["command", "options", "298", "request"],
       "index": 4,
       "case": 1050
     },
     {
       "kind": "union",
-      "path": ["command", "options", "293", "request"],
+      "path": ["command", "options", "298", "request"],
       "index": 5,
       "case": 1056
     },
     {
       "kind": "union",
-      "path": ["command", "options", "293", "request"],
+      "path": ["command", "options", "298", "request"],
       "index": 6,
       "case": 1062
     },
     {
       "kind": "union",
-      "path": ["command", "options", "293", "request"],
+      "path": ["command", "options", "298", "request"],
       "index": 7,
       "case": 1068
     },
     {
       "kind": "union",
-      "path": ["command", "options", "293", "request"],
+      "path": ["command", "options", "298", "request"],
       "index": 8,
       "case": 1101
     }
@@ -56049,6 +56167,745 @@
               "workerGeneration": "f57d812b-37d4-4d1e-b87a-3503b0d89b23"
             }
           }
+        }
+      }
+    },
+    {
+      "name": "backup-1163",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "task.goal.recover",
+          "recovery": {
+            "sourceKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "operationId": "fixture-goal-recovery",
+            "runtimeGeneration": "11111111-1111-4111-8111-111111111111",
+            "workerGeneration": "11111111-1111-4111-8111-111111111111",
+            "workerId": "worker",
+            "providerId": "provider",
+            "threadId": "thread",
+            "turnId": "turn",
+            "cycle": {
+              "cycleId": "cycle",
+              "goalEpoch": "epoch",
+              "scopeId": "scope",
+              "gateAttemptId": "gate",
+              "runnerGeneration": "runner",
+              "modelRouteId": "model",
+              "providerAccountId": null,
+              "orderEpoch": 0
+            },
+            "admission": {
+              "workerGeneration": "11111111-1111-4111-8111-111111111111",
+              "runtimeGeneration": "11111111-1111-4111-8111-111111111111",
+              "operationId": "fixture-goal-recovery"
+            },
+            "settled": {
+              "reason": "dispatched",
+              "turnId": "turn",
+              "operationId": null
+            }
+          },
+          "projectId": "project",
+          "worktreeId": "worktree",
+          "rootKind": "git-worktree",
+          "computerUseEnabled": false,
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "planMode": "default",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture"
+        }
+      }
+    },
+    {
+      "name": "backup-1164",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.backup.capture",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "workspace": {
+            "id": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example"
+          },
+          "sources": [
+            {
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "project",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "mode": "linux-owned",
+              "guestPath": "/home/example/checkouts/source",
+              "gitCommonGuestPath": null
+            }
+          ],
+          "protectedRequest": {
+            "kind": "metadata",
+            "sequence": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "AAAAAAAAAAAAAAAAAAAAAA"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "backup-1165",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.backup.restore",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "workspace": {
+            "id": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example"
+          },
+          "backupId": "12345678-1234-4234-8234-123456789abc",
+          "backupScope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "replace": false,
+          "protectedRequest": {
+            "kind": "metadata",
+            "sequence": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "AAAAAAAAAAAAAAAAAAAAAA"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "backup-1166",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.backup.rollback",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "workspace": {
+            "id": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example"
+          },
+          "restoreOperationId": "12345678-1234-4234-8234-123456789abc",
+          "protectedRequest": {
+            "kind": "metadata",
+            "sequence": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "AAAAAAAAAAAAAAAAAAAAAA"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "backup-1167",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.backup.observe",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "action": "capture",
+          "mode": "observe"
+        }
+      }
+    },
+    {
+      "name": "backup-1168",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "task.goal.recover",
+          "recovery": {
+            "sourceKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "operationId": "fixture-goal-recovery",
+            "runtimeGeneration": "11111111-1111-4111-8111-111111111111",
+            "workerGeneration": "11111111-1111-4111-8111-111111111111",
+            "workerId": "worker",
+            "providerId": "provider",
+            "threadId": "thread",
+            "turnId": "turn",
+            "cycle": {
+              "cycleId": "cycle",
+              "goalEpoch": "epoch",
+              "scopeId": "scope",
+              "gateAttemptId": "gate",
+              "runnerGeneration": "runner",
+              "modelRouteId": "model",
+              "providerAccountId": null,
+              "orderEpoch": 0
+            },
+            "admission": {
+              "workerGeneration": "11111111-1111-4111-8111-111111111111",
+              "runtimeGeneration": "11111111-1111-4111-8111-111111111111",
+              "operationId": "fixture-goal-recovery"
+            },
+            "settled": {
+              "reason": "dispatched",
+              "turnId": "turn",
+              "operationId": null
+            }
+          },
+          "projectId": "project",
+          "worktreeId": "worktree",
+          "rootKind": "git-worktree",
+          "computerUseEnabled": false,
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "planMode": "default",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture"
+        }
+      }
+    },
+    {
+      "name": "backup-1169",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "task.goal.recover",
+          "recovery": {
+            "sourceKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "operationId": "fixture-goal-recovery",
+            "runtimeGeneration": "11111111-1111-4111-8111-111111111111",
+            "workerGeneration": "11111111-1111-4111-8111-111111111111",
+            "workerId": "worker",
+            "providerId": "provider",
+            "threadId": "thread",
+            "turnId": "turn",
+            "cycle": {
+              "cycleId": "cycle",
+              "goalEpoch": "epoch",
+              "scopeId": "scope",
+              "gateAttemptId": "gate",
+              "runnerGeneration": "runner",
+              "modelRouteId": "model",
+              "providerAccountId": null,
+              "orderEpoch": 0
+            },
+            "admission": {
+              "workerGeneration": "11111111-1111-4111-8111-111111111111",
+              "runtimeGeneration": "11111111-1111-4111-8111-111111111111",
+              "operationId": "fixture-goal-recovery"
+            },
+            "settled": {
+              "reason": "ineligible",
+              "turnId": "turn",
+              "operationId": null
+            }
+          },
+          "projectId": "project",
+          "worktreeId": "worktree",
+          "rootKind": "git-worktree",
+          "computerUseEnabled": false,
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "planMode": "default",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture"
+        }
+      }
+    },
+    {
+      "name": "backup-1170",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "task.goal.recover",
+          "recovery": {
+            "sourceKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "operationId": "fixture-goal-recovery",
+            "runtimeGeneration": "11111111-1111-4111-8111-111111111111",
+            "workerGeneration": "11111111-1111-4111-8111-111111111111",
+            "workerId": "worker",
+            "providerId": "provider",
+            "threadId": "thread",
+            "turnId": "turn",
+            "cycle": {
+              "cycleId": "cycle",
+              "goalEpoch": "epoch",
+              "scopeId": "scope",
+              "gateAttemptId": "gate",
+              "runnerGeneration": "runner",
+              "modelRouteId": "model",
+              "providerAccountId": null,
+              "orderEpoch": 0
+            },
+            "admission": {
+              "workerGeneration": "11111111-1111-4111-8111-111111111111",
+              "runtimeGeneration": "11111111-1111-4111-8111-111111111111",
+              "operationId": "fixture-goal-recovery"
+            },
+            "settled": {
+              "reason": "dispatched",
+              "turnId": "turn",
+              "operationId": null
+            }
+          },
+          "projectId": "project",
+          "worktreeId": "worktree",
+          "rootKind": "folder-root",
+          "computerUseEnabled": false,
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "planMode": "default",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture"
+        }
+      }
+    },
+    {
+      "name": "backup-1171",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "task.goal.recover",
+          "recovery": {
+            "sourceKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "operationId": "fixture-goal-recovery",
+            "runtimeGeneration": "11111111-1111-4111-8111-111111111111",
+            "workerGeneration": "11111111-1111-4111-8111-111111111111",
+            "workerId": "worker",
+            "providerId": "provider",
+            "threadId": "thread",
+            "turnId": "turn",
+            "cycle": {
+              "cycleId": "cycle",
+              "goalEpoch": "epoch",
+              "scopeId": "scope",
+              "gateAttemptId": "gate",
+              "runnerGeneration": "runner",
+              "modelRouteId": "model",
+              "providerAccountId": null,
+              "orderEpoch": 0
+            },
+            "admission": {
+              "workerGeneration": "11111111-1111-4111-8111-111111111111",
+              "runtimeGeneration": "11111111-1111-4111-8111-111111111111",
+              "operationId": "fixture-goal-recovery"
+            },
+            "settled": {
+              "reason": "dispatched",
+              "turnId": "turn",
+              "operationId": null
+            }
+          },
+          "projectId": "project",
+          "worktreeId": "worktree",
+          "rootKind": "git-worktree",
+          "computerUseEnabled": false,
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "planMode": "default",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture"
+        }
+      }
+    },
+    {
+      "name": "backup-1172",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.backup.capture",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "workspace": {
+            "id": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example"
+          },
+          "sources": [
+            {
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "project",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "mode": "linked",
+              "guestPath": "/home/example/checkouts/source",
+              "gitCommonGuestPath": null
+            }
+          ],
+          "protectedRequest": {
+            "kind": "metadata",
+            "sequence": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "AAAAAAAAAAAAAAAAAAAAAA"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "backup-1173",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.backup.capture",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "workspace": {
+            "id": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example"
+          },
+          "sources": [
+            {
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "project",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "mode": "linux-owned",
+              "guestPath": "/home/example/checkouts/source",
+              "gitCommonGuestPath": null
+            }
+          ],
+          "protectedRequest": {
+            "kind": "metadata",
+            "sequence": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "AAAAAAAAAAAAAAAAAAAAAA"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "backup-1174",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.backup.observe",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "action": "capture",
+          "mode": "observe"
+        }
+      }
+    },
+    {
+      "name": "backup-1175",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.backup.observe",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "action": "restore",
+          "mode": "observe"
+        }
+      }
+    },
+    {
+      "name": "backup-1176",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.backup.observe",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "action": "rollback",
+          "mode": "observe"
+        }
+      }
+    },
+    {
+      "name": "backup-1177",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.backup.observe",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "action": "capture",
+          "mode": "observe"
+        }
+      }
+    },
+    {
+      "name": "backup-1178",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.backup.observe",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "action": "capture",
+          "mode": "recover"
+        }
+      }
+    },
+    {
+      "name": "backup-1179",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.backup.observe",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "action": "capture",
+          "mode": "continue"
         }
       }
     }

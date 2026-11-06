@@ -2880,3 +2880,66 @@ Worker/fixture type checking passed. Root validation reports the current
 unchanged budgets (1519/1500 and 2230/1999). The actual guest package tests above
 remain explicitly tied to their earlier native build input; final complete
 distribution builds are still pending.
+
+## Phase 5: durable private Worker backup jobs (2026-11-05)
+
+The Worker now admits capture, restore and rollback through protected commands,
+with private durable checkpoints and encrypted result/failure details. Repeated
+admissions preserve their identity; observation uses saved guest receipts or a
+fully authenticated published archive. It does not repeat uncertain capture,
+receive, activation or rollback. Public results omit private paths, labels,
+transport details and diagnostic messages. Server admissions, catalogue and
+client controls remain required before this is a complete product workflow.
+
+Recovery 0.2.0 checks the actual account and admitted runtime under the guest
+maintenance lock. Its process identities include the Linux boot ID. Dead,
+uncommitted capture/receive work becomes failed during explicit recovery without
+replay. Deleting spool files retains successful restore/rollback evidence;
+older 0.1.0 forgotten receipts remain usable for rollback when actual directory
+identities match.
+
+Actual package tests passed 14 cases in ARM64 Docker (17.237s) and the installed
+AMD64 Debian/QEMU system over strict SSH (280.969s). An additional spool-cleanup
+and legacy-receipt case passed on both (7.194s Docker / 70.971s installed). Tests
+exercise real accounts, managed writer shutdown, stale account/runtime rejection,
+Git/profile/permission data, corruption, actual atomic-exchange interruption,
+rollback, and package removal/reinstall. The boot-ID collision test constructs
+a previous-boot record; it is not evidence of a physical OS reboot.
+
+The four-case actual Worker fixture passed in Docker (46.79s) and with the
+installed SSH restore target (242.75s). It covers a cross-instance/account
+restore, explicit replacement and rollback, real Worker SIGKILL after capture
+completion and after restore activation, and encrypted-file publication before
+its Worker receipt. With the Docker source actually stopped, observation
+authenticated the published backup without contacting it. Source edits after
+capture were not included in recovery, and observed activation was not exchanged
+again. The installed fixture uses the same owning Worker across instances and
+strict SSH host verification. Its grant interface uses ephemeral fixture keys;
+actual Server grant delivery, the product UI and a remote cloud/physical host
+are not claimed by these tests.
+
+The architecture-independent recovery Debian package SHA-256 is
+`b774862dcaf0665ae3e4b0f0f043df497ca1f654681ab3bbbf85af09a51d49bd`.
+These tests upgrade existing instances: the Docker source uses executor/remote
+0.9.0, the Docker restore target omits remote, and the installed system uses
+executor 0.10.0 / remote 0.9.0. This checkpoint changes no native executor binary
+and claims no refreshed OCI/ISO distribution. Final recorded media, Server/client
+backup integration, general product recovery, lifecycle/upgrade preservation and
+real remote acceptance remain part of the full Phase 5 goal.
+
+After extracting protected diagnostics, the four Docker cases passed again
+(46.79s), and the installed SSH cross-instance restore/replacement/rollback case
+passed (100.55s body / 103.11s total). After making the initial checkpoint part of
+the first atomic admission, all four Docker cases passed (31.75s). Focused Worker
+coverage passed 29 cases, followed by a seven-case run adding verified-plaintext
+cleanup on rejected placement. Worker and fixture-import type checking passed.
+Native contracts matched 31,466 actual protocol vectors (75.32s), including the
+private failure response, and the full 304-command fixture inventory passed.
+Dedicated OS wire cases cover all four new commands and reject invalid request
+frame roles/sequences, root-account substitution and an unsupported replay mode.
+The initial command-inventory run caught four missing static fixtures; the
+fixtures and reachable union/enum coverage were updated before the passing run.
+An initial focused Worker run lacked built logging output; building its normal
+dependency resolved that setup failure. Required root validation still fails on
+the unchanged Server line budgets (1519/1500 and 2230/1999). No hosted ordinary
+validation ran.

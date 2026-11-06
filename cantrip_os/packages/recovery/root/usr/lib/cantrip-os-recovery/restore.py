@@ -213,13 +213,15 @@ def reconcile(store, record):
     observe_exchange(store, record)
 
 
-def activate(store, operation_id):
+def activate(store, operation_id, expected=None):
     record = store.read(operation_id)
     if record["action"] != "restore":
         raise ValueError("This operation is not a workspace restore")
     if record["state"] != "received":
         return store.inspect(operation_id)
-    target = workspace(record["request"]["workspace"])
+    target = workspace(record["request"]["workspace"], record["request"].get("expected_workspace"))
+    if expected is not None:
+        workspace(target["id"], expected)
     home = Path(target["home"])
     incoming = store.directory(operation_id) / "incoming.tar"
     if sha256(incoming) != record["request"]["archive_sha256"]:
@@ -270,11 +272,15 @@ def activate(store, operation_id):
     return store.inspect(operation_id)
 
 
-def rollback(store, operation_id, restore_operation_id):
+def rollback(store, operation_id, restore_operation_id, expected=None):
     previous = store.read(restore_operation_id)
-    if previous["action"] != "restore" or previous["state"] != "restored" or not previous["maintenance"].get("released"):
+    completed = previous["state"] == "restored" or (
+        previous["state"] == "forgotten" and previous.get("receipt") and previous.get("swap"))
+    if previous["action"] != "restore" or not completed or not previous["maintenance"].get("released"):
         raise ValueError("Rollback requires a completed, released restore")
-    target = workspace(previous["request"]["workspace"])
+    target = workspace(previous["request"]["workspace"], previous["request"].get("expected_workspace"))
+    if expected is not None:
+        workspace(target["id"], expected)
     record, fresh = store.admit(operation_id, "rollback", {"restore_operation_id": restore_operation_id, "workspace": target["id"]})
     if not fresh:
         return store.inspect(operation_id)
