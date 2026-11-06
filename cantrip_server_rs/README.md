@@ -12,6 +12,12 @@ worker pairing, credentials, heartbeat storage and foundational control sockets.
 Storage supports native PGlite, private managed PostgreSQL and external
 PostgreSQL. The worker remains Node.
 
+External Chat imports and Codex history discovery now use the native repository,
+executor, HTTP routes, attachment relay and immutable hydration path. See
+[`docs/RUST_SERVER_CHAT_IMPORTS.md`](../docs/RUST_SERVER_CHAT_IMPORTS.md) for the
+local storage/authentication matrix, real crash and lease tests, and remaining
+full-worker/platform acceptance.
+
 Native MCP now includes Explorer reads/writes, terminal snapshots/input/service
 restart, browser discovery/navigation and all four client-control operations.
 The registry advertises all 55 reference MCP operations in their original order.

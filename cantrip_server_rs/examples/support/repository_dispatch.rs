@@ -18,6 +18,9 @@ impl Dispatcher<'_> {
         trace: Arc<std::sync::Mutex<Vec<Value>>>,
     ) -> BoxFuture<'a, Result<Value>> {
         let operation = request["op"].as_str().unwrap_or_default();
+        if operation.starts_with("chat-import-") {
+            return chat_imports::run(self.database.clone(), request).boxed();
+        }
         if operation.starts_with("automation-") {
             return project_automations::run(self.database.clone(), request).boxed();
         }

@@ -15,6 +15,7 @@ pub mod forks;
 pub mod goals;
 pub mod guard;
 pub mod hydration;
+pub mod imports;
 pub mod live_mutations;
 pub mod managed_console;
 pub mod managed_preparation;

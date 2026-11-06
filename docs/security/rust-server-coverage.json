@@ -5475,6 +5475,106 @@
           "Full browser/client and unchanged full worker acceptance with actual endpoint keys, native replay and physical attachment transfer remain required.",
           "Mixed Node/Rust instances with Redis, additional cleanup/retry overlap, supported-platform packaging, existing-data upgrades, post-write rollback and final default cutover remain required."
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/chat-imports",
+        "implementation": "cantrip_server_rs/src/http/chat_imports.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_import_contracts.rs",
+          "scripts/server-rust/chat-import-error-oracle.mjs",
+          "scripts/server-rust/chat-import-repository-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-leases.mjs",
+          "scripts/server-rust/chat-import-http-restart.mjs",
+          "scripts/server-rust/chat-import-http-discovery.mjs",
+          "docs/RUST_SERVER_CHAT_IMPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
+          "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/chat-imports",
+        "implementation": "cantrip_server_rs/src/http/chat_imports.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_import_contracts.rs",
+          "scripts/server-rust/chat-import-error-oracle.mjs",
+          "scripts/server-rust/chat-import-repository-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-leases.mjs",
+          "scripts/server-rust/chat-import-http-restart.mjs",
+          "scripts/server-rust/chat-import-http-discovery.mjs",
+          "docs/RUST_SERVER_CHAT_IMPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
+          "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat-imports/:jobId",
+        "implementation": "cantrip_server_rs/src/http/chat_imports.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_import_contracts.rs",
+          "scripts/server-rust/chat-import-error-oracle.mjs",
+          "scripts/server-rust/chat-import-repository-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-leases.mjs",
+          "scripts/server-rust/chat-import-http-restart.mjs",
+          "scripts/server-rust/chat-import-http-discovery.mjs",
+          "docs/RUST_SERVER_CHAT_IMPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
+          "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chat-imports/:jobId/retry",
+        "implementation": "cantrip_server_rs/src/http/chat_imports.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_import_contracts.rs",
+          "scripts/server-rust/chat-import-error-oracle.mjs",
+          "scripts/server-rust/chat-import-repository-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-leases.mjs",
+          "scripts/server-rust/chat-import-http-restart.mjs",
+          "scripts/server-rust/chat-import-http-discovery.mjs",
+          "docs/RUST_SERVER_CHAT_IMPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
+          "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/external-chat-history",
+        "implementation": "cantrip_server_rs/src/http/external_chat_history.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_import_contracts.rs",
+          "scripts/server-rust/chat-import-error-oracle.mjs",
+          "scripts/server-rust/chat-import-repository-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-leases.mjs",
+          "scripts/server-rust/chat-import-http-restart.mjs",
+          "scripts/server-rust/chat-import-http-discovery.mjs",
+          "docs/RUST_SERVER_CHAT_IMPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
+          "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
+        ]
       }
     ]
   },
@@ -6600,6 +6700,94 @@
           "Full browser/client and unchanged full worker acceptance with actual endpoint keys, native replay and physical attachment transfer remain required.",
           "Mixed Node/Rust instances with Redis, additional cleanup/retry overlap, supported-platform packaging, existing-data upgrades, post-write rollback and final default cutover remain required."
         ]
+      },
+      {
+        "command": "external.chat-history.discover",
+        "implementation": [
+          "cantrip_server_rs/src/chats/imports/",
+          "cantrip_server_rs/src/http/external_chat_history.rs"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_import_contracts.rs",
+          "scripts/server-rust/chat-import-error-oracle.mjs",
+          "scripts/server-rust/chat-import-repository-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-leases.mjs",
+          "scripts/server-rust/chat-import-http-restart.mjs",
+          "scripts/server-rust/chat-import-http-discovery.mjs",
+          "docs/RUST_SERVER_CHAT_IMPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
+          "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "command": "external.chat-history.read",
+        "implementation": [
+          "cantrip_server_rs/src/chats/imports/",
+          "cantrip_server_rs/src/http/external_chat_history.rs"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_import_contracts.rs",
+          "scripts/server-rust/chat-import-error-oracle.mjs",
+          "scripts/server-rust/chat-import-repository-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-leases.mjs",
+          "scripts/server-rust/chat-import-http-restart.mjs",
+          "scripts/server-rust/chat-import-http-discovery.mjs",
+          "docs/RUST_SERVER_CHAT_IMPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
+          "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "command": "external.chat-history.attachment.read",
+        "implementation": [
+          "cantrip_server_rs/src/chats/imports/",
+          "cantrip_server_rs/src/http/external_chat_history.rs"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_import_contracts.rs",
+          "scripts/server-rust/chat-import-error-oracle.mjs",
+          "scripts/server-rust/chat-import-repository-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-leases.mjs",
+          "scripts/server-rust/chat-import-http-restart.mjs",
+          "scripts/server-rust/chat-import-http-discovery.mjs",
+          "docs/RUST_SERVER_CHAT_IMPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
+          "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "command": "external.chat-history.attachments.release",
+        "implementation": [
+          "cantrip_server_rs/src/chats/imports/",
+          "cantrip_server_rs/src/http/external_chat_history.rs"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_import_contracts.rs",
+          "scripts/server-rust/chat-import-error-oracle.mjs",
+          "scripts/server-rust/chat-import-repository-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-leases.mjs",
+          "scripts/server-rust/chat-import-http-restart.mjs",
+          "scripts/server-rust/chat-import-http-discovery.mjs",
+          "docs/RUST_SERVER_CHAT_IMPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
+          "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
+        ]
       }
     ]
   },
@@ -7560,6 +7748,26 @@
         "remaining": [
           "Full browser/client and unchanged full worker acceptance with actual endpoint keys, native replay and physical attachment transfer remain required.",
           "Mixed Node/Rust instances with Redis, additional cleanup/retry overlap, supported-platform packaging, existing-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "tableName": "chat_import_jobs",
+        "exportName": "chatImportJobs",
+        "implementation": "cantrip_server_rs/src/chats/imports/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_import_contracts.rs",
+          "scripts/server-rust/chat-import-error-oracle.mjs",
+          "scripts/server-rust/chat-import-repository-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-leases.mjs",
+          "scripts/server-rust/chat-import-http-restart.mjs",
+          "scripts/server-rust/chat-import-http-discovery.mjs",
+          "docs/RUST_SERVER_CHAT_IMPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
+          "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
         ]
       }
     ]
@@ -10017,6 +10225,25 @@
         "remaining": [
           "Full browser/client and unchanged full worker acceptance with actual endpoint keys, native replay and physical attachment transfer remain required.",
           "Mixed Node/Rust instances with Redis, additional cleanup/retry overlap, supported-platform packaging, existing-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "resource": "chat-import-job",
+        "implementation": "cantrip_server_rs/src/chats/imports/service.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_import_contracts.rs",
+          "scripts/server-rust/chat-import-error-oracle.mjs",
+          "scripts/server-rust/chat-import-repository-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-compatibility.mjs",
+          "scripts/server-rust/chat-import-http-leases.mjs",
+          "scripts/server-rust/chat-import-http-restart.mjs",
+          "scripts/server-rust/chat-import-http-discovery.mjs",
+          "docs/RUST_SERVER_CHAT_IMPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
+          "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
         ]
       }
     ]
@@ -13563,6 +13790,29 @@
       "remaining": [
         "Current integrated Main and supported-platform/product acceptance. Controlled endpoint/Git/Run replies do not prove full native-turn execution.",
         "Full replacement migration/post-write rollback, coordination, performance, packaging/Winterhold rehearsal, default Rust cutover and production Node server removal."
+      ]
+    },
+    "externalChatImportExecution": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/chats/imports/",
+        "cantrip_server_rs/src/http/chat_imports.rs",
+        "cantrip_server_rs/src/http/external_chat_history.rs"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/chat_import_contracts.rs",
+        "scripts/server-rust/chat-import-error-oracle.mjs",
+        "scripts/server-rust/chat-import-repository-compatibility.mjs",
+        "scripts/server-rust/chat-import-http-compatibility.mjs",
+        "scripts/server-rust/chat-import-http-leases.mjs",
+        "scripts/server-rust/chat-import-http-restart.mjs",
+        "scripts/server-rust/chat-import-http-discovery.mjs",
+        "docs/RUST_SERVER_CHAT_IMPORTS.md"
+      ],
+      "qualifiedScope": "macOS arm64: repository195paired/49completeSQL comparisons eachall3stores;11protocolroots5333cases;501actualSource executor error settlements;56native lib and strict all-target Clippy. ActualHTTP all3stores/all3auth321paired scenarios/591pairedHTTP observations plus real30slease/max2 concurrency and same-store SIGKILL read/hydration recovery;64-worker discovery bound,Unicode collation/truncation,canonical retry and atomic Live batches. PrivatePG handoff regression fails on frozen old binary and passes fixed; all9PostgreSQL lifecycle cases pass. Controlled worker operations do not prove full endpoint crypto/files/native or supported-platform acceptance.",
+      "remaining": [
+        "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
+        "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
       ]
     }
   },

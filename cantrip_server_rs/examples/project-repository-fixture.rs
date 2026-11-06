@@ -19,6 +19,8 @@ mod chat_console;
 mod chat_forks;
 #[path = "support/chat_hydration.rs"]
 mod chat_hydration;
+#[path = "support/chat_imports.rs"]
+mod chat_imports;
 #[path = "support/chat_messages.rs"]
 mod chat_messages;
 #[path = "support/chat_relocations.rs"]
@@ -304,6 +306,9 @@ async fn run() -> Result<()> {
                 {
                     reply["relocationError"] = Value::String(error.class_name().into());
                 }
+                if let Some(error) = error.downcast_ref::<cantrip_server::chats::imports::Error>() {
+                    reply["importError"] = Value::String(error.class_name().into());
+                }
                 if error.is::<cantrip_server::projects::workspaces::WorkspaceInvariant>() {
                     reply["discoveryError"] =
                         Value::String("ProjectWorkspaceInvariantError".into());
@@ -372,6 +377,7 @@ async fn run() -> Result<()> {
                         || op.starts_with("message-")
                         || op.starts_with("native-command-")
                         || op.starts_with("native-history-")
+                        || op.starts_with("chat-import-")
                 }) {
                     for cause in error.chain() {
                         if let Some(pg) = cause.downcast_ref::<tokio_postgres::Error>()
@@ -452,7 +458,14 @@ async fn run() -> Result<()> {
                 }
             }
         };
-        writeln!(output, "\n{}", reply.stringify())?;
+        writeln!(
+            output,
+            "\n{}",
+            reply
+                .stringify()
+                .replace('\u{2028}', "\\u2028")
+                .replace('\u{2029}', "\\u2029")
+        )?;
         output.flush()?;
     }
     database.close().await?;

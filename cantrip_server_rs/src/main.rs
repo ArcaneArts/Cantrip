@@ -400,6 +400,7 @@ async fn main() -> Result<()> {
         service.folder_setup.stop();
         service.project_replicas.stop();
         service.chat_relocations.stop();
+        service.chat_imports.stop();
         service.github_conversion.stop();
         service.workspace_discovery.stop();
         service.scratch_roots.stop();
@@ -477,6 +478,7 @@ async fn main() -> Result<()> {
             "chat-relocation-jobs",
             service.chat_relocations.drained().await
         );
+        shutdown_step!("chat-import-jobs", service.chat_imports.drained().await);
         shutdown_step!("replica-jobs", service.project_replicas.drained().await);
         shutdown_step!(
             "github-conversion-jobs",

@@ -5,6 +5,7 @@ mod browsers;
 mod cantrip_os;
 pub(crate) mod coercion;
 mod contract_blocks;
+mod external_chats;
 mod intersections;
 mod js_date;
 mod json_contract;
