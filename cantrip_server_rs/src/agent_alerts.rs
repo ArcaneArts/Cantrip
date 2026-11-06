@@ -2,18 +2,14 @@
 use crate::wire::Value;
 
 pub const OPERATIONS: &[&str] = &[
-    "context.get",
-    "alert.raise",
-    "alert.resolve",
-    "task.create",
     "task.list",
     "task.status",
     "task.wait",
     "chat.list",
     "chat.read",
     "chat.wait",
-    "chat.send",
-    "context.compact",
+    "context.get",
+    "tool.help",
     "policy.list",
     "policy.read",
     "target.list",
@@ -21,29 +17,42 @@ pub const OPERATIONS: &[&str] = &[
     "run-configuration.list",
     "run-configuration.get",
     "run-configuration.detect",
+    "run-configuration.status",
+    "run-configuration.read-output",
+    "worktree.list",
+    "worktree.status",
+    "explorer.list",
+    "explorer.read",
+    "terminal.read",
+    "web.search",
+    "web.read",
+    "web.session.snapshot",
+    "browser.services",
+    "context.compact",
+    "alert.raise",
+    "alert.resolve",
+    "chat.send",
     "run-configuration.create",
     "run-configuration.update",
     "run-configuration.delete",
     "run-configuration.start",
     "run-configuration.restart",
     "run-configuration.stop",
-    "run-configuration.status",
-    "run-configuration.read-output",
     "run-configuration.secret-set",
-    "worktree.list",
-    "worktree.status",
     "worktree.create",
     "worktree.switch",
     "worktree.release",
     "worktree.remove",
-    "explorer.list",
-    "explorer.read",
     "explorer.write",
-    "terminal.read",
     "terminal.send",
     "terminal.restart",
-    "browser.services",
+    "web.session.open",
+    "web.session.click",
+    "web.session.pointer",
+    "web.session.type",
+    "web.session.close",
     "browser.open",
+    "task.create",
     "client.notify",
     "client.focus-project",
     "client.focus-surface",
@@ -71,6 +80,11 @@ pub fn is_mutation(operation: &str) -> bool {
             | "explorer.write"
             | "terminal.send"
             | "terminal.restart"
+            | "web.session.open"
+            | "web.session.click"
+            | "web.session.pointer"
+            | "web.session.type"
+            | "web.session.close"
             | "browser.open"
             | "client.notify"
             | "client.focus-project"
@@ -83,6 +97,9 @@ fn permitted(permission: &Value, operation: &str) -> bool {
         || matches!(
             operation,
             "context.get"
+                | "tool.help"
+                | "web.search"
+                | "web.read"
                 | "alert.raise"
                 | "alert.resolve"
                 | "task.list"

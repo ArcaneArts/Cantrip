@@ -4,12 +4,13 @@ use serde_json::json;
 use std::{path::Path, process::Command};
 
 #[test]
-fn run_bindings_match_source_authority_and_readiness() -> Result<()> {
+fn all_mcp_bindings_match_source_authority_and_readiness() -> Result<()> {
     let output = Command::new("node")
         .args([
             "--import",
             "tsx",
             "scripts/server-rust/mcp-run-binding-oracle.mjs",
+            "--all-operations",
         ])
         .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap())
         .output()?;
@@ -19,6 +20,17 @@ fn run_bindings_match_source_authority_and_readiness() -> Result<()> {
         String::from_utf8_lossy(&output.stderr)
     );
     let oracle: Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(
+        Value::from_serialize(&agent_alerts::OPERATIONS),
+        oracle["operations"],
+        "advertised operations preserve the complete Source registry and order"
+    );
+    let mutations = agent_alerts::OPERATIONS
+        .iter()
+        .filter(|operation| agent_alerts::is_mutation(operation))
+        .copied()
+        .collect::<Vec<_>>();
+    assert_eq!(Value::from_serialize(&mutations), oracle["mutations"]);
     let now = oracle["now"].as_i64().context("Source clock")?;
     let cases = oracle["cases"].as_array().context("Source binding cases")?;
     for (index, case) in cases.iter().enumerate() {
@@ -49,7 +61,7 @@ fn run_bindings_match_source_authority_and_readiness() -> Result<()> {
         );
     }
     println!(
-        "{} actual Source Run MCP authority/readiness pairs matched",
+        "{} actual Source MCP authority/readiness pairs matched",
         cases.len()
     );
     Ok(())

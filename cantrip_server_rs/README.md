@@ -14,8 +14,11 @@ PostgreSQL. The worker remains Node.
 
 Native MCP now includes Explorer reads/writes, terminal snapshots/input/service
 restart, browser discovery/navigation and all four client-control operations.
-The current registry advertises 46 of the reference server's 55 MCP operations;
-the remaining web/help operations and legacy CLI transport remain required.
+The registry advertises all 55 reference MCP operations in their original order.
+Help and web operations retain the unchanged worker's implementation; native
+binding authority preserves their grants, permissions and execution-lane rules.
+Direct server calls to these worker-owned tools retain the reference errors.
+Legacy CLI transport and full native product acceptance remain required.
 The surface port preserves opaque endpoint data, exact owned target placement,
 permission/lane guards, browser revision conflicts and client acknowledgments.
 
