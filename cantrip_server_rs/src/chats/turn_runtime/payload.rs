@@ -169,7 +169,17 @@ impl EventSink {
             }
             command["taskInferenceInput"] =
                 crate::tasks::Repository::new(self.dependencies.database.clone())
-                    .prepare_inference_input(&t.owner, &task_input)
+                    .prepare_inference_input_at_revision(
+                        &t.owner,
+                        &task_input,
+                        t.options
+                            .get("expectedInputRevision")
+                            .filter(|revision| !revision.is_null())
+                            .map(|revision| {
+                                revision.as_i64().context("Task input control revision")
+                            })
+                            .transpose()?,
+                    )
                     .await?;
             *self.task_input_operation.lock().unwrap() =
                 Some(command["taskInferenceInput"]["operationId"].clone());

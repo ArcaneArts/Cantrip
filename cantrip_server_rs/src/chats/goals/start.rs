@@ -158,6 +158,7 @@ impl Service {
             .filter(|value| !value.is_null())
             .unwrap_or(&objective["startMessage"]);
         let mut turn_options = json!({"purpose":options.purpose.filter(|value|!value.is_null()).unwrap_or_else(||json!("Task implementation Goal")),"encryptedTaskMessages":json!({"userMessage":user,"response":json!({"id":uuid::Uuid::new_v4().to_string(),"idempotencyKey":format!("assistant:{}",text(&user["id"])?)})}),"workerPrompt":options.worker_prompt.filter(|value|!value.is_null()).unwrap_or_else(||json!("Begin the active Task Goal and follow its encrypted objective.")),"runtimes":vec![runtime.clone()]});
+        turn_options["expectedInputRevision"] = context["managedInputRevision"].clone();
         if let Some(role) = options.message_role {
             turn_options["messageRole"] = role;
         }

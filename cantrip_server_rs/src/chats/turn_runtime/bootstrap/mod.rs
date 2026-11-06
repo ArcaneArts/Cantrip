@@ -147,6 +147,10 @@ impl Bootstrap {
         async move {
         let started_at = (self.clock)();
         crate::chats::turn_configuration::validate(&context, &input, &options)?;
+        let mut options = options;
+        if context["experience"] == "task" && options["expectedInputRevision"].is_null() {
+            options["expectedInputRevision"] = context["managedInputRevision"].clone();
+        }
         let context = self.placement.reconcile(&owner, &context).await?;
         let observer = Observer::new(
             self.operations.clone(),

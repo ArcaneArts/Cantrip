@@ -2978,9 +2978,63 @@ wire schema already supports the optional episode field; no schema shape,
 migration or new native API is introduced. Source review covered unclaimed and
 claimed unused receipts, dispatched/uncertain work, stale lease/round ownership,
 replacement receipts, delayed worker cancellation and FIFO recovery identity.
-This milestone covers materialized round receipts; earlier launch preparation
-remains part of the continuing lifecycle audit.
+This transition covers materialized round receipts. The launcher control revision
+below also covers preparation before a receipt exists.
 
 Validation was direct formatting and `git diff --check`. No tests, typechecks,
 builds, benchmarks, native/helper execution, hosted validation or computer-use
 testing ran. Runtime behavior remains unverified.
+
+### Task launch retains its original control revision through preflight
+
+When Stop wins its canonical control transaction, it pauses a claimed/running
+dispatch cycle even if no input receipt exists yet. Runtime affinity, start time
+and lease metadata remain available for physical cleanup; this transition does
+not declare that execution ended. Stop advances its lease fence, so an old
+preflight or failure writer cannot regain launch authority when Resume reuses the
+paused cycle. Completed cycles
+and input already deferred by receipt revocation are not rewritten by this pause.
+
+Task turns capture the caller's canonical input-control revision before any
+asynchronous model/attachment/MCP preparation or placement reconciliation. Fresh
+execution context reads must not replace that revision after Stop and Resume.
+Encrypted Goal startup also forwards its original caller revision across Goal
+creation and the subsequent context refresh. Both server implementations use the
+existing turn option and actual database control revision.
+
+Immediately before worker dispatch, round and Goal input preparation compares
+that captured revision under the existing owner/cycle/Chat locks. If control has
+changed and the attempt has enforced, undispatched input history, it commits a
+fresh unclaimed receipt as deferred through the existing canonical transition.
+The encrypted message is preserved, its captured lane retires, and the old lease
+is fenced. Current pause intent determines whether the cycle stays paused or
+returns to the queue. Round preparation restores its pre-wait attempt count.
+The stale launcher then reports a dispatch conflict after the transaction commits;
+throwing inside that transaction would incorrectly roll back the cancellation.
+
+This receipt records a never-sent server attempt. It does not fabricate a worker
+claim or evidence that some older native execution settled. Dispatched input and
+legacy input without positive enforcement history remain ineligible for this
+deferral and keep the existing uncertainty handling. Actual worker/native tickets
+are never granted or released by this control transition.
+
+A pre-dispatch Task conflict closes preparation telemetry as cancellation with
+zero inference time, retires only the captured lane activation without an unread
+completion, and publishes the updated Task. It does not fail the Task, fail over
+to another account, or consume retry budget. The scheduled caller receives the
+existing typed dispatch conflict and schedules one normal scheduling tick; it
+does not add polling. Goal receipts revoked before their worker claim retain
+positive enforcement history when the replacement is prepared.
+
+The production Node and Rust dispatch paths carry the revision into both round
+and Goal input preparation. Legacy repository callers can omit it; current
+production Chat context reads supply the actual persisted revision. No worker
+command shape, migration, native API or additional queue is introduced.
+
+Source review covered Stop during preflight, Stop followed by Resume before
+receipt creation, a newer lease, current paused/unpaused intent, Goal context
+refresh, preserved ciphertext/message identity, and dispatched/uncertain history.
+Validation was direct formatting and `git diff --check`. No tests, typechecks,
+builds, benchmarks, native/helper execution, hosted validation or computer-use
+testing ran. Runtime behavior remains unverified; the full lifecycle and final
+acceptance audit continue.

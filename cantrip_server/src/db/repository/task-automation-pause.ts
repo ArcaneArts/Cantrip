@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { taskPauseScopeSchema, type TaskPauseIntent } from "@cantrip/protocol";
 import * as schema from "../schema.js";
 import type { RepositoryDatabase, RepositoryTransaction } from "./database.js";
@@ -102,6 +102,24 @@ export class TaskAutomationPauseRepository {
         // work and must settle through the native Stop path instead.
         if (cycle.operationKind === "finalize")
           await this.inputs.goals.deferForInterrupt(tx, owner, cycle);
+        // Stop revokes launch authority even before an input receipt exists.
+        // This is the existing paused dispatch state, not physical settlement.
+        // Keep runtime affinity and timing for actual native cleanup/Resume.
+        const stoppedAt = new Date();
+        await tx
+          .update(schema.taskDispatchCycles)
+          .set({
+            state: "paused",
+            fencingToken: sql`${schema.taskDispatchCycles.fencingToken}+1`,
+            pausedAt: stoppedAt,
+            updatedAt: stoppedAt,
+          })
+          .where(
+            and(
+              eq(schema.taskDispatchCycles.id, cycle.id),
+              inArray(schema.taskDispatchCycles.state, ["claimed", "running"]),
+            ),
+          );
         const marker = cycle.goalCycleRecovery;
         await tx
           .update(schema.taskDispatchCycles)

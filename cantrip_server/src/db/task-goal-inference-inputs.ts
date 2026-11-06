@@ -396,13 +396,14 @@ export class TaskGoalInferenceInputRepository {
   async prepare(
     owner: string,
     input: Omit<TaskInferenceInputReceipt, "operationId" | "kind">,
-  ) {
+    expectedInputRevision?: number,
+  ): Promise<TaskInferenceInputReceipt> {
     const receipt = taskInferenceInputReceiptSchema.parse({
       ...input,
       kind: "goal",
       operationId: randomUUID(),
     });
-    return this.database.transaction(async (tx) => {
+    const prepared = await this.database.transaction(async (tx) => {
       await assertTaskOperationDispatchFence(
         tx,
         owner,
@@ -426,10 +427,14 @@ export class TaskGoalInferenceInputRepository {
       receipt.queueOrderEpoch = cycle.goalOrderEpoch;
       const c = await this.context(tx, owner, receipt);
       await this.assertHandoffInput(tx, owner, receipt);
+      const controlChanged =
+        expectedInputRevision !== undefined &&
+        c.chat.managedInputRevision !== expectedInputRevision;
       if (
-        c.chat.automationPaused ||
-        c.project.taskSchedulingPaused ||
-        c.task.state === "paused" ||
+        (!controlChanged &&
+          (c.chat.automationPaused ||
+            c.project.taskSchedulingPaused ||
+            c.task.state === "paused")) ||
         c.lane?.state !== "active"
       )
         stale();
@@ -448,13 +453,20 @@ export class TaskGoalInferenceInputRepository {
         accepted: false,
         dispatched: false,
         allAttemptsEnforced:
-          !same || (old!.accepted && old!.allAttemptsEnforced),
+          !same ||
+          (old!.allAttemptsEnforced && (old!.accepted || old!.deferred)),
         firstDispatchedOperationId: same
           ? old!.firstDispatchedOperationId
           : null,
         multipleDispatched: same ? old!.multipleDispatched : false,
         attemptCountBefore: cycle.attemptCount,
       };
+      if (
+        controlChanged &&
+        (!state.allAttemptsEnforced ||
+          state.firstDispatchedOperationId !== null)
+      )
+        stale();
       await tx
         .update(schema.taskDispatchCycles)
         .set({
@@ -463,8 +475,18 @@ export class TaskGoalInferenceInputRepository {
           providerAccountId: receipt.providerAccountId,
         })
         .where(eq(schema.taskDispatchCycles.id, cycle.id));
+      if (controlChanged) {
+        await this.deferLocked(tx, owner, cycle, state);
+        return null;
+      }
       return receipt;
     });
+    if (!prepared)
+      throw new TaskDispatchConflictError(
+        "Pending Task Goal input was cancelled by a control change.",
+        "stale-lease",
+      );
+    return prepared;
   }
 
   async dispatch(
