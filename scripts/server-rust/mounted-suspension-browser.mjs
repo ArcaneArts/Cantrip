@@ -34,6 +34,7 @@ export async function openMountedSuspensionChat(page, origin, paused = true) {
     .first()
     .click();
   await page.getByText("Durable suspension", { exact: true }).first().click();
+  if (paused === null) return { text: await page.locator("body").innerText() };
   const resume = page.getByRole("button", {
     name: paused ? /^Resume( automatic agent work| turn)?$/ : "Pause agent",
   });

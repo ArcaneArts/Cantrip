@@ -245,7 +245,8 @@ restart/explicit Resume cycles on GUI-originated and native-TUI-originated
 project chats with a completed native command and accepted pending steering.
 
 The test freezes supervisors, records descendants and owned process groups,
-including native helpers and the shared TUI, then sends SIGKILL and verifies
+including native helpers and the shared TUI, and includes detached tool daemons
+whose executables belong to its isolated worker storage. It sends SIGKILL and verifies
 that no live member remains. Startup
 and chat reads must produce no model request. Repeated concurrent Resume calls
 must join one execution. The resumed requests must retain model/reasoning
@@ -263,6 +264,7 @@ bundle whose manifest matches the current patch series:
 
 ```sh
 pnpm --filter @cantrip/worker... --filter @cantrip/glitch --filter @cantrip/nbt -r build
+node --test scripts/server-rust/owned-worker-tree.test.mjs
 CANTRIP_CODEX_BIN=/absolute/path/to/bundle/codex \
   node --import tsx scripts/server-rust/actual-durable-suspension.mjs
 ```
@@ -328,6 +330,50 @@ missing, corrupt and incompatible native checkpoints. Actual Resume failure UI
 flows remain part of the broader error matrix. This does not qualify
 Task/Goal recovery or the complete resource/error matrix.
 Those remain separate acceptance requirements.
+
+### Questions and command approvals
+
+A blocking native question or command approval keeps Pause in `pausing` while
+its actual tool invocation is awaiting a reply. It does not receive a durable
+acknowledgement with that waiter still outstanding. The mounted transcript says
+"Resolve the pending request to finish pausing. Stop is still available." The
+existing reply controls and Stop remain usable. Answering a question or allowing
+a command lets the tool finish and its result enter native history before the
+checkpoint commits. No further provider inference starts until explicit Resume.
+Killing processes before that confirmation remains outside the guarantee.
+
+Add `--pending-question` or `--pending-approval` to the production acceptance
+fixture to exercise these boundaries with a real native request and the actual
+mounted reply controls. The question case uses Plan Mode; both server
+implementations expose the same encrypted Plan GET/PATCH routes. Reading saved
+Plan state remains possible while the worker is offline, and does not load a
+native thread. Mode changes require an actual native write and reject a running
+turn. The fixture checks malformed input, missing chats and active-turn changes
+through real HTTP requests.
+
+After resolving the interaction, each case performs a live Resume followed by
+two complete worker-tree kills and cold Resumes of the original turn. The
+accepted interaction stays resolved under its original request ID. Its completed
+tool result appears once in restored provider context and native history, with
+no repeated question, approval or completed command. This policy preserves
+completed replies; it does not reconstruct an unanswered in-memory waiter after
+an unconfirmed Pause.
+
+Add `--stop-pending-interaction` with either interaction option to leave the
+request unanswered and click Stop while Pause is pending. The fixture checks
+the original request becomes interrupted, a late encrypted answer or approval
+is rejected, and the original turn records one abort. It then kills the worker
+tree, restarts, and reopens the GUI and native TUI. The stopped turn must remain
+nonresumable without inference or another turn start. An unapproved command must
+never execute; an already completed command must keep its single result.
+
+The legacy pause HTTP response's `paused` field describes the automation flag.
+In a concurrent Stop it can still reflect the earlier pause request. Durable
+confirmation requires the authoritative native suspension to be `paused` and
+resumable under the expected native identity. A `stopped` suspension remains
+terminal even when a late control updates the automation flag. The mounted
+application uses that authoritative state and offers no Resume turn or Paused
+indicator for the stopped execution.
 
 ### Cold Stop before continuation restoration
 

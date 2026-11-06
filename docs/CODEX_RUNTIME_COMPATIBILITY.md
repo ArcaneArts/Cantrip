@@ -326,9 +326,10 @@ and runtime compatibility, and forced-process-termination storage tests. It is
 consumed by patch `0051` through experimental native capture/read/resume/discard
 operations. Patch `0053` adds stored inspection and the explicit
 `thread/resume.expectedSuspension` attachment hold, and checks runtime metadata
-before decoding a continuation. Cantrip's existing product pause acknowledgement
-still describes the live in-memory boundary until worker/server/client adoption.
-The contract, remaining milestones, and evidence boundary are documented in
+before decoding a continuation. The managed worker now confirms Pause only after
+committing the checkpoint and its encrypted source locator. Production recovery
+continues the original turn after worker-tree termination; the remaining resource
+and error matrix is still being qualified. The contract and evidence boundary are documented in
 [the durable suspension guide](DURABLE_TURN_SUSPENSION.md).
 
 Patch `0061` advances the experimental continuation contract to
@@ -367,3 +368,8 @@ does not require that startup to finish. Pending MCP interactions refuse durable
 confirmation without losing their responders. Completed results remain native
 history; opaque server handles are not reconstructed by replaying side effects.
 See the [MCP recovery policy](DURABLE_TURN_SUSPENSION.md#mcp-clients-and-held-startup).
+
+Blocking native questions and command approvals remain answerable during pending
+Pause. Durable confirmation waits for the reply and completed tool result; the
+pending waiter itself is not a portable checkpoint. See the
+[question and approval policy](DURABLE_TURN_SUSPENSION.md#questions-and-command-approvals).

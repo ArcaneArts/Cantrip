@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { once } from "node:events";
+import { realpath } from "node:fs/promises";
+import path from "node:path";
 import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -34,7 +36,24 @@ function signal(pid, name) {
   }
 }
 
-export async function killOwnedWorkerTree(child) {
+export async function killOwnedWorkerTree(
+  child,
+  { executableRoots = [] } = {},
+) {
+  // Managed tool daemons can detach into a new group and be reparented before
+  // inspection. Their executable still belongs to this run's isolated storage.
+  const roots = (
+    await Promise.all(
+      executableRoots.map(async (root) => [
+        path.resolve(root),
+        await realpath(root).catch(() => path.resolve(root)),
+      ]),
+    )
+  )
+    .flat()
+    .map((root) => root + path.sep);
+  const scopedExecutable = (row) =>
+    roots.some((root) => row.command.startsWith(root));
   const closed =
     child.exitCode === null && child.signalCode === null
       ? once(child, "close")
@@ -64,7 +83,8 @@ export async function killOwnedWorkerTree(child) {
           if (
             row.pid !== child.pid &&
             !owned.has(row.parent) &&
-            !groups.has(row.group)
+            !groups.has(row.group) &&
+            !scopedExecutable(row)
           )
             continue;
           assert.notEqual(

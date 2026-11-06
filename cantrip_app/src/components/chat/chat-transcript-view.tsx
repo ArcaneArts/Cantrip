@@ -700,6 +700,18 @@ export function ChatTranscriptView({
               />
             </>
           ) : null}
+          {suspensionView?.label === "Pausing" &&
+          interactionRequests.data?.some(
+            (request) => request.status === "pending",
+          ) ? (
+            <p
+              role="status"
+              className="mb-2 text-xs text-amber-700 dark:text-amber-300"
+            >
+              Resolve the pending request to finish pausing. Stop is still
+              available.
+            </p>
+          ) : null}
           <AgentInteractionPanel
             requests={interactionRequests.data ?? []}
             pendingRequestId={respondingRequestId}
