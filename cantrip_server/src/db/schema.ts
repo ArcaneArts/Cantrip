@@ -9,6 +9,10 @@ import type {
 import type { TaskInferenceInputState } from "./task-inference-inputs.js";
 export { projectAlerts, chatGoalObservations } from "./schema-alerts.js";
 export {
+  cantripOsPackageTargets,
+  cantripOsPackageOperations,
+} from "./schema-cantrip-os-packages.js";
+export {
   cantripOsPowerTargets,
   cantripOsPowerOperations,
 } from "./schema-cantrip-os-power.js";

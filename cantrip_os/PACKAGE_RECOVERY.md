@@ -4,8 +4,9 @@ Recovery 0.5.0 supplies `cantrip-package`, a bounded root CLI with no daemon,
 listener, credentials or scheduler. The owning Worker can execute the same
 versioned source over its Docker/strict-SSH carrier without invoking an installed
 Cantrip helper. Debian Python and dpkg must still work. This is the administration
-foundation and external Worker package manager; Server-owned package admissions
-and product controls are a subsequent Phase 5 checkpoint.
+foundation and external Worker package manager. Both Servers now own durable
+package admissions and protected outcomes. The Cantrip interface is a subsequent
+Phase 5 checkpoint.
 
 ## Admission and installation
 
@@ -135,7 +136,56 @@ encryption key with a separate package-operation purpose, bound to owner,
 Server, Worker, instance, attachment, target and operation. A terminal encrypted
 receipt is retained once and returned unchanged across Manager restarts. Raw
 guest paths and diagnostics stay out of the public result. These are Worker
-contracts; the Server/client package workflow is not yet delivered.
+contracts used by both Servers' package management APIs; client controls follow.
+
+## Server-owned package admissions
+
+The existing authenticated CantripOS HTTP API supplies these routes in both the
+Node and native Server:
+
+- `GET /api/cantrip-os/:instanceId/packages` performs actual Worker inventory and
+  records an opaque verified target and offered artifact metadata.
+- `POST /api/cantrip-os/:instanceId/package-operations` admits one immutable
+  `operationId`, `attachmentGeneration`, `targetGeneration`, `action`,
+  `configuration` and `packages` selection. Copy exact artifact metadata from
+  inventory; filesystem paths, transports and runtime generations are not public
+  admission fields.
+- `GET /api/cantrip-os/:instanceId/package-operations` supplies owned history with
+  `limit` and an opaque operation-ID `cursor`. A final page has no next cursor.
+- `GET /api/cantrip-os/:instanceId/package-operations/:operationId` reads the
+  retained outcome without contacting the guest.
+- `POST .../:operationId/observe` observes the original immutable command without
+  starting or transferring it again.
+- `POST .../:operationId/continue` and `POST .../:operationId/abandon` require the
+  original `attachmentGeneration` and `targetGeneration` in their JSON body.
+  They retain the original artifact selection, transport and operation identity;
+  the guest still enforces boot checks and its one-shot launch claim.
+
+Inventory returns architecture, package state, available immutable candidates,
+an unavailable count and an opaque target. It does not expose SSH identity paths,
+the persistent identity locator, Docker IDs or boot/init facts. Detailed outcomes
+remain protected ciphertext. A repeated identical admission observes its original
+record; changed intent under that ID is refused. Committed terminal outcomes are
+returned unchanged even if the Worker is now offline. An uncertain delivery stays
+unknown; neither package version nor a fresh inventory manufactures success.
+
+Package admission clears live execution authority before dispatch. Its first
+terminal result fences in-flight runtime observations again, while preserving
+historical commands and source placement. A late inventory/refresh cannot make
+an older runtime current; concurrent inventory replies are also ordered by a
+durable observation counter. A completed install is not a live-runtime readiness
+claim. Explicitly check recovery and verify the intended Linux sources before
+opening fresh execution handles. Existing chats do not silently retarget.
+
+Repair can be admitted without a functioning installed executor or recorded live
+runtime generation. It still needs the owning Worker and actual Docker/SSH
+control. An explicitly requested new repair after an unknown outcome is governed
+by the real guest dpkg/recovery locks rather than a guessed helper-health gate.
+Observe the original installer and retain its evidence before making that choice.
+
+These are backend APIs, not yet package-update buttons in the Cantrip interface.
+Their HTTP tests exercise real Server persistence and Worker bridge contracts;
+full Worker death/client reload acceptance belongs to the following UI cycle.
 
 An ordinary `upgrade` runs `dpkg --force-confold --install` once. An explicit
 `repair` first restores trusted package payload and maintainer scripts, retaining

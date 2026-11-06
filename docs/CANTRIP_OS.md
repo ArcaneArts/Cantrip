@@ -737,8 +737,16 @@ and after upload, rejects changed identities/boot epochs, exercises configured
 identity relocation and reconstructs a missing Worker journal from matching
 guest proof without replay. Package administration deliberately needs no live
 executor generation and still works with the actual executor CLI broken.
-This is the Worker/protocol foundation; Server/client package controls and full
-Worker/product failure acceptance remain dependent work. Shared-system
+Both Servers now persist immutable package admissions and private verified
+targets, expose owned paginated history and retain encrypted terminal results.
+Actual HTTP acceptance reconstructs Server services from retained state and
+covers a missing live executor, immutable retry/observation, explicit staged
+controls, stale inventory/runtime replies and
+changed-attachment rejection. Package admission and terminal completion fence
+old execution authority; explicit recovery supplies fresh handles. Native
+validation matches the actual TypeScript protocol, including repair-only defaults
+and ciphertext bounds. Client package controls and full Worker/product failure
+acceptance remain dependent work. Shared-system
 preservation/replacement, clone identities, remote/model acceptance and final
 current distributions remain required for the full Phase 5 goal.
 

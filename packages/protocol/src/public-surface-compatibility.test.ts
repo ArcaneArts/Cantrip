@@ -535,6 +535,13 @@ const agentChatExports = [
 ].sort();
 
 const cantripOsExports = [
+  "cantripOsPackageTargetSummarySchema",
+  "cantripOsPackageStatusSchema",
+  "cantripOsPackageCreateSchema",
+  "cantripOsPackageControlSchema",
+  "cantripOsPackageSummarySchema",
+  "cantripOsPackageListQuerySchema",
+  "cantripOsPackagePageSchema",
   "CANTRIP_OS_PACKAGE_PRIVATE_BYTES",
   "cantripOsGuestPackageRecordSchema",
   "cantripOsGuestPackageRequestSchema",

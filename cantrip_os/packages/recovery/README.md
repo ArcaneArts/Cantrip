@@ -220,8 +220,9 @@ One-shot jobs have durable launch claims, actual dpkg/helper outcomes and
 observation without replay. Version 0.5.0 adds actual identity/boot probing,
 owner-pinned version 2 requests and durable pre-start abandonment. External
 Worker jobs supply verified artifact snapshots and private encrypted outcomes
-without requiring a live executor. Server-owned product admissions and controls
-follow separately. See [package recovery](../../PACKAGE_RECOVERY.md).
+without requiring a live executor. Both Servers now retain authorized package
+admissions, history and protected results; client controls follow separately.
+See [package recovery](../../PACKAGE_RECOVERY.md).
 
 ## Interruption and removal
 

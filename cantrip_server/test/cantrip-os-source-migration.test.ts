@@ -348,8 +348,7 @@ describe("CantripOS source identity migration", { timeout: 60_000 }, () => {
     const db = await fixture();
     // This case invokes today's repository; the other cases deliberately
     // exercise the historical source-identity migration in isolation.
-    await apply(db, 268, 268);
-    await apply(db, 275, 275);
+    await apply(db, 244, Number.POSITIVE_INFINITY);
     const repository = new CantripOsRepository(
       drizzle(db, { schema }) as unknown as RepositoryDatabase,
     );
