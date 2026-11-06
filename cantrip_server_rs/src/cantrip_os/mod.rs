@@ -3,6 +3,7 @@ mod backups;
 pub mod chats;
 mod control;
 pub mod coordinator;
+mod desktop;
 pub mod files;
 mod power;
 mod recovery;

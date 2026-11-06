@@ -370,6 +370,8 @@ import {
 import { WorktreeManager } from "./worktrees.js";
 import { CantripOsController } from "./os-executor/controller.js";
 import { CantripOsPowerManager } from "./os-executor/power.js";
+import { CantripOsDesktopManager } from "./os-executor/desktop.js";
+import { CapturedDesktopDriver } from "./os-executor/desktop-driver.js";
 import { CantripOsBackupManager } from "./os-executor/backup-manager.js";
 import { OsTerminalLauncher } from "./os-executor/terminal-launcher.js";
 import { OsFileOperations } from "./os-executor/files.js";
@@ -1049,6 +1051,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const osPower = new CantripOsPowerManager(
     config.dataDirectory,
     config.workerId,
+  );
+  const osDesktop = new CantripOsDesktopManager(
+    config.dataDirectory,
+    config.workerId,
+    new CapturedDesktopDriver(cantripOs),
   );
   const osTerminals = new OsTerminalLauncher(
     config.dataDirectory,
@@ -4383,6 +4390,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "cantrip-os.power.status":
       case "cantrip-os.power.operation":
         return osPower.handle(command);
+      case "cantrip-os.desktop.status":
+      case "cantrip-os.desktop.operation":
+        return osDesktop.handle(command);
       case "cantrip-os.backup.capture":
       case "cantrip-os.backup.restore":
       case "cantrip-os.backup.rollback":

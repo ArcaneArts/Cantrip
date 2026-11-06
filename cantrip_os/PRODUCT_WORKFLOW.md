@@ -517,3 +517,17 @@ After explicit recovery, verify the intended source and open fresh work. Old
 terminals, Run configurations and chats retain their captured runtime. The file
 sidebar follows a selected Linux desktop's source, including while its old runtime
 is unavailable. It never treats a missing desktop query as a Host selection.
+
+## Workspace desktop administration backend
+
+Server-owned [desktop lifecycle APIs](INSTANCE_LIFECYCLE.md#server-owned-desktop-admissions)
+now admit an individual workspace desktop transition and retain its history.
+These are available in both Server implementations, with Worker/native routing;
+the corresponding Cantrip desktop controls remain a following milestone.
+
+Observe the intended workspace desktop to obtain an opaque current target, then
+retain the entire create request before submitting it. Recover the same operation
+through its observe endpoint after an uncertain response. Repeating create observes
+the original admission; it does not restart a desktop again. Changed actual targets
+need an explicit new observation and a distinct admission. Historical completion
+does not imply a current viewer or fresh computer-use authority.

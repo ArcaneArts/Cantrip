@@ -32,6 +32,7 @@ import {
 } from "./cantrip-os-worktrees.js";
 import { resolveOsRunPrimary } from "./cantrip-os-run.js";
 import { existingLinuxSourcePath } from "./cantrip-os-existing-path.js";
+import { CantripOsDesktopRepository } from "./cantrip-os-desktop.js";
 import { CantripOsPowerRepository } from "./cantrip-os-power.js";
 
 const instance = ({
@@ -46,7 +47,10 @@ const instance = ({
     lastObservedAt: row.lastObservedAt?.toISOString() ?? null,
   });
 const workspace = (
-  row: typeof schema.cantripOsWorkspaces.$inferSelect,
+  {
+    desktopEpoch: _desktopEpoch,
+    ...row
+  }: typeof schema.cantripOsWorkspaces.$inferSelect,
   workerId: string,
 ) =>
   cantripOsWorkspaceSummarySchema.parse({
@@ -105,9 +109,11 @@ function createdLinuxSource(
 export class CantripOsRepository {
   readonly backups: CantripOsBackupRepository;
   readonly power: CantripOsPowerRepository;
+  readonly desktop: CantripOsDesktopRepository;
   constructor(private readonly database: RepositoryDatabase) {
     this.backups = new CantripOsBackupRepository(database);
     this.power = new CantripOsPowerRepository(database);
+    this.desktop = new CantripOsDesktopRepository(database);
   }
 
   runPrimary(
