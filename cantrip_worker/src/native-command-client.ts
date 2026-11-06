@@ -291,6 +291,16 @@ export class NativeCommandClient {
       throw new Error(
         "Task input dispatch returned another operation's receipt.",
       );
+    if (
+      input.phase === "native" &&
+      (result.nativeExecution?.threadId !== input.nativeExecution?.threadId ||
+        result.nativeExecution?.turnId !== input.nativeExecution?.turnId ||
+        result.nativeExecution?.scopeId !== input.nativeExecution?.scopeId ||
+        result.nativeRuntimeGeneration !== input.nativeRuntimeGeneration)
+    )
+      throw new Error(
+        "Task native binding returned another execution's acknowledgement.",
+      );
     return result;
   }
 

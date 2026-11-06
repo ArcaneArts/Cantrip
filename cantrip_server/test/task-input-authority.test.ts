@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   taskInferenceInputReceiptSchema,
   workerChatTurnOutcomeNotificationSchema,
@@ -571,3 +571,188 @@ describe.each(["round", "goal"] as const)(
     });
   },
 );
+
+describe("canonical Task native execution binding", () => {
+  const lanes: string[] = [];
+  afterEach(async () => {
+    for (const id of lanes.splice(0))
+      await database
+        .update(schema.chatExecutionLanes)
+        .set({ state: "released", releasedAt: new Date() })
+        .where(eq(schema.chatExecutionLanes.id, id));
+  });
+  async function active() {
+    const f = await input("round");
+    await f.write({ deferred: false, accepted: false });
+    await database
+      .update(schema.tasks)
+      .set({
+        activeOperationId: f.receipt.dispatch.operationId,
+        activeOperationKind: "initial-plan",
+      })
+      .where(eq(schema.tasks.chatId, f.chat));
+    await database.insert(schema.chatExecutionLanes).values({
+      id: f.receipt.executionLaneId,
+      chatId: f.chat,
+      workerId: worker,
+      worktreeId: tree,
+      acquiringActor: "fixture",
+      state: "active",
+      activatedAt: new Date(f.receipt.executionLaneActivatedAt),
+    });
+    lanes.push(f.receipt.executionLaneId);
+    await database.insert(schema.taskDispatchCycles).values({
+      id: f.receipt.dispatch.cycleId,
+      chatId: f.chat,
+      ownerId: owner,
+      operationId: f.receipt.dispatch.operationId,
+      operationKind: "initial-plan",
+      state: "running",
+      fifoCreatedAt: new Date(),
+      fencingToken: f.receipt.dispatch.fencingToken,
+      leaseOwner: f.receipt.dispatch.leaseOwner,
+      leaseExpiresAt: new Date(Date.now() + 600_000),
+      physicalWorkerId: worker,
+      worktreeId: tree,
+    });
+    const metadata = {
+      workerGeneration: randomUUID(),
+      nativeRuntimeGeneration: randomUUID(),
+      nativeExecution: {
+        threadId: randomUUID(),
+        turnId: randomUUID(),
+        scopeId: randomUUID(),
+      },
+    };
+    const dispatch = (
+      phase: "claim" | "dispatch" | "native",
+      value = metadata,
+    ) => tasks.inferenceInputs.dispatch(owner, worker, f.receipt, phase, value);
+    async function snapshot() {
+      const [round] = await database
+        .select()
+        .from(schema.taskPlanningRounds)
+        .where(
+          eq(schema.taskPlanningRounds.id, f.receipt.dispatch.operationId),
+        );
+      const [cycle] = await database
+        .select()
+        .from(schema.taskDispatchCycles)
+        .where(eq(schema.taskDispatchCycles.id, f.receipt.dispatch.cycleId));
+      const [lane] = await database
+        .select()
+        .from(schema.chatExecutionLanes)
+        .where(eq(schema.chatExecutionLanes.id, f.receipt.executionLaneId));
+      return { round, cycle, lane };
+    }
+    return { ...f, metadata, dispatch, snapshot };
+  }
+
+  it("binds exact native identity atomically while preserving final-result and runtime authority", async () => {
+    const f = await active();
+    await f.dispatch("claim");
+    await f.dispatch("dispatch");
+    const result = await f.dispatch("native");
+    expect(result).toEqual({
+      receipt: f.receipt,
+      nativeExecution: f.metadata.nativeExecution,
+      nativeRuntimeGeneration: f.metadata.nativeRuntimeGeneration,
+    });
+    const { round, lane, cycle } = await f.snapshot();
+    expect(round!.inferenceInput).toMatchObject({
+      nativeExecution: f.metadata.nativeExecution,
+      nativeOwner: {
+        workerGeneration: f.metadata.workerGeneration,
+        runtimeGeneration: f.metadata.nativeRuntimeGeneration,
+      },
+      dispatched: true,
+      firstDispatchedOperationId: f.receipt.operationId,
+    });
+    expect(round!.turnId).toBeNull();
+    expect(round!.relayResult).toBeNull();
+    expect(lane!.codexThreadId).toBe(f.metadata.nativeExecution.threadId);
+    expect(cycle!.codexThreadId).toBe(f.metadata.nativeExecution.threadId);
+    expect(cycle!.turnId).toBe(f.metadata.nativeExecution.turnId);
+    expect(
+      await database
+        .select()
+        .from(schema.chatRuntimeSessions)
+        .where(eq(schema.chatRuntimeSessions.chatId, f.chat)),
+    ).toEqual([]);
+    await database
+      .update(schema.chats)
+      .set({ automationPaused: true })
+      .where(eq(schema.chats.id, f.chat));
+    expect(await f.dispatch("native")).toEqual(result);
+  });
+
+  it("requires actual dispatch and the original physical worker generation", async () => {
+    const f = await active();
+    await expect(f.dispatch("native")).rejects.toMatchObject({
+      code: "stale-lease",
+    });
+    await f.dispatch("claim");
+    await expect(
+      f.dispatch("dispatch", { ...f.metadata, workerGeneration: randomUUID() }),
+    ).rejects.toMatchObject({ code: "stale-lease" });
+    await expect(f.dispatch("native")).rejects.toMatchObject({
+      code: "stale-lease",
+    });
+    await f.dispatch("dispatch");
+    const before = await f.snapshot();
+    await expect(
+      f.dispatch("native", { ...f.metadata, workerGeneration: randomUUID() }),
+    ).rejects.toMatchObject({ code: "stale-lease" });
+    expect(await f.snapshot()).toEqual(before);
+    await f.dispatch("native");
+    const bound = await f.snapshot();
+    for (const nativeExecution of [
+      { ...f.metadata.nativeExecution, threadId: randomUUID() },
+      { ...f.metadata.nativeExecution, turnId: randomUUID() },
+      { ...f.metadata.nativeExecution, scopeId: randomUUID() },
+    ])
+      await expect(
+        f.dispatch("native", { ...f.metadata, nativeExecution }),
+      ).rejects.toMatchObject({ code: "stale-lease" });
+    await expect(
+      f.dispatch("native", {
+        ...f.metadata,
+        nativeRuntimeGeneration: randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "stale-lease" });
+    expect(await f.snapshot()).toEqual(bound);
+  });
+
+  it("rolls back lane and cycle changes when the actual round write fails", async () => {
+    const f = await active();
+    await f.dispatch("claim");
+    await f.dispatch("dispatch");
+    const before = await f.snapshot();
+    await client.exec(`CREATE FUNCTION fail_native_task_bind() RETURNS trigger AS $$ BEGIN IF NEW.id = '${f.receipt.dispatch.operationId}' THEN RAISE EXCEPTION 'controlled native binding write failure'; END IF; RETURN NEW; END; $$ LANGUAGE plpgsql;
+      CREATE TRIGGER fail_native_task_bind BEFORE UPDATE ON task_planning_rounds FOR EACH ROW EXECUTE FUNCTION fail_native_task_bind();`);
+    try {
+      await expect(f.dispatch("native")).rejects.toThrow();
+      expect(await f.snapshot()).toEqual(before);
+    } finally {
+      await client.exec(
+        "DROP TRIGGER fail_native_task_bind ON task_planning_rounds; DROP FUNCTION fail_native_task_bind();",
+      );
+    }
+    await f.dispatch("native");
+  });
+
+  it("rejects a retired canonical source without modifying its native identity", async () => {
+    const f = await active();
+    await f.dispatch("claim");
+    await f.dispatch("dispatch");
+    await database
+      .update(schema.taskDispatchCycles)
+      .set({ fencingToken: f.receipt.dispatch.fencingToken + 1 })
+      .where(eq(schema.taskDispatchCycles.id, f.receipt.dispatch.cycleId));
+    const before = await f.snapshot();
+    await expect(f.dispatch("native")).rejects.toMatchObject({
+      code: "stale-lease",
+    });
+    expect(await f.snapshot()).toEqual(before);
+  });
+});

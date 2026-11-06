@@ -216,11 +216,12 @@ async fn apply(
                 .await?
         } else if phase == "task-input-dispatch" {
             crate::tasks::Repository::new(service.repository.database.clone())
-                .dispatch_inference_input(
+                .dispatch_inference_input_with_owner(
                     &owner,
                     worker,
                     &input["receipt"],
                     input["phase"].as_str().unwrap(),
+                    Some(&input),
                 )
                 .await?
         } else if input["record"]["identity"]["recovery"]

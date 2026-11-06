@@ -45,14 +45,31 @@ const dispatch = {
   workerGeneration: "00000000-0000-4000-8000-000000000004",
   receipt: command.taskInferenceInput,
 };
+const nativeBinding = {
+  ...dispatch,
+  phase: "native",
+  nativeExecution: {
+    threadId: "native-thread",
+    turnId: "native-turn",
+    scopeId: "native-scope",
+  },
+  nativeRuntimeGeneration: "00000000-0000-4000-8000-000000000005",
+};
 const samples = {
   taskInferenceInputReceiptSchema: [command.taskInferenceInput],
   taskInferenceInputDispatchSchema: [
     dispatch,
     { ...dispatch, phase: "accepted" },
+    { ...dispatch, phase: "claim" },
+    nativeBinding,
   ],
   taskInferenceInputDispatchResultSchema: [
     { receipt: command.taskInferenceInput },
+    {
+      receipt: nativeBinding.receipt,
+      nativeExecution: nativeBinding.nativeExecution,
+      nativeRuntimeGeneration: nativeBinding.nativeRuntimeGeneration,
+    },
   ],
 };
 let count = 0;
@@ -62,6 +79,18 @@ function emit(schema, value) {
 }
 for (const [schema, values] of Object.entries(samples))
   for (const value of vectorCases(schema, values)) emit(schema, value);
+for (const [index, input] of [
+  { ...nativeBinding, phase: "dispatch" },
+  { ...nativeBinding, nativeExecution: undefined },
+  { ...nativeBinding, nativeRuntimeGeneration: undefined },
+  { ...dispatch, phase: "native" },
+].entries()) {
+  emit("taskInferenceInputDispatchSchema", {
+    name: "native binding field requirement " + index,
+    input,
+    outcome: outcome(protocol.taskInferenceInputDispatchSchema, input),
+  });
+}
 function worker(name, input) {
   const expected = outcome(protocol.workerRequestEnvelopeSchema, input);
   emit("workerRequestEnvelopeSchema", {
