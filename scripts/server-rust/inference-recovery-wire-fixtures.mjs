@@ -307,3 +307,14 @@ inferenceRecoveryWireFixtures.nativeInferenceRecoveryResultSchema.push(
     })),
   ),
 );
+inferenceRecoveryWireFixtures.nativeInferenceRecoveryResultSchema.push(
+  ...nativeGoalRecoveryWireFixtures().nativeGoalRecoverySchema.map(
+    (goalRecovery) => ({
+      key: "a".repeat(64),
+      disposition: "unresolved",
+      chatId: receipt.chatId,
+      goalInputNotDispatched: false,
+      goalRecovery,
+    }),
+  ),
+);

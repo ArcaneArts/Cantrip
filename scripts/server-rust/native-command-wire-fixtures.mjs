@@ -244,5 +244,18 @@ export function nativeCommandWireFixtures(timestamp) {
       intent,
     });
   }
+  const suspensionIntent = {
+    scope: "thread",
+    paused: true,
+    durableSuspension: true,
+    workerGeneration,
+    expectedTurnId: "turn",
+  };
+  fixtures.nativeCommandIntentSchema.push(suspensionIntent);
+  fixtures.nativeCommandAdmissionSchema.push({
+    ...fixtures.nativeCommandAdmissionSchema[0],
+    method: "turn/pause",
+    intent: suspensionIntent,
+  });
   return fixtures;
 }

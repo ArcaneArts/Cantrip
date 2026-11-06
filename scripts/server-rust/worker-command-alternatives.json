@@ -55698,6 +55698,359 @@
           }
         }
       }
+    },
+    {
+      "name": "Goal canonical recovery marker 0",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.goal.recover",
+          "session": {
+            "chatId": "fixture",
+            "computerUseEnabled": false,
+            "contextKind": "project",
+            "projectId": "fixture",
+            "worktreeId": "fixture",
+            "rootKind": "git-worktree",
+            "scratchRootId": null
+          },
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "planMode": "default",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture",
+          "source": {
+            "operationId": "original-goal-operation",
+            "operationGeneration": "original-goal-generation",
+            "threadId": "original-goal-thread",
+            "goalEpoch": "original-goal-epoch"
+          },
+          "recovery": {
+            "source": {
+              "operationId": "original-goal-operation",
+              "operationGeneration": "original-goal-generation",
+              "threadId": "original-goal-thread",
+              "goalEpoch": "original-goal-epoch"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Goal canonical recovery marker 1",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.goal.recover",
+          "session": {
+            "chatId": "fixture",
+            "computerUseEnabled": false,
+            "contextKind": "project",
+            "projectId": "fixture",
+            "worktreeId": "fixture",
+            "rootKind": "git-worktree",
+            "scratchRootId": null
+          },
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "planMode": "default",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture",
+          "source": {
+            "operationId": "original-goal-operation",
+            "operationGeneration": "original-goal-generation",
+            "threadId": "original-goal-thread",
+            "goalEpoch": "original-goal-epoch"
+          },
+          "recovery": {
+            "source": {
+              "operationId": "original-goal-operation",
+              "operationGeneration": "original-goal-generation",
+              "threadId": "original-goal-thread",
+              "goalEpoch": "original-goal-epoch"
+            },
+            "admission": null
+          }
+        }
+      }
+    },
+    {
+      "name": "Goal canonical recovery marker 2",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.goal.recover",
+          "session": {
+            "chatId": "fixture",
+            "computerUseEnabled": false,
+            "contextKind": "project",
+            "projectId": "fixture",
+            "worktreeId": "fixture",
+            "rootKind": "git-worktree",
+            "scratchRootId": null
+          },
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "planMode": "default",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture",
+          "source": {
+            "operationId": "original-goal-operation",
+            "operationGeneration": "original-goal-generation",
+            "threadId": "original-goal-thread",
+            "goalEpoch": "original-goal-epoch"
+          },
+          "recovery": {
+            "source": {
+              "operationId": "original-goal-operation",
+              "operationGeneration": "original-goal-generation",
+              "threadId": "original-goal-thread",
+              "goalEpoch": "original-goal-epoch"
+            },
+            "admission": {
+              "operationId": "recovered-goal-operation",
+              "operationGeneration": "recovered-goal-generation",
+              "workerGeneration": "f57d812b-37d4-4d1e-b87a-3503b0d89b23"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Goal canonical recovery marker 3",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.goal.recover",
+          "session": {
+            "chatId": "fixture",
+            "computerUseEnabled": false,
+            "contextKind": "project",
+            "projectId": "fixture",
+            "worktreeId": "fixture",
+            "rootKind": "git-worktree",
+            "scratchRootId": null
+          },
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "planMode": "default",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture",
+          "source": {
+            "operationId": "original-goal-operation",
+            "operationGeneration": "original-goal-generation",
+            "threadId": "original-goal-thread",
+            "goalEpoch": "original-goal-epoch"
+          },
+          "recovery": {
+            "source": {
+              "operationId": "original-goal-operation",
+              "operationGeneration": "original-goal-generation",
+              "threadId": "original-goal-thread",
+              "goalEpoch": "original-goal-epoch"
+            },
+            "providerId": "configured-goal-provider",
+            "orderEpoch": 0,
+            "admission": null
+          }
+        }
+      }
+    },
+    {
+      "name": "Goal canonical recovery marker 4",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.goal.recover",
+          "session": {
+            "chatId": "fixture",
+            "computerUseEnabled": false,
+            "contextKind": "project",
+            "projectId": "fixture",
+            "worktreeId": "fixture",
+            "rootKind": "git-worktree",
+            "scratchRootId": null
+          },
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "planMode": "default",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture",
+          "source": {
+            "operationId": "original-goal-operation",
+            "operationGeneration": "original-goal-generation",
+            "threadId": "original-goal-thread",
+            "goalEpoch": "original-goal-epoch"
+          },
+          "recovery": {
+            "source": {
+              "operationId": "original-goal-operation",
+              "operationGeneration": "original-goal-generation",
+              "threadId": "original-goal-thread",
+              "goalEpoch": "original-goal-epoch"
+            },
+            "providerId": "configured-goal-provider",
+            "orderEpoch": 1,
+            "admission": {
+              "operationId": "recovered-goal-operation",
+              "operationGeneration": "recovered-goal-generation",
+              "workerGeneration": "f57d812b-37d4-4d1e-b87a-3503b0d89b23"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Goal canonical recovery marker 5",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.goal.recover",
+          "session": {
+            "chatId": "fixture",
+            "computerUseEnabled": false,
+            "contextKind": "project",
+            "projectId": "fixture",
+            "worktreeId": "fixture",
+            "rootKind": "git-worktree",
+            "scratchRootId": null
+          },
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "planMode": "default",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture",
+          "source": {
+            "operationId": "original-goal-operation",
+            "operationGeneration": "original-goal-generation",
+            "threadId": "original-goal-thread",
+            "goalEpoch": "original-goal-epoch"
+          },
+          "recovery": {
+            "source": {
+              "operationId": "original-goal-operation",
+              "operationGeneration": "original-goal-generation",
+              "threadId": "original-goal-thread",
+              "goalEpoch": "original-goal-epoch"
+            },
+            "providerId": "configured-goal-provider",
+            "orderEpoch": 9007199254740991,
+            "admission": {
+              "operationId": "recovered-goal-operation",
+              "operationGeneration": "recovered-goal-generation",
+              "workerGeneration": "f57d812b-37d4-4d1e-b87a-3503b0d89b23"
+            }
+          }
+        }
+      }
     }
   ]
 }

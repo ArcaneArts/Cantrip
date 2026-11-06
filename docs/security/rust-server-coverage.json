@@ -12744,26 +12744,27 @@
       ],
       "scope": "Twelve MCP operations implement Explorer list/read/write, terminal read/send/restart, browser services/open and all four client controls. Registry46 of Source55. Exact owned target placement permits other owned workers; readonly/grant/lane/standalone guards retain Source order. Browser conflicts map409/conflict, committed state survives worker failure, and showing an interaction never resolves it. Endpoint content remains opaque. Native Live controls preserve unpaired UTF16 instead of converting through serde_json::Value.",
       "localQualification": {
-        "base": "f49dc8cbe223c681e2d2b7023bd76e81b6e1104e",
+        "base": "18a925160",
         "actualHttp": true,
         "actualWorkerConnection": true,
         "fullWorkerProcess": false,
         "databaseModes": ["pglite", "postgres", "bundled-postgres"],
         "authModes": ["none", "password", "accounts"],
-        "casesPerPeerPerProfile": 230,
-        "pairedCases": 2070,
-        "httpResponses": 4140,
+        "casesPerPeerPerProfile": 232,
+        "pairedCases": 2088,
+        "httpResponses": 4176,
         "disconnectedCallers": 18,
-        "auditRows": 4158,
+        "auditRows": 4194,
         "serverRestarts": 18,
         "actualTenSecondControlDeadlines": 18,
         "notificationEndpointDecryptions": 18,
         "afterLiveUtf16Repair": {
-          "database": "pglite",
-          "auth": "none",
-          "pairedCases": 232,
+          "databaseModes": ["pglite", "postgres", "bundled-postgres"],
+          "authModes": ["none", "password", "accounts"],
           "actualLiveAckRoundtrips": true,
-          "liveCoreOraclePassed": true
+          "all9ProfilesPassed": true,
+          "liveCoreScenarios": 44,
+          "liveCoreSteps": 688
         }
       },
       "wireQualification": {
@@ -12772,13 +12773,38 @@
         "changedBaseRoots": 12,
         "sourceBaseComparisons": 68462,
         "unchangedBaseRoots": 636,
-        "outgoingWorkerEnvelopeGraphIdenticalTo": "9b00c9db22dffba712cd9c03249dd4646dca9811"
+        "outgoingWorkerEnvelopeGraphIdenticalTo": "9b00c9db22dffba712cd9c03249dd4646dca9811",
+        "subsequentMainIntegration": {
+          "base": "18a925160",
+          "changedIncomingRoots": 10,
+          "sourceComparisons": 94669,
+          "canonicalWorkerCommands": 300,
+          "workerBoundaryComparisons": 86,
+          "workerMutationComparisons": 242432,
+          "sourceRefinementsExecuted": 100,
+          "sourceRefinementsRegistered": 100,
+          "allCanonicalCommandBytesAndAll1157PriorAlternativeInputsPreserved": true
+        }
       },
       "remaining": [
         "Current-head full worker/native product, platform and packaged acceptance.",
         "Nine other canonical MCP operations, legacy CLI transport and worktree.acquire remain required.",
         "Shared coordination, existing-data migration and post-write rollback, container/desktop/Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; the worker remains Node."
-      ]
+      ],
+      "localChecks": {
+        "strictAllTargetClippy": "pass",
+        "protocolTests": 1114,
+        "serverWorkerAppTypechecks": "pass",
+        "sourceExecutorBindingLiveSuspensionTests": 39,
+        "sourceExistingSkippedTests": 1,
+        "suspensionRepositoryTransactions": {
+          "database": "pglite",
+          "nodeSteps": 34,
+          "rustSteps": 34,
+          "passed": true
+        },
+        "rootCheck": "Actual failure at Main-identical Source line budgets1519/1500 and2230/1999; not green."
+      }
     }
   },
   "remainingAcceptance": [

@@ -20,7 +20,7 @@ export function nativeGoalRecoveryWireFixtures() {
       admission: orderEpoch === 0 ? null : admission,
     }),
   );
-  return {
+  const fixtures = {
     nativeGoalRecoverySourceSchema: [source],
     nativeGoalRecoveryAdmissionSchema: [admission],
     nativeGoalRecoverySchema: [
@@ -59,4 +59,25 @@ export function nativeGoalRecoveryWireFixtures() {
       ...providerEpisodes.map((recovery) => ({ recovery })),
     ],
   };
+  for (const receipt of fixtures.nativeGoalRecoveryReceiptSchema.filter(
+    (value) => value.status === "ineligible",
+  ))
+    for (const orderEpoch of [0, 1, Number.MAX_SAFE_INTEGER])
+      fixtures.nativeGoalRecoveryReceiptSchema.push({
+        ...receipt,
+        observation: {
+          chatId: "chat",
+          workerId: "worker",
+          threadId: source.threadId,
+          contextKind: "project",
+          projectId: "project",
+          placementId: "worktree",
+          modelRouteId: null,
+          providerAccountId: null,
+          runtimeGeneration: "runtime",
+          nativeEpoch: "native-epoch",
+          orderEpoch,
+        },
+      });
+  return fixtures;
 }

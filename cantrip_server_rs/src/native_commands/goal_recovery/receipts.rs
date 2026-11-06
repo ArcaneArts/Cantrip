@@ -180,7 +180,7 @@ pub(in crate::native_commands) async fn confirm_receipt(
             "nativeEpoch",
         ]
         .iter()
-        .any(|field| binding.get(*field) != observation.get(*field))
+        .any(|field| binding.get(field) != observation.get(field))
     }) {
         return Ok(());
     }
