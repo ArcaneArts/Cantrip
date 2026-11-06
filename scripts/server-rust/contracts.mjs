@@ -645,6 +645,12 @@ export const contractRoots = [
   "cantripOsBackupPrivateRequestSchema",
   "cantripOsBackupPrivateResultSchema",
   "cantripOsBackupWorkspaceSchema",
+  "cantripOsBackupAdmissionSchema",
+  "cantripOsBackupRecoverySchema",
+  "cantripOsBackupListQuerySchema",
+  "cantripOsBackupSummarySchema",
+  "cantripOsBackupPageSchema",
+
   "cantripOsBackupSourceSchema",
   "cantripOsInspectSchema",
   "cantripOsRecoveryRequestSchema",

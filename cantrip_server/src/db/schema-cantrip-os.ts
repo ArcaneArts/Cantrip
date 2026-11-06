@@ -148,6 +148,7 @@ export const cantripOsProjectSources = pgTable(
     guestPath: text("guest_path").notNull(),
     ownershipKind: text("ownership_kind").$type<"cantrip" | "user">().notNull(),
     repositoryFingerprint: text("repository_fingerprint"),
+    gitCommonGuestPath: text("git_common_guest_path"),
     removedAt: timestamp("removed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -167,6 +168,10 @@ export const cantripOsProjectSources = pgTable(
     check(
       "cantrip_os_project_sources_ownership_check",
       sql`${table.ownershipKind} IN ('cantrip', 'user')`,
+    ),
+    check(
+      "cantrip_os_project_sources_git_common_check",
+      sql`${table.gitCommonGuestPath} IS NULL OR left(${table.gitCommonGuestPath}, 1) = '/'`,
     ),
     check(
       "cantrip_os_project_sources_guest_path_check",

@@ -58,7 +58,7 @@ export async function restoreWorkspace(ctx: BackupContext) {
     guest = await ctx.ports.control({
       transport: command.transport,
       args: [
-        ...expectedArguments(command, true),
+        ...expectedArguments(command, true, ctx.mutationScope),
         "receive",
         command.operationId,
         command.workspace.guestWorkspaceId,
@@ -86,7 +86,7 @@ export async function restoreWorkspace(ctx: BackupContext) {
     guest = await ctx.ports.control({
       transport: command.transport,
       args: [
-        ...expectedArguments(command, true),
+        ...expectedArguments(command, true, ctx.mutationScope),
         "restore",
         command.operationId,
       ],
@@ -181,7 +181,7 @@ export async function rollbackWorkspace(ctx: BackupContext) {
     guest = await ctx.ports.control({
       transport: command.transport,
       args: [
-        ...expectedArguments(command, true),
+        ...expectedArguments(command, true, ctx.mutationScope),
         "rollback",
         command.operationId,
         command.restoreOperationId,

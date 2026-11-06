@@ -1905,6 +1905,13 @@
       "when": 1793930400000,
       "tag": "0271_applied_goal_first_cycle_recovery",
       "breakpoints": true
+    },
+    {
+      "idx": 272,
+      "version": "7",
+      "when": 1793931417082,
+      "tag": "0272_cantrip_os_backup_operations",
+      "breakpoints": true
     }
   ]
 }

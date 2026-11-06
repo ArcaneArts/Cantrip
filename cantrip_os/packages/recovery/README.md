@@ -7,8 +7,8 @@ include it with the executor edition; `CANTRIP_OS_RECOVERY=0` omits it. The ordi
 OS remains selectable with `CANTRIP_OS_WORKSPACES=0`.
 
 Encrypted Worker storage and durable Worker backup jobs build on this guest
-package. Server admissions, the catalogue and Cantrip backup controls remain
-subsequent Phase 5 work. Local guest staging is plaintext readable by root;
+package. Both Servers now supply durable admissions and a catalogue API;
+Cantrip backup controls remain subsequent Phase 5 work. Local guest staging is plaintext readable by root;
 the Worker encrypts archives outside the OS. See [backup behavior](../../BACKUPS.md).
 
 ## Build and install

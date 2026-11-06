@@ -28,6 +28,7 @@ mod body;
 mod browser_discovery;
 mod browsers;
 mod cantrip_os;
+mod cantrip_os_backups;
 mod chat_catalogs;
 mod chat_configuration;
 mod chat_customizations;

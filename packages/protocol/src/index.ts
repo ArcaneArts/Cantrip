@@ -72,3 +72,5 @@ export * from "./cantrip-os-run.js";
 export * from "./cantrip-os-run-selection.js";
 export * from "./cantrip-os-run-source.js";
 export * from "./native-suspensions.js";
+
+export * from "./cantrip-os-backup-api.js";

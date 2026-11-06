@@ -92,7 +92,7 @@ impl Repository {
                 let source=sources.first().context("Linux source was removed before its observation arrived.")?;
                 ensure!((source["repository_fingerprint"].is_null() || source["repository_fingerprint"]==r["repositoryFingerprint"]) && (source["source_kind"]!="git" || (r["repositoryFingerprint"].is_string() && r["head"].is_string() && r["gitCommonGuestPath"].is_string())),"Linux Git observation belongs to a different common directory or is incomplete.");
                 let r=Json(r);
-                tx.query("UPDATE cantrip_os_project_sources SET repository_fingerprint=$2::jsonb->>'repositoryFingerprint',updated_at=now() WHERE id=$1", &[&text(b,"project_source_id")?,&r]).await?;
+                tx.query("UPDATE cantrip_os_project_sources SET repository_fingerprint=$2::jsonb->>'repositoryFingerprint',git_common_guest_path=$2::jsonb->>'gitCommonGuestPath',updated_at=now() WHERE id=$1", &[&text(b,"project_source_id")?,&r]).await?;
                 tx.query("UPDATE project_worktrees SET lifecycle_state='ready',head=$2::jsonb->>'head',branch=$2::jsonb->>'branch',detached=($2::jsonb->>'detached')::boolean,updated_at=now() WHERE id=$1", &[&text(b,"worktree_id")?,&r]).await?;
             }
             summary(&rows[0],"binding",Some(text(i,"id")?))
