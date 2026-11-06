@@ -2853,3 +2853,53 @@ validation or computer-use testing ran. The native/worker/server update is paire
 and remains unverified at runtime. Cold child portability, remaining Goal
 configuration/resource lifecycle coverage, and final acceptance/documentation
 consolidation remain part of the active full goal.
+
+## Persisted child identity across provider transfers
+
+Managed history export now captures the persisted native child tree rather than
+only the selected thread. Patch `0087` introduces a version 3 worker-private
+artifact under the existing native tree execution/export guard. Traversal reads
+the real spawn graph and attached-thread metadata, includes archived descendants,
+and retains native IDs, child names/roles, histories, queues, Goal state and
+open/closed spawn status. Missing live Session membership is not evidence that a
+child is absent. A graph-only identity is retained only after the actual history
+export finds no saved thread and the metadata row is also absent.
+
+The selected thread and each saved descendant must have a settled last native
+turn in their actual captured history. A cold unfinished turn produces a native
+export error and retains the handoff reservation for retry or cancellation. Its
+input or tool graph is never reconstructed as a fresh turn, and no provider
+capacity is freed by this artifact operation. Registered live children and final
+hooks still settle through the existing coordinator before capture can proceed.
+
+Frozen descendants can share different prefixes of an ancestor rollout. Import
+requires compatible prefixes and writes one canonical file per rollout, retaining
+each member's original visibility cutoffs. Selected rollout files keep their
+active/archive locations. Import obtains the existing writer locks for every
+member/rollout, rejects unrelated destination histories, and publishes immutable
+files/manifests before metadata. Children, queues and exact spawn topology precede
+the root's final row. A complete receipt makes a lost-ack retry read-only; an
+incomplete publication can continue only against the same manifest and existing
+history identities. New topology cannot reopen or retarget an existing different
+edge.
+
+Each imported member's provider attribution uses the destination's current native
+provider. Historical rollout provenance stays unchanged. Native root Resume
+already restores persisted V2 child identities from the open spawn graph before
+lazy loading; the imported graph now supplies those identities in the new home.
+Destination preparation continues to hold all inference until the existing
+handoff publication releases it. Later child inference uses its own normal worker
+admission rather than borrowing unbounded capacity from its parent.
+
+The explicit tree export is used by managed transfers. The existing version 2
+single-thread export/import and recovery path remain available for legacy
+artifacts, which carry their original single-thread semantics. The worker reads
+both versions; new tree transfers require the matching native runtime update.
+
+Validation for this extension is source review, direct formatting of the worker
+and authored Rust fragments, and `git diff --check`. Native patches were not
+applied or checked. No tests, builds, typechecks, benchmarks, migration execution,
+helper/native execution, hosted validation or computer-use testing ran. Actual
+runtime/platform behavior remains unverified. The full goal remains active for
+remaining Goal/configuration/resource lifecycle coverage, entry-point and
+acceptance review, and final documentation consolidation.

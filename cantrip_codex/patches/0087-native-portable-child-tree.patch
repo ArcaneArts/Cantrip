@@ -1,0 +1,691 @@
+diff --git a/codex-rs/state/src/runtime.rs b/codex-rs/state/src/runtime.rs
+--- a/codex-rs/state/src/runtime.rs
++++ b/codex-rs/state/src/runtime.rs
+@@ -1 +1,2 @@
+ pub(crate) mod portable_thread;
++pub(crate) mod portable_tree;
+diff --git a/codex-rs/state/src/lib.rs b/codex-rs/state/src/lib.rs
+--- a/codex-rs/state/src/lib.rs
++++ b/codex-rs/state/src/lib.rs
+@@ -1 +1,2 @@
+ pub use runtime::portable_thread::PortableThreadState;
++pub use runtime::portable_tree::PortableThreadSpawnEdge;
+diff --git a/codex-rs/state/src/runtime/portable_tree.rs b/codex-rs/state/src/runtime/portable_tree.rs
+new file mode 100644
+--- /dev/null
++++ b/codex-rs/state/src/runtime/portable_tree.rs
+@@ -0,0 +1,68 @@
++//! Actual saved spawn topology, including closed edges and graph-only children.
++use super::StateRuntime;
++use codex_protocol::ThreadId;
++use serde::{Deserialize, Serialize};
++use sqlx::Row;
++
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct PortableThreadSpawnEdge {
++    pub parent_thread_id: ThreadId,
++    pub child_thread_id: ThreadId,
++    pub status: String,
++}
++
++impl StateRuntime {
++    /// Both directions let an attached member retain its original incoming
++    /// spawn relationship without exporting an unrelated parent's history.
++    pub async fn portable_thread_spawn_edges(
++        &self,
++        thread: ThreadId,
++    ) -> anyhow::Result<Vec<PortableThreadSpawnEdge>> {
++        let rows = sqlx::query("SELECT parent_thread_id,child_thread_id,status FROM thread_spawn_edges WHERE parent_thread_id=? OR child_thread_id=? ORDER BY child_thread_id")
++            .bind(thread.to_string()).bind(thread.to_string())
++            .fetch_all(self.pool.as_ref()).await?;
++        rows.into_iter()
++            .map(|row| {
++                Ok(PortableThreadSpawnEdge {
++                    parent_thread_id: ThreadId::try_from(
++                        row.try_get::<String, _>("parent_thread_id")?,
++                    )?,
++                    child_thread_id: ThreadId::try_from(
++                        row.try_get::<String, _>("child_thread_id")?,
++                    )?,
++                    status: row.try_get("status")?,
++                })
++            })
++            .collect()
++    }
++
++    /// An import may insert its exact missing topology or observe its own
++    /// interrupted publication. It must never reopen or retarget a newer edge.
++    pub async fn restore_portable_thread_spawn_edges(
++        &self,
++        edges: &[PortableThreadSpawnEdge],
++    ) -> anyhow::Result<()> {
++        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
++        for edge in edges {
++            anyhow::ensure!(!edge.status.is_empty(), "empty transferred spawn status");
++            sqlx::query("INSERT INTO thread_spawn_edges(parent_thread_id,child_thread_id,status) VALUES(?,?,?) ON CONFLICT(child_thread_id) DO NOTHING")
++                .bind(edge.parent_thread_id.to_string()).bind(edge.child_thread_id.to_string()).bind(&edge.status)
++                .execute(&mut *tx).await?;
++            let actual = sqlx::query(
++                "SELECT parent_thread_id,status FROM thread_spawn_edges WHERE child_thread_id=?",
++            )
++            .bind(edge.child_thread_id.to_string())
++            .fetch_one(&mut *tx)
++            .await?;
++            anyhow::ensure!(
++                actual.try_get::<String, _>("parent_thread_id")?
++                    == edge.parent_thread_id.to_string()
++                    && actual.try_get::<String, _>("status")? == edge.status,
++                "destination spawn relationship already differs"
++            );
++        }
++        tx.commit().await?;
++        Ok(())
++    }
++}
+diff --git a/codex-rs/state/src/runtime/portable_thread.rs b/codex-rs/state/src/runtime/portable_thread.rs
+--- a/codex-rs/state/src/runtime/portable_thread.rs
++++ b/codex-rs/state/src/runtime/portable_thread.rs
+@@ -48,6 +48,27 @@
+         &self,
+         metadata: &ThreadMetadata,
+         state: &PortableThreadState,
++    ) -> anyhow::Result<bool> {
++        self.insert_portable_member_if_absent(metadata, state, true)
++            .await
++    }
++
++    /// Tree artifacts restore the actual captured topology separately. Never
++    /// synthesize an Open edge from old source metadata for those members.
++    pub async fn insert_portable_tree_thread_if_absent(
++        &self,
++        metadata: &ThreadMetadata,
++        state: &PortableThreadState,
++    ) -> anyhow::Result<bool> {
++        self.insert_portable_member_if_absent(metadata, state, false)
++            .await
++    }
++
++    async fn insert_portable_member_if_absent(
++        &self,
++        metadata: &ThreadMetadata,
++        state: &PortableThreadState,
++        derive_spawn_edge: bool,
+     ) -> anyhow::Result<bool> {
+         anyhow::ensure!(
+             matches!(state.memory_mode.as_str(), "enabled" | "disabled"),
+@@ -178,8 +199,13 @@
+             .insert_thread_if_absent_in_transaction(metadata, &state.memory_mode, &mut tx)
+             .await?;
+         tx.commit().await?;
+-        self.insert_thread_spawn_edge_from_source_if_absent(metadata.id, metadata.source.as_str())
+-            .await?;
++        if derive_spawn_edge {
++            self.insert_thread_spawn_edge_from_source_if_absent(
++                metadata.id,
++                metadata.source.as_str(),
++            )
++            .await?;
++        }
+         Ok(inserted)
+     }
+ }
+diff --git a/codex-rs/thread-store/src/portable_history.rs b/codex-rs/thread-store/src/portable_history.rs
+--- a/codex-rs/thread-store/src/portable_history.rs
++++ b/codex-rs/thread-store/src/portable_history.rs
+@@ -1,2 +1,7 @@
+     pub queue: Vec<QueuedUserSubmissionRecord>,
++    /// Version 3 owns one flat persisted tree; version 2 remains a leaf format.
++    #[serde(default, skip_serializing_if = "Vec::is_empty")]
++    pub descendants: Vec<PortableThreadHistory>,
++    #[serde(default, skip_serializing_if = "Vec::is_empty")]
++    pub spawn_edges: Vec<codex_state::PortableThreadSpawnEdge>,
+ }
+diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/local/mod.rs
+--- a/codex-rs/thread-store/src/local/mod.rs
++++ b/codex-rs/thread-store/src/local/mod.rs
+@@ -1 +1,2 @@
+ mod portable_history_import;
++mod portable_history_tree;
+diff --git a/codex-rs/thread-store/src/store.rs b/codex-rs/thread-store/src/store.rs
+--- a/codex-rs/thread-store/src/store.rs
++++ b/codex-rs/thread-store/src/store.rs
+@@ -1 +1,14 @@
++    /// Capture the persisted child tree under the caller's actual native tree
++    /// execution/export guard. Unsupported stores must not silently export a
++    /// root-only artifact in place of a complete tree.
++    fn export_portable_history_tree(
++        &self,
++        _params: LoadThreadHistoryParams,
++    ) -> ThreadStoreFuture<'_, crate::PortableThreadHistory> {
++        Box::pin(async {
++            Err(ThreadStoreError::Unsupported {
++                operation: "export_portable_history_tree",
++            })
++        })
++    }
+     /// Publish a worker-owned transfer into an unused destination conversation.
+diff --git a/codex-rs/thread-store/src/live_thread.rs b/codex-rs/thread-store/src/live_thread.rs
+--- a/codex-rs/thread-store/src/live_thread.rs
++++ b/codex-rs/thread-store/src/live_thread.rs
+@@ -1 +1 @@
+-            .export_portable_history(LoadThreadHistoryParams {
++            .export_portable_history_tree(LoadThreadHistoryParams {
+diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/local/mod.rs
+--- a/codex-rs/thread-store/src/local/mod.rs
++++ b/codex-rs/thread-store/src/local/mod.rs
+@@ -1 +1,7 @@
++    fn export_portable_history_tree(
++        &self,
++        params: LoadThreadHistoryParams,
++    ) -> ThreadStoreFuture<'_, crate::PortableThreadHistory> {
++        Box::pin(portable_history::export_tree(self, params))
++    }
+     fn import_portable_history(
+diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/local/mod.rs
+--- a/codex-rs/thread-store/src/local/mod.rs
++++ b/codex-rs/thread-store/src/local/mod.rs
+@@ -1 +1,7 @@
+-        Box::pin(portable_history_import::import(self, transfer_id, snapshot))
++        Box::pin(async move {
++            if snapshot.version == 3 {
++                portable_history_tree::import(self, transfer_id, snapshot).await
++            } else {
++                portable_history_import::import(self, transfer_id, snapshot).await
++            }
++        })
+diff --git a/codex-rs/thread-store/src/local/portable_history.rs b/codex-rs/thread-store/src/local/portable_history.rs
+--- a/codex-rs/thread-store/src/local/portable_history.rs
++++ b/codex-rs/thread-store/src/local/portable_history.rs
+@@ -1,2 +1,4 @@
+         queue,
++        descendants: Vec::new(),
++        spawn_edges: Vec::new(),
+     })
+diff --git a/codex-rs/thread-store/src/local/portable_history.rs b/codex-rs/thread-store/src/local/portable_history.rs
+--- a/codex-rs/thread-store/src/local/portable_history.rs
++++ b/codex-rs/thread-store/src/local/portable_history.rs
+@@ -1 +1,78 @@
++/// Called while Core retains the actual tree execution/export admission guard.
++/// Persisted descendants need not have a live Session in that coordinator.
++pub(super) async fn export_tree(
++    store: &LocalThreadStore,
++    params: LoadThreadHistoryParams,
++) -> ThreadStoreResult<PortableThreadHistory> {
++    use std::collections::{BTreeMap, HashSet, VecDeque};
++    let root = params.thread_id;
++    let mut snapshot = export(store, params).await?;
++    super::portable_history_tree::ensure_settled(&snapshot)?;
++    let database = store
++        .state_db()
++        .await
++        .ok_or_else(|| storage_error("metadata database is unavailable"))?;
++    let mut visited = HashSet::from([root]);
++    let mut pending = VecDeque::from([root]);
++    let mut edges = BTreeMap::new();
++    while let Some(parent) = pending.pop_front() {
++        let observed = database
++            .portable_thread_spawn_edges(parent)
++            .await
++            .map_err(storage_error)?;
++        let mut children = database
++            .list_attached_thread_ids(parent)
++            .await
++            .map_err(storage_error)?;
++        for edge in observed {
++            if edge.parent_thread_id == parent {
++                children.push(edge.child_thread_id);
++            }
++            if let Some(prior) = edges.insert(edge.child_thread_id.to_string(), edge.clone())
++                && prior != edge
++            {
++                return Err(storage_error(
++                    "spawn topology changed during history capture",
++                ));
++            }
++        }
++        children.sort_by_key(ToString::to_string);
++        children.dedup();
++        for child in children {
++            if !visited.insert(child) {
++                continue;
++            }
++            // Attempt the actual history export, rather than treating lack of a
++            // cached/live Session as proof that a child has no durable history.
++            let metadata = database.get_thread(child).await.map_err(storage_error)?;
++            match export(
++                store,
++                LoadThreadHistoryParams {
++                    thread_id: child,
++                    include_archived: true,
++                },
++            )
++            .await
++            {
++                Ok(child) => {
++                    super::portable_history_tree::ensure_settled(&child)?;
++                    snapshot.descendants.push(child);
++                }
++                Err(ThreadStoreError::ThreadNotFound { thread_id })
++                    if thread_id == child && metadata.is_none() =>
++                {
++                    // Ephemeral/deleted graph-only identity: preserve its real
++                    // edge and status, without inventing a conversation/turn.
++                }
++                Err(error) => return Err(error),
++            }
++            pending.push_back(child);
++        }
++    }
++    snapshot.version = 3;
++    snapshot.spawn_edges = edges.into_values().collect();
++    // The same structural validation is used by the actual destination import.
++    super::portable_history_tree::validate_topology(&snapshot)?;
++    Ok(snapshot)
++}
+ fn read_segment(path: &Path, end: Option<u64>) -> ThreadStoreResult<String> {
+diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
+--- a/codex-rs/thread-store/src/local/portable_history_import.rs
++++ b/codex-rs/thread-store/src/local/portable_history_import.rs
+@@ -1 +1 @@
+-fn error(error: impl std::fmt::Display) -> ThreadStoreError {
++pub(super) fn error(error: impl std::fmt::Display) -> ThreadStoreError {
+diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
+--- a/codex-rs/thread-store/src/local/portable_history_import.rs
++++ b/codex-rs/thread-store/src/local/portable_history_import.rs
+@@ -1 +1 @@
+-fn conflict(message: &str) -> ThreadStoreError {
++pub(super) fn conflict(message: &str) -> ThreadStoreError {
+diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
+--- a/codex-rs/thread-store/src/local/portable_history_import.rs
++++ b/codex-rs/thread-store/src/local/portable_history_import.rs
+@@ -1 +1 @@
+-fn validate(snapshot: &PortableThreadHistory) -> ThreadStoreResult<Vec<String>> {
++pub(super) fn validate(snapshot: &PortableThreadHistory) -> ThreadStoreResult<Vec<String>> {
+diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
+--- a/codex-rs/thread-store/src/local/portable_history_import.rs
++++ b/codex-rs/thread-store/src/local/portable_history_import.rs
+@@ -1 +1 @@
+-fn private_dir(path: &Path) -> ThreadStoreResult<()> {
++pub(super) fn private_dir(path: &Path) -> ThreadStoreResult<()> {
+diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
+--- a/codex-rs/thread-store/src/local/portable_history_import.rs
++++ b/codex-rs/thread-store/src/local/portable_history_import.rs
+@@ -1 +1 @@
+-fn write_exact(path: &Path, content: &[u8]) -> ThreadStoreResult<()> {
++pub(super) fn write_exact(path: &Path, content: &[u8]) -> ThreadStoreResult<()> {
+diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
+--- a/codex-rs/thread-store/src/local/portable_history_import.rs
++++ b/codex-rs/thread-store/src/local/portable_history_import.rs
+@@ -1 +1,2 @@
+-    if snapshot.version != 2
++    if !matches!(snapshot.version, 2 | 3)
++        || (snapshot.version == 2 && (!snapshot.descendants.is_empty() || !snapshot.spawn_edges.is_empty()))
+diff --git a/codex-rs/thread-store/src/local/portable_history_tree.rs b/codex-rs/thread-store/src/local/portable_history_tree.rs
+new file mode 100644
+--- /dev/null
++++ b/codex-rs/thread-store/src/local/portable_history_tree.rs
+@@ -0,0 +1,354 @@
++//! One immutable, worker-private artifact for a settled native conversation tree.
++use std::collections::{BTreeMap, HashMap, HashSet};
++use std::fs;
++use std::path::{Path, PathBuf};
++
++use super::LocalThreadStore;
++use super::portable_history_import::{conflict, error, private_dir, validate, write_exact};
++use crate::{PortableThreadHistory, ThreadStoreError, ThreadStoreResult};
++use codex_protocol::ThreadId;
++use codex_protocol::protocol::{EventMsg, ThreadHistoryMode};
++use codex_rollout::RolloutItem;
++
++/// This is the same actual last-start/terminal identity used by native durable
++/// continuation validation. A cold unfinished child cannot become fresh input.
++pub(super) fn ensure_settled(snapshot: &PortableThreadHistory) -> ThreadStoreResult<()> {
++    let mut unfinished: Option<String> = None;
++    for segment in &snapshot.segments {
++        for line in segment
++            .content
++            .lines()
++            .filter(|line| !line.trim().is_empty())
++        {
++            match codex_rollout::parse_rollout_line(line).map_err(error)?.item {
++                RolloutItem::EventMsg(EventMsg::TurnStarted(event)) => {
++                    unfinished = Some(event.turn_id)
++                }
++                RolloutItem::EventMsg(EventMsg::TurnComplete(event))
++                    if unfinished.as_deref() == Some(event.turn_id.as_str()) =>
++                {
++                    unfinished = None
++                }
++                RolloutItem::EventMsg(EventMsg::TurnAborted(event))
++                    if event
++                        .turn_id
++                        .as_deref()
++                        .is_none_or(|id| unfinished.as_deref() == Some(id)) =>
++                {
++                    unfinished = None
++                }
++                _ => {}
++            }
++        }
++    }
++    if unfinished.is_some() {
++        return Err(ThreadStoreError::InvalidRequest {
++            message: format!(
++                "native thread {} has an unfinished saved turn; settle or Stop that actual turn before transferring its tree",
++                snapshot.thread_id
++            ),
++        });
++    }
++    Ok(())
++}
++
++/// Graph-only identities retain lookup/status semantics but carry no invented
++/// history. Attached relationships and spawn relationships can overlap.
++pub(super) fn validate_topology(snapshot: &PortableThreadHistory) -> ThreadStoreResult<()> {
++    if snapshot.version != 3 {
++        return Err(conflict("invalid portable tree version"));
++    }
++    let mut nodes = HashSet::from([snapshot.thread_id]);
++    for child in &snapshot.descendants {
++        if child.version != 2
++            || !child.descendants.is_empty()
++            || !child.spawn_edges.is_empty()
++            || !nodes.insert(child.thread_id)
++        {
++            return Err(conflict("invalid or duplicated portable tree member"));
++        }
++    }
++    let mut incoming = HashSet::new();
++    for edge in &snapshot.spawn_edges {
++        if edge.status.is_empty() || !incoming.insert(edge.child_thread_id) {
++            return Err(conflict("invalid or duplicated portable spawn edge"));
++        }
++    }
++    let mut reached = HashSet::from([snapshot.thread_id]);
++    loop {
++        let before = reached.len();
++        for edge in &snapshot.spawn_edges {
++            if reached.contains(&edge.parent_thread_id) {
++                reached.insert(edge.child_thread_id);
++            }
++        }
++        for child in &snapshot.descendants {
++            if child
++                .metadata
++                .attached_thread_parent_id
++                .is_some_and(|parent| reached.contains(&parent))
++            {
++                reached.insert(child.thread_id);
++            }
++        }
++        if reached.len() == before {
++            break;
++        }
++    }
++    if !nodes.is_subset(&reached)
++        || snapshot
++            .spawn_edges
++            .iter()
++            .any(|edge| !reached.contains(&edge.child_thread_id))
++    {
++        return Err(conflict("portable tree includes an unrelated child"));
++    }
++    Ok(())
++}
++
++struct Rollout {
++    name: String,
++    content: String,
++    archived: bool,
++}
++fn directory(home: &Path, transfer: ThreadId, archived: bool) -> PathBuf {
++    home.join(if archived {
++        codex_rollout::ARCHIVED_SESSIONS_SUBDIR
++    } else {
++        codex_rollout::SESSIONS_SUBDIR
++    })
++    .join(format!("managed-tree-{transfer}"))
++}
++fn verify_manifest(directory: &Path, manifest: &[u8]) -> ThreadStoreResult<()> {
++    if fs::read(directory.join("tree.json")).map_err(error)? != manifest {
++        return Err(conflict("portable tree transfer identity was reused"));
++    }
++    Ok(())
++}
++
++pub(super) async fn import(
++    store: &LocalThreadStore,
++    transfer_id: ThreadId,
++    snapshot: PortableThreadHistory,
++) -> ThreadStoreResult<PathBuf> {
++    validate_topology(&snapshot)?;
++    let nodes = std::iter::once(&snapshot)
++        .chain(&snapshot.descendants)
++        .collect::<Vec<_>>();
++    let mut rollouts: BTreeMap<String, (ThreadId, Rollout)> = BTreeMap::new();
++    let mut selected = HashMap::new();
++    let mut paths = HashMap::new();
++    for node in &nodes {
++        // Reuse the actual lineage/queue identity validator, including each
++        // child's own frozen byte and ordinal boundaries.
++        let names = validate(node)?;
++        ensure_settled(node)?;
++        let last = node
++            .segments
++            .last()
++            .ok_or_else(|| conflict("empty tree member history"))?;
++        let archived = node.metadata.archived_at.is_some();
++        selected.insert(last.rollout_id, archived);
++        paths.insert(
++            node.thread_id,
++            directory(&store.config.codex_home, transfer_id, archived).join(
++                names
++                    .last()
++                    .ok_or_else(|| conflict("empty tree member history"))?,
++            ),
++        );
++        for (segment, name) in node.segments.iter().zip(names) {
++            let key = segment.rollout_id.to_string();
++            if let Some((_, prior)) = rollouts.get_mut(&key) {
++                if prior.name != name {
++                    return Err(conflict("shared rollout filename differs"));
++                }
++                if prior.content.starts_with(&segment.content) {
++                    continue;
++                }
++                if !segment.content.starts_with(&prior.content) {
++                    return Err(conflict("shared rollout prefixes differ"));
++                }
++                prior.content = segment.content.clone();
++            } else {
++                rollouts.insert(
++                    key,
++                    (
++                        segment.rollout_id,
++                        Rollout {
++                            name,
++                            content: segment.content.clone(),
++                            archived,
++                        },
++                    ),
++                );
++            }
++        }
++    }
++    for (id, rollout) in rollouts.values_mut() {
++        if let Some(archived) = selected.get(id) {
++            rollout.archived = *archived;
++        }
++    }
++    let root_path = paths[&snapshot.thread_id].clone();
++    let manifest = serde_json::to_vec(&snapshot).map_err(error)?;
++    let receipt = store
++        .config
++        .codex_home
++        .join("managed-history-trees")
++        .join(transfer_id.to_string());
++    // An exact committed retry is a receipt read, never a restoration over
++    // subsequent native work, queues, Goal state or closed spawn edges.
++    if receipt.join("complete").is_file() {
++        verify_manifest(&receipt, &manifest)?;
++        return Ok(root_path);
++    }
++    let mut ids = rollouts
++        .values()
++        .map(|(id, _)| *id)
++        .chain(nodes.iter().map(|node| node.thread_id))
++        .collect::<Vec<_>>();
++    ids.sort_by_key(ToString::to_string);
++    ids.dedup();
++    let mut local_writers = Vec::new();
++    for id in &ids {
++        local_writers.push(store.live_writer_locks.lock(*id).await);
++        store.ensure_live_recorder_absent(*id).await?;
++    }
++    let _writers = store.acquire_writer_locks(&ids).await?;
++    // Recheck the exact receipt after taking all writers: another importer may
++    // have completed while this request waited. It cannot overwrite that work.
++    if receipt.join("complete").is_file() {
++        verify_manifest(&receipt, &manifest)?;
++        return Ok(root_path);
++    }
++    let database = store
++        .state_db()
++        .await
++        .ok_or_else(|| error("metadata database is unavailable"))?;
++    for node in &nodes {
++        if let Some(existing) = database.get_thread(node.thread_id).await.map_err(error)?
++            && existing.rollout_path != paths[&node.thread_id]
++        {
++            return Err(conflict(
++                "destination tree member already belongs to another history",
++            ));
++        }
++    }
++    for (id, rollout) in rollouts.values() {
++        if let Some(existing) =
++            codex_rollout::find_rollout_path_by_rollout_id(&store.config.codex_home, *id)
++                .await
++                .map_err(error)?
++            && existing
++                != directory(&store.config.codex_home, transfer_id, rollout.archived)
++                    .join(&rollout.name)
++        {
++            return Err(conflict("destination already owns a tree rollout"));
++        }
++    }
++    let home = store.config.codex_home.clone();
++    let files = rollouts
++        .values()
++        .map(|(_, r)| (r.archived, r.name.clone(), r.content.clone()))
++        .collect::<Vec<_>>();
++    let receipt_copy = receipt.clone();
++    let manifest_copy = manifest.clone();
++    tokio::task::spawn_blocking(move || -> ThreadStoreResult<()> {
++        private_dir(&receipt_copy)?;
++        write_exact(&receipt_copy.join("tree.json"), &manifest_copy)?;
++        verify_manifest(&receipt_copy, &manifest_copy)?;
++        for archived in [false, true] {
++            let group = files
++                .iter()
++                .filter(|(a, _, _)| *a == archived)
++                .collect::<Vec<_>>();
++            if group.is_empty() {
++                continue;
++            }
++            let destination = directory(&home, transfer_id, archived);
++            if destination.exists() {
++                verify_manifest(&destination, &manifest_copy)?;
++            } else {
++                let stage = receipt_copy.join(if archived {
++                    "pending-archived"
++                } else {
++                    "pending-live"
++                });
++                private_dir(&stage)?;
++                write_exact(&stage.join("tree.json"), &manifest_copy)?;
++                for (_, name, content) in &group {
++                    write_exact(&stage.join(name), content.as_bytes())?;
++                }
++                fs::File::open(&stage)
++                    .and_then(|f| f.sync_all())
++                    .map_err(error)?;
++                let parent = destination
++                    .parent()
++                    .ok_or_else(|| error("missing tree destination"))?;
++                private_dir(parent)?;
++                fs::rename(&stage, &destination).map_err(error)?;
++                fs::File::open(parent)
++                    .and_then(|f| f.sync_all())
++                    .map_err(error)?;
++            }
++            for (_, name, content) in group {
++                if fs::read(destination.join(name)).map_err(error)? != content.as_bytes() {
++                    return Err(conflict("published tree rollout changed before completion"));
++                }
++            }
++        }
++        Ok(())
++    })
++    .await
++    .map_err(error)??;
++    // Each canonical rollout is materialized once. Frozen descendants still use
++    // their own source prefix limits; a longer shared file cannot widen them.
++    let paginated = nodes
++        .iter()
++        .filter(|node| node.metadata.history_mode == ThreadHistoryMode::Paginated)
++        .flat_map(|node| node.segments.iter().map(|segment| segment.rollout_id))
++        .collect::<HashSet<_>>();
++    for (id, rollout) in rollouts.values() {
++        if paginated.contains(id) {
++            super::thread_history_materialization::materialize_to_sqlite(
++                store,
++                *id,
++                &directory(&store.config.codex_home, transfer_id, rollout.archived)
++                    .join(&rollout.name),
++            )
++            .await?;
++        }
++    }
++    // Children and graph identities are restored before the root's final row.
++    // Destination preparation remains gated until the server publishes its
++    // existing handoff; importing a member never starts a native turn.
++    for node in nodes.iter().skip(1).chain(nodes.iter().take(1)) {
++        if node.thread_id == snapshot.thread_id {
++            database
++                .restore_portable_thread_spawn_edges(&snapshot.spawn_edges)
++                .await
++                .map_err(error)?;
++        }
++        database
++            .thread_queue()
++            .restore_into_empty(node.thread_id, &node.queue)
++            .await
++            .map_err(error)?;
++        let mut metadata = node.metadata.clone();
++        metadata.rollout_path = paths[&node.thread_id].clone();
++        database
++            .insert_portable_tree_thread_if_absent(&metadata, &node.state)
++            .await
++            .map_err(error)?;
++    }
++    tokio::task::spawn_blocking(move || {
++        write_exact(&receipt.join("complete"), b"1\n")?;
++        fs::File::open(&receipt)
++            .and_then(|f| f.sync_all())
++            .map_err(error)
++    })
++    .await
++    .map_err(error)??;
++    Ok(root_path)
++}
+diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
+--- a/codex-rs/app-server/src/request_processors/thread_processor.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
+@@ -1 +1,4 @@
+-        snapshot.metadata.model_provider = destination.model_provider_id;
++        snapshot.metadata.model_provider = destination.model_provider_id.clone();
++        for child in &mut snapshot.descendants {
++            child.metadata.model_provider = destination.model_provider_id.clone();
++        }

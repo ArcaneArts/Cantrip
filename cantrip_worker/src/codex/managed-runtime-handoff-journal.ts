@@ -351,7 +351,7 @@ export class ManagedRuntimeHandoffJournal {
       // actual published artifact identity before acknowledging its receipt.
       const artifact = z
         .object({
-          version: z.literal(2),
+          version: z.union([z.literal(2), z.literal(3)]),
           thread_id: id,
           metadata: z.object({ id }),
         })
