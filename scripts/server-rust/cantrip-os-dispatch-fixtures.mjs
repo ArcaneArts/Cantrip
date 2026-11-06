@@ -38,6 +38,18 @@ export const osOpaque = {
   },
 };
 const transport = { kind: "docker", container: "cantrip-os" };
+const backupWorkspace = {
+  id,
+  guestWorkspaceId: "example",
+  uid: 20000,
+  gid: 20000,
+  homeGuestPath: "/home/example",
+};
+const backupRequest = {
+  kind: "metadata",
+  sequence: 1,
+  envelope: osOpaque.envelope,
+};
 const runExecution = {
   kind: "cantrip-os",
   scope: Object.fromEntries(
@@ -121,6 +133,42 @@ export const osCommands = [
     sourceKind: "git",
   },
   { type: "cantrip-os.operation.inspect", scope: osScope, operationId: id },
+  {
+    type: "cantrip-os.backup.capture",
+    scope: osScope,
+    operationId: id,
+    transport,
+    workspace: backupWorkspace,
+    sources: [],
+    protectedRequest: backupRequest,
+  },
+  {
+    type: "cantrip-os.backup.restore",
+    scope: osScope,
+    operationId: id,
+    transport,
+    workspace: backupWorkspace,
+    backupId: id,
+    backupScope: osScope,
+    replace: false,
+    protectedRequest: backupRequest,
+  },
+  {
+    type: "cantrip-os.backup.rollback",
+    scope: osScope,
+    operationId: id,
+    transport,
+    workspace: backupWorkspace,
+    restoreOperationId: id,
+    protectedRequest: backupRequest,
+  },
+  {
+    type: "cantrip-os.backup.observe",
+    scope: osScope,
+    operationId: id,
+    action: "capture",
+    mode: "observe",
+  },
 ];
 export function osDispatchFixtures() {
   const receipt = {
@@ -281,6 +329,74 @@ export function osDispatchFixtures() {
       { kind: "cantrip-os", scope: linkedExecutionScope, transport },
     ],
     cantripOsDispatchScopeSchema: [osScope],
+    cantripOsBackupWorkspaceSchema: [backupWorkspace],
+    cantripOsBackupSourceSchema: [
+      {
+        bindingId: id,
+        projectId: "project",
+        projectSourceId: id,
+        worktreeId: id,
+        mode: "linux-owned",
+        guestPath: "/home/example/checkouts/source",
+        gitCommonGuestPath: null,
+      },
+    ],
+    cantripOsBackupPrivateRequestSchema: [
+      {
+        action: "capture",
+        workspaceId: id,
+        label: "Private 日本",
+        exclusions: ["repo/node_modules"],
+      },
+      { action: "restore", workspaceId: id, backupId: id, replace: false },
+      { action: "rollback", workspaceId: id, restoreOperationId: id },
+    ],
+    cantripOsBackupPrivateResultSchema: [
+      {
+        action: "error",
+        operationAction: "restore",
+        message: "Private recovery diagnostic",
+      },
+      {
+        action: "capture",
+        metadata: {
+          version: 1,
+          archiveBytes: 10240,
+          archiveSha256: "a".repeat(64),
+          manifest: {},
+        },
+        cleanupWarnings: [],
+      },
+      { action: "restore", backupId: id, receipt: {}, cleanupWarnings: [] },
+      {
+        action: "rollback",
+        restoreOperationId: id,
+        receipt: {},
+        cleanupWarnings: [],
+      },
+    ],
+    cantripOsBackupOperationResultSchema: [
+      {
+        operationId: id,
+        action: "capture",
+        state: "ready",
+        phase: "complete",
+        startedAt: "2026-11-05T00:00:00.000Z",
+        updatedAt: "2026-11-05T00:01:00.000Z",
+        protectedResult: { ...backupRequest, sequence: 2 },
+        error: null,
+      },
+      {
+        operationId: id,
+        action: "restore",
+        state: "unknown",
+        phase: "recovery-required",
+        startedAt: null,
+        updatedAt: "2026-11-05T00:01:00.000Z",
+        protectedResult: null,
+        error: "Observe the saved admission",
+      },
+    ],
     cantripOsSourceDispatchScopeSchema: [
       osSourceScope,
       { ...osSourceScope, repositoryFingerprint: "fingerprint" },

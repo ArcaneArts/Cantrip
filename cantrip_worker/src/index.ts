@@ -352,6 +352,7 @@ import { NativeSuspensionStore } from "./native-suspension-store.js";
 import { createManagedSuspensionCapture } from "./codex/managed-native-suspension.js";
 import { WorktreeManager } from "./worktrees.js";
 import { CantripOsController } from "./os-executor/controller.js";
+import { CantripOsBackupManager } from "./os-executor/backup-manager.js";
 import { OsTerminalLauncher } from "./os-executor/terminal-launcher.js";
 import { OsFileOperations } from "./os-executor/files.js";
 import { OsRunDefinitionOperations } from "./os-executor/run-definitions.js";
@@ -1011,6 +1012,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const cantripOs = new CantripOsController(
     config.dataDirectory,
     config.workerId,
+  );
+  const osBackups = new CantripOsBackupManager(
+    config.dataDirectory,
+    config.workerId,
+    cantripOs,
+    workerEncryption,
   );
   const osTerminals = new OsTerminalLauncher(
     config.dataDirectory,
@@ -3882,6 +3889,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         );
       case "cantrip-os.run-definition":
         return osRunDefinitions.execute(command);
+      case "cantrip-os.backup.capture":
+      case "cantrip-os.backup.restore":
+      case "cantrip-os.backup.rollback":
+      case "cantrip-os.backup.observe":
+        return osBackups.handle(command);
       case "cantrip-os.inspect":
       case "cantrip-os.attach":
       case "cantrip-os.workspaces.list":

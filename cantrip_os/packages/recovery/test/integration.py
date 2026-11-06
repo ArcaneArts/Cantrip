@@ -24,7 +24,7 @@ import uuid
 
 sys.path.insert(0, "/usr/lib/cantrip-os-recovery")
 from maintenance import ChangeWatch
-from state import workspace
+from state import workspace, Store, process_identity
 
 RECOVERY_ROOT = Path(json.loads(Path("/etc/cantrip-os/recovery.json").read_text())["state_dir"])
 
@@ -212,6 +212,30 @@ class Recovery(unittest.TestCase):
         self.assertEqual((home(target) / "worktree/tracked").read_text(), "external original")
         self.assertTrue(git(worktree, "rev-parse", "HEAD").strip())
 
+    def test_spool_cleanup_preserves_rollback_including_legacy_forgotten_receipts(self):
+        for legacy in (False, True):
+            with self.subTest(legacy_forgotten=legacy):
+                source, target = create(), create()
+                (home(source) / "replacement").write_text("backup data")
+                (home(target) / "original").write_text("original data")
+                admitted = receive(target, capture(source), replace=True)
+                cli("restore", admitted)
+                cleaned = cli("forget", admitted)
+                self.assertEqual(cleaned["state"], "restored")
+                self.assertFalse((RECOVERY_ROOT / "operations" / admitted / "archive.tar").exists())
+                if legacy:
+                    # Version 0.1.0 discarded the final state when forgetting
+                    # spool files, but retained its receipt and inode evidence.
+                    store = Store()
+                    with store.lock():
+                        record = store.read(admitted)
+                        record["state"] = "forgotten"
+                        record.pop("spool_forgotten", None)
+                        store.save(record)
+                result = cli("rollback", operation(), admitted)
+                self.assertEqual(result["state"], "rolled-back")
+                self.assertEqual((home(target) / "original").read_text(), "original data")
+
     def test_corrupt_archive_cannot_activate(self):
         source, target = create(), create()
         (home(source) / "payload").write_bytes(b"original payload")
@@ -354,6 +378,64 @@ print(json.dumps(result))
         remote = result["maintenance"]["services"][0]
         self.assertEqual(remote["stop_exit_code"], 17)
         self.assertTrue(remote["stop_confirmed_after_error"])
+
+
+    def test_expected_workspace_rejects_stale_account_before_capture_effects(self):
+        source = create()
+        expected = {key: source[key] for key in ("uid", "gid", "home")}
+        expected["uid"] += 1
+        admitted = operation()
+        before = json.loads(run("cantrip-executor", "status").stdout)["generation"]
+        result = cli("--expect-workspace", json.dumps(expected), "capture", admitted, source["id"], check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("admitted workspace account changed", result.stderr.decode())
+        self.assertFalse((RECOVERY_ROOT / "operations" / admitted).exists())
+        self.assertEqual(json.loads(run("cantrip-executor", "status").stdout)["generation"], before)
+
+    def test_saved_and_current_target_identity_are_checked_before_restore(self):
+        source, target = create(), create()
+        (home(source) / "new").write_text("new workspace data")
+        (home(target) / "original").write_text("original data")
+        snapshot = capture(source)
+        archive = RECOVERY_ROOT / "operations" / snapshot["operation_id"] / "archive.tar"
+        expected = {key: target[key] for key in ("uid", "gid", "home")}
+        admitted = operation()
+        cli("--expect-workspace", json.dumps(expected), "receive", admitted, target["id"], "--request", json.dumps({
+            "archive_bytes": archive.stat().st_size, "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(), "replace": True,
+        }), input=archive.read_bytes())
+        wrong = {**expected, "gid": expected["gid"] + 1}
+        result = cli("--expect-workspace", json.dumps(wrong), "restore", admitted, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(cli("inspect", admitted)["state"], "received")
+        self.assertEqual((home(target) / "original").read_text(), "original data")
+        self.assertEqual(cli("--expect-workspace", json.dumps(expected), "restore", admitted)["state"], "restored")
+
+    def test_stale_runtime_is_rejected_under_the_maintenance_lock(self):
+        source = create()
+        status = json.loads(run("cantrip-executor", "status").stdout)
+        if status["attachment"] is None:
+            status = json.loads(run("cantrip-executor", "attach", "00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002").stdout)
+        expected = {"guestInstanceId": status["instance_id"], "ownerId": status["attachment"]["owner_id"],
+                    "workerId": status["attachment"]["worker_id"], "runtimeGeneration": operation()}
+        admitted = operation()
+        result = cli("--expect", json.dumps(expected), "capture", admitted, source["id"], check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("admitted OS runtime changed", result.stderr.decode())
+        self.assertFalse((RECOVERY_ROOT / "operations" / admitted).exists())
+        self.assertEqual(json.loads(run("cantrip-executor", "status").stdout)["generation"], status["generation"])
+
+    def test_previous_boot_cannot_appear_live_when_pid_and_start_ticks_match(self):
+        store = Store()
+        with store.lock():
+            record, fresh = store.admit(operation(), "capture", {})
+            self.assertTrue(fresh)
+            identity = process_identity(os.getpid())
+            record["process_identity"] = operation() + ":" + identity.split(":", 1)[1]
+            record["state"] = "capturing"
+            store.save(record)
+        observed = cli("inspect", record["operation_id"])
+        self.assertFalse(observed["active"])
+        self.assertEqual(observed["state"], "unknown")
 
 
 class RecoveryRemoval(unittest.TestCase):

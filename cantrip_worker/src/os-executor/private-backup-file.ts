@@ -237,6 +237,20 @@ async function* records(path: string) {
 export async function openPrivateBackup(
   input: Identity & { source: string; destination: string },
 ) {
+  return consumePrivateBackup(input);
+}
+
+/** Observe an already published encrypted file without creating a plaintext
+ * archive or inferring success from a filename alone. */
+export async function verifyPrivateBackup(
+  input: Identity & { source: string },
+) {
+  return consumePrivateBackup(input);
+}
+
+async function consumePrivateBackup(
+  input: Identity & { source: string; destination?: string },
+) {
   const context = cantripOsBackupCryptoContextSchema.parse(input.context);
   const iterator = records(input.source);
   let material: ReturnType<BackupKeyAccess["componentKey"]> | undefined;
@@ -268,7 +282,8 @@ export async function openPrivateBackup(
     } finally {
       clearSensitiveBytes(manifestBytes);
     }
-    output = await privateOutput(input.destination);
+    if (input.destination !== undefined)
+      output = await privateOutput(input.destination);
     const digest = createHash("sha256");
     let archiveBytes = 0,
       count = 0,
@@ -289,7 +304,7 @@ export async function openPrivateBackup(
           if (archiveBytes > metadata.archiveBytes)
             throw new CantripDecryptionError();
           digest.update(plaintext);
-          await output.handle.writeFile(plaintext);
+          if (output) await output.handle.writeFile(plaintext);
           count++;
         } else {
           const end = cantripOsBackupEndSchema.parse(
@@ -310,7 +325,8 @@ export async function openPrivateBackup(
       }
     }
     if (!ended) throw new CantripDecryptionError();
-    await publish(output.temporary, input.destination, output.handle);
+    if (output && input.destination !== undefined)
+      await publish(output.temporary, input.destination, output.handle);
     return { metadata, keyRevision: header.keyRevision };
   } finally {
     if (material) clearSensitiveBytes(material.key);

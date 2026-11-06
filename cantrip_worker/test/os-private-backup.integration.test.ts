@@ -192,7 +192,7 @@ describe.skipIf(!enabled)("real package private backup transfer", () => {
         transport,
         args: [...expected, "forget", captureId],
       });
-      expect(forgotten.state).toBe("forgotten");
+      expect(forgotten.state).toBe("captured");
       const artifacts = new URL(
         "../../cantrip_os/artifacts/phase5-private-backup/",
         import.meta.url,

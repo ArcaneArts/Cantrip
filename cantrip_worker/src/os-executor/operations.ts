@@ -1,5 +1,5 @@
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { CantripOsDispatchScope } from "@cantrip/protocol";
@@ -7,6 +7,7 @@ import {
   OsExecutorDeliveryError,
   type OsExecutorBinding,
 } from "./connection.js";
+import { writeOsOperationRecord } from "./operation-files.js";
 
 export interface OsOperationRecord {
   version: 1;
@@ -21,6 +22,8 @@ export interface OsOperationRecord {
   error: string | null;
   native: { binding: OsExecutorBinding; sessionId: string } | null;
   processes: Array<{ processId: string; argv: string[] }>;
+  /** Private resumable administrative progress; never projected by result(). */
+  checkpoint?: unknown;
 }
 
 /** Private worker records survive lost command receipts and worker restarts.
@@ -90,9 +93,9 @@ export class OsOperationStore {
       save: () => Promise<void>,
       journalPath: string,
     ) => Promise<unknown>,
+    initialCheckpoint?: unknown,
   ): Promise<OsOperationRecord> {
     const file = this.file(scope, operationId);
-    await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
     const admissionFingerprint = createHash("sha256")
       .update(JSON.stringify([command, admission]))
       .digest("hex");
@@ -109,12 +112,10 @@ export class OsOperationStore {
       error: null,
       native: null,
       processes: [],
+      checkpoint: initialCheckpoint,
     };
     try {
-      await writeFile(file, JSON.stringify(record) + "\n", {
-        mode: 0o600,
-        flag: "wx",
-      });
+      await writeOsOperationRecord(file, record, true);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       const existing = await this.inspect(scope, operationId);
@@ -131,11 +132,7 @@ export class OsOperationStore {
     }
     const save = async () => {
       record.updatedAt = new Date().toISOString();
-      const temporary = `${file}.${randomUUID()}`;
-      await writeFile(temporary, JSON.stringify(record) + "\n", {
-        mode: 0o600,
-      });
-      await rename(temporary, file);
+      await writeOsOperationRecord(file, record);
     };
     this.active.add(file);
     try {
@@ -191,11 +188,46 @@ export class OsOperationStore {
       error: null,
       updatedAt: new Date().toISOString(),
     };
-    const temporary = `${file}.${randomUUID()}`;
-    await writeFile(temporary, JSON.stringify(recovered) + "\n", {
-      mode: 0o600,
-    });
-    await rename(temporary, file);
+    await writeOsOperationRecord(file, recovered);
     return recovered;
+  }
+
+  /** Continue observation of an existing admission only. The caller must not
+   * dispatch an uncertain mutation. No record is created when it is missing. */
+  async reconcile(
+    scope: CantripOsDispatchScope,
+    operationId: string,
+    observe: (
+      record: OsOperationRecord,
+      save: () => Promise<void>,
+    ) => Promise<void>,
+  ): Promise<OsOperationRecord | null> {
+    const file = this.file(scope, operationId);
+    const record = await this.inspect(scope, operationId);
+    if (!record) return null;
+    if (!isDeepStrictEqual(record.scope, scope))
+      throw new Error("The saved OS admission scope changed.");
+    if (this.active.has(file) || record.state === "ready") return record;
+    this.active.add(file);
+    const save = async () => {
+      record.updatedAt = new Date().toISOString();
+      await writeOsOperationRecord(file, record);
+    };
+    try {
+      record.state = "unknown";
+      try {
+        await observe(record, save);
+      } catch (error) {
+        record.state = "unknown";
+        record.error =
+          error instanceof Error
+            ? error.message
+            : "OS recovery observation failed.";
+      }
+      await save();
+      return record;
+    } finally {
+      this.active.delete(file);
+    }
   }
 }

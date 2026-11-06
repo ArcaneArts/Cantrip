@@ -1,14 +1,15 @@
 # Optional workspace recovery package
 
-`cantrip-os-recovery` 0.1.0 supplies root administration commands for consistent
+`cantrip-os-recovery` 0.2.0 supplies root administration commands for consistent
 workspace capture, staged restore and rollback. It has no daemon, network
 listener, Worker, model credentials or scheduler. Docker and ISO launch scripts
 include it with the executor edition; `CANTRIP_OS_RECOVERY=0` omits it. The ordinary
 OS remains selectable with `CANTRIP_OS_WORKSPACES=0`.
 
-This is the guest package checkpoint. Encrypted Worker storage, Server admissions
-and Cantrip backup controls are subsequent Phase 5 work. Local staging is
-plaintext readable by root; it is not an encrypted portable backup product yet.
+Encrypted Worker storage and durable Worker backup jobs build on this guest
+package. Server admissions, the catalogue and Cantrip backup controls remain
+subsequent Phase 5 work. Local guest staging is plaintext readable by root;
+the Worker encrypts archives outside the OS. See [backup behavior](../../BACKUPS.md).
 
 ## Build and install
 
@@ -19,8 +20,8 @@ node cantrip_os/scripts/recovery-package.mjs
 ```
 
 The architecture-independent output is
-`cantrip_os/artifacts/packages/cantrip-os-recovery_0.1.0_all.deb`. Install it with
-`sudo apt install ./cantrip-os-recovery_0.1.0_all.deb`. Dependencies are the existing
+`cantrip_os/artifacts/packages/cantrip-os-recovery_0.2.0_all.deb`. Install it with
+`sudo apt install ./cantrip-os-recovery_0.2.0_all.deb`. Dependencies are the existing
 workspace and executor packages plus Python. No extra desktop environment or
 full Worker is installed. Package configuration is a Debian conffile at
 `/etc/cantrip-os/recovery.json`.
@@ -48,6 +49,15 @@ also supports `--offset` and `--length`; it verifies the retained archive before
 emitting bytes. Repeating a capture with the same ID/request observes its saved
 outcome. Reusing the ID for different intent fails. It never silently captures a
 newer state under an older operation ID.
+
+Worker admissions pass global `--expect` with the persistent guest, owner and
+Worker identities, plus the admitted runtime generation for mutations.
+`--expect-workspace` pins the exact numeric UID/GID and home. Mutation checks run
+under the actual maintenance lock, before admission or filesystem effects.
+Receive retains the expected account for later activation and rollback. Local
+administrators may omit these flags; an old helper rejects unsupported flags
+before performing the operation. Observation retains persistent identity pins
+without requiring the pre-maintenance runtime to survive a service restart.
 
 Capture stops the actual remote, executor and workspace services, then remaining
 processes running as registered workspace accounts. This interrupts **all**
@@ -140,7 +150,9 @@ restore; it cannot exchange an unrelated subsequently replaced home.
 ## Interruption and removal
 
 `inspect` is read-only. A dead command with an unfinished admission reports
-`unknown`, not success. An uncertain capture is never recaptured automatically.
+`unknown`, not success. Process identity includes the Linux boot ID and process
+start ticks, so a reboot cannot make an old PID appear alive. An uncertain
+capture is never recaptured automatically.
 After the root command has actually exited, run:
 
 ```sh
@@ -152,10 +164,15 @@ exchange happened, then restores permissions and the previously running
 services. It does not repeat the exchange. A failure before activation preserves
 the active original; an observed completed exchange is reported as restored.
 Unknown directory identities leave both paths untouched for administration.
+An interrupted capture/receive with no committed completion becomes failed after
+its process is confirmed dead; recovery releases maintenance without replaying it.
 
 `forget ID` deletes transfer spool files only after maintenance is released. It
 does not delete retained original homes. Protect/export backups before forgetting
-their guest archive. Retained originals need deliberate administrator cleanup.
+their guest archive. Cleanup preserves the committed outcome and rollback
+evidence. Rollback also accepts an older 0.1.0 `forgotten` restore when its retained
+receipt and actual directory identities still prove the completed exchange.
+Retained originals need deliberate administrator cleanup.
 
 Removing or upgrading the package executes maintenance release under the real
 operation lock. An active command must finish first. Interrupted maintenance is

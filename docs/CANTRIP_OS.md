@@ -611,6 +611,13 @@ durable Server-owned backup admissions, a catalogue and product controls remain
 required. See [the package guide](../cantrip_os/packages/recovery/README.md) and
 [private backup format](../cantrip_os/BACKUPS.md).
 
+Recovery 0.2.0 and durable Worker jobs add pinned account/runtime checks,
+encrypted operation receipts and observation after Worker loss. Recovery uses
+saved guest receipts or a fully authenticated published archive; it does not
+repeat an uncertain capture, upload or directory exchange. Guest spool cleanup
+retains rollback evidence. These Worker operations still need Server admission,
+catalogue and client controls before they constitute a product backup workflow.
+
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output
 recovery, and worker-offline behavior. Deliver workspace backups/restores,
