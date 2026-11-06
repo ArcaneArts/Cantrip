@@ -1532,6 +1532,27 @@ export class ManagedNativeCommandSession {
       };
       operation = { ...operation, frame: { ...operation.frame, ...forward } };
     }
+    const retainedInput =
+      operation.origin === "terminal" &&
+      operation.method === "turn/start" &&
+      operation.kind === "start" &&
+      !operation.queueClaim &&
+      !operation.expectedTurnId &&
+      this.options.retainDeferredInput
+        ? await this.options.retainDeferredInput(operation)
+        : undefined;
+    this.assertTransport(session);
+    if (retainedInput && object(operation.frame.params)) {
+      forward = {
+        method: operation.method,
+        params: {
+          ...operation.frame.params,
+          clientUserMessageId:
+            retainedInput.retainedPrompt!.nativeClientUserMessageId,
+        },
+      };
+      operation = { ...operation, frame: { ...operation.frame, ...forward } };
+    }
     const intent = await managedNativeCommandIntent(
       operation,
       this.options.policy,
@@ -1601,6 +1622,14 @@ export class ManagedNativeCommandSession {
         protectedPayload: protectedContent.envelope,
         payloadDigest: protectedContent.digest,
         ...(operation.queueClaim ? { queueClaim: operation.queueClaim } : {}),
+        ...(retainedInput
+          ? {
+              retainedInput: {
+                prompt: retainedInput.retainedPrompt!,
+                attachments: retainedInput.attachments!,
+              },
+            }
+          : {}),
         ...(operation.goalQueueHandoff
           ? { goalQueueHandoff: operation.goalQueueHandoff }
           : {}),
@@ -1771,6 +1800,13 @@ export class ManagedNativeCommandSession {
                 recovery: {
                   commandId: grant.receipt.operationId,
                   commandGeneration: grant.receipt.operationGeneration,
+                  ...(retainedInput
+                    ? {
+                        messageId:
+                          retainedInput.retainedPrompt!
+                            .nativeClientUserMessageId,
+                      }
+                    : {}),
                   threadId: session.threadId,
                   turnId: operation.expectedTurnId,
                   ...(operation.origin === "autonomous" &&
@@ -1987,7 +2023,11 @@ export class ManagedNativeCommandSession {
             }
             if (deferred) {
               await releasePublication();
-              if (!operation.queueClaim && operation.origin === "terminal") {
+              if (
+                !operation.queueClaim &&
+                !retainedInput &&
+                operation.origin === "terminal"
+              ) {
                 if (!this.options.retainDeferredInput)
                   throw new NativePermissionRetentionError(
                     "notRetained",
@@ -2090,6 +2130,7 @@ export class ManagedNativeCommandSession {
               object(frame.error) &&
               object(frame.error.data) &&
               (operation.queueClaim ||
+                retainedInput ||
                 execution.retainedDeferred?.retainedPrompt)
             )
               frame.error.data = { ...frame.error.data, queueRetained: true };

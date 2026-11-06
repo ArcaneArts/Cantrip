@@ -1,4 +1,4 @@
-//! Compensation only for a limiter rejection before its delegate was invoked.
+//! Compensation for canonical GUI or TUI input with positive no-forward proof.
 //! Worker errors, timeouts, missing notifications and disconnects are not proof.
 use super::transport_evidence::is_transport_closure;
 use super::{
@@ -55,11 +55,17 @@ pub(crate) async fn defer(
         && is_transport_closure(row.get("terminal_evidence"))
         && ((row["status"] == "rejected" && row["rejection_code"] == "not-dispatched")
             || (row["status"] == "uncertain" && row["rejection_code"] == "missing-native-receipt"));
-    if row["origin"] != "gui"
+    let terminal = row["origin"] == "terminal";
+    if (row["origin"] != "gui" && !terminal)
+        || (terminal && proof.is_none())
         || row["kind"] != "start"
         || row["method"] != "turn/start"
         || (row["status"] != "accepted" && !closed_transport)
-        || row.get("logical_operation_id") != row.get("operation_id")
+        || if terminal {
+            !row["logical_operation_id"].is_null()
+        } else {
+            row.get("logical_operation_id") != row.get("operation_id")
+        }
         || [
             "previous_operation_id",
             "result_digest",
@@ -254,8 +260,9 @@ impl Repository {
             let row = context::read(Executor::Transaction(tx), &owner, &worker, &operation, &generation).await?;
             let identity = &record["identity"]["recovery"];
             let mut result = base;
+            let message = if row["origin"] == "terminal" { row["intent"].get("nativeClientUserMessageId") } else { row.get("logical_client_message_id") };
             if row.get("chat_id") != record["identity"].get("chatId") ||
-                row.get("logical_client_message_id") != identity.get("messageId") ||
+                message != identity.get("messageId") ||
                 (truthy(identity.get("threadId")) && row["identity"].get("threadId") != identity.get("threadId")) {
                 return Ok(result);
             }

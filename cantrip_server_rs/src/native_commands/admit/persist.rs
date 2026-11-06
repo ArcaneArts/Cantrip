@@ -37,6 +37,9 @@ impl Admission<'_> {
                 .get::<String>(0)?,
         )?;
         settings_persistence::admit_state(tx, &inserted).await?;
+        if status == "accepted" {
+            crate::native_commands::terminal_input::retain(tx, &owner, &inserted, input).await?;
+        }
         crate::native_commands::goal_recovery::record_admission(tx, input, &inserted).await?;
         if self.consume_reply && status == "accepted" {
             let runtime = optional(&input["session"]["runtimeGeneration"])?;

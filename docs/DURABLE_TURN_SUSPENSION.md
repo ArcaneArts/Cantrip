@@ -336,11 +336,26 @@ thread and turn, checking unique history and completed tool results.
 
 There is no native turn identity or native checkpoint at the initial queue hold;
 the first native turn starts only when the retained input is explicitly resumed.
-This pre-start GUI recovery is qualified on both servers. The distinct native
-terminal producer's input recovery before its first native turn is still being
-integrated: the combined `--capacity-waiting --terminal-origin` scenario currently
-exposes a stale managed-session error after restart. Terminal-origin recovery
-after a native turn has started remains qualified separately above.
+Both GUI and native-terminal pre-start recovery are qualified on both servers.
+Add `--terminal-origin` to exercise the terminal producer at the same boundary;
+its accepted queue item retains the same ID, revision and text through restart.
+
+Direct terminal `turn/start` admission now commits an encrypted canonical queue
+item and its accepted claim in the same server transaction as the command and
+execution lane. It preserves the native client user-message identity and uses
+the existing literal native-input envelope, so slash or shell-looking text is
+not parsed again during recovery. A real queue or claim write failure rolls
+back the admission. Replayed admission keeps the original item; a new command
+cannot adopt an existing queued item. Native settings deferral returns this
+same claim to pending without creating another encrypted prompt.
+
+The original worker keeps using its accepted source while it survives. A fresh
+worker must fence the old native scope and correlate actual no-start journal
+evidence with the command, generation, message and thread before returning its
+claim to pending. Previously granted or consumed input cannot use this path.
+Legacy terminal commands admitted without the retained-input contract do not
+gain replay authority from missing history or a stale session. This extends
+pending-input recovery without manufacturing a native continuation.
 
 Never-granted input recovery uses the actual native-ownership takeover and
 inference-journal evidence, preserving canonical queue identity while retiring

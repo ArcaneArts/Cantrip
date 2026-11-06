@@ -1,5 +1,6 @@
 import { NativeHistoryObservations } from "../src/codex/native-history-observation.js";
 import { describe, expect, it, vi } from "vitest";
+import { queuedPromptOpaqueContentSchema } from "@cantrip/protocol";
 import type {
   AgentTurnResult,
   NativeCommandReceipt,
@@ -171,8 +172,35 @@ function fixture(
   };
   const onError = vi.fn();
   const onDeferredReady = vi.fn();
+  const protectedContent = {
+    formatVersion: 1,
+    keyRevision: 1,
+    envelope: {
+      version: 1,
+      algorithm: "AES-256-GCM",
+      keyRevision: 1,
+      nonce: "AAAAAAAAAAAAAAAA",
+      ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+    },
+  };
   const retained = {
-    retainedPrompt: { id: "retained-prompt" },
+    retainedPrompt: queuedPromptOpaqueContentSchema.parse({
+      id: "456789ab-1234-4234-8234-000000000002",
+      classification: { mode: "default", attachmentIds: [] },
+      protectedContent,
+      modelId: "model",
+      idempotencyKey: "terminal-prompt",
+      pendingMessage: {
+        id: "456789ab-1234-4234-8234-000000000001",
+        classification: { role: "user", mode: "default", attachmentIds: [] },
+        protectedContent,
+        idempotencyKey: "terminal-message",
+      },
+      nativeAction: "literal",
+      executionMethod: "turn/start",
+      nativeClientUserMessageId: "native-user",
+      protectedNativeInput: protectedContent.envelope,
+    }),
     attachments: [],
   };
   const retainDeferredInput = vi.fn(async () => retained as never);
@@ -479,11 +507,19 @@ describe("managed native command session", () => {
           inputConsumed: false,
           threadId: "thread",
           runtimeGeneration: "transport",
-          ...f.retained,
         },
       }),
     );
     expect(f.retainDeferredInput).toHaveBeenCalledWith(f.operation);
+    expect(f.client.admit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        retainedInput: { prompt: f.retained.retainedPrompt, attachments: [] },
+        intent: expect.objectContaining({
+          nativeClientUserMessageId: "native-user",
+        }),
+      }),
+      undefined,
+    );
     expect(f.client.settle).toHaveBeenCalledTimes(1);
   });
   it("reports canonical queue ownership only after durable settlement", async () => {

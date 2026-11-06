@@ -33,6 +33,7 @@ mod settlement;
 mod suspension;
 mod suspension_admission;
 mod suspension_control;
+mod terminal_input;
 mod thread_observation;
 pub mod transaction;
 mod transport_evidence;
