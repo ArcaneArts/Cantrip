@@ -18,6 +18,28 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The MCP capability registry now matches all 55 current Source operations and
+their order. Forty-six use the ported server domains; help and eight web
+operations retain the existing worker implementation. The worker uses advertised
+web operations when selecting its allowed tools, including standalone web Chat.
+The server preserves Source mutation/read-only authority and direct
+HTTP errors rather than executing worker-private browser or research content.
+The unchanged production MCP broker, HTTP SDK and WorkerWebService are exercised
+with controlled search/fetch/browser boundaries. This establishes negotiation
+and routing compatibility; full worker/native/browser product acceptance and
+legacy CLI transport remain required.
+
+Integrated with Main `3dd936255`, the macOS arm64 comparison passes all three stores and all
+three authentication modes: 657 paired direct cases, 1,314 responses/audit rows,
+54 actual MCP tool catalogs and 540 MCP calls. The full ordered registry,
+mutation classification and 8,360 authority/readiness cases match Source.
+Fifty-one Rust library tests, two contract tests, 34 worker tests, 23 server
+tests, strict all-target Clippy and all three application typechecks pass locally.
+The broad `pnpm check`
+still stops at Main-identical Node decomposition limits: 1,524/1,500 lines in
+`build-app.ts` and 2,249/1,999 in `chat-turn-runtime.ts`. A clean Main source
+snapshot reproduces both failures; the broad check is not green.
+
 The Task/Goal integration repair restores server, worker and app typechecks and
 builds against base `1579245e9`. Retirement now reads the failure-evidence discriminator while retaining
 the existing receipt, worker and dispatch guards. Historical output resolves its
@@ -80,8 +102,8 @@ actual queries and rejects other owner/project scopes. This evidence-capture
 test does not establish successful native Task or Goal execution.
 
 The worktree MCP port implements six advertised operations: list, status, create,
-switch, release and remove. With the surface port, Rust advertises 46 of Source's
-55 MCP operations.
+switch, release and remove. The surface milestone advertised 46 of Source's
+55 MCP operations; the worker-local capability follow-up completes the registry.
 `worktree.acquire` belongs to the shared legacy CLI executor and is rejected by
 the MCP allowlist, including when a binding explicitly grants it. Legacy CLI
 transport and its acquisition behavior remain separate required work.
@@ -105,8 +127,9 @@ Source first failure; every diagnostic and original parameter is verified before
 normalizing that scheduling choice. The Unicode regressions fix a native
 Live control JSON panic and verify unpaired UTF16 in actual client-control frames.
 All 44 Live core scenarios also pass. These are controlled endpoint peers, not full native
-worker or supported-platform product acceptance. Nine canonical MCP operations,
-legacy CLI, migration/rollback, packaging and the full replacement goal remain.
+worker or supported-platform product acceptance. The worker-local follow-up
+preserves the remaining nine MCP operations in the unchanged worker. Legacy CLI,
+migration/rollback, packaging and the full replacement goal remain.
 
 The worktree handlers retain Source argument order, history visibility, pagination
 caps, status truncation, UTF16 summaries, capability/permission guards and durable

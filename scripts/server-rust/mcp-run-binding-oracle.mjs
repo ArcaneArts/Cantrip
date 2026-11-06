@@ -5,11 +5,18 @@ import {
 } from "../../cantrip_server/src/agent-tools/binding.ts";
 import { effectivePermissionProfile } from "../../cantrip_server/src/chats/execution-helpers.ts";
 import { operations } from "./agent-run-http-fixtures.mjs";
+import {
+  CANTRIP_MCP_OPERATIONS,
+  isCantripMcpMutationOperation,
+} from "../../packages/protocol/dist/index.js";
 
 const now = Date.parse("2026-11-05T00:00:00.000Z");
-const serverAllowedOperations = new Set([...operations, "context.get"]);
+const selected = process.argv.includes("--all-operations")
+  ? CANTRIP_MCP_OPERATIONS
+  : operations;
+const serverAllowedOperations = new Set([...selected, "context.get"]);
 const cases = [];
-for (const operation of operations)
+for (const operation of selected)
   for (const profile of [":workspace", ":read-only", ":custom", null])
     for (const kind of ["project", "standalone"]) {
       const context = {
@@ -111,4 +118,11 @@ for (const operation of operations)
         });
       }
     }
-process.stdout.write(JSON.stringify({ now, cases }));
+process.stdout.write(
+  JSON.stringify({
+    now,
+    operations: CANTRIP_MCP_OPERATIONS,
+    mutations: CANTRIP_MCP_OPERATIONS.filter(isCantripMcpMutationOperation),
+    cases,
+  }),
+);

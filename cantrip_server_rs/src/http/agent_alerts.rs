@@ -70,8 +70,8 @@ async fn capabilities(
         {
             return Ok(failure(404, "not-found", "Worker not found."));
         }
-        // Alerts and Tasks require the current binding shape. Other MCP domains
-        // are advertised only when their native runtime implementations exist.
+        // Capabilities also authorize worker-local help and web tools. Omitting
+        // them hides those tools when the unchanged worker negotiates a binding.
         Ok(json_response(
             StatusCode::OK,
             json!({"bindingProtocolVersions":[1,2],"operations":agent_alerts::OPERATIONS}),
@@ -236,6 +236,24 @@ async fn execute_operation(service: &Arc<AuthService>, owner: &str, call: &Value
             &call["request"]["arguments"],
         )
         .await;
+    }
+    if operation == "tool.help" || operation.starts_with("web.") {
+        // Source advertises these worker-owned tools, but its direct server
+        // executor rejects them after validating the same binding and scope.
+        if context["contextKind"] != "project" {
+            return Err(OperationError::new(
+                409,
+                "unsupported-capability",
+                "Standalone Chats do not support IDE execution operations.",
+            )
+            .into());
+        }
+        return Err(OperationError::new(
+            400,
+            "invalid",
+            format!("Unsupported Cantrip agent operation: {operation}"),
+        )
+        .into());
     }
     if context["contextKind"] != "project" {
         return Err(OperationError::new(403, "invalid", "Alerts require a project Chat.").into());
