@@ -359,6 +359,22 @@ no repeated question, approval or completed command. This policy preserves
 completed replies; it does not reconstruct an unanswered in-memory waiter after
 an unconfirmed Pause.
 
+Add `--stop-pending-interaction` with either interaction option to leave the
+request unanswered and click Stop while Pause is pending. The fixture checks
+the original request becomes interrupted, a late encrypted answer or approval
+is rejected, and the original turn records one abort. It then kills the worker
+tree, restarts, and reopens the GUI and native TUI. The stopped turn must remain
+nonresumable without inference or another turn start. An unapproved command must
+never execute; an already completed command must keep its single result.
+
+The legacy pause HTTP response's `paused` field describes the automation flag.
+In a concurrent Stop it can still reflect the earlier pause request. Durable
+confirmation requires the authoritative native suspension to be `paused` and
+resumable under the expected native identity. A `stopped` suspension remains
+terminal even when a late control updates the automation flag. The mounted
+application uses that authoritative state and offers no Resume turn or Paused
+indicator for the stopped execution.
+
 ### Cold Stop before continuation restoration
 
 Explicit Stop persists its own control epoch before worker preparation and
