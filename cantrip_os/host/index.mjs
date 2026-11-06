@@ -1,5 +1,12 @@
 export { LocalDocker, DockerApiError, DockerDeliveryError } from "./docker.mjs";
 export { withInstanceLock } from "./lock.mjs";
+export {
+  systemCheckpointRequest,
+  captureSystemCheckpoint,
+  observeSystemCheckpoint,
+  continueSystemCheckpoint,
+  openSystemCheckpointImage,
+} from "./system-checkpoint.mjs";
 export { registerBuiltPackage } from "./package-artifacts.mjs";
 export {
   rootGuestCommand,

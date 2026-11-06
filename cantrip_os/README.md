@@ -62,6 +62,10 @@ authorized package admissions, history and protected outcomes. Project Settings
 update/repair review, saved-request recovery, history and private receipts.
 The installed-VM product checkpoint kills the full Worker during real dpkg,
 reloads the browser offline and observes the same installer after reconnect.
+The [private system checkpoint carrier](SYSTEM_CHECKPOINTS.md) now preserves and
+exports Docker root customization separately from mounted data, with durable
+observation after a lost commit/start reply. Its product integration and explicit
+system replacement/rollback remain separate Phase 5 work.
 Docker/ISO scripts include it with the executor edition;
 `CANTRIP_OS_RECOVERY=0` omits it independently. The package is an administrative
 foundation. [Private Worker archive encryption/transfer and Server admissions](BACKUPS.md)
