@@ -155,13 +155,16 @@ It invokes the unchanged Node `WorkerLinkService` and the native `Authority`
 around their actual local coordinators. A private real Redis instance carries
 the directory claims and operation requests/responses; worker acknowledgments
 are controlled at the existing request callback. Local macOS arm64 acceptance
-passes 64 scenario groups across all four pairings. Cases include remote authorization and tenant filters,
+passes 68 scenario groups across all four pairings. Cases include remote
+authorization and tenant filters,
 expired claims, complete peer/grant operations, exact capability hashes, live
 relay-listener mutation/deduplication/failure, ownership conflict after worker
 installation, claim replacement during renewal, fallback NX election, caller
 future abandonment, split-surrogate error bounds, late replies, the real
 ten-second timeout and pending-operation shutdown. The parser's accepted
 String-coerced reason retains its original value in worker commands.
+Malformed grant fields accepted by the RPC parser return the reference property
+errors and leave the coordinator usable; they cannot poison its state lock.
 
 A separate native library test executes 2,445 comparisons against verbatim
 reference helper source with the actual protocol schemas. These cover parser
@@ -170,3 +173,8 @@ Neither suite establishes production HTTP/SQL integration, real-worker product
 behavior, Redis outage timing, supported-platform artifacts or mixed rolling
 deployment readiness. Arbitrary malformed RPC error envelopes outside the typed
 response contract also need separate qualification.
+
+The existing `worker-link-http-compatibility.mjs --database pglite --keep-data`
+suite retains its real database and server fixture directory in the report's
+`root` field for inspection. Build TypeScript dependencies again after changing
+Git revisions so both peers use the same generated server version metadata.

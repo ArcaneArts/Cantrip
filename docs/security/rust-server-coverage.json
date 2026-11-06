@@ -9866,9 +9866,9 @@
         "platform": "darwin-arm64",
         "redisVersion": "8.10.3",
         "pairs": ["node/node", "node/rust", "rust/node", "rust/rust"],
-        "scenarioGroups": 64,
+        "scenarioGroups": 68,
         "parserComparisons": 2445,
-        "scope": "Actual Node WorkerLinkService and native Authority/local coordinators, controlled worker ACKs and real private Redis directory/pubsub. Includes ownership races, expired claims, local-first authorization, operation routing/raw accepted reasons, bulk/relay revocation, listener mutation/failure, caller-drop lifetime, split-surrogate errors, late replies, ten-second timeout and shutdown. No HTTP/SQL, production startup, real-worker product or mixed rolling deployment claim.",
+        "scope": "Actual Node WorkerLinkService and native Authority/local coordinators, controlled worker ACKs and real private Redis directory/pubsub. Includes ownership races, expired claims, local-first authorization, operation routing/raw accepted reasons, parser-accepted malformed grant fields without state poisoning, bulk/relay revocation, listener mutation/failure, caller-drop lifetime, split-surrogate errors, late replies, ten-second timeout and shutdown. No HTTP/SQL, production startup, real-worker product or mixed rolling deployment claim.",
         "command": "node --import tsx scripts/server-rust/worker-link-authority-compatibility.mjs --redis-bin /path/to/redis-server --report .qa/rust-worker-links/authority.json",
         "report": "docs/RUST_SERVER_REDIS.md"
       }

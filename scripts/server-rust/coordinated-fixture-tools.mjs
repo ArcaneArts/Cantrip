@@ -192,7 +192,7 @@ export async function eventually(read, accept, name) {
     if (accept(value)) return value;
     if (Date.now() > until)
       throw new Error(
-        `Timed out ${name}: ${JSON.stringify(value).slice(-3000)}`,
+        `Timed out ${name}: ${String(JSON.stringify(value)).slice(-3000)}`,
       );
     await delay(15);
   }

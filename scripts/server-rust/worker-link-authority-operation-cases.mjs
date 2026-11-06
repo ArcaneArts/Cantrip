@@ -217,6 +217,45 @@ export async function verifyAuthorityOperations({
   step(
     "RPC parser String membership retains the accepted original reason value in local worker commands",
   );
+  for (const [fields, missing] of [
+    [{}, "undefined"],
+    [{ resourceKind: null }, "null"],
+    [{ resourceKind: "terminal" }, "undefined"],
+    [{ resourceKind: "terminal", resourceId: null }, "null"],
+  ]) {
+    const requestId = randomUUID();
+    await b.call("publish", {
+      payload: {
+        kind: "worker-link-operation-request",
+        targetInstanceId: "a",
+        requestId,
+        operation: { kind: "issue-grant", input: { sessionId: id, ...fields } },
+      },
+    });
+    const response = await eventually(
+      () =>
+        messages.find(
+          (m) =>
+            m.kind === "worker-link-operation-response" &&
+            m.requestId === requestId,
+        ),
+      Boolean,
+      "malformed grant returns actual authority error",
+    );
+    assert.equal(response.ok, false);
+    assert.equal(
+      response.error,
+      `Cannot read properties of ${missing} (reading 'length')`,
+    );
+  }
+  assert.equal(
+    (await call(b, "renew", { session: id })).sessionId,
+    id,
+    "malformed grant must not poison subsequent valid operations",
+  );
+  step(
+    "parser-accepted malformed grant fields return Source property errors without poisoning authority state",
+  );
   for (const p of [a, b])
     await p.call("subscribe", { name: "route", token: "route" });
   const route = await call(b, "route", { session: id, route: "relay" });

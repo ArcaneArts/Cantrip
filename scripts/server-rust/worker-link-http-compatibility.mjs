@@ -34,6 +34,7 @@ const databaseMode = option("--database") ?? "pglite",
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-worker-link-http-"));
 const report = {
   suite: "worker-link-http-sockets",
+  root,
   databaseMode,
   completeReplacement: false,
   controlledWorkerCommands: true,
@@ -1412,7 +1413,8 @@ try {
     await mkdir(path.dirname(reportPath), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
   }
-  await rm(root, { recursive: true, force: true });
+  if (!process.argv.includes("--keep-data"))
+    await rm(root, { recursive: true, force: true });
 }
 if (failure) throw failure;
 console.log(
