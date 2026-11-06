@@ -5,6 +5,7 @@ pub mod cantrip_os;
 pub mod chats;
 pub mod cli;
 pub mod config;
+pub mod coordination;
 pub mod database;
 pub mod database_transfer;
 pub mod direct_attachments;

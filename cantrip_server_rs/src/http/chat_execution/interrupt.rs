@@ -38,36 +38,35 @@ impl Execution {
                 &json!({"interrupted":autonomy_stopped}),
             );
         }
-        if let Some(generation) = control["activationGeneration"].as_str() {
-            if let Some(cancelled) = self
+        if let Some(generation) = control["activationGeneration"].as_str()
+            && let Some(cancelled) = self
                 .native
                 .cancel_preparing(&self.owner, chat, generation)
                 .await?
-            {
-                if truthy(cancelled.get("logicalRoot")) {
-                    let result = self.service.workers.commands.request_with_timeout(&text(&cancelled["workerId"])?,
+        {
+            if truthy(cancelled.get("logicalRoot")) {
+                let result = self.service.workers.commands.request_with_timeout(&text(&cancelled["workerId"])?,
                         json!({"type":"chat.native-logical.cancel","chatId":chat,
                             "rootOperationId":cancelled["logicalRoot"]["operationId"],"rootOperationGeneration":cancelled["logicalRoot"]["operationGeneration"]}),
                         crate::workers::command_bus::RequestTimeout::After(std::time::Duration::from_secs(5)),None).await;
-                    if let Err(cause) = result {
-                        logging::server_logger()(LogCall::event(
-                            "warn",
-                            "Preparation cancellation committed but worker notification failed",
-                            json!({"event":"chat.preparation.cancel-notification-failed","chatId":chat,"workerId":cancelled["workerId"],"err":logging::error_details(&cause)}),
-                        ));
-                    }
+                if let Err(cause) = result {
+                    logging::server_logger()(LogCall::event(
+                        "warn",
+                        "Preparation cancellation committed but worker notification failed",
+                        json!({"event":"chat.preparation.cancel-notification-failed","chatId":chat,"workerId":cancelled["workerId"],"err":logging::error_details(&cause.into())}),
+                    ));
                 }
-                self.service.chat_mutations.publish_summary(
-                    &self.owner,
-                    &json!(chat),
-                    &context["projectId"],
-                );
-                return output(
-                    200,
-                    "chatInterruptAcceptedSchema",
-                    &json!({"interrupted":true}),
-                );
             }
+            self.service.chat_mutations.publish_summary(
+                &self.owner,
+                &json!(chat),
+                &context["projectId"],
+            );
+            return output(
+                200,
+                "chatInterruptAcceptedSchema",
+                &json!({"interrupted":true}),
+            );
         }
         let command = if truthy(control.get("activationGeneration")) {
             json!({"type":"chat.native-control","chatId":chat,"threadId":context["threadId"],
