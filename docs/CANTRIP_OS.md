@@ -601,8 +601,10 @@ The optional `cantrip-os-recovery` guest package now provides coordinated local
 capture, versioned manifests, staged/verified restore, retained originals and
 explicit rollback. It preserves package enablement and records workspace-wide
 interruption. This is a guest administration checkpoint, not completion of private
-backups: encrypted Worker storage, Server-owned backup admissions and product
-controls remain required. See [the package guide](../cantrip_os/packages/recovery/README.md).
+backups: private Worker encryption/transfer primitives are now exercised, while
+durable Server-owned backup admissions, a catalogue and product controls remain
+required. See [the package guide](../cantrip_os/packages/recovery/README.md) and
+[private backup format](../cantrip_os/BACKUPS.md).
 
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output
