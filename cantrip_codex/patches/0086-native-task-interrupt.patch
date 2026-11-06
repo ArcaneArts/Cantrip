@@ -1,0 +1,325 @@
+diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
+--- a/codex-rs/app-server-protocol/src/protocol/common.rs
++++ b/codex-rs/app-server-protocol/src/protocol/common.rs
+@@ -720 +720,6 @@
++    ManagedExecutionTaskInterrupt => "thread/managedExecution/taskInterrupt" {
++        params: v2::ManagedExecutionTaskInterruptParams,
++        serialization: None,
++        response: v2::ManagedExecutionTaskInterruptResponse,
++    },
+     ManagedExecutionTaskPause => "thread/managedExecution/taskPause" {
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs b/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
+--- a/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
+@@ -114 +114,17 @@
++/// Interrupt only an actual Task turn owned by the current paused revision.
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionTaskInterruptParams {
++    pub thread_id: String,
++    pub runner_generation: String,
++    pub revision: u64,
++    pub turn_id: String,
++}
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionTaskInterruptResponse {
++    pub interrupted: bool,
++}
+ /// Ordered Task control on an actual private root; no model grant or input.
+diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
+--- a/codex-rs/app-server/src/message_processor.rs
++++ b/codex-rs/app-server/src/message_processor.rs
+@@ -1495 +1495,4 @@
++            ClientRequest::ManagedExecutionTaskInterrupt { params, .. } => {
++                self.turn_processor.managed_execution_task_interrupt(&request_id, params).await
++            }
+             ClientRequest::ManagedExecutionTaskPause { params, .. } => {
+diff --git a/codex-rs/app-server/src/request_processors/managed_execution.rs b/codex-rs/app-server/src/request_processors/managed_execution.rs
+--- a/codex-rs/app-server/src/request_processors/managed_execution.rs
++++ b/codex-rs/app-server/src/request_processors/managed_execution.rs
+@@ -270 +270,23 @@
++    pub(crate) async fn managed_execution_task_interrupt(
++        &self,
++        request_id: &ConnectionRequestId,
++        params: codex_app_server_protocol::ManagedExecutionTaskInterruptParams,
++    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
++        if params.revision == 0 || params.revision > 2_147_483_647 {
++            return Err(invalid_params("invalid Task interrupt revision"));
++        }
++        self.outgoing.check_managed_execution_owner(
++            &params.runner_generation,
++            request_id.connection_id,
++            false,
++        )?;
++        let (_, thread) = self.load_thread(&params.thread_id).await?;
++        let interrupted = thread
++            .interrupt_task_turn(&params.runner_generation, params.revision, &params.turn_id)
++            .await
++            .map_err(|error| invalid_request(error.to_string()))?;
++        Ok(Some(
++            codex_app_server_protocol::ManagedExecutionTaskInterruptResponse { interrupted }.into(),
++        ))
++    }
+     pub(crate) async fn managed_execution_task_pause(
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+--- a/codex-rs/core/src/managed_execution.rs
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -49 +49,3 @@
++    task_interrupt_pending: bool,
++    task_interrupt_waiters: Vec<oneshot::Sender<()>>,
+     task_pause_revision: u64,
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+--- a/codex-rs/core/src/managed_execution.rs
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -104 +104,17 @@
++pub(crate) struct TaskInterruptGuard {
++    gate: std::sync::Arc<ManagedExecutionGate>,
++}
++impl Drop for TaskInterruptGuard {
++    fn drop(&mut self) {
++        let mut state = self
++            .gate
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        state.task_interrupt_pending = false;
++        for waiter in std::mem::take(&mut state.task_interrupt_waiters) {
++            let _ = waiter.send(());
++        }
++    }
++}
+ impl ManagedExecutionGate {
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+--- a/codex-rs/core/src/managed_execution.rs
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -505,7 +505,7 @@
+         revision: u64,
+         paused: bool,
+         apply: impl FnOnce() -> Result<(), String>,
+-    ) -> Result<(u64, bool), String> {
++    ) -> Result<Option<(u64, bool)>, String> {
+         let mut state = self
+             .state
+             .lock()
+@@ -518,10 +518,13 @@
+             return Err("Task pause does not own the current private root".into());
+         }
+         if revision < state.task_pause_revision {
+-            return Ok((state.task_pause_revision, state.task_paused));
++            return Ok(Some((state.task_pause_revision, state.task_paused)));
+         }
+         if revision == state.task_pause_revision && paused != state.task_paused {
+             return Err("Task pause revision changed its intent".into());
++        }
++        if state.task_interrupt_pending && !paused {
++            return Ok(None);
+         }
+         apply()?;
+         if revision != state.task_pause_revision {
+@@ -531,7 +534,58 @@
+                 let _ = waiter.send(());
+             }
+         }
+-        Ok((state.task_pause_revision, state.task_paused))
++        Ok(Some((state.task_pause_revision, state.task_paused)))
+     }
+-
++    /// The actual paused revision owns interruption. A newer Resume must not
++    /// apply until this turn's native Stop lifecycle operation has completed.
++    pub(crate) fn begin_task_interrupt(
++        self: &std::sync::Arc<Self>,
++        thread_id: ThreadId,
++        revision: u64,
++    ) -> Result<Option<TaskInterruptGuard>, String> {
++        let mut state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state.closed
++            || state.inherited
++            || state.thread_id != Some(thread_id)
++            || !self.inference_only
++        {
++            return Err("Task interrupt does not own the current private root".into());
++        }
++        if state.task_pause_revision != revision
++            || !state.task_paused
++            || state.task_interrupt_pending
++        {
++            return Ok(None);
++        }
++        state.task_interrupt_pending = true;
++        Ok(Some(TaskInterruptGuard { gate: self.clone() }))
++    }
++    pub(crate) fn task_interrupt_wait(
++        &self,
++        thread_id: ThreadId,
++    ) -> Result<Option<oneshot::Receiver<()>>, String> {
++        let mut state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state.closed
++            || state.inherited
++            || state.thread_id != Some(thread_id)
++            || !self.inference_only
++        {
++            return Err("Task interrupt root was replaced".into());
++        }
++        if !state.task_interrupt_pending {
++            return Ok(None);
++        }
++        state
++            .task_interrupt_waiters
++            .retain(|waiter| !waiter.is_closed());
++        let (send, receive) = oneshot::channel();
++        state.task_interrupt_waiters.push(send);
++        Ok(Some(receive))
++    }
+     pub fn task_pause_state(&self, thread_id: ThreadId) -> Result<(u64, bool), String> {
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+--- a/codex-rs/core/src/managed_execution.rs
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -860 +860,2 @@
++            state.task_interrupt_waiters.clear();
+             state.task_pause_waiters.clear();
+diff --git a/codex-rs/core/src/session/durable_suspension.rs b/codex-rs/core/src/session/durable_suspension.rs
+--- a/codex-rs/core/src/session/durable_suspension.rs
++++ b/codex-rs/core/src/session/durable_suspension.rs
+@@ -910,21 +910,32 @@
+         }
+         let owner = coordinator(&self.session);
+         let mut resume = None;
+-        let applied = gate
+-            .task_pause_control(self.session.thread_id(), revision, paused, || {
+-                if !paused && owner.has_live_suspension() {
+-                    resume = Some(
+-                        owner
+-                            .begin_live_resume()
+-                            .map_err(|error| error.to_string())?,
+-                    );
+-                }
+-                if *self.session.subscribe_turn_pause_state().borrow() != paused {
+-                    self.session.set_turn_paused(paused);
+-                }
+-                Ok(())
+-            })
+-            .map_err(invalid)?;
++        let applied = loop {
++            if let Some(applied) = gate
++                .task_pause_control(self.session.thread_id(), revision, paused, || {
++                    if !paused && owner.has_live_suspension() {
++                        resume = Some(
++                            owner
++                                .begin_live_resume()
++                                .map_err(|error| error.to_string())?,
++                        );
++                    }
++                    if *self.session.subscribe_turn_pause_state().borrow() != paused {
++                        self.session.set_turn_paused(paused);
++                    }
++                    Ok(())
++                })
++                .map_err(invalid)?
++            {
++                break applied;
++            }
++            if let Some(wait) = gate
++                .task_interrupt_wait(self.session.thread_id())
++                .map_err(invalid)?
++            {
++                let _ = wait.await;
++            }
++        };
+         if applied.0 != revision || !wait_boundary {
+             return Ok(applied);
+         }
+@@ -932,7 +943,9 @@
+             .task_pause_change(self.session.thread_id(), revision)
+             .map_err(invalid)?
+         else {
+-            return gate.task_pause_state(self.session.thread_id()).map_err(invalid);
++            return gate
++                .task_pause_state(self.session.thread_id())
++                .map_err(invalid);
+         };
+         if paused {
+             tokio::select! {
+@@ -945,6 +958,73 @@
+                 _ = changed => {},
+             }
+         }
+-        gate.task_pause_state(self.session.thread_id()).map_err(invalid)
++        gate.task_pause_state(self.session.thread_id())
++            .map_err(invalid)
++    }
++    /// Detach only the actual matching turn under its current control revision.
++    /// This does not release provider capacity; native scope settlement does.
++    pub async fn interrupt_task_turn(
++        self: &std::sync::Arc<Self>,
++        runner_generation: &str,
++        revision: u64,
++        turn_id: &str,
++    ) -> Result<bool> {
++        let gate = self
++            .managed_execution_gate()
++            .await
++            .ok_or_else(|| invalid("Task interrupt has no private native gate"))?;
++        if gate.runner_generation != runner_generation {
++            return Err(invalid("Task interrupt belongs to another native gate"));
++        }
++        let (turn, interrupt) = {
++            let mut active = self.session.active_turn.lock().await;
++            if active.is_some()
++                && !active
++                    .as_ref()
++                    .and_then(|turn| turn.task.as_ref())
++                    .is_some_and(|task| task.turn_context.sub_id == turn_id)
++            {
++                return Ok(false);
++            }
++            let Some(interrupt) = gate
++                .begin_task_interrupt(self.session.thread_id(), revision)
++                .map_err(invalid)?
++            else {
++                return Ok(false);
++            };
++            self.session.mark_interrupted();
++            if active.is_some() {
++                // Retire the old retained Resume boundary without unpausing
++                // this root. Native execution leases retain actual teardown
++                // ownership independently of this control operation.
++                coordinator(&self.session).release_live_gate(&self.session);
++            }
++            (active.take(), interrupt)
++        };
++        let thread = self.clone();
++        let turn_id = turn_id.to_owned();
++        // Actual teardown survives a lost/cancelled RPC observation. Dropping a
++        // JoinHandle detaches its task; it does not cancel this native owner.
++        tokio::spawn(async move {
++            if let Some(turn) = turn {
++                thread
++                    .session
++                    .finish_turn_abort(
++                        turn,
++                        codex_protocol::protocol::TurnAbortReason::Interrupted,
++                        None,
++                    )
++                    .await;
++            } else {
++                // Existing native Stop validates the real unfinished history
++                // and retires a cold checkpoint without replaying its input.
++                thread.discard_durable_suspension(&turn_id).await?;
++            }
++            drop(interrupt);
++            Ok::<(), codex_protocol::error::CodexErr>(())
++        })
++        .await
++        .map_err(|error| invalid(format!("Task interrupt teardown failed: {error}")))??;
++        Ok(true)
+     }
+     /// Opt in before requesting pause; the boundary acknowledgement alone remains

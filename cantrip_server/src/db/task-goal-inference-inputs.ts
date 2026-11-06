@@ -423,6 +423,7 @@ export class TaskGoalInferenceInputRepository {
         cycle.worktreeId !== receipt.worktreeId
       )
         stale();
+      receipt.queueOrderEpoch = cycle.goalOrderEpoch;
       const c = await this.context(tx, owner, receipt);
       await this.assertHandoffInput(tx, owner, receipt);
       if (
@@ -592,6 +593,33 @@ export class TaskGoalInferenceInputRepository {
       .where(eq(schema.taskDispatchCycles.id, cycle.id));
   }
 
+  /** Called under the owning Stop transaction's user/cycle/chat locks. The
+   * enforced dispatch receipt makes revocation authoritative before SDK cancel;
+   * it is not proof that a model/title has settled or permission to free a slot. */
+  async deferForInterrupt(
+    tx: RepositoryTransaction,
+    owner: string,
+    cycle: typeof schema.taskDispatchCycles.$inferSelect,
+  ) {
+    const state = cycle.goalInput;
+    if (
+      !state ||
+      !state.accepted ||
+      !state.allAttemptsEnforced ||
+      state.deferred ||
+      state.failedBeforeDispatch ||
+      state.firstDispatchedOperationId !== null
+    )
+      return;
+    try {
+      await this.deferLocked(tx, owner, cycle, state);
+    } catch (error) {
+      // A completed/archived/replaced Task has no reusable input to defer. It
+      // still needs actual native cleanup, even though it cannot be scheduled.
+      if (!(error instanceof TaskDispatchConflictError)) throw error;
+    }
+  }
+
   /** null means the cycle has no Goal input and belongs to the round path. */
   async defer(
     owner: string,
@@ -702,13 +730,26 @@ export class TaskGoalInferenceInputRepository {
       r.operationId !== record.identity.operationId ||
       r.chatId !== record.identity.chatId ||
       r.clientMessageId !== record.identity.recovery?.messageId ||
-      r.providerId !== record.identity.providerId ||
-      (record.workerGeneration === input.workerGeneration &&
-        !(record.state === "released" && record.outcome === "never-started"))
+      r.providerId !== record.identity.providerId
     )
       return result("unresolved");
     return this.database.transaction(async (tx) => {
       const cycle = await this.cycle(tx, owner, r.chatId, r.dispatch.cycleId);
+      // An ended pre-Stop episode cannot recover its old ordinal. This retires
+      // ordering metadata only after keeper settlement; it cannot release a
+      // current worker's live holder or authorize replay of a forwarded input.
+      if (
+        cycle &&
+        (r.queueOrderEpoch ?? 0) !== cycle.goalOrderEpoch &&
+        (record.workerGeneration !== input.workerGeneration ||
+          record.state === "released")
+      )
+        return result("retired");
+      if (
+        record.workerGeneration === input.workerGeneration &&
+        !(record.state === "released" && record.outcome === "never-started")
+      )
+        return result("unresolved");
       const state = cycle?.goalInput;
       if (
         !cycle ||

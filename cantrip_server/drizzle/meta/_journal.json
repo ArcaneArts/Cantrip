@@ -1933,6 +1933,13 @@
       "when": 1793944659217,
       "tag": "0275_cantrip_os_power",
       "breakpoints": true
+    },
+    {
+      "idx": 276,
+      "version": "7",
+      "when": 1793952136638,
+      "tag": "0276_task_goal_empty_recovery",
+      "breakpoints": true
     }
   ]
 }

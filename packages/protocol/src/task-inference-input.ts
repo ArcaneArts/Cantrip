@@ -10,6 +10,14 @@ export const taskInferenceInputReceiptSchema = z
     operationId: z.uuid(),
     // Omitted for existing round receipts, preserving their journal identity.
     kind: z.literal("goal").optional(),
+    // Canonical Goal queue episode. Omission preserves legacy receipt identity;
+    // recovery compares it as epoch zero, never rewrites the stored receipt.
+    queueOrderEpoch: z
+      .number()
+      .int()
+      .min(0)
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
     chatId: identity,
     clientMessageId: identity,
     workerId: identity,
