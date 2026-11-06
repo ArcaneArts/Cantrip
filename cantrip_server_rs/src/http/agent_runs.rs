@@ -20,7 +20,7 @@ fn bound(context: &Value, worker: &Value) -> Result<()> {
     }
     Ok(())
 }
-async fn target(
+pub(super) async fn target(
     service: &AuthService,
     owner: &str,
     project: &str,

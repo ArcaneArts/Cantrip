@@ -142,7 +142,7 @@ impl std::fmt::Display for OperationError {
 impl std::error::Error for OperationError {}
 
 pub(super) fn parse(schema: &str, input: &Value) -> Result<Value> {
-    crate::wire::parse(schema, Some(input)).map_err(|_| OperationError::validation().into())
+    crate::settings::parse_response(schema, Some(input))
 }
 
 pub(super) async fn project_chats(
@@ -167,7 +167,7 @@ pub(super) async fn audit(
     owner: &str,
     binding: &Value,
     request_id: &str,
-    action: &'static str,
+    action: &str,
     result: &'static str,
 ) {
     audit_resource(
@@ -186,7 +186,7 @@ pub(super) async fn audit_resource(
     service: &AuthService,
     owner: &str,
     request_id: &str,
-    action: &'static str,
+    action: &str,
     result: &'static str,
     resource_type: &str,
     resource: Option<&str>,

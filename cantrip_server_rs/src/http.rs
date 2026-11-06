@@ -38,6 +38,9 @@ mod chat_lifecycle;
 mod chat_messages;
 mod chat_preparation;
 mod chat_sync;
+mod cli;
+mod cli_commands;
+mod cli_runs;
 mod conversations;
 mod direct_attachments;
 mod encryption;
@@ -229,6 +232,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(settings_operations::routes())
         .merge(skill_settings::routes())
         .merge(mcp_settings::routes())
+        .merge(cli::routes())
         .merge(terminals::routes())
         .merge(browsers::routes())
         .merge(browser_discovery::routes())
