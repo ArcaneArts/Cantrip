@@ -1,6 +1,8 @@
 // Process-isolated worker API fixture. All native RPCs, encrypted storage and
 // HPKE grants are real. This fixture does not configure server admission.
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { CodexAppServer } from "../src/codex/app-server.js";
 import { discoverCodexRuntime } from "../src/codex/discovery.js";
@@ -37,6 +39,10 @@ const model = {
   name: "gpt-5",
   reasoningEffort: null,
 };
+const executionProfile =
+  config.executionProfile === "standalone-chat"
+    ? ("standalone-chat" as const)
+    : ("ide" as const);
 let threadId = config.suspension?.threadId ?? "";
 let turnId = config.suspension?.turnId ?? "";
 let runtime: CodexAppServer;
@@ -45,9 +51,10 @@ const activities: unknown[] = [];
 const source = () => ({
   chatId: "chat",
   threadId,
-  contextKind: "standalone" as const,
-  projectId: null,
-  placementId: "scratch",
+  contextKind:
+    executionProfile === "ide" ? ("project" as const) : ("standalone" as const),
+  projectId: executionProfile === "ide" ? "project" : null,
+  placementId: executionProfile === "ide" ? "worktree" : "scratch",
   modelRouteId: "route",
   providerAccountId: "account",
 });
@@ -107,8 +114,47 @@ try {
       throw new Error(
         "Worker bookkeeping version is unavailable for cold restoration.",
       );
+    const preparation = {
+      threadId,
+      chatId: "chat",
+      cwd: config.cwd,
+      model: opened.continuation.model,
+      provider,
+      permissionProfileId: ":yolo",
+      executionProfile,
+      planMode: "default" as const,
+      subagentDefaults: null,
+      mcpServers: [],
+      intent:
+        config.preparationIntent === "configure"
+          ? ("configure" as const)
+          : ("preserve" as const),
+      expectedSuspension: config.suspension,
+    };
+    const checkpointFile = path.join(
+      home,
+      "turn-suspensions",
+      `${createHash("sha256").update(threadId).digest("hex")}.json`,
+    );
+    const heldFile = `${checkpointFile}.attachment-test`;
+    await rename(checkpointFile, heldFile);
+    try {
+      if (preparation.intent === "configure")
+        await writeFile(checkpointFile, "{corrupt attachment checkpoint");
+      // Attachment must remain held even when checkpoint contents disappear
+      // between server confirmation and the actual native startup attempt.
+      await runtime.prepareManagedThread(preparation);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      if (starts !== 0)
+        throw new Error(
+          "Managed attachment started the suspended native turn.",
+        );
+    } finally {
+      await rename(heldFile, checkpointFile);
+    }
     const options = {
       operationGeneration: `fresh-${process.pid}`,
+      executionProfile,
       threadId,
       chatId: "chat",
       cwd: config.cwd,
@@ -159,6 +205,7 @@ try {
         chatId: "chat",
         cwd: config.cwd,
         executionLaneId: "original-lane",
+        executionProfile,
         developerInstructions: null,
         prompt: "ORIGINAL_COLD_INPUT",
         history: [],

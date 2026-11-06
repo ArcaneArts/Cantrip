@@ -2299,10 +2299,18 @@ export class CodexAppServer implements CodexRuntime {
    * keeps native held even if checkpoint bytes disappear during attachment. */
   async restoreHeldTurn(
     input: NativeTurnSuspension,
-    startup: Pick<PrepareAdmittedNativeExecutionOptions, "model" | "provider">,
+    startup: Pick<
+      PrepareAdmittedNativeExecutionOptions,
+      "model" | "provider" | "executionProfile"
+    >,
   ) {
     const suspension = nativeTurnSuspensionSchema.parse(input);
-    await this.ensureStarted(startup.model, startup.provider);
+    await this.ensureStarted(
+      startup.model,
+      startup.provider,
+      null,
+      startup.executionProfile,
+    );
     const generation = this.transportGeneration;
     const inspect = async () => {
       const observed = await this.inspectTurnSuspension(suspension.threadId);
@@ -2342,6 +2350,7 @@ export class CodexAppServer implements CodexRuntime {
           suspension,
           saved,
           options.operationGeneration,
+          options.executionProfile ?? "ide",
           options.chatId,
           options.cwd,
           options.provider.id,
@@ -2401,6 +2410,7 @@ export class CodexAppServer implements CodexRuntime {
     const observed = await this.restoreHeldTurn(suspension, {
       model: saved.model,
       provider: options.provider,
+      executionProfile: options.executionProfile,
     });
     const handle = await this.prepareAdmittedNativeExecution({
       ...options,
@@ -6203,6 +6213,7 @@ export class CodexAppServer implements CodexRuntime {
       projectId?: string | null;
       executionGate?: PrepareManagedThreadOptions["executionGate"];
       canonicalHistory?: PrepareManagedThreadOptions["canonicalHistory"];
+      expectedSuspension?: PrepareManagedThreadOptions["expectedSuspension"];
       taskGoalCycleId?: string | null;
     },
     create = true,
@@ -6254,6 +6265,7 @@ export class CodexAppServer implements CodexRuntime {
       adoptImportedProvider?: boolean;
       executionGate?: PrepareManagedThreadOptions["executionGate"];
       canonicalHistory?: PrepareManagedThreadOptions["canonicalHistory"];
+      expectedSuspension?: PrepareManagedThreadOptions["expectedSuspension"];
     },
     create: boolean,
     intent: "configure" | "preserve",
@@ -6384,6 +6396,9 @@ export class CodexAppServer implements CodexRuntime {
             : undefined;
         const resumed = (await request("thread/resume", {
           threadId: options.threadId,
+          ...(options.expectedSuspension
+            ? { expectedSuspension: options.expectedSuspension }
+            : {}),
           ...(options.adoptImportedProvider
             ? {
                 model: options.model.name,
@@ -6478,6 +6493,9 @@ export class CodexAppServer implements CodexRuntime {
         }
         const resumed = (await request("thread/resume", {
           threadId,
+          ...(options.expectedSuspension
+            ? { expectedSuspension: options.expectedSuspension }
+            : {}),
           ...(options.managedConfiguration && options.mcpServers !== undefined
             ? {
                 managedConfig: managedThreadConfiguration(
