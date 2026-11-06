@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   useInfiniteQuery,
   useMutation,
@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { errorMessage } from "@/lib/error-message";
 import {
+  cantripOsBackupAccountKey,
   clearCantripOsBackupDraft,
   readCantripOsBackupDraft,
   saveCantripOsBackupDraft,
@@ -31,6 +32,12 @@ import {
   refreshCantripOs,
 } from "@/lib/api/cantrip-os";
 import { CantripOsBackupEntry } from "./cantrip-os-backup-entry";
+import { onClientSessionIdentityChanged } from "@/lib/client-session";
+import { observeLegacyCantripOsRestoreWorkspace } from "@/lib/api/cantrip-os-workspace-operations";
+import {
+  CantripOsResetForm,
+  type CantripOsResetSelection,
+} from "./cantrip-os-reset-form";
 
 export function CantripOsBackupControls({
   instance,
@@ -48,7 +55,29 @@ export function CantripOsBackupControls({
   onChanged(): void;
 }) {
   const queryClient = useQueryClient();
-  const activeMutation = useRef(false);
+  const activeMutation = useRef<object | null>(null),
+    epoch = useRef(0),
+    mounted = useRef(true);
+  const currentAccount = () => {
+    try {
+      return cantripOsBackupAccountKey();
+    } catch {
+      return null;
+    }
+  };
+  const [accountKey, setAccountKey] = useState(currentAccount);
+  const renderEpoch = epoch.current;
+  const isCurrent = () =>
+    mounted.current &&
+    accountKey !== null &&
+    renderEpoch === epoch.current &&
+    accountKey === currentAccount();
+  const assertCurrent = () => {
+    if (!isCurrent())
+      throw new Error(
+        "The account or Server changed. This recovery request was not redirected.",
+      );
+  };
   const [label, setLabel] = useState("");
   const [exclusions, setExclusions] = useState("");
   const [backup, setBackup] = useState<CantripOsBackupSummary | null>(null);
@@ -72,18 +101,26 @@ export function CantripOsBackupControls({
     }
   });
   const operations = useInfiniteQuery({
-    queryKey: ["cantrip-os-backup-operations"],
+    queryKey: ["cantrip-os-backup-operations", accountKey],
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) => getCantripOsBackupOperations(pageParam),
+    queryFn: async ({ pageParam }) => {
+      assertCurrent();
+      const result = await getCantripOsBackupOperations(pageParam);
+      assertCurrent();
+      return result;
+    },
+    enabled: Boolean(accountKey),
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     retry: false,
   });
   function retain(draft: CantripOsBackupDraft) {
-    saveCantripOsBackupDraft(draft);
+    assertCurrent();
+    saveCantripOsBackupDraft(draft, undefined, accountKey!);
     setDraftState({ draft });
     return draft;
   }
   const changed = () => {
+    if (!isCurrent()) return;
     void queryClient.invalidateQueries({
       queryKey: ["cantrip-os-backup-operations"],
     });
@@ -92,24 +129,38 @@ export function CantripOsBackupControls({
   async function exclusive<T>(action: () => Promise<T>, creating = false) {
     if (activeMutation.current)
       throw new Error("A backup action is already in progress.");
-    activeMutation.current = true;
+    assertCurrent();
+    const token = {};
+    activeMutation.current = token;
     try {
-      if (creating && readCantripOsBackupDraft(instance.id))
+      if (
+        creating &&
+        readCantripOsBackupDraft(instance.id, undefined, accountKey!)
+      )
         throw new Error(
           "Resume or discard the saved request before creating another operation.",
         );
       return await action();
     } finally {
-      activeMutation.current = false;
+      if (activeMutation.current === token) activeMutation.current = null;
     }
   }
   async function prepare(
     intent: CantripOsBackupIntent,
   ): Promise<CantripOsBackupDraft> {
+    assertCurrent();
     const current = (await refreshCantripOs(instance.id)).instance;
+    assertCurrent();
     if (current.attachmentGeneration !== instance.attachmentGeneration)
       throw new Error(
         "The instance attachment changed. Select and verify the intended instance again.",
+      );
+    if (
+      intent.action === "reset" &&
+      current.runtimeGeneration !== instance.runtimeGeneration
+    )
+      throw new Error(
+        "The selected OS runtime changed. Review the reset against its intended runtime again.",
       );
     return retain({
       stage: "admission",
@@ -117,24 +168,33 @@ export function CantripOsBackupControls({
       admission: await prepareCantripOsBackup(current, intent),
     });
   }
+  function finishSaved(result: CantripOsBackupSummary) {
+    assertCurrent();
+    const saved = readCantripOsBackupDraft(instance.id, undefined, accountKey!);
+    if (
+      saved?.stage === "admission" &&
+      saved.admission.operationId === result.operationId &&
+      result.result &&
+      ["ready", "failed"].includes(result.result.state)
+    ) {
+      clearCantripOsBackupDraft(instance.id, undefined, accountKey!);
+      setDraftState({ draft: null });
+    }
+  }
   async function execute(draft: CantripOsBackupDraft) {
+    assertCurrent();
     if (draft.stage === "workspace") {
       const plan = draft;
-      let observed = await refreshCantripOs(plan.instanceId);
-      if (observed.instance.attachmentGeneration !== plan.attachmentGeneration)
+      // New plans preserve their exact guarded POST. Legacy plans may only
+      // observe an existing original admission; they cannot initiate creation.
+      const creation = plan.createRequest
+        ? await createCantripOsWorkspace(plan.instanceId, plan.createRequest)
+        : (await observeLegacyCantripOsRestoreWorkspace(plan)).result;
+      assertCurrent();
+      if (!creation || creation.state !== "ready")
         throw new Error(
-          "The restore destination was reattached. Its saved request was not redirected.",
-        );
-      // Observe this operation's receipt, never adopt an account merely because
-      // another account happens to have the requested name.
-      const creation = await createCantripOsWorkspace(plan.instanceId, {
-        guestWorkspaceId: plan.guestWorkspaceId,
-        operationId: plan.operationId,
-      });
-      if (creation.state !== "ready")
-        throw new Error(
-          creation.error ??
-            `Workspace creation is ${creation.state}. Resume this saved request to observe its original operation.`,
+          creation?.error ??
+            `Workspace creation is ${creation?.state ?? "unknown"}. Resume this saved request to observe its original operation.`,
         );
       if (
         creation.receipt.kind !== "workspace" ||
@@ -143,7 +203,8 @@ export function CantripOsBackupControls({
         throw new Error(
           "The new workspace receipt differs from the saved restore plan.",
         );
-      observed = await refreshCantripOs(plan.instanceId);
+      const observed = await refreshCantripOs(plan.instanceId);
+      assertCurrent();
       if (observed.instance.attachmentGeneration !== plan.attachmentGeneration)
         throw new Error(
           "The restore destination attachment changed during workspace creation.",
@@ -151,7 +212,12 @@ export function CantripOsBackupControls({
       const destination = observed.workspaces.find(
         (item) => item.guestWorkspaceId === plan.guestWorkspaceId,
       );
-      if (!destination)
+      if (
+        !destination ||
+        destination.uid !== creation.receipt.workspace.uid ||
+        destination.gid !== creation.receipt.workspace.gid ||
+        destination.homeGuestPath !== creation.receipt.workspace.homeGuestPath
+      )
         throw new Error(
           "The created restore workspace has not been observed yet.",
         );
@@ -172,8 +238,7 @@ export function CantripOsBackupControls({
       draft.instanceId,
       draft.admission,
     );
-    clearCantripOsBackupDraft(instance.id);
-    setDraftState({ draft: null });
+    finishSaved(result);
     setBackup(null);
     setRollback(null);
     return result;
@@ -213,8 +278,17 @@ export function CantripOsBackupControls({
             }),
           );
         }
-        // Save the account-creation identity BEFORE sending it. Lost replies and
-        // reloads resume this exact plan, never a second generated workspace.
+        const current = (await refreshCantripOs(instance.id)).instance;
+        assertCurrent();
+        if (
+          current.attachmentGeneration !== instance.attachmentGeneration ||
+          !current.runtimeGeneration
+        )
+          throw new Error(
+            "The restore destination changed or has no observed runtime.",
+          );
+        const operationId = crypto.randomUUID();
+        // Persist the exact guarded request before sending its first admission.
         return execute(
           retain({
             stage: "workspace",
@@ -222,7 +296,39 @@ export function CantripOsBackupControls({
             attachmentGeneration: instance.attachmentGeneration,
             backupId: backup.operationId,
             guestWorkspaceId: newWorkspace,
-            operationId: crypto.randomUUID(),
+            operationId,
+            createRequest: {
+              guestWorkspaceId: newWorkspace,
+              operationId,
+              attachmentGeneration: current.attachmentGeneration,
+              runtimeGeneration: current.runtimeGeneration,
+            },
+          }),
+        );
+      }, true),
+    onSettled: changed,
+  });
+  const reset = useMutation({
+    retry: false,
+    mutationFn: (selection: CantripOsResetSelection) =>
+      exclusive(async () => {
+        if (
+          selection.instanceId !== instance.id ||
+          selection.attachmentGeneration !== instance.attachmentGeneration ||
+          selection.runtimeGeneration !== instance.runtimeGeneration ||
+          selection.workspace.id !== workspace?.id ||
+          selection.workspace.uid !== workspace.uid ||
+          selection.workspace.gid !== workspace.gid ||
+          selection.workspace.homeGuestPath !== workspace.homeGuestPath
+        )
+          throw new Error(
+            "The confirmed reset destination changed. Review the intended workspace again.",
+          );
+        return execute(
+          await prepare({
+            action: "reset",
+            workspaceId: selection.workspace.id,
+            paths: selection.paths,
           }),
         );
       }, true),
@@ -234,7 +340,7 @@ export function CantripOsBackupControls({
       exclusive(async () => {
         if (!rollback || rollback.instanceId !== instance.id)
           throw new Error(
-            "Select the restore's original instance to roll it back.",
+            "Select the original instance to undo this workspace change.",
           );
         return execute(
           await prepare({
@@ -264,39 +370,87 @@ export function CantripOsBackupControls({
     }: {
       entry: CantripOsBackupSummary;
       mode: "observe" | "recover" | "continue";
-    }) => {
-      if (mode !== "continue") return recoverCantripOsBackup(entry, { mode });
-      const current = (await refreshCantripOs(entry.instanceId)).instance;
-      if (!current.runtimeGeneration)
-        throw new Error("The intended instance has no observed runtime.");
-      return recoverCantripOsBackup(entry, {
-        mode,
-        attachmentGeneration: current.attachmentGeneration,
-        runtimeGeneration: current.runtimeGeneration,
-      });
-    },
+    }) =>
+      exclusive(async () => {
+        assertCurrent();
+        if (mode !== "continue") {
+          const result = await recoverCantripOsBackup(entry, { mode });
+          finishSaved(result);
+          return result;
+        }
+        const current = (await refreshCantripOs(entry.instanceId)).instance;
+        assertCurrent();
+        if (!current.runtimeGeneration)
+          throw new Error("The intended instance has no observed runtime.");
+        const result = await recoverCantripOsBackup(entry, {
+          mode,
+          attachmentGeneration: current.attachmentGeneration,
+          runtimeGeneration: current.runtimeGeneration,
+        });
+        finishSaved(result);
+        return result;
+      }),
     onSettled: changed,
   });
   const pending =
+    reset.isPending ||
     capture.isPending ||
     restore.isPending ||
     rollBack.isPending ||
     resume.isPending ||
     recover.isPending;
-  const occupied = pending || Boolean(draftState.draft || draftState.error);
-  const lastAction = [capture, restore, rollBack, resume, recover].reduce(
-    (latest, action) =>
-      action.submittedAt > latest.submittedAt ? action : latest,
+  const occupied =
+    !accountKey || pending || Boolean(draftState.draft || draftState.error);
+  const lastAction = [
+    capture,
+    restore,
+    reset,
+    rollBack,
+    resume,
+    recover,
+  ].reduce((latest, action) =>
+    action.submittedAt > latest.submittedAt ? action : latest,
   );
   const error = lastAction.error ?? operations.error;
+  useEffect(() => {
+    return onClientSessionIdentityChanged(() => {
+      epoch.current++;
+      activeMutation.current = null;
+      const next = currentAccount();
+      setAccountKey(next);
+      setLabel("");
+      setExclusions("");
+      setBackup(null);
+      setRollback(null);
+      for (const action of [capture, restore, reset, rollBack, resume, recover])
+        action.reset();
+      try {
+        setDraftState({
+          draft: readCantripOsBackupDraft(
+            instance.id,
+            undefined,
+            next ?? undefined,
+          ),
+        });
+      } catch (failure) {
+        setDraftState({ draft: null, error: errorMessage(failure) });
+      }
+    });
+  }, [instance.id]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   return (
     <section className="space-y-3 rounded-lg border p-4">
-      <h3 className="font-medium">Private backups</h3>
+      <h3 className="font-medium">Private backups and recovery</h3>
       <p className="text-sm text-muted-foreground">
-        Backups are encrypted on the owning Worker. Capture, restore and
-        rollback interrupt managed work across this OS's workspaces. The
-        personal desktop is independent. Ignored files are included unless
-        explicitly excluded.
+        Backups are encrypted on the owning Worker. Capture, restore, reset and
+        undo interrupt managed work across this OS's workspaces. The personal
+        desktop is independent. Ignored files are included unless explicitly
+        excluded.
       </p>
       {error ? (
         <p role="alert" className="text-sm text-destructive">
@@ -310,6 +464,13 @@ export function CantripOsBackupControls({
               "An immutable request is saved in this tab. Resume it to observe the same operation; do not create another request to recover a lost reply."}
           </p>
           {draftState.draft ? (
+            <p className="break-all text-xs">
+              {draftState.draft.stage === "admission"
+                ? `Saved ${draftState.draft.admission.action} · Workspace ${workspaces.find((item) => item.id === (draftState.draft?.stage === "admission" ? draftState.draft.admission.workspaceId : null))?.guestWorkspaceId ?? draftState.draft.admission.workspaceId} · Operation ${draftState.draft.admission.operationId}`
+                : `Saved restore workspace creation · ${draftState.draft.guestWorkspaceId} · Operation ${draftState.draft.operationId}`}
+            </p>
+          ) : null}
+          {draftState.draft ? (
             <Button
               variant="ghost"
               disabled={pending}
@@ -322,7 +483,8 @@ export function CantripOsBackupControls({
             variant="ghost"
             disabled={pending}
             onClick={() => {
-              clearCantripOsBackupDraft(instance.id);
+              assertCurrent();
+              clearCantripOsBackupDraft(instance.id, undefined, accountKey!);
               setDraftState({ draft: null });
             }}
           >
@@ -368,6 +530,13 @@ export function CantripOsBackupControls({
           Capture workspace
         </Button>
       </form>
+      <CantripOsResetForm
+        key={accountKey ?? "signed-out"}
+        instance={instance}
+        workspace={workspace}
+        disabled={occupied}
+        onReset={(selection) => reset.mutate(selection)}
+      />
       {backup ? (
         <form
           className="space-y-2 border-t pt-3"
@@ -452,9 +621,17 @@ export function CantripOsBackupControls({
           }}
         >
           <p className="text-sm">
-            Roll back restore {rollback.operationId}. This replaces its current
-            home with the retained original and interrupts managed workspace
-            work.
+            Original target:{" "}
+            {instances.find((item) => item.id === rollback.instanceId)?.name ??
+              rollback.instanceId}{" "}
+            · Workspace{" "}
+            {workspaces.find((item) => item.id === rollback.workspaceId)
+              ?.guestWorkspaceId ?? rollback.workspaceId}
+            . Undo {rollback.action === "reset" ? "reset" : "restore"}{" "}
+            {rollback.operationId}. This replaces its current home with the
+            retained original and interrupts managed workspace work. The
+            replaced home and subsequent writes are retained; files are not
+            merged and old processes are not resumed.
           </p>
           <Button type="submit" disabled={occupied}>
             Confirm rollback
@@ -482,7 +659,8 @@ export function CantripOsBackupControls({
       <p className="text-xs text-muted-foreground">
         Observe reads durable evidence. Recover reconciles interrupted work.
         Continue explicitly authorizes a verified current runtime to finish
-        known staged work; it never repeats an uncertain capture or upload.
+        known staged work; it never repeats an uncertain reset, capture or
+        upload.
       </p>
       {operations.data?.pages
         .flatMap((page) => page.items)
@@ -490,7 +668,7 @@ export function CantripOsBackupControls({
           <CantripOsBackupEntry
             key={entry.operationId}
             entry={entry}
-            pending={occupied}
+            pending={pending}
             destination={`${instances.find((item) => item.id === entry.instanceId)?.name ?? entry.instanceId} · Workspace ${workspaces.find((item) => item.id === entry.workspaceId)?.guestWorkspaceId ?? entry.workspaceId} · Worker ${workerNames[entry.workerId] ?? entry.workerId}`}
             onRestore={(item) => {
               setBackup(item);

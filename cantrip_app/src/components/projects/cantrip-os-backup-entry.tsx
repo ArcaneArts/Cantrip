@@ -67,7 +67,7 @@ export function CantripOsBackupEntry({
         <strong>
           {details?.intent.action === "capture"
             ? details.intent.label || "Workspace backup"
-            : `${entry.action === "restore" ? "Restore" : entry.action === "rollback" ? "Rollback" : "Backup"} operation`}
+            : `${entry.action === "reset" ? "Reset" : entry.action === "restore" ? "Restore" : entry.action === "rollback" ? "Undo" : "Backup"} operation`}
         </strong>
         <span>
           {entry.result?.state ?? "admitted"}
@@ -109,6 +109,18 @@ export function CantripOsBackupEntry({
               Files and profiles retained; live processes are not backed up.
             </p>
           ) : null}
+          {result.action === "reset" ? (
+            <p className="text-xs">
+              Original home retained for undo. Shared packages and system
+              configuration were preserved. Runtime handles and old processes
+              were not restored.
+            </p>
+          ) : null}
+          {details?.intent.action === "reset" ? (
+            <p className="break-all text-xs">
+              Reset paths: {details.intent.paths.join(", ")}
+            </p>
+          ) : null}
           {result.cleanupWarnings.map((warning, i) => (
             <p key={i} className="text-xs text-muted-foreground">
               {warning}
@@ -119,7 +131,9 @@ export function CantripOsBackupEntry({
               Private{" "}
               {result.action === "capture"
                 ? "manifest and exclusions"
-                : "restore receipt"}
+                : result.action === "reset"
+                  ? "reset receipt"
+                  : "undo/restore receipt"}
             </summary>
             <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all">
               {JSON.stringify(
@@ -150,13 +164,15 @@ export function CantripOsBackupEntry({
             >
               Recover interrupted operation
             </Button>
-            <Button
-              variant="ghost"
-              disabled={pending}
-              onClick={() => onRecover(entry, "continue")}
-            >
-              Continue staged operation
-            </Button>
+            {entry.action !== "reset" ? (
+              <Button
+                variant="ghost"
+                disabled={pending}
+                onClick={() => onRecover(entry, "continue")}
+              >
+                Continue staged operation
+              </Button>
+            ) : null}
           </>
         ) : null}
         {success && entry.action === "capture" ? (
@@ -168,13 +184,13 @@ export function CantripOsBackupEntry({
             Restore backup
           </Button>
         ) : null}
-        {success && entry.action === "restore" ? (
+        {success && (entry.action === "restore" || entry.action === "reset") ? (
           <Button
             variant="ghost"
             disabled={pending}
             onClick={() => onRollback(entry)}
           >
-            Roll back restore
+            {entry.action === "reset" ? "Undo reset" : "Roll back restore"}
           </Button>
         ) : null}
       </div>

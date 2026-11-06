@@ -195,3 +195,54 @@ it("does not turn protected errors or mismatched private intents into successful
     "no authenticated successful outcome",
   );
 });
+
+it("protects reset selections and accepts only a matching retained reset receipt", async () => {
+  const reset = {
+    action: "reset" as const,
+    workspaceId: ids[1]!,
+    paths: [".config/chromium"],
+  };
+  const admission = await prepareCantripOsBackup(instance, reset, ids[4]);
+  expect(admission.action).toBe("reset");
+  expect(JSON.stringify(admission)).not.toContain(".config/chromium");
+  expect(mocks.protect).toHaveBeenCalledWith(ids[4], reset);
+  const entry = {
+    ...summary(),
+    action: "reset",
+    archiveAvailability: null,
+    result: {
+      state: "ready",
+      action: "reset",
+      operationId: ids[4],
+      protectedResult: { ...frame, sequence: 2 },
+    },
+  } as never;
+  mocks.openRequest.mockResolvedValue(reset);
+  const result = {
+    action: "reset",
+    receipt: {
+      reset_paths: reset.paths,
+      retained_original_home: "/private/.cantrip-reset/home",
+      shared_system_state_changed: false,
+      runtime_handles_restored: false,
+    },
+    interruption: { released: true },
+    cleanupWarnings: [],
+  };
+  mocks.openResult.mockResolvedValue(result);
+  expect((await openCantripOsBackupDetails(entry)).result).toEqual(result);
+  mocks.openResult.mockResolvedValue({
+    ...result,
+    receipt: { ...result.receipt, reset_paths: ["Documents"] },
+  });
+  await expect(openCantripOsBackupDetails(entry)).rejects.toThrow(
+    "saved selection",
+  );
+  mocks.openResult.mockResolvedValue({
+    ...result,
+    receipt: { ...result.receipt, shared_system_state_changed: true },
+  });
+  await expect(openCantripOsBackupDetails(entry)).rejects.toThrow(
+    "saved selection",
+  );
+});

@@ -303,7 +303,16 @@ export function CantripOsSettings({
                   : "Linux-owned source"}
               </span>
               <span className="text-xs text-muted-foreground">
-                {binding.state}
+                {binding.state === "ready" &&
+                (binding.provisionedRuntimeGeneration !==
+                  instances.data?.find((item) => item.id === binding.instanceId)
+                    ?.runtimeGeneration ||
+                  binding.provisionedAttachmentGeneration !==
+                    instances.data?.find(
+                      (item) => item.id === binding.instanceId,
+                    )?.attachmentGeneration)
+                  ? "Files require verification"
+                  : binding.state}
               </span>
             </div>
             <p className="break-all text-xs text-muted-foreground">

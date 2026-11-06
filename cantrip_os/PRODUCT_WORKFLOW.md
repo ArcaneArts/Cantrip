@@ -433,21 +433,54 @@ restart, using a separately recorded runtime authorization. It cannot change
 the instance, attachment, account or Worker. File restoration leaves source
 rebinding and captured chats deliberate. The following controls build on this API.
 
-## Workspace reset backend checkpoint
+## Reset workspace state
 
-The private recovery API now admits selected-path and whole-home reset through
-both Servers and the Worker. It retains an original home for undo, journals the
-original destination before dispatch and recovers guest receipts without another
-reset. The private backup catalogue still lists captures only. See
-[reset admissions](BACKUPS.md#workspace-reset-admissions) for request and recovery
-semantics and the [optional recovery package](packages/recovery/README.md) for
-administration commands. Dedicated reset confirmation/history controls and full
-product acceptance follow this backend checkpoint.
+Open **Project settings → CantripOS**, select the intended instance and workspace,
+and use **Private backups and recovery → Reset workspace state**. Enter explicit
+home-relative paths, one per line, or choose **Reset entire workspace home**.
+Choose **Review reset**, check the displayed workspace, UID, home and paths, then
+**Confirm reset**. Each confirmation is consumed immediately; another reset
+requires another review.
+
+Selected entries are removed or returned to fresh workspace defaults. A whole-home
+reset replaces checkouts, browser profiles and other home contents with the
+workspace package's fresh Documents/Downloads directories. The account survives;
+shared packages and system configuration remain in place. All managed Cantrip
+workspace services on the instance are interrupted. The personal desktop remains
+independent.
+
+The complete original home is retained outside the active home. Use **Undo reset**
+on its history entry, check its original destination, then **Confirm rollback**.
+Undo exchanges the original back and retains the replaced home, including later
+writes. It does not merge files or restore old processes, windows or handles.
+
+A lost response leaves the exact encrypted request saved in the tab. Reload,
+select its original instance and use **Resume saved request** to observe that
+same admission. The saved banner identifies its original workspace and operation,
+even if another workspace is currently selected. Unknown/running results retain
+the request. **Recover interrupted operation** can reconcile the same guest
+journal while the local request is still retained. Discarding the local draft
+neither cancels admitted work nor removes its history or retained homes.
+
+After maintenance, use **Check recovery** to observe the guest's fresh runtime.
+Source rows with older attachment/runtime verification say **Files require
+verification**; actual **Verify files** remains available. Removed checkouts are
+not recreated or replaced with Host files. After undo, explicitly verifying the
+restored directory restores its current Linux binding; old chats retain their
+captured placement.
+
+The [private recovery API](BACKUPS.md#workspace-reset-admissions) preserves
+immutable admissions and encrypted selections/receipts. New restore-to-workspace
+plans save an exact generation-bound creation request before dispatch. Older
+pending plans without those guards may only observe their original Server
+creation admission; unavailable legacy admissions stay uncertain and never
+initiate an unguarded replacement creation. Account/Server changes cannot redirect
+pending work or erase another account's saved request.
 
 ## Private workspace backups
 
 Open **Project settings → CantripOS**, select an instance/workspace and use
-**Private backups**. Unlock the account's encryption first. **Capture workspace**
+**Private backups and recovery**. Unlock the account's encryption first. **Capture workspace**
 uses an optional private label and explicit home-relative exclusions, one per
 line. Ignored files are otherwise included. Capture, restore and rollback
 interrupt managed work across the instance's workspaces; they do not back up

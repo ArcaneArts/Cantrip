@@ -3812,3 +3812,72 @@ TypeScript checks and native all-target Clippy with warnings denied pass.
 omitted its PostgreSQL fixture environment, and the initial path matrix was
 placed in the oracle's positive fixture list; both harness failures were corrected
 and their logs retained. No hosted ordinary-PR validation was used.
+
+## Phase 5: product workspace reset and undo (2026-11-06)
+
+Cantrip's existing private backup section now includes explicit selected-path or
+whole-home reset review and confirmation. It shows the original workspace, UID,
+home, selected paths and interruption/undo semantics; each confirmation is
+consumed immediately. Reset history decrypts the verified receipt and exposes
+undo. Unknown/running requests remain saved as their original encrypted
+admission, with original destination and operation metadata visible after reload.
+History recovery remains available while that request is retained. Account/Server
+lifetime changes fence pending asynchronous work and scope browser storage/history.
+
+New restore-to-new-workspace plans retain the exact initial create request with
+attachment/runtime guards. Legacy plans without that request use an owned original
+Server admission and observation only; an unavailable original never becomes an
+unguarded new create. Successful creation receipts must still match the resolved
+numeric account/home before restore admission.
+
+Actual product testing reused Codex IAB tab 50 with the disposable Phase 5
+PostgreSQL, full Node Server and full external Worker. The personal browser and
+unrelated IAB tab 26 were untouched. Recovery 0.3.0 was installed from the normal
+artifact with SHA256
+`21e9a703f7a82ac8a88b2c8912fcbe3d34dda22f860c33cd748bd255b6612f53`;
+its installation preserved the product guest's instance identity and runtime.
+
+A newly created `p5-reset-c4k` account (UID/GID 20005) received a dirty Git checkout,
+ignored `.env` and dependency files, Unicode data, Documents and a SQLite browser
+profile fixture. Existing-directory registration produced a fresh Linux binding.
+Selected reset `e7fd75aa-2b08-4d19-817f-d720e0763967` removed the browser/Documents
+selection and preserved unselected files, metadata and package inventory. Undo
+`50cbe79f-f225-45ec-b288-e8d5c79247ba` restored the exact original home inode and
+browser/Documents, while a subsequent write remained in the retained replaced
+home.
+
+Whole-home reset `54aafa9f-e105-4e5a-aa6a-bf1053fa6ac1` committed before its actual
+ready Worker reply was withheld. The full Worker was killed; the Server recorded
+unknown while the private Worker journal and guest recorded completion. Browser
+reload while offline retained the exact encrypted request, including its original
+workspace/operation display. Offline observation kept that outcome unknown. After
+restarting the same Worker identity, Resume recovered the original admission,
+protected receipt, start time, private journal and guest receipt. The hook observed
+exactly one reset dispatch. A file written into the fresh home while offline
+retained its bytes and home inode during recovery.
+
+Undo `3706b32c-2765-401d-af2c-d431906f1e2b` returned the exact original home, dirty
+Git/ignored/Unicode/dependency files, browser profile and Documents. The offline
+probe remained in the retained replaced home. Shared package inventory and a real
+root-owned `/etc` customization marker stayed intact. Verification of the removed
+checkout returned HTTP 409 with no recreation or Host substitution. After undo,
+explicit verification restored the same Linux binding to the current runtime and
+attachment. Older verification epochs now display **Files require verification**
+without blocking actual verification attempts.
+
+The QA harness recorded 17 events: six pass, eleven informational, no failures.
+Screenshots and exact Server/Worker/guest records are retained privately under
+`cantrip_os/artifacts/phase5-workspace-reset-controls`. A disposable proof query's
+initial binding-to-instance join was corrected to use the actual workspace
+relation; it did not alter product data or schema. The Host native bundle predates
+this cycle, so these recovery-control results do not establish current model,
+Host/Linux distribution or remote/cloud acceptance. Shared system replacement,
+failed-upgrade repair, clone identities and final recorded distributions remain
+required for the full Phase 5 goal.
+
+Final validation after rebasing onto `f40015fd4`: all 51 client regression cases
+across seven files and the actual TypeScript/production build pass (600 ms Vite
+build). Scoped Prettier and diff checks pass. `pnpm check` stops at the unchanged
+`build-app.ts` 1531/1500 and `chat-turn-runtime.ts` 2286/1999 decomposition budgets.
+No guest package/OCI/ISO build inputs changed in this product cycle; no hosted
+ordinary-PR validation was used.

@@ -186,8 +186,10 @@ Reset currently interrupts all managed Cantrip workspace services through the
 shared maintenance mechanism. Other workspace files remain unchanged. Old live
 processes, windows and runtime handles are not restored; after maintenance,
 explicitly check recovery and verify affected sources against the fresh runtime.
-The package CLI and backend are implemented; dedicated Cantrip reset controls
-and full product acceptance are the next checkpoint.
+Cantrip now exposes reset review/confirmation, encrypted saved-request recovery,
+owned history and undo. Actual Docker product acceptance covers full Worker death
+and browser reload after a committed reset, with the same receipt and one reset
+dispatch. See [the product workflow](PRODUCT_WORKFLOW.md#reset-workspace-state).
 
 ## Evidence and remaining work
 
