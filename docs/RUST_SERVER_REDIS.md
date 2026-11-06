@@ -5,8 +5,10 @@ coordinator's Redis directory and message envelopes. The native
 `workers::coordinated::CoordinatedBridge` implements shared worker routing.
 The authenticated worker socket and resource services accept a local or shared
 `WorkerTransport`; production startup still selects the local implementation.
-Shared startup, WorkerLink authority and App Live still need integration and
-product acceptance.
+The native `worker_links::authority::Authority` also implements the existing
+WorkerLink service's distributed operations and revocation. Shared startup,
+WorkerLink HTTP/runtime binding and App Live still need integration and product
+acceptance.
 Setting `REDIS_URL` on the Rust server does not yet enable shared routing.
 Node remains the default server and the worker remains Node.
 
@@ -49,6 +51,12 @@ Node remains the default server and the worker remains Node.
 - The worker WebSocket continues reading bounded early input, close frames and
   shutdown while a shared claim is pending. A closed socket cannot subsequently
   become ready when that Redis operation completes.
+- WorkerLink local-first session authorization, NX authority election after
+  worker installation, remote session/peer/grant RPCs, claim renewal and
+  re-election, account/owner/resource/attachment revocation and relay callbacks.
+  The service preserves the ten-second RPC timeout, missing response results,
+  500 UTF-16-unit error limit, caller-drop lifetime and exact-authority cleanup.
+  Bulk revocation retains the reference directory-claim TTL behavior.
 
 The runtime uses the native Redis client with Tokio and native TLS support.
 There is no JavaScript database or coordination helper in this module. The
@@ -134,3 +142,31 @@ authority service or App Live. Remaining malformed relay payload cases, outage
 response timing/backlog, TLS, other platforms and packaged artifacts still need
 qualification. These results do not establish mixed rolling product deployment
 or readiness to replace the default Node server.
+
+The WorkerLink service has a separate compatibility suite:
+
+```sh
+node --import tsx scripts/server-rust/worker-link-authority-compatibility.mjs \
+  --redis-bin /path/to/redis-server \
+  --report .qa/rust-worker-links/authority.json
+```
+
+It invokes the unchanged Node `WorkerLinkService` and the native `Authority`
+around their actual local coordinators. A private real Redis instance carries
+the directory claims and operation requests/responses; worker acknowledgments
+are controlled at the existing request callback. Local macOS arm64 acceptance
+passes 64 scenario groups across all four pairings. Cases include remote authorization and tenant filters,
+expired claims, complete peer/grant operations, exact capability hashes, live
+relay-listener mutation/deduplication/failure, ownership conflict after worker
+installation, claim replacement during renewal, fallback NX election, caller
+future abandonment, split-surrogate error bounds, late replies, the real
+ten-second timeout and pending-operation shutdown. The parser's accepted
+String-coerced reason retains its original value in worker commands.
+
+A separate native library test executes 2,445 comparisons against verbatim
+reference helper source with the actual protocol schemas. These cover parser
+normalization/defaults/unknown fields, malformed inputs and UTF-16 bounds.
+Neither suite establishes production HTTP/SQL integration, real-worker product
+behavior, Redis outage timing, supported-platform artifacts or mixed rolling
+deployment readiness. Arbitrary malformed RPC error envelopes outside the typed
+response contract also need separate qualification.

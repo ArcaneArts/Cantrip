@@ -710,7 +710,8 @@
     "remoteSurfaceFrameHeaderSchema": 11418,
     "workerCommandSchema": 2596,
     "workerEventSchema": 1559,
-    "workerNotificationSchema": 2257
+    "workerNotificationSchema": 2257,
+    "workerLinkResourceKindSchema": 2843
   },
   "nodes": [
     {

@@ -91,12 +91,16 @@ export async function redisFixture(binary, root) {
   await api.start();
   return api;
 }
-export function bridgePeer(kind, executable, root, name) {
+export function bridgePeer(
+  kind,
+  executable,
+  root,
+  name,
+  nodeScript = "scripts/server-rust/coordinated-bridge-node.mjs",
+) {
   const child = spawn(
     kind === "node" ? process.execPath : executable,
-    kind === "node"
-      ? ["--import", "tsx", "scripts/server-rust/coordinated-bridge-node.mjs"]
-      : [],
+    kind === "node" ? ["--import", "tsx", nodeScript] : [],
     { cwd: repositoryRoot, env: process.env, stdio: ["pipe", "pipe", "pipe"] },
   );
   let next = 0,

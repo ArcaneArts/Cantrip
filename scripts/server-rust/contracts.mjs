@@ -733,6 +733,7 @@ export const contractRoots = [
   "workerCommandSchema",
   "workerEventSchema",
   "workerNotificationSchema",
+  "workerLinkResourceKindSchema",
 ];
 
 // Keep independently added roots self-contained. Numeric graph references must

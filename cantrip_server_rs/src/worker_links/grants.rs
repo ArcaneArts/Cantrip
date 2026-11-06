@@ -166,6 +166,15 @@ impl Coordinator {
         grant_id: &str,
         reason: &str,
     ) -> bool {
+        self.revoke_grant_value(session_id, grant_id, Value::String(reason.into()))
+            .await
+    }
+    pub(crate) async fn revoke_grant_value(
+        self: &Arc<Self>,
+        session_id: &str,
+        grant_id: &str,
+        reason: Value,
+    ) -> bool {
         let state = self.state.lock().unwrap().sessions.get(session_id).cloned();
         let Some(state) = state else { return false };
         let (session, grant) = {
@@ -176,7 +185,7 @@ impl Coordinator {
             (state.session.clone(), grant)
         };
         let generation = grant.lock().unwrap()["binding"]["grantGeneration"].clone();
-        self.best_effort(session["identity"]["workerId"].clone(),json!({"type":"worker-link.grant.revoke","sessionId":session_id,"grantId":grant_id,"grantGeneration":generation,"revocation":revocation(reason,self.now())}),session["identity"]["ownerId"].clone()).await;
+        self.best_effort(session["identity"]["workerId"].clone(),json!({"type":"worker-link.grant.revoke","sessionId":session_id,"grantId":grant_id,"grantGeneration":generation,"revocation":revocation_value(reason,self.now())}),session["identity"]["ownerId"].clone()).await;
         true
     }
 }
