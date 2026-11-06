@@ -1,4 +1,4 @@
-import type { ChatMessage } from "@cantrip/protocol";
+import type { ChatMessage, ChatNativeSuspension } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -35,6 +35,48 @@ function message(
 }
 
 describe("running agent duration", () => {
+  it("keeps the original correlated start across accepted steering and ignores a retired suspension", () => {
+    const state = {
+      phase: "paused",
+      active: { threadId: "thread", turnId: "turn" },
+    } as ChatNativeSuspension;
+    const rows = [
+      message("assistant", "2026-08-23T12:00:01.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "turnSummary",
+            id: "summary",
+            status: "running",
+            durationMs: null,
+            startedAtMs: Date.parse("2026-08-23T12:00:00.000Z"),
+            startedAt: null,
+            completedAt: null,
+            correlation: {
+              sourceMethod: "turn/started",
+              diagnosticId: null,
+              itemId: null,
+              threadId: "thread",
+              turnId: "turn",
+            },
+          },
+        },
+      ]),
+      message("user", "2026-08-23T12:04:00.000Z", []),
+    ];
+    expect(
+      resolveRunningAgentStartedAtMs(rows, "2026-08-23T12:04:01.000Z", state),
+    ).toBe(Date.parse("2026-08-23T12:00:00.000Z"));
+    expect(
+      resolveRunningAgentStartedAtMs([], "2026-08-23T12:04:01.000Z", state),
+    ).toBeNull();
+    expect(
+      resolveRunningAgentStartedAtMs(rows, "2026-08-23T12:04:01.000Z", {
+        ...state,
+        phase: "completed",
+      }),
+    ).toBe(Date.parse("2026-08-23T12:04:00.000Z"));
+  });
   it("prefers the live turn start and accepts epoch seconds", () => {
     const startedAt = 1_787_486_400;
     expect(

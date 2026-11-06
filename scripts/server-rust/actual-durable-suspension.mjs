@@ -22,6 +22,11 @@ import { HttpFixture } from "./http-fixture.mjs";
 import { eventually, launchActualWorker } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
 import { killOwnedWorkerTree } from "./owned-worker-tree.mjs";
+import {
+  openMountedSuspensionChat,
+  clickMountedSuspensionResume,
+  clickMountedSuspensionPause,
+} from "./mounted-suspension-browser.mjs";
 import { verifyBuiltRuntime } from "../cantrip-codex/verify-built-runtime.mjs";
 import {
   enrollSuspensionBrowser,
@@ -204,18 +209,45 @@ async function flow(kind, executable, cliBinary) {
         async (id) => (await import("/src/lib/api/chats.ts")).getMessages(id),
         chat.id,
       );
+    if (process.argv.includes("--mounted-ui"))
+      await openMountedSuspensionChat(page, vite.resolvedUrls.local[0], false);
     let active;
     for (let round = 1; round <= 2; round++) {
       const steering = "DURABLE_ACCEPTED_PENDING_" + round;
-      const pausing = page.evaluate(
-        async (id) =>
-          (await import("/src/lib/api/chats.ts")).setChatPaused(id, true),
-        chat.id,
-      );
+      const pausing = process.argv.includes("--mounted-ui")
+        ? clickMountedSuspensionPause(page, chat.id)
+        : page.evaluate(
+            async (id) =>
+              (await import("/src/lib/api/chats.ts")).setChatPaused(id, true),
+            chat.id,
+          );
       void pausing.catch(() => {});
       await eventually(identity, (value) =>
         assert.equal(value.nativeSuspension.phase, "pausing"),
       );
+      if (process.argv.includes("--mounted-ui")) {
+        await page
+          .getByRole("status")
+          .filter({ hasText: /^Pausing at the next safe boundary/ })
+          .waitFor({ state: "visible" });
+        assert.equal(
+          await page.getByRole("button", { name: "Pausing" }).isDisabled(),
+          true,
+        );
+        assert.equal(
+          await page
+            .getByRole("button", { name: "Stop current operation" })
+            .isEnabled(),
+          true,
+        );
+        const statuses = await page.getByRole("status").allTextContents();
+        assert.equal(
+          statuses.some((status) => status.trim().startsWith("Paused")),
+          false,
+          "A pending native checkpoint is not confirmed Paused",
+        );
+        (result.pendingUi ??= []).push({ round, statuses });
+      }
       assert.equal(
         (await steerSuspensionChat(page, chat.id, configuration, steering))
           .steered,
@@ -253,6 +285,13 @@ async function flow(kind, executable, cliBinary) {
       assert.equal(reopened.nativeSuspension.phase, "paused");
       assert.deepEqual(reopened.nativeSuspension.active, active);
       await messages();
+      if (process.argv.includes("--mounted-ui")) {
+        const opened = await openMountedSuspensionChat(
+          page,
+          vite.resolvedUrls.local[0],
+        );
+        (result.mountedUi ??= []).push({ round, ...opened });
+      }
       await delay(300);
       assert.equal(
         inferences(),
@@ -268,13 +307,15 @@ async function flow(kind, executable, cliBinary) {
           ? { text: "DURABLE_BOUNDARY_TWO", hold: true }
           : { text: "DURABLE_RECOVERED_FINAL" },
       );
-      const resumed = await page.evaluate(async (id) => {
-        const { setChatPaused } = await import("/src/lib/api/chats.ts");
-        return Promise.all([
-          setChatPaused(id, false),
-          setChatPaused(id, false),
-        ]);
-      }, chat.id);
+      const resumed = process.argv.includes("--mounted-ui")
+        ? await clickMountedSuspensionResume(page, chat.id)
+        : await page.evaluate(async (id) => {
+            const { setChatPaused } = await import("/src/lib/api/chats.ts");
+            return Promise.all([
+              setChatPaused(id, false),
+              setChatPaused(id, false),
+            ]);
+          }, chat.id);
       assert.ok(resumed.every((value) => value.paused === false));
       console.error(kind, "explicit Resume acknowledged", round);
       await eventually(
@@ -319,6 +360,13 @@ async function flow(kind, executable, cliBinary) {
     const textItems = finalMessages
       .flatMap((message) => message.content)
       .filter((item) => item.type === "text");
+    if (process.argv.includes("--mounted-ui")) {
+      await page
+        .getByText("DURABLE_RECOVERED_FINAL", { exact: true })
+        .first()
+        .waitFor({ state: "visible" });
+      result.mountedFinalVisible = true;
+    }
     assert.equal(textItems.filter((item) => item.text === prompt).length, 1);
     const final = textItems.find(
       (item) => item.text === "DURABLE_RECOVERED_FINAL",
@@ -394,6 +442,16 @@ async function flow(kind, executable, cliBinary) {
       commandResults: 1,
     };
   } catch (error) {
+    if (process.argv.includes("--mounted-ui"))
+      result.uiText = await page
+        .locator("body")
+        .innerText()
+        .catch(() => "");
+    if (process.argv.includes("--mounted-ui"))
+      result.uiSnapshot = await page
+        .locator("body")
+        .ariaSnapshot()
+        .catch(() => "");
     result.error = error.stack;
     throw error;
   } finally {
