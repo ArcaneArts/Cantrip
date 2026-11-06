@@ -77,7 +77,10 @@ impl DiscoveryService {
         Ok(scans + imports)
     }
     pub async fn start(self: &Arc<Self>) -> Result<()> {
-        self.recover(true).await?;
+        self.start_with_recovery(true).await
+    }
+    pub async fn start_with_recovery(self: &Arc<Self>, force: bool) -> Result<()> {
+        self.recover(force).await?;
         self.queue();
         let weak = Arc::downgrade(self);
         let mut stop = self.stop.subscribe();

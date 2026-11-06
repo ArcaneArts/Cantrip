@@ -4,14 +4,29 @@ The native `coordination::RedisCoordinator` implements the existing Node
 coordinator's Redis directory and message envelopes. The native
 `workers::coordinated::CoordinatedBridge` implements shared worker routing.
 The authenticated worker socket and resource services accept a local or shared
-`WorkerTransport`; production startup still selects the local implementation.
+`WorkerTransport`.
 The native `worker_links::authority::Authority` also implements the existing
 WorkerLink service's distributed operations and revocation. Production WorkerLink
 HTTP handlers and resource consumers now use that authority through the composed
-service and relay. Shared startup, App Live and instance-aware recovery still
-need integration and product acceptance.
-Setting `REDIS_URL` on the Rust server does not yet enable shared routing.
+service and relay. Setting `REDIS_URL` now starts one native coordinator and
+shares it across worker transport, WorkerLink and App Live. Readiness observes
+its actual command connection, and shutdown closes it after service drains.
+Transient recovery uses the observed instance count; background job recovery
+retains unexpired peer leases whenever coordination is configured.
+Full worker resource execution, mixed rolling product and artifact acceptance
+remain required.
 Node remains the default server and the worker remains Node.
+
+The Redis client is pinned to the vendored upstream 1.8.1 crate. Its original
+archive checksum and three additional connection-observation methods are
+documented in [the client provenance note](../cantrip_server_rs/third-party/redis/README.cantrip.md).
+Inherited trailing whitespace is removed from its README, changelog and the
+two changed Rust files; other upstream file bytes remain unchanged.
+TLS, parsing, authentication and reconnect use the upstream implementation.
+Cantrip's ordered command queue retains directory operations through reconnect;
+publication and readiness reject an actually unavailable command connection
+without waiting for that queue. No subscriber flag or separate TCP probe stands
+in for the command driver's state.
 
 ## Implemented contracts
 
@@ -225,3 +240,70 @@ store covers `none` and `accounts` authentication with 182 paired observations
 and controlled acknowledgments through the unchanged worker connection.
 These macOS arm64 results do not qualify Linux/Windows artifacts, packaging,
 App Live coordination or a mixed rolling product deployment.
+
+## Shared HTTP runtime
+
+The shared-runtime suite launches two complete HTTP/SQL service graphs against
+one private PostgreSQL database and Redis process. It exercises Node/Node,
+Node/Rust, Rust/Node and Rust/Rust with `none`, `password` and `accounts` auth:
+
+```sh
+node --import tsx scripts/server-rust/shared-runtime-http-compatibility.mjs \
+  --redis-bin /path/to/redis-server \
+  --report .qa/rust-shared-runtime/http.json
+```
+
+Select a focused combination with `--profile accounts --pair node/rust`.
+Both servers use the same real account session, as behind a load balancer.
+Local macOS arm64 acceptance passes 168 groups across all 12 combinations,
+with all 24 server processes shutting down cleanly.
+The fixture observes the actual Node Hub and includes the actual Rust executable
+entry point; private SQL and publication routes exist only in test launchers.
+Production handlers, services and coordination remain in use.
+
+Cases cover committed enrollment and cross-instance Live invalidation/replay,
+256-event synchronous bursts and eight concurrent 64-event producers in both
+directions, active surfaces and six unexpired claimed job rows across five
+services. The unchanged production `WorkerConnection` attaches only to one peer;
+the opposite peer installs a WorkerLink session, cross-authority renew/delete
+works, and actual relay sockets on both peers close on revocation. Account cases
+also reject foreign worker/session access and relay upgrades, retain the owner's
+session after foreign DELETE, and isolate local/external Live events by owner.
+
+The Redis fault kills the real process after SAVE and restarts its retained
+directory. Readiness keeps SQL ready while reporting coordination unavailable;
+confirmed fanout rejects promptly after the local event; unconfirmed offline
+events are not replayed on reconnect. Recovery requires an actual publication
+observed on both subscribers, followed by new remote worker operations on the
+original worker connections. This bounds a short outage; Redis is restored
+before application cleanup and does not prove shutdown with Redis still down.
+
+The suite exposed native publication reordering and a 9.46-second unavailable
+readiness response. Publication now begins its callback before the next local
+publication, and concurrent producers share that ordering boundary. The native
+Redis queue observes the actual command driver's state for fail-fast operations
+while preserving directory reads through reconnect. The directory suite now
+passes 56 groups across four pairings, including queued reads during a real
+11-second outage, plus the existing 16 CAS interleavings.
+
+Shutdown admission has a deterministic real-Redis regression:
+
+```sh
+node --import tsx scripts/server-rust/coordinated-shutdown-compatibility.mjs \
+  --redis-bin /path/to/redis-server \
+  --report .qa/rust-coordinated/shutdown.json
+```
+
+All four pairings pass 12 groups. A held owner lookup previously resumed after
+the bridge's pending-request drain in both implementations, dispatched a command
+whose response listener had already been removed, and eventually returned a
+command timeout. Both bridges now retain the normal shutdown unavailable error
+after directory/owner awaits and reject new post-close requests. Native pending
+insertion shares the shutdown drain's state lock. The expanded HTTP suite also
+caught this as a process shutdown deadline failure; that assertion remains.
+
+WorkerLink acknowledgments and seeded active job leases are controlled here.
+These checks do not establish full worker resource/job execution, job lease
+renewal/expiry, complete mixed rolling product behavior, Redis TLS, other
+platforms or packaged/deployed artifacts. Existing-data upgrades, post-write
+rollback and default server cutover remain separate requirements.

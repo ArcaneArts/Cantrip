@@ -2,8 +2,12 @@ mod control;
 mod protocol;
 use crate::wire::{self, JsString, Value};
 use anyhow::{Context as _, Result, bail};
-use futures::future::{BoxFuture, join_all};
+use futures::{
+    FutureExt,
+    future::{BoxFuture, join_all},
+};
 use indexmap::IndexMap;
+use parking_lot::ReentrantMutex;
 use serde::Serialize;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -152,6 +156,7 @@ struct State {
 }
 pub struct Hub {
     options: Options,
+    publication_order: ReentrantMutex<()>,
     state: Mutex<State>,
     timer: Mutex<Option<AbortHandle>>,
     maintaining: AtomicBool,
@@ -191,6 +196,7 @@ impl Hub {
         let interval = Duration::from_millis(options.heartbeat_interval_ms);
         let hub = Arc::new(Self {
             options,
+            publication_order: ReentrantMutex::new(()),
             state: Mutex::new(State::default()),
             timer: Mutex::new(None),
             maintaining: AtomicBool::new(false),
@@ -639,17 +645,33 @@ impl Hub {
         Ok(event)
     }
     pub fn publish(&self, publication: Value) -> Result<Value> {
+        let _order = self.publication_order.lock();
         let event = self.publication(&mut self.state.lock().unwrap(), &publication)?;
-        if let Some(publish) = &self.options.publish_external {
-            let result = publish(publication);
+        self.start_external(publication);
+        Ok(event)
+    }
+    fn start_external(&self, publication: Value) {
+        if let Ok(Some(result)) = self.begin_external(publication) {
             tokio::spawn(async move {
                 let _ = result.await;
             });
         }
-        Ok(event)
+    }
+    fn begin_external(&self, publication: Value) -> Result<Option<BoxFuture<'static, Result<()>>>> {
+        let Some(publish) = &self.options.publish_external else {
+            return Ok(None);
+        };
+        // Source invokes async callbacks through their first await before the
+        // next publication. Do not hold the ordering lock across pending IO.
+        let mut result = publish(publication);
+        match result.as_mut().now_or_never() {
+            Some(result) => result.map(|()| None),
+            None => Ok(Some(result)),
+        }
     }
     /// Preserve a Source synchronous publication group against concurrent producers.
     pub fn publish_group(&self, publications: Vec<Value>) -> Result<Vec<Value>> {
+        let _order = self.publication_order.lock();
         let events = {
             let mut state = self.state.lock().unwrap();
             publications
@@ -657,24 +679,24 @@ impl Hub {
                 .map(|publication| self.publication(&mut state, publication))
                 .collect::<Result<Vec<_>>>()?
         };
-        if let Some(publish) = &self.options.publish_external {
-            for publication in publications {
-                let result = publish(publication);
-                tokio::spawn(async move {
-                    let _ = result.await;
-                });
-            }
+        for publication in publications {
+            self.start_external(publication);
         }
         Ok(events)
     }
     pub async fn publish_confirmed(&self, publication: Value) -> Result<Value> {
-        let event = self.publication(&mut self.state.lock().unwrap(), &publication)?;
-        if let Some(publish) = &self.options.publish_external {
-            publish(publication).await?;
+        let (event, pending) = {
+            let _order = self.publication_order.lock();
+            let event = self.publication(&mut self.state.lock().unwrap(), &publication)?;
+            (event, self.begin_external(publication)?)
+        };
+        if let Some(pending) = pending {
+            pending.await?;
         }
         Ok(event)
     }
     pub fn receive_external(&self, publication: &Value) -> Option<Value> {
+        let _order = self.publication_order.lock();
         if !publication["ownerId"].is_string() {
             return None;
         }
@@ -742,6 +764,7 @@ impl Hub {
         self.maintaining.store(false, Ordering::Release);
     }
     pub fn close(&self) {
+        let _order = self.publication_order.lock();
         let mut state = self.state.lock().unwrap();
         if state.closed {
             return;

@@ -2,11 +2,14 @@
 use super::{
     ConnectionContext, Hub, Options, SessionRegistry, Transports, repository::LiveRepository,
 };
-use crate::{auth::service::Revocation, config::ServerConfig, database::Database, wire::Value};
+use crate::{
+    auth::service::Revocation, config::ServerConfig, coordination::RelayCoordinator,
+    database::Database, wire::Value,
+};
 use anyhow::Result;
 use std::{
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     time::Duration,
@@ -21,6 +24,7 @@ pub struct LiveService {
     publishing: Arc<AtomicBool>,
     validation: AbortHandle,
     alerts: AbortHandle,
+    coordination: Mutex<Option<super::coordination::Subscription>>,
 }
 fn invalidation(
     hub: &Hub,
@@ -55,12 +59,22 @@ impl LiveService {
         config: &ServerConfig,
         usage: Option<super::UsageRecorder>,
     ) -> Result<Arc<Self>> {
+        Self::with_coordination(database, config, usage, None)
+    }
+    pub fn with_coordination(
+        database: Arc<Database>,
+        config: &ServerConfig,
+        usage: Option<super::UsageRecorder>,
+        coordination: Option<Arc<dyn RelayCoordinator>>,
+    ) -> Result<Arc<Self>> {
         let alert_database = database.clone();
         let repository = Arc::new(LiveRepository::new(database)?);
         let hub = Hub::new(Options {
             record_usage: usage,
+            publish_external: coordination.clone().map(super::coordination::publisher),
             ..Options::default()
         })?;
+        let coordination = coordination.map(|c| super::coordination::Subscription::new(c, &hub));
         let publishing = Arc::new(AtomicBool::new(true));
         let weak = Arc::downgrade(&hub);
         let enabled = publishing.clone();
@@ -107,6 +121,7 @@ impl LiveService {
             publishing,
             validation,
             alerts,
+            coordination: Mutex::new(coordination),
         }))
     }
     pub fn context(&self, owner: String, session: Option<String>) -> ConnectionContext {
@@ -186,6 +201,7 @@ impl LiveService {
     }
     pub fn close(&self) {
         self.publishing.store(false, Ordering::Release);
+        self.coordination.lock().unwrap().take();
         self.validation.abort();
         self.alerts.abort();
         self.sessions.close_all("Server is shutting down");

@@ -152,7 +152,13 @@ async fn health() -> Response {
 async fn ready(State(service): State<Arc<AuthService>>) -> Response {
     let database = &service.repository.database;
     let started = Instant::now();
-    let success = database.query("SELECT 1", &[]).await.is_ok();
+    let database_ready = database.query("SELECT 1", &[]).await.is_ok();
+    let coordination_ready = match &service.coordination {
+        Some(coordinator) if database_ready => coordinator.health().await.unwrap_or(false),
+        Some(_) => false,
+        None => true,
+    };
+    let success = database_ready && coordination_ready;
     json_response(
         if success {
             StatusCode::OK
@@ -162,8 +168,8 @@ async fn ready(State(service): State<Arc<AuthService>>) -> Response {
         json!({
             "status": if success { "ready" } else { "not-ready" },
             "service":"cantrip_server",
-            "database": {"engine":database.engine(), "status":if success { "ready" } else { "unavailable" }, "latencyMs":started.elapsed().as_secs_f64()*1000.0},
-            "coordination": {"shared":false, "status":"ready"},
+            "database": {"engine":database.engine(), "status":if database_ready { "ready" } else { "unavailable" }, "latencyMs":started.elapsed().as_secs_f64()*1000.0},
+            "coordination": {"shared":service.coordination.is_some(), "status":if coordination_ready { "ready" } else { "unavailable" }},
             "timestamp":timestamp()
         }),
     )

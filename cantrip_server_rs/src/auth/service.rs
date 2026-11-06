@@ -57,6 +57,7 @@ impl ResolvedSession {
 }
 
 pub struct AuthService {
+    pub coordination: Option<Arc<dyn crate::coordination::RelayCoordinator>>,
     pub config: Arc<ServerConfig>,
     pub repository: AuthRepository,
     pub passwords: PasswordService,
@@ -106,6 +107,15 @@ impl AuthService {
         database: Arc<Database>,
         config: Arc<ServerConfig>,
     ) -> Result<Arc<Self>> {
+        Self::with_coordination(database, config, None).await
+    }
+    /// Compose every runtime consumer with the same already-started coordinator.
+    /// The executable remains responsible for its startup and shutdown lifetime.
+    pub async fn with_coordination(
+        database: Arc<Database>,
+        config: Arc<ServerConfig>,
+        coordination: Option<Arc<dyn crate::coordination::RelayCoordinator>>,
+    ) -> Result<Arc<Self>> {
         let repository = AuthRepository::new(database.clone());
         // The existing connector always provisions the retained local identity,
         // including on an account server; only its principal is mode-dependent.
@@ -125,18 +135,24 @@ impl AuthService {
         if let Some(local) = local_user.as_ref() {
             surfaces.ensure_browsers(&local.id).await?;
         }
-        // This native runtime currently has one local coordinator. Shared
-        // coordination must use its observed instance count before recovery.
-        surfaces.reset_transient().await?;
-        crate::tunnels::Repository::new(database.clone())
-            .reset_transient()
-            .await?;
-        crate::chats::execution_lanes::LaneRepository::new(database.clone())
-            .reset_interrupted()
-            .await?;
-        crate::tasks::Repository::new(database.clone())
-            .reconcile_interrupted_operations()
-            .await?;
+        let recover_global = coordination.as_ref().is_none_or(|c| {
+            crate::wire::coercion::number(c.stats().get("instanceCount")).unwrap_or(f64::NAN) <= 1.0
+        });
+        if recover_global {
+            surfaces.reset_transient().await?;
+            crate::tunnels::Repository::new(database.clone())
+                .reset_transient()
+                .await?;
+            crate::chats::execution_lanes::LaneRepository::new(database.clone())
+                .reset_interrupted()
+                .await?;
+            crate::tasks::Repository::new(database.clone())
+                .reconcile_interrupted_operations()
+                .await?;
+        }
+        // Shared job recovery retains unexpired peer leases even with one
+        // currently observed instance, matching recoverAfterRestart(!coordinator).
+        let force_job_recovery = coordination.is_none();
         let normalized_admin = config
             .admin_email
             .as_ref()
@@ -145,7 +161,7 @@ impl AuthService {
         let rate_limit = Mutex::new(AuthRateLimiter::new(config.auth_rate_limit as usize));
         let usage = crate::usage::service::UsageService::new(database.clone(), &config)?;
         let recorder = Arc::downgrade(&usage);
-        let workers = crate::workers::service::WorkerService::with_usage(
+        let workers = crate::workers::service::WorkerService::with_coordination(
             repository.database.clone(),
             &config,
             Some(Arc::new(move |owner, ingress, bytes, notify| {
@@ -153,9 +169,10 @@ impl AuthService {
                     usage.record(owner, "worker-control-websocket", ingress, bytes, 1, notify);
                 }
             })),
+            coordination.clone(),
         );
         let recorder = Arc::downgrade(&usage);
-        let live = crate::live::LiveService::with_usage(
+        let live = crate::live::LiveService::with_coordination(
             database,
             &config,
             Some(Arc::new(move |owner, ingress, bytes, notify| {
@@ -163,6 +180,7 @@ impl AuthService {
                     usage.record(owner, "client-live-websocket", ingress, bytes, 1, notify);
                 }
             })),
+            coordination.clone(),
         )?;
         let publisher = Arc::downgrade(&live);
         usage.invalidations.on_publish(Arc::new(move |owner| {
@@ -194,7 +212,7 @@ impl AuthService {
             workers.bridge.clone(),
             live.clone(),
         );
-        folder_setup.start().await?;
+        folder_setup.start_with_recovery(force_job_recovery).await?;
         let worker_maintenance = crate::workers::maintenance::Service::new(
             repository.database.clone(),
             workers.bridge.clone(),
@@ -234,11 +252,12 @@ impl AuthService {
             },
             crate::operations::logging::server_logger(),
         );
-        let worker_links = crate::worker_links::service::Service::new(
+        let worker_links = crate::worker_links::service::Service::with_coordination(
             server_id.clone(),
             &config,
             &workers,
             &usage,
+            coordination.clone(),
         );
         let tunnel_repository = crate::tunnels::Repository::new(repository.database.clone());
         let tunnel_live = live.clone();
@@ -301,7 +320,9 @@ impl AuthService {
             live.clone(),
             worktree_observations.clone(),
         );
-        project_replicas.start().await?;
+        project_replicas
+            .start_with_recovery(force_job_recovery)
+            .await?;
         let github_conversion = crate::projects::github_conversion::service::ConversionService::new(
             repository.database.clone(),
             workers.commands.clone(),
@@ -309,7 +330,9 @@ impl AuthService {
             live.clone(),
             worktree_observations.clone(),
         );
-        github_conversion.start().await?;
+        github_conversion
+            .start_with_recovery(force_job_recovery)
+            .await?;
         let workspace_discovery =
             crate::projects::workspace_discovery::service::DiscoveryService::new(
                 repository.database.clone(),
@@ -317,13 +340,15 @@ impl AuthService {
                 workers.bridge.clone(),
                 live.clone(),
             );
-        workspace_discovery.start().await?;
+        workspace_discovery
+            .start_with_recovery(force_job_recovery)
+            .await?;
         let scratch_roots = crate::chats::roots::service::Service::new(
             repository.database.clone(),
             workers.clone(),
             live.clone(),
         );
-        scratch_roots.start(true).await?;
+        scratch_roots.start(force_job_recovery).await?;
         let observations = worktree_observations.clone();
         let project_operations =
             crate::projects::coordinator::Coordinator::new(Arc::new(move |owner, project| {
@@ -454,6 +479,7 @@ impl AuthService {
             worker_links.clone(),
         );
         Ok(Arc::new(Self {
+            coordination,
             config,
             repository,
             passwords,

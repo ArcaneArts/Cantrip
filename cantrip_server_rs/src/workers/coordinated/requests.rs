@@ -59,6 +59,9 @@ impl CoordinatedBridge {
         let this = self.clone();
         let worker = worker.to_owned();
         own(async move {
+            if this.state.lock().unwrap().closed {
+                return Err(CommandError::unavailable("Server is shutting down.".into()));
+            }
             if this.state.lock().unwrap().connections.contains_key(&worker) {
                 let callback = options.on_event.clone();
                 let observed = options.clone();
@@ -101,6 +104,9 @@ impl CoordinatedBridge {
             .find_worker(&worker.clone().into())
             .await
             .map_err(|e| error(e.to_string()))?;
+        if self.state.lock().unwrap().closed {
+            return Err(CommandError::unavailable("Server is shutting down.".into()));
+        }
         let Some(presence) = presence else {
             self.state.lock().unwrap().failed += 1;
             self.repeat(format!("coordination-command-offline:{worker}:{}",command["type"].as_str().unwrap_or("")),"warn","Remote worker command could not be dispatched",json!({"event":"coordination.command.rejected","subsystem":"relay-coordination","operation":command["type"],"reasonCode":"worker-offline","status":"rejected","workerId":worker}));
@@ -108,8 +114,14 @@ impl CoordinatedBridge {
                 "Worker {worker} is offline."
             )));
         };
-        if let Some(id) = text(&presence["connectionId"]) {
-            self.state.lock().unwrap().known.insert(worker.clone(), id);
+        {
+            let mut state = self.state.lock().unwrap();
+            if state.closed {
+                return Err(CommandError::unavailable("Server is shutting down.".into()));
+            }
+            if let Some(id) = text(&presence["connectionId"]) {
+                state.known.insert(worker.clone(), id);
+            }
         }
         let owner = match options.owner.take() {
             Some(owner) => Some(owner),
@@ -117,6 +129,9 @@ impl CoordinatedBridge {
                 .await
                 .map_err(|e| error(e.to_string()))?,
         };
+        if self.state.lock().unwrap().closed {
+            return Err(CommandError::unavailable("Server is shutting down.".into()));
+        }
         let Some(owner) = owner.filter(|o| !o.is_empty() && presence["ownerId"] == o.as_str())
         else {
             self.state.lock().unwrap().failed += 1;
@@ -131,21 +146,12 @@ impl CoordinatedBridge {
         let id = Uuid::new_v4().to_string();
         let at = now();
         let kind = command["type"].as_str().unwrap_or("").to_owned();
-        self.state.lock().unwrap().routed += 1;
-        self.log(
-            "debug",
-            "Remote worker command dispatched",
-            "coordination.command.dispatched",
-            &kind,
-            "dispatched",
-            json!({"requestId":id,"workerId":worker}),
-        );
         let (tx, rx) = oneshot::channel();
         let (delivery, mut events) = mpsc::unbounded_channel();
         let pending = Arc::new(Pending {
             instance: presence["instanceId"].as_str().unwrap_or("").into(),
             worker: worker.clone(),
-            command: kind,
+            command: kind.clone(),
             started: at,
             delivery,
             completion: Mutex::new(Some(tx)),
@@ -154,11 +160,24 @@ impl CoordinatedBridge {
             changed: watch::channel(()).0,
             options,
         });
-        self.state
-            .lock()
-            .unwrap()
-            .pending
-            .insert(id.clone(), pending.clone());
+        {
+            // Admission and shutdown's pending-request drain share this lock.
+            // An owner/directory await cannot add an unobserved request later.
+            let mut state = self.state.lock().unwrap();
+            if state.closed {
+                return Err(CommandError::unavailable("Server is shutting down.".into()));
+            }
+            state.routed += 1;
+            state.pending.insert(id.clone(), pending.clone());
+        }
+        self.log(
+            "debug",
+            "Remote worker command dispatched",
+            "coordination.command.dispatched",
+            &kind,
+            "dispatched",
+            json!({"requestId":id,"workerId":worker}),
+        );
         let weak = Arc::downgrade(&self);
         let p = pending.clone();
         let key = id.clone();

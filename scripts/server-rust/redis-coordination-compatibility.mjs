@@ -15,6 +15,7 @@ import { parseArgs } from "node:util";
 import { rustEnvironment, repositoryRoot } from "./cargo.mjs";
 import { workerLinkWireFixtures } from "./worker-link-wire-fixtures.mjs";
 import { compareAndSetFaults } from "./redis-cas-fault.mjs";
+import { offlineDirectory } from "./redis-offline-directory.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -702,7 +703,7 @@ async function exercise(kinds) {
       /Redis coordination is unavailable\./,
     );
     assert.equal((await a.call("stats")).sentMessages, offlineSent + 1);
-    await redisStart();
+    await offlineDirectory([a, b], redisStart, item);
     await eventually(
       async () => {
         try {

@@ -9800,12 +9800,11 @@
       "referenceTests": [
         "cantrip_server/test/shared-relay-coordination.test.ts"
       ],
-      "runtimeFinding": "Rust implements the native Redis coordinator, coordinated worker bridge, WorkerTransport adapter and WorkerLink authority. Production WorkerLink HTTP handlers and resource/auth consumers now use the composed Service/Authority/Relay with async authorization, reference error boundaries, eager owned revocations, upgraded-socket await handling and relay subscription cleanup. Actual composed-service mixed tests and focused SQL-backed HTTP facade tests pass locally. Production startup still constructs local transport and no Redis coordinator; App Live, instance-aware recovery and full SQL-backed mixed product acceptance remain incomplete. REDIS_URL alone does not enable shared routing.",
+      "runtimeFinding": "REDIS_URL now starts one native coordinator shared by production WorkerTransport, WorkerLink and App Live; readiness checks the actual command connection and shutdown closes it after service drains. Global transient recovery uses observed instance count, while configured shared job recovery preserves unexpired peer leases. Source and native bridge request admission rechecks shutdown after directory/owner awaits, with native pending insertion atomic with the close drain. Node remains the default packaged server; full product/platform/deployment replacement acceptance is incomplete.",
       "remaining": [
-        "Wire native Redis coordination into production startup, health and graceful shutdown without adding a JavaScript helper.",
-        "Construct coordinated WorkerTransport and WorkerLink coordination from production startup, finish App Live routing and use observed instance count before transient and background-job recovery. Qualify malformed legacy relay payloads, arbitrary malformed RPC error envelopes and listener lifecycle/error fidelity. Preserve consumer-level replay/deduplication; the reference coordinator itself delivers repeated message IDs.",
-        "Exercise real SQL-backed Rust/Rust and mixed Node/Rust product instances, interruption at execution boundaries, replacement, replay, backpressure and revocation; qualify TLS, supported platforms and packaged/deployment artifacts.",
-        "Qualify fail-fast publish/readiness and offline command-queue timing against Source during production integration; the current functional outage checks assert results and recovery, not timing equivalence."
+        "Exercise full unchanged-worker resource and native execution across actual SQL-backed mixed peers, including worker/server replacement, durable execution failures, replay/backpressure and binary endpoints; controlled WorkerLink acknowledgments do not establish full mixed rolling product behavior.",
+        "Qualify malformed legacy relay payloads, arbitrary malformed RPC error envelopes and complete listener lifecycle/error fidelity. Preserve consumer-level replay/deduplication.",
+        "Qualify Redis TLS, long outages/expiry, service shutdown while Redis remains unavailable, supported platforms and packaged/deployment artifacts."
       ],
       "rustImplementation": [
         "cantrip_server_rs/src/coordination/mod.rs",
@@ -9818,14 +9817,17 @@
         "cantrip_server_rs/src/worker_links/authority/",
         "cantrip_server_rs/src/worker_links/service.rs",
         "cantrip_server_rs/src/http/worker_links.rs",
-        "cantrip_server_rs/src/http/worker_link_socket_authorization.rs"
+        "cantrip_server_rs/src/http/worker_link_socket_authorization.rs",
+        "cantrip_server_rs/src/coordination/command.rs",
+        "cantrip_server_rs/src/live/coordination.rs",
+        "cantrip_server_rs/src/main.rs"
       ],
       "localAcceptance": {
         "platform": "darwin-arm64",
         "redisVersion": "8.10.3",
         "pairs": ["node/node", "node/rust", "rust/node", "rust/rust"],
-        "scenarioGroups": 52,
-        "scope": "Directory/envelope, cache/expiry, authority election/fencing, listeners, exact message size and actual Redis interruption/reconnect only. Not full product or mixed rolling deployment.",
+        "scenarioGroups": 56,
+        "scope": "Directory/envelope, cache/expiry, authority election/fencing, listeners, exact message size, actual Redis interruption/reconnect, plus uncached directory reads queued throughout an 11-second process outage and resolved after reconnect. Includes 16 real CAS interleavings. Not full product or mixed rolling deployment.",
         "command": "node --import tsx scripts/server-rust/redis-coordination-compatibility.mjs --redis-bin /path/to/redis-server --report .qa/rust-redis/coordination.json",
         "report": "docs/RUST_SERVER_REDIS.md",
         "compareAndSetInterleavings": 16
@@ -9853,7 +9855,16 @@
         "scripts/server-rust/worker-link-http-boundary-compatibility.mjs",
         "scripts/server-rust/worker-link-http-node-control.mjs",
         "cantrip_server_rs/examples/worker-link-http-fixture.rs",
-        "cantrip_server_rs/examples/support/worker_link_lookup_control.rs"
+        "cantrip_server_rs/examples/support/worker_link_lookup_control.rs",
+        "scripts/server-rust/redis-offline-directory.mjs",
+        "scripts/server-rust/coordinated-shutdown-compatibility.mjs",
+        "scripts/server-rust/shared-runtime-http-compatibility.mjs",
+        "scripts/server-rust/shared-runtime-node.mjs",
+        "scripts/server-rust/shared-runtime-worker.mjs",
+        "scripts/server-rust/shared-runtime-live.mjs",
+        "scripts/server-rust/shared-runtime-jobs.mjs",
+        "scripts/server-rust/shared-runtime-redis-fault.mjs",
+        "scripts/server-rust/shared-runtime-tenants.mjs"
       ],
       "bridgeLocalAcceptance": {
         "platform": "darwin-arm64",
@@ -9897,6 +9908,30 @@
           "node --import tsx scripts/server-rust/worker-link-http-compatibility.mjs --database pglite --keep-data"
         ],
         "report": "docs/RUST_SERVER_REDIS.md"
+      },
+      "shutdownAdmissionLocalAcceptance": {
+        "platform": "darwin-arm64",
+        "scenarioGroups": 12,
+        "pairs": ["node/node", "node/rust", "rust/node", "rust/rust"],
+        "command": "node --import tsx scripts/server-rust/coordinated-shutdown-compatibility.mjs --redis-bin /path/to/redis-server --report .qa/rust-coordinated/shutdown.json",
+        "scope": "Actual bridges and private Redis: pending request rejects on close, owner lookup resumed after close cannot add a request, and a new post-close command never reaches worker. Both original implementations failed the held-owner assertion with a timed-out WorkerCommandError; both now retain the normal WorkerUnavailableError shutdown result."
+      },
+      "redisClientProvenance": {
+        "version": "1.8.1",
+        "originalArchiveSha256": "db7f3d75b5a3301746bff39a767bf4c5c42506b08513527308b3875bfb64a031",
+        "note": "cantrip_server_rs/third-party/redis/README.cantrip.md",
+        "scope": "134 upstream files retained; multiplexed_connection.rs and connection_manager.rs gain three connection-observation methods. Inherited trailing whitespace is removed from those Rust files, README and CHANGELOG; all other upstream bytes match. Native ordered command queue preserves directory offline lifetime while publish/readiness observe actual command readiness. TLS/parser/auth/reconnect remain upstream; TLS operation still requires qualification."
+      },
+      "sharedHttpRuntimeLocalAcceptance": {
+        "platform": "darwin-arm64",
+        "redisVersion": "8.10.3",
+        "database": "shared external PostgreSQL (private fixture process)",
+        "pairs": ["node/node", "node/rust", "rust/node", "rust/rust"],
+        "authModes": ["none", "password", "accounts"],
+        "scenarioGroups": 168,
+        "cleanServerShutdowns": 24,
+        "command": "node --import tsx scripts/server-rust/shared-runtime-http-compatibility.mjs --redis-bin /path/to/redis-server --report .qa/rust-shared-runtime/http.json",
+        "scope": "Complete production shared startup/HTTP/SQL/Live/WorkerTransport/WorkerLink graph. Actual enrollment/committed invalidations, replay, 256-publication bursts and eight concurrent64-event producers per peer; six seeded unexpired leases across five job services; unchanged WorkerConnection with controlled WorkerLink ACKs, actual two-peer relay revocation; cross-peer account cookies and tenant isolation; real short Redis SAVE/kill/restart with fail-fast readiness/publication, no offline event replay, original worker claims and new remote operations. All server exits clean. Not full worker resource/native job execution, lease renewal/expiry, long-outage shutdown, TLS, platforms, packaging or mixed rolling product readiness."
       }
     },
     "postgresConcurrencyAndTls": {
@@ -10050,7 +10085,7 @@
       ],
       "scope": "Native HTTP/1 upgrade (versions 8/13, ready v1/v2 and legacy), credential authentication, bounded pre-authentication buffering/capacity, close-frame transport cleanup, response correlation, local reconnect/deadline/event callback sequencing and credential delivery/revocation. Actual browser APIs and unchanged worker components exercise enrollment/rotation/persistence/reconnect/revocation. Full incoming text-envelope validation, ordered events and worker-scoped notification listeners now use the production bridge. Native notification prefixes execute in registration order; asynchronous completions are independent, and subscriptions survive reconnect. A loopback-only observer fixture compares actual HTTP/WS routing through unchanged worker transport components on all three stores locally. This does not implement the command resource domains.",
       "remaining": [
-        "App Live transport and ordered worker/session invalidations are integrated locally. Other resource publishers, WorkerLink and shared coordination remain unported.",
+        "App Live, WorkerTransport and WorkerLink share production Redis composition. Complete remaining resource and native execution acceptance across mixed HTTP/SQL peers.",
         "Domain event/notification persistence and consumers, binary relays and supported-platform acceptance for the new outgoing command changes. Incoming ingress PR 2286 passed all three platforms.",
         "Shared coordination, resource reconciliation and execution recovery hooks.",
         "Whole app UI and remaining full worker resource/execution flows across supported artifacts/platforms. The actual full worker Ollama catalog flow is locally verified on all three stores, including retained enrollment and process restart."
@@ -10073,7 +10108,7 @@
       ],
       "scope": "Native /api/live HTTP upgrade, configured origin/principal, first-offered non-worker subprotocol, per-account capacity through actual transport completion, first/last session presence, periodic validation, synchronous post-commit revocation, full project DTO and chat-context authorization reads, worker invalidations, FIFO final errors/close, bounded IO cleanup and actual process shutdown draining. Core oracle compares 44 scenarios/688 steps; repository suites compare project mapping and scope/session activity on all three stores. Real HTTP/WS covers anonymous/password/accounts/capacity, reconnect replay, invalid frames, committed worker state, stalled close acknowledgment and shutdown; external PostgreSQL also verifies an actually locked authorization query cannot stall transport ping/close. Chromium exercises the actual AppLiveClient with the existing worker components; its browser adapter maps internal close reasons to browser-permitted private-use codes. This does not establish full UI/domain/runtime or packaged-platform acceptance.",
       "remaining": [
-        "Complete remaining domain publishers, task routing, external coordination and shared Redis operation.",
+        "Complete remaining domain publishers, task routing and full worker/product acceptance over shared Redis; production shared Hub fanout and subscription are integrated.",
         "Complete domain persistence and consumers, binary/domain relays, execution and recovery integration. Incoming ingress PR 2286 passed all three platforms; outgoing command changes need fresh acceptance.",
         "Exercise whole app UI and full worker index/runtime across the supported packaging/deployment/platform matrix.",
         "Complete remaining schema, coercion/refinement and authenticated/hash boundaries across the server; the new parser socket cases do not prove all-domain parity."
