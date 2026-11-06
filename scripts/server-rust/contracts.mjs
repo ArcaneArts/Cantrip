@@ -714,6 +714,10 @@ export const contractRoots = [
   "taskGoalOutcomeCommitSchema",
   "workerChatTurnOutcomeNotificationSchema",
   "inferenceCommandTimingSchema",
+  "remoteSurfaceFrameHeaderSchema",
+  "workerCommandSchema",
+  "workerEventSchema",
+  "workerNotificationSchema",
 ];
 
 // Keep independently added roots self-contained. Numeric graph references must

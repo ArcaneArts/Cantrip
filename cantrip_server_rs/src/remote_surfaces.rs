@@ -1,4 +1,5 @@
 //! Canonical remote-surface execution contexts and status publication.
+pub mod frame;
 use crate::{
     database::Database, live::LiveService, projects::targets::TargetRepository, wire::Value,
 };

@@ -1,6 +1,7 @@
 pub mod bridge;
 pub mod command_bus;
 mod command_deadline;
+pub mod coordinated;
 pub mod credentials;
 mod frames;
 pub(crate) mod inference_failure;

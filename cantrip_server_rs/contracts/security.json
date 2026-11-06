@@ -691,7 +691,11 @@
     "taskGoalOutcomeDeliverySchema": 11265,
     "taskGoalOutcomeCommitSchema": 11274,
     "workerChatTurnOutcomeNotificationSchema": 2319,
-    "inferenceCommandTimingSchema": 1567
+    "inferenceCommandTimingSchema": 1567,
+    "remoteSurfaceFrameHeaderSchema": 11285,
+    "workerCommandSchema": 2596,
+    "workerEventSchema": 1559,
+    "workerNotificationSchema": 2257
   },
   "nodes": [
     {
@@ -67417,6 +67421,52 @@
       ],
       "checks": []
     },
-    { "type": "never", "checks": [] }
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "remoteSurfaceFrameHeaderSchema",
+      "shape": {
+        "protocolVersion": 11286,
+        "surfaceId": 11287,
+        "attachmentId": 11288,
+        "sequence": 11289,
+        "channel": 11290
+      },
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "name": "remoteSurfaceProtocolVersionSchema",
+      "values": [1],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "remoteSurfaceChannelSchema",
+      "values": ["control", "frame", "cursor", "clipboard", "webrtc-signal"],
+      "checks": []
+    }
   ]
 }

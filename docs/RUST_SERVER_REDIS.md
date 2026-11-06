@@ -1,9 +1,10 @@
 # Rust Redis coordination
 
 The native `coordination::RedisCoordinator` implements the existing Node
-coordinator's Redis directory and message envelopes. Production startup does
-not yet construct it: coordinated worker routing, WorkerLink authority routing
-and App Live distribution still need integration and product acceptance.
+coordinator's Redis directory and message envelopes. The native
+`workers::coordinated::CoordinatedBridge` implements shared worker routing.
+Production startup does not yet construct these components: worker service,
+WorkerLink authority and App Live integration still need product acceptance.
 Setting `REDIS_URL` on the Rust server does not yet enable shared routing.
 Node remains the default server and the worker remains Node.
 
@@ -29,6 +30,15 @@ Node remains the default server and the worker remains Node.
   later message that may resolve them.
 - Command reconnect and subscriber resubscription after interruption. Pub/sub
   is ephemeral: this layer does not add replay of messages sent while offline.
+- Shared worker claims, owner and attachment fencing, same-process reconnect
+  grace, legacy connections without continuity assertions, ordered remote
+  command events/responses, inference phase deadlines, notifications and opaque
+  surface, tunnel and WorkerLink frames. Already validated local WorkerLink
+  frames retain their original bytes; remote delivery rebuilds the carrier.
+- Incoming requests recheck the captured attachment after the asynchronous
+  owner lookup. Superseded attachment cleanup releases only its exact claim.
+  Missing timeout and explicit null remain distinct; reply TTL validation does
+  not coerce malformed timeout values.
 
 The runtime uses the native Redis client with Tokio and native TLS support.
 There is no JavaScript database or coordination helper in this module. The
@@ -68,3 +78,37 @@ artifacts or packaging acceptance.
 
 All development validation runs locally. GitHub Actions remains reserved for
 releases and deployments.
+
+The separate shared-bridge harness uses the actual Node and Rust bridge classes
+with controlled worker sockets and owner lookups, and the same private Redis:
+
+```sh
+node scripts/server-rust/coordinated-bridge-compatibility.mjs \
+  --redis-bin /path/to/redis-server \
+  --report .qa/rust-coordinated/bridge.json
+```
+
+Local macOS arm64 acceptance passed 156 scenarios across all four pairings.
+These cover command results/errors, ordered protected terminal events, event
+handler failures, all three binary relays, reconnect continuity without input
+replay, repeated legacy reconnects, generation replacement, attachment races at
+real Redis claim/renew awaits, exact old-claim cleanup, grace expiry, missing/null
+and coerced timeout inputs, expired requests, remaining receiver budgets,
+sender clock skew and delayed offline publications.
+
+The suite fills the 512-publication, 2,048-pending-command and 512-incoming-command
+bounds. It asserts overflow behavior, real socket delivery after publications
+drain, and cleanup of every retained request when ownership goes offline or the
+worker disconnects.
+
+The outage cases save the real Redis directory, kill Redis, restart it from
+that data and confirm actual bidirectional subscriber recovery. A short outage
+retains the worker socket, pending command and claim generation. Even when a
+local cache expires, the socket stays until Redis confirms claim loss; confirmed
+expiry closes it with code 1012, after which a fresh attachment routes again.
+
+This harness does not launch production HTTP/SQL services, the full WorkerLink
+authority service or App Live. Remaining malformed relay payload cases, outage
+response timing/backlog, TLS, other platforms and packaged artifacts still need
+qualification. These results do not establish mixed rolling product deployment
+or readiness to replace the default Node server.
