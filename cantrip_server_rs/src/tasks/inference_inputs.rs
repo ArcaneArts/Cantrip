@@ -85,13 +85,58 @@ pub(super) async fn defer_locked(tx: &Transaction<'_>, row: &Value, state: &Valu
 }
 
 impl Repository {
+    /// Stop holds the owner/cycle/chat locks. Revoke only an enforced receipt
+    /// whose input was never dispatched, including a not-yet-claimed command.
+    pub(crate) async fn defer_round_input_for_interrupt(
+        tx: &Transaction<'_>,
+        owner: &str,
+        cycle: &Value,
+    ) -> Result<()> {
+        let Some(round) = locked_round(
+            tx,
+            &text(&cycle["chat_id"])?,
+            &text(&cycle["operation_id"])?,
+        )
+        .await?
+        else {
+            return Ok(());
+        };
+        let state = &round["inference_input"];
+        let receipt = &state["receipt"];
+        let fence = &receipt["dispatch"];
+        if state.is_null()
+            || state["allAttemptsEnforced"] != true
+            || !receipt["kind"].is_null()
+            || state["deferred"] == true
+            || state["failedBeforeDispatch"] == true
+            || state["dispatched"] == true
+            || !state["firstDispatchedOperationId"].is_null()
+            || fence["cycleId"] != cycle["id"]
+            || fence["operationId"] != cycle["operation_id"]
+            || fence["fencingToken"] != cycle["fencing_token"]
+            || fence["leaseOwner"] != cycle["lease_owner"]
+            || !matches!(cycle["state"].as_str(), Some("claimed" | "running"))
+        {
+            return Ok(());
+        }
+        let result = async {
+            let row = context(tx, owner, receipt).await?;
+            defer_locked(tx, &row, state).await
+        }
+        .await;
+        match result {
+            Err(error) if error.is::<crate::task_dispatch::Conflict>() => Ok(()),
+            result => result,
+        }
+    }
+
     pub async fn prepare_inference_input(&self, owner: &str, input: &Value) -> Result<Value> {
         if input["kind"] == "goal" {
             return self.prepare_goal_inference_input(owner, input).await;
         }
         let mut receipt = input.clone();
         receipt["operationId"] = json!(uuid::Uuid::new_v4().to_string());
-        let receipt = parse("taskInferenceInputReceiptSchema", &receipt)?;
+        let mut receipt = parse("taskInferenceInputReceiptSchema", &receipt)?;
         let owner = owner.to_owned();
         self.database.transaction(|tx|Box::pin(async move {
             let chat=text(&receipt["chatId"])?;let operation=text(&receipt["dispatch"]["operationId"])?;
@@ -101,10 +146,11 @@ impl Repository {
             let cycle=text(&receipt["dispatch"]["cycleId"])?;
             let cycle=one(Executor::Transaction(tx),"SELECT to_jsonb(c)::text FROM task_dispatch_cycles c WHERE id=$1",&[&cycle]).await?.context("Task input dispatch")?;
             if cycle["physical_worker_id"]!=receipt["workerId"] || cycle["worktree_id"]!=receipt["worktreeId"] {return stale();}
+            receipt["queueOrderEpoch"] = cycle["goal_order_epoch"].clone();
             let previous=&row["round"]["inference_input"];
             if previous["failedBeforeDispatch"]==true && previous["receipt"]["dispatch"]["cycleId"]==receipt["dispatch"]["cycleId"] && previous["receipt"]["dispatch"]["fencingToken"]==receipt["dispatch"]["fencingToken"] {return stale();}
             let attempts=if previous["deferred"]==true {previous["attemptCountBefore"].clone()}else{json!((cycle["attempt_count"].as_i64().context("Task attempts")?-1).max(0))};
-            let mut state=json!({"receipt":receipt,"deferred":false,"failedBeforeDispatch":false,"accepted":false,"dispatched":false,"allAttemptsEnforced":previous.is_null() || (previous["accepted"]==true && previous["allAttemptsEnforced"]==true),"firstDispatchedOperationId":previous["firstDispatchedOperationId"],"multipleDispatched":previous["multipleDispatched"]==true,"attemptCountBefore":attempts});
+            let mut state=json!({"receipt":receipt,"deferred":false,"failedBeforeDispatch":false,"accepted":false,"dispatched":false,"allAttemptsEnforced":previous.is_null() || (previous["allAttemptsEnforced"]==true && (previous["accepted"]==true || previous["deferred"]==true)),"firstDispatchedOperationId":previous["firstDispatchedOperationId"],"multipleDispatched":previous["multipleDispatched"]==true,"attemptCountBefore":attempts});
             if let Some(change)=previous.get("routeChange") { state["routeChange"]=change.clone(); }
             update(tx,Table::Round,&operation,&json!({"inference_input":state,"user_message_id":receipt["clientMessageId"],"execution_lane_id":receipt["executionLaneId"]}),None).await?;
             let route=text(&receipt["modelRouteId"])?;let account=receipt["providerAccountId"].as_str();let cycle_id=text(&cycle["id"])?;

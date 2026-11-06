@@ -784,6 +784,9 @@ export class TaskInferenceInputRepository {
         cycle.worktreeId !== receipt.worktreeId
       )
         stale();
+      // A Stop creates a new eligibility episode even if its older worker
+      // command/queue record has not yet acknowledged cancellation.
+      receipt.queueOrderEpoch = cycle.goalOrderEpoch;
       const previous = round.inferenceInput;
       if (
         previous?.failedBeforeDispatch &&
@@ -800,7 +803,8 @@ export class TaskInferenceInputRepository {
         dispatched: false,
         allAttemptsEnforced:
           previous === null ||
-          (previous.accepted === true && previous.allAttemptsEnforced === true),
+          (previous.allAttemptsEnforced === true &&
+            (previous.accepted === true || previous.deferred === true)),
         firstDispatchedOperationId:
           previous?.firstDispatchedOperationId ?? null,
         multipleDispatched: previous?.multipleDispatched ?? false,
@@ -995,6 +999,49 @@ export class TaskInferenceInputRepository {
         if (!(error instanceof TaskDispatchConflictError)) throw error;
       }
     });
+  }
+
+  /** Seal an unused planning/finalizer receipt under the Stop owner's locks.
+   * Input authority is revoked here; physical inference settlement is separate. */
+  async deferForInterrupt(
+    tx: RepositoryTransaction,
+    ownerId: string,
+    cycle: typeof schema.taskDispatchCycles.$inferSelect,
+  ): Promise<void> {
+    const [round] = await tx
+      .select()
+      .from(schema.taskPlanningRounds)
+      .where(
+        and(
+          eq(schema.taskPlanningRounds.id, cycle.operationId),
+          eq(schema.taskPlanningRounds.chatId, cycle.chatId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    const state = round?.inferenceInput;
+    if (
+      !state ||
+      !state.allAttemptsEnforced ||
+      state.receipt.kind ||
+      state.deferred ||
+      state.failedBeforeDispatch ||
+      state.dispatched ||
+      state.firstDispatchedOperationId !== null ||
+      state.receipt.dispatch.cycleId !== cycle.id ||
+      state.receipt.dispatch.operationId !== cycle.operationId ||
+      state.receipt.dispatch.fencingToken !== cycle.fencingToken ||
+      state.receipt.dispatch.leaseOwner !== cycle.leaseOwner ||
+      !["claimed", "running"].includes(cycle.state)
+    )
+      return;
+    try {
+      // Revocation also covers a command that has not claimed this receipt yet.
+      // The actual before-send RPC serializes against this same canonical row.
+      await this.deferLocked(tx, ownerId, state);
+    } catch (error) {
+      if (!(error instanceof TaskDispatchConflictError)) throw error;
+    }
   }
 
   /** Revoke pending input authority and restore its original canonical cycle.

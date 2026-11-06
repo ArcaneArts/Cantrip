@@ -103,6 +103,19 @@ export function recoveryQueueIdentity(
       value.autonomousGoal.orderEpoch ?? 0,
     ]);
   }
+  if (
+    value.messageId &&
+    value.taskInput &&
+    !value.taskInput.kind &&
+    (value.taskInput.queueOrderEpoch ?? 0) > 0
+  )
+    return JSON.stringify([
+      "message",
+      chatId,
+      value.messageId,
+      "task-round-episode",
+      value.taskInput.queueOrderEpoch,
+    ]);
   return value.messageId
     ? JSON.stringify(["message", chatId, value.messageId])
     : null;

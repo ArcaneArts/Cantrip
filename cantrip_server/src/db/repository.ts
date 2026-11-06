@@ -741,7 +741,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     });
     this.taskAutomationPause = new TaskAutomationPauseRepository(
       database,
-      this.tasks.inferenceInputs.goals,
+      this.tasks.inferenceInputs,
     );
     this.tabLayouts = new ProjectTabLayoutRepository(database);
     this.workspaceLayouts = new WorkspaceLayoutRepository(database);
