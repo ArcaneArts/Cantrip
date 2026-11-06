@@ -33,6 +33,12 @@ fn response(
     )
 }
 async fn admit(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Value> {
+    let action = input["action"].as_str().unwrap_or("resume");
+    let phase = if action == "stop" {
+        "stopping"
+    } else {
+        "resuming"
+    };
     let id = text(&input["session"]["chatId"])?;
     let worker = text(&input["workerId"])?;
     let session = &input["session"];
@@ -42,8 +48,8 @@ async fn admit(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Value
         return reject("suspension-control-stale");
     };
     if state["controlId"] != input["controlId"]
-        || state["action"] != "resume"
-        || state["phase"] != "resuming"
+        || state["action"] != action
+        || state["phase"] != phase
         || state["checkpoint"].is_null()
         || state["active"].is_null()
         || state["checkpoint"] != input["checkpoint"]
@@ -77,7 +83,7 @@ async fn admit(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Value
         &state["executionOwner"]["operationId"]
     };
     if !truthy(activation.get("active"))
-        || truthy(activation.get("logical_cancelled"))
+        || (truthy(activation.get("logical_cancelled")) && action != "stop")
         || activation["worker_id"] != input["workerId"]
         || activation["operation_id"] != *expected_head
         || activation["execution_lane_id"] != context["executionLaneId"]
@@ -161,14 +167,21 @@ async fn admit(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Value
     {
         return reject("operation-id-conflict");
     }
+    let intent = parse_response("nativeCommandIntentSchema", Some(&head["intent"]))?;
+    let replaces_control =
+        action == "stop" && intent["restoredSuspension"]["controlId"] != input["controlId"];
     if state["executionOwner"]["workerGeneration"] == input["workerGeneration"]
         && state["executionOwner"]["runtimeGeneration"] == session["runtimeGeneration"]
+        && !replaces_control
     {
-        let intent = parse_response("nativeCommandIntentSchema", Some(&head["intent"]))?;
         if head["operation_generation"] != state["executionOwner"]["operationGeneration"]
             || head["identity"] != *session
             || head["payload_digest"] != input["payloadDigest"]
             || intent["restoredSuspension"]["controlId"] != input["controlId"]
+            || intent["restoredSuspension"]["action"]
+                .as_str()
+                .unwrap_or("resume")
+                != action
             || intent["restoredSuspension"]["checkpoint"] != input["checkpoint"]["suspension"]
             || truthy(head.get("execution_completed_at"))
         {
@@ -189,9 +202,13 @@ async fn admit(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Value
     let digest = text(&input["payloadDigest"])?;
     let payload = input["protectedPayload"].stringify();
     let identity = session.stringify();
-    let intent = json!({"scope":"thread","settingKeys":Vec::<String>::new(),"expectedTurnId":state["active"]["turnId"],
+    let mut intent = json!({"scope":"thread","settingKeys":Vec::<String>::new(),"expectedTurnId":state["active"]["turnId"],
         "permissionProfileId":managed_console::permission_profile(&context)["effectiveId"],
-        "restoredSuspension":json!({"controlId":input["controlId"],"checkpoint":input["checkpoint"]["suspension"],"source":operation(&source)})}).stringify();
+        "restoredSuspension":json!({"controlId":input["controlId"],"checkpoint":input["checkpoint"]["suspension"],"source":operation(&source)})});
+    if action == "stop" {
+        intent["restoredSuspension"]["action"] = json!(action);
+    }
+    let intent = intent.stringify();
     let row = raw_one(tx, "INSERT INTO native_commands(operation_id,owner_id,worker_id,chat_id,operation_generation,logical_operation_id,previous_operation_id,activation_generation,execution_lane_id,origin,method,kind,payload_digest,protected_payload,identity,intent,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'thread/resume','start',$11,$12::text::jsonb,$13::text::jsonb,$14::text::jsonb,'accepted') RETURNING to_jsonb(native_commands)::text", &[&operation_id,&owner,&worker,&id,&generation,&logical_id,&previous_id,&activation_generation,&lane,&origin,&digest,&payload,&identity,&intent]).await?.ok_or_else(|| anyhow::anyhow!("Database returned no suspended observer"))?;
     let now = crate::auth::now();
     tx.query("UPDATE native_commands SET execution_completed_at=COALESCE(execution_completed_at,$1),terminal_evidence=COALESCE(terminal_evidence,'{\"kind\":\"suspension-owner-replaced\"}'::jsonb),updated_at=$1 WHERE operation_id=$2", &[&now,&previous_id]).await?;
@@ -215,10 +232,16 @@ pub(super) async fn assert_dispatch(
     if restore.is_null() {
         return Ok(());
     }
+    let action = restore["action"].as_str().unwrap_or("resume");
+    let phase = if action == "stop" {
+        "stopping"
+    } else {
+        "resuming"
+    };
     let state = suspension::read(&suspension::chat(tx, owner, &text(&row["chat_id"])?).await?)?
         .unwrap_or(Value::Null);
-    if state["phase"] != "resuming"
-        || state["action"] != "resume"
+    if state["phase"] != phase
+        || state["action"] != action
         || state["controlId"] != restore["controlId"]
         || state["checkpoint"]["suspension"] != restore["checkpoint"]
         || state["executionOwner"]["operationId"] != row["operation_id"]

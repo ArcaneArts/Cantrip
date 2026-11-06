@@ -1221,14 +1221,15 @@ export class NativeCommandRepository {
         throw new NativeCommandError("thread-identity-mismatch");
       const intent = row.intent as NativeCommandAdmission["intent"];
       if (intent.restoredSuspension) {
+        const action = intent.restoredSuspension.action ?? "resume";
         const state = await new NativeSuspensionRepository(this.database)
           .inTransaction(tx)
           .read(ownerId, row.chatId);
         const current = state?.executionOwner;
         if (
           !state ||
-          state.phase !== "resuming" ||
-          state.action !== "resume" ||
+          state.phase !== (action === "stop" ? "stopping" : "resuming") ||
+          state.action !== action ||
           state.controlId !== intent.restoredSuspension.controlId ||
           !isDeepStrictEqual(
             state.checkpoint?.suspension,

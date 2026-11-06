@@ -2,6 +2,7 @@
 //! Native controls persist authorized intent at dispatch; late acknowledgements
 //! must observe that intent instead of writing an older request a second time.
 mod durable_resume;
+mod durable_stop;
 use super::{
     Repository, goals, live_mutations::Service as Live, managed_console,
     turn_runtime::stages::Operations,

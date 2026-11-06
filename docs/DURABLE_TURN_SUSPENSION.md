@@ -18,7 +18,9 @@ Native command receipts now commit server suspension ownership and status.
 Both server implementations can now admit a fresh physical observer for an
 explicit Resume while retaining the original input and native turn. Production
 worker orchestration now connects explicit cold Resume to fresh admission,
-held restoration and original-input completion. The production worker acceptance
+held restoration and original-input completion. Cold Stop can acquire a held
+observer for cancellation without restoring or releasing the continuation.
+The production worker acceptance
 below exercises this through the encrypted browser SDK and mounted application.
 The complete resource, error and autonomous-execution matrix is still being integrated; this is
 not yet the complete product guarantee.
@@ -280,11 +282,47 @@ accepted steering does not start another clock, and later turns cannot inherit
 an older turn's pause total.
 
 The mounted path is qualified in a desktop browser. Recovery-error controls and
-timing have focused component coverage; actual missing/corrupt checkpoint UI
+timing have focused component coverage. Cold Stop also has mounted coverage with
+missing, corrupt and incompatible native checkpoints. Actual Resume failure UI
 flows remain part of the broader error matrix. This does not qualify
-native-terminal-originated production input, cold Stop
-before restoration, Task/Goal recovery, or the complete resource/error matrix.
+native-terminal-originated production input, Task/Goal recovery, or the complete resource/error matrix.
 Those remain separate acceptance requirements.
+
+### Cold Stop before continuation restoration
+
+Explicit Stop persists its own control epoch before worker preparation and
+retains the autonomy stop. A previously accepted Resume cannot dispatch under
+that epoch. A surviving managed observer handles Stop directly; a fresh worker
+can instead acquire an observer grant stamped for Stop. That grant retains the
+original logical input and native history provenance, and cannot be used as a
+Resume grant. Duplicate deliveries for the same control and source join the
+same worker attempt.
+
+Managed preparation attaches the exact native thread under its execution hold.
+Stop then installs the original protected publication/bookkeeping observer
+without reading or decoding the native continuation. It does not reattach the
+already held session, release the pause gate, submit input, or start inference.
+The named native cancellation validates actual unfinished or terminal history,
+commits one abort when needed, and retires resumability. Both servers require
+the authoritative terminal acknowledgement before reporting successful Stop.
+Failure keeps the chat and Stop intent with an explicit retry; it cannot expose
+Resume for the stopped intent.
+
+The encrypted worker source and its original placement still need to be
+available. Missing or unreadable worker source is a recovery error; Stop does
+not guess another private runtime home. A missing, corrupt or unsupported native
+checkpoint alone does not prevent cancellation using the retained source and
+actual native history.
+
+The production fixture accepts `--cold-stop` to cancel after the first full
+worker-tree kill instead of resuming. Add `--mounted-ui` to click the real Stop
+button after reopening the paused chat. `--checkpoint-damage missing`, `corrupt`
+or `incompatible` changes the actual native checkpoint after termination. These
+cases run on both servers and require one original turn start, one named abort,
+one completed tool result, no consumption of pending steering and no further
+provider request. Concurrent or repeated Stop requests must not duplicate the
+abort. This qualifies native checkpoint error handling for cold Chat Stop;
+complete Task/Goal and resource-interleaving acceptance remains outstanding.
 
 ## Managed worker capture and source locator
 

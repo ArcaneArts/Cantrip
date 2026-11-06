@@ -724,10 +724,12 @@ export class ManagedNativeCommandSession {
     this.assertTransport(session);
     const evidence = grant.suspension.checkpoint;
     const owner = grant.suspension.executionOwner;
+    const action = grant.suspension.action;
     if (
       !evidence ||
-      grant.suspension.action !== "resume" ||
-      grant.suspension.phase !== "resuming" ||
+      !["resume", "stop"].includes(action) ||
+      grant.suspension.phase !==
+        (action === "stop" ? "stopping" : "resuming") ||
       grant.suspension.target.workerId !== this.options.identity.workerId ||
       grant.suspension.target.originalOperationId !==
         grant.source.operationId ||
@@ -841,6 +843,9 @@ export class ManagedNativeCommandSession {
         },
         suspension,
         continuation,
+        ...(grant.suspension.action === "stop"
+          ? (["stop"] as const)
+          : ([] as const)),
       );
       execution.handle = native;
       const completion = native.completion

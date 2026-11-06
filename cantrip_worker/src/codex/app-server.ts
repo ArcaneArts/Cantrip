@@ -2728,6 +2728,7 @@ export class CodexAppServer implements CodexRuntime {
     options: PrepareAdmittedNativeExecutionOptions,
     suspension: NativeTurnSuspension,
     input: WorkerTurnContinuation,
+    action: "resume" | "stop" = "resume",
   ): Promise<AdmittedNativeExecution> {
     const saved = workerTurnContinuationSchema.parse(input);
     suspension = nativeTurnSuspensionSchema.parse(suspension);
@@ -2737,6 +2738,7 @@ export class CodexAppServer implements CodexRuntime {
         JSON.stringify([
           suspension,
           saved,
+          action,
           options.operationGeneration,
           options.executionProfile ?? "ide",
           options.chatId,
@@ -2764,6 +2766,7 @@ export class CodexAppServer implements CodexRuntime {
         options,
         suspension,
         saved,
+        action,
       ),
     };
     this.#restoredTurns.set(options.threadId, entry);
@@ -2781,6 +2784,7 @@ export class CodexAppServer implements CodexRuntime {
     options: PrepareAdmittedNativeExecutionOptions,
     suspension: NativeTurnSuspension,
     saved: WorkerTurnContinuation,
+    action: "resume" | "stop",
   ): Promise<AdmittedNativeExecution> {
     if (
       saved.threadId !== suspension.threadId ||
@@ -2795,11 +2799,18 @@ export class CodexAppServer implements CodexRuntime {
       throw new Error(
         "Worker continuation belongs to another suspended execution.",
       );
-    const observed = await this.restoreHeldTurn(suspension, {
+    const startup = {
       model: saved.model,
       provider: options.provider,
       executionProfile: options.executionProfile,
-    });
+    };
+    let held = suspension;
+    if (action === "resume") {
+      held = (await this.restoreHeldTurn(suspension, startup)).suspension!;
+    }
+    // Managed preparation has already attached this thread under its expected
+    // execution hold. Stop must not reattach and validate a damaged checkpoint;
+    // its named native cancellation uses actual unfinished/terminal history.
     const handle = await this.prepareAdmittedNativeExecution({
       ...options,
       model: saved.model,
@@ -2807,7 +2818,7 @@ export class CodexAppServer implements CodexRuntime {
     });
     try {
       handle.assertCurrent();
-      handle.bindRestoredSuspension(observed.suspension!);
+      handle.bindRestoredSuspension(held);
       const active = this.#executions.activeTurnsByThread.get(options.threadId);
       if (!active)
         throw new Error("The restored native observer is no longer current.");
