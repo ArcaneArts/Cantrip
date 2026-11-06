@@ -1,6 +1,36 @@
 use super::*;
 use crate::chats::{live_mutations::MessageOptions, message_queries::MessageKind};
 impl Runtime {
+    pub(super) async fn retain_suspension(&self, turn: &PreparedTurn) -> Result<bool> {
+        let Some(receipt) = &turn.native_receipt else {
+            return Ok(false);
+        };
+        let state = Commands::new(self.dependencies.events.database.clone())
+            .suspended_execution(
+                &turn.owner,
+                &events::text(&turn.execution["workerId"])?,
+                &events::text(&receipt["operationId"])?,
+                &events::text(&receipt["operationGeneration"])?,
+            )
+            .await?;
+        let Some(state) = state else {
+            return Ok(false);
+        };
+        self.dependencies.events.live.publish_summary(
+            &turn.owner,
+            &turn.execution["chatId"],
+            &state["target"]["projectId"],
+        );
+        self.log(
+            "info",
+            "Suspended native turn retained after its worker submission ended",
+            json!({"event":"chat.turn.suspended","subsystem":"chat-execution",
+                "operation":"retain-suspended-turn","status":state["phase"],
+                "chatId":turn.execution["chatId"],"workerId":turn.execution["workerId"],
+                "operationId":receipt["operationId"],"turnId":state["active"]["turnId"]}),
+        );
+        Ok(true)
+    }
     pub(super) async fn settle_failure(
         self: &Arc<Self>,
         turn: Arc<PreparedTurn>,
@@ -8,6 +38,9 @@ impl Runtime {
         state: Arc<Mutex<TurnState>>,
         error: &Arc<anyhow::Error>,
     ) -> Result<()> {
+        if self.retain_suspension(&turn).await? {
+            return Ok(());
+        }
         let e = &turn.execution;
         if (turn.task_relay.is_some()
             || (turn.encrypted_task.is_some() && turn.user_message["mode"] == "goal"))

@@ -68,12 +68,13 @@ pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
                 .unwrap_or(Value::Null),
             "native-command-logical-finish" => Value::Bool(
                 repository
-                    .finish_logical_gui(
+                    .finish_logical_gui_with_transport(
                         owner,
                         worker,
                         operation,
                         input["generation"].as_str().context("Logical generation")?,
                         input["status"].as_str().context("Logical status")?,
+                        input["transportEnded"].as_bool().unwrap_or(false),
                     )
                     .boxed()
                     .await?,

@@ -195,6 +195,12 @@ async fn finish(
     {
         return Ok(false);
     }
+    if super::suspension::retained_execution(tx, owner, &row)
+        .await?
+        .is_some()
+    {
+        return Ok(false);
+    }
     let finished = execution_lanes::finish_in_transaction(
         tx,
         &chat,
