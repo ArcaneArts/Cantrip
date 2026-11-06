@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { nativeSettingsReadScopeSchema } from "./native-settings-state.js";
 
 const id = z.string().min(1).max(255);
 
@@ -51,6 +52,20 @@ export const nativeGoalRecoveryReceiptSchema = z.discriminatedUnion("status", [
       source: nativeGoalRecoverySourceSchema,
       status: z.literal("ineligible"),
       workerGeneration: z.uuid(),
+      // A negative read may retire only this actual native binding and FIFO
+      // episode. Older receipts without observation remain non-destructive.
+      observation: nativeSettingsReadScopeSchema
+        .extend({
+          runtimeGeneration: id,
+          nativeEpoch: id,
+          orderEpoch: z
+            .number()
+            .int()
+            .nonnegative()
+            .max(Number.MAX_SAFE_INTEGER),
+        })
+        .strict()
+        .optional(),
       reason: z.enum([
         "source-changed",
         "paused",

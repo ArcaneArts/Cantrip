@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   nativeGoalRecoverySchema,
   type NativeCommandAdmission,
@@ -809,35 +809,118 @@ export async function confirmGoalRecoveryReceipt(
     if (!chat?.paused) throw new NativeCommandError("stale-goal-recovery");
     return;
   }
+  const observation = receipt.observation;
+  if (
+    !observation ||
+    observation.chatId !== chatId ||
+    observation.threadId !== marker.source.threadId ||
+    observation.orderEpoch !== (marker.orderEpoch ?? 0)
+  )
+    return;
+  const [settings] = await tx
+    .select({ state: schema.nativeSettingsStates.state })
+    .from(schema.nativeSettingsStates)
+    .where(eq(schema.nativeSettingsStates.chatId, chatId));
+  const binding = settings?.state.binding;
+  if (
+    !binding ||
+    !(
+      [
+        "chatId",
+        "workerId",
+        "threadId",
+        "contextKind",
+        "projectId",
+        "placementId",
+        "modelRouteId",
+        "providerAccountId",
+        "runtimeGeneration",
+        "nativeEpoch",
+      ] as const
+    ).every((field) => binding[field] === observation[field])
+  )
+    return;
+  const context = await nativeCommandContext(tx, ownerId, chatId);
+  const session: NativeCommandSession = { ...observation, connectionId: null };
+  if (
+    !samePlacement(context, observation.workerId, session) ||
+    !sameRuntimeRoute(context, session) ||
+    context.threadId !== observation.threadId
+  )
+    return;
   if (marker.admission)
     throw new NativeCommandError("goal-recovery-already-admitted");
-  await tx
-    .update(schema.managedQueueStates)
-    .set({ goalRecovery: null })
-    .where(eq(schema.managedQueueStates.chatId, chatId));
-  const cancelled = await tx
-    .update(schema.managedQueueClaims)
-    .set({ status: "rejected" })
+  const source = await readNativeCommand(
+    tx,
+    ownerId,
+    observation.workerId,
+    marker.source.operationId,
+    marker.source.operationGeneration,
+  );
+  if (
+    source.chatId !== chatId ||
+    !source.executionCompletedAt ||
+    !isDeepStrictEqual(recoveredSource(source), marker.source)
+  )
+    throw new NativeCommandError("goal-recovery-source-unsettled");
+  const claims = await tx
+    .select()
+    .from(schema.managedQueueClaims)
     .where(
       and(
         eq(schema.managedQueueClaims.chatId, chatId),
         eq(schema.managedQueueClaims.awaitingGoal, true),
         eq(schema.managedQueueClaims.goalEpoch, receipt.source.goalEpoch),
-        isNull(schema.managedQueueClaims.goalOperationId),
         inArray(schema.managedQueueClaims.status, ["dispatched", "uncertain"]),
       ),
+    );
+  if (claims.length > 1)
+    throw new NativeCommandError("goal-recovery-claim-conflict");
+  for (const claim of claims) {
+    if (
+      claim.nativeTurnId ||
+      claim.goalOperationId ||
+      claim.goalOperationGeneration ||
+      !claim.operationId ||
+      !claim.operationGeneration
     )
-    .returning();
-  for (const claim of cancelled)
+      throw new NativeCommandError("goal-recovery-already-admitted");
+    const parent = await readNativeCommand(
+      tx,
+      ownerId,
+      observation.workerId,
+      claim.operationId,
+      claim.operationGeneration,
+    );
+    if (
+      parent.chatId !== chatId ||
+      parent.method !== "thread/goal/set" ||
+      parent.status !== "applied"
+    )
+      throw new NativeCommandError("goal-recovery-parent-unsettled");
+  }
+  await tx
+    .update(schema.managedQueueStates)
+    .set({ goalRecovery: null })
+    .where(eq(schema.managedQueueStates.chatId, chatId));
+  for (const claim of claims) {
+    // Its setter already ran. A changed/completed Goal cannot authorize
+    // replaying that original user input into the current native Goal.
+    await tx
+      .update(schema.managedQueueClaims)
+      .set({ status: "consumed" })
+      .where(eq(schema.managedQueueClaims.id, claim.id));
     await tx
       .update(schema.queuedPrompts)
-      .set({ state: "pending" })
+      .set({ state: "consumed", updatedAt: new Date() })
       .where(
         and(
           eq(schema.queuedPrompts.id, claim.promptId),
+          eq(schema.queuedPrompts.chatId, chatId),
           eq(schema.queuedPrompts.revision, claim.promptRevision),
           eq(schema.queuedPrompts.state, "claimed"),
         ),
       );
+  }
   await queueStateChanged(tx, chatId);
 }

@@ -6,6 +6,7 @@ import { handleNativeResourceProtection } from "./native-resource-control.js";
 import {
   providerUsesChatCompletions,
   nativeTurnSuspensionSchema,
+  nativeSettingsVersionSchema,
   isWorkerEndpointProviderKind,
 } from "@cantrip/protocol";
 import {
@@ -4269,14 +4270,30 @@ export class CodexAppServer implements CodexRuntime {
     expectedTransportGeneration: string,
   ) {
     this.assertManagedExecutionTransport(expectedTransportGeneration);
+    const readEpoch = async () => {
+      const value = await this.request("thread/settings/read", { threadId });
+      this.assertManagedExecutionTransport(expectedTransportGeneration);
+      return z
+        .object({
+          threadId: z.literal(threadId),
+          threadSettings: z.object({
+            settingsVersion: nativeSettingsVersionSchema,
+          }),
+        })
+        .parse(value).threadSettings.settingsVersion.epoch;
+    };
+    const nativeEpoch = await readEpoch();
     const result = await this.request("thread/goal/get", { threadId });
     this.assertManagedExecutionTransport(expectedTransportGeneration);
-    return z
+    if ((await readEpoch()) !== nativeEpoch)
+      throw new Error("Goal recovery observed a replaced native thread.");
+    const goal = z
       .object({
         goal: threadGoalSchema.nullable(),
         goalEpoch: z.string().min(1).nullable(),
       })
       .parse(result);
+    return { ...goal, nativeEpoch };
   }
 
   /** Read native lifecycle without exporting transcript content or resuming it. */
