@@ -123,6 +123,34 @@ format checks pass. The standard check still stops at the existing application
 decomposition limits; the separate repository guard reports the existing
 `native-commands.ts` limit. Later standard-check stages did not run.
 
+## Task recovery qualification
+
+Task controls use a separate admission-intent route. Patch `0090` restores native
+journal compatibility with the canonical Task queue epoch. Run the production
+fixture with `--task-origin --task-complete` to qualify a tool-using Task's normal
+completion. Both Node and Rust pass with two provider requests, one native turn,
+one completed command, and no native abort. This mode performs no cold recovery.
+
+For a running Task round, the worker now binds Core's actual thread, turn, and
+inference scope to the canonical dispatched Task input before its private model
+permission returns. Node and Rust persist this correlation on the round input,
+active lane, and dispatch cycle, bound to the claiming worker process and native
+runtime generations. A repeated exact binding is idempotent; changing its native
+identity or owner is rejected. The binding does not change the canonical input
+receipt, create a generic chat runtime, finalize the round, or grant recovery or
+input replay. A failed write rejects model permission and rolls back all three
+records. The live completion fixture checks the server's thread and turn against
+the actual native keeper while the Task is still running.
+
+The same fixture with `--task-origin` exercises the strict Task cold target.
+The retained Node run fails: Pause acknowledges the admission hold without a
+Task checkpoint; killing the worker tree leaves the Task failed. Explicit Resume
+creates a new Task operation, planning round, native thread and turn, and its next
+provider request loses the completed tool result. Startup/reopening remains idle.
+Rust Task cold recovery remains unqualified. The retained failure is an
+outstanding integration dependency; Task Pause does
+not yet provide the confirmed-pause/process-termination guarantee above.
+
 ## Held managed attachment
 
 Managed thread preparation can carry the server's expected suspension into
@@ -334,6 +362,32 @@ Only that explicit Resume dispatches the accepted input. The fixture then runs
 the usual two durable suspension/cold-resumption cycles under its single native
 thread and turn, checking unique history and completed tool results.
 
+Add `--prestart-preparation --mounted-ui` to pause after capacity is granted
+while the production Git workspace snapshot is still preparing the input.
+The fixture blocks the actual Git fsmonitor hook, rather than inserting a worker
+delay. Pause parks the unused grant, frees its provider slot, and waits for the
+native keeper's durable `never-started` receipt. The original input cannot cross
+canonical dispatch while parked. A fresh worker recovers the accepted encrypted
+input from this positive no-start evidence. Add `--live-preparation` to release
+Git while the original worker remains alive: completing preparation must stay
+idle until explicit Resume obtains fresh permission.
+
+The macOS ARM64 90-patch development runtime passed all eight granted-preparation
+cases: GUI/terminal origins, Node/Rust servers, and live/cold initial Resume.
+Each case then passed two cold native suspension cycles with its original thread
+and turn, one user input, one native start/completion, and one completed command.
+Waiting-capacity recovery and pending-question Stop also passed on both servers;
+all twelve runtime cases left no owned processes behind. The 118 focused worker
+tests include actual keeper settlement/refusal cases and delayed-write races.
+The standard check still stops at the existing server decomposition limits;
+later standard stages and optimized product qualification remain outstanding.
+
+This boundary applies only before input dispatch and provider inference begin.
+If dispatch, provider preparation, or an earlier unregistered source is in
+progress without a native suspension boundary, Pause reports an actionable
+retry/Stop error instead of confirming a durable hold. Active native execution
+continues to use its safe-boundary checkpoint path.
+
 There is no native turn identity or native checkpoint at the initial queue hold;
 the first native turn starts only when the retained input is explicitly resumed.
 Both GUI and native-terminal pre-start recovery are qualified on both servers.
@@ -352,7 +406,8 @@ same claim to pending without creating another encrypted prompt.
 The original worker keeps using its accepted source while it survives. A fresh
 worker must fence the old native scope and correlate actual no-start journal
 evidence with the command, generation, message and thread before returning its
-claim to pending. Previously granted or consumed input cannot use this path.
+claim to pending. A previous unused grant requires the committed `never-started`
+receipt; a grant alone is insufficient. Consumed native input cannot use this path.
 Legacy terminal commands admitted without the retained-input contract do not
 gain replay authority from missing history or a stale session. This extends
 pending-input recovery without manufacturing a native continuation.

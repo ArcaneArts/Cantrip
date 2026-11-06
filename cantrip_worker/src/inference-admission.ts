@@ -108,9 +108,11 @@ export interface InferenceTicket {
   readonly ready: Promise<InferenceLease>;
   status(): InferenceOperationStatus;
   cancel(reason?: Error): void;
-  /** Only the native request owner may park a still-waiting permission request.
-   * No granted or running model permission can be parked by this operation. */
-  pauseWaiting(): boolean;
+  /** Park pending permission; its owner may also explicitly park an unused
+   * grant before native dispatch. Running model permission cannot be parked. */
+  pauseWaiting(unforwardedGrant?: boolean): boolean;
+  /** Actual durable enqueue/no-start acknowledgement for a parked input. */
+  confirmPause(): Promise<void>;
   /** Requeue a parked permission request at the tail, keeping its original
    * pending promise and native scope. Does not wait for provider capacity. */
   resumeWaiting(): void;
@@ -171,6 +173,11 @@ interface Pool {
 }
 
 interface Ticket {
+  permissionReady: Promise<InferenceLease>;
+  permissionGranted: boolean;
+  parkedGrant: boolean;
+  pauseReceipt: Promise<InferenceJournalRecord> | null;
+  pauseReceiptRevision: number;
   taskGoalRecovery: TaskGoalCycleRecovery | null;
   sequence: number;
   restoredOrder: number | null;
@@ -367,6 +374,12 @@ export class WorkerInferenceAdmission {
     private readonly onDiagnostic: (
       event: InferenceDiagnostic,
     ) => void = () => {},
+    private readonly onTaskNativeBound?: (
+      receipt: NonNullable<InferenceRecoveryIdentity["taskInput"]>,
+      execution: InferenceNativeExecution,
+      runtimeGeneration: string,
+      signal: AbortSignal,
+    ) => Promise<void>,
   ) {
     this.journal = nativeOwnership
       ? new WorkerInferenceJournal(scope.workerGeneration, (command) =>
@@ -1128,6 +1141,11 @@ export class WorkerInferenceAdmission {
     // Admission can be cancelled before its owner starts awaiting it.
     void ready.catch(() => {});
     const ticket: Ticket = {
+      permissionReady: ready,
+      permissionGranted: false,
+      parkedGrant: false,
+      pauseReceipt: null,
+      pauseReceiptRevision: -1,
       taskGoalRecovery: null,
       sequence: ++this.sequence,
       restoredOrder: null,
@@ -1163,10 +1181,18 @@ export class WorkerInferenceAdmission {
       withdrawal: null,
       handle: {
         queued,
-        ready,
+        get ready() {
+          return ticket.permissionReady;
+        },
         status: () => this.status(ticket),
         cancel: (reason) => this.cancel(ticket, reason),
-        pauseWaiting: () => this.pauseWaiting(ticket),
+        pauseWaiting: (unforwardedGrant) =>
+          this.pauseWaiting(ticket, unforwardedGrant),
+        confirmPause: async () => {
+          const receipt = ticket.pauseReceipt;
+          await ticket.journalEnqueued;
+          await receipt;
+        },
         resumeWaiting: () => this.resumeWaiting(ticket),
         withdrawUnstarted: (reason, expectedQueueRevision) =>
           this.withdrawUnstarted(ticket, reason, false, expectedQueueRevision),
@@ -1271,6 +1297,7 @@ export class WorkerInferenceAdmission {
     )
       throw new Error("The inference grant is no longer available.");
     this.transition(ticket, "running");
+    ticket.parkedGrant = false;
     ticket.startedAt = Date.now();
     ticket.observe?.(ticket.state);
     this.diagnose(ticket, "running");
@@ -1300,6 +1327,7 @@ export class WorkerInferenceAdmission {
     )
       throw new Error("An inference grant cannot change its native execution.");
     ticket.nativeExecution = execution;
+    ticket.parkedGrant = false;
     ticket.nativeBinding ??= (async () => {
       if (this.journal && ticket.journalKey) {
         const record = await this.journal.bindNative(
@@ -1313,6 +1341,14 @@ export class WorkerInferenceAdmission {
             "The keeper did not acknowledge this native binding.",
           );
       }
+      const task = ticket.input.recovery?.taskInput;
+      if (task && !task.kind)
+        await this.onTaskNativeBound?.(
+          task,
+          execution,
+          ticket.runtime.generation,
+          ticket.controller.signal,
+        );
       // Cancellation/retirement may overtake the durable acknowledgement. It
       // cannot make a late binding reply permission to begin model execution.
       current();
@@ -1520,22 +1556,76 @@ export class WorkerInferenceAdmission {
     return ticket.withdrawal;
   }
 
-  /** The owning Core request cannot infer until this exact pending promise
-   * grants. Parking changes eligibility, never claims that a holder settled. */
-  private pauseWaiting(ticket: Ticket): boolean {
-    if (ticket.parkedWaiting && ticket.state === "suspended") return true;
-    if (ticket.state !== "waiting" || ticket.controller.signal.aborted)
+  /** Waiting Core requests keep their pending permission. An outer input owner
+   * can replace its unused grant before dispatch and commit no-start evidence. */
+  private pauseWaiting(ticket: Ticket, unforwardedGrant = false): boolean {
+    if (ticket.parkedWaiting && ticket.state === "suspended") {
+      if (ticket.parkedGrant) this.persistParkedGrant(ticket);
+      return true;
+    }
+    const granted =
+      unforwardedGrant &&
+      ticket.state === "granted" &&
+      ticket.startedAt === null &&
+      !ticket.nativeExecution;
+    if (
+      (ticket.state !== "waiting" && !granted) ||
+      ticket.controller.signal.aborted
+    )
       return false;
+    if (granted && ticket.permissionGranted) {
+      ticket.permissionReady = new Promise<InferenceLease>(
+        (resolve, reject) => {
+          ticket.resolve = resolve;
+          ticket.reject = reject;
+        },
+      );
+      void ticket.permissionReady.catch(() => {});
+    }
+    ticket.permissionGranted = false;
+    ticket.parkedGrant ||= granted;
     ticket.parkedWaiting = true;
     ticket.queueRevision++;
     this.transition(ticket, "suspended");
     ticket.pool.queue = ticket.pool.queue.filter((entry) => entry !== ticket);
+    ticket.pool.active.delete(ticket);
     ticket.pool.suspended.add(ticket);
+    if (ticket.parkedGrant) this.persistParkedGrant(ticket);
     this.diagnose(ticket, "suspended");
     ticket.observe?.(ticket.state);
     this.drain(ticket.pool);
     this.changed();
     return true;
+  }
+
+  private persistParkedGrant(ticket: Ticket): void {
+    if (
+      (ticket.pauseReceipt &&
+        ticket.pauseReceiptRevision === ticket.queueRevision) ||
+      !this.journal ||
+      !ticket.journalKey
+    )
+      return;
+    const priorRequeue = ticket.journalRequeue;
+    const receipt = (async () => {
+      await ticket.journalEnqueued;
+      await priorRequeue?.catch(() => {});
+      const record = await this.journal!.release(
+        ticket.journalKey!,
+        "never-started",
+      );
+      if (record.nativeExecution || record.outcome !== "never-started")
+        throw new Error(
+          "The parked input did not receive its durable no-start acknowledgement.",
+        );
+      return record;
+    })();
+    ticket.pauseReceipt = receipt;
+    ticket.pauseReceiptRevision = ticket.queueRevision;
+    void receipt.catch((error) => {
+      if (ticket.pauseReceipt === receipt) ticket.pauseReceipt = null;
+      this.reportJournalError(error);
+    });
   }
 
   private resumeWaiting(ticket: Ticket): void {
@@ -1574,8 +1664,12 @@ export class WorkerInferenceAdmission {
     revision: number,
   ): Promise<void> {
     const preceding = ticket.journalRequeue;
+    const pauseReceipt = ticket.pauseReceipt;
     const update = (async () => {
       await ticket.journalEnqueued;
+      // Even a lost pause reply cannot reorder its actual keeper write behind
+      // a newer explicit Resume. Requeue itself decides the current store state.
+      await pauseReceipt?.catch(() => {});
       await preceding;
       if (
         ticket.state !== "waiting" ||
@@ -1584,6 +1678,7 @@ export class WorkerInferenceAdmission {
       )
         return false;
       await this.journal!.requeue(ticket.journalKey!);
+      if (ticket.pauseReceipt === pauseReceipt) ticket.pauseReceipt = null;
       return true;
     })();
     ticket.journalRequeue = update;
@@ -1621,6 +1716,8 @@ export class WorkerInferenceAdmission {
       ticket.resolve = resolve;
       ticket.reject = reject;
     });
+    ticket.permissionReady = ready;
+    ticket.permissionGranted = false;
     const resuming = ready.then(() => this.start(ticket));
     ticket.resuming = resuming;
     void resuming
@@ -1745,23 +1842,30 @@ export class WorkerInferenceAdmission {
       pool.active.add(ticket);
       this.diagnose(ticket, "granted");
       ticket.observe?.(ticket.state);
+      const grantRevision = ticket.queueRevision;
       if (this.journal && ticket.journalKey)
         void this.journal
           .grant(ticket.journalKey)
           .then(() => {
             if (
               ticket.state === "granted" &&
+              ticket.queueRevision === grantRevision &&
               !ticket.controller.signal.aborted &&
               !ticket.runtime.retiring &&
               !ticket.runtime.retired
-            )
+            ) {
+              ticket.permissionGranted = true;
               ticket.resolve(ticket.lease);
+            }
           })
           .catch((error) => {
             this.cancel(ticket, error);
             this.reportJournalError(error);
           });
-      else ticket.resolve(ticket.lease);
+      else {
+        ticket.permissionGranted = true;
+        ticket.resolve(ticket.lease);
+      }
     }
   }
 

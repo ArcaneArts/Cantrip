@@ -5,6 +5,7 @@ mod control;
 pub mod coordinator;
 mod desktop;
 pub mod files;
+mod packages;
 mod power;
 mod recovery;
 pub(crate) mod run;

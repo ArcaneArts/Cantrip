@@ -63,7 +63,7 @@ export interface CodexInferenceExecution {
   /** Immediately before forwarding the exact native request. */
   dispatched(): void;
   /** Close withdrawal before committing native dispatch metadata over HTTP. */
-  sealInputDispatch(): void;
+  sealInputDispatch(): Promise<void>;
   /** The exact native start was rejected, not a transport timeout. */
   rejected(): void;
   /** Preparation failed before this owner forwarded any model request. */
@@ -188,9 +188,43 @@ export class CodexInferenceAdmission {
     else this.pausedChats.delete(chatId);
     for (const operation of this.operations) {
       if (operation.chatId !== chatId || operation.settled) continue;
-      if (paused) operation.ticket.pauseWaiting();
+      if (paused)
+        operation.ticket.pauseWaiting(
+          !operation.dispatched &&
+            !operation.inputDispatching &&
+            !operation.preparing &&
+            !operation.leaseStarted &&
+            !operation.nativeBoundary &&
+            !operation.turnId,
+        );
       else operation.ticket.resumeWaiting();
     }
+  }
+  canHoldUnstartedChat(chatId: string, requireSource = false): boolean {
+    const operations = [...this.operations].filter(
+      (operation) => operation.chatId === chatId && !operation.settled,
+    );
+    return (
+      (!requireSource || operations.length > 0) &&
+      operations.every(
+        (operation) =>
+          !operation.dispatched &&
+          !operation.inputDispatching &&
+          !operation.preparing &&
+          !operation.leaseStarted &&
+          !operation.nativeBoundary &&
+          !operation.turnId,
+      )
+    );
+  }
+  async confirmChatHold(chatId: string): Promise<void> {
+    await Promise.all(
+      [...this.operations]
+        .filter(
+          (operation) => operation.chatId === chatId && !operation.settled,
+        )
+        .map((operation) => operation.ticket.confirmPause()),
+    );
   }
   private readonly runtime: InferenceRuntime;
   private readonly operations = new Set<Operation>();
@@ -495,8 +529,23 @@ export class CodexInferenceAdmission {
             JSON.stringify([operation.threadId, operation.turnId]),
           );
       },
-      sealInputDispatch: () => {
-        operation.lease!.signal.throwIfAborted();
+      sealInputDispatch: async () => {
+        for (;;) {
+          const permission = ticket.ready;
+          const lease = await permission;
+          lease.signal.throwIfAborted();
+          if (permission !== ticket.ready) continue;
+          const state = ticket.status().state;
+          if (
+            state !== "granted" &&
+            !(state === "running" && operation.leaseStarted)
+          )
+            throw new Error(
+              "The native input no longer owns its inference grant.",
+            );
+          operation.lease = lease;
+          break;
+        }
         if (
           operation.inputDispatching ||
           operation.settled ||
@@ -521,7 +570,22 @@ export class CodexInferenceAdmission {
           );
       },
       prepare: async (providerId, action) => {
-        operation.lease!.signal.throwIfAborted();
+        for (;;) {
+          const permission = ticket.ready;
+          const lease = await permission;
+          lease.signal.throwIfAborted();
+          if (permission !== ticket.ready) continue;
+          const state = ticket.status().state;
+          if (
+            state !== "granted" &&
+            !(state === "running" && operation.leaseStarted)
+          )
+            throw new Error(
+              "The native preparation no longer owns its inference grant.",
+            );
+          operation.lease = lease;
+          break;
+        }
         if (
           providerId !== input.provider.id ||
           operation.preparing ||

@@ -600,6 +600,8 @@ export interface AdmittedNativeExecution {
   fail(error: Error): void;
   /** Grant has reached the exact native forwarding boundary. */
   dispatchInference?(): void;
+  /** Wait for current capacity and seal withdrawal before native dispatch. */
+  prepareInputDispatch?(): Promise<void>;
   /** Actual rejected native start receipt, never a timeout. */
   rejectInference?(): void;
 }

@@ -16,6 +16,8 @@ export * from "./file-documents.js";
 export * from "./workspace-ownership.js";
 export * from "./cantrip-os.js";
 export * from "./cantrip-os-power.js";
+export * from "./cantrip-os-packages.js";
+export * from "./cantrip-os-package-management.js";
 export * from "./cantrip-os-desktop.js";
 export * from "./cantrip-os-backup.js";
 export * from "./cantrip-os-backup-operations.js";

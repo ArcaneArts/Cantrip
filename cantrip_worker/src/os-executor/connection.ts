@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
+import { rootGuestCommand } from "@cantrip/os-host";
 
 /** Guest locations are separate from the worker's local filesystem paths. */
 export interface OsExecutorBinding {
@@ -38,8 +39,6 @@ export class OsExecutorDeliveryError extends Error {
   readonly delivery = "unknown";
 }
 
-const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-
 /** SSH authenticates the carrier; Docker uses the owning worker's daemon access.
  * Neither transport copies model credentials or installs a worker in the guest. */
 export function executorCommand(
@@ -70,43 +69,7 @@ function programCommand(
     | "cantrip-remote"
     | "cantrip-recovery",
 ): { command: string; args: string[] } {
-  if (transport.kind === "docker")
-    return {
-      command: "docker",
-      args: [
-        "exec",
-        "-i",
-        "--user",
-        "0",
-        "--",
-        transport.container,
-        `/usr/bin/${program}`,
-        ...args,
-      ],
-    };
-  return {
-    command: "ssh",
-    args: [
-      "-T",
-      "-o",
-      "BatchMode=yes",
-      "-o",
-      "StrictHostKeyChecking=yes",
-      "-o",
-      "ForwardAgent=no",
-      "-o",
-      "IdentitiesOnly=yes",
-      "-o",
-      `UserKnownHostsFile=${transport.knownHostsFile}`,
-      "-i",
-      transport.identityFile,
-      "-p",
-      String(transport.port),
-      "--",
-      `${transport.user}@${transport.host}`,
-      ["sudo", "-n", "--", `/usr/bin/${program}`, ...args].map(quote).join(" "),
-    ],
-  };
+  return rootGuestCommand(transport, `/usr/bin/${program}`, args);
 }
 
 export async function executorControl<T>(

@@ -21,6 +21,8 @@ import { buildRustServer, buildWorkerCli, repositoryRoot } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { eventually, launchActualWorker } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
+import { prestartPreparationFixture } from "./prestart-preparation-fixture.mjs";
+import { qualifyTaskSuspension } from "./suspension-task-browser.mjs";
 import { killOwnedWorkerTree } from "./owned-worker-tree.mjs";
 import { openSuspensionTerminal } from "./suspension-terminal-browser.mjs";
 import {
@@ -122,6 +124,9 @@ async function flow(kind, executable, cliBinary) {
     mkdir(directory, { recursive: true }),
     mkdir(home, { recursive: true }),
   ]);
+  const preparation = process.argv.includes("--prestart-preparation")
+    ? await prestartPreparationFixture(directory)
+    : null;
   const workerId = "durable-production-worker";
   const fixture = new HttpFixture({
     kind,
@@ -158,28 +163,34 @@ async function flow(kind, executable, cliBinary) {
       "isolated durable suspension password",
     );
     await launch(enrollment.code);
-    const { chat, projectId, providerId, configuration } =
+    const { chat, task, projectId, providerId, configuration } =
       await prepareSuspensionChat(page, workerId, directory, model, {
+        taskOrigin: process.argv.includes("--task-origin"),
         ...(process.argv.includes("--capacity-waiting")
           ? { maxConcurrentInference: 1 }
           : {}),
       });
     result.chatId = chat.id;
-    await eventually(
-      () =>
-        page.evaluate(
-          async (id) =>
-            (
-              await (
-                await import("/src/lib/api-client.ts")
-              ).request("/api/chats/" + id + "/preparation")
-            ).preparation,
-          chat.id,
-        ),
-      (preparation) =>
-        assert.equal(preparation?.phase, "ready", JSON.stringify(preparation)),
-      60000,
-    );
+    if (!task)
+      await eventually(
+        () =>
+          page.evaluate(
+            async (id) =>
+              (
+                await (
+                  await import("/src/lib/api-client.ts")
+                ).request("/api/chats/" + id + "/preparation")
+              ).preparation,
+            chat.id,
+          ),
+        (preparation) =>
+          assert.equal(
+            preparation?.phase,
+            "ready",
+            JSON.stringify(preparation),
+          ),
+        60000,
+      );
     if (process.argv.includes("--pending-question")) {
       result.planRoutes = await qualifySuspensionPlanRoutes(page, chat.id);
       await page.evaluate(
@@ -203,8 +214,19 @@ async function flow(kind, executable, cliBinary) {
     const tool = model.reply({ text: "DURABLE_TOOL_REQUEST", hold: true });
     let boundary = model.reply({ text: "DURABLE_BOUNDARY_ONE", hold: true });
     const prompt = "DURABLE_ORIGINAL_PROMPT";
+    if (preparation && process.argv.includes("--live-preparation"))
+      await openMountedSuspensionChat(page, vite.resolvedUrls.local[0], null);
     let acceptedPrompt;
-    if (process.argv.includes("--terminal-origin")) {
+    if (task) {
+      result.taskAdmission = await page.evaluate(
+        async ({ chatId, rowVersion }) =>
+          (await import("/src/lib/api/tasks.ts")).startTaskDirectly(chatId, {
+            rowVersion,
+            operationId: crypto.randomUUID(),
+          }),
+        { chatId: chat.id, rowVersion: task.rowVersion },
+      );
+    } else if (process.argv.includes("--terminal-origin")) {
       terminal = await openSuspensionTerminal(page, chat.id, workerId);
       terminalId = terminal.id;
       const before = inferences();
@@ -217,9 +239,11 @@ async function flow(kind, executable, cliBinary) {
         before,
         "Opening and editing a native terminal draft do not start inference",
       );
+      await preparation?.arm();
       await terminal.input("\r");
       result.terminalOrigin = true;
     } else {
+      await preparation?.arm();
       const admitted = await page.evaluate(
         async ({ id, prompt, configuration }) =>
           (await import("/src/lib/api/chats.ts")).startTurn(
@@ -236,7 +260,8 @@ async function flow(kind, executable, cliBinary) {
         text: admitted.prompt.text,
       };
     }
-    if (capacityBlocker) {
+    if (capacityBlocker || preparation) {
+      if (preparation) result.prestartPreparation = await preparation.entered();
       result.capacityWaiting = await pauseWaitingSuspension({
         page,
         chatId: chat.id,
@@ -244,6 +269,7 @@ async function flow(kind, executable, cliBinary) {
         workerData,
         model,
         blocker: capacityBlocker,
+        expectedState: preparation ? "granted" : "waiting",
       });
       if (!acceptedPrompt) {
         const retained = await page.evaluate(
@@ -269,47 +295,66 @@ async function flow(kind, executable, cliBinary) {
       }
       result.capacityWaiting.acceptedPrompt = acceptedPrompt;
       const count = inferences();
-      const killed = worker;
-      worker = undefined;
-      terminal?.dispose();
-      terminal = undefined;
-      const terminated = await killOwnedWorkerTree(killed.child, {
-        executableRoots: [workerData],
-      });
-      result.kills.push({ round: "capacity-waiting", ...terminated });
-      await launch();
-      const reopened = await suspensionChat(page, projectId, chat.id);
-      assert.equal(reopened.automationPaused, true);
-      assert.equal(reopened.nativeSuspension?.resumable ?? false, false);
-      assert.equal(reopened.nativeSuspension?.active ?? null, null);
-      await openMountedSuspensionChat(page, vite.resolvedUrls.local[0], null);
-      if (acceptedPrompt) {
-        const retained = await eventually(
-          () =>
-            page.evaluate(
-              async ({ chatId, promptId }) =>
-                (
-                  await (
-                    await import("/src/lib/api/queue.ts")
-                  ).getQueuedPrompts(chatId)
-                ).find((item) => item.id === promptId),
-              { chatId: chat.id, promptId: acceptedPrompt.id },
-            ),
-          (item) => assert.ok(item),
+      if (preparation && process.argv.includes("--live-preparation")) {
+        await preparation.release();
+        await preparation.released(result.prestartPreparation);
+        assert.equal(
+          inferences(),
+          count,
+          "Finishing preparation while paused cannot forward the native input",
         );
-        assert.deepEqual(
-          { id: retained.id, revision: retained.revision, text: retained.text },
-          acceptedPrompt,
-        );
-        result.capacityWaiting.promptReopened = true;
+        result.capacityWaiting.livePreparationReleased = true;
+      } else {
+        const killed = worker;
+        worker = undefined;
+        terminal?.dispose();
+        terminal = undefined;
+        const terminated = await killOwnedWorkerTree(killed.child, {
+          executableRoots: [workerData],
+        });
+        result.kills.push({
+          round: preparation ? "prestart-preparation" : "capacity-waiting",
+          ...terminated,
+        });
+        await preparation?.release();
+        await launch();
+        const reopened = await suspensionChat(page, projectId, chat.id);
+        assert.equal(reopened.automationPaused, true);
+        assert.equal(reopened.nativeSuspension?.resumable ?? false, false);
+        assert.equal(reopened.nativeSuspension?.active ?? null, null);
+        await openMountedSuspensionChat(page, vite.resolvedUrls.local[0], null);
+        if (acceptedPrompt) {
+          const retained = await eventually(
+            () =>
+              page.evaluate(
+                async ({ chatId, promptId }) =>
+                  (
+                    await (
+                      await import("/src/lib/api/queue.ts")
+                    ).getQueuedPrompts(chatId)
+                  ).find((item) => item.id === promptId),
+                { chatId: chat.id, promptId: acceptedPrompt.id },
+              ),
+            (item) => assert.ok(item),
+          );
+          assert.deepEqual(
+            {
+              id: retained.id,
+              revision: retained.revision,
+              text: retained.text,
+            },
+            acceptedPrompt,
+          );
+          result.capacityWaiting.promptReopened = true;
+        }
+        if (terminalId)
+          terminal = await openSuspensionTerminal(
+            page,
+            chat.id,
+            workerId,
+            terminalId,
+          );
       }
-      if (terminalId)
-        terminal = await openSuspensionTerminal(
-          page,
-          chat.id,
-          workerId,
-          terminalId,
-        );
       assert.equal(
         inferences(),
         count,
@@ -476,6 +521,31 @@ async function flow(kind, executable, cliBinary) {
       () => boundary.entered,
       (value) => assert.equal(value, true),
     );
+    if (task) {
+      result.taskSuspension = await qualifyTaskSuspension({
+        completeOnly: process.argv.includes("--task-complete"),
+        page,
+        projectId,
+        chatId: chat.id,
+        directory,
+        workerData,
+        model,
+        boundary,
+        command,
+        inferences,
+        result,
+        async restart(native) {
+          const killed = worker;
+          worker = undefined;
+          const terminated = await killOwnedWorkerTree(killed.child, {
+            executableRoots: [workerData],
+          });
+          result.kills.push({ round: "task-paused", ...terminated, native });
+          await launch();
+        },
+      });
+      return;
+    }
     if (process.argv.includes("--active-session")) {
       result.session = retainedSuspensionSession(boundary);
       boundary = await refuseActiveSuspensionSession({
@@ -1026,6 +1096,13 @@ async function flow(kind, executable, cliBinary) {
     };
   } catch (error) {
     result.serverDiagnostics = fixture.server?.diagnostics();
+    if (result.taskAdmission)
+      result.taskFailureState = await page
+        .evaluate(
+          async (id) => (await import("/src/lib/api/tasks.ts")).getTask(id),
+          result.chatId,
+        )
+        .catch((failure) => ({ observationError: failure.message }));
     if (process.argv.includes("--mounted-ui"))
       result.uiText = await page
         .locator("body")
@@ -1046,6 +1123,7 @@ async function flow(kind, executable, cliBinary) {
         executableRoots: [workerData],
       });
     }
+    await preparation?.release();
     result.providerFailures = model.failures;
     result.providerRequests = model.requests.map((request) => ({
       method: request.method,

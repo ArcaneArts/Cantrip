@@ -1961,6 +1961,13 @@
       "when": 1793978078734,
       "tag": "0279_cantrip_os_workspace_resets",
       "breakpoints": true
+    },
+    {
+      "idx": 280,
+      "version": "7",
+      "when": 1793992330777,
+      "tag": "0280_cantrip_os_packages",
+      "breakpoints": true
     }
   ]
 }

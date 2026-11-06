@@ -294,6 +294,11 @@ export function installInternalNativeCommandRoutes(
             input.workerId,
             input.receipt,
             input.phase,
+            {
+              workerGeneration: input.workerGeneration,
+              nativeExecution: input.nativeExecution,
+              nativeRuntimeGeneration: input.nativeRuntimeGeneration,
+            },
           );
         } catch (error) {
           if (error instanceof TaskDispatchConflictError)

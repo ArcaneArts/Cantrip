@@ -715,6 +715,41 @@ legacy plans observe original admissions only. Account changes cannot redirect
 pending requests or erase another account's local draft.
 See [reset admissions](../cantrip_os/BACKUPS.md#workspace-reset-admissions).
 
+Recovery 0.4.0 adds package-owned upgrade/repair commands and the same trusted
+rescue source over the external Docker/strict-SSH carrier. Durable one-shot jobs
+verify Debian artifact metadata, retain original conffiles/payload, respect actual
+dpkg/recovery locks and observe lost carriers or coordinators without replay.
+Actual Docker and installed-VM tests break both helpers and maintainer scripts,
+exercise normal reinstall failure and repair, and retain dirty/ignored/Unicode
+workspace files, browser data and root customization. Package product admissions,
+shared system-image preservation/replacement, clone identities and final current
+distributions remain required; this checkpoint does not complete Phase 5.
+See [package recovery](../cantrip_os/PACKAGE_RECOVERY.md).
+
+Recovery 0.5.0 adds owner/instance and boot/init-pinned package requests, raw
+identity/inventory probing and durable abandonment before installation starts.
+The external Worker now snapshots normal-build artifacts into a verified
+content-addressed cache and journals immutable package commands. Observation
+never uploads or starts; explicit continuation only finishes the original
+staging. Terminal encrypted receipts remain identical across Manager restarts.
+Actual Docker and installed-VM strict-SSH acceptance kills a Manager during dpkg
+and after upload, rejects changed identities/boot epochs, exercises configured
+identity relocation and reconstructs a missing Worker journal from matching
+guest proof without replay. Package administration deliberately needs no live
+executor generation and still works with the actual executor CLI broken.
+Both Servers now persist immutable package admissions and private verified
+targets, expose owned paginated history and retain encrypted terminal results.
+Actual HTTP acceptance reconstructs Server services from retained state and
+covers a missing live executor, immutable retry/observation, explicit staged
+controls, stale inventory/runtime replies and
+changed-attachment rejection. Package admission and terminal completion fence
+old execution authority; explicit recovery supplies fresh handles. Native
+validation matches the actual TypeScript protocol, including repair-only defaults
+and ciphertext bounds. Client package controls and full Worker/product failure
+acceptance remain dependent work. Shared-system
+preservation/replacement, clone identities, remote/model acceptance and final
+current distributions remain required for the full Phase 5 goal.
+
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output
 recovery, and worker-offline behavior. Deliver workspace backups/restores,

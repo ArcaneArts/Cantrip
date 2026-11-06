@@ -1,6 +1,6 @@
 # Optional workspace recovery package
 
-`cantrip-os-recovery` 0.3.0 supplies root administration commands for consistent
+`cantrip-os-recovery` 0.5.0 supplies root administration commands for consistent
 workspace capture, staged restore, explicit home-state reset and rollback. It has no daemon, network
 listener, Worker, model credentials or scheduler. Docker and ISO launch scripts
 include it with the executor edition; `CANTRIP_OS_RECOVERY=0` omits it. The ordinary
@@ -20,8 +20,8 @@ node cantrip_os/scripts/recovery-package.mjs
 ```
 
 The architecture-independent output is
-`cantrip_os/artifacts/packages/cantrip-os-recovery_0.3.0_all.deb`. Install it with
-`sudo apt install ./cantrip-os-recovery_0.3.0_all.deb`. Dependencies are the existing
+`cantrip_os/artifacts/packages/cantrip-os-recovery_0.5.0_all.deb`. Install it with
+`sudo apt install ./cantrip-os-recovery_0.5.0_all.deb`. Dependencies are the existing
 workspace and executor packages plus Python. No extra desktop environment or
 full Worker is installed. Package configuration is a Debian conffile at
 `/etc/cantrip-os/recovery.json`.
@@ -210,6 +210,20 @@ This is the guest administration foundation. Worker/Server reset admissions and
 product reset controls are a separate dependent checkpoint; the existing Cantrip
 backup controls continue to use the unchanged version-1 operations.
 
+## Package upgrade and external repair
+
+Version 0.5.0 supplies `cantrip-package`, a separate bounded package-operation CLI.
+The owning Worker can send its identical source over Docker or strict SSH to
+repair broken installed Cantrip helpers. Upgrade preserves administrator
+conffiles; explicitly choosing package defaults retains the original bytes.
+One-shot jobs have durable launch claims, actual dpkg/helper outcomes and
+observation without replay. Version 0.5.0 adds actual identity/boot probing,
+owner-pinned version 2 requests and durable pre-start abandonment. External
+Worker jobs supply verified artifact snapshots and private encrypted outcomes
+without requiring a live executor. Both Servers now retain authorized package
+admissions, history and protected results; client controls follow separately.
+See [package recovery](../../PACKAGE_RECOVERY.md).
+
 ## Interruption and removal
 
 `inspect` is read-only. A dead command with an unfinished admission reports
@@ -260,7 +274,7 @@ run it against a user's working OS. See `cantrip_os/ACCEPTANCE.md` for recorded
 Docker/installed results and remaining Phase 5 product work.
 
 Reset acceptance is a separate actual-guest suite. Copy
-`test/reset_integration.py`, the normal 0.3.0 package and the prior normal 0.2.0
+`test/reset_integration.py`, the normal 0.5.0 package and the prior normal 0.2.0
 package to the disposable guest as `/tmp/reset-integration.py`,
 `/tmp/recovery.deb` and `/tmp/recovery-old.deb`, then run as root:
 

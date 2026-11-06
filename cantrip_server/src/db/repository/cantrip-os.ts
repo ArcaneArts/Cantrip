@@ -35,6 +35,7 @@ import { resolveOsRunPrimary } from "./cantrip-os-run.js";
 import { existingLinuxSourcePath } from "./cantrip-os-existing-path.js";
 import { CantripOsDesktopRepository } from "./cantrip-os-desktop.js";
 import { CantripOsPowerRepository } from "./cantrip-os-power.js";
+import { CantripOsPackageRepository } from "./cantrip-os-packages.js";
 
 const instance = ({
   workerProcessGeneration: _workerProcessGeneration,
@@ -111,6 +112,7 @@ export class CantripOsRepository {
   readonly workspaceOperations: CantripOsWorkspaceOperationRepository;
   readonly backups: CantripOsBackupRepository;
   readonly power: CantripOsPowerRepository;
+  readonly packages: CantripOsPackageRepository;
   readonly desktop: CantripOsDesktopRepository;
   constructor(private readonly database: RepositoryDatabase) {
     this.workspaceOperations = new CantripOsWorkspaceOperationRepository(
@@ -118,6 +120,7 @@ export class CantripOsRepository {
     );
     this.backups = new CantripOsBackupRepository(database);
     this.power = new CantripOsPowerRepository(database);
+    this.packages = new CantripOsPackageRepository(database);
     this.desktop = new CantripOsDesktopRepository(database);
   }
 

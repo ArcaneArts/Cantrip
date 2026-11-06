@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { taskDispatchFenceSchema } from "./task-scheduling.js";
+import { inferenceNativeExecutionSchema } from "./inference-native-execution.js";
 
 const identity = z.string().min(1).max(200);
 
@@ -37,13 +38,32 @@ export const taskInferenceInputDispatchSchema = z
     serverId: identity,
     workerId: identity,
     workerGeneration: z.uuid(),
-    phase: z.enum(["accepted", "claim", "dispatch"]).default("dispatch"),
+    phase: z
+      .enum(["accepted", "claim", "dispatch", "native"])
+      .default("dispatch"),
     receipt: taskInferenceInputReceiptSchema,
+    nativeExecution: inferenceNativeExecutionSchema.optional(),
+    nativeRuntimeGeneration: z.uuid().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      (value.phase === "native") !== Boolean(value.nativeExecution) ||
+      (value.phase === "native") !== Boolean(value.nativeRuntimeGeneration)
+    )
+      context.addIssue({
+        code: "custom",
+        message: "Only native binding requires its actual execution identity.",
+        path: ["nativeExecution"],
+      });
+  });
 
 export const taskInferenceInputDispatchResultSchema = z
-  .object({ receipt: taskInferenceInputReceiptSchema })
+  .object({
+    receipt: taskInferenceInputReceiptSchema,
+    nativeExecution: inferenceNativeExecutionSchema.optional(),
+    nativeRuntimeGeneration: z.uuid().optional(),
+  })
   .strict();
 
 export type TaskInferenceInputReceipt = z.infer<

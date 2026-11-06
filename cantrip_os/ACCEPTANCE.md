@@ -3881,3 +3881,191 @@ build). Scoped Prettier and diff checks pass. `pnpm check` stops at the unchange
 `build-app.ts` 1531/1500 and `chat-turn-runtime.ts` 2286/1999 decomposition budgets.
 No guest package/OCI/ISO build inputs changed in this product cycle; no hosted
 ordinary-PR validation was used.
+
+## Phase 5: external package upgrade and broken-helper repair (2026-11-06)
+
+The normal builder produces recovery 0.4.0, including `cantrip-package` and the
+canonical rescue source also shipped by `@cantrip/os-host`. The final architecture
+`all` Debian artifact is 20,576 bytes, SHA256
+`06568fe8abcea296d1a939f6567cb356567ec7e272ac7fab25802c1fc46b33ce`.
+The installed/packed source SHA256 is
+`e7d846577617704b9af62cd39b0ec3c781e64299c73c8e5af85b716c7a10fbc0`.
+A client imported from the extracted pnpm tarball successfully observes an
+actual completed guest operation; rescue does not require repository-local assets.
+
+Actual package acceptance passes seven tests in ARM64 Docker (18.00s) and the
+installed AMD64 Debian VM over strict SSH (86.25s). Both use the normal artifact,
+real workspace accounts and dirty/ignored/Unicode Git data, SQLite browser data,
+numeric ownership, modes, original home inodes and an arbitrary root-owned `/etc`
+marker. Corrupt uploads and mismatched Debian metadata never reach installation.
+An actual faulty package breaks both installed helpers, exits 79 from configure
+and has a broken removal script. Normal reinstall fails; explicit external repair
+restores payload/scripts before real dpkg installation, preserving configuration
+and all fixture data. Invalid customized configuration remains invalid under
+preserve; explicitly choosing package defaults retains its exact original bytes.
+
+Actual maintenance locks refuse upgrade and repair without payload replacement.
+The new `prerm failed-upgrade` path prevents Debian's fallback from bypassing the
+same maintenance lock. Lost-start-carrier tests kill the actual Docker/SSH client
+and remaining guest carrier while one detached installer runs; its original
+process identities, single configure invocation and committed outcome survive.
+Coordinator-death tests separately kill that process while dpkg continues. The
+original remains unknown after dpkg ends; neither repeated start nor package
+version observation manufactures completion. Repair attempted during that
+installer is refused by dpkg's actual POSIX locks before any payload replacement.
+The installed guest CLI subsequently observes the same ready/unknown journals.
+
+Docker lost carrier `336374c9-f129-4522-802f-5b078b3c6d95` and coordinator
+`4a54c1b2-0605-4c48-9669-4f50caf4b20f` retain their separate outcomes. VM lost
+carrier `648491cb-afa5-4822-9525-667890080915` and coordinator
+`118d0c6c-1cf8-4bde-b6d3-2f8cd94efbd4` exercise the same boundaries. Private logs
+and artifact metadata are retained under
+`cantrip_os/artifacts/phase5-package-repair`.
+
+Initial tests exposed Debian's recoverable old-prerm fallback and a fixture that
+counted abort-upgrade as another configure; those assumptions were corrected.
+VM stress also exposed failed simultaneous SSH handshakes. The fault harness now
+observes actual guest admission before opening its second connection, retains
+the failed runs and retries only read observations, never admit/upload/start.
+The Worker native carrier test initially lacked its documented exec-a/exec-b
+accounts; creating those disposable fixtures made the actual native test pass
+(9.93s). Existing recovery/removal tests pass all 15 cases (37.94s).
+Worker types, packaged assets, Python syntax and diff checks pass. Ordinary OS
+tests pass 15 with two opt-in integrations skipped when their environment is
+absent. `pnpm check` stops at the existing Server decomposition budgets:
+`build-app.ts` 1531/1500 and `chat-turn-runtime.ts` 2286/1999.
+
+This is the package administration foundation. Server-owned package admissions,
+Worker orchestration and product controls remain dependent work. General
+shared-system export/replacement, clone identity handling, actual remote/cloud
+and current model acceptance, and final current Host/Linux/OCI/ISO artifacts
+remain required. The VM is local, not cloud evidence. No full image or ISO was
+rebuilt here; no hosted ordinary-PR validation was used. Phase 5 remains active.
+
+## Phase 5: Worker package admissions and artifact snapshots (2026-11-06)
+
+The normal builder now produces recovery 0.5.0, architecture `all`, 21,484 bytes,
+SHA256 `dc2e2c7173c5769890861ef23c1a5e9fe89c4379720cbd8b52b3642dec07e5a1`.
+Its canonical rescue source SHA256 is
+`53541e3d4d93053aa16dbf3f4f07b30d86443a6f6c1164c35aa7624764ec0364`.
+Normal builders for all four optional packages register actual artifact metadata
+and SHA-named sidecars. Worker catalogues verify and retain immutable bytes, so a
+same-version development rebuild cannot change an original admitted operation.
+Malformed unrelated manifests do not hide valid candidates; errors stay private.
+An extracted normal `@cantrip/os-host` tarball contains the exact rescue source
+and artifact registration API. That extracted client probes both actual targets
+successfully without repository-local imports.
+
+Worker status and operation commands now pin canonical account, logical Server,
+Worker, persistent OS and attachment. The private target additionally pins exact
+Docker identity or strict SSH transport, actual kernel boot ID and PID 1 start
+time. Package administration omits live executor generation: a stopped or broken
+executor does not make its own repair unavailable. The raw carrier reads actual
+configured identity, supports a legitimate state-directory relocation and rejects
+a valid foreign identity despite an old matching locator. A broken configuration
+or read can use the previously verified locator for repair.
+
+Private guest proof and diagnostics use repository-content encryption under a
+distinct package-operation purpose and complete ownership/target/operation AAD.
+Terminal ciphertext is committed once and returned unchanged across Manager
+restarts. Immutable original commands fence operation-ID reuse. Observation
+never admits, transfers or starts a guest mutation. Explicit continuation can
+finish original staging; pre-start abandonment reserves the launch claim without
+installing. Missing Worker journals recover only from matching original guest
+proof, without requiring the old artifact cache.
+
+The actual seven-case Manager integration passes in ARM64 Docker (27.62s) and
+the installed AMD64 VM over strict SSH (84.02s). It exercises real failed Debian
+configuration, broken helper entrypoints and failed ordinary reinstall, followed
+by external repair preserving customized conffiles and dirty/ignored/Unicode Git
+data, browser SQLite data, account/home identity, permissions and root changes.
+It also breaks the real executor CLI while raw package inventory and repair
+continue. Separate actual Node Manager processes are killed during dpkg and after
+upload. Recovery retains original process/counter identities and terminal
+ciphertext without new dispatch; staged continuation sends only the remaining
+original work, while abandonment fences a delayed start. Actual foreign-owner
+and stale-init targets are rejected before guest admission. Relocation and
+missing-Worker-journal cases pass on both transports. The fixture restores original
+executor identity/configuration and recovery conffiles, then verifies retained
+data again.
+
+The original seven-case administrative suite also passes with the final 0.5.0
+artifact in Docker (16.56s) and the installed VM (80.86s), retaining version 1
+administration compatibility, actual locks and no-replay failure behavior.
+Crypto passes 103 tests; Worker OS units pass 94; ordinary OS tests pass 15 with
+two opt-in integrations skipped. Worker build and Server/App type checks pass.
+The public-surface fixture now explicitly reviews OS additions while retaining
+legacy fingerprints. Its remaining count failures also occur on Primary:
+18 unrelated runtime exports and four unrelated command additions are not yet
+represented. `pnpm check` stops at the unchanged Server decomposition budgets,
+`build-app.ts` 1531/1500 and `chat-turn-runtime.ts` 2286/1999.
+
+Private logs, artifact metadata and per-transport records are retained under
+`cantrip_os/artifacts/phase5-package-admissions`. These tests exercise the Worker
+Manager and separate Manager processes, not the full Worker/Server/client
+workflow. Server-owned package admissions, UI controls and full product failure
+acceptance remain dependent work. No current full image, ISO, Host bundle,
+provider/model or cloud acceptance is claimed. The VM is local. Full Phase 5
+still requires shared-system preservation/replacement, clone identity handling,
+broader lifecycle/remote acceptance and final recorded distributions.
+
+## Phase 5: Server-owned package targets and admissions (2026-11-06)
+
+Both Node and native Server now expose authenticated package inventory, immutable
+create admissions, paginated owned history, retained outcomes and explicit
+observe/continue/abandon routes. Migration 0280 stores private verified catalogues
+and original Worker commands, with independent inventory and operation observation
+revisions. Public contracts contain opaque target generations and exact artifact
+metadata, without private identity paths, transports, container IDs or boot facts.
+Diagnostic receipts remain protected under the existing package encryption purpose.
+
+No live executor generation is invented or required. An actual owning Worker
+inventory can authorize package administration while the attachment's runtime is
+null. Admission consumes verified target/artifact selection and clears execution
+authority before dispatch. The first terminal outcome fences old runtime replies
+again. Repeated terminal reads preserve the same ciphertext and perform no new
+Worker dispatch. Late inventory and running-result replies cannot replace newer
+target or terminal facts. A changed attachment rejects continuation; historical
+observation retains its original SSH/Docker command instead of using the current
+transport. New explicit repair after uncertainty still reaches actual guest locks.
+
+The Node HTTP/persistent-PGlite test closes and reopens the Server's database,
+observes the original lost-reply admission without another execute, rejects
+changed intent/artifacts, tests staged controls and history, and checks private
+projection and foreign-owner rejection. It rejects a real delayed refresh after
+package admission, then allows explicit fresh runtime recovery. A separate pair
+of inventory contexts proves late target replies are fenced. The broader Node OS
+suite passes 15 tests with two opt-in integrations skipped. Its modern-repository
+migration fixture now loads current migrations; four historical migration cases
+retain their isolated schema. The previous omitted-column failure was reproduced
+on Primary before fixing that fixture.
+
+Native acceptance uses actual managed PostgreSQL, the HTTP router and Worker
+bridge, including an AuthService restart, null executor runtime, immutable retry,
+private projection, staged continuation/abandonment, history and attachment
+replacement. Separate direct database observations prove stale inventory and
+operation results cannot overwrite newer facts. The actual source oracle matches
+14,515 generated validation cases, plus seven explicit uniqueness, repair-policy,
+ready-proof and ciphertext-bound cases. The latter includes the real maximum
+encoded private-envelope length and one byte beyond it. Native HTTP and all-target
+Clippy pass. Another 1,442 inherited Worker package-command comparisons also
+match Source after rebasing onto Main's parity fix. App types and focused
+protocol/OS surface checks pass. The broad protocol suite passes 1,114 tests and
+retains four pre-existing public-surface count failures (source/emitted copies);
+the explicit reviewed OS exports pass. `pnpm check` stops at unchanged Server
+decomposition budgets, 1531/1500 and 2286/1999.
+
+The native exporter registers the new public and private package schemas and
+regenerates the normal tracked security manifest. The cycle reuses Main's package
+command parity fix rather than maintaining duplicate policy handlers. The fixture
+encrypted bytes in HTTP/schema tests are deliberately opaque samples; real
+cryptography and real Docker/SSH dpkg/Manager failure cases are recorded in the
+preceding checkpoint. These tests do not claim a full Worker process or client
+failure roundtrip.
+
+No guest package version, full image, ISO or Host bundle changes in this Server
+checkpoint. Private logs and source metadata are retained under
+`cantrip_os/artifacts/phase5-package-server`. Cantrip's package controls and full
+Worker/browser recovery testing remain next, alongside the wider Phase 5
+system-preservation, clone identity, actual remote/model and final distribution
+requirements. Phase 5 is not complete.

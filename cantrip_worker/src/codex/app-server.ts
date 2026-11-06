@@ -2870,12 +2870,33 @@ export class CodexAppServer implements CodexRuntime {
   async setActiveChatPaused(
     chatId: string,
     paused: boolean,
+    requireInputSource = false,
   ): Promise<{ threadId: string; turnId: string } | null> {
+    const previouslyPaused = this.isChatPaused(chatId);
     this.setChatPaused(chatId, paused);
     const active = [...this.#executions.activeTurns.entries()].find(
       ([, turn]) => turn.executionKind === "chat" && turn.chatId === chatId,
     );
     if (!active) {
+      if (
+        paused &&
+        ((!this.#inference && requireInputSource) ||
+          (this.#inference &&
+            !this.#inference.canHoldUnstartedChat(chatId, requireInputSource)))
+      ) {
+        this.setChatPaused(chatId, previouslyPaused);
+        throw new UnstartedInferenceUnavailableError(
+          "Native input dispatch or provider preparation is in progress. Retry Pause after preparation finishes, or Stop the operation.",
+        );
+      }
+      if (paused) {
+        try {
+          await this.#inference?.confirmChatHold(chatId);
+        } catch (error) {
+          this.setChatPaused(chatId, previouslyPaused);
+          throw error;
+        }
+      }
       workerLogger.event("debug", "Codex chat pause state stored", {
         event: "codex.turn.pause",
         subsystem: "codex",
@@ -3556,6 +3577,9 @@ export class CodexAppServer implements CodexRuntime {
       assertCurrent,
       fail,
       dispatchInference: () => inference?.dispatched(),
+      prepareInputDispatch: async () => {
+        await inference?.sealInputDispatch();
+      },
       rejectInference: () => inference?.rejected(),
       bindRestoredSuspension: (input) => {
         const suspension = nativeTurnSuspensionSchema.parse(input);
@@ -3893,7 +3917,7 @@ export class CodexAppServer implements CodexRuntime {
           : {}),
       };
       options.preparationSignal?.throwIfAborted();
-      inference?.sealInputDispatch();
+      await inference?.sealInputDispatch();
       await options.onBeforeNativeDispatch?.(threadId);
       options.preparationSignal?.throwIfAborted();
       dispatchedInput = params.input;

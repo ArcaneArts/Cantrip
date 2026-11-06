@@ -2,6 +2,7 @@ import type { TaskFailureKind } from "@cantrip/protocol/tasks";
 import { randomUUID } from "node:crypto";
 import { TaskGoalInferenceInputRepository } from "./task-goal-inference-inputs.js";
 import { TaskGoalCycleRecoveryRepository } from "./task-goal-cycle-recovery.js";
+import { bindTaskNativeInput } from "./task-native-input-binding.js";
 import {
   taskInferenceInputReceiptSchema,
   type InferenceFailureEvidence,
@@ -13,6 +14,8 @@ import {
   type TaskInferenceRouteChangeRequest,
   taskInferenceRouteChangeSchema,
   modelConfigurationSchema,
+  inferenceNativeExecutionSchema,
+  type InferenceNativeExecution,
 } from "@cantrip/protocol";
 import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import * as schema from "./schema.js";
@@ -34,6 +37,9 @@ import {
  * Sticky dispatch evidence survives route retries: a later unstarted attempt
  * cannot authorize replay of an earlier possibly executed attempt. */
 export interface TaskInferenceInputState {
+  nativeExecution?: InferenceNativeExecution;
+  claimWorkerGeneration?: string;
+  nativeOwner?: { workerGeneration: string; runtimeGeneration: string };
   routeChange?: TaskInferenceRouteChange;
   receipt: TaskInferenceInputReceipt;
   deferred: boolean;
@@ -862,10 +868,21 @@ export class TaskInferenceInputRepository {
     ownerId: string,
     workerId: string,
     receipt: TaskInferenceInputReceipt,
-    phase: "accepted" | "claim" | "dispatch" = "dispatch",
-  ): Promise<{ receipt: TaskInferenceInputReceipt }> {
-    if (receipt.kind === "goal")
+    phase: "accepted" | "claim" | "dispatch" | "native" = "dispatch",
+    metadata?: {
+      workerGeneration: string;
+      nativeExecution?: InferenceNativeExecution;
+      nativeRuntimeGeneration?: string;
+    },
+  ): Promise<{
+    receipt: TaskInferenceInputReceipt;
+    nativeExecution?: InferenceNativeExecution;
+    nativeRuntimeGeneration?: string;
+  }> {
+    if (receipt.kind === "goal") {
+      if (phase === "native") stale();
       return this.goals.dispatch(ownerId, workerId, receipt, phase);
+    }
     if (workerId !== receipt.workerId) stale();
     return this.database.transaction(async (tx) => {
       await assertTaskOperationDispatchFence(
@@ -881,6 +898,35 @@ export class TaskInferenceInputRepository {
         receipt,
       );
       const state = round.inferenceInput;
+      if (phase === "native") {
+        if (
+          !state ||
+          state.deferred ||
+          state.failedBeforeDispatch ||
+          !state.accepted ||
+          !state.dispatched ||
+          state.terminal ||
+          !metadata?.nativeRuntimeGeneration ||
+          state.claimWorkerGeneration !== metadata.workerGeneration ||
+          JSON.stringify(
+            taskInferenceInputReceiptSchema.parse(state.receipt),
+          ) !==
+            JSON.stringify(taskInferenceInputReceiptSchema.parse(receipt)) ||
+          lane.state !== "active"
+        )
+          stale();
+        return bindTaskNativeInput(
+          tx,
+          ownerId,
+          receipt,
+          inferenceNativeExecutionSchema.parse(metadata!.nativeExecution),
+          state,
+          {
+            workerGeneration: metadata!.workerGeneration,
+            runtimeGeneration: metadata!.nativeRuntimeGeneration!,
+          },
+        );
+      }
       if (
         !state ||
         state.deferred ||
@@ -894,6 +940,11 @@ export class TaskInferenceInputRepository {
         task.state === "paused"
       )
         stale();
+      if (
+        state.claimWorkerGeneration &&
+        state.claimWorkerGeneration !== metadata?.workerGeneration
+      )
+        stale();
       if (phase === "accepted" || phase === "claim") {
         // A canonical source may be created only by the first actual claim.
         // Legacy accepted acknowledgements remain idempotent, but cannot be
@@ -901,7 +952,15 @@ export class TaskInferenceInputRepository {
         if (phase === "claim" && state.accepted) stale();
         await tx
           .update(schema.taskPlanningRounds)
-          .set({ inferenceInput: { ...state, accepted: true } })
+          .set({
+            inferenceInput: {
+              ...state,
+              accepted: true,
+              ...(phase === "claim" && metadata
+                ? { claimWorkerGeneration: metadata.workerGeneration }
+                : {}),
+            },
+          })
           .where(eq(schema.taskPlanningRounds.id, round.id));
         return { receipt };
       }

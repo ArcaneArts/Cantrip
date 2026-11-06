@@ -800,6 +800,18 @@ outstanding.
 
 ## Withdrawing a response before alternate-provider naming finishes
 
+Patch `0089` permits the current worker to requeue a previously granted input
+that it parked before native dispatch and durably released as `never-started`.
+Requeue clears that outcome before another grant. Native-bound scopes, other
+terminal outcomes, never-granted unrequested seals, and old worker generations
+remain rejected. The worker replaces resolved input permission when parking and
+awaits fresh permission before committing canonical dispatch. This preserves
+both live Resume and cold recovery at the granted preparation boundary.
+The normal 90-patch macOS ARM64 development build and runtime verification passed.
+Actual keeper tests retain terminal/native-binding/generation refusals, and eight
+full-worker GUI/TUI cases passed across the Node and Rust servers. Optimized
+product qualification remains part of the broader suspension acceptance.
+
 Patch `0071` adds the keeper's atomic `sealUnstarted` mutation. An actual canonical
 response source can be sealed before requesting any provider capacity, while its
 private title operation uses another provider's ticket. The mutation records only
@@ -884,3 +896,19 @@ stores report that operation as unavailable. The worker accepts both artifact
 versions. This is a paired native/worker change, authored from tracked source
 fragments and formatted only. No patch application/checks, compilation, tests or
 native execution ran; runtime and platform behavior remain unverified.
+
+## Task input queue epochs
+
+Patch `0090` preserves the existing canonical Task receipt's optional
+`queueOrderEpoch` in keeper admission metadata. The server includes this field
+for new Task rounds, including epoch zero; the previous strict native decoder
+rejected those rounds before their first provider request. Omitted legacy epochs
+remain omitted, and explicit zero/later epochs retain their exact identity.
+
+The normal 91-patch macOS ARM64 development build and both runtime/archive
+verifications passed. All 121 focused worker cases passed, including actual
+keeper round trips for omitted, zero and later epochs. Real tool-using Tasks
+completed on Node and Rust, and native-terminal chat turns passed two cold
+suspension cycles on each server with their original thread and turn IDs.
+The separate Task cold-suspension target still fails as documented in the
+[suspension contract](../docs/DURABLE_TURN_SUSPENSION.md#task-recovery-qualification).

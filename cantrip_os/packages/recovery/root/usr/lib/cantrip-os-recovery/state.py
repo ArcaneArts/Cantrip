@@ -11,7 +11,7 @@ import tempfile
 import time
 import uuid
 
-VERSION = "0.3.0"
+VERSION = "0.5.0"
 BOOT_ID = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
 
 
