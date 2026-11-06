@@ -69,6 +69,36 @@ import {
   workerChatAttachmentSchema,
 } from "./worker-runtime-support.js";
 
+/** Task Goals own input through Task dispatch, not a managed console session. */
+const taskGoalRuntimeSchema = z
+  .object({
+    projectId: z.string().min(1),
+    worktreeId: z.string().min(1),
+    rootKind: projectRootKindSchema,
+    computerUseEnabled: z.boolean(),
+  })
+  .strict();
+
+const nativeSuspensionControlSchema = z
+  .object({
+    chatId: z.string().min(1),
+    threadId: z.string().min(1),
+    controlId: z.uuid(),
+    checkpoint: nativeSuspensionEvidenceSchema,
+    nativeActivationGeneration: z.string().min(1).nullable(),
+    nativeRuntimeGeneration: z.string().min(1).nullable(),
+    session: managedSessionContextSchema,
+    cwd: z.string().min(1),
+    executionProfile: z.enum(["ide", "standalone-chat"]),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+    permissionProfileId: permissionProfileIdSchema,
+    planMode: planModeSchema,
+    subagentDefaults: managedSessionSubagentDefaultsSchema.nullable(),
+    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200),
+  })
+  .strict();
+
 export const workerChatCommandSchemas = [
   z
     .object({
@@ -417,26 +447,12 @@ export const workerChatCommandSchemas = [
       rootOperationGeneration: z.string().min(1),
     })
     .strict(),
-  z
-    .object({
-      type: z.literal("chat.suspension.resume"),
-      chatId: z.string().min(1),
-      threadId: z.string().min(1),
-      controlId: z.uuid(),
-      checkpoint: nativeSuspensionEvidenceSchema,
-      nativeActivationGeneration: z.string().min(1).nullable(),
-      nativeRuntimeGeneration: z.string().min(1).nullable(),
-      session: managedSessionContextSchema,
-      cwd: z.string().min(1),
-      executionProfile: z.enum(["ide", "standalone-chat"]),
-      model: workerRuntimeModelSchema,
-      provider: workerRuntimeProviderSchema,
-      permissionProfileId: permissionProfileIdSchema,
-      planMode: planModeSchema,
-      subagentDefaults: managedSessionSubagentDefaultsSchema.nullable(),
-      mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200),
-    })
-    .strict(),
+  nativeSuspensionControlSchema.extend({
+    type: z.literal("chat.suspension.resume"),
+  }),
+  nativeSuspensionControlSchema.extend({
+    type: z.literal("chat.suspension.stop"),
+  }),
   z
     .object({
       type: z.literal("chat.native-control"),
@@ -674,6 +690,8 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.goal.create"),
+    osExecution: cantripOsExecutionSchema.optional(),
+    taskRuntime: taskGoalRuntimeSchema.optional(),
     operationId: z.string().min(1).max(255).optional(),
     session: managedSessionContextSchema.optional(),
     subagentDefaults: managedSessionSubagentDefaultsSchema
@@ -696,6 +714,8 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.goal.update"),
+    osExecution: cantripOsExecutionSchema.optional(),
+    taskRuntime: taskGoalRuntimeSchema.optional(),
     protectObjective: z.boolean().optional(),
     session: managedSessionContextSchema.optional(),
     subagentDefaults: managedSessionSubagentDefaultsSchema

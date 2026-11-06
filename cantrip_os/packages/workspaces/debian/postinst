@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 if [ "$1" = configure ]; then
+    # Runtime bytecode can otherwise survive an equal-size/equal-mtime update.
+    find /usr/lib/cantrip-os-workspaces -type d -name __pycache__ -prune -exec rm -rf {} +
     deb-systemd-helper enable cantrip-os-workspaces.service >/dev/null
     if [ -d /run/systemd/system ]; then
         systemctl daemon-reload

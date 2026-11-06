@@ -40,6 +40,10 @@ import {
   managedRuntimeTarget,
 } from "./codex/managed-runtime-namespaces.js";
 import { protectedNativeAccountDefaults } from "./native-account-defaults.js";
+import {
+  openTaskGoalSubagentDefaults,
+  taskGoalRuntimeConfiguration,
+} from "./task-goal-runtime-configuration.js";
 import { updateProtectedNativeSettings } from "./native-settings-update.js";
 import { updateNativePermissions } from "./native-permission-update.js";
 import { NativeSettingsPublisher } from "./native-settings-publisher.js";
@@ -361,11 +365,13 @@ import {
 import { createManagedSuspensionCapture } from "./codex/managed-native-suspension.js";
 import {
   ManagedSuspensionResumes,
-  type ManagedSuspensionResumeCommand,
+  type ManagedSuspensionControlCommand,
 } from "./codex/managed-suspension-resume.js";
 import { WorktreeManager } from "./worktrees.js";
 import { CantripOsController } from "./os-executor/controller.js";
 import { CantripOsPowerManager } from "./os-executor/power.js";
+import { CantripOsDesktopManager } from "./os-executor/desktop.js";
+import { CapturedDesktopDriver } from "./os-executor/desktop-driver.js";
 import { CantripOsBackupManager } from "./os-executor/backup-manager.js";
 import { OsTerminalLauncher } from "./os-executor/terminal-launcher.js";
 import { OsFileOperations } from "./os-executor/files.js";
@@ -1045,6 +1051,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const osPower = new CantripOsPowerManager(
     config.dataDirectory,
     config.workerId,
+  );
+  const osDesktop = new CantripOsDesktopManager(
+    config.dataDirectory,
+    config.workerId,
+    new CapturedDesktopDriver(cantripOs),
   );
   const osTerminals = new OsTerminalLauncher(
     config.dataDirectory,
@@ -3271,6 +3282,23 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       : undefined;
   };
 
+  const currentTaskGoalRuntime = (chatId: string, threadId: string | null) => {
+    if (!threadId) return undefined;
+    const scope = nativeNamespaceScope();
+    const selected = managedRuntimeNamespaces.current(scope, threadId);
+    const candidates = [...new Set(codexRuntimes.values())].filter(
+      (runtime) =>
+        runtime.ownsInferenceAdmission(inferenceAdmissionForWorker()) &&
+        (!selected ||
+          (selected.chatId === chatId &&
+            selected.home === runtime.managedHistoryHome)) &&
+        runtime.hasTaskGoalThread(chatId, threadId),
+    );
+    if (candidates.length > 1)
+      throw new Error("Multiple native runtimes own this Task Goal thread.");
+    return candidates[0];
+  };
+
   const managedSettingsTarget = (scope: {
     chatId: string;
     threadId: string;
@@ -3335,13 +3363,42 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         )
       : null;
 
+  const taskGoalConfiguration = (
+    command: Extract<
+      WorkerCommand,
+      { type: "chat.goal.create" | "chat.goal.update" }
+    >,
+    provider: RuntimeProvider,
+  ) =>
+    taskGoalRuntimeConfiguration(command, provider, {
+      openProvider: (provider) =>
+        openRuntimeProvider({ provider, service: workerEncryption }),
+      mcpServers: (scope, configured) =>
+        agentMcpServers(
+          command.cwd,
+          configured,
+          {
+            contextKind: "project",
+            chatId: command.chatId,
+            projectId: scope.projectId,
+            worktreeId: scope.worktreeId,
+            rootKind: scope.rootKind,
+            workerId: config.workerId,
+            scratchRootId: null,
+            permissionProfileId: command.permissionProfileId,
+          },
+          "ide",
+          scope.computerUseEnabled,
+        ),
+    });
+
   const handoffClient = new NativeRuntimeHandoffClient({
     serverUrl: config.serverUrl,
     workerId: config.workerId,
     token: () => config.token,
   });
   const suspensionResumeTarget = (
-    command: ManagedSuspensionResumeCommand,
+    command: ManagedSuspensionControlCommand,
     runtime: CodexAppServer,
     entry: { generation: string; adapter: ManagedNativeCommandSession },
   ) => {
@@ -3367,7 +3424,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     encryption: workerEncryption,
     signal: () => managedGuiBridgeLifetime.signal,
     active: (command) => {
-      if (!command.nativeActivationGeneration) return null;
+      const stopping = command.type === "chat.suspension.stop";
+      if (!command.nativeActivationGeneration && !stopping) return null;
       const matches = [...codexRuntimes.values()].flatMap((runtime) =>
         [...(managedCommandSessions.get(runtime)?.values() ?? [])]
           .filter(
@@ -3375,11 +3433,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               entry.chatId === command.chatId &&
               entry.threadId === command.threadId &&
               entry.generation === runtime.transportGeneration &&
-              (command.nativeRuntimeGeneration === null
+              (stopping || command.nativeRuntimeGeneration === null
                 ? managedCurrentRuntimes.get(command.chatId) === runtime
                 : entry.generation === command.nativeRuntimeGeneration) &&
-              entry.adapter.currentActivationGeneration ===
-                command.nativeActivationGeneration &&
+              (stopping
+                ? entry.adapter.currentActivationGeneration !== null
+                : entry.adapter.currentActivationGeneration ===
+                  command.nativeActivationGeneration) &&
               (entry.model.routeId ?? null) ===
                 (command.model.routeId ?? null) &&
               (entry.provider.accountId ?? null) ===
@@ -4333,6 +4393,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "cantrip-os.power.status":
       case "cantrip-os.power.operation":
         return osPower.handle(command);
+      case "cantrip-os.desktop.status":
+      case "cantrip-os.desktop.operation":
+        return osDesktop.handle(command);
       case "cantrip-os.backup.capture":
       case "cantrip-os.backup.restore":
       case "cantrip-os.backup.rollback":
@@ -7422,6 +7485,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         else pausedChats.delete(command.chatId);
         return result;
       }
+      case "chat.suspension.stop": {
+        computerUseAgents.cancelChat(command.chatId);
+        computerUsePreviews.cancelChat(command.chatId);
+        computerUseApprovals.revokeChat(command.chatId);
+        osComputerUseServices.cancelChat(command.chatId, command.threadId);
+        return suspensionResumes.stop(command);
+      }
       case "chat.pause.set": {
         if (command.task) {
           const control = taskPauseControls.request(command.chatId, {
@@ -7921,26 +7991,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
         try {
           await admission.confirmNativeOwnership();
-          const subagentDefaults = command.subagentDefaults
-            ? {
-                model: command.subagentDefaults.model,
-                provider: await openRuntimeProvider({
-                  provider: command.subagentDefaults.provider,
-                  service: workerEncryption,
-                }),
-              }
-            : null;
-          if (
-            subagentDefaults &&
-            (subagentDefaults.provider.id !== provider().id ||
-              subagentDefaults.provider.kind !== provider().kind ||
-              subagentDefaults.provider.accountId !== provider().accountId ||
-              subagentDefaults.provider.credentialHomeKey !==
-                provider().credentialHomeKey)
-          )
-            throw new Error(
-              "Custom subagents must use the root model's provider identity.",
-            );
+          const subagentDefaults = await openTaskGoalSubagentDefaults(
+            command.subagentDefaults,
+            provider(),
+            (provider) =>
+              openRuntimeProvider({ provider, service: workerEncryption }),
+          );
           const runtime = runtimeFor({
             ...command,
             provider: provider(),
@@ -7995,6 +8051,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         else projectGoalDelivery.watch(command.threadId, command.chatId);
         const runtime =
           currentManagedRuntime(command.chatId, command.threadId) ??
+          currentTaskGoalRuntime(command.chatId, command.threadId) ??
           runtimeFor({
             ...managedRuntimeTarget(command),
             model: command.model,
@@ -8007,8 +8064,29 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           provider: provider(),
           threadId: command.threadId,
         });
-        const execution = command.observeExecution
+        const pauseProof =
+          command.observeExecution && command.taskContext?.automationPaused
+            ? taskPauseControls.captureAppliedPause(
+                command.chatId,
+                command.threadId,
+                runtime,
+                command.taskContext.nativeCycle,
+              )
+            : undefined;
+        const observedExecution = command.observeExecution
           ? await runtime.readThreadExecution(command.threadId)
+          : undefined;
+        const pausedAndIdleRevision = observedExecution?.nativeIdle
+          ? pauseProof?.()
+          : undefined;
+        const execution = observedExecution
+          ? {
+              threadId: observedExecution.threadId,
+              status: observedExecution.status,
+              ...(pausedAndIdleRevision !== undefined
+                ? { pausedAndIdleRevision }
+                : {}),
+            }
           : undefined;
         return command.taskContext
           ? {
@@ -8038,6 +8116,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         if (encryptedTaskGoal && command.threadId)
           projectGoalDelivery.skip(command.threadId);
         try {
+          const taskConfiguration = await taskGoalConfiguration(
+            command,
+            provider(),
+          );
           const prepared = await prepareManagedMutation(command, provider());
           const goalThread = prepared?.threadId ?? command.threadId;
           if (goalThread) {
@@ -8051,6 +8133,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               ...managedRuntimeTarget(command),
               model: command.model,
               provider: provider(),
+              ...(taskConfiguration
+                ? { subagentDefaults: taskConfiguration.subagentDefaults }
+                : {}),
             });
           const objective =
             typeof command.objective === "string"
@@ -8067,6 +8152,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   codexHome: runtime.managedHistoryHome,
                 });
           const result = await runtime.createGoal({
+            ...taskConfiguration,
             configureTaskPermissions: encryptedTaskGoal,
             taskOwned: encryptedTaskGoal,
             taskGoalCycleId: command.taskContext?.nativeCycle?.cycleId,
@@ -8115,16 +8201,27 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               threadId: command.threadId,
             })
           : undefined;
+        const taskConfiguration = await taskGoalConfiguration(
+          command,
+          provider(),
+        );
         const prepared = await prepareManagedMutation(command, provider());
         const result = await (
           prepared?.runtime ??
           currentManagedRuntime(command.chatId, command.threadId) ??
+          (command.status !== "active"
+            ? currentTaskGoalRuntime(command.chatId, command.threadId)
+            : undefined) ??
           runtimeFor({
             ...managedRuntimeTarget(command),
             model: command.model,
             provider: provider(),
+            ...(taskConfiguration
+              ? { subagentDefaults: taskConfiguration.subagentDefaults }
+              : {}),
           })
         ).updateGoal({
+          ...taskConfiguration,
           configureTaskPermissions:
             Boolean(command.taskContext) && command.status === "active",
           taskOwned: Boolean(command.taskContext),
@@ -8157,6 +8254,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return (
           prepared?.runtime ??
           currentManagedRuntime(command.chatId, command.threadId) ??
+          currentTaskGoalRuntime(command.chatId, command.threadId) ??
           runtimeFor({
             ...managedRuntimeTarget(command),
             model: command.model,

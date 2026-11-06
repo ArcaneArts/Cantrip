@@ -8,6 +8,39 @@ use crate::wire::{Value, value::json};
 use anyhow::{Context, Result};
 
 impl Repository {
+    pub async fn request_suspension_stop(&self, owner: &str, chat: &str) -> Result<Value> {
+        let (owner, chat) = (owner.to_owned(), chat.to_owned());
+        self.database
+            .transaction(|tx| {
+                Box::pin(async move {
+                    context::lock_chat(tx, &owner, &chat).await?;
+                    let row = suspension::chat(tx, &owner, &chat).await?;
+                    let Some(mut state) = suspension::read(&row)? else {
+                        return reject("suspension-not-held");
+                    };
+                    if matches!(
+                        state["phase"].as_str(),
+                        Some("stopping" | "stopped" | "completed" | "failed" | "idle")
+                    ) {
+                        return Ok(state);
+                    }
+                    if state["checkpoint"].is_null() || state["active"].is_null() {
+                        return reject("suspension-not-held");
+                    }
+                    state["controlId"] = json!(uuid::Uuid::new_v4().to_string());
+                    state["actorControlId"] = Value::Null;
+                    state["action"] = json!("stop");
+                    state["phase"] = json!("stopping");
+                    state["error"] = Value::Null;
+                    state["requestedAt"] = json!(crate::auth::iso(crate::auth::now()));
+                    suspension::save(tx, &owner, &chat, state, true).await?;
+                    suspension::read(&suspension::chat(tx, &owner, &chat).await?)?
+                        .context("Suspension state unavailable")
+                })
+            })
+            .await
+    }
+
     pub async fn request_suspension_resume(&self, owner: &str, chat: &str) -> Result<Value> {
         let (owner, chat) = (owner.to_owned(), chat.to_owned());
         self.database
@@ -63,6 +96,17 @@ impl Repository {
         observed: &Value,
         error: &Value,
     ) -> Result<()> {
+        self.fail_suspension_control(owner, chat, observed, error)
+            .await
+    }
+
+    pub async fn fail_suspension_control(
+        &self,
+        owner: &str,
+        chat: &str,
+        observed: &Value,
+        error: &Value,
+    ) -> Result<()> {
         let error = crate::settings::parse_response("nativeSuspensionErrorSchema", Some(error))?;
         let (owner, chat, observed) = (owner.to_owned(), chat.to_owned(), observed.clone());
         self.database
@@ -82,7 +126,10 @@ impl Repository {
                     {
                         return reject("suspension-actor-stale");
                     }
-                    if state["phase"] != "resuming" && state["phase"] != "error" {
+                    if !matches!(
+                        state["phase"].as_str(),
+                        Some("resuming" | "stopping" | "error")
+                    ) {
                         return reject("suspension-control-settled");
                     }
                     state["phase"] = json!("error");

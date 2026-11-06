@@ -6,6 +6,7 @@ import { useChatExecutionControls } from "@/components/chat/use-chat-execution-c
 import { Button } from "@/components/ui/button";
 import { getChats } from "@/lib/api";
 import { errorMessage as errorText } from "@/lib/error-message";
+import { nativeSuspensionView } from "@/components/chat/native-suspension-view";
 
 /** The PTY's running state means the shell is alive, not that a turn is active.
  * Read the same canonical chat cache as the GUI; input remains server-resolved
@@ -31,6 +32,12 @@ export function LinkedConsoleControls({
     projectChatQueryKey,
   });
   const paused = chat?.automationPaused ?? false;
+  const recovery = nativeSuspensionView(
+    chat?.nativeSuspension,
+    setAutomationPaused.isPending ? setAutomationPaused.variables : undefined,
+  );
+  const pauseLabel =
+    recovery?.label ?? (paused ? "Resume automatic agent work" : "Pause agent");
   let status = chats.isPending
     ? "Loading agent status…"
     : "Agent status unavailable";
@@ -46,6 +53,7 @@ export function LinkedConsoleControls({
     status = setAutomationPaused.variables
       ? "Pausing at the next safe boundary…"
       : "Resuming…";
+  if (recovery) status = recovery.status;
   return (
     <div className="shrink-0" data-slot="linked-console-controls">
       <PanelToolbar aria-label="Agent console controls">
@@ -54,7 +62,8 @@ export function LinkedConsoleControls({
           className="min-w-0 flex-1 text-xs text-muted-foreground"
         >
           {status}
-          {paused &&
+          {!recovery &&
+          paused &&
           (chat?.hasPendingPlanQuestion ||
             chat?.status === "waiting-for-approval" ||
             chat?.status === "failed") &&
@@ -67,23 +76,45 @@ export function LinkedConsoleControls({
           size="icon"
           variant="outline"
           className="size-8 shrink-0"
-          disabled={setAutomationPaused.isPending}
-          aria-label={paused ? "Resume automatic agent work" : "Pause agent"}
-          title={
-            paused
-              ? "Resume automatic agent work"
-              : "Pause after the current safe boundary"
+          disabled={
+            setAutomationPaused.isPending ||
+            recovery?.pending ||
+            recovery?.blocked
           }
-          onClick={() => setAutomationPaused.mutate(!paused)}
+          aria-label={pauseLabel}
+          title={
+            recovery
+              ? pauseLabel
+              : paused
+                ? "Resume automatic agent work"
+                : "Pause after the current safe boundary"
+          }
+          onClick={() =>
+            setAutomationPaused.mutate(recovery?.nextPaused ?? !paused)
+          }
         >
-          {setAutomationPaused.isPending ? (
+          {setAutomationPaused.isPending || recovery?.pending ? (
             <Loader2 className="size-3.5 animate-spin" />
-          ) : paused ? (
+          ) : (recovery ? !recovery.nextPaused : paused) ? (
             <Play className="size-3.5" />
           ) : (
             <Pause className="size-3.5" />
           )}
         </Button>
+        {recovery?.resumeAlso ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            className="size-8 shrink-0"
+            disabled={setAutomationPaused.isPending}
+            aria-label="Resume automatic agent work"
+            title="Resume automatic agent work"
+            onClick={() => setAutomationPaused.mutate(false)}
+          >
+            <Play className="size-3.5" />
+          </Button>
+        ) : null}
         <Button
           type="button"
           size="icon"
@@ -103,6 +134,11 @@ export function LinkedConsoleControls({
         </Button>
         {actions}
       </PanelToolbar>
+      {recovery?.error ? (
+        <p role="alert" className="mt-1 text-xs text-destructive">
+          {recovery.error}
+        </p>
+      ) : null}
       {chats.error ? (
         <p role="alert" className="mt-1 text-xs text-destructive">
           Could not read agent status: {errorText(chats.error)}

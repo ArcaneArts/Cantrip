@@ -65,12 +65,21 @@ impl Service {
         {
             task_context["nativeCycle"] = cycle;
         }
-        let result = self.request(&context["workerId"], json!({
+        let mut command = json!({
             "type":"chat.goal.create", "chatId":context["chatId"], "cwd":context["cwd"],
             "threadId":if super::super::runtime_telemetry::RuntimeTelemetry::can_resume(context,runtime){context["threadId"].clone()}else{Value::Null},
-            "objective":objective, "tokenBudget":Value::Null, "model":runtime["model"], "provider":runtime["provider"],
-            "permissionProfileId":managed_console::permission_profile(context)["effectiveId"], "taskContext":task_context
-        }), "taskGoalWorkerResultSchema").await?;
+            "objective":objective, "tokenBudget":Value::Null, "taskContext":task_context
+        });
+        let mut goal_context = context.clone();
+        goal_context["modelConfiguration"] = configuration.clone();
+        goal_context["reasoningEffort"] = configuration["reasoningEffort"].clone();
+        self.dependencies
+            .console
+            .configure_task_goal_command(owner, &goal_context, runtime, &mut command)
+            .await?;
+        let result = self
+            .request(&context["workerId"], command, "taskGoalWorkerResultSchema")
+            .await?;
         let failure = result["task"]["classification"]["lastError"]["code"]
             .as_str()
             .unwrap_or("");
@@ -149,6 +158,7 @@ impl Service {
             .filter(|value| !value.is_null())
             .unwrap_or(&objective["startMessage"]);
         let mut turn_options = json!({"purpose":options.purpose.filter(|value|!value.is_null()).unwrap_or_else(||json!("Task implementation Goal")),"encryptedTaskMessages":json!({"userMessage":user,"response":json!({"id":uuid::Uuid::new_v4().to_string(),"idempotencyKey":format!("assistant:{}",text(&user["id"])?)})}),"workerPrompt":options.worker_prompt.filter(|value|!value.is_null()).unwrap_or_else(||json!("Begin the active Task Goal and follow its encrypted objective.")),"runtimes":vec![runtime.clone()]});
+        turn_options["expectedInputRevision"] = context["managedInputRevision"].clone();
         if let Some(role) = options.message_role {
             turn_options["messageRole"] = role;
         }

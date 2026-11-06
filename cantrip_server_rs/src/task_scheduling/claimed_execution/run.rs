@@ -84,6 +84,7 @@ impl Service {
         }.await;
         if let Err(error) = result {
             if downcast_ref::<task_dispatch::Conflict>(&error).is_some() {
+                (self.dependencies.queue_tick)();
                 return Ok(());
             }
             if launch_stage == "begin-turn"

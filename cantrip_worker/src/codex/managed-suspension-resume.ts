@@ -20,8 +20,17 @@ export type ManagedSuspensionResumeCommand = Extract<
   WorkerCommand,
   { type: "chat.suspension.resume" }
 >;
+export type ManagedSuspensionStopCommand = Extract<
+  WorkerCommand,
+  { type: "chat.suspension.stop" }
+>;
+export type ManagedSuspensionControlCommand =
+  ManagedSuspensionResumeCommand | ManagedSuspensionStopCommand;
 export interface ManagedSuspensionResumeTarget {
-  runtime: Pick<CodexAppServer, "setActiveChatPaused" | "isChatPaused">;
+  runtime: Pick<
+    CodexAppServer,
+    "setActiveChatPaused" | "isChatPaused" | "interruptChat"
+  >;
   adapter: Pick<
     ManagedNativeCommandSession,
     | "currentActivationGeneration"
@@ -47,13 +56,13 @@ interface Ports {
   >;
   signal(): AbortSignal;
   active(
-    command: ManagedSuspensionResumeCommand,
+    command: ManagedSuspensionControlCommand,
   ): ManagedSuspensionResumeTarget | null;
   prepare(
-    command: ManagedSuspensionResumeCommand,
+    command: ManagedSuspensionControlCommand,
   ): Promise<ManagedSuspensionResumeTarget>;
   openSource(
-    command: ManagedSuspensionResumeCommand,
+    command: ManagedSuspensionControlCommand,
   ): ReturnType<typeof openManagedSuspensionSource>;
 }
 
@@ -61,6 +70,10 @@ interface Ports {
  * prior preparation/dispatch settlement, while Stop remains on its own path.
  * No operation, key or admission is serialized into this local coordination. */
 export class ManagedSuspensionResumes {
+  private readonly stopping = new Map<
+    string,
+    Promise<{ interrupted: boolean }>
+  >();
   private readonly pending = new Map<
     string,
     {
@@ -69,6 +82,36 @@ export class ManagedSuspensionResumes {
     }
   >();
   constructor(private readonly ports: Ports) {}
+
+  stop(
+    command: ManagedSuspensionStopCommand,
+  ): Promise<{ interrupted: boolean }> {
+    const key = JSON.stringify([
+      command.controlId,
+      command.chatId,
+      command.threadId,
+      command.checkpoint,
+      command.cwd,
+      command.session.contextKind,
+      command.session.projectId,
+      command.session.contextKind === "project"
+        ? command.session.worktreeId
+        : command.session.scratchRootId,
+      command.model.routeId ?? null,
+      command.provider.accountId ?? null,
+    ]);
+    const prior = this.stopping.get(key);
+    if (prior) return prior;
+    // Stop does not queue behind pending Resume or resource restoration. Its
+    // server control epoch fences that attempt before this worker is contacted.
+    const result = this.execute(command).then(() => ({ interrupted: true }));
+    this.stopping.set(key, result);
+    const clear = () => {
+      if (this.stopping.get(key) === result) this.stopping.delete(key);
+    };
+    void result.then(clear, clear);
+    return result;
+  }
 
   run(command: ManagedSuspensionResumeCommand): Promise<ChatPauseRuntimeState> {
     const source = command.session;
@@ -102,8 +145,9 @@ export class ManagedSuspensionResumes {
   }
 
   private async execute(
-    command: ManagedSuspensionResumeCommand,
+    command: ManagedSuspensionControlCommand,
   ): Promise<ChatPauseRuntimeState> {
+    const stopping = command.type === "chat.suspension.stop";
     const signal = this.ports.signal();
     signal.throwIfAborted();
     try {
@@ -135,6 +179,7 @@ export class ManagedSuspensionResumes {
         });
         const grant = await this.ports.client.admitSuspendedExecution(
           {
+            ...(stopping ? { action: "stop" as const } : {}),
             operationId,
             controlId: command.controlId,
             checkpoint: command.checkpoint,
@@ -157,6 +202,21 @@ export class ManagedSuspensionResumes {
       return await target.adapter.withExpectedActivationGeneration(
         generation,
         async () => {
+          if (stopping) {
+            const result = await target.runtime.interruptChat(
+              command.chatId,
+              command.threadId,
+            );
+            if (!result.interrupted)
+              throw new ManagedSuspensionResumeError(
+                "stop-failed",
+                "The named native turn did not acknowledge Stop.",
+              );
+            return {
+              paused: target.runtime.isChatPaused(command.chatId),
+              active: null,
+            };
+          }
           const active = await target.runtime.setActiveChatPaused(
             command.chatId,
             false,
@@ -177,8 +237,10 @@ export class ManagedSuspensionResumes {
       // Native diagnostics can contain private worker paths. The saved record
       // and its actual native checkpoint remain available for explicit recovery.
       throw new ManagedSuspensionResumeError(
-        "restore-failed",
-        "The suspended native turn could not be resumed. Its saved state has been retained.",
+        stopping ? "stop-failed" : "restore-failed",
+        stopping
+          ? "The suspended native turn could not be stopped. Its saved state has been retained."
+          : "The suspended native turn could not be resumed. Its saved state has been retained.",
       );
     }
   }

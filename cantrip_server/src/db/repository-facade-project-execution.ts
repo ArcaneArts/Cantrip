@@ -1101,7 +1101,11 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
     chatId: string,
     laneId: string,
     status: ChatWireSummary["status"],
-    options: { pauseAutomation?: boolean; expectedActivatedAt?: string } = {},
+    options: {
+      pauseAutomation?: boolean;
+      expectedActivatedAt?: string;
+      markUnreadCompletion?: boolean;
+    } = {},
   ): Promise<boolean> {
     return this.chatExecutionLanes.finishChatExecutionLane(
       chatId,

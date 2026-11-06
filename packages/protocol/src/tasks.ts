@@ -1135,6 +1135,9 @@ export const taskGoalWorkerResultSchema = z
       .object({
         threadId: z.string().min(1),
         status: z.enum(["running", "idle", "failed"]),
+        /** The exact Task native pause was acknowledged and its loaded Core
+         * observed idle under that same control/transport. Never a ticket release. */
+        pausedAndIdleRevision: z.number().int().positive().optional(),
       })
       .strict()
       .optional(),

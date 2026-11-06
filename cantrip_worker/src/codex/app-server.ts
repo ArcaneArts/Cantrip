@@ -2324,6 +2324,18 @@ export class CodexAppServer implements CodexRuntime {
     );
   }
 
+  /** Select the actual prepared Task owner for metadata RPCs, independently of
+   * today's model/subagent configuration. This grants no execution authority. */
+  hasTaskGoalThread(chatId: string, threadId: string): boolean {
+    const overlay = this.#managedThreadOverlays.get(threadId);
+    return (
+      Boolean(this.transportGeneration) &&
+      overlay?.epoch === this.#preparationEpoch &&
+      overlay.chatId === chatId &&
+      overlay.options.executionGate?.inferenceOnly === true
+    );
+  }
+
   /** A fresh/continued private request is still blocked in Core here. Waiting
    * for Resume owns no provider ticket and is cancelled with the exact request. */
   private async waitForPrivateTaskResume(
@@ -2381,8 +2393,14 @@ export class CodexAppServer implements CodexRuntime {
     return matching.length ? matching : roots;
   }
 
-  matchesTaskPauseScope(chatId: string, scope: TaskPauseScope): boolean {
-    return this.taskPauseRoots(chatId, scope).length > 0;
+  matchesTaskPauseScope(
+    chatId: string,
+    scope: TaskPauseScope,
+    threadId?: string,
+  ): boolean {
+    return this.taskPauseRoots(chatId, scope).some(
+      ([id]) => !threadId || id === threadId,
+    );
   }
 
   /** Canonical control metadata changes only the next private begin's episode.
@@ -2710,6 +2728,7 @@ export class CodexAppServer implements CodexRuntime {
     options: PrepareAdmittedNativeExecutionOptions,
     suspension: NativeTurnSuspension,
     input: WorkerTurnContinuation,
+    action: "resume" | "stop" = "resume",
   ): Promise<AdmittedNativeExecution> {
     const saved = workerTurnContinuationSchema.parse(input);
     suspension = nativeTurnSuspensionSchema.parse(suspension);
@@ -2719,6 +2738,7 @@ export class CodexAppServer implements CodexRuntime {
         JSON.stringify([
           suspension,
           saved,
+          action,
           options.operationGeneration,
           options.executionProfile ?? "ide",
           options.chatId,
@@ -2746,6 +2766,7 @@ export class CodexAppServer implements CodexRuntime {
         options,
         suspension,
         saved,
+        action,
       ),
     };
     this.#restoredTurns.set(options.threadId, entry);
@@ -2763,6 +2784,7 @@ export class CodexAppServer implements CodexRuntime {
     options: PrepareAdmittedNativeExecutionOptions,
     suspension: NativeTurnSuspension,
     saved: WorkerTurnContinuation,
+    action: "resume" | "stop",
   ): Promise<AdmittedNativeExecution> {
     if (
       saved.threadId !== suspension.threadId ||
@@ -2777,11 +2799,18 @@ export class CodexAppServer implements CodexRuntime {
       throw new Error(
         "Worker continuation belongs to another suspended execution.",
       );
-    const observed = await this.restoreHeldTurn(suspension, {
+    const startup = {
       model: saved.model,
       provider: options.provider,
       executionProfile: options.executionProfile,
-    });
+    };
+    let held = suspension;
+    if (action === "resume") {
+      held = (await this.restoreHeldTurn(suspension, startup)).suspension!;
+    }
+    // Managed preparation has already attached this thread under its expected
+    // execution hold. Stop must not reattach and validate a damaged checkpoint;
+    // its named native cancellation uses actual unfinished/terminal history.
     const handle = await this.prepareAdmittedNativeExecution({
       ...options,
       model: saved.model,
@@ -2789,7 +2818,7 @@ export class CodexAppServer implements CodexRuntime {
     });
     try {
       handle.assertCurrent();
-      handle.bindRestoredSuspension(observed.suspension!);
+      handle.bindRestoredSuspension(held);
       const active = this.#executions.activeTurnsByThread.get(options.threadId);
       if (!active)
         throw new Error("The restored native observer is no longer current.");
@@ -4833,8 +4862,7 @@ export class CodexAppServer implements CodexRuntime {
   async getGoal(
     options: GoalRuntimeOptions & { threadId: string },
   ): Promise<ChatGoalResponse> {
-    if (!this.managedGuiThread(options.threadId))
-      await this.ensureStarted(options.model, options.provider);
+    await this.ensureGoalMetadataTransport(options);
     // Native goal reads support unloaded threads. Reading metadata must not
     // resume with an incomplete MCP/model/permission configuration.
     return this.refreshGoal(options.threadId);
@@ -5424,6 +5452,8 @@ export class CodexAppServer implements CodexRuntime {
     return {
       threadId,
       status: observedCodexThreadStatus({ ...response.thread, turns: [] }),
+      // A saved, unloaded thread is not evidence that its native owner is idle.
+      nativeIdle: response.thread.status.type === "idle",
     };
   }
 
@@ -5437,14 +5467,12 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<ChatGoalResponse> {
     let threadId = this.managedGuiThread(options.threadId);
     if (!threadId) {
-      await this.ensureStarted(options.model, options.provider);
-      threadId = await this.loadThread(
-        options.taskOwned || options.configureTaskPermissions
-          ? this.taskInferenceOptions(options, true)
-          : options,
-        true,
-        options.configureTaskPermissions ? "configure" : "preserve",
-      );
+      if (options.taskOwned || options.configureTaskPermissions) {
+        threadId = await this.prepareTaskGoalThread(options);
+      } else {
+        await this.ensureStarted(options.model, options.provider);
+        threadId = await this.loadThread(options, true, "preserve");
+      }
     }
     if (!threadId) {
       throw new Error("Could not start a Codex thread for the goal.");
@@ -5490,14 +5518,17 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<ChatGoalResponse> {
     let threadId = this.managedGuiThread(options.threadId);
     if (!threadId) {
-      await this.ensureStarted(options.model, options.provider);
-      threadId = await this.loadThread(
-        options.taskOwned || options.configureTaskPermissions
-          ? this.taskInferenceOptions(options, true)
-          : options,
-        false,
-        options.configureTaskPermissions ? "configure" : "preserve",
-      );
+      if (options.status !== "active") {
+        // Pausing or editing saved Goal metadata must not construct a Core that
+        // could continue an active Goal before this mutation reaches it.
+        await this.ensureGoalMetadataTransport(options);
+        threadId = options.threadId;
+      } else if (options.taskOwned || options.configureTaskPermissions) {
+        threadId = await this.prepareTaskGoalThread(options);
+      } else {
+        await this.ensureStarted(options.model, options.provider);
+        threadId = await this.loadThread(options, false, "preserve");
+      }
     }
     if (!threadId) {
       throw new Error(
@@ -5525,16 +5556,10 @@ export class CodexAppServer implements CodexRuntime {
   async clearGoal(
     options: GoalRuntimeOptions & { threadId: string },
   ): Promise<{ cleared: boolean }> {
-    let threadId = this.managedGuiThread(options.threadId);
-    if (!threadId) {
-      await this.ensureStarted(options.model, options.provider);
-      threadId = await this.loadThread(options, false, "preserve");
-    }
-    if (!threadId) {
-      throw new Error(
-        "The Codex thread is no longer available on this worker.",
-      );
-    }
+    const threadId = options.threadId;
+    await this.ensureGoalMetadataTransport(options);
+    // Native clear supports an unloaded saved thread. Loading first can start
+    // autonomous Goal work, and cleanup does not need execution configuration.
     const response = chatGoalClearSchema.parse(
       await this.requestGuiThreadMutation("thread/goal/clear", { threadId }),
     );
@@ -5543,6 +5568,36 @@ export class CodexAppServer implements CodexRuntime {
       this.#goalObserver?.(threadId, null);
     }
     return response;
+  }
+
+  private async ensureGoalMetadataTransport(
+    options: GoalRuntimeOptions,
+  ): Promise<void> {
+    // An already selected live owner can service metadata independently of its
+    // startup model profile, including custom child defaults and removed routes.
+    if (!this.transportGeneration)
+      await this.ensureStarted(
+        options.model,
+        options.provider,
+        options.subagentDefaults ?? null,
+      );
+  }
+
+  private async prepareTaskGoalThread(
+    options: GoalRuntimeOptions,
+  ): Promise<string> {
+    const configuration: PrepareManagedThreadOptions = {
+      ...options,
+      executionProfile: "ide",
+      subagentDefaults: options.subagentDefaults ?? null,
+      planMode: options.planMode ?? "default",
+      intent: "configure",
+    };
+    return (
+      await this.prepareManagedThread(
+        this.taskInferenceOptions(configuration, true),
+      )
+    ).threadId;
   }
 
   /** Observation only: never starts a runtime, resumes a thread or writes settings. */

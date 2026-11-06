@@ -3389,3 +3389,138 @@ desktop lifecycle, held-input/service cleanup, resets, image/customization and
 failed-upgrade recovery, optional-package lifecycle, real remote acceptance and
 final current Docker/ISO distribution acceptance remain required. No guest package,
 OCI image or ISO changed in this cycle. Phase 5 is not complete.
+
+## Phase 5: durable guest desktop administration (2026-11-06)
+
+The optional workspace package 0.4.0 adds strict generation-bound root
+`desktop-target`, `desktop-execute` and `desktop-observe` commands. Immutable
+admissions pin the workspace account, home, display, numeric generation and hashed
+desktop token. Private versioned journals use exclusive atomic reservation and
+synced file/directory updates. Repeating an existing admission only observes it;
+changed content, stale targets and corrupt journals cannot restart a replacement.
+Completion is historical and separate from current desktop state. Disabled-service
+history remains readable without starting the daemon or inferring a live desktop
+from saved resume intent. Raw VNC viewer tokens are not exposed by these commands.
+
+All 11 host Python journal tests passed, including reserved-before-dispatch,
+dispatched-but-unobserved, actual-effect-before-receipt, altered admissions,
+corrupt state/receipts, stale accounts/generations and historical completion.
+The existing Node foundation suite passed 15 tests with one explicitly unselected
+real-container integration test. Shell syntax, formatting and diff checks passed.
+Root `pnpm check` still stops at unchanged Server budgets, 1531/1500 and 2249/1999.
+No hosted validation ran.
+
+The normal Debian package build produced architecture-independent
+`cantrip-os-workspaces_0.4.0_all.deb`, 16,468 bytes, SHA-256
+`e82d169727c0ff8edc725b957c7a5e77ad6100678ce2c8a0b2aabcf3512a440e`.
+Repeating the normal package build produced the identical SHA-256.
+Package staging excludes host bytecode, and configure clears stale implementation
+bytecode before starting the updated daemon. No new desktop/native dependencies
+were added.
+
+Actual acceptance used a fresh, disposable ARM64 container
+`cantrip-os-phase5-desktop-lifecycle`, restricted to 4 GiB/two CPUs, with a personal
+desktop and two independently managed IceWM desktops. It upgraded the workspace
+package from 0.3.0 and exercised the installed 0.4.0 package:
+
+- Individual stop/start retained exact Unicode file bytes, 0640 mode and UID/GID.
+  The other desktop's generation and actual X PID remained unchanged. A shell
+  running as the selected account outside desktop ancestry survived.
+- An actual restart request's socket reply was discarded. Observation and repeated
+  execute calls returned its saved receipt; the new generation and actual X PID
+  remained unchanged, proving no extra restart.
+- Changed, missing and deliberately damaged admissions did not mutate the desktop;
+  the damaged journal remained intact.
+- A temporary QA wrapper killed the actual daemon after its real desktop restart
+  completed but before successful receipt persistence. The journal remained
+  dispatched. A new normal daemon recovered requested state with `observed-state`
+  evidence; repeated execute did not change its current generation or X PID.
+  Manager startup resumes prior-running desktops as documented; the receipt does
+  not attribute an out-of-band or resume action to the original operation.
+- Disable/enable preserved historical completion while reporting no current
+  observation offline. Execute against the disabled daemon failed without starting
+  it. The independent shell and personal X display remained available.
+
+The existing package lifecycle script also passed actual running/disabled
+reinstalls, remove, purge, reinstall and unsupported-settings preservation. Debian
+removed the dependent executor/remote packages when removing workspaces; it did not
+claim those integrations remained installed. The ordinary personal X/browser
+desktop remained usable. Subsequent observation verified original desktop receipts,
+file bytes/modes/ownership remained in the retained workspace volume.
+
+Private proof, after-package-lifecycle observations and package metadata are retained
+under ignored `cantrip_os/artifacts/phase5-desktop-lifecycle/`. The fault wrapper
+exists only in the disposable test's temporary directory and is not packaged.
+These are guest administration tests, not full Worker/client desktop-control or
+native model/CUA acceptance. Server-owned desktop admissions, Worker routing,
+client controls and held-input/service recovery remain next. Installed-system and
+final Docker/ISO qualification, resets/upgrades and real remote acceptance remain
+required. The full Phase 5 goal is active.
+
+## Phase 5: Server and Worker desktop admissions (2026-11-06)
+
+Both Servers now persist immutable desktop operations, private captured account/
+display snapshots, opaque verified targets and paginated history. The Worker runs
+the package-owned root CLI through the authenticated native executor for the
+original runtime. It saves its admission and native process identity before
+dispatch. Repeated create requests and observation recover the original guest
+journal without another execute, including when the Worker-local journal is absent.
+Unverified delivery stays unknown; saved completion is separate from current
+availability. Public status/history omit private guest snapshots and desktop hashes.
+
+Workspace observation epochs fence responses started before an admission or another
+successful observation. Instance power epochs and captured runtime identities also
+apply. A fresh explicit observation can rotate a changed actual desktop target
+without rewriting an older uncertain admission. The same target remains fenced
+while its prior operation is unresolved. Desktop-only outcomes do not invalidate
+independent instance/source/shell authority.
+
+Actual Worker acceptance used the disposable 4 GiB/two-CPU ARM64 container
+`cantrip-os-phase5-desktop-lifecycle`, workspaces 0.4.0 and a normally built executor
+0.10.0. Through real authenticated native processes it started/stopped/started its
+own desktop while a separately admitted Python process survived and the native
+executor generation remained unchanged. A real restart was performed before its
+reply was deliberately discarded. A new Manager and an empty Worker journal
+recovered the exact guest receipt; repeated calls did not execute another restart.
+Unicode marker bytes, 0751 mode and workspace ownership survived. The check passed
+in 9.60 seconds, stopped its own desktop, terminated its own process and retained
+private proof. This is a real Worker/guest check, not full client/model/CUA acceptance.
+
+The normal ARM64 executor build applied all 88 patches to the selected 9,191-file
+native input at `95330e402ecb0cf3bffc1a66fd4144a7d1691d29`, without a cached-runtime
+input override. Its package is 16,374,092 bytes, SHA-256
+`4b73d20c2465bfa78a3ebf070e44a53c70c97cc9b9ab3c4edc05b92517cc707c`.
+It was actually installed in the disposable guest. An earlier normal build failed
+on native patch context; that failure is retained and the subsequent build used
+Main's merged context repair. This artifact is tied to its recorded native input,
+not a claim of final current Docker/ISO or Host/model qualification.
+
+The Node HTTP test applies the actual migration chain, restarts Server persistence,
+holds an old observation across a mutation and verifies immutable retries, ownership,
+workspace separation, unavailable transport, changed targets and paginated history.
+It and the existing power/management HTTP suites passed. All 11 desktop Worker tests
+and the 16-test focused desktop/power/operation regression run passed. Server and
+Worker type checks passed. Native validation passed four contract tests, including
+45,956 Linux source cases and complete desktop/power Worker envelopes; its actual
+PostgreSQL desktop HTTP test passed in 3.17 seconds across native Server restart.
+Native check, all-target strict Clippy, Rust formatting and diff checks passed.
+Client placement coverage passed 56 tests and the production app build passed.
+After rebasing onto Main `2060beb2a`, Server/Worker types and the three Node HTTP
+suites passed again. All 17 selected Worker tests, including the real-container
+check, passed in 13.42 seconds. The four native contract tests and actual
+PostgreSQL HTTP test passed again (the latter in 3.55 seconds), followed by
+all-target strict Clippy. No guest/native build inputs changed in that rebase.
+
+Wider checks retain unrelated failures: Protocol passed 1,110 tests and failed four
+duplicated inventory assertions, with 39 unreviewed legacy exports and seven legacy
+commands remaining after this cycle's reviewed additions. Worker placement passed
+91 and failed two existing model-capacity cases with two related errors. Server
+placement passed 59 and failed the existing standalone Chat queued/started assertion.
+Root `pnpm check` stops at the recorded Server decomposition budgets. These failures
+were not repaired as part of desktop administration. No hosted validation ran.
+
+Private build/package metadata, validation logs and actual Worker proof are retained
+under ignored `cantrip_os/artifacts/phase5-desktop-admissions/backend/`. Product desktop
+controls, actual model/CUA and held-input/service recovery, installed-system lifecycle,
+resets/upgrades, real remote acceptance and final recorded distributions remain
+required. Phase 5 remains active.

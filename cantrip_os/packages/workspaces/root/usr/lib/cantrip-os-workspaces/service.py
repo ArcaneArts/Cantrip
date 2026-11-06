@@ -14,12 +14,13 @@ import sys
 import tempfile
 import time
 from sessions import Sessions
+from desktop_operations import DesktopOperations
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 DEFAULT_CONFIG = "/etc/cantrip-os/workspaces.json"
 
 
-def atomic_json(path, value):
+def atomic_json(path, value, exclusive=False):
     fd, name = tempfile.mkstemp(dir=path.parent, prefix=".state-")
     try:
         with os.fdopen(fd, "w") as stream:
@@ -27,7 +28,15 @@ def atomic_json(path, value):
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(name, path)
+        if exclusive:
+            os.link(name, path)
+        else:
+            os.replace(name, path)
+        directory = os.open(path.parent, os.O_DIRECTORY | os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
     finally:
         if os.path.exists(name):
             os.unlink(name)
@@ -90,6 +99,23 @@ def running(store):
                 return None
         except BlockingIOError:
             raise RuntimeError("Service owns its lock but control is unavailable")
+
+
+def observe_desktop(store, value):
+    try:
+        return request(store, "desktop-observe", value)
+    except (FileNotFoundError, ConnectionRefusedError):
+        # The actual request failed. Acquiring the real daemon lock fences this
+        # offline read against a live dispatch; no desktop is started or guessed.
+        with store.lock("service", blocking=False):
+            class UnavailableSessions:
+                def __init__(self):
+                    self.store = store
+
+                def info(self, name):
+                    raise RuntimeError("Workspace service is unavailable; no current desktop state was observed")
+
+            return DesktopOperations(UnavailableSessions(), atomic_json).observe(json.loads(value))
 
 
 def daemon(store):
@@ -208,10 +234,13 @@ def service(store, action):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=DEFAULT_CONFIG)
-    workspace_commands = ["list", "create", "open", "stop", "restart", "show"]
+    workspace_commands = ["list", "create", "open", "stop", "restart", "show",
+                          "desktop-target", "desktop-execute", "desktop-observe"]
     parser.add_argument("command", choices=["daemon", "status", "enable", "disable", "service"] + workspace_commands)
     parser.add_argument("action", nargs="?", help="Service action or workspace ID")
     args = parser.parse_args()
+    if args.command in ("desktop-execute", "desktop-observe") and args.action is None:
+        parser.error("desktop-execute and desktop-observe require the original admission JSON")
     if os.geteuid() != 0:
         parser.error("Run with sudo (local service control requires root)")
     store = Store(args.config)
@@ -219,7 +248,9 @@ def main():
         daemon(store)
         return
     with store.lock("control"):
-        if args.command in workspace_commands:
+        if args.command == "desktop-observe":
+            print(json.dumps(observe_desktop(store, args.action)))
+        elif args.command in workspace_commands:
             print(json.dumps(request(store, args.command, args.action)))
         elif args.command == "status" or args.action == "status":
             print(json.dumps(running(store) or {"service": "stopped", "version": VERSION,

@@ -109,6 +109,7 @@ export const cantripOsWorkspaces = pgTable(
     uid: integer("uid").notNull(),
     gid: integer("gid").notNull(),
     homeGuestPath: text("home_guest_path").notNull(),
+    desktopEpoch: integer("desktop_epoch").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

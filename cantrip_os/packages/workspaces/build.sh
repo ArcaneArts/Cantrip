@@ -6,7 +6,9 @@ export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1793664000}
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT HUP INT TERM
 cp -a "$source_dir/root/." "$stage/"
+find "$stage" -type d -name __pycache__ -prune -exec rm -rf {} +
+find "$stage" -type f -name '*.pyc' -delete
 mkdir -p "$stage/DEBIAN" "$output_dir"
 cp "$source_dir"/debian/* "$stage/DEBIAN/"
 find "$stage" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
-dpkg-deb --root-owner-group --uniform-compression -Zxz -z6 --build "$stage" "$output_dir/cantrip-os-workspaces_0.3.0_all.deb"
+dpkg-deb --root-owner-group --uniform-compression -Zxz -z6 --build "$stage" "$output_dir/cantrip-os-workspaces_0.4.0_all.deb"

@@ -84,9 +84,12 @@ export class NativeCommandClient {
       signal,
     );
     const owner = result.suspension.executionOwner;
+    const action = input.action ?? "resume";
     if (
       result.suspension.controlId !== input.controlId ||
-      result.suspension.phase !== "resuming" ||
+      result.suspension.action !== action ||
+      result.suspension.phase !==
+        (action === "stop" ? "stopping" : "resuming") ||
       result.suspension.target.workerId !== body.workerId ||
       result.suspension.target.contextKind !== input.session.contextKind ||
       result.suspension.target.projectId !== input.session.projectId ||

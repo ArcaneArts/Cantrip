@@ -157,3 +157,80 @@ verified guest bytes and the absence of a Host copy after recovery.
 Independent desktop controls, held-input and service cleanup, reset/image/upgrade
 semantics, current-runtime model acceptance and real remote acceptance remain
 separate Phase 5 requirements. These client checks do not claim them complete.
+
+## Guest desktop operation checkpoint
+
+Workspace package 0.4.0 adds generation-bound root administrative operations for
+one desktop, independently of instance power. See
+[durable desktop administration](packages/workspaces/README.md#durable-desktop-administration)
+for `desktop-target`, `desktop-execute` and `desktop-observe`.
+
+The caller retains the exact account/display/generation snapshot and operation
+identity before dispatch. The guest atomically reserves and syncs a private journal
+before invoking its existing serialized lifecycle commands. Existing admissions
+only observe; changed admissions, stale targets and damaged journals cannot mutate
+a replacement desktop. Historical completion is returned separately from current
+desktop observation. A stopped daemon does not turn saved resume intent into a
+running observation; its root CLI can inspect saved history without enabling it.
+
+Actual disposable Docker acceptance covers another desktop and an independent
+same-account shell surviving individual stop/start/restart, retained Unicode files,
+a lost socket reply, SIGKILL after a real restart but before completion was saved,
+and observation without another restart. Disable/removal/purge/reinstall retain
+journals and files while the personal desktop remains usable.
+
+These package-owned commands now have Server-owned admissions and Worker routing,
+described below. Client controls, actual terminal/Run/CUA/service recovery,
+installed-system acceptance and the rest of Phase 5 remain required. No Worker or
+model credentials are installed in the guest.
+
+## Server-owned desktop admissions
+
+Both Server implementations expose workspace-scoped desktop observation and
+operation history beneath
+`/api/cantrip-os/:instanceId/workspaces/:workspaceId`:
+
+- `GET /desktop` observes the captured runtime and records an opaque desktop target.
+- `POST /desktop-operations` admits an operation with `operationId`, `action`,
+  `attachmentGeneration`, `runtimeGeneration` and `targetGeneration`.
+- `GET /desktop-operations` lists history with `limit` and optional `cursor`.
+- `GET /desktop-operations/:operationId` reads its retained outcome.
+- `POST /desktop-operations/:operationId/observe` observes that exact admission.
+
+The Server resolves the owned workspace account, display and private snapshot.
+Clients cannot choose UID, home, transport or guest desktop tokens. The stored
+command retains its original scope and transport before dispatch. Repeating a
+create observes its original command; changed request content cannot reuse its ID.
+Active or uncertain operations fence another admission for the same target.
+
+The Worker runs the root CLI through an authenticated native executor connection
+pinned to that account and guest runtime. It journals the original admission and
+native process identity before execution. After Worker loss, observation reads the
+original guest journal; a missing Worker cache never authorizes execute. An exact
+authenticated guest receipt can recover completion even without that cache. Missing
+or unverified outcomes remain unknown. Saved completion remains historical when
+current observation is unavailable.
+
+Workspace desktop observation epochs reject observations begun before a lifecycle
+admission or another successful target observation. An explicit new observation of
+a changed actual snapshot rotates its opaque target. It can authorize a new
+operation without rewriting or replaying an older uncertain admission; observing
+the same snapshot retains its target and unresolved-operation fence. Instance power
+epochs and immutable runtime identities also fence stale observations.
+
+Desktop transitions do not change instance connectivity, runtime or source binding
+authority. They do not themselves retire independent shells, Runs, other desktops
+or ordinary SSH/TCP routes. Desktop-bound viewing/input/VNC cleanup and fresh GUI
+authority are separately required product behavior, not implied by these APIs.
+
+Run the real Worker/native desktop check against an explicitly selected disposable
+container with the workspace and executor packages installed:
+
+```sh
+CANTRIP_OS_TEST_DESKTOP_CONTAINER=your-disposable-container \
+  pnpm --filter @cantrip/worker exec vitest run test/os-desktop.integration.test.ts
+```
+
+The check creates its own workspace, retains private proof and test files, stops
+its desktop and terminates only its own independent process. It does not remove
+the container or existing workspace state.

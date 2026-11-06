@@ -91,6 +91,10 @@ function fixture() {
       runtimeGeneration: "fresh-runtime",
     },
     runtime: {
+      interruptChat: vi.fn(async () => {
+        order.push("explicit-stop");
+        return { interrupted: true };
+      }),
       setActiveChatPaused: vi.fn(async () => {
         order.push("explicit-resume");
         return { threadId: "thread", turnId: "turn" };
@@ -142,6 +146,61 @@ function fixture() {
   };
 }
 describe("worker explicit suspension recovery coordinator", () => {
+  it("admits a fresh held Stop observer without releasing Resume", async () => {
+    const f = fixture();
+    await expect(
+      f.resumes.stop({ ...f.command, type: "chat.suspension.stop" }),
+    ).resolves.toEqual({ interrupted: true });
+    expect(
+      f.ports.client.admitSuspendedExecution.mock.calls[0]![0],
+    ).toMatchObject({
+      action: "stop",
+      controlId: f.command.controlId,
+      checkpoint: f.command.checkpoint,
+    });
+    expect(f.order).toEqual([
+      "prepare-held",
+      "open-protected-source",
+      "fresh-admission",
+      "restore-held",
+      "observer-current",
+      "epoch-fence",
+      "explicit-stop",
+    ]);
+    expect(f.target.runtime.setActiveChatPaused).not.toHaveBeenCalled();
+  });
+  it("joins duplicate Stop deliveries with the same scope", async () => {
+    const f = fixture(),
+      gate = deferred();
+    f.ports.prepare.mockImplementationOnce(async () => {
+      await gate.promise;
+      return f.target;
+    });
+    const command = { ...f.command, type: "chat.suspension.stop" as const };
+    const first = f.resumes.stop(command);
+    const duplicate = f.resumes.stop({
+      ...command,
+      provider: { ...command.provider, name: "Fresh delivery" },
+    });
+    expect(duplicate).toBe(first);
+    gate.resolve();
+    await first;
+    expect(f.target.runtime.interruptChat).toHaveBeenCalledOnce();
+    expect(f.ports.client.admitSuspendedExecution).toHaveBeenCalledOnce();
+  });
+  it("uses a surviving Stop owner and rejects an unacknowledged Stop without Resume", async () => {
+    const f = fixture();
+    f.ports.active.mockReturnValue(f.target as never);
+    f.target.runtime.interruptChat.mockResolvedValueOnce({
+      interrupted: false,
+    });
+    await expect(
+      f.resumes.stop({ ...f.command, type: "chat.suspension.stop" }),
+    ).rejects.toMatchObject({ code: "stop-failed" });
+    expect(f.ports.prepare).not.toHaveBeenCalled();
+    expect(f.ports.client.admitSuspendedExecution).not.toHaveBeenCalled();
+    expect(f.target.runtime.setActiveChatPaused).not.toHaveBeenCalled();
+  });
   it("restores the protected continuation under fresh authority before explicit epoch-fenced Resume", async () => {
     const f = fixture();
     expect(await f.resumes.run(f.command)).toEqual({

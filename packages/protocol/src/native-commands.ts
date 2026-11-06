@@ -65,6 +65,7 @@ export const nativeCommandIntentSchema = z
     /** Stamped only by the dedicated suspension observer admission. */
     restoredSuspension: z
       .object({
+        action: z.enum(["resume", "stop"]).optional(),
         controlId: z.uuid(),
         checkpoint: nativeTurnSuspensionSchema,
         source: nativeOperationIdentitySchema,
@@ -347,6 +348,7 @@ export const nativeCommandAdmissionResultSchema = z
  * continuation. It contains no input replay, worker paths or old grants. */
 export const nativeSuspensionExecutionAdmissionSchema = z
   .object({
+    action: z.enum(["resume", "stop"]).optional(),
     workerId: id,
     workerGeneration: z.uuid(),
     operationId: id,

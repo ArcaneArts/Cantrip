@@ -26,6 +26,21 @@ fn linux_source_contracts_match_the_actual_protocol() -> Result<()> {
         "cantripOsBackupPageSchema",
         "cantripOsBackupSourceSchema",
         "cantripOsInspectSchema",
+        "cantripOsDesktopActionSchema",
+        "cantripOsGuestDesktopTargetSchema",
+        "cantripOsDesktopScopeSchema",
+        "cantripOsGuestDesktopRequestSchema",
+        "cantripOsGuestDesktopReceiptSchema",
+        "cantripOsGuestDesktopResultSchema",
+        "cantripOsDesktopWorkerCommandSchema",
+        "cantripOsDesktopReceiptSchema",
+        "cantripOsDesktopOperationResultSchema",
+        "cantripOsDesktopCreateSchema",
+        "cantripOsDesktopTargetSummarySchema",
+        "cantripOsDesktopStatusSchema",
+        "cantripOsDesktopSummarySchema",
+        "cantripOsDesktopListQuerySchema",
+        "cantripOsDesktopPageSchema",
         "cantripOsPowerCreateSchema",
         "cantripOsPowerTargetSummarySchema",
         "cantripOsPowerStatusSchema",
@@ -110,6 +125,11 @@ fn linux_source_contracts_match_the_actual_protocol() -> Result<()> {
 #[test]
 fn os_chat_placement_contracts_match_actual_protocol() -> Result<()> {
     compare_cases("scripts/server-rust/cantrip-os-chat-vectors.mjs")
+}
+
+#[test]
+fn desktop_commands_match_actual_worker_envelopes() -> Result<()> {
+    compare_cases("scripts/server-rust/cantrip-os-desktop-vectors.mjs")
 }
 
 #[test]

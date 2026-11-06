@@ -15,6 +15,7 @@ import * as schema from "../src/db/schema.js";
 import { retainSuspendedChatTurn } from "../src/app/runtime/retain-suspended-chat-turn.js";
 import { installInternalNativeCommandRoutes } from "../src/app/routes/internal-native-commands.js";
 import { NativeCommandClient } from "../../cantrip_worker/src/native-command-client.js";
+import { createDurableChatStopRuntime } from "../src/app/runtime/durable-chat-stop.js";
 import {
   createNativeSettingsFixture,
   settingsEnvelope,
@@ -125,6 +126,163 @@ async function capture(origin: "gui" | "terminal") {
 }
 
 describe("committed native suspension retains execution across transport loss", () => {
+  it("uses a surviving Stop owner without resolving an unavailable model route", async () => {
+    const captured = await capture("gui");
+    const saved = await fixture.repository.nativeSuspensions.read(
+      owner,
+      fixture.chatId,
+    );
+    const context = await fixture.commands.controlContext(
+      owner,
+      fixture.chatId,
+    );
+    await fixture.commands.stopAutonomy(
+      owner,
+      fixture.chatId,
+      context.activationGeneration,
+    );
+    const request = vi.fn(async (_worker, command) => {
+      expect(command.type).toBe("chat.native-control");
+      expect(command.control).toEqual({ kind: "interrupt" });
+      await fixture.commands.settle(owner, await captured.control(true));
+      return { interrupted: true };
+    });
+    const runtimeForContext = vi.fn(async () => null);
+    const stop = createDurableChatStopRuntime({
+      repository: fixture.repository,
+      bridge: { request, isConnected: () => true } as never,
+      runtimeForContext,
+      routePairsForConfiguration: vi.fn() as never,
+      publishChatSummary: vi.fn(),
+    });
+    await expect(
+      stop(owner, context.context!, context, saved!),
+    ).resolves.toEqual({ interrupted: true });
+    expect(request).toHaveBeenCalledOnce();
+    expect(runtimeForContext).not.toHaveBeenCalled();
+    await fixture.commands.finishLogicalGui(
+      owner,
+      fixture.workerId,
+      captured.root.operationId,
+      captured.root.operationGeneration,
+      "idle",
+    );
+  });
+  it("admits only a Stop observer after Stop fences a pending Resume and cancels autonomy", async () => {
+    const { root, evidence } = await capture("gui");
+    const resume = await fixture.repository.nativeSuspensions.request(
+      owner,
+      fixture.chatId,
+      "resume",
+    );
+    const base = await fixture.input("gui");
+    const request = {
+      workerId: fixture.workerId,
+      workerGeneration: randomUUID(),
+      session: {
+        ...base.session,
+        runtimeGeneration: "pending-resume-runtime",
+        connectionId: "pending-resume-owner",
+      },
+      operationId: randomUUID(),
+      controlId: resume.state.controlId,
+      checkpoint: evidence,
+      payloadDigest: "e".repeat(64),
+      protectedPayload: settingsEnvelope,
+    };
+    const pending = await fixture.commands.admitSuspendedExecution(
+      owner,
+      request,
+    );
+    const stopping = await fixture.repository.nativeSuspensions.request(
+      owner,
+      fixture.chatId,
+      "stop",
+    );
+    await fixture.commands.stopAutonomy(
+      owner,
+      fixture.chatId,
+      pending.receipt.activationGeneration,
+    );
+    const stop = {
+      ...request,
+      action: "stop" as const,
+      operationId: randomUUID(),
+      controlId: stopping.state.controlId,
+      session: {
+        ...request.session,
+        connectionId: "stop-owner",
+      },
+    };
+    await expect(
+      fixture.commands.admitSuspendedExecution(owner, {
+        ...stop,
+        action: "resume",
+      }),
+    ).rejects.toMatchObject({ code: "suspension-control-stale" });
+    const admitted = await fixture.commands.admitSuspendedExecution(
+      owner,
+      stop,
+    );
+    expect(admitted.source.operationId).toBe(root.operationId);
+    expect(admitted.suspension).toMatchObject({
+      action: "stop",
+      phase: "stopping",
+      checkpoint: evidence,
+    });
+    expect(
+      (
+        await fixture.commands.admitSuspendedExecution(owner, {
+          ...stop,
+          operationId: randomUUID(),
+        })
+      ).receipt.operationId,
+    ).toBe(admitted.receipt.operationId);
+    await expect(
+      fixture.commands.dispatch(owner, {
+        workerId: request.workerId,
+        workerGeneration: request.workerGeneration,
+        session: request.session,
+        operationId: pending.receipt.operationId,
+        operationGeneration: pending.receipt.operationGeneration,
+        payloadDigest: request.payloadDigest,
+      }),
+    ).rejects.toBeDefined();
+    await fixture.commands.dispatch(owner, {
+      workerId: stop.workerId,
+      workerGeneration: stop.workerGeneration,
+      session: stop.session,
+      operationId: admitted.receipt.operationId,
+      operationGeneration: admitted.receipt.operationGeneration,
+      payloadDigest: stop.payloadDigest,
+    });
+    const [activation] = await fixture.db
+      .select()
+      .from(schema.nativeCommandActivations)
+      .where(eq(schema.nativeCommandActivations.chatId, fixture.chatId));
+    expect(activation).toMatchObject({
+      logicalCancelled: true,
+      operationId: admitted.receipt.operationId,
+    });
+    const [chat] = await fixture.db
+      .select()
+      .from(schema.chats)
+      .where(eq(schema.chats.id, fixture.chatId));
+    expect(chat?.managedAutonomyStopped).toBe(true);
+    await fixture.repository.nativeSuspensions.stopped(
+      owner,
+      fixture.chatId,
+      stopping.state.controlId,
+      admitted.suspension.actor,
+    );
+    await fixture.commands.finishLogicalGui(
+      owner,
+      fixture.workerId,
+      root.operationId,
+      root.operationGeneration,
+      "idle",
+    );
+  });
   it("requires the current authenticated worker incarnation and correlates canonical admission through the actual HTTP handler", async () => {
     const { root, active, evidence } = await capture("gui");
     const resume = await fixture.repository.nativeSuspensions.request(

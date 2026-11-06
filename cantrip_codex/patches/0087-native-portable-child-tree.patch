@@ -1,17 +1,93 @@
-diff --git a/codex-rs/state/src/runtime.rs b/codex-rs/state/src/runtime.rs
---- a/codex-rs/state/src/runtime.rs
-+++ b/codex-rs/state/src/runtime.rs
-@@ -1 +1,2 @@
- pub(crate) mod portable_thread;
-+pub(crate) mod portable_tree;
+diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
+index 7fdfdf50e96034b3b0f0cabc22b54d6cf2a72efa..179d63354de321a1878a24a36bf02cba64a5d697 100644
+--- a/codex-rs/app-server/src/request_processors/thread_processor.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
+@@ -563,7 +563,10 @@ impl ThreadRequestProcessor {
+             .load_latest_config(None)
+             .await
+             .map_err(|error| config_load_error(&error))?;
+-        snapshot.metadata.model_provider = destination.model_provider_id;
++        snapshot.metadata.model_provider = destination.model_provider_id.clone();
++        for child in &mut snapshot.descendants {
++            child.metadata.model_provider = destination.model_provider_id.clone();
++        }
+         let path = self
+             .thread_store
+             .import_portable_history(transfer_id, snapshot)
 diff --git a/codex-rs/state/src/lib.rs b/codex-rs/state/src/lib.rs
+index ae71ab917f1ac0b31ac4d4b403d5181b765b285a..f96fb7eaba94d55920df26763b69b4d836877afc 100644
 --- a/codex-rs/state/src/lib.rs
 +++ b/codex-rs/state/src/lib.rs
-@@ -1 +1,2 @@
+@@ -44,6 +44,7 @@ pub use runtime::MAX_GUARDIAN_REVIEW_RECORDS_PER_THREAD;
+ /// Preferred entrypoint: owns configuration and metrics.
+ pub use runtime::StateRuntime;
  pub use runtime::portable_thread::PortableThreadState;
 +pub use runtime::portable_tree::PortableThreadSpawnEdge;
+ pub use sqlite::SqliteConfig;
+ pub use sqlite::SqlitePoolWriteExt;
+ 
+diff --git a/codex-rs/state/src/runtime.rs b/codex-rs/state/src/runtime.rs
+index 48cad7f77423478a1c33d6d13a6caa042fd84d98..dc4d4ad01ba86315a1ef80185a32fe2b05329033 100644
+--- a/codex-rs/state/src/runtime.rs
++++ b/codex-rs/state/src/runtime.rs
+@@ -49,6 +49,7 @@ mod logs_maintenance;
+ mod memories;
+ mod memory_versions;
+ pub(crate) mod portable_thread;
++pub(crate) mod portable_tree;
+ mod projects;
+ mod queued_items;
+ pub(crate) mod reclamation;
+diff --git a/codex-rs/state/src/runtime/portable_thread.rs b/codex-rs/state/src/runtime/portable_thread.rs
+index acb8c99dee254c8685488148d91cb82a9e5bdadf..f57fd9d32069266579a12ac6d20e65733cc98638 100644
+--- a/codex-rs/state/src/runtime/portable_thread.rs
++++ b/codex-rs/state/src/runtime/portable_thread.rs
+@@ -48,6 +48,27 @@ impl StateRuntime {
+         &self,
+         metadata: &ThreadMetadata,
+         state: &PortableThreadState,
++    ) -> anyhow::Result<bool> {
++        self.insert_portable_member_if_absent(metadata, state, true)
++            .await
++    }
++
++    /// Tree artifacts restore the actual captured topology separately. Never
++    /// synthesize an Open edge from old source metadata for those members.
++    pub async fn insert_portable_tree_thread_if_absent(
++        &self,
++        metadata: &ThreadMetadata,
++        state: &PortableThreadState,
++    ) -> anyhow::Result<bool> {
++        self.insert_portable_member_if_absent(metadata, state, false)
++            .await
++    }
++
++    async fn insert_portable_member_if_absent(
++        &self,
++        metadata: &ThreadMetadata,
++        state: &PortableThreadState,
++        derive_spawn_edge: bool,
+     ) -> anyhow::Result<bool> {
+         anyhow::ensure!(
+             matches!(state.memory_mode.as_str(), "enabled" | "disabled"),
+@@ -178,8 +199,13 @@ impl StateRuntime {
+             .insert_thread_if_absent_in_transaction(metadata, &state.memory_mode, &mut tx)
+             .await?;
+         tx.commit().await?;
+-        self.insert_thread_spawn_edge_from_source_if_absent(metadata.id, metadata.source.as_str())
++        if derive_spawn_edge {
++            self.insert_thread_spawn_edge_from_source_if_absent(
++                metadata.id,
++                metadata.source.as_str(),
++            )
+             .await?;
++        }
+         Ok(inserted)
+     }
+ }
 diff --git a/codex-rs/state/src/runtime/portable_tree.rs b/codex-rs/state/src/runtime/portable_tree.rs
 new file mode 100644
+index 0000000000000000000000000000000000000000..5c5fb6625173366f77eca812aba20724b7b7a19b
 --- /dev/null
 +++ b/codex-rs/state/src/runtime/portable_tree.rs
 @@ -0,0 +1,68 @@
@@ -83,98 +159,35 @@ new file mode 100644
 +        Ok(())
 +    }
 +}
-diff --git a/codex-rs/state/src/runtime/portable_thread.rs b/codex-rs/state/src/runtime/portable_thread.rs
---- a/codex-rs/state/src/runtime/portable_thread.rs
-+++ b/codex-rs/state/src/runtime/portable_thread.rs
-@@ -48,6 +48,27 @@
-         &self,
-         metadata: &ThreadMetadata,
-         state: &PortableThreadState,
-+    ) -> anyhow::Result<bool> {
-+        self.insert_portable_member_if_absent(metadata, state, true)
-+            .await
-+    }
-+
-+    /// Tree artifacts restore the actual captured topology separately. Never
-+    /// synthesize an Open edge from old source metadata for those members.
-+    pub async fn insert_portable_tree_thread_if_absent(
-+        &self,
-+        metadata: &ThreadMetadata,
-+        state: &PortableThreadState,
-+    ) -> anyhow::Result<bool> {
-+        self.insert_portable_member_if_absent(metadata, state, false)
-+            .await
-+    }
-+
-+    async fn insert_portable_member_if_absent(
-+        &self,
-+        metadata: &ThreadMetadata,
-+        state: &PortableThreadState,
-+        derive_spawn_edge: bool,
-     ) -> anyhow::Result<bool> {
-         anyhow::ensure!(
-             matches!(state.memory_mode.as_str(), "enabled" | "disabled"),
-@@ -178,8 +199,13 @@
-             .insert_thread_if_absent_in_transaction(metadata, &state.memory_mode, &mut tx)
-             .await?;
-         tx.commit().await?;
--        self.insert_thread_spawn_edge_from_source_if_absent(metadata.id, metadata.source.as_str())
--            .await?;
-+        if derive_spawn_edge {
-+            self.insert_thread_spawn_edge_from_source_if_absent(
-+                metadata.id,
-+                metadata.source.as_str(),
-+            )
-+            .await?;
-+        }
-         Ok(inserted)
-     }
- }
-diff --git a/codex-rs/thread-store/src/portable_history.rs b/codex-rs/thread-store/src/portable_history.rs
---- a/codex-rs/thread-store/src/portable_history.rs
-+++ b/codex-rs/thread-store/src/portable_history.rs
-@@ -1,2 +1,7 @@
-     pub queue: Vec<QueuedUserSubmissionRecord>,
-+    /// Version 3 owns one flat persisted tree; version 2 remains a leaf format.
-+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-+    pub descendants: Vec<PortableThreadHistory>,
-+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-+    pub spawn_edges: Vec<codex_state::PortableThreadSpawnEdge>,
- }
-diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/local/mod.rs
---- a/codex-rs/thread-store/src/local/mod.rs
-+++ b/codex-rs/thread-store/src/local/mod.rs
-@@ -1 +1,2 @@
- mod portable_history_import;
-+mod portable_history_tree;
-diff --git a/codex-rs/thread-store/src/store.rs b/codex-rs/thread-store/src/store.rs
---- a/codex-rs/thread-store/src/store.rs
-+++ b/codex-rs/thread-store/src/store.rs
-@@ -1 +1,14 @@
-+    /// Capture the persisted child tree under the caller's actual native tree
-+    /// execution/export guard. Unsupported stores must not silently export a
-+    /// root-only artifact in place of a complete tree.
-+    fn export_portable_history_tree(
-+        &self,
-+        _params: LoadThreadHistoryParams,
-+    ) -> ThreadStoreFuture<'_, crate::PortableThreadHistory> {
-+        Box::pin(async {
-+            Err(ThreadStoreError::Unsupported {
-+                operation: "export_portable_history_tree",
-+            })
-+        })
-+    }
-     /// Publish a worker-owned transfer into an unused destination conversation.
 diff --git a/codex-rs/thread-store/src/live_thread.rs b/codex-rs/thread-store/src/live_thread.rs
+index 94e7797a824508f2229c186de55579b81128ef04..056dcdfcbb941fdbbdfa2ea5c54ff6b4f3e97645 100644
 --- a/codex-rs/thread-store/src/live_thread.rs
 +++ b/codex-rs/thread-store/src/live_thread.rs
-@@ -1 +1 @@
+@@ -367,7 +367,7 @@ impl LiveThread {
+ 
+     pub async fn export_portable_history(&self) -> ThreadStoreResult<crate::PortableThreadHistory> {
+         self.thread_store
 -            .export_portable_history(LoadThreadHistoryParams {
 +            .export_portable_history_tree(LoadThreadHistoryParams {
+                 thread_id: self.thread_id,
+                 include_archived: true,
+             })
 diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/local/mod.rs
+index 24349d060213882351189465ff90d18678bdbf0e..ed09cdd2ea0073fb8c63b405f4fd8da8f2beb1bc 100644
 --- a/codex-rs/thread-store/src/local/mod.rs
 +++ b/codex-rs/thread-store/src/local/mod.rs
-@@ -1 +1,7 @@
+@@ -11,6 +11,7 @@ mod paginated_fork;
+ mod pending_thread_metadata;
+ mod portable_history;
+ mod portable_history_import;
++mod portable_history_tree;
+ mod projects;
+ mod read_thread;
+ mod revert_thread;
+@@ -619,12 +620,24 @@ impl ThreadStore for LocalThreadStore {
+         Box::pin(LocalThreadStore::load_history(self, params))
+     }
+ 
 +    fn export_portable_history_tree(
 +        &self,
 +        params: LoadThreadHistoryParams,
@@ -182,10 +195,10 @@ diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/
 +        Box::pin(portable_history::export_tree(self, params))
 +    }
      fn import_portable_history(
-diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/local/mod.rs
---- a/codex-rs/thread-store/src/local/mod.rs
-+++ b/codex-rs/thread-store/src/local/mod.rs
-@@ -1 +1,7 @@
+         &self,
+         transfer_id: ThreadId,
+         snapshot: crate::PortableThreadHistory,
+     ) -> ThreadStoreFuture<'_, std::path::PathBuf> {
 -        Box::pin(portable_history_import::import(self, transfer_id, snapshot))
 +        Box::pin(async move {
 +            if snapshot.version == 3 {
@@ -194,18 +207,22 @@ diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/
 +                portable_history_import::import(self, transfer_id, snapshot).await
 +            }
 +        })
+     }
+ 
+     fn export_portable_history(
 diff --git a/codex-rs/thread-store/src/local/portable_history.rs b/codex-rs/thread-store/src/local/portable_history.rs
+index b40b1bf9ca266287f9a23bac6d5c8f88d135e28d..a88dc8717ce9e534138223be93a761e7150daddb 100644
 --- a/codex-rs/thread-store/src/local/portable_history.rs
 +++ b/codex-rs/thread-store/src/local/portable_history.rs
-@@ -1,2 +1,4 @@
+@@ -110,9 +110,88 @@ pub(super) async fn export(
+         state,
+         segments,
          queue,
 +        descendants: Vec::new(),
 +        spawn_edges: Vec::new(),
      })
-diff --git a/codex-rs/thread-store/src/local/portable_history.rs b/codex-rs/thread-store/src/local/portable_history.rs
---- a/codex-rs/thread-store/src/local/portable_history.rs
-+++ b/codex-rs/thread-store/src/local/portable_history.rs
-@@ -1 +1,78 @@
+ }
+ 
 +/// Called while Core retains the actual tree execution/export admission guard.
 +/// Persisted descendants need not have a live Session in that coordinator.
 +pub(super) async fn export_tree(
@@ -283,46 +300,62 @@ diff --git a/codex-rs/thread-store/src/local/portable_history.rs b/codex-rs/thre
 +    super::portable_history_tree::validate_topology(&snapshot)?;
 +    Ok(snapshot)
 +}
- fn read_segment(path: &Path, end: Option<u64>) -> ThreadStoreResult<String> {
+ fn read_segment(
+     path: &Path,
+     end: Option<u64>,
 diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
+index b68bed8aeed0cd074716033edf108985ebed3de4..86295cd2a142f419eb0c0915e4001ecf0b1a87ca 100644
 --- a/codex-rs/thread-store/src/local/portable_history_import.rs
 +++ b/codex-rs/thread-store/src/local/portable_history_import.rs
-@@ -1 +1 @@
+@@ -16,12 +16,12 @@ use crate::PortableThreadHistory;
+ use crate::ThreadStoreError;
+ use crate::ThreadStoreResult;
+ 
 -fn error(error: impl std::fmt::Display) -> ThreadStoreError {
 +pub(super) fn error(error: impl std::fmt::Display) -> ThreadStoreError {
-diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
---- a/codex-rs/thread-store/src/local/portable_history_import.rs
-+++ b/codex-rs/thread-store/src/local/portable_history_import.rs
-@@ -1 +1 @@
+     ThreadStoreError::Internal {
+         message: format!("portable history import failed: {error}"),
+     }
+ }
 -fn conflict(message: &str) -> ThreadStoreError {
 +pub(super) fn conflict(message: &str) -> ThreadStoreError {
-diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
---- a/codex-rs/thread-store/src/local/portable_history_import.rs
-+++ b/codex-rs/thread-store/src/local/portable_history_import.rs
-@@ -1 +1 @@
+     ThreadStoreError::Conflict {
+         message: message.into(),
+     }
+@@ -180,8 +180,10 @@ pub(super) async fn import(
+     Ok(root_path)
+ }
+ 
 -fn validate(snapshot: &PortableThreadHistory) -> ThreadStoreResult<Vec<String>> {
+-    if snapshot.version != 2
 +pub(super) fn validate(snapshot: &PortableThreadHistory) -> ThreadStoreResult<Vec<String>> {
-diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
---- a/codex-rs/thread-store/src/local/portable_history_import.rs
-+++ b/codex-rs/thread-store/src/local/portable_history_import.rs
-@@ -1 +1 @@
++    if !matches!(snapshot.version, 2 | 3)
++        || (snapshot.version == 2
++            && (!snapshot.descendants.is_empty() || !snapshot.spawn_edges.is_empty()))
+         || snapshot.metadata.id != snapshot.thread_id
+         || snapshot.segments.is_empty()
+     {
+@@ -255,7 +257,7 @@ fn validate(snapshot: &PortableThreadHistory) -> ThreadStoreResult<Vec<String>>
+     Ok(names)
+ }
+ 
 -fn private_dir(path: &Path) -> ThreadStoreResult<()> {
 +pub(super) fn private_dir(path: &Path) -> ThreadStoreResult<()> {
-diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
---- a/codex-rs/thread-store/src/local/portable_history_import.rs
-+++ b/codex-rs/thread-store/src/local/portable_history_import.rs
-@@ -1 +1 @@
+     let mut builder = fs::DirBuilder::new();
+     builder.recursive(true);
+     #[cfg(unix)]
+@@ -273,7 +275,7 @@ fn verify_manifest(directory: &Path, expected: &[u8]) -> ThreadStoreResult<()> {
+     }
+     Ok(())
+ }
 -fn write_exact(path: &Path, content: &[u8]) -> ThreadStoreResult<()> {
 +pub(super) fn write_exact(path: &Path, content: &[u8]) -> ThreadStoreResult<()> {
-diff --git a/codex-rs/thread-store/src/local/portable_history_import.rs b/codex-rs/thread-store/src/local/portable_history_import.rs
---- a/codex-rs/thread-store/src/local/portable_history_import.rs
-+++ b/codex-rs/thread-store/src/local/portable_history_import.rs
-@@ -1 +1,2 @@
--    if snapshot.version != 2
-+    if !matches!(snapshot.version, 2 | 3)
-+        || (snapshot.version == 2 && (!snapshot.descendants.is_empty() || !snapshot.spawn_edges.is_empty()))
+     let mut options = fs::OpenOptions::new();
+     options.write(true).create_new(true);
+     #[cfg(unix)]
 diff --git a/codex-rs/thread-store/src/local/portable_history_tree.rs b/codex-rs/thread-store/src/local/portable_history_tree.rs
 new file mode 100644
+index 0000000000000000000000000000000000000000..6701e9a5c27d653229ff5f7913c64f2133891f5d
 --- /dev/null
 +++ b/codex-rs/thread-store/src/local/portable_history_tree.rs
 @@ -0,0 +1,354 @@
@@ -680,12 +713,43 @@ new file mode 100644
 +    .map_err(error)??;
 +    Ok(root_path)
 +}
-diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
---- a/codex-rs/app-server/src/request_processors/thread_processor.rs
-+++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -1 +1,4 @@
--        snapshot.metadata.model_provider = destination.model_provider_id;
-+        snapshot.metadata.model_provider = destination.model_provider_id.clone();
-+        for child in &mut snapshot.descendants {
-+            child.metadata.model_provider = destination.model_provider_id.clone();
-+        }
+diff --git a/codex-rs/thread-store/src/portable_history.rs b/codex-rs/thread-store/src/portable_history.rs
+index 6f8ffbf08b6d990473e765d491356b9e9a528c3f..4963a678aec4afa7bd3ceb79d6f6c84012c4719c 100644
+--- a/codex-rs/thread-store/src/portable_history.rs
++++ b/codex-rs/thread-store/src/portable_history.rs
+@@ -15,6 +15,11 @@ pub struct PortableThreadHistory {
+     pub state: codex_state::PortableThreadState,
+     pub segments: Vec<PortableRolloutSegment>,
+     pub queue: Vec<QueuedUserSubmissionRecord>,
++    /// Version 3 owns one flat persisted tree; version 2 remains a leaf format.
++    #[serde(default, skip_serializing_if = "Vec::is_empty")]
++    pub descendants: Vec<PortableThreadHistory>,
++    #[serde(default, skip_serializing_if = "Vec::is_empty")]
++    pub spawn_edges: Vec<codex_state::PortableThreadSpawnEdge>,
+ }
+ 
+ /// Exact decoded bytes preserve native ordinals, frozen byte cutoffs, canonical
+diff --git a/codex-rs/thread-store/src/store.rs b/codex-rs/thread-store/src/store.rs
+index 4ef0ec6d5740e4e6a63bb0d02b27f6ea8c0eac9e..0f1e145b9fe5bc21aeb5d3536def32ce507bbf1d 100644
+--- a/codex-rs/thread-store/src/store.rs
++++ b/codex-rs/thread-store/src/store.rs
+@@ -280,6 +280,19 @@ pub trait ThreadStore: Any + Send + Sync {
+         })
+     }
+ 
++    /// Capture the persisted child tree under the caller's actual native tree
++    /// execution/export guard. Unsupported stores must not silently export a
++    /// root-only artifact in place of a complete tree.
++    fn export_portable_history_tree(
++        &self,
++        _params: LoadThreadHistoryParams,
++    ) -> ThreadStoreFuture<'_, crate::PortableThreadHistory> {
++        Box::pin(async {
++            Err(ThreadStoreError::Unsupported {
++                operation: "export_portable_history_tree",
++            })
++        })
++    }
+     /// Publish a worker-owned transfer into an unused destination conversation.
+     /// The operation ID is durable and retries never replace an existing writer.
+     fn import_portable_history(

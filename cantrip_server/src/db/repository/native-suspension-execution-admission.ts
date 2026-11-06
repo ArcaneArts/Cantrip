@@ -41,6 +41,7 @@ export class NativeSuspensionExecutionAdmissionRepository {
 
   async admit(ownerId: string, raw: NativeSuspensionExecutionAdmission) {
     const input = nativeSuspensionExecutionAdmissionSchema.parse(raw);
+    const action = input.action ?? "resume";
     return this.database.transaction(async (tx) => {
       await lockNativeCommandChat(tx, ownerId, input.session.chatId);
       const suspensions = new NativeSuspensionRepository(
@@ -50,8 +51,8 @@ export class NativeSuspensionExecutionAdmissionRepository {
       if (
         !state ||
         state.controlId !== input.controlId ||
-        state.action !== "resume" ||
-        state.phase !== "resuming" ||
+        state.action !== action ||
+        state.phase !== (action === "stop" ? "stopping" : "resuming") ||
         !state.checkpoint ||
         !state.active ||
         !isDeepStrictEqual(state.checkpoint, input.checkpoint)
@@ -97,7 +98,7 @@ export class NativeSuspensionExecutionAdmissionRepository {
         state.executionOwner?.operationId ?? state.target.originalOperationId;
       if (
         !activation?.active ||
-        activation.logicalCancelled ||
+        (activation.logicalCancelled && action !== "stop") ||
         activation.workerId !== input.workerId ||
         activation.operationId !== expectedHead ||
         activation.executionLaneId !== context.executionLaneId ||
@@ -177,18 +178,26 @@ export class NativeSuspensionExecutionAdmissionRepository {
         .where(eq(schema.nativeCommands.operationId, input.operationId));
       if (existing && existing.operationId !== head.operationId)
         fail("operation-id-conflict");
+      const intent = nativeCommandIntentSchema.parse(head.intent);
+      // A new Stop control may replace a failed/unprepared observer in this
+      // same runtime. Its old authority is fenced by the new activation; it
+      // cannot release inference. Retries of one control still join exactly.
+      const replacesControl =
+        action === "stop" &&
+        intent.restoredSuspension?.controlId !== input.controlId;
       if (
         state.executionOwner?.workerGeneration === input.workerGeneration &&
         state.executionOwner.runtimeGeneration ===
-          input.session.runtimeGeneration
+          input.session.runtimeGeneration &&
+        !replacesControl
       ) {
-        const intent = nativeCommandIntentSchema.parse(head.intent);
         if (
           head.operationGeneration !==
             state.executionOwner.operationGeneration ||
           !isDeepStrictEqual(head.identity, input.session) ||
           head.payloadDigest !== input.payloadDigest ||
           intent.restoredSuspension?.controlId !== input.controlId ||
+          (intent.restoredSuspension?.action ?? "resume") !== action ||
           !isDeepStrictEqual(
             intent.restoredSuspension.checkpoint,
             input.checkpoint.suspension,
@@ -233,6 +242,7 @@ export class NativeSuspensionExecutionAdmissionRepository {
               permissionProfileId:
                 effectivePermissionProfile(context).effectiveId,
               restoredSuspension: {
+                ...(action === "stop" ? { action } : {}),
                 controlId: input.controlId,
                 checkpoint: input.checkpoint.suspension,
                 source: operation(source),
