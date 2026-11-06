@@ -3456,3 +3456,71 @@ native model/CUA acceptance. Server-owned desktop admissions, Worker routing,
 client controls and held-input/service recovery remain next. Installed-system and
 final Docker/ISO qualification, resets/upgrades and real remote acceptance remain
 required. The full Phase 5 goal is active.
+
+## Phase 5: Server and Worker desktop admissions (2026-11-06)
+
+Both Servers now persist immutable desktop operations, private captured account/
+display snapshots, opaque verified targets and paginated history. The Worker runs
+the package-owned root CLI through the authenticated native executor for the
+original runtime. It saves its admission and native process identity before
+dispatch. Repeated create requests and observation recover the original guest
+journal without another execute, including when the Worker-local journal is absent.
+Unverified delivery stays unknown; saved completion is separate from current
+availability. Public status/history omit private guest snapshots and desktop hashes.
+
+Workspace observation epochs fence responses started before an admission or another
+successful observation. Instance power epochs and captured runtime identities also
+apply. A fresh explicit observation can rotate a changed actual desktop target
+without rewriting an older uncertain admission. The same target remains fenced
+while its prior operation is unresolved. Desktop-only outcomes do not invalidate
+independent instance/source/shell authority.
+
+Actual Worker acceptance used the disposable 4 GiB/two-CPU ARM64 container
+`cantrip-os-phase5-desktop-lifecycle`, workspaces 0.4.0 and a normally built executor
+0.10.0. Through real authenticated native processes it started/stopped/started its
+own desktop while a separately admitted Python process survived and the native
+executor generation remained unchanged. A real restart was performed before its
+reply was deliberately discarded. A new Manager and an empty Worker journal
+recovered the exact guest receipt; repeated calls did not execute another restart.
+Unicode marker bytes, 0751 mode and workspace ownership survived. The check passed
+in 9.60 seconds, stopped its own desktop, terminated its own process and retained
+private proof. This is a real Worker/guest check, not full client/model/CUA acceptance.
+
+The normal ARM64 executor build applied all 88 patches to the selected 9,191-file
+native input at `95330e402ecb0cf3bffc1a66fd4144a7d1691d29`, without a cached-runtime
+input override. Its package is 16,374,092 bytes, SHA-256
+`4b73d20c2465bfa78a3ebf070e44a53c70c97cc9b9ab3c4edc05b92517cc707c`.
+It was actually installed in the disposable guest. An earlier normal build failed
+on native patch context; that failure is retained and the subsequent build used
+Main's merged context repair. This artifact is tied to its recorded native input,
+not a claim of final current Docker/ISO or Host/model qualification.
+
+The Node HTTP test applies the actual migration chain, restarts Server persistence,
+holds an old observation across a mutation and verifies immutable retries, ownership,
+workspace separation, unavailable transport, changed targets and paginated history.
+It and the existing power/management HTTP suites passed. All 11 desktop Worker tests
+and the 16-test focused desktop/power/operation regression run passed. Server and
+Worker type checks passed. Native validation passed four contract tests, including
+45,956 Linux source cases and complete desktop/power Worker envelopes; its actual
+PostgreSQL desktop HTTP test passed in 3.17 seconds across native Server restart.
+Native check, all-target strict Clippy, Rust formatting and diff checks passed.
+Client placement coverage passed 56 tests and the production app build passed.
+After rebasing onto Main `2060beb2a`, Server/Worker types and the three Node HTTP
+suites passed again. All 17 selected Worker tests, including the real-container
+check, passed in 13.42 seconds. The four native contract tests and actual
+PostgreSQL HTTP test passed again (the latter in 3.55 seconds), followed by
+all-target strict Clippy. No guest/native build inputs changed in that rebase.
+
+Wider checks retain unrelated failures: Protocol passed 1,110 tests and failed four
+duplicated inventory assertions, with 39 unreviewed legacy exports and seven legacy
+commands remaining after this cycle's reviewed additions. Worker placement passed
+91 and failed two existing model-capacity cases with two related errors. Server
+placement passed 59 and failed the existing standalone Chat queued/started assertion.
+Root `pnpm check` stops at the recorded Server decomposition budgets. These failures
+were not repaired as part of desktop administration. No hosted validation ran.
+
+Private build/package metadata, validation logs and actual Worker proof are retained
+under ignored `cantrip_os/artifacts/phase5-desktop-admissions/backend/`. Product desktop
+controls, actual model/CUA and held-input/service recovery, installed-system lifecycle,
+resets/upgrades, real remote acceptance and final recorded distributions remain
+required. Phase 5 remains active.

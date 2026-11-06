@@ -12,6 +12,10 @@ export {
   cantripOsPowerTargets,
   cantripOsPowerOperations,
 } from "./schema-cantrip-os-power.js";
+export {
+  cantripOsDesktopTargets,
+  cantripOsDesktopOperations,
+} from "./schema-cantrip-os-desktop.js";
 export { inferenceResourceRevocations } from "./schema-inference-resource-revocations.js";
 export {
   projectSourceIdentities,

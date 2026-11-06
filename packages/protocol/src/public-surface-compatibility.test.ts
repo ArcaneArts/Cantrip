@@ -535,6 +535,23 @@ const agentChatExports = [
 ].sort();
 
 const cantripOsExports = [
+  "cantripOsDesktopActionSchema",
+  "cantripOsGuestDesktopTargetSchema",
+  "cantripOsDesktopScopeSchema",
+  "cantripOsGuestDesktopRequestSchema",
+  "cantripOsGuestDesktopReceiptSchema",
+  "cantripOsGuestDesktopResultSchema",
+  "workerCantripOsDesktopCommandSchemas",
+  "cantripOsDesktopWorkerCommandSchema",
+  "cantripOsDesktopReceiptSchema",
+  "cantripOsDesktopOperationResultSchema",
+  "cantripOsDesktopCreateSchema",
+  "cantripOsDesktopTargetSummarySchema",
+  "cantripOsDesktopStatusSchema",
+  "cantripOsDesktopSummarySchema",
+  "cantripOsDesktopListQuerySchema",
+  "cantripOsDesktopPageSchema",
+
   "cantripOsDockerCarrierSchema",
   "cantripOsPowerActionSchema",
   "cantripOsPowerEvidenceSchema",
@@ -900,6 +917,11 @@ describe("protocol public surface compatibility", () => {
         type.startsWith("cantrip-os.power."),
       ),
     ).toEqual(["cantrip-os.power.status", "cantrip-os.power.operation"]);
+    expect(
+      advertisedCommandTypes.filter((type) =>
+        type.startsWith("cantrip-os.desktop."),
+      ),
+    ).toEqual(["cantrip-os.desktop.status", "cantrip-os.desktop.operation"]);
     // Reviewed additive OS preparation leaves every legacy order/fingerprint intact.
     expect(
       advertisedCommandTypes.filter(
@@ -929,7 +951,8 @@ describe("protocol public surface compatibility", () => {
         type !== "inference.revoke" &&
         type !== "inference.task-revoke" &&
         type !== "chat.suspension.resume" &&
-        !type.startsWith("cantrip-os.power."),
+        !type.startsWith("cantrip-os.power.") &&
+        !type.startsWith("cantrip-os.desktop."),
     );
     expect(inferenceStatusCommandTypes).toHaveLength(296);
     expect(inferenceStatusCommandTypes[6]).toBe("inference.status");

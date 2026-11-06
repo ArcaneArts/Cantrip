@@ -7,6 +7,7 @@ import {
   cantripOsSourceReceiptSchema,
   cantripOsWorkspaceObservationSchema,
   type CantripOsDispatchScope,
+  type CantripOsDesktopScope,
   type CantripOsSourceDispatchScope,
   type CantripOsProvisionIntent,
   type workerCantripOsCommandSchemas,
@@ -157,7 +158,11 @@ export class CantripOsController {
 
   private async open(
     transport: OsExecutorTransport,
-    scope: CantripOsSourceDispatchScope,
+    scope: CantripOsDispatchScope &
+      Pick<
+        CantripOsSourceDispatchScope,
+        "guestWorkspaceId" | "uid" | "homeGuestPath"
+      >,
   ) {
     const binding = await executorControl<OsExecutorBinding>(transport, [
       "open",
@@ -205,6 +210,16 @@ export class CantripOsController {
     transport: OsExecutorTransport,
     scope: CantripOsSourceDispatchScope,
   ): Promise<OsExecutorBinding> {
+    await this.assertScope(transport, scope);
+    return this.open(transport, scope);
+  }
+
+  /** Administrative processes use an authenticated native workspace connection,
+   * so a later Docker name or SSH guest runtime cannot receive their mutation. */
+  async captureAdministrativeBinding(
+    transport: OsExecutorTransport,
+    scope: CantripOsDesktopScope,
+  ) {
     await this.assertScope(transport, scope);
     return this.open(transport, scope);
   }

@@ -1,5 +1,7 @@
 #[path = "backup_coordinator.rs"]
 mod backups;
+#[path = "desktop_coordinator.rs"]
+mod desktop;
 #[path = "power_coordinator.rs"]
 mod power;
 use super::{InstanceObservation, Repository, checked, text};

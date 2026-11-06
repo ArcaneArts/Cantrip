@@ -1940,6 +1940,13 @@
       "when": 1793952136638,
       "tag": "0276_task_goal_empty_recovery",
       "breakpoints": true
+    },
+    {
+      "idx": 277,
+      "version": "7",
+      "when": 1793960519615,
+      "tag": "0277_cantrip_os_desktop",
+      "breakpoints": true
     }
   ]
 }

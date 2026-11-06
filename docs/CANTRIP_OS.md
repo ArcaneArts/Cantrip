@@ -652,8 +652,14 @@ and generation-bound root start/stop/restart/observe commands. Actual Docker tes
 recover a lost reply and a daemon killed after a real restart without replay,
 retain files/history across package lifecycle, and preserve other desktops and
 independent shells during an individual desktop transition. This is the guest
-administration foundation; Server-owned admissions and product desktop controls,
-native execution/input/service recovery and installed-system acceptance remain
+administration foundation. Both Servers now persist original desktop admissions,
+opaque verified targets and paginated history. Worker routing uses the pinned
+native executor and observes original guest receipts without replay, including
+when its local journal is missing. Observation epochs reject stale target replies;
+desktop-only results do not invalidate independent source/shell authority. Actual
+Worker/native Docker acceptance retains a separate process across desktop stop/start
+and recovers a lost restart reply without another transition. Product desktop
+controls, native input/service recovery and installed-system acceptance remain
 required for that workflow.
 
 Attach a reachable cloud VM or physical install through authenticated transport.
