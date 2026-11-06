@@ -87,6 +87,15 @@ export class NativeCommandClient {
     if (
       result.suspension.controlId !== input.controlId ||
       result.suspension.phase !== "resuming" ||
+      result.suspension.target.workerId !== body.workerId ||
+      result.suspension.target.contextKind !== input.session.contextKind ||
+      result.suspension.target.projectId !== input.session.projectId ||
+      result.suspension.target.placementId !== input.session.placementId ||
+      result.suspension.target.modelRouteId !== input.session.modelRouteId ||
+      result.suspension.target.providerAccountId !==
+        input.session.providerAccountId ||
+      result.suspension.active?.threadId !== input.session.threadId ||
+      result.receipt.chatId !== input.session.chatId ||
       !isDeepStrictEqual(result.suspension.checkpoint, body.checkpoint) ||
       result.suspension.active?.turnId !== input.checkpoint.suspension.turnId ||
       result.suspension.target.originalOperationId !==
@@ -98,6 +107,7 @@ export class NativeCommandClient {
       result.receipt.threadId !== input.session.threadId ||
       result.receipt.method !== "thread/resume" ||
       !result.execution ||
+      result.execution.chatId !== input.session.chatId ||
       result.execution.workerId !== body.workerId ||
       result.execution.threadId !== input.session.threadId ||
       result.execution.executionLaneId !== result.receipt.executionLaneId ||

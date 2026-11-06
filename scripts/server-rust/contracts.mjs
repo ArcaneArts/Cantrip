@@ -447,6 +447,8 @@ export const contractRoots = [
   "nativeChatModelInventorySchema",
   "nativeCommandSessionSchema",
   "nativeCommandAdmissionSchema",
+  "nativeSuspensionExecutionAdmissionSchema",
+  "nativeSuspensionExecutionAdmissionResultSchema",
   "nativeCommandIntentSchema",
   "nativeAutonomousAttemptSchema",
   "nativeCommandReceiptSchema",

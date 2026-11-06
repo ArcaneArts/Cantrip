@@ -47,6 +47,41 @@ async fn apply(
     input: Value,
     phase: String,
 ) -> Result<Value> {
+    if phase == "suspension-execution" {
+        let worker = input["workerId"].as_str().unwrap();
+        let current = || {
+            service
+                .workers
+                .bridge
+                .connection_identity(worker)
+                .is_some_and(|identity| {
+                    identity.owner == owner
+                        && Some(identity.process_generation.as_str())
+                            == input["workerGeneration"].as_str()
+                })
+        };
+        if !current() {
+            return Err(CommandError::new("stale-worker-generation", None, 409).into());
+        }
+        let result = Repository::new(service.repository.database.clone())
+            .admit_suspended_execution(&owner, &input)
+            .await?;
+        if !current() {
+            return Err(CommandError::new("stale-worker-generation", None, 409).into());
+        }
+        if truthy(result.get("execution")) {
+            invalidation(
+                &service,
+                &owner,
+                json!({"kind":"chat","chatId":input["session"]["chatId"]}),
+                &Value::Null,
+            );
+        }
+        return crate::settings::parse_response(
+            "nativeSuspensionExecutionAdmissionResultSchema",
+            Some(&authority(&service, &owner, result)?),
+        );
+    }
     if phase == "inference-resource-authorize" {
         let worker = input["workerId"].as_str().unwrap();
         let current = || {
@@ -359,6 +394,7 @@ async fn handle(
     let input = match wire::parse(
         match phase.as_str() {
             "admit" => "nativeCommandAdmissionSchema",
+            "suspension-execution" => "nativeSuspensionExecutionAdmissionSchema",
             "continue" => "nativeCommandContinuationSchema",
             "settings-evidence" => "nativeSettingsEvidenceSchema",
             "receipt" => "nativeCommandSettlementSchema",
@@ -377,6 +413,7 @@ async fn handle(
             return code(
                 400,
                 match phase.as_str() {
+                    "suspension-execution" => "invalid-suspension-execution",
                     "task-input-dispatch" => "invalid-task-input-dispatch",
                     "task-goal-cycle-dispatch" => "invalid-task-goal-cycle-dispatch",
                     "task-goal-outcome" => "invalid-task-goal-outcome",
@@ -440,6 +477,10 @@ async fn handle(
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
         .route("/api/internal/native-commands/admit", post(handle))
+        .route(
+            "/api/internal/native-commands/suspension-execution",
+            post(handle),
+        )
         .route("/api/internal/native-commands/dispatch", post(handle))
         .route("/api/internal/native-commands/continue", post(handle))
         .route("/api/internal/native-commands/receipt", post(handle))

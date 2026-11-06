@@ -189,6 +189,7 @@ describe("committed native suspension retains execution across transport loss", 
         (await fixture.repository.nativeSuspensions.read(owner, fixture.chatId))
           ?.executionOwner,
       ).toBeUndefined();
+      let corruptScope: "receipt" | "execution" | "suspension" | null = null;
       const client = new NativeCommandClient({
         workerId: fixture.workerId,
         workerGeneration,
@@ -201,7 +202,11 @@ describe("committed native suspension retains execution across transport loss", 
             headers: init?.headers as never,
             payload: init?.body as string,
           });
-          return new Response(response.body, {
+          const result = response.json();
+          if (corruptScope === "suspension")
+            result.suspension.target.placementId = "foreign";
+          else if (corruptScope) result[corruptScope].chatId = "foreign";
+          return new Response(JSON.stringify(result), {
             status: response.statusCode,
             headers: { "content-type": "application/json" },
           });
@@ -221,6 +226,13 @@ describe("committed native suspension retains execution across transport loss", 
           })
         ).receipt.operationId,
       ).toBe(admitted.receipt.operationId);
+      for (const scope of ["receipt", "execution", "suspension"] as const) {
+        corruptScope = scope;
+        await expect(client.admitSuspendedExecution(input)).rejects.toThrow(
+          "another observer owner",
+        );
+      }
+      corruptScope = null;
       const stopping = await fixture.repository.nativeSuspensions.request(
         owner,
         fixture.chatId,

@@ -181,7 +181,7 @@ export async function cancelGoalHandoffs(
         })
         .where(
           and(
-            eq(schema.nativeCommands.operationId, claim.operationId),
+            eq(schema.nativeCommands.operationId, claim.operationId!),
             eq(
               schema.nativeCommands.operationGeneration,
               claim.operationGeneration!,

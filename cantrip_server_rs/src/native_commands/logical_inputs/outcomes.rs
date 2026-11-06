@@ -144,6 +144,12 @@ pub(super) async fn finish(
     {
         return Ok(false);
     }
+    if super::super::suspension::retained_logical_input(tx, owner, &head)
+        .await?
+        .is_some()
+    {
+        return Ok(false);
+    }
     let finished = if truthy(active.get("active")) {
         execution_lanes::finish_in_transaction(
             tx,

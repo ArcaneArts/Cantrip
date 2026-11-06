@@ -36,7 +36,7 @@ async fn observed_command(
     let chat = text(&binding["chatId"])?;
     let thread_text = text(&thread)?;
     let turn_text = text(&turn)?;
-    let candidates=all(tx,"SELECT to_jsonb(n)::text FROM native_commands n LEFT JOIN native_command_turns t ON t.operation_id=n.operation_id WHERE n.owner_id=$1 AND n.chat_id=$2 AND n.kind='start' AND n.identity->>'threadId'=$3 AND (t.turn_id=$4 OR(t.operation_id IS NULL AND n.terminal_evidence->>'nativeTurnId'=$4))",&[&owner,&chat,&thread_text,&turn_text]).await?;
+    let candidates=all(tx,"SELECT to_jsonb(n)::text FROM native_commands n LEFT JOIN native_command_turns t ON t.operation_id=n.operation_id WHERE n.owner_id=$1 AND n.chat_id=$2 AND n.kind='start' AND n.intent->'restoredSuspension' IS NULL AND n.identity->>'threadId'=$3 AND (t.turn_id=$4 OR(t.operation_id IS NULL AND n.terminal_evidence->>'nativeTurnId'=$4))",&[&owner,&chat,&thread_text,&turn_text]).await?;
     let mut matches = Vec::new();
     for command in candidates {
         let session = input_alias::session(&command)?;
