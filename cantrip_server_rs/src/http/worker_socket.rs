@@ -377,6 +377,7 @@ async fn run(
                     Outgoing::Text(mut text)=>{let message=Message::Text(text.take().into());tokio::select!{biased;_=closing.changed()=>continue,_=shutdown.changed()=>continue,result=sink.send(message)=>{if result.is_err(){break}}}},
                     Outgoing::Binary(mut frame)=>{let message=Message::Binary(tungstenite::Bytes::from_owner(frame.take()));tokio::select!{biased;_=closing.changed()=>continue,_=shutdown.changed()=>continue,result=sink.send(message)=>{if result.is_err(){break}}}}
                     Outgoing::Tunnel(mut frame)=>{let message=Message::Binary(tungstenite::Bytes::from_owner(frame.take()));tokio::select!{biased;_=closing.changed()=>continue,_=shutdown.changed()=>continue,result=sink.send(message)=>{if result.is_err(){break}}}}
+                    Outgoing::Surface(mut frame)=>{let message=Message::Binary(tungstenite::Bytes::from_owner(frame.take()));tokio::select!{biased;_=closing.changed()=>continue,_=shutdown.changed()=>continue,result=sink.send(message)=>{if result.is_err(){break}}}}
                 }
             }}
         }
@@ -414,6 +415,8 @@ fn receive(
             bridge.receive_tunnel_frame(worker, peer, bytes.to_vec().into());
         } else if crate::worker_links::frame::is_frame(&bytes) {
             bridge.receive_worker_link_frame(worker, peer, bytes.to_vec().into());
+        } else {
+            bridge.receive_surface_frame(worker, peer, bytes.to_vec().into());
         }
     } else if let Message::Text(text) = message {
         usage.record(

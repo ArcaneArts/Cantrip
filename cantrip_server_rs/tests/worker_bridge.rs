@@ -20,6 +20,46 @@ fn command() -> Value {
         &serde_json::json!({"type":"worker.credential.rotate","credential":format!("ctwk_{}","A".repeat(43))}),
     )
 }
+#[tokio::test]
+async fn lifecycle_listeners_run_outside_state_lock_before_socket_close() {
+    for action in ["disconnect", "identity", "shutdown"] {
+        let bridge = WorkerBridge::new(Duration::from_secs(15));
+        let (peer, _output) = connect(&bridge, identity());
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let _disconnect = bridge.subscribe_worker_disconnect("worker", {
+            let observed = Arc::downgrade(&bridge);
+            let peer = peer.clone();
+            let order = order.clone();
+            Arc::new(move || {
+                assert!(!observed.upgrade().unwrap().is_connected("worker"));
+                assert!(peer.is_open());
+                order.lock().unwrap().push("disconnect");
+            })
+        });
+        let _offline = bridge.subscribe_worker_offline("worker", {
+            let peer = peer.clone();
+            let order = order.clone();
+            Arc::new(move || {
+                assert!(!peer.is_open());
+                order.lock().unwrap().push("offline");
+            })
+        });
+        match action {
+            "disconnect" => bridge.disconnect("worker", "fixture", 1008),
+            "identity" => {
+                let mut next = identity();
+                next.process_generation = "replacement".into();
+                let (replacement, _output) = Peer::new(next);
+                assert!(bridge.attach("worker", replacement, None));
+            }
+            _ => bridge.close(),
+        }
+        assert_eq!(*order.lock().unwrap(), ["disconnect", "offline"]);
+        drop(_disconnect);
+        drop(_offline);
+        bridge.close();
+    }
+}
 fn connect(
     bridge: &WorkerBridge,
     identity: Continuity,

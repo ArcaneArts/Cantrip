@@ -49,6 +49,9 @@ impl<T> Drop for Subscription<T> {
     }
 }
 impl<T> Frames<T> {
+    pub(super) fn workers(&self) -> Vec<String> {
+        self.groups.lock().unwrap().keys().cloned().collect()
+    }
     pub(super) fn subscribe(
         self: &Arc<Self>,
         worker: &str,

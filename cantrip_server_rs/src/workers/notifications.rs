@@ -64,6 +64,9 @@ impl Drop for NotificationSubscription {
 }
 
 impl Notifications {
+    pub(super) fn workers(&self) -> Vec<String> {
+        self.groups.lock().unwrap().keys().cloned().collect()
+    }
     pub(super) fn subscribe(
         self: &Arc<Self>,
         worker: &str,
