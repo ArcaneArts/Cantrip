@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 import { eventually } from "./full-worker.mjs";
 import { suspensionChat } from "./durable-suspension-browser.mjs";
+import { stopPendingSuspensionInteraction } from "./pending-suspension-stop.mjs";
 import {
   openMountedSuspensionChat,
   clickMountedSuspensionPause,
@@ -64,6 +65,7 @@ export async function answerSuspensionInteraction({
   mounted,
   inferences,
   kind = "userInput",
+  stopPending = false,
 }) {
   const isQuestion = kind === "userInput";
   const requests = () =>
@@ -137,6 +139,16 @@ export async function answerSuspensionInteraction({
         .isEnabled(),
       true,
     );
+  if (stopPending)
+    return stopPendingSuspensionInteraction({
+      page,
+      chatId,
+      identity,
+      request: question,
+      pause,
+      inferences,
+      mounted,
+    });
   let resolved;
   if (mounted) {
     if (isQuestion) {

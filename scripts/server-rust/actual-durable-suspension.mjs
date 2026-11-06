@@ -23,6 +23,7 @@ import { eventually, launchActualWorker } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
 import { killOwnedWorkerTree } from "./owned-worker-tree.mjs";
 import { openSuspensionTerminal } from "./suspension-terminal-browser.mjs";
+import { verifyPendingSuspensionStop } from "./pending-suspension-stop.mjs";
 import {
   answerSuspensionInteraction,
   qualifySuspensionPlanRoutes,
@@ -272,7 +273,81 @@ async function flow(kind, executable, cliBinary) {
         kind: process.argv.includes("--pending-question")
           ? "userInput"
           : "commandExecution",
+        stopPending: process.argv.includes("--stop-pending-interaction"),
       });
+      if (interaction.stopped) {
+        result.pendingStop = interaction;
+        const killed = worker;
+        worker = undefined;
+        terminal?.dispose();
+        terminal = undefined;
+        const terminated = await killOwnedWorkerTree(killed.child, {
+          executableRoots: [workerData],
+        });
+        result.kills.push({
+          round: "stopped",
+          ...terminated,
+          native: interaction.native,
+        });
+        await launch();
+        if (process.argv.includes("--mounted-ui"))
+          await openMountedSuspensionChat(
+            page,
+            vite.resolvedUrls.local[0],
+            null,
+          );
+        if (terminalId)
+          terminal = await openSuspensionTerminal(
+            page,
+            chat.id,
+            workerId,
+            terminalId,
+          );
+        if (terminal)
+          await eventually(terminal.read, (value) =>
+            assert.ok(value.text.includes(prompt), value.text),
+          );
+        if (process.argv.includes("--mounted-ui")) {
+          await page
+            .getByText(prompt, { exact: true })
+            .first()
+            .waitFor({ state: "visible" });
+          assert.equal(
+            await page
+              .getByRole("button", { name: "Resume turn", exact: true })
+              .count(),
+            0,
+          );
+          assert.equal(
+            await page
+              .getByRole("status")
+              .filter({ hasText: /^Paused$/ })
+              .count(),
+            0,
+          );
+          assert.equal(
+            await page
+              .getByRole("button", { name: "Allow once", exact: true })
+              .count(),
+            0,
+          );
+          assert.equal(
+            await page.getByRole("group", { name: /DURABLE_QUESTION/ }).count(),
+            0,
+          );
+        }
+        result.pendingStop = await verifyPendingSuspensionStop({
+          page,
+          chatId: chat.id,
+          identity: () => suspensionChat(page, projectId, chat.id),
+          workerData,
+          directory,
+          interaction,
+          inferences,
+        });
+        assert.deepEqual(model.failures, []);
+        return;
+      }
       if (interaction.kind === "userInput") result.question = interaction;
       else result.approval = interaction;
     }
