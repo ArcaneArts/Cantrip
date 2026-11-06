@@ -48,6 +48,28 @@ fn private_goal_source(record: &Value) -> bool {
                 && record["nativeExecution"].get("turnId") == recovery.get("turnId")
                 && record["nativeExecution"].get("scopeId") == cycle.get("scopeId")))
 }
+fn goal_input_source(record: &Value) -> bool {
+    let identity = &record["identity"];
+    let recovery = &identity["recovery"];
+    let input = &recovery["taskInput"];
+    let truthy = super::coercion::truthy;
+    input["kind"] == "goal"
+        && truthy(recovery.get("threadId"))
+        && [
+            "turnId",
+            "commandId",
+            "commandGeneration",
+            "taskGoalCycle",
+            "autonomousGoal",
+        ]
+        .iter()
+        .all(|key| !truthy(recovery.get(key)))
+        && !truthy(record.get("nativeExecution"))
+        && identity.get("operationId") == input.get("operationId")
+        && identity.get("chatId") == input.get("chatId")
+        && identity.get("providerId") == input.get("providerId")
+        && recovery.get("messageId") == input.get("clientMessageId")
+}
 
 pub(super) fn refine(
     tag: &str,
@@ -67,6 +89,9 @@ pub(super) fn refine(
             | "agent-sync-user-message"
             | "task-goal-cycle-source"
             | "task-goal-cycle-capture"
+            | "task-goal-input-source"
+            | "task-goal-input-capture"
+            | "task-goal-handoff-source"
     ) {
         return Ok(false);
     }
@@ -88,7 +113,22 @@ pub(super) fn refine(
                 custom(&[], "Invalid private Task Goal source");
             }
         }
-        "task-goal-cycle-capture" => {
+        "task-goal-input-source" => {
+            if !goal_input_source(&value) {
+                custom(&[], "Invalid unused Task Goal input source");
+            }
+        }
+        "task-goal-handoff-source" => {
+            if super::coercion::truthy(value.get("taskGoalInput"))
+                != (value["taskGoal"]["identity"]["recovery"]["taskInput"]["kind"] == "goal")
+            {
+                custom(
+                    &[],
+                    "Task Goal input context must match its actual receipt source",
+                );
+            }
+        }
+        "task-goal-cycle-capture" | "task-goal-input-capture" => {
             let record = &value["record"];
             let context = &value["snapshot"]["context"];
             if !matches!(record["state"].as_str(), Some("waiting" | "granted"))
@@ -98,7 +138,11 @@ pub(super) fn refine(
             {
                 custom(
                     &[],
-                    "The native snapshot does not capture a pending Task Goal source",
+                    if tag == "task-goal-input-capture" {
+                        "The snapshot does not capture an unused Task Goal input"
+                    } else {
+                        "The native snapshot does not capture a pending Task Goal source"
+                    },
                 );
             }
         }

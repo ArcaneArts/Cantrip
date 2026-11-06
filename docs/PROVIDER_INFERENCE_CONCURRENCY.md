@@ -2698,10 +2698,9 @@ remaining full lifecycle audit.
 
 The Task view reuses the existing provider/account/model transfer editor. Handoff
 status uses scoped chat/task live invalidations and snapshot reads on reopen,
-rather than periodic whole-view polling. Explicit first-input Task Goal retargeting
-is not included in this milestone: a pending first setter and an already-applied
-setter need their own input-receipt handling and must never be replayed as an
-ordinary queued prompt.
+rather than periodic whole-view polling. The later first-input transfer milestone
+below extends this control to an already-applied setter's unused first response;
+an ordinary queued prompt must never recreate that setter.
 
 Validation for this milestone: source review, direct formatting, mechanical
 protocol-source export (671 roots, 11,131 nodes; Run export 11 roots, 453 nodes), and
@@ -2756,6 +2755,50 @@ Validation is restricted to source review, direct formatting, mechanical source
 contract/diagnostic exports (673 protocol roots, 11,168 nodes; Run 11 roots,
 453 nodes) and `git diff --check`. Tests, builds, typechecks,
 benchmarks, native patch application/checks, runtime execution and computer-use
-testing are prohibited and were not performed. Explicit first-input Goal route
-changes, cold child portability and the final all-entrypoint lifecycle audit
-remain separate work in the active concurrency goal.
+testing are prohibited and were not performed. First-input route changes are
+covered by the following milestone. Cold child portability and the final
+all-entrypoint lifecycle audit remain work in the active concurrency goal.
+
+## Applied Task Goal first-input provider transfers
+
+The existing Task Goal transfer captures either a private autonomous begin or
+the actual unused first-input ticket after its Goal setter applied. The latter
+has a canonical Task input receipt, not an invented native turn/scope. Capture
+reads the keeper twice around the real native Goal/settings observation, checks
+the server's current Task control revision, and records the ticket's local queue
+revision. Withdrawal checks that revision atomically before sealing the unused
+ticket, so Pause/Resume cannot silently change the captured FIFO episode.
+
+Positive withdrawal defers the existing dispatch-cycle input, finishes its exact
+execution lane, and fences its old dispatch lease. The original encrypted message,
+idempotency key and receipt remain in place. Active handoffs exclude replacement
+Task claims, preparation and recovery adoption until publication or cancellation
+settles. An already accepted source may still win the dispatch race before actual
+worker withdrawal; a reservation alone is not proof that the source cannot start.
+
+The worker holds the actual root producer and denies only positively claimed,
+still-pending autonomous begins for that same Goal epoch. Existing children,
+independent helpers and admitted turns retain their own settlement boundaries.
+The existing native export fences Goal mutations and checks the exact Goal epoch.
+Neither server nor worker sends the setter again to transfer an applied Goal.
+
+Commit updates Task/cycle configuration and routing with the existing handoff's
+settings binding. The normal Task dispatcher resumes the deferred canonical input
+against the imported Goal. A same-provider transfer retains eligible source FIFO
+ordering; a different provider retires that source and obtains a destination
+position. Cancellation keeps the input deferred on its original route. Positive
+no-start proof can be recorded after Pause; it never rearms a paused source.
+Short handoff transactions take the owner lock before project/chat/cycle locks,
+matching Task input writers, and no worker RPC runs under those transactions.
+
+Node and Rust implement the same capture, receipt checks, deferral, route commit,
+cancellation and dispatch/recovery coordination. The unapplied-setter phase still
+uses its existing Task finalization-input transfer; uncertain setter outcomes must
+use actual Goal recovery rather than replaying a prompt.
+
+Validation remains source-only: review, direct formatting, mechanical protocol
+source export (691 roots, 11,278 nodes; Run 11 roots, 453 nodes), and
+`git diff --check`. Tests, builds, typechecks, benchmarks, native patch application
+or checks, runtime execution, hosted validation and computer-use testing were not
+performed. Runtime and platform behavior remain unverified. The full concurrency
+goal remains active for the remaining entry-point and lifecycle work.

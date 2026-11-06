@@ -1,5 +1,5 @@
-//! A Task private Goal has no managed input/command. Keep its immutable keeper
-//! Source separate from current Task routing and the provider FIFO episode.
+//! Preserve actual keeper identity for a private Goal cycle or an unused first
+//! input after its setter applied. Neither is a managed input/command.
 use super::*;
 use sha2::{Digest, Sha256};
 
@@ -40,6 +40,11 @@ pub(super) async fn read(
         &row["route"],
     );
     let input = &c["goal_input"];
+    let input_source = input["receipt"]["kind"] == "goal"
+        && input["accepted"] == true
+        && input["allAttemptsEnforced"] == true
+        && input["failedBeforeDispatch"] != true
+        && input["firstDispatchedOperationId"].is_null();
     if context["contextKind"] != "project"
         || !truthy(context.get("threadId"))
         || !truthy(context.get("worktreeId"))
@@ -56,7 +61,7 @@ pub(super) async fn read(
                 || ch["managed_autonomy_stopped"] == true
                 || p["task_scheduling_paused"] == true))
         || c["operation_kind"] != "finalize"
-        || c["started_at"].is_null()
+        || (c["started_at"].is_null() && !input_source)
         || (!allow_inactive && matches!(c["state"].as_str(), Some("paused" | "cancelled")))
         || c.get("physical_worker_id") != context.get("workerId")
         || c.get("codex_thread_id") != context.get("threadId")
@@ -65,6 +70,7 @@ pub(super) async fn read(
         || c.get("provider_account_id") != context.get("providerAccountId")
         || (!allow_inactive
             && truthy(Some(input))
+            && !input_source
             && input["deferred"] != true
             && input["failedBeforeDispatch"] != true
             && input["firstDispatchedOperationId"].is_null())
@@ -79,44 +85,50 @@ pub(super) async fn read(
         "modelRouteId":context["modelRouteId"],"providerAccountId":context["providerAccountId"]}),
     )?;
     row["context"] = context;
+    row["inputSource"] = json!(input_source);
     Ok(Some(row))
 }
-fn source_cycle(record: &Value) -> &Value {
-    &record["identity"]["recovery"]["taskGoalCycle"]
+fn source_cycle(record: &Value, input_context: &Value) -> Value {
+    let recovery = &record["identity"]["recovery"];
+    if truthy(recovery.get("taskGoalCycle")) {
+        return recovery["taskGoalCycle"].clone();
+    }
+    let receipt = &recovery["taskInput"];
+    if receipt["kind"] == "goal" && !input_context.is_null() {
+        json!({"cycleId":receipt["dispatch"]["cycleId"],"goalEpoch":input_context["goalEpoch"],
+            "runnerGeneration":input_context["runnerGeneration"],"orderEpoch":input_context["orderEpoch"],
+            "modelRouteId":receipt["modelRouteId"],"providerAccountId":receipt["providerAccountId"]})
+    } else {
+        Value::Null
+    }
+}
+pub(super) fn handoff_cycle(queued: &Value) -> Value {
+    source_cycle(&queued["taskGoal"], &queued["taskGoalInput"])
 }
 pub(super) fn assert_record(
     row: &Value,
     scope: &Value,
     record: &Value,
     original: Option<&Value>,
+    input_context: &Value,
 ) -> Result<()> {
-    let record = parse("taskGoalCycleSourceRecordSchema", record)?;
-    let cycle = source_cycle(&record);
-    let recovery = &record["identity"]["recovery"];
+    let input_source = !input_context.is_null();
+    let record = parse(
+        if input_source {
+            "taskGoalInputSourceRecordSchema"
+        } else {
+            "taskGoalCycleSourceRecordSchema"
+        },
+        record,
+    )?;
+    let cycle = source_cycle(&record, input_context);
     if cycle.is_null()
-        || !truthy(recovery.get("threadId"))
-        || !truthy(recovery.get("turnId"))
-        || [
-            "messageId",
-            "commandId",
-            "commandGeneration",
-            "taskInput",
-            "autonomousGoal",
-        ]
-        .iter()
-        .any(|key| truthy(recovery.get(key)))
-        || record["identity"]["operationId"]
-            != format!(
-                "native-inference:{}:{}:{}:{}",
-                text(&recovery["threadId"])?,
-                text(&recovery["turnId"])?,
-                text(&cycle["scopeId"])?,
-                text(&cycle["gateAttemptId"])?
-            )
-        || (truthy(record.get("nativeExecution"))
-            && (record["nativeExecution"].get("threadId") != recovery.get("threadId")
-                || record["nativeExecution"].get("turnId") != recovery.get("turnId")
-                || record["nativeExecution"].get("scopeId") != cycle.get("scopeId")))
+        || row["inputSource"] != input_source
+        || (input_source
+            && !deep_equal(
+                &row["cycle"]["goal_input"]["receipt"],
+                &record["identity"]["recovery"]["taskInput"],
+            ))
     {
         return replaced();
     }
@@ -155,21 +167,22 @@ pub(super) fn assert_record(
     }
     Ok(())
 }
-pub(super) fn reserve(row: &Value, record: &Value) -> Result<Value> {
-    assert_record(row, &row["scope"], record, None)?;
+pub(super) fn reserve(row: &Value, record: &Value, input_context: &Value) -> Result<Value> {
+    assert_record(row, &row["scope"], record, None, input_context)?;
     if !matches!(record["state"].as_str(), Some("waiting" | "granted"))
         || !record["outcome"].is_null()
     {
         return replaced();
     }
-    parse(
-        "nativeRuntimeHandoffQueuedSourceSchema",
-        &json!({
+    let mut queued = json!({
         "operationId":record["identity"]["operationId"],"operationGeneration":record["identity"]["runtimeGeneration"],
         "withdrawn":false,"taskGoal":record,"taskGoalControl":json!({
             "taskConfiguration":row["task"]["model_configuration"],
-            "cycleConfiguration":row["cycle"]["model_configuration"]})}),
-    )
+            "cycleConfiguration":row["cycle"]["model_configuration"]})});
+    if !input_context.is_null() {
+        queued["taskGoalInput"] = input_context.clone();
+    }
+    parse("nativeRuntimeHandoffQueuedSourceSchema", &queued)
 }
 pub(super) async fn assert_current(
     tx: &Transaction<'_>,
@@ -205,7 +218,7 @@ pub(super) async fn assert_current(
         });
     }
     let source = &queued["taskGoal"];
-    assert_record(&row, &scope, source, Some(source))?;
+    assert_record(&row, &scope, source, Some(source), &queued["taskGoalInput"])?;
     if queued.get("operationId") != source["identity"].get("operationId")
         || queued.get("operationGeneration") != source["identity"].get("runtimeGeneration")
         || !deep_equal(
@@ -227,10 +240,13 @@ pub(super) async fn confirm(
     binding: &Value,
     queued: &Value,
     proof: &Value,
+    transfer: &Value,
 ) -> Result<()> {
-    let row = assert_current(tx, owner, binding, queued, false).await?;
+    // Positive no-start proof must still be recorded after controls pause a
+    // source. This settles ownership; it does not authorize new inference.
+    let row = assert_current(tx, owner, binding, queued, true).await?;
     let source = &queued["taskGoal"];
-    let cycle = source_cycle(source);
+    let cycle = &source["identity"]["recovery"]["taskGoalCycle"];
     if proof.is_null()
         || proof.get("key") != source.get("key")
         || proof.get("workerGeneration") != source.get("workerGeneration")
@@ -239,12 +255,16 @@ pub(super) async fn confirm(
         || proof["state"] != "released"
         || proof["outcome"] != "never-started"
         || (truthy(proof.get("nativeExecution"))
-            && (proof["nativeExecution"].get("threadId") != binding.get("threadId")
+            && (cycle.is_null()
+                || proof["nativeExecution"].get("threadId") != binding.get("threadId")
                 || proof["nativeExecution"].get("turnId")
                     != source["identity"]["recovery"].get("turnId")
                 || proof["nativeExecution"].get("scopeId") != cycle.get("scopeId")))
     {
         return replaced();
+    }
+    if truthy(queued.get("taskGoalInput")) {
+        return task_goal_input::confirm(tx, &row, queued, transfer).await;
     }
     let previous = &row["cycle"]["goal_cycle_recovery"];
     let same = !previous.is_null()
@@ -314,10 +334,23 @@ pub(super) async fn commit(
     } else {
         &row["cycle"]["model_configuration"]
     })?;
+    if truthy(queued.get("taskGoalInput")) {
+        return task_goal_input::commit(
+            tx,
+            &row,
+            queued,
+            target,
+            &task_configuration,
+            &cycle_configuration,
+            epoch,
+        )
+        .await
+        .map(Some);
+    }
     let mut marker = row["cycle"]["goal_cycle_recovery"].clone();
     if marker.is_null()
         || truthy(marker.get("settled"))
-        || marker["cycle"].get("goalEpoch") != source_cycle(&queued["taskGoal"]).get("goalEpoch")
+        || marker["cycle"].get("goalEpoch") != handoff_cycle(queued).get("goalEpoch")
     {
         return replaced();
     }

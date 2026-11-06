@@ -9,19 +9,21 @@ import {
   nativeRuntimeHandoffPreparedSchema,
   nativeRuntimeHandoffStateSchema,
   nativeRuntimeHandoffTaskContextSchema,
-  taskGoalCycleCaptureSchema,
+  taskGoalHandoffCaptureSchema,
+  taskGoalHandoffCycle,
   type NativeRuntimeHandoffRequest,
   type NativeRuntimeHandoffPrepared,
   type NativeSettingsBinding,
   type InferenceJournalRecord,
   type NativeGoalRecoveryWithdrawal,
   type NativeSettingsReadScope,
-  type TaskGoalCycleCapture,
+  type TaskGoalHandoffCapture,
+  type TaskInferenceInputReceipt,
   type NativeRuntimeHandoffQueuedSource,
 } from "@cantrip/protocol";
 import * as schema from "../schema.js";
 import type { RepositoryDatabase, RepositoryTransaction } from "./database.js";
-import { lockNativeCommandChat } from "./native-command-lock.js";
+import { lockNativeCommandChat as lockChat } from "./native-command-lock.js";
 import { NativeCommandError } from "./native-command-errors.js";
 import { ChatRuntimeContextRepository } from "./chat-runtime-context.js";
 import {
@@ -56,17 +58,34 @@ import {
   commitTaskGoalHandoff,
 } from "./native-handoff-task-goal.js";
 import { scopedNativeModelAttribution } from "./native-model-attribution.js";
+import { cancelTaskGoalInputHandoff } from "./native-handoff-task-goal-input.js";
 
 export type TaskGoalCaptureReader = (
   scope: NativeSettingsReadScope,
   cycleId: string,
-) => Promise<TaskGoalCycleCapture>;
+  input?: TaskInferenceInputReceipt,
+) => Promise<TaskGoalHandoffCapture>;
 
 type Row = typeof schema.nativeRuntimeHandoffs.$inferSelect;
 const activePhases = ["preparing", "prepared", "committed"];
 const fail = (code: string): never => {
   throw new NativeCommandError(code);
 };
+/** Task input writers own the user row before their cycle/chat locks. Taking
+ * that same owner lock first avoids a cycle->chat/chat->cycle inversion. */
+async function lockNativeCommandChat(
+  tx: RepositoryTransaction,
+  ownerId: string,
+  chatId: string,
+) {
+  await tx
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(eq(schema.users.id, ownerId))
+    .for("update")
+    .limit(1);
+  await lockChat(tx, ownerId, chatId);
+}
 const wire = ({ ownerId: _owner, ...row }: Row) =>
   nativeRuntimeHandoffStateSchema.parse({
     ...row,
@@ -321,9 +340,22 @@ export class NativeRuntimeHandoffRepository {
       if (!source || source.bindingId !== input.bindingId)
         fail("handoff-source-replaced");
       const task = await readTaskGoalHandoff(tx, ownerId, chatId);
+      if (
+        task &&
+        taskCapture &&
+        task.context.managedInputRevision !== taskCapture.controlRevision
+      )
+        fail("handoff-task-goal-controls-replaced");
       const queuedSource = task
         ? taskCapture && isDeepStrictEqual(task.scope, taskCapture.scope)
-          ? reserveTaskGoalHandoff(task, task.scope, taskCapture.value.record)
+          ? reserveTaskGoalHandoff(
+              task,
+              task.scope,
+              taskCapture.value.record,
+              "taskGoalInput" in taskCapture.value
+                ? taskCapture.value.taskGoalInput
+                : undefined,
+            )
           : fail("handoff-task-goal-capture-required")
         : await reserveHandoffQueuedSource(tx, source!);
       await this.assertSource(tx, ownerId, source!, queuedSource);
@@ -403,12 +435,14 @@ export class NativeRuntimeHandoffRepository {
       return {
         scope: row.scope,
         cycleId: row.cycle.id,
+        input: row.inputSource ? row.cycle.goalInput!.receipt : undefined,
         bindingId: state?.binding?.bindingId ?? null,
+        controlRevision: row.context.managedInputRevision,
       };
     });
     if (!before) return null;
-    const value = taskGoalCycleCaptureSchema.parse(
-      await read(before.scope, before.cycleId),
+    const value = taskGoalHandoffCaptureSchema.parse(
+      await read(before.scope, before.cycleId, before.input),
     );
     return { ...before, value };
   }
@@ -434,7 +468,15 @@ export class NativeRuntimeHandoffRepository {
       );
       const row = await readTaskGoalHandoff(tx, ownerId, chatId);
       if (!row) fail("handoff-task-goal-source-replaced");
-      assertTaskGoalRecord(row!, scope, value.record);
+      if (row!.context.managedInputRevision !== captured!.controlRevision)
+        fail("handoff-task-goal-controls-replaced");
+      assertTaskGoalRecord(
+        row!,
+        scope,
+        value.record,
+        undefined,
+        "taskGoalInput" in value ? value.taskGoalInput : undefined,
+      );
       if (
         snapshot.context.workerId !== scope.workerId ||
         snapshot.context.chatId !== chatId ||
@@ -516,7 +558,7 @@ export class NativeRuntimeHandoffRepository {
       );
       if (!row) fail("handoff-task-goal-source-replaced");
       const source = state.queuedSource!.taskGoal!;
-      const cycle = source.identity.recovery!.taskGoalCycle!;
+      const cycle = taskGoalHandoffCycle(state.queuedSource!)!;
       return nativeRuntimeHandoffTaskContextSchema.parse({
         chatId: state.chatId,
         projectId: row!.context.projectId,
@@ -1003,6 +1045,13 @@ export class NativeRuntimeHandoffRepository {
               ]
             : row.retiredRuntimeGenerations,
       });
+      if (outcome === "cancelled")
+        await cancelTaskGoalInputHandoff(
+          tx,
+          row.chatId,
+          row.operationId,
+          row.queuedSource,
+        );
       // Durable queue delivery retries the wake after a lost worker reply or
       // transient failure, without replaying an input or changing pause/Stop.
       await tx
@@ -1030,6 +1079,7 @@ export class NativeRuntimeHandoffRepository {
         ownerId,
         row.binding ?? row.source,
         row.queuedSource,
+        Boolean(row.queuedSource?.taskGoal),
       );
       if (row.queuedSource?.taskGoal)
         await confirmTaskGoalHandoff(
@@ -1038,6 +1088,12 @@ export class NativeRuntimeHandoffRepository {
           row.binding ?? row.source,
           row.queuedSource,
           record,
+          {
+            lanes: this.lanes,
+            operationId: row.operationId,
+            targetModelRouteId: row.targetModelRouteId,
+            targetProviderAccountId: row.targetProviderAccountId,
+          },
         );
       else
         await confirmHandoffQueuedSource(

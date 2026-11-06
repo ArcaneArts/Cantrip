@@ -96,7 +96,7 @@ impl Repository {
         let input = parse("nativeRuntimeHandoffRequestSchema", input)?;
         let (owner, chat) = (owner.to_owned(), chat.to_owned());
         self.database.transaction(|tx|Box::pin(async move {
-            context::lock_chat(tx,&owner,&chat).await?;
+            lock_handoff_chat(tx,&owner,&chat).await?;
             let operation=text(&input["operationId"])?;
             if let Some(row)=one(Executor::Transaction(tx),"SELECT to_jsonb(h)::text FROM native_runtime_handoffs h WHERE operation_id=$1",&[&operation]).await? {
                 if row["owner_id"]!=owner||row["chat_id"]!=chat||row["source"].get("bindingId")!=input.get("bindingId")||row.get("target_model_route_id")!=input.get("targetModelRouteId")||row.get("target_provider_account_id")!=input.get("targetProviderAccountId"){return reject("handoff-operation-conflict")}
@@ -109,7 +109,8 @@ impl Repository {
             let task = task_goal::read(tx,&owner,&chat,false).await?;
             let queued_source = if let Some(task) = &task {
                 let Some(capture) = captured.as_ref().filter(|c|deep_equal(&c["scope"],&task["scope"])) else {return reject("handoff-task-goal-capture-required")};
-                task_goal::reserve(task,&capture["value"]["record"])?
+                if task["context"].get("managedInputRevision") != capture.get("controlRevision") {return reject("handoff-task-goal-controls-replaced");}
+                task_goal::reserve(task,&capture["value"]["record"],&capture["value"]["taskGoalInput"])?
             } else {queued_source::reserve(tx,source).await?};
             guards::assert_source(tx,&owner,source,&queued_source,false).await?;
             if let Some(capture) = &captured {

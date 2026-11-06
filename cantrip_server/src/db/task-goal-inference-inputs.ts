@@ -1,5 +1,6 @@
 import type { TaskMessageOpaqueContent } from "@cantrip/protocol/tasks";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import {
   taskInferenceInputReceiptSchema,
   taskMessageOpaqueContentSchema,
@@ -11,7 +12,7 @@ import {
   type InferenceFailureEvidence,
   type WorkerNotification,
 } from "@cantrip/protocol";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql, inArray } from "drizzle-orm";
 import * as schema from "./schema.js";
 import type {
   RepositoryDatabase,
@@ -99,6 +100,59 @@ export class TaskGoalInferenceInputRepository {
     private readonly lanes?: ChatExecutionLaneRepository,
     private readonly messages?: MessageWriteRepository,
   ) {}
+
+  private async handoff(
+    tx: RepositoryTransaction,
+    owner: string,
+    chat: string,
+  ) {
+    const [value] = await tx
+      .select({
+        phase: schema.nativeRuntimeHandoffs.phase,
+        source: schema.nativeRuntimeHandoffs.queuedSource,
+      })
+      .from(schema.nativeRuntimeHandoffs)
+      .where(
+        and(
+          eq(schema.nativeRuntimeHandoffs.ownerId, owner),
+          eq(schema.nativeRuntimeHandoffs.chatId, chat),
+          inArray(schema.nativeRuntimeHandoffs.phase, [
+            "preparing",
+            "prepared",
+            "committed",
+          ]),
+        ),
+      )
+      .limit(1);
+    return value;
+  }
+
+  /** Let an already accepted source win its real dispatch race before sealing.
+   * Replacement input can start only after the owning handoff settles. */
+  private async assertHandoffInput(
+    tx: RepositoryTransaction,
+    owner: string,
+    receipt: TaskInferenceInputReceipt,
+    source = false,
+  ) {
+    const active = await this.handoff(tx, owner, receipt.chatId);
+    if (!active) return;
+    if (
+      source &&
+      active.phase === "preparing" &&
+      active.source?.taskGoalInput &&
+      !active.source.withdrawn &&
+      isDeepStrictEqual(
+        active.source.taskGoal?.identity.recovery?.taskInput,
+        receipt,
+      )
+    )
+      return;
+    throw new TaskDispatchConflictError(
+      "The Task Goal input is waiting for its provider transfer.",
+      "stale-lease",
+    );
+  }
 
   async launchGuard(
     owner: string,
@@ -370,6 +424,7 @@ export class TaskGoalInferenceInputRepository {
       )
         stale();
       const c = await this.context(tx, owner, receipt);
+      await this.assertHandoffInput(tx, owner, receipt);
       if (
         c.chat.automationPaused ||
         c.project.taskSchedulingPaused ||
@@ -385,6 +440,7 @@ export class TaskGoalInferenceInputRepository {
         stale();
       const same = old?.receipt.clientMessageId === receipt.clientMessageId;
       const state: TaskInferenceInputState = {
+        ...(same && old?.routeChange ? { routeChange: old.routeChange } : {}),
         receipt,
         deferred: false,
         failedBeforeDispatch: false,
@@ -443,6 +499,7 @@ export class TaskGoalInferenceInputRepository {
       )
         stale();
       const c = await this.context(tx, owner, receipt);
+      await this.assertHandoffInput(tx, owner, receipt, true);
       if (
         c.chat.automationPaused ||
         c.project.taskSchedulingPaused ||
@@ -646,7 +703,8 @@ export class TaskGoalInferenceInputRepository {
       r.chatId !== record.identity.chatId ||
       r.clientMessageId !== record.identity.recovery?.messageId ||
       r.providerId !== record.identity.providerId ||
-      record.workerGeneration === input.workerGeneration
+      (record.workerGeneration === input.workerGeneration &&
+        !(record.state === "released" && record.outcome === "never-started"))
     )
       return result("unresolved");
     return this.database.transaction(async (tx) => {
@@ -669,6 +727,18 @@ export class TaskGoalInferenceInputRepository {
         return result("retired");
       if (!state.accepted || !state.allAttemptsEnforced)
         return result("unresolved");
+      if (await this.handoff(tx, owner, r.chatId)) return result("unresolved");
+      if (state.routeChange?.phase === "completed") {
+        const [route] = await tx
+          .select({ providerId: schema.modelRoutes.providerId })
+          .from(schema.modelRoutes)
+          .where(
+            eq(schema.modelRoutes.id, state.routeChange.targetModelRouteId),
+          )
+          .limit(1);
+        if (!route || route.providerId !== record.identity.providerId)
+          return result("retired");
+      }
       if (state.firstDispatchedOperationId !== null) {
         if (
           state.firstDispatchedOperationId !== r.operationId ||

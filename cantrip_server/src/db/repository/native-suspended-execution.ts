@@ -41,11 +41,31 @@ export function retainsRestoredLogicalInput(
     !!state?.executionOwner &&
     !!state.active &&
     ownsNativeSuspensionExecution(state, row) &&
+    !hasNativeSuspensionTerminalProof(state, row) &&
     !["stopped", "completed", "failed", "idle"].includes(state.phase) &&
     row.method === "thread/resume" &&
     !!row.intent &&
     typeof row.intent === "object" &&
     "restoredSuspension" in row.intent
+  );
+}
+
+/** Native completion belongs to this exact turn and runtime, independently of
+ * the current Pause/Stop control's acknowledgement order. */
+export function hasNativeSuspensionTerminalProof(
+  state: NativeSuspensionRecord | null,
+  row: Command,
+) {
+  const identity = row.identity as NativeCommandSession;
+  const proof = row.terminalEvidence as Record<string, unknown> | null;
+  return (
+    !!state?.active &&
+    state.active.threadId === identity.threadId &&
+    proof?.kind === "terminal" &&
+    typeof proof.terminalStatus === "string" &&
+    ["completed", "failed", "interrupted"].includes(proof.terminalStatus) &&
+    proof.nativeTurnId === state.active.turnId &&
+    proof.runtimeGeneration === identity.runtimeGeneration
   );
 }
 
@@ -58,17 +78,10 @@ export async function retainedNativeSuspension(
 ) {
   const state = await repository.read(ownerId, row.chatId);
   const identity = row.identity as NativeCommandSession;
-  const proof = row.terminalEvidence as Record<string, unknown> | null;
-  const terminalProof =
-    proof?.kind === "terminal" &&
-    typeof proof.terminalStatus === "string" &&
-    ["completed", "failed", "interrupted"].includes(proof.terminalStatus) &&
-    proof.nativeTurnId === state?.active?.turnId &&
-    proof.runtimeGeneration === identity.runtimeGeneration;
   return state?.checkpoint &&
     state.active &&
     state.actor &&
-    !terminalProof &&
+    !hasNativeSuspensionTerminalProof(state, row) &&
     !["running", "stopped", "completed", "failed", "idle"].includes(
       state.phase,
     ) &&

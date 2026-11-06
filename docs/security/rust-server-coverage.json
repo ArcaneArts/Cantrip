@@ -3,16 +3,16 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "31fe40dd09b3f51047abe5ab75289e8ae6f3f98218350559fa87913cc8fb0452",
-    "baselineCommit": "0dcc5ddc4",
+    "sha256": "922a28ff731bf5cf0694740c30cda7b7bfb936e34a6ba0e204a48277631aa006",
+    "baselineCommit": "bb80c686d",
     "counts": {
-      "routes": 552,
-      "workerCommands": 308,
+      "routes": 557,
+      "workerCommands": 310,
       "durableTables": 116,
       "repositoryMethods": 367,
       "liveResources": 47
     },
-    "workingTreeNote": "Source-only reconciliation atop0dcc5ddc4 adds ordered Task pause scope and intent delivery to existing commands and includes the merged chat.suspension.resume command. The backup URL tuple remains read from literal source because the static parser does not resolve its destructured binding. No routes were added or removed. Contract and diagnostic exports, direct formatting and diff checks are the only validation; no audit, tests, builds, typechecks, native patch application/checks or runtime acceptance ran. Declared table count remains116; full native product/platform and replacement acceptance remain required.",
+    "workingTreeNote": "Source-only reconciliation atop bb80c686d extends Task Goal capture with its actual unused first-input receipt and preserves merged CantripOS power contracts. Five power routes and two command names from #2654 were read and classified directly; Task transfers add no route or command name. Backup URL tuple source remains normalized only in the temporary metadata extractor. Direct formatting, mechanical contract export and diff checks are the only validation; no audit, tests, builds, typechecks, native patch application/checks or runtime acceptance ran. Declared table count remains116; full native product/platform and replacement acceptance remain required.",
     "migrationBackedTableCount": 122
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
@@ -5290,6 +5290,71 @@
           "Source reviewed only: actual native private-scope capture, transfer, cancellation, restart recovery and platform behavior have not been executed.",
           "Native0083/0084 patches were authored and formatted but not applied, compiled or run."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/:instanceId/power",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_power.rs",
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/src/http/cantrip_os_power.rs",
+          "cantrip_server/src/app/routes/cantrip-os-power.ts"
+        ],
+        "remaining": [
+          "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/power-operations",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_power.rs",
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/src/http/cantrip_os_power.rs",
+          "cantrip_server/src/app/routes/cantrip-os-power.ts"
+        ],
+        "remaining": [
+          "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/:instanceId/power-operations",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_power.rs",
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/src/http/cantrip_os_power.rs",
+          "cantrip_server/src/app/routes/cantrip-os-power.ts"
+        ],
+        "remaining": [
+          "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/:instanceId/power-operations/:operationId",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_power.rs",
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/src/http/cantrip_os_power.rs",
+          "cantrip_server/src/app/routes/cantrip-os-power.ts"
+        ],
+        "remaining": [
+          "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/power-operations/:operationId/observe",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_power.rs",
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/src/http/cantrip_os_power.rs",
+          "cantrip_server/src/app/routes/cantrip-os-power.ts"
+        ],
+        "remaining": [
+          "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
+        ]
       }
     ]
   },
@@ -6298,6 +6363,30 @@
         ],
         "remaining": [
           "Source-reviewed integration only for this milestone; compilation, actual worker/native lifecycle behavior and supported-platform acceptance were not executed."
+        ]
+      },
+      {
+        "command": "cantrip-os.power.operation",
+        "status": "partial",
+        "implementation": [
+          "cantrip_server_rs/src/cantrip_os/power_coordinator.rs",
+          "cantrip_worker/src/index.ts"
+        ],
+        "evidence": ["cantrip_worker/src/index.ts"],
+        "remaining": [
+          "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
+        ]
+      },
+      {
+        "command": "cantrip-os.power.status",
+        "status": "partial",
+        "implementation": [
+          "cantrip_server_rs/src/cantrip_os/power_coordinator.rs",
+          "cantrip_worker/src/index.ts"
+        ],
+        "evidence": ["cantrip_worker/src/index.ts"],
+        "remaining": [
+          "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
         ]
       }
     ]

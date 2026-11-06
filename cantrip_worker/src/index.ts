@@ -47,6 +47,7 @@ import { readProtectedNativeSettings } from "./native-settings-read.js";
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
+  taskGoalHandoffCycle,
   nativeGoalRecoveryReceiptSchema,
   nativeGoalClaimRecoveryReceiptSchema,
   type NativeGoalRecoveryReceipt,
@@ -3582,6 +3583,24 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           if (current.runtime !== runtime)
             throw new Error("Published Task handoff lost its private root.");
           const { task, model, provider } = current.options;
+          if (state.queuedSource.taskGoalInput) {
+            if (state.phase === "cancelled")
+              await runtime.releaseTaskGoalProviderTransfer(
+                state.operationId,
+                {
+                  chatId: task.chatId,
+                  threadId: state.source.threadId,
+                  cycleId: task.cycleId,
+                  orderEpoch: task.orderEpoch,
+                  modelRouteId: model.routeId,
+                  providerAccountId: provider.accountId ?? null,
+                },
+                runtime.transportGeneration!,
+              );
+            taskHandoffRoots.delete(state.operationId);
+            inferenceAdmissionForWorker().wakeRecovery(state.chatId);
+            return;
+          }
           await runtime.wakeTaskGoalAfterProviderTransfer(
             state.operationId,
             {
@@ -3702,6 +3721,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               providerAccountId: provider.accountId ?? null,
             },
             binding.runtimeGeneration,
+            state.queuedSource?.taskGoalInput?.goalEpoch,
           );
           signal.throwIfAborted();
           managedCurrentRuntimes.set(state.chatId, runtime);
@@ -3776,7 +3796,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         if (queued.taskGoal) {
           const source = queued.taskGoal;
           const recovery = source.identity.recovery!;
-          const cycle = recovery.taskGoalCycle!;
+          const cycle = taskGoalHandoffCycle(queued)!;
           const binding = state.binding ?? state.source;
           if (
             source.identity.chatId !== state.chatId ||
@@ -3799,6 +3819,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               state.operationId,
               source,
               existingOnly,
+              queued.taskGoalInput,
             );
           } catch (error) {
             const recovered = await admission.taskGoalWithdrawalRecord(source);
@@ -3815,6 +3836,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               threadId: state.source.threadId,
             },
             binding.runtimeGeneration,
+            queued.taskGoalInput?.goalEpoch,
           );
           signal.throwIfAborted();
           return proof;
@@ -3881,10 +3903,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             (runtime) =>
               runtime.transportGeneration === binding.runtimeGeneration,
           );
-          await runtime?.acknowledgeTaskGoalProviderWithdrawal(
-            state.operationId,
-            state.queuedSource.taskGoal,
-          );
+          if (runtime) {
+            const proof =
+              await inferenceAdmissionForWorker().taskGoalWithdrawalRecord(
+                state.queuedSource.taskGoal,
+              );
+            if (!proof)
+              throw new Error(
+                "The Task withdrawal has no actual keeper proof.",
+              );
+            await runtime.acknowledgeTaskGoalProviderWithdrawal(
+              state.operationId,
+              state.queuedSource.taskGoal,
+              proof,
+            );
+          }
           retireQueuedWithdrawal(state);
           return;
         }
@@ -8164,7 +8197,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               (!selected ||
                 (selected.chatId === command.scope.chatId &&
                   selected.home === runtime.managedHistoryHome)) &&
-              runtime.taskGoalCaptureTarget(command.scope, command.cycleId),
+              runtime.taskGoalCaptureTarget(
+                command.scope,
+                command.cycleId,
+                command.input,
+              ),
           );
           if (candidates.length !== 1) return undefined;
           const runtime = candidates[0]!;
@@ -8187,6 +8224,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               service: workerEncryption,
               resolve,
             }),
+          command.input,
         );
         if (!sameOwner())
           throw new Error(

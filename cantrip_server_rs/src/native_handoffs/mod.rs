@@ -15,6 +15,7 @@ mod recover;
 pub mod service;
 mod task_goal;
 mod task_goal_capture;
+mod task_goal_input;
 use crate::{
     database::{Database, Executor, Parameters, Transaction},
     native_commands::{
@@ -69,6 +70,13 @@ fn parse(name: &str, value: &Value) -> Result<Value> {
 }
 fn reject<T>(code: &str) -> Result<T> {
     Err(CommandError::new(code, None, 409).into())
+}
+// Task input writers lock owner -> cycle -> chat. Serialize these short
+// handoff transactions with that owner before taking project/chat locks.
+async fn lock_handoff_chat(tx: &Transaction<'_>, owner: &str, chat: &str) -> Result<()> {
+    tx.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", &[&owner])
+        .await?;
+    context::lock_chat(tx, owner, chat).await
 }
 fn active(row: &Value) -> bool {
     matches!(
@@ -213,7 +221,7 @@ impl Repository {
         let (owner, worker, operation) =
             (owner.to_owned(), worker.to_owned(), operation.to_owned());
         self.database.transaction(|tx|Box::pin(async move{
-            context::lock_chat(tx,&owner,&text(&found["chat_id"])?).await?;
+            lock_handoff_chat(tx,&owner,&text(&found["chat_id"])?).await?;
             let row=one(Executor::Transaction(tx),"SELECT to_jsonb(h)::text FROM native_runtime_handoffs h WHERE operation_id=$1",&[&operation]).await?;
             let Some(row)=row.filter(|r|r["owner_id"]==owner&&r["worker_id"]==worker)else{return reject("handoff-not-found")};
             let changed=match change {
