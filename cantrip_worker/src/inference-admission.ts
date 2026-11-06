@@ -374,6 +374,12 @@ export class WorkerInferenceAdmission {
     private readonly onDiagnostic: (
       event: InferenceDiagnostic,
     ) => void = () => {},
+    private readonly onTaskNativeBound?: (
+      receipt: NonNullable<InferenceRecoveryIdentity["taskInput"]>,
+      execution: InferenceNativeExecution,
+      runtimeGeneration: string,
+      signal: AbortSignal,
+    ) => Promise<void>,
   ) {
     this.journal = nativeOwnership
       ? new WorkerInferenceJournal(scope.workerGeneration, (command) =>
@@ -1335,6 +1341,14 @@ export class WorkerInferenceAdmission {
             "The keeper did not acknowledge this native binding.",
           );
       }
+      const task = ticket.input.recovery?.taskInput;
+      if (task && !task.kind)
+        await this.onTaskNativeBound?.(
+          task,
+          execution,
+          ticket.runtime.generation,
+          ticket.controller.signal,
+        );
       // Cancellation/retirement may overtake the durable acknowledgement. It
       // cannot make a late binding reply permission to begin model execution.
       current();

@@ -11,6 +11,7 @@ mod goal_input_history;
 pub(crate) mod goal_observations;
 mod inference_inputs;
 mod inference_routes;
+mod native_input_binding;
 mod operations;
 pub mod policy;
 mod query_error;

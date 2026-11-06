@@ -802,6 +802,7 @@ export function sourceContractSchema(name) {
 
 const refinements = new Map([
   [protocol.nativeSuspensionRecordSchema, "native-suspension-record"],
+  [protocol.taskInferenceInputDispatchSchema, "task-input-native-binding"],
   [protocol.cantripOsGuestPathSchema, "cantrip-os-guest-path"],
   [protocol.cantripOsResetPathsSchema.element, "cantrip-os-reset-path"],
   [protocol.cantripOsResetPathsSchema, "cantrip-os-reset-paths"],

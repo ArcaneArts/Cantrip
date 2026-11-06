@@ -1852,6 +1852,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             ...(outcome ? { reasonCode: outcome } : {}),
             ...(timing ? { ...timing } : {}),
           }),
+        async (receipt, nativeExecution, nativeRuntimeGeneration, signal) => {
+          await nativeCommands.dispatchTaskInput(
+            {
+              serverId: scope.serverId,
+              workerGeneration: workerProcessGeneration,
+              receipt,
+              phase: "native",
+              nativeExecution,
+              nativeRuntimeGeneration,
+            },
+            signal,
+          );
+        },
       );
       admission.subscribe((status) => {
         // Only the currently authenticated server/owner binding may publish.

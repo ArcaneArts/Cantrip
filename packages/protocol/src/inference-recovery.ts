@@ -1,5 +1,10 @@
 import { z } from "zod";
 import { taskInferenceInputReceiptSchema } from "./task-inference-input.js";
+import { inferenceNativeExecutionSchema } from "./inference-native-execution.js";
+export {
+  inferenceNativeExecutionSchema,
+  type InferenceNativeExecution,
+} from "./inference-native-execution.js";
 import {
   taskGoalCycleIdentitySchema,
   taskGoalCycleRecoverySchema,
@@ -57,20 +62,6 @@ export const inferenceJournalIdentitySchema = z
     projectId: identifier.nullable(),
   })
   .strict();
-
-/** Bound by Core's private inference begin, before it can invoke the model.
- * This is correlation evidence, not proof of completion or safe input replay. */
-export const inferenceNativeExecutionSchema = z
-  .object({
-    threadId: identifier,
-    turnId: identifier,
-    scopeId: identifier,
-  })
-  .strict();
-
-export type InferenceNativeExecution = z.infer<
-  typeof inferenceNativeExecutionSchema
->;
 
 export const inferenceJournalRecordSchema = z
   .object({

@@ -78,7 +78,8 @@ pub(super) fn refine(
 ) -> Result<bool, ValidationError> {
     if !matches!(
         tag,
-        "task-operation-start"
+        "task-input-native-binding"
+            | "task-operation-start"
             | "task-operation-result"
             | "task-goal-worker-result"
             | "chat-placement-create"
@@ -108,6 +109,17 @@ pub(super) fn refine(
             .push(json!({"code":"custom","message":message,"path":at}));
     };
     match tag {
+        "task-input-native-binding" => {
+            let native = value["phase"] == "native";
+            if native != super::coercion::truthy(value.get("nativeExecution"))
+                || native != super::coercion::truthy(value.get("nativeRuntimeGeneration"))
+            {
+                custom(
+                    &["nativeExecution"],
+                    "Only native binding requires its actual execution identity.",
+                );
+            }
+        }
         "task-goal-cycle-source" => {
             if !private_goal_source(&value) {
                 custom(&[], "Invalid private Task Goal source");

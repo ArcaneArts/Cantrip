@@ -190,7 +190,25 @@ impl Repository {
         receipt: &Value,
         phase: &str,
     ) -> Result<Value> {
+        self.dispatch_inference_input_with_owner(owner, worker, receipt, phase, None)
+            .await
+    }
+
+    pub async fn dispatch_inference_input_with_owner(
+        &self,
+        owner: &str,
+        worker: &str,
+        receipt: &Value,
+        phase: &str,
+        metadata: Option<&Value>,
+    ) -> Result<Value> {
+        if !matches!(phase, "accepted" | "claim" | "dispatch" | "native") {
+            return stale();
+        }
         if receipt["kind"] == "goal" {
+            if phase == "native" {
+                return stale();
+            }
             return self
                 .dispatch_goal_inference_input(owner, worker, receipt, phase)
                 .await;
@@ -199,6 +217,7 @@ impl Repository {
             return stale();
         }
         let (owner, receipt, phase) = (owner.to_owned(), receipt.clone(), phase.to_owned());
+        let metadata = metadata.cloned().unwrap_or(Value::Null);
         self.database
             .transaction(|tx| {
                 Box::pin(async move {
@@ -215,6 +234,12 @@ impl Repository {
                     .await?;
                     let row = context(tx, &owner, &receipt).await?;
                     let mut state = row["round"]["inference_input"].clone();
+                    if phase == "native" {
+                        return super::native_input_binding::bind(
+                            tx, &owner, &receipt, &row, &metadata,
+                        )
+                        .await;
+                    }
                     if state.is_null()
                         || state["deferred"] == true
                         || state["failedBeforeDispatch"] == true
@@ -227,11 +252,19 @@ impl Repository {
                     {
                         return stale();
                     }
+                    if !state["claimWorkerGeneration"].is_null()
+                        && state["claimWorkerGeneration"] != metadata["workerGeneration"]
+                    {
+                        return stale();
+                    }
                     if phase == "accepted" || phase == "claim" {
                         if phase == "claim" && state["accepted"] == true {
                             return stale();
                         }
                         state["accepted"] = json!(true);
+                        if phase == "claim" && !metadata["workerGeneration"].is_null() {
+                            state["claimWorkerGeneration"] = metadata["workerGeneration"].clone();
+                        }
                         update(
                             tx,
                             Table::Round,

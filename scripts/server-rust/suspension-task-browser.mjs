@@ -64,6 +64,16 @@ export async function qualifyTaskSuspension({
     "The actual Task has one bound native turn",
   );
   const native = [...nativeOwners.values()][0];
+  assert.equal(
+    evidence.beforePause.task.dispatch.codexThreadId,
+    native.threadId,
+    "Canonical Task dispatch is bound before model execution",
+  );
+  assert.equal(
+    evidence.beforePause.task.dispatch.turnId,
+    native.turnId,
+    "Canonical Task dispatch preserves the actual native turn",
+  );
   evidence.native = native;
   if (completeOnly) {
     boundary.text = "DURABLE_TASK_RECOVERED_FINAL";

@@ -131,8 +131,19 @@ fixture with `--task-origin --task-complete` to qualify a tool-using Task's norm
 completion. Both Node and Rust pass with two provider requests, one native turn,
 one completed command, and no native abort. This mode performs no cold recovery.
 
+For a running Task round, the worker now binds Core's actual thread, turn, and
+inference scope to the canonical dispatched Task input before its private model
+permission returns. Node and Rust persist this correlation on the round input,
+active lane, and dispatch cycle, bound to the claiming worker process and native
+runtime generations. A repeated exact binding is idempotent; changing its native
+identity or owner is rejected. The binding does not change the canonical input
+receipt, create a generic chat runtime, finalize the round, or grant recovery or
+input replay. A failed write rejects model permission and rolls back all three
+records. The live completion fixture checks the server's thread and turn against
+the actual native keeper while the Task is still running.
+
 The same fixture with `--task-origin` exercises the strict Task cold target.
-The Node run currently fails: Pause acknowledges the admission hold without a
+The retained Node run fails: Pause acknowledges the admission hold without a
 Task checkpoint; killing the worker tree leaves the Task failed. Explicit Resume
 creates a new Task operation, planning round, native thread and turn, and its next
 provider request loses the completed tool result. Startup/reopening remains idle.
