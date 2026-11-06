@@ -27,6 +27,7 @@ import { CantripOsAttachForm } from "./cantrip-os-attach-form";
 import { CantripOsSourceForm } from "./cantrip-os-source-form";
 import { CantripOsWorktreeForm } from "./cantrip-os-worktree-form";
 import { CantripOsBackupControls } from "./cantrip-os-backup-controls";
+import { CantripOsPowerControls } from "./cantrip-os-power-controls";
 
 export function CantripOsSettings({
   project,
@@ -250,6 +251,11 @@ export function CantripOsSettings({
               {selected.lastError}
             </p>
           ) : null}
+          <CantripOsPowerControls
+            key={selected.id}
+            instance={selected}
+            onChanged={refreshLists}
+          />
           <div className="rounded-lg border p-4 space-y-3">
             <h3 className="font-medium">Workspace</h3>
             <label className="block space-y-1 text-sm">
