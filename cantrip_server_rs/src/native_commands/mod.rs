@@ -7,6 +7,7 @@ mod control;
 mod dispatch;
 mod event_context;
 pub mod events;
+mod goal_claim_recovery;
 pub(crate) mod goal_handoff;
 mod goal_recovery;
 mod inference_resources;

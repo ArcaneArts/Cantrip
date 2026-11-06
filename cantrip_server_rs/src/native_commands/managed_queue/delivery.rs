@@ -48,6 +48,13 @@ impl QueueRepository {
                 let worker = workers.remove(0);
                 let mut entry = json!({"ownerId":owner,"workerId":worker,"chatId":chat,"revision":row.get::<i32>(1)?});
                 if row.get::<bool>(4)?
+                    && row.get::<Option<String>>(3)?.is_none()
+                    && context.as_ref().is_some_and(|c| c["experience"] == "agent")
+                    && let Some(claim) = self.goal_claim_recovery(&owner, &chat).await?
+                {
+                    entry["goalClaimRecovery"] = claim;
+                }
+                if row.get::<bool>(4)?
                     && let Some(recovery) = row.get::<Option<String>>(3)?
                 {
                     entry["goalRecovery"] = serde_json::from_str(&recovery)?;
@@ -92,6 +99,33 @@ impl QueueRepository {
                 Box::pin(async move {
                     authority::lock(tx, &owner, &chat).await?;
                     super::super::goal_recovery::confirm_receipt(tx, &owner, &chat, &receipt).await
+                })
+            })
+            .await
+    }
+    pub async fn goal_claim_recovery(&self, owner: &str, chat: &str) -> Result<Option<Value>> {
+        let (owner, chat) = (owner.to_owned(), chat.to_owned());
+        self.database
+            .transaction(|tx| {
+                Box::pin(async move {
+                    authority::lock(tx, &owner, &chat).await?;
+                    super::super::goal_claim_recovery::read(tx, &owner, &chat).await
+                })
+            })
+            .await
+    }
+    pub async fn confirm_goal_claim_recovery(
+        &self,
+        owner: &str,
+        chat: &str,
+        receipt: &Value,
+    ) -> Result<()> {
+        let (owner, chat, receipt) = (owner.to_owned(), chat.to_owned(), receipt.clone());
+        self.database
+            .transaction(|tx| {
+                Box::pin(async move {
+                    authority::lock(tx, &owner, &chat).await?;
+                    super::super::goal_claim_recovery::confirm(tx, &owner, &chat, &receipt).await
                 })
             })
             .await

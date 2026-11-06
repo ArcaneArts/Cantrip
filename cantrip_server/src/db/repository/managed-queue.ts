@@ -1,6 +1,10 @@
 import { toEncryptedQueuedPrompt } from "./queued-prompts.js";
 import { retainManagedQueueInput } from "./managed-queue-input-snapshot.js";
 import {
+  readGoalClaimRecovery,
+  confirmGoalClaimRecovery,
+} from "./native-goal-claim-recovery.js";
+import {
   confirmGoalRecoveryReceipt,
   readGoalRecovery,
 } from "./native-goal-recovery.js";
@@ -19,6 +23,7 @@ import {
   type NativeCommandSession,
   type NativeGoalRecoveryReceipt,
   type TaskGoalCycleRecovery,
+  type NativeGoalClaimRecoveryReceipt,
 } from "@cantrip/protocol";
 import type { ServerRepository } from "../repository.js";
 import * as schema from "../schema.js";
@@ -192,6 +197,12 @@ export class ManagedQueueRepository {
         ]),
       ];
       const workerId = workerIds.shift();
+      const goalClaimRecovery =
+        context?.experience === "agent" &&
+        row.goalEligible &&
+        !row.state.goalRecovery
+          ? await this.goalClaimRecovery(row.ownerId, row.state.chatId)
+          : null;
       if (workerId)
         result.push({
           ownerId: row.ownerId,
@@ -201,6 +212,7 @@ export class ManagedQueueRepository {
           ...(row.state.goalRecovery && row.goalEligible
             ? { goalRecovery: row.state.goalRecovery }
             : {}),
+          ...(goalClaimRecovery ? { goalClaimRecovery } : {}),
           ...(row.taskGoalRecovery &&
           !row.taskGoalRecovery.settled &&
           row.goalEligible
@@ -239,6 +251,22 @@ export class ManagedQueueRepository {
     await this.database.transaction(async (tx) => {
       await this.lock(tx, ownerId, chatId);
       await confirmGoalRecoveryReceipt(tx, ownerId, chatId, receipt);
+    });
+  }
+  async goalClaimRecovery(ownerId: string, chatId: string) {
+    return this.database.transaction(async (tx) => {
+      await this.lock(tx, ownerId, chatId);
+      return readGoalClaimRecovery(tx, ownerId, chatId);
+    });
+  }
+  async confirmGoalClaimRecovery(
+    ownerId: string,
+    chatId: string,
+    receipt: NativeGoalClaimRecoveryReceipt,
+  ) {
+    await this.database.transaction(async (tx) => {
+      await this.lock(tx, ownerId, chatId);
+      await confirmGoalClaimRecovery(tx, ownerId, chatId, receipt);
     });
   }
   async deferNotification(chatId: string) {

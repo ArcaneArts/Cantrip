@@ -14,6 +14,7 @@ import { nativeCommandReceiptSchema } from "./native-commands.js";
 import {
   nativeGoalRecoverySourceSchema,
   nativeGoalRecoverySchema,
+  nativeGoalClaimRecoverySchema,
 } from "./native-goal-recovery.js";
 import { z } from "zod";
 import { initialLabelCommandSchema } from "./labeling.js";
@@ -576,6 +577,22 @@ export const workerChatCommandSchemas = [
       type: z.literal("chat.goal.recover"),
       source: nativeGoalRecoverySourceSchema,
       recovery: nativeGoalRecoverySchema.optional(),
+      session: managedSessionContextSchema,
+      subagentDefaults: managedSessionSubagentDefaultsSchema.nullable(),
+      mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200),
+      planMode: planModeSchema,
+      chatId: z.string().min(1),
+      cwd: z.string().min(1),
+      threadId: z.string().min(1),
+      model: workerRuntimeModelSchema,
+      provider: workerRuntimeProviderSchema,
+      permissionProfileId: permissionProfileIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("chat.goal.claim-recover"),
+      claim: nativeGoalClaimRecoverySchema,
       session: managedSessionContextSchema,
       subagentDefaults: managedSessionSubagentDefaultsSchema.nullable(),
       mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200),

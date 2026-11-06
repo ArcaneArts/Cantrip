@@ -66,7 +66,8 @@ impl Backend for Native {
             })).await;
             for outcome in outcomes { outcome?; }
             if let Some(recovery) = entry.get("taskGoalRecovery")
-                .filter(|v| !v.is_null()).or_else(|| entry.get("goalRecovery").filter(|v| !v.is_null())) {
+                .filter(|v| !v.is_null()).or_else(|| entry.get("goalRecovery").filter(|v| !v.is_null()))
+                .or_else(|| entry.get("goalClaimRecovery").filter(|v| !v.is_null())) {
                 let recover = self.recover_goal.as_ref().context("Managed Goal recovery delivery is unavailable.")?;
                 recover(text(&entry["ownerId"])?, text(&entry["chatId"])?, recovery.clone()).await?;
             }

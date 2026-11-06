@@ -203,6 +203,8 @@ impl Service {
                 Arc::new(move |owner, chat, recovery| {
                     if recovery.get("cycle").is_some_and(|v| !v.is_null()) {
                         goals.recover_task_goal_cycle(&owner, &chat, &recovery)
+                    } else if recovery.get("claimId").is_some_and(|v| !v.is_null()) {
+                        goals.recover_managed_goal_claim(&owner, &chat, &recovery)
                     } else {
                         goals.recover_managed_goal(&owner, &chat, &recovery)
                     }

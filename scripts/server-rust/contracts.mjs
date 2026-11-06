@@ -38,6 +38,8 @@ export const contractRoots = [
   "nativeGoalRecoveryAdmissionSchema",
   "nativeGoalRecoverySchema",
   "nativeGoalRecoveryReceiptSchema",
+  "nativeGoalClaimRecoverySchema",
+  "nativeGoalClaimRecoveryReceiptSchema",
   "nativeGoalRecoveryFenceSchema",
   "nativeGoalRecoveryFenceResultSchema",
   "nativeGoalRecoveryWithdrawalSchema",

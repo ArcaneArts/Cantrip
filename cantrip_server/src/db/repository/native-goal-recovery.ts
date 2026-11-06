@@ -26,6 +26,7 @@ import { NativeCommandError } from "./native-command-errors.js";
 import { autonomousHandoffAttempt } from "./native-handoff-autonomous-source.js";
 import { isNativeTransportClosure } from "./native-transport-evidence.js";
 import { queueStateChanged } from "./native-command-queue.js";
+import { readGoalClaimRecovery } from "./native-goal-claim-recovery.js";
 
 type Command = typeof schema.nativeCommands.$inferSelect;
 
@@ -60,7 +61,26 @@ export async function fenceGoalRecoveryAdmission(
       input.admission.operationGeneration,
     );
     await lockNativeCommandChat(tx, ownerId, captured.chatId);
-    const marker = await readGoalRecovery(tx, captured.chatId);
+    let marker = await readGoalRecovery(tx, captured.chatId);
+    if (
+      !marker &&
+      input.firstClaim &&
+      input.admission.workerGeneration !== input.workerGeneration
+    ) {
+      const claim = await readGoalClaimRecovery(tx, ownerId, captured.chatId);
+      if (
+        claim &&
+        isDeepStrictEqual(claim, input.firstClaim) &&
+        isDeepStrictEqual(claim.admission, input.admission) &&
+        input.source.threadId === claim.threadId &&
+        input.source.goalEpoch === claim.goalEpoch &&
+        input.source.operationId === input.admission.operationId &&
+        input.source.operationGeneration === input.admission.operationGeneration
+      )
+        // This is the actual accepted child, not a parent-as-Source surrogate.
+        // Persist only after retireUnusedGoal validates its unforwarded state.
+        marker = { source: input.source, admission: input.admission };
+    }
     if (
       !marker ||
       !isDeepStrictEqual(marker.source, input.source) ||

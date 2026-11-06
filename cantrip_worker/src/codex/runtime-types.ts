@@ -494,6 +494,8 @@ export type PrepareAdmittedNativeExecutionOptions = Pick<
   inferenceSource?: InferenceOperationSource;
   /** Execution-owner cancellation while waiting for provider capacity. */
   inferenceSignal?: AbortSignal;
+  /** Observation only, after the worker journal acknowledges enqueue. */
+  onInferenceQueued?: () => Promise<void>;
 };
 
 export interface ManagedExecutionAttempt {
