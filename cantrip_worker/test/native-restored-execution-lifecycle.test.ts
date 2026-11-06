@@ -10,6 +10,13 @@ import { openManagedSuspensionSource } from "../src/codex/managed-suspended-sour
 import { createNativeSharedViewFixture } from "./native-shared-view-fixture.js";
 
 const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
+function barrier() {
+  let release!: () => void;
+  const wait = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { wait, release };
+}
 function answer(response: ServerResponse, text: string) {
   for (const event of [
     {
@@ -69,13 +76,36 @@ describe.skipIf(!binary || process.platform === "win32")(
         let f:
           Awaited<ReturnType<typeof createNativeSharedViewFixture>> | undefined;
         let releaseResume: (() => void) | undefined;
+        const publicationReached = barrier(),
+          publication = barrier();
+        const stopAckReached = barrier(),
+          stopAck = barrier();
         try {
           provider.listen(0, "127.0.0.1");
           await once(provider, "listening");
           f = await createNativeSharedViewFixture(
             binary!,
             `http://127.0.0.1:${(provider.address() as { port: number }).port}/v1`,
-            { durablePause: true },
+            {
+              durablePause: true,
+              beforeRestoredPublication:
+                origin === "gui"
+                  ? async () => {
+                      publicationReached.release();
+                      await publication.wait;
+                    }
+                  : undefined,
+              beforeNativeSettlement: async (method) => {
+                if (
+                  origin === "gui" &&
+                  ending === "stop" &&
+                  method === "turn/interrupt"
+                ) {
+                  stopAckReached.release();
+                  await stopAck.wait;
+                }
+              },
+            },
           );
           let gui: Awaited<ReturnType<typeof f.guiStart>> | undefined;
           if (origin === "gui")
@@ -272,14 +302,45 @@ describe.skipIf(!binary || process.platform === "win32")(
               (await f.runtime.inspectTurnSuspension(f.threadId)).paused,
             ).toBe(true);
             expect(requests).toHaveLength(1);
-            expect(
-              await fresh.adapter.withExpectedActivationGeneration(
-                grant.receipt.activationGeneration,
-                () =>
-                  f!.runtime.interruptChat(f!.authority.chatId, f!.threadId),
-                stopped.state.controlId,
-              ),
-            ).toEqual({ interrupted: true });
+            const interrupting = fresh.adapter.withExpectedActivationGeneration(
+              grant.receipt.activationGeneration,
+              () => f!.runtime.interruptChat(f!.authority.chatId, f!.threadId),
+              stopped.state.controlId,
+            );
+            void interrupting.catch(() => {});
+            if (grant.logicalRoot) {
+              await Promise.all([publicationReached.wait, stopAckReached.wait]);
+              expect(
+                await f.authority.repository.nativeCommands.getLogicalCompletion(
+                  f.authority.ownerId,
+                  f.authority.workerId,
+                  f.authority.chatId,
+                  grant.logicalRoot.operationId,
+                  grant.logicalRoot.operationGeneration,
+                ),
+              ).toBeNull();
+              publication.release();
+              await restored.completion;
+              expect(
+                (
+                  await f.authority.repository.nativeSuspensions.read(
+                    f.authority.ownerId,
+                    f.authority.chatId,
+                  )
+                )?.phase,
+              ).toBe("stopping");
+              expect(
+                await f.authority.repository.nativeCommands.getLogicalCompletion(
+                  f.authority.ownerId,
+                  f.authority.workerId,
+                  f.authority.chatId,
+                  grant.logicalRoot.operationId,
+                  grant.logicalRoot.operationGeneration,
+                ),
+              ).not.toBeNull();
+              stopAck.release();
+            }
+            expect(await interrupting).toEqual({ interrupted: true });
             await restored.completion;
             expect(
               await f.authority.repository.nativeSuspensions.read(
@@ -305,6 +366,29 @@ describe.skipIf(!binary || process.platform === "win32")(
               )?.phase,
             ).toBe("running");
             answer(requests[1]!.response, "RESTORED_LIFECYCLE_COMPLETE");
+            if (grant.logicalRoot) {
+              await publicationReached.wait;
+              expect(
+                await f.authority.repository.nativeCommands.getLogicalCompletion(
+                  f.authority.ownerId,
+                  f.authority.workerId,
+                  f.authority.chatId,
+                  grant.logicalRoot.operationId,
+                  grant.logicalRoot.operationGeneration,
+                ),
+              ).toBeNull();
+              expect(
+                await f.authority.repository.nativeCommands.finishLogicalGui(
+                  f.authority.ownerId,
+                  f.authority.workerId,
+                  grant.logicalRoot.operationId,
+                  grant.logicalRoot.operationGeneration,
+                  "idle",
+                  true,
+                ),
+              ).toBe(false);
+              publication.release();
+            }
             await restored.completion;
             const ended = await f.authority.repository.nativeSuspensions.read(
               f.authority.ownerId,
@@ -333,16 +417,8 @@ describe.skipIf(!binary || process.platform === "win32")(
           ).toBe(true);
           if (gui) await gui.settled;
           if (grant.logicalRoot) {
-            // The caller's old HTTP lifetime cannot finish a cold continuation.
-            // Verify the original logical row becomes finishable only after the
-            // real observer's terminal proof; production delivery follows separately.
-            await f.authority.repository.nativeCommands.finishLogicalGui(
-              f.authority.ownerId,
-              f.authority.workerId,
-              grant.logicalRoot.operationId,
-              grant.logicalRoot.operationGeneration,
-              "idle",
-            );
+            // The original caller died with its transport. Native settlement
+            // must retire its logical input and publish the completion itself.
             expect(
               await f.authority.repository.nativeCommands.getLogicalCompletion(
                 f.authority.ownerId,
@@ -355,6 +431,8 @@ describe.skipIf(!binary || process.platform === "win32")(
           }
         } finally {
           releaseResume?.();
+          publication.release();
+          stopAck.release();
           for (const request of requests) request.response.destroy();
           provider.closeAllConnections();
           await f?.close();

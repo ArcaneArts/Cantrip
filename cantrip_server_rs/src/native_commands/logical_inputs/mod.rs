@@ -1,12 +1,14 @@
 //! One accepted GUI input may own several native executions and one durable closure.
 mod continuation;
 mod outcomes;
+mod restored;
 use super::{Repository, admit::text, context};
 use crate::{
     database::{Executor, Transaction},
     wire::Value,
 };
 use anyhow::Result;
+pub(super) use restored::finish as finish_restored;
 
 async fn activation(tx: &Transaction<'_>, chat: &str) -> Result<Value> {
     Ok(super::admit::raw_one(

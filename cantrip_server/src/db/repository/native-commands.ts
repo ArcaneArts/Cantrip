@@ -3,6 +3,7 @@ import {
   reconcileUnstartedGui,
 } from "./native-undispatched-gui.js";
 import { isNativeTransportClosure } from "./native-transport-evidence.js";
+import { finishRestoredLogicalInput } from "./native-restored-logical-input.js";
 import { goalHandoffSessionMatches } from "./native-goal-handoff-affinity.js";
 import { reconcileNativeThreadObservation } from "./native-thread-observation.js";
 import { NativeCommandRecoveryRepository } from "./native-command-recovery.js";
@@ -1898,6 +1899,13 @@ export class NativeCommandRepository {
             !isDeepStrictEqual(current.terminalEvidence, terminalEvidence))
         )
           throw new NativeCommandError("receipt-conflict");
+        await finishRestoredLogicalInput(
+          tx,
+          this.database,
+          this.lanes,
+          ownerId,
+          current,
+        );
         return {
           ...receipt(current),
           ...(input.deferred
@@ -2241,6 +2249,13 @@ export class NativeCommandRepository {
         // The applied setter is durable before Core requests a first cycle.
         // Repeated receipts must not create perpetual queue notices.
         await queueStateChanged(tx, row.chatId);
+      await finishRestoredLogicalInput(
+        tx,
+        this.database,
+        this.lanes,
+        ownerId,
+        updated,
+      );
       return {
         ...receipt(updated),
         ...(input.deferred

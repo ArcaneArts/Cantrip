@@ -161,4 +161,78 @@ export async function durableChatResumeCases({ fixture, call, query, run }) {
     `SELECT jsonb_build_object('count',count(*)) result FROM native_command_turns WHERE chat_id='chat' AND turn_id=${literal(active.turnId)}`,
   );
   assert.equal(turns.count, 1);
+
+  const ownership = () =>
+    query(
+      "SELECT jsonb_build_object('suspension',c.native_suspension_state,'activation',to_jsonb(a),'head',to_jsonb(n),'logical',(SELECT logical_completed_at FROM native_commands WHERE operation_id='service-resume-root'),'outbox',(SELECT count(*) FROM native_logical_completions WHERE root_operation_id='service-resume-root')) result FROM chats c JOIN native_command_activations a ON a.chat_id=c.id JOIN native_commands n ON n.operation_id=a.operation_id WHERE c.id='chat'",
+    );
+  const before = await ownership();
+  assert.equal(before.logical, null);
+  assert.equal(before.outbox, 0);
+  const terminal = {
+    workerId: "alpha",
+    workerGeneration: before.suspension.executionOwner.workerGeneration,
+    operationId: before.head.operation_id,
+    operationGeneration: before.head.operation_generation,
+    status: "applied",
+    resultDigest: null,
+    protectedResult: null,
+    rejectionCode: null,
+    executionComplete: true,
+    executionStatus: "idle",
+    terminalResult: { resultDigest: "d".repeat(64), protectedResult: envelope },
+    reconciliation: {
+      nativeTurnId: active.turnId,
+      runtimeGeneration: before.head.identity.runtimeGeneration,
+      terminalStatus: "completed",
+    },
+  };
+  // A transport-era or wrong-turn receipt cannot complete the original input.
+  for (const reconciliation of [
+    { ...terminal.reconciliation, nativeTurnId: "different-turn" },
+    { ...terminal.reconciliation, runtimeGeneration: "obsolete-runtime" },
+    {
+      nativeTurnId: active.turnId,
+      runtimeGeneration: before.head.identity.runtimeGeneration,
+    },
+  ]) {
+    const rejected = await fixture.request({
+      op: "native-command-settle",
+      owner,
+      input: { ...terminal, reconciliation },
+    });
+    run.steps++;
+    assert.equal(rejected.rejected, true, JSON.stringify(rejected));
+    assert.deepEqual(await ownership(), before);
+  }
+  // Force a real write failure after physical retirement and logical writes.
+  // Every earlier mutation must roll back with the completion outbox insert.
+  await fixture.seed(
+    "CREATE FUNCTION fail_restored_logical_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'logical outbox write failed'; END $$",
+  );
+  await fixture.seed(
+    "CREATE TRIGGER fail_restored_logical_outbox BEFORE INSERT ON native_logical_completions FOR EACH ROW EXECUTE FUNCTION fail_restored_logical_outbox()",
+  );
+  const failed = await fixture.request({
+    op: "native-command-settle",
+    owner,
+    input: terminal,
+  });
+  run.steps++;
+  assert.equal(failed.rejected, true, JSON.stringify(failed));
+  assert.deepEqual(await ownership(), before);
+  await fixture.seed(
+    "DROP TRIGGER fail_restored_logical_outbox ON native_logical_completions",
+  );
+  await fixture.seed("DROP FUNCTION fail_restored_logical_outbox()");
+  await call("settle", terminal);
+  const completed = await ownership();
+  assert.notEqual(completed.logical, null);
+  assert.equal(completed.outbox, 1);
+  assert.equal(completed.suspension.phase, "completed");
+  assert.equal(completed.suspension.checkpoint, null);
+  assert.equal(completed.activation.active, false);
+  assert.notEqual(completed.head.execution_completed_at, null);
+  await call("settle", terminal);
+  assert.deepEqual(await ownership(), completed);
 }

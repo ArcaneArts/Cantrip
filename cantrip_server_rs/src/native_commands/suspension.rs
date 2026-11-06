@@ -25,14 +25,7 @@ pub(super) async fn retained_execution(
             && !state["actor"].is_null()
             && !terminal(state)
             && state["phase"] != "running"
-            && !(row["terminal_evidence"]["kind"] == "terminal"
-                && matches!(
-                    row["terminal_evidence"]["terminalStatus"].as_str(),
-                    Some("completed" | "failed" | "interrupted")
-                )
-                && row["terminal_evidence"]["nativeTurnId"] == state["active"]["turnId"]
-                && row["terminal_evidence"]["runtimeGeneration"]
-                    == row["identity"]["runtimeGeneration"])
+            && !terminal_proof(state, row)
             && row["kind"] == "start"
             && owns_execution(state, row)
             && state["active"]["threadId"] == row["identity"]["threadId"]
@@ -89,6 +82,20 @@ pub(super) fn owns_execution(state: &Value, row: &Value) -> bool {
                     == row["identity"]["runtimeGeneration"]
         }
 }
+
+/// Terminal proof belongs to the exact suspended turn and physical runtime,
+/// independently of the current Pause/Stop control's acknowledgement order.
+pub(super) fn terminal_proof(state: &Value, row: &Value) -> bool {
+    !state["active"].is_null()
+        && state["active"]["threadId"] == row["identity"]["threadId"]
+        && row["terminal_evidence"]["kind"] == "terminal"
+        && matches!(
+            row["terminal_evidence"]["terminalStatus"].as_str(),
+            Some("completed" | "failed" | "interrupted")
+        )
+        && row["terminal_evidence"]["nativeTurnId"] == state["active"]["turnId"]
+        && row["terminal_evidence"]["runtimeGeneration"] == row["identity"]["runtimeGeneration"]
+}
 pub(super) async fn retained_logical_input(
     tx: &Transaction<'_>,
     owner: &str,
@@ -99,6 +106,7 @@ pub(super) async fn retained_logical_input(
         !s["executionOwner"].is_null()
             && !s["active"].is_null()
             && owns_execution(s, row)
+            && !terminal_proof(s, row)
             && !terminal(s)
             && row["method"] == "thread/resume"
             && truthy(row["intent"].get("restoredSuspension"))
