@@ -3016,3 +3016,9 @@ Native backup HTTP passed (6.00s), existing source/recovery HTTP passed (6.36s),
 and all 33,682 protocol vectors matched again (66.91s). Root `pnpm check` still
 stops at unchanged Server budgets, now 1527/1500 and 2249/1999. No hosted ordinary
 validation or new distribution artifact is claimed by this checkpoint.
+
+The additional exhaustive Worker-command inventory check fails because Main
+declares `chat.goal.claim-recover` without its fixture. Base `db40fc16d` contains
+that declaration and lacks the fixture before this change; the failure is
+recorded without adding an unrelated Goal repair. Backup HTTP and dedicated OS
+wire validation above passed. This cycle adds no new Worker command type.
