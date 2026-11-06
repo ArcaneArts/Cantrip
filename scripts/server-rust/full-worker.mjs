@@ -32,6 +32,7 @@ export function launchActualWorker(
     chromiumTraceDirectory,
     workerId = "actual-catalog-worker",
     traceShutdown = false,
+    isolatedProcessGroup = false,
     homeDirectory,
     environment: extraEnvironment = {},
   } = {},
@@ -103,6 +104,7 @@ export function launchActualWorker(
     {
       cwd: path.join(repositoryRoot, "cantrip_worker"),
       env: environment,
+      detached: isolatedProcessGroup && process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
