@@ -492,12 +492,22 @@ impl Repository {
         })).await
     }
     pub async fn prepare_goal_inference_input(&self, owner: &str, input: &Value) -> Result<Value> {
+        self.prepare_goal_inference_input_at_revision(owner, input, None)
+            .await
+    }
+
+    pub async fn prepare_goal_inference_input_at_revision(
+        &self,
+        owner: &str,
+        input: &Value,
+        expected_revision: Option<i64>,
+    ) -> Result<Value> {
         let mut r = input.clone();
         r["kind"] = json!("goal");
         r["operationId"] = json!(uuid::Uuid::new_v4().to_string());
         let mut r = parse("taskInferenceInputReceiptSchema", &r)?;
         let owner = owner.to_owned();
-        self.database.transaction(|tx|Box::pin(async move {
+        let prepared = self.database.transaction(|tx|Box::pin(async move {
             let (chat,id,operation)=(text(&r["chatId"])?,text(&r["dispatch"]["cycleId"])?,text(&r["dispatch"]["operationId"])?);
             dispatch_fence::assert(tx,&owner,&chat,&operation,&json!({"kind":"leased","lease":r["dispatch"]}),false).await?;
             let c=cycle(tx,&owner,&chat,Some(&id)).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?;
@@ -505,16 +515,26 @@ impl Repository {
             r["queueOrderEpoch"]=c["goal_order_epoch"].clone();
             let row=context(tx,&owner,&r,true,false).await?;
             assert_handoff_input(tx,&owner,&r,false).await?;
-            if row["chat"]["automation_paused"]==true || row["project"]["task_scheduling_paused"]==true || row["task"]["state"]=="paused" || row["lane"]["state"]!="active" {return stale();}
+            let control_changed=expected_revision.is_some_and(|revision|row["chat"]["managed_input_revision"].as_i64()!=Some(revision));
+            if row["lane"]["state"]!="active" || (!control_changed && (row["chat"]["automation_paused"]==true || row["project"]["task_scheduling_paused"]==true || row["task"]["state"]=="paused")) {return stale();}
             let old=&c["goal_input"];
             if old["failedBeforeDispatch"]==true && old["receipt"]["dispatch"]["fencingToken"]==r["dispatch"]["fencingToken"] {return stale();}
             let same=old["receipt"]["clientMessageId"]==r["clientMessageId"];
-            let mut state=json!({"receipt":r,"deferred":false,"failedBeforeDispatch":false,"accepted":false,"dispatched":false,"allAttemptsEnforced":!same || (old["accepted"]==true && old["allAttemptsEnforced"]==true),"firstDispatchedOperationId":if same{old["firstDispatchedOperationId"].clone()}else{Value::Null},"multipleDispatched":same && old["multipleDispatched"]==true,"attemptCountBefore":c["attempt_count"]});
+            let mut state=json!({"receipt":r,"deferred":false,"failedBeforeDispatch":false,"accepted":false,"dispatched":false,"allAttemptsEnforced":!same || (old["allAttemptsEnforced"]==true && (old["accepted"]==true || old["deferred"]==true)),"firstDispatchedOperationId":if same{old["firstDispatchedOperationId"].clone()}else{Value::Null},"multipleDispatched":same && old["multipleDispatched"]==true,"attemptCountBefore":c["attempt_count"]});
             if same && let Some(change)=old.get("routeChange") {state["routeChange"]=change.clone();}
+            if control_changed && (state["allAttemptsEnforced"]!=true || !state["firstDispatchedOperationId"].is_null()) {return stale();}
             write(tx,&id,&state).await?;
             tx.query("UPDATE task_dispatch_cycles SET model_route_id=$2,provider_account_id=$3 WHERE id=$1",&[&id,&text(&r["modelRouteId"])?,&r["providerAccountId"].as_str()]).await?;
+            if control_changed {
+                defer_locked(tx,&owner,&c,&state).await?;
+                return Ok(Value::Null);
+            }
             Ok(r)
-        })).await
+        })).await?;
+        if prepared.is_null() {
+            return stale();
+        }
+        Ok(prepared)
     }
     pub async fn dispatch_goal_inference_input(
         &self,

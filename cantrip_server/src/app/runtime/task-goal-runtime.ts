@@ -274,6 +274,7 @@ export function createTaskGoalRuntime({
       {
         afterTurnCompleted: options.afterTurnCompleted,
         afterTurnFailed: options.afterTurnFailed,
+        expectedInputRevision: context.managedInputRevision,
         purpose: options.purpose ?? "Task implementation Goal",
         messageRole: options.messageRole,
         encryptedTaskMessages: {

@@ -146,6 +146,12 @@ export function createChatTurnRuntime({
   const beginTurn: BeginChatTurn = async (context, input, options = {}) => {
     const turnStartedAtMs = Date.now();
     const ownerId = applicationOwnerId();
+    // Retain the caller's control generation across asynchronous preflight,
+    // placement reconciliation and fresh execution-lane context reads.
+    const taskInputRevision =
+      context.experience === "task"
+        ? (options.expectedInputRevision ?? context.managedInputRevision)
+        : undefined;
     validateChatTurnInput(context, input, options);
     context = await reconcileTaskTurnPlacement(
       repository,
@@ -950,25 +956,29 @@ export function createChatTurnRuntime({
               options.taskDispatchLease &&
               (encryptedTaskRelay ||
                 (turnMode === "goal" && encryptedTaskMessages))
-                ? await repository.tasks.inferenceInputs.prepare(ownerId, {
-                    ...(encryptedTaskRelay ? {} : { kind: "goal" as const }),
-                    chatId: execution.chatId,
-                    clientMessageId: userMessage.id,
-                    workerId: execution.workerId,
-                    worktreeId: execution.worktreeId!,
-                    executionLaneId,
-                    executionLaneActivatedAt:
-                      execution.executionLaneActivatedAt!,
-                    providerId: runtime.provider.id,
-                    modelRouteId: runtime.routeId,
-                    providerAccountId: runtime.provider.accountId ?? null,
-                    dispatch: {
-                      cycleId: options.taskDispatchLease.cycleId,
-                      operationId: options.taskDispatchLease.operationId,
-                      leaseOwner: options.taskDispatchLease.leaseOwner,
-                      fencingToken: options.taskDispatchLease.fencingToken,
+                ? await repository.tasks.inferenceInputs.prepare(
+                    ownerId,
+                    {
+                      ...(encryptedTaskRelay ? {} : { kind: "goal" as const }),
+                      chatId: execution.chatId,
+                      clientMessageId: userMessage.id,
+                      workerId: execution.workerId,
+                      worktreeId: execution.worktreeId!,
+                      executionLaneId,
+                      executionLaneActivatedAt:
+                        execution.executionLaneActivatedAt!,
+                      providerId: runtime.provider.id,
+                      modelRouteId: runtime.routeId,
+                      providerAccountId: runtime.provider.accountId ?? null,
+                      dispatch: {
+                        cycleId: options.taskDispatchLease.cycleId,
+                        operationId: options.taskDispatchLease.operationId,
+                        leaseOwner: options.taskDispatchLease.leaseOwner,
+                        fencingToken: options.taskDispatchLease.fencingToken,
+                      },
                     },
-                  })
+                    taskInputRevision,
+                  )
                 : undefined;
             const rawResultPromise = bridge.request(
               execution.workerId,
@@ -1963,6 +1973,33 @@ export function createChatTurnRuntime({
             );
             return;
           } catch (error) {
+            if (
+              options.taskDispatchLease &&
+              !taskInferenceInput &&
+              error instanceof TaskDispatchConflictError
+            ) {
+              // No worker turn was sent by this attempt. Its cancellation is a
+              // control transition, not provider failure or retry budget use.
+              await closeDeferredInputTelemetry();
+              await repository.finishChatExecutionLane(
+                execution.chatId,
+                executionLaneId,
+                "idle",
+                {
+                  expectedActivatedAt: execution.executionLaneActivatedAt,
+                  markUnreadCompletion: false,
+                },
+              );
+              markTaskWorkerDispatchFailed(error);
+              publishChatSummary(execution.chatId, execution.projectId);
+              publishChatInvalidation(
+                execution.chatId,
+                "task",
+                null,
+                execution,
+              );
+              return;
+            }
             if (
               await retainSuspendedChatTurn(
                 { repository, app, publishChatSummary },

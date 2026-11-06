@@ -131,18 +131,31 @@ impl Repository {
     }
 
     pub async fn prepare_inference_input(&self, owner: &str, input: &Value) -> Result<Value> {
+        self.prepare_inference_input_at_revision(owner, input, None)
+            .await
+    }
+
+    pub async fn prepare_inference_input_at_revision(
+        &self,
+        owner: &str,
+        input: &Value,
+        expected_revision: Option<i64>,
+    ) -> Result<Value> {
         if input["kind"] == "goal" {
-            return self.prepare_goal_inference_input(owner, input).await;
+            return self
+                .prepare_goal_inference_input_at_revision(owner, input, expected_revision)
+                .await;
         }
         let mut receipt = input.clone();
         receipt["operationId"] = json!(uuid::Uuid::new_v4().to_string());
         let mut receipt = parse("taskInferenceInputReceiptSchema", &receipt)?;
         let owner = owner.to_owned();
-        self.database.transaction(|tx|Box::pin(async move {
+        let prepared = self.database.transaction(|tx|Box::pin(async move {
             let chat=text(&receipt["chatId"])?;let operation=text(&receipt["dispatch"]["operationId"])?;
             dispatch_fence::assert(tx,&owner,&chat,&operation,&json!({"kind":"leased","lease":receipt["dispatch"]}),false).await?;
             let row=context(tx,&owner,&receipt).await?;
-            if row["lane"]["state"]!="active" || row["chat"]["automation_paused"]==true || row["project"]["task_scheduling_paused"]==true || row["task"]["state"]=="paused" {return stale();}
+            let control_changed=expected_revision.is_some_and(|revision|row["chat"]["managed_input_revision"].as_i64()!=Some(revision));
+            if row["lane"]["state"]!="active" || (!control_changed && (row["chat"]["automation_paused"]==true || row["project"]["task_scheduling_paused"]==true || row["task"]["state"]=="paused")) {return stale();}
             let cycle=text(&receipt["dispatch"]["cycleId"])?;
             let cycle=one(Executor::Transaction(tx),"SELECT to_jsonb(c)::text FROM task_dispatch_cycles c WHERE id=$1",&[&cycle]).await?.context("Task input dispatch")?;
             if cycle["physical_worker_id"]!=receipt["workerId"] || cycle["worktree_id"]!=receipt["worktreeId"] {return stale();}
@@ -152,11 +165,20 @@ impl Repository {
             let attempts=if previous["deferred"]==true {previous["attemptCountBefore"].clone()}else{json!((cycle["attempt_count"].as_i64().context("Task attempts")?-1).max(0))};
             let mut state=json!({"receipt":receipt,"deferred":false,"failedBeforeDispatch":false,"accepted":false,"dispatched":false,"allAttemptsEnforced":previous.is_null() || (previous["allAttemptsEnforced"]==true && (previous["accepted"]==true || previous["deferred"]==true)),"firstDispatchedOperationId":previous["firstDispatchedOperationId"],"multipleDispatched":previous["multipleDispatched"]==true,"attemptCountBefore":attempts});
             if let Some(change)=previous.get("routeChange") { state["routeChange"]=change.clone(); }
+            if control_changed && (state["allAttemptsEnforced"]!=true || !state["firstDispatchedOperationId"].is_null()) {return stale();}
             update(tx,Table::Round,&operation,&json!({"inference_input":state,"user_message_id":receipt["clientMessageId"],"execution_lane_id":receipt["executionLaneId"]}),None).await?;
             let route=text(&receipt["modelRouteId"])?;let account=receipt["providerAccountId"].as_str();let cycle_id=text(&cycle["id"])?;
             tx.query("UPDATE task_dispatch_cycles SET model_route_id=$2,provider_account_id=$3 WHERE id=$1",&[&cycle_id,&route,&account]).await?;
+            if control_changed {
+                defer_locked(tx,&row,&state).await?;
+                return Ok(Value::Null);
+            }
             Ok(receipt)
-        })).await
+        })).await?;
+        if prepared.is_null() {
+            return stale();
+        }
+        Ok(prepared)
     }
 
     /// Acknowledge actual input authority before native turn/start. This never

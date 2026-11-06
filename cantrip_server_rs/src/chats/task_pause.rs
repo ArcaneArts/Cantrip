@@ -51,6 +51,10 @@ impl Repository {
                 if cycle["operation_kind"]=="finalize" {
                     crate::tasks::Repository::defer_goal_input_for_interrupt(tx,&owner,&cycle).await?;
                 }
+                // Pause dispatch authority even before receipt creation; retain
+                // actual runtime affinity and never declare native settlement.
+                tx.query("UPDATE task_dispatch_cycles SET state='paused',fencing_token=fencing_token+1,paused_at=now(),updated_at=now() WHERE id=$1 AND state IN ('claimed','running')",
+                    &[&cycle["id"].as_str().ok_or_else(||anyhow::anyhow!("Task interrupt cycle"))?]).await?;
                 let mut marker=cycle["goal_cycle_recovery"].clone();
                 if !marker.is_null() && marker["settled"].is_null() {
                     marker["admission"]=Value::Null;

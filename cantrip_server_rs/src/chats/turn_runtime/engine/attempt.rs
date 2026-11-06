@@ -253,7 +253,42 @@ impl Runtime {
         }
         let runtime = sink.runtime.lock().unwrap().clone();
         self.log("debug","Agent turn route dispatched",json!({"event":"chat.turn.route-dispatched","subsystem":"chat-execution","operation":"turn","status":"dispatching","chatId":e["chatId"],"projectId":e["projectId"],"workerId":e["workerId"],"requestId":turn.user_message["id"],"runId":e["executionLaneId"],"attempt":index+1,"counts":json!({"candidateRoutes":turn.route_pairs.len()}),"providerId":runtime["provider"]["id"],"providerAccountId":runtime["provider"]["accountId"],"routeId":runtime["routeId"]}));
-        let command = sink.command(&self.dependencies.server_id).await?;
+        let command_result = sink.command(&self.dependencies.server_id).await;
+        let input_prepared = sink.task_input_operation.lock().unwrap().is_some();
+        let command = match command_result {
+            Ok(command) => command,
+            Err(error)
+                if truthy(turn.options.get("taskDispatchLease"))
+                    && !input_prepared
+                    && error.is::<crate::task_dispatch::Conflict>() =>
+            {
+                // The exact Task input was not sent to a worker. A revoked
+                // launcher is cancellation, not provider failure or failover.
+                self.record_deferred_input(sink, index, began).await;
+                crate::chats::execution_lanes::LaneRepository::new(
+                    self.dependencies.events.database.clone(),
+                ).finish(
+                    &events::text(&e["chatId"])?, &events::text(&e["executionLaneId"])?,
+                    "idle", &json!({"expectedActivatedAt":e["executionLaneActivatedAt"],"markUnreadCompletion":false}),
+                ).await?;
+                if let Some(started) = started.take() {
+                    let _ = started.send(Err(Arc::new(error)));
+                }
+                self.dependencies.events.live.publish_summary(
+                    &turn.owner,
+                    &e["chatId"],
+                    &e["projectId"],
+                );
+                self.dependencies.events.live.publish_invalidation(
+                    &turn.owner,
+                    &events::text(&e["chatId"])?,
+                    "task",
+                    None,
+                );
+                return Ok(());
+            }
+            Err(error) => return Err(error),
+        };
         let (commands, worker, sink_events) = (
             self.dependencies.events.commands.clone(),
             events::text(&e["workerId"])?,

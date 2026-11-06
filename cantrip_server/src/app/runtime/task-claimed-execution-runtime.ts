@@ -550,7 +550,10 @@ export function createTaskClaimedExecutionRuntime(
           { timeoutMs: TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS },
         );
       } catch (error) {
-        if (error instanceof TaskDispatchConflictError) return;
+        if (error instanceof TaskDispatchConflictError) {
+          queueTaskScheduleTick();
+          return;
+        }
         if (
           launchStage === "begin-turn" &&
           error instanceof ExecutionLaneBusyError
