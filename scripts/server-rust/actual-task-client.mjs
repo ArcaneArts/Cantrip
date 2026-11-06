@@ -5,6 +5,7 @@ import { eventually } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
 import { actualTaskRecovery } from "./actual-task-recovery.mjs";
 import { captureTaskRuntimeState } from "./task-runtime-snapshot.mjs";
+import { browserFixtureSql } from "./browser-fixture-sql.mjs";
 
 export async function actualTaskClient({
   page,
@@ -179,7 +180,10 @@ export async function actualTaskClient({
     });
     // Goal activation attempts an idle turn. The saved encrypted Task control
     // can arrive first and make that automatic turn unnecessary.
-    model.reply({ text: "Private full-worker implementation result 🌤" });
+    model.reply({
+      text: "Private full-worker implementation result 🌤",
+      onlyFor: (request) => JSON.stringify(request.input).includes(objective),
+    });
     await page.evaluate(
       async ({ chatId, rowVersion }) =>
         (await import("/src/lib/api/tasks.ts")).beginTaskImplementation(
@@ -357,25 +361,34 @@ export async function actualTaskClient({
           ownerId: await page.evaluate(() => window.folderIdentity.ownerId),
           projectId,
           query: (statements, queries) =>
-            page.evaluate(
-              async ({ statements, queries }) => {
-                const response = await window.folderRequest("/__fixture/sql", {
-                  method: "POST",
-                  body: JSON.stringify({ statements, queries }),
-                  signal: AbortSignal.timeout(15000),
-                });
-                if (response.ok !== true)
-                  throw new Error("Live Task snapshot query failed");
-                return response.values;
-              },
-              { statements, queries },
-            ),
+            browserFixtureSql(fixture, page, statements, queries),
         });
       } catch (snapshotError) {
         result.taskRuntimeSnapshotFailure = {
           message: snapshotError.message,
           stack: snapshotError.stack,
         };
+      }
+      if (result.taskRuntimeSnapshot) {
+        try {
+          // Only predefined disposable Task content is decrypted here. Keep
+          // the original failure and database snapshot before observing the
+          // existing browser's view of each retained Task error/transcript.
+          result.taskFailureMessages = await page.evaluate(
+            async (chatIds) => {
+              const { getMessages } = await import("/src/lib/api/chats.ts");
+              return Promise.all(
+                chatIds.map(async (chatId) => ({
+                  chatId,
+                  messages: await getMessages(chatId),
+                })),
+              );
+            },
+            result.taskRuntimeSnapshot.rows.tasks.map((task) => task.chat_id),
+          );
+        } catch (cause) {
+          result.taskFailureMessagesError = cause.message;
+        }
       }
     }
     throw error;

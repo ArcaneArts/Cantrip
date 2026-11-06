@@ -112,7 +112,7 @@ impl Repository {
             // charging it a second time solely for durable startup queueing.
             let attempts=i32::try_from(c["attempt_count"].as_i64().context("Task attempt count")?.saturating_sub(1).max(0)).context("Task attempt count")?;
             let thread=n["outcome"]["result"]["threadId"].as_str();
-            tx.query("UPDATE task_dispatch_cycles SET state=$2,lease_owner=NULL,lease_expires_at=NULL,last_heartbeat_at=NULL,fencing_token=fencing_token+1,attempt_count=$3,claimed_at=NULL,started_at=NULL,completed_at=NULL,paused_at=CASE WHEN $2='paused' THEN $4 ELSE NULL END,turn_id=NULL,codex_thread_id=$5,eligibility_code=NULL,updated_at=$4 WHERE id=$1",&[&id,&if paused{"paused"}else{"queued"},&attempts,&now,&thread]).await?;
+            tx.query("UPDATE task_dispatch_cycles SET state=$2,lease_owner=NULL,lease_expires_at=NULL,last_heartbeat_at=NULL,fencing_token=fencing_token+1,attempt_count=$3,claimed_at=NULL,started_at=NULL,completed_at=NULL,paused_at=CASE WHEN $2='paused' THEN $4::timestamptz ELSE NULL END,turn_id=NULL,codex_thread_id=$5,eligibility_code=NULL,updated_at=$4 WHERE id=$1",&[&id,&if paused{"paused"}else{"queued"},&attempts,&now,&thread]).await?;
             Ok(Some(json!({"state":"queued","message":message,"chat":routing,"terminal":terminal})))
         })).await
     }

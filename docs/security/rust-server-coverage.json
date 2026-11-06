@@ -9578,6 +9578,64 @@
     ]
   },
   "crossCutting": {
+    "nativeProductMatrix": {
+      "status": "partial",
+      "evidence": [
+        "scripts/server-rust/native-product-compatibility.mjs",
+        "scripts/server-rust/actual-task-client.mjs",
+        "scripts/server-rust/actual-agent-task-client.mjs",
+        "scripts/server-rust/profile-database-compatibility.mjs",
+        "scripts/server-rust/profile-transfer-compatibility.mjs",
+        "docs/RUST_SERVER_NATIVE_PRODUCT.md",
+        "scripts/server-rust/task-pause-usage-races.mjs",
+        "scripts/server-rust/task-workers-races.mjs"
+      ],
+      "sourceBaseline": "348760ffd506714fa2d1361fa7155f6c9c36e90c",
+      "localPlatform": "darwin-arm64",
+      "backendSelection": "Actual current-code setup and restart checks pass on PGlite, bundled PostgreSQL and external PostgreSQL. Stored selection, empty URL templates, failed setup and explicit DATABASE_URL override retain their original assertions. Each remembered store also reopens twice in hosted mode with account authentication and then locally, preserving server identity, profile and encryption-key bytes. Hosted requests use trusted loopback HTTPS forwarding headers; this is not a TLS deployment rehearsal.",
+      "profileTransfer": "The current profile/fault suite passes all three stores, comparing 127 tables and four sequences. Import retains every original row plus one strictly validated durable import receipt. After accepted Rust HTTP writes, reverse transfer preserves the exact written snapshot; Node reuses the retained session and advances the workspace revision to3. Actual interrupted transfer, private process cleanup and rejected SQL redaction checks pass. A held COMMIT acknowledgment followed by a Rust write retains revision2 when retry publishes the profile. This does not cover full native Task data, packaged profile activation or all historical installation upgrades.",
+      "productExecution": "All six local matrix cases pass on the frozen348760ffd baseline plus the candidate fixes, using the verified83-patch native bundle: three stores, both scenarios and both peers. Task lifecycle runs retain14steps,5clean worker stops and8modelPOSTs per peer/store, including planned native Goal completion, quota failure/retry, paused admission and exact restart retention. Delegated native MCP Tasks retain11steps,4clean stops and16modelPOSTs per peer/store, including exact-operation replay, real child execution, browser decryption and no duplicate inference after restart. Totals:12peer runs,150product steps,54clean stops and144modelPOSTs. The earlier failing six-case matrix and every diagnostic failure are retained. Later native changes and integrated current-Main qualification remain separate requirements.",
+      "nativeArtifact": {
+        "sourceBaseline": "293c3deded65f0840ea1da1d3e0e5cd8a0e351f4",
+        "patchFiles": 83,
+        "patchesSha256": "001a4552e74d3f1f7178e47fbd263058235453dc0afea07a72544952f23f2f4d",
+        "codexSha256": "bb6f228eec8694773718d0ba328b213b922a68230052f968a57003d133d91fc3",
+        "fullLocalMatrix": true,
+        "passedCases": 6,
+        "failedCases": 0
+      },
+      "remaining": [
+        "Qualify the integrated current Source and current native patch set; the frozen83-patch pass does not prove newer native Task pause/provider-transfer behavior.",
+        "Qualify full product failure boundaries, supported-platform and packaged artifacts, representative historical upgrades and product-wide post-write rollback.",
+        "Complete shared coordination, performance acceptance, desktop/Winterhold rehearsal, default cutover and production Node server removal."
+      ],
+      "implementationFixes": [
+        "Preserve protectedTaskPrompt for already encrypted Goal Task messages in the Node reference.",
+        "Join worktrees through project_sources and use absolute_path in Rust Goal observation; retain parent-project ownership for historical attribution.",
+        "Bind the finalizer requeue CASE timestamp explicitly as timestamptz.",
+        "Acquire usage/history owner FK KEY SHARE before project/chat locks in both implementations, preserving exclusive Task owner serialization."
+      ],
+      "localChecks": "The real PostgreSQL Task Worker repository suite passes102paired cases,10SQL snapshots,40existing revision/ownership races and4new usage/pause races covering Node/Node,Node/Rust,Rust/Node,Rust/Rust. The new regression rejects an actual deadlock before the fix. Server typecheck and Rustfmt pass. Six related Source unit files produce58passes and8failures; an extracted unchanged348760ffd checkout reproduces the same8failed tests and missing mock methods, with source/test byte proofs. The broad check still stops at the existing1527/1500 build-app and2249/1999 chat-turn line budgets; the candidate changes one condition in the latter and does not grow its line count."
+    },
+    "sharedRelayCoordination": {
+      "status": "unported",
+      "referenceImplementation": [
+        "cantrip_server/src/coordination/relay-coordinator.ts",
+        "cantrip_server/src/workers/coordinated-bridge.ts",
+        "cantrip_server/src/worker-links/service.ts",
+        "cantrip_server/src/app/runtime/live-infrastructure-runtime.ts",
+        "cantrip_server/src/server-entry-runtime.ts"
+      ],
+      "referenceTests": [
+        "cantrip_server/test/shared-relay-coordination.test.ts"
+      ],
+      "runtimeFinding": "Rust parses REDIS_URL but has no runtime Redis consumer or coordinated worker bridge. Instance identifiers already serve other local features; those uses do not implement shared routing. The ordinary Node HTTP oracle builds a local WorkerBridge and does not instantiate production Redis coordination merely because REDIS_URL is set.",
+      "remaining": [
+        "Port the reference Redis key/channel and message contracts, worker/session claims and fencing, TTL refresh, startup hydration, deduplication, instance health and shutdown.",
+        "Integrate remote worker commands/events/responses, notifications and opaque binary frames, WorkerLink authority/revocation and App Live publication routing.",
+        "Preserve shared startup/recovery ownership and exercise real Redis with Rust/Rust and mixed Node/Rust instances, including interruption, replacement, replay and revocation."
+      ]
+    },
     "postgresConcurrencyAndTls": {
       "status": "partial",
       "implementation": "cantrip_server_rs/src/database/",

@@ -4,6 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import path from "node:path";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { literal } from "./project-target-state.mjs";
+import { runTaskPauseUsageRaces } from "./task-pause-usage-races.mjs";
 const postgres = createRequire(
   new URL("../../cantrip_server/package.json", import.meta.url),
 )("postgres");
@@ -24,6 +25,7 @@ async function waiters(sql, table, count) {
   );
 }
 export async function runTaskWorkerRaces(h, clean) {
+  await runTaskPauseUsageRaces(h, clean);
   h.report.taskWorkerRaces = [];
   for (const mode of [
     "create",

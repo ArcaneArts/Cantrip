@@ -25,6 +25,12 @@ and its boundaries. Full native product acceptance remains required.
 The surface port preserves opaque endpoint data, exact owned target placement,
 permission/lane guards, browser revision conflicts and client acknowledgments.
 
+The local [native Task and Goal matrix](../docs/RUST_SERVER_NATIVE_PRODUCT.md)
+runs the existing browser APIs and full worker in separate disposable stores for
+Task lifecycle and native MCP Task scenarios on all three database modes. It
+retains actual failures and runtime provenance; supported-platform and packaged
+qualification remain separate.
+
 The native command kernel now owns admission, immutable receipts, execution
 lanes, logical continuations, encrypted prompts, managed queue claims/imports,
 settings evidence, permission policies and interaction requests. Internal HTTP

@@ -21,17 +21,27 @@ let pg, failure;
 try {
   const executable = await buildRustServer();
   pg = await postgresFixture(path.join(root, "database-owner"));
-  const probe = async (environment) => {
+  const probe = async (environment, headers) => {
     const server = await startServer(
       executable,
       ["--port", "0", "--shutdown-on-stdin-close"],
       { cwd: repositoryRoot, env: environment },
     );
     try {
-      const bootstrap = await fetch(server.origin + "/api/bootstrap");
+      const bootstrap = await fetch(server.origin + "/api/bootstrap", {
+        headers,
+      });
       assert.equal(bootstrap.status, 200);
       const body = await bootstrap.json();
-      const ready = await fetch(server.origin + "/readyz");
+      assert.equal(
+        body.server.deploymentMode,
+        environment.CANTRIP_DEPLOYMENT_MODE,
+      );
+      assert.equal(
+        body.server.bootstrapMode,
+        environment.CANTRIP_BOOTSTRAP_MODE,
+      );
+      const ready = await fetch(server.origin + "/readyz", { headers });
       assert.equal(ready.status, 200);
       return {
         serverId: body.server.id,
@@ -122,6 +132,35 @@ try {
     assert.notEqual(overridden.serverId, first.serverId);
     assert.deepEqual(await readFile(profile), saved);
     assert.deepEqual(await probe(environment), first);
+    // A standalone hosted server can reopen every remembered backend without
+    // receiving database flags again. Exercise actual startup and HTTP behind
+    // a trusted loopback proxy while retaining hosted authentication and TLS.
+    const hosted = {
+      ...environment,
+      CANTRIP_DEPLOYMENT_MODE: "hosted",
+      CANTRIP_BOOTSTRAP_MODE: "hosted",
+      CANTRIP_AUTH_MODE: "accounts",
+      CANTRIP_ADMIN_EMAIL: "fixture@example.invalid",
+      CANTRIP_APP_ORIGINS: "https://app.example.invalid",
+      CANTRIP_PUBLIC_ORIGIN: "https://api.example.invalid",
+      CANTRIP_TRUSTED_PROXIES: "loopback",
+      CANTRIP_SECRET_ENCRYPTION_KEYS: JSON.stringify({
+        "local-v1": JSON.parse(key).key,
+      }),
+    };
+    delete hosted.CANTRIP_WORKER_TOKEN;
+    const forwarded = {
+      "x-forwarded-proto": "https",
+      "x-forwarded-host": "api.example.invalid",
+    };
+    assert.deepEqual(await probe(hosted, forwarded), first);
+    assert.deepEqual(await probe(hosted, forwarded), first);
+    assert.deepEqual(await readFile(profile), saved);
+    assert.deepEqual(
+      await readFile(path.join(data, "secret-encryption-key.json")),
+      key,
+    );
+    assert.deepEqual(await probe(environment), first);
     report.modes.push({
       mode,
       selectedEngine: first.database,
@@ -131,6 +170,9 @@ try {
       restartsRetainIdentity: true,
       failedSetupRetainsSelection: true,
       databaseUrlOverride: true,
+      hostedRestartsRetainIdentityAndBackend: true,
+      hostedRetainsProfileAndKey: true,
+      localRestartAfterHosted: true,
     });
   }
 } catch (error) {
