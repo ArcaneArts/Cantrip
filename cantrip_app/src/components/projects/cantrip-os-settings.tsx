@@ -26,6 +26,7 @@ import { createRemoteDesktop } from "@/lib/api/surfaces";
 import { CantripOsAttachForm } from "./cantrip-os-attach-form";
 import { CantripOsSourceForm } from "./cantrip-os-source-form";
 import { CantripOsWorktreeForm } from "./cantrip-os-worktree-form";
+import { CantripOsBackupControls } from "./cantrip-os-backup-controls";
 
 export function CantripOsSettings({
   project,
@@ -296,6 +297,17 @@ export function CantripOsSettings({
               onProvisioned={refreshLists}
             />
           ) : null}
+          <CantripOsBackupControls
+            key={selected.id}
+            instance={selected}
+            instances={instances.data ?? []}
+            workerNames={Object.fromEntries(
+              workers.map((worker) => [worker.workerId, worker.name]),
+            )}
+            workspace={workspace}
+            workspaces={workspaces.data ?? []}
+            onChanged={refreshLists}
+          />
         </>
       ) : null}
       <section className="space-y-3">
