@@ -657,6 +657,8 @@ export type GoalRuntimeOptions = Pick<
   taskOwned?: boolean;
   taskGoalCycleId?: string | null;
   taskGoalOrderEpoch?: number;
+  subagentDefaults?: RuntimeSubagentDefaults | null;
+  planMode?: PlanMode;
 };
 
 export interface NativeReplacementSettings {

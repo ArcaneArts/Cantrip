@@ -179,6 +179,43 @@ impl ManagedConsole {
         }
         Ok(fields)
     }
+
+    /// Task dispatch owns input authority. Resolve full execution configuration
+    /// without constructing a console or loading a native thread on the server.
+    pub async fn configure_task_goal_command(
+        &self,
+        owner: &str,
+        context: &Value,
+        runtime: &Value,
+        command: &mut Value,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            context["experience"] == "task" && context["contextKind"] == "project",
+            "Task Goals require their project execution context."
+        );
+        let fields = self.configuration(owner, context, runtime).await?;
+        for key in [
+            "model",
+            "provider",
+            "subagentDefaults",
+            "planMode",
+            "permissionProfileId",
+            "mcpServers",
+        ] {
+            command[key] = fields[key].clone();
+        }
+        command["taskRuntime"] = json!({
+            "projectId": context["projectId"],
+            "worktreeId": context["worktreeId"],
+            "rootKind": context["rootKind"],
+            "computerUseEnabled": context["computerUseEnabled"] == true,
+        });
+        if let Some(os) = context.get("osExecution").filter(|os| !os.is_null()) {
+            command["osExecution"] = os.clone();
+        }
+        Ok(())
+    }
+
     pub async fn prepare_turn(
         &self,
         owner: &str,

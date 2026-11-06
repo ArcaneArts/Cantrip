@@ -1,4 +1,5 @@
 import { protectChatInput } from "./protect-chat-input.js";
+import { prepareTaskGoalConfiguration } from "./task-goal-configuration.js";
 import {
   managedConsoleSessionContext,
   prepareManagedConsoleLaunch,
@@ -186,6 +187,15 @@ export function createTaskGoalRuntime({
       options.runtimes,
     );
     const runtime = routePairs[0]!.root.runtime;
+    const taskConfiguration = await prepareTaskGoalConfiguration(
+      {
+        ...context,
+        modelConfiguration,
+        reasoningEffort: modelConfiguration.reasoningEffort,
+      },
+      runtime,
+      { ownerId: applicationOwnerId(), repository, routePairsForConfiguration },
+    );
     const currentTask = await repository.tasks.get(
       applicationOwnerId(),
       context.chatId,
@@ -193,6 +203,7 @@ export function createTaskGoalRuntime({
     const result = taskGoalWorkerResultSchema.parse(
       await bridge.request(context.workerId, {
         type: "chat.goal.create",
+        ...taskConfiguration,
         chatId: context.chatId,
         cwd: context.cwd,
         threadId: runtimeCanResumeContext(context, runtime)
@@ -200,9 +211,6 @@ export function createTaskGoalRuntime({
           : null,
         objective,
         tokenBudget: null,
-        model: runtime.model,
-        provider: runtime.provider,
-        permissionProfileId: effectivePermissionProfile(context).effectiveId,
         taskContext: {
           task,
           ...(currentTask?.dispatch
@@ -814,6 +822,13 @@ export function createTaskGoalRuntime({
     }
     const runtime = await runtimeForContext(context);
     if (!runtime) throw new Error("Selected model was not found.");
+    const taskConfiguration = activateGoal
+      ? await prepareTaskGoalConfiguration(context, runtime, {
+          ownerId: applicationOwnerId(),
+          repository,
+          routePairsForConfiguration,
+        })
+      : undefined;
     const observation =
       !dispatchFence && !activateGoal && !message
         ? await repository.tasks.goalObservations.capture(
@@ -836,6 +851,7 @@ export function createTaskGoalRuntime({
         model: runtime.model,
         provider: runtime.provider,
         permissionProfileId: effectivePermissionProfile(context).effectiveId,
+        ...taskConfiguration,
         taskContext: {
           ...(runtimeFailure ? { runtimeFailure } : {}),
           task: taskContentFromSummary(task),

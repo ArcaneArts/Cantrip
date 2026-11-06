@@ -69,6 +69,16 @@ import {
   workerChatAttachmentSchema,
 } from "./worker-runtime-support.js";
 
+/** Task Goals own input through Task dispatch, not a managed console session. */
+const taskGoalRuntimeSchema = z
+  .object({
+    projectId: z.string().min(1),
+    worktreeId: z.string().min(1),
+    rootKind: projectRootKindSchema,
+    computerUseEnabled: z.boolean(),
+  })
+  .strict();
+
 export const workerChatCommandSchemas = [
   z
     .object({
@@ -674,6 +684,8 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.goal.create"),
+    osExecution: cantripOsExecutionSchema.optional(),
+    taskRuntime: taskGoalRuntimeSchema.optional(),
     operationId: z.string().min(1).max(255).optional(),
     session: managedSessionContextSchema.optional(),
     subagentDefaults: managedSessionSubagentDefaultsSchema
@@ -696,6 +708,8 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.goal.update"),
+    osExecution: cantripOsExecutionSchema.optional(),
+    taskRuntime: taskGoalRuntimeSchema.optional(),
     protectObjective: z.boolean().optional(),
     session: managedSessionContextSchema.optional(),
     subagentDefaults: managedSessionSubagentDefaultsSchema

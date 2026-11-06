@@ -2903,3 +2903,46 @@ helper/native execution, hosted validation or computer-use testing ran. Actual
 runtime/platform behavior remains unverified. The full goal remains active for
 remaining Goal/configuration/resource lifecycle coverage, entry-point and
 acceptance review, and final documentation consolidation.
+
+### Goal metadata controls and complete Task activation configuration
+
+Native Goal get, pause, objective-only update and clear support materialized
+threads without constructing a Core. The worker uses that native metadata path
+for private Tasks. In particular, clearing a saved Goal must not resume its
+thread first: that could start an autonomous producer before the clear reaches
+it. Existing managed Agent controls retain their command dispatcher and input
+ownership. Metadata operations neither acquire nor release an inference ticket.
+
+For a live private Task, metadata controls select its actual prepared runtime
+under the current worker admission owner and published history namespace. A
+different current model/subagent configuration must not redirect a pause or clear
+to another native process. Multiple actual owners are reported as an ownership
+error, rather than guessed between. If no live owner is prepared, the native
+metadata RPC operates on the saved thread without loading it.
+
+Creating an encrypted Task Goal or explicitly activating one carries full
+execution configuration in both Node and Rust servers: exact root/child model
+and provider, effective permissions, plan mode, effective MCP servers, project,
+worktree, root kind, computer-use enablement and optional OS execution placement.
+The server resolves configuration through its existing managed-turn profile
+helper without ensuring a console thread or claiming a ticket. The worker opens
+protected provider/MCP configuration, verifies the child's exact root provider
+identity, and builds its usual project MCP attachment. OS placement is transported
+at the command level so the existing worker OS execution scope applies.
+
+The SDK then prepares the Task through the existing managed-thread method with
+its inference-only execution gate before setting the active Goal. Plan mode and
+subagent defaults reach the actual native runtime. Existing managed input owners
+are preserved. Task dispatch still owns kickoff input; each real Goal cycle and
+child inference uses the shared worker admission service. Metadata-only edits do
+not require this activation configuration. Activation from an older server that
+omits required configuration reports that missing configuration instead of
+loading a partially configured Task; deploy matching server and worker versions.
+
+Source review covered initial encrypted launch, deferred input activation,
+interactive activation, saved-thread pause/objective/clear, live custom-subagent
+Task ownership and existing native unloaded Goal mutation handlers. Validation
+was direct formatting, mechanical protocol contract export and
+`git diff --check`. No tests, builds, typechecks, benchmarks, native/helper
+execution, hosted validation or computer-use testing ran. Runtime behavior remains
+unverified; the full lifecycle and acceptance audit continues.
