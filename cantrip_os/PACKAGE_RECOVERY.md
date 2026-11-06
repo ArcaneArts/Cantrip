@@ -183,9 +183,43 @@ control. An explicitly requested new repair after an unknown outcome is governed
 by the real guest dpkg/recovery locks rather than a guessed helper-health gate.
 Observe the original installer and retain its evidence before making that choice.
 
-These are backend APIs, not yet package-update buttons in the Cantrip interface.
-Their HTTP tests exercise real Server persistence and Worker bridge contracts;
-full Worker death/client reload acceptance belongs to the following UI cycle.
+## Update and repair in Cantrip
+
+In **Project Settings → CantripOS**, select the intended instance and use
+**Cantrip integration packages**. The panel observes real installed versions and
+verified artifacts offered by that instance's owning Worker. For development,
+start the Worker with `CANTRIP_OS_PACKAGE_DIRECTORY` pointing to the absolute
+normal-build package directory described above. A missing build does not imply
+that the guest package is missing or unhealthy.
+
+Select packages and exact builds, choose update or repair, then review the
+destination, versions, architectures and checksums. Configuration is preserved by
+default. Repair separately offers **Use package defaults and retain the original
+configuration**. Confirming may interrupt managed work across the instance.
+There is no live-executor or helper-health prerequisite for package maintenance.
+
+The client saves immutable request metadata before sending; private diagnostics
+are not stored in that browser reminder. After a lost reply or reload, select the
+original instance and **Check saved package request**. History and **Check original
+operation** observe the admitted job rather than upload or install again. Active
+jobs are observed periodically; a detached start reservation receives one initial
+follow-up observation, then a persistent unknown needs an explicit check. There
+is no automatic continuation or installation retry. Dismissing a local reminder
+does not cancel the guest operation or remove Server history.
+
+For an unfinished operation, **Continue staging** and **Abandon before start**
+require separate confirmation and retain the original attachment, target and
+artifacts. Abandonment cannot stop an installer that has already started.
+**Inspect private outcome** decrypts the retained receipt for the unlocked owning
+account; locking or changing account withholds opened plaintext. After maintenance,
+use **Check recovery**, then **Verify files** on the intended source before opening
+fresh execution handles. Existing chats do not change captured destinations.
+
+Actual installed-VM product acceptance covers ordinary update, broken-helper
+repair without a working executor CLI, full Worker death during dpkg, offline
+browser reload and observation of the same installer without replay. See the
+[acceptance record](ACCEPTANCE.md#phase-5-package-controls-and-full-worker-install-recovery-2026-11-06)
+for versions, evidence and remaining platform work.
 
 An ordinary `upgrade` runs `dpkg --force-confold --install` once. An explicit
 `repair` first restores trusted package payload and maintainer scripts, retaining

@@ -54,12 +54,14 @@ workspace capture, staged restore, selected home-state reset, interruption
 recovery and rollback commands.
 Recovery 0.5.0 supplies [package upgrade and external repair](PACKAGE_RECOVERY.md)
 through the same authenticated Docker/SSH carrier, including when installed
-Cantrip helpers are broken. Its durable administrative jobs are the foundation
-for subsequent product package controls. The external Worker now adds verified
+Cantrip helpers are broken. The external Worker adds verified
 artifact catalogues, owner/boot-pinned jobs and protected durable observations;
 it can repair without a functioning installed executor. Both Servers now retain
-authorized package admissions, history and protected outcomes. Client controls
-remain a following checkpoint.
+authorized package admissions, history and protected outcomes. Project Settings
+→ CantripOS → **Cantrip integration packages** now supplies build selection,
+update/repair review, saved-request recovery, history and private receipts.
+The installed-VM product checkpoint kills the full Worker during real dpkg,
+reloads the browser offline and observes the same installer after reconnect.
 Docker/ISO scripts include it with the executor edition;
 `CANTRIP_OS_RECOVERY=0` omits it independently. The package is an administrative
 foundation. [Private Worker archive encryption/transfer and Server admissions](BACKUPS.md)

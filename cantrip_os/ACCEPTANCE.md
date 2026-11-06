@@ -4069,3 +4069,84 @@ checkpoint. Private logs and source metadata are retained under
 Worker/browser recovery testing remain next, alongside the wider Phase 5
 system-preservation, clone identity, actual remote/model and final distribution
 requirements. Phase 5 is not complete.
+
+## Phase 5: package controls and full Worker install recovery (2026-11-06)
+
+Project CantripOS settings now expose actual package inventory and immutable build
+selection, update/repair review, configuration preservation by default, explicit
+package-default repair, account-scoped saved requests, paginated history, original
+operation observation and confirmed staging controls. The client obtains the real
+repository-content Worker grant before submitting an installation, saves the exact
+request before its first send and never automatically continues, uploads or
+installs after uncertainty. Active jobs use observation polling; an unknown
+detached-start reservation receives one initial follow-up observation. Persistent
+unknowns remain explicit. Private receipts use real package-result decryption and
+are withheld when encryption locks or the account changes.
+
+Actual acceptance used the full current-source Worker, normal App in Codex's
+in-app browser, native Server from the preceding checkpoint and retained managed
+PostgreSQL. The disposable AMD64 installed VM was attached through the actual
+SSH product form, with pinned host verification and the existing Worker-local
+key. Its persistent instance is `0e34c690-abae-480a-979d-df9e79661d66`; the
+logical product instance is `7ff8c917-82c3-482f-895f-caf44d3f4357`. It ran
+workspaces 0.3.0, executor 0.10.0, remote 0.9.0 and recovery 0.5.0. These are
+explicitly recorded test versions, not final current distributions.
+
+The UI installed the normal recovery 0.5.0 all-architecture package, SHA-256
+`dc2e2c7173c5769890861ef23c1a5e9fe89c4379720cbd8b52b3642dec07e5a1`,
+21,484 bytes. Its receipt reached completion through original-operation
+observation. A disposable derived build then broke both recovery helpers and a
+maintainer script. Both helpers and an actual ordinary dpkg reinstall failed.
+With the executor CLI independently broken to exit 76, the product still
+performed external repair to the normal package. The protected receipt confirmed
+real dpkg completion and retention of the administrator conffile. The executor
+CLI was restored afterward; no fake healthy runtime was used for repair.
+
+For full Worker failure, a QA-only SSH wrapper matched the exact test endpoint,
+key paths, canonical rescue-source hash and package `start` command. It executed
+the real carrier, then withheld its successful reply. After actual guest process
+and maintainer-counter observation, the test killed the full Worker with SIGKILL.
+An initial harness run had failed to match the extra `--expect` arguments and
+ended as an ordinary failed fixture installation; that failure is retained and
+is not counted as Worker-loss evidence. The corrected run used operation
+`349494ea-8c5c-4e80-85c6-57a2875ef4e6` and artifact SHA-256
+`589db43889c77c8c13a33a3778ed837a94065fc2f26fec156259f33f4b81af0d`.
+
+Reloading the browser while offline retained that exact submitted request and
+Server admission. Restarting the same full Worker/profile and checking the saved
+request recovered the original running installation: coordinator PID 36708,
+start 8250265, and dpkg PID 36717, start 8250281, on the same guest boot. The
+maintainer counter added exactly one PID for this admission. After explicit
+fixture release, observation reached completion with the same identities and a
+private receipt successfully decrypted by the actual App. No second installation
+was dispatched. A final UI repair returned the VM to the normal recovery 0.5.0
+build; the client's bounded initial observation reached completion automatically.
+
+Before/after evidence retains the same workspace UID/GID, home inode, dirty Git
+state, ignored secret/dependency fixtures, Unicode filename, browser SQLite
+database, file hashes/modes/ownership and arbitrary root marker. The customized
+recovery conffile remains byte-identical. Explicit **Check recovery**, registration
+of the retained Linux directory and **Verify files** produce a fresh ready source
+for workspace `pkg-d-package-qa`; old chats retain their captured destinations.
+
+Validation: 13 focused UI/API/real-crypto tests pass, including account-change
+fencing, lost-reply remount, observation without replay, confirmation and plaintext
+withholding. App typecheck and production build pass. The full App suite passes
+4,565 tests with seven skipped; three live-query expectation failures reproduce
+on unchanged Primary. `pnpm check` stops at unchanged Server budgets 1531/1500
+and 2286/1999. Private events, source metadata, receipts, failure logs and Codex
+browser screenshots are retained under
+`cantrip_os/artifacts/phase5-package-controls`.
+
+The shared Docker engine returned actual filesystem I/O errors when executing
+`/bin/sh` or Python in both disposable guests and when reading image metadata.
+No engine restart, global pruning or unrelated project cleanup was performed.
+This cycle therefore records installed-VM product acceptance and the separately
+recorded earlier Docker Manager evidence; it does not claim a Docker product
+failure roundtrip. Staging-control confirmation and locking/account transitions
+are covered by client and existing Server tests, not new browser scenarios here.
+The Host bundle in this lab predates current native patches, so this checkpoint
+also does not claim current-runtime model/CUA or cloud acceptance. No guest source
+or package version changes, Docker image or ISO are part of this UI cycle.
+Shared-system preservation/replacement, clone identities, actual remote/model
+acceptance and final current distributions remain required for Phase 5.

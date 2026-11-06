@@ -9,14 +9,13 @@ recorded in [acceptance](ACCEPTANCE.md#phase-3-acceptance-and-distribution-2026-
 Run/worktree/task-creation MCP adapters remain unavailable in Linux sessions;
 use the source-aware product workflows described below.
 
-Package updates and broken-helper repair currently have a separate
-[administrative Docker/SSH path](PACKAGE_RECOVERY.md). The external Worker also
-provides verified package candidates and durable, encrypted operation results,
-including with a broken installed executor. Both Servers provide owned
-[package admissions, history and explicit observation/continuation](PACKAGE_RECOVERY.md#server-owned-package-admissions).
-Package interface controls remain a dependent Phase 5 checkpoint; the
-existing power, desktop, backup and workspace-reset controls do not imply that
-shared-system replacement or package upgrade is available through their UI.
+Project Settings → CantripOS → **Cantrip integration packages** supplies optional
+package update/repair, exact build review, saved-request observation, owned history
+and private outcomes. It uses the existing external Worker and Server admissions,
+including when the installed executor is broken. The independent
+[administrative Docker/SSH path](PACKAGE_RECOVERY.md) remains available. Package
+maintenance does not implement shared-system replacement or preserve every
+arbitrary root change across a base-image replacement.
 
 ## Attach and select
 

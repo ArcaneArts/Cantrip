@@ -745,8 +745,17 @@ controls, stale inventory/runtime replies and
 changed-attachment rejection. Package admission and terminal completion fence
 old execution authority; explicit recovery supplies fresh handles. Native
 validation matches the actual TypeScript protocol, including repair-only defaults
-and ciphertext bounds. Client package controls and full Worker/product failure
-acceptance remain dependent work. Shared-system
+and ciphertext bounds. Cantrip now supplies exact-build package update/repair
+review, private outcomes, saved-request recovery and paginated history. Actual
+installed-VM product acceptance repairs broken guest helpers with the executor CLI
+also broken, then kills the full Worker during dpkg with its start reply withheld.
+An offline browser reload and Worker restart recover the same admission, guest
+coordinator and installer without another installation. Configuration, dirty and
+ignored files, ownership, browser data and arbitrary root markers are retained;
+explicit recovery verifies a fresh source afterward. Docker product acceptance
+was unavailable in this client cycle because the shared engine returned actual
+filesystem I/O errors; earlier Docker Manager acceptance remains separately
+recorded. Shared-system
 preservation/replacement, clone identities, remote/model acceptance and final
 current distributions remain required for the full Phase 5 goal.
 
