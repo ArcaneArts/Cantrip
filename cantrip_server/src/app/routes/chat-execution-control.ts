@@ -194,8 +194,7 @@ export function installChatExecutionControlRoutes(
           )
         : null;
       if (
-        suspension?.checkpoint &&
-        suspension.active &&
+        suspension?.active &&
         !["stopped", "completed", "failed", "idle"].includes(suspension.phase)
       ) {
         try {

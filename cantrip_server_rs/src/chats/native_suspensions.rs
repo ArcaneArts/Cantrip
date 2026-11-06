@@ -5,6 +5,16 @@ use crate::{
 };
 use anyhow::Result;
 
+/// A null checkpoint permits a surviving-owner attempt, never cold restoration.
+pub fn is_live_resume(state: &Value) -> bool {
+    state["checkpoint"].is_null()
+        && !state["active"].is_null()
+        && state["action"] != "stop"
+        && (state["phase"] == "error"
+            || (state["action"] == "resume"
+                && matches!(state["phase"].as_str(), Some("resuming" | "running"))))
+}
+
 impl super::Repository {
     /// Strict recovery reads retain unsupported bytes rather than resetting state.
     pub async fn native_suspension(&self, owner: &str, chat: &str) -> Result<Option<Value>> {

@@ -636,9 +636,9 @@ export function reconciledRootTurnStatus(
   finalAnswerAvailable: boolean,
   interruptionRequested: boolean,
 ): TurnCompletedParams["turn"]["status"] {
-  if (status === "completed") return status;
-  if (finalAnswerAvailable) return "completed";
+  if (status === "completed" || status === "interrupted") return status;
   if (interruptionRequested) return "interrupted";
+  if (finalAnswerAvailable) return "completed";
   return status;
 }
 

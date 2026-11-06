@@ -98,6 +98,32 @@ describe("ChatComposerPrimaryActions", () => {
     expect(markup).toContain("Saved turn data is missing");
     expect(markup).toContain('aria-label="Stop current operation"');
   });
+  it("retains live controls after an unsuccessful Resume without a checkpoint", () => {
+    const markup = renderActions({
+      active: false,
+      paused: true,
+      nativeSuspension: {
+        ...native("error"),
+        resumable: false,
+        pausedAt: null,
+        error: { code: "restore-failed", protectedDetails: null },
+      },
+    });
+    expect(markup).toContain("Live Resume failed");
+    expect(markup).toContain("No durable pause was saved");
+    for (const label of [
+      "Retry pause",
+      "Resume automatic agent work",
+      "Stop current operation",
+    ])
+      expect(
+        markup.match(
+          new RegExp(`<button[^>]*aria-label="${label}"[^>]*>`),
+        )?.[0],
+      ).not.toMatch(/\sdisabled=""/);
+    expect(markup).not.toContain('aria-label="Retry resume"');
+    expect(markup).not.toMatch(/role="status"[^>]*>Paused/);
+  });
   it("keeps Stop usable while a restored turn is Resuming", () => {
     const markup = renderActions({
       active: false,

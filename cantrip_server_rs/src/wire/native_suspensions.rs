@@ -21,9 +21,14 @@ pub(super) fn refine(
             "An actor claim must belong to the current control.",
         ),
         (
-            matches!(phase, "paused" | "resuming") && !checkpoint,
+            phase == "paused" && !checkpoint,
             "checkpoint",
             "A durable paused turn requires its committed checkpoint.",
+        ),
+        (
+            phase == "resuming" && !checkpoint && (value["action"] != "resume" || !active),
+            "active",
+            "A live Resume requires its original active turn and resume intent.",
         ),
         (
             checkpoint

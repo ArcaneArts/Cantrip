@@ -25,11 +25,13 @@ import { killOwnedWorkerTree } from "./owned-worker-tree.mjs";
 import { openSuspensionTerminal } from "./suspension-terminal-browser.mjs";
 import {
   completedSessionCommand,
+  retainedSuspensionSession,
   completedSuspensionSession,
   completedSessionPoll,
   observeCompletedSessionPoll,
   assertCompletedSessionResult,
 } from "./suspension-terminal-resource.mjs";
+import { refuseActiveSuspensionSession } from "./suspension-resource-refusal.mjs";
 import { verifyPendingSuspensionStop } from "./pending-suspension-stop.mjs";
 import {
   answerSuspensionInteraction,
@@ -234,7 +236,10 @@ async function flow(kind, executable, cliBinary) {
         },
       },
     ];
-    if (process.argv.includes("--completed-session"))
+    if (
+      process.argv.includes("--completed-session") ||
+      process.argv.includes("--active-session")
+    )
       tool.calls[0].arguments = completedSessionCommand();
     if (process.argv.includes("--pending-approval")) {
       tool.calls[0].arguments.sandbox_permissions = "require_escalated";
@@ -364,7 +369,62 @@ async function flow(kind, executable, cliBinary) {
       () => boundary.entered,
       (value) => assert.equal(value, true),
     );
-    if (process.argv.includes("--completed-session"))
+    if (process.argv.includes("--active-session")) {
+      result.session = retainedSuspensionSession(boundary);
+      boundary = await refuseActiveSuspensionSession({
+        page,
+        chatId: chat.id,
+        projectId,
+        origin: vite.resolvedUrls.local[0],
+        workerData,
+        directory,
+        session: result.session,
+        boundary,
+        model,
+        inferences,
+        configuration,
+        stopActive: process.argv.includes("--stop-active-session"),
+      });
+      if (result.session.refusal.stopped) {
+        result.stopped = result.session.refusal.stopped;
+        const killed = worker;
+        worker = undefined;
+        terminal?.dispose();
+        terminal = undefined;
+        const terminated = await killOwnedWorkerTree(killed.child, {
+          executableRoots: [workerData],
+        });
+        result.kills.push({
+          round: "stopped-resource",
+          ...terminated,
+          native: result.stopped.native,
+        });
+        await launch();
+        if (process.argv.includes("--mounted-ui"))
+          await openMountedSuspensionChat(
+            page,
+            vite.resolvedUrls.local[0],
+            null,
+          );
+        if (terminalId) {
+          terminal = await openSuspensionTerminal(
+            page,
+            chat.id,
+            workerId,
+            terminalId,
+          );
+          await eventually(terminal.read, (value) =>
+            assert.ok(value.text.includes(prompt), value.text),
+          );
+        }
+        const stopped = await suspensionChat(page, projectId, chat.id);
+        assert.equal(stopped.nativeSuspension.phase, "stopped");
+        assert.equal(stopped.nativeSuspension.resumable, false);
+        assert.equal(inferences(), result.stopped.requests);
+        assert.deepEqual(model.failures, []);
+        return;
+      }
+    } else if (process.argv.includes("--completed-session"))
       result.session = await completedSuspensionSession(boundary, directory);
     if (result.question)
       result.question.activeModeChange = await qualifySuspensionPlanRoutes(

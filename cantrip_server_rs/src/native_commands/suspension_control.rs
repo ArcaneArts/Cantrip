@@ -24,7 +24,7 @@ impl Repository {
                     ) {
                         return Ok(state);
                     }
-                    if state["checkpoint"].is_null() || state["active"].is_null() {
+                    if state["active"].is_null() {
                         return reject("suspension-not-held");
                     }
                     state["controlId"] = json!(uuid::Uuid::new_v4().to_string());
@@ -62,11 +62,13 @@ impl Repository {
                     {
                         return reject("suspension-stop-pending");
                     }
-                    if state["checkpoint"].is_null()
-                        || state["action"] == "stop"
-                        || !(state["phase"] == "paused"
-                            || (state["phase"] == "error" && state["action"] == "resume"))
-                    {
+                    let durable = !state["checkpoint"].is_null()
+                        && state["action"] != "stop"
+                        && (state["phase"] == "paused"
+                            || (state["phase"] == "error" && state["action"] == "resume"));
+                    let live = state["phase"] == "error"
+                        && crate::chats::native_suspensions::is_live_resume(&state);
+                    if !durable && !live {
                         return reject("suspension-not-resumable");
                     }
                     let current = context::execution(tx, &owner, &chat)

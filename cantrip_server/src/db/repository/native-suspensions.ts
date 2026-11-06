@@ -23,6 +23,20 @@ import type { ChatExecutionContext } from "./chat-execution-lanes.js";
 type Chat = typeof schema.chats.$inferSelect;
 type State = NativeSuspensionRecord;
 type Change = { state: State; changed: boolean };
+/** No checkpoint means a surviving-owner attempt only, never cold restoration. */
+export function isLiveNativeSuspensionResume(
+  state: State | null | undefined,
+): state is State {
+  return (
+    !!state &&
+    state.checkpoint === null &&
+    state.active !== null &&
+    state.action !== "stop" &&
+    (state.phase === "error" ||
+      (state.action === "resume" &&
+        ["resuming", "running"].includes(state.phase)))
+  );
+}
 const terminal = new Set<State["phase"]>([
   "stopped",
   "completed",
@@ -199,7 +213,11 @@ export class NativeSuspensionRepository {
         conflict("suspension-stop-pending");
       if (
         action === "resume" &&
-        (!current || !isNativeSuspensionResumable(current))
+        (!current ||
+          (!isNativeSuspensionResumable(current) &&
+            !(
+              current.phase === "error" && isLiveNativeSuspensionResume(current)
+            )))
       )
         conflict("suspension-not-resumable");
 
@@ -293,6 +311,13 @@ export class NativeSuspensionRepository {
       executionOwner = nativeSuspensionActorSchema.parse(executionOwner);
     return this.change(ownerId, chatId, async (tx, chat, current) => {
       const state = this.current(current, controlId);
+      if (
+        state.phase === "resuming" &&
+        !state.checkpoint &&
+        (state.actor?.workerGeneration !== actor.workerGeneration ||
+          state.actor?.runtimeGeneration !== actor.runtimeGeneration)
+      )
+        conflict("suspension-live-owner-unavailable");
       if (
         executionOwner &&
         (!["resuming", "stopping"].includes(state.phase) ||
@@ -416,7 +441,7 @@ export class NativeSuspensionRepository {
   ): Promise<Change> {
     return this.acknowledge(ownerId, chatId, controlId, actor, (state, now) => {
       if (state.phase === "running") return { state, changed: false };
-      if (state.phase !== "resuming" || !state.active || !state.checkpoint)
+      if (state.phase !== "resuming" || !state.active)
         conflict("suspension-control-settled");
       return {
         state: { ...finishPausedTime(state, now), phase: "running" },

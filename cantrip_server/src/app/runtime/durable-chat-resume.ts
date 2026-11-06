@@ -158,7 +158,8 @@ export function createDurableChatResumeRuntime(
       // Do not replace uncertain execution with another automatic restoration.
       if (
         observed.state.phase === "resuming" &&
-        observed.state.actorControlId !== observed.state.controlId
+        observed.state.actorControlId !== observed.state.controlId &&
+        requested.state.checkpoint
       ) {
         try {
           const runtime = await runtimeForContext(context);
@@ -271,6 +272,12 @@ export function createDurableChatResumeRuntime(
         "The suspended native turn remains held",
       );
       if (failure instanceof DurableChatResumeError) throw failure;
+      if (!requested.state.checkpoint)
+        throw new DurableChatResumeError(
+          502,
+          observed.state.error?.code ?? "restore-failed",
+          "The live turn could not be resumed. No durable pause was saved. Reconnect the original worker and retry, or Stop this turn.",
+        );
       throw new DurableChatResumeError(
         502,
         observed.state.error?.code ?? "restore-failed",

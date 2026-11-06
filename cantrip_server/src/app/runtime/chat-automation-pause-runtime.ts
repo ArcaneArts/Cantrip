@@ -19,6 +19,7 @@ import {
 } from "./durable-chat-resume.js";
 import type { ServerRepository } from "../../db/repository.js";
 import { errorMessage } from "../../http/request-helpers.js";
+import { isLiveNativeSuspensionResume } from "../../db/repository/native-suspensions.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 import { STREAMING_WORKER_COMMAND_TIMEOUT_MS } from "../shared/constants.js";
 import { settleTaskGoalHandoffForControl } from "../../terminals/task-goal-handoff-control.js";
@@ -126,9 +127,12 @@ export function createChatAutomationPauseRuntime(
         active: suspension.active,
         nativeSuspension: chatNativeSuspension(suspension),
       };
-    const durableResume =
-      managedNative && !paused && Boolean(suspension?.checkpoint);
-    if (durableResume && suspension) {
+    const suspensionResume =
+      managedNative &&
+      !paused &&
+      (Boolean(suspension?.checkpoint) ||
+        isLiveNativeSuspensionResume(suspension));
+    if (suspensionResume && suspension) {
       try {
         return await resumeDurable(
           ownerId,
@@ -145,13 +149,13 @@ export function createChatAutomationPauseRuntime(
     }
     // Native goal/queue resume may start execution, so admission must observe
     // the user's durable unpause before the worker forwards that mutation.
-    const resumeBeforeWorker = !paused && managedNative && !durableResume;
+    const resumeBeforeWorker = !paused && managedNative && !suspensionResume;
     const resumed = resumeBeforeWorker
       ? await repository.setChatAutomationPaused(ownerId, context.chatId, false)
       : null;
     if (resumeBeforeWorker && !resumed)
       throw new ChatAutomationPauseError(404, "Chat source not found.");
-    if (managedNative && !paused && !durableResume)
+    if (managedNative && !paused && !suspensionResume)
       await repository.nativeCommands.resumeAutonomy(ownerId, context.chatId);
     const workerConnected = bridge.isConnected(context.workerId);
     const pauseCommand = (paused: boolean) =>

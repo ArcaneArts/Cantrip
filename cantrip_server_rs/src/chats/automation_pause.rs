@@ -52,6 +52,9 @@ pub struct Service {
     live: Arc<Live>,
     logger: Logger,
     operations: Arc<Operations>,
+    stop_controls: std::sync::Mutex<
+        std::collections::HashMap<(String, String), std::sync::Weak<tokio::sync::Mutex<()>>>,
+    >,
 }
 fn text(value: &Value) -> Result<String> {
     Ok(value
@@ -89,6 +92,7 @@ impl Service {
             live,
             logger,
             operations: Arc::default(),
+            stop_controls: Default::default(),
         })
     }
     pub fn set(
@@ -163,17 +167,17 @@ impl Service {
                 json!({"paused":true,"active":state["active"],"nativeSuspension":super::native_suspensions::stored_summary(state)}),
             );
         }
-        let durable_resume = native
+        let suspension_resume = native
             && !paused
-            && suspension
-                .as_ref()
-                .is_some_and(|s| !s["checkpoint"].is_null());
-        if durable_resume {
+            && suspension.as_ref().is_some_and(|s| {
+                !s["checkpoint"].is_null() || super::native_suspensions::is_live_resume(s)
+            });
+        if suspension_resume {
             return self
                 .durable_resume(owner, context, &control, resume_automation)
                 .await;
         }
-        let resume_before_worker = !paused && native && !durable_resume;
+        let resume_before_worker = !paused && native && !suspension_resume;
         let resumed = if resume_before_worker {
             self.chats
                 .set_automation_paused(owner, &chat, false)
@@ -184,7 +188,7 @@ impl Service {
         if resume_before_worker && resumed.is_none() {
             return Err(failure(404, "Chat source not found."));
         }
-        if native && !paused && !durable_resume {
+        if native && !paused && !suspension_resume {
             self.native.resume_autonomy(owner, &chat).await?;
         }
         let connected = self.commands.is_connected(&worker);

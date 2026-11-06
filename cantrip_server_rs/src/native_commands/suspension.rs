@@ -249,9 +249,10 @@ pub(super) async fn dispatch(
     if action == "resume"
         && !duplicate
         && !previous.as_ref().is_some_and(|s| {
-            !s["checkpoint"].is_null()
+            (!s["checkpoint"].is_null()
                 && s["action"] != "stop"
-                && (s["phase"] == "paused" || (s["phase"] == "error" && s["action"] == "resume"))
+                && (s["phase"] == "paused" || (s["phase"] == "error" && s["action"] == "resume")))
+                || (s["phase"] == "error" && crate::chats::native_suspensions::is_live_resume(s))
         })
     {
         return reject("suspension-not-resumable");
@@ -304,6 +305,13 @@ pub(super) async fn dispatch(
         || active["threadId"] != state["target"]["threadId"]
     {
         return reject("suspension-turn-mismatch");
+    }
+    if state["phase"] == "resuming"
+        && state["checkpoint"].is_null()
+        && (state["actor"]["workerGeneration"] != input["workerGeneration"]
+            || state["actor"]["runtimeGeneration"] != input["session"]["runtimeGeneration"])
+    {
+        return reject("suspension-live-owner-unavailable");
     }
     state["active"] = active;
     state["actor"] = json!({"workerGeneration":input["workerGeneration"],"runtimeGeneration":input["session"]["runtimeGeneration"],
@@ -389,10 +397,7 @@ pub(super) async fn settle(
                 if state["phase"] == "running" {
                     return Ok(());
                 }
-                if state["phase"] != "resuming"
-                    || state["active"].is_null()
-                    || state["checkpoint"].is_null()
-                {
+                if state["phase"] != "resuming" || state["active"].is_null() {
                     return reject("suspension-control-settled");
                 }
                 finish_time(&mut state)?;
