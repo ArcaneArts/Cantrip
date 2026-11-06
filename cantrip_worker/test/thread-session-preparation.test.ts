@@ -418,6 +418,76 @@ describe("thread session preparation", () => {
     );
   });
 
+  it.each([
+    [true, "canonical", false],
+    [false, "canonical", true],
+    [true, "legacy", true],
+    [true, null, true],
+  ] as const)(
+    "keeps lifecycle with canonical history=%s and actual source=%s without a second writer",
+    async (canonicalHistory, source, imports) => {
+      const f = fixture();
+      await f.runtime.prepareManagedThread({ ...managed, canonicalHistory });
+      await f.runtime.prepareExternalSync(options);
+      f.request.mockImplementation(async () => ({
+        thread: {
+          id: "thread-1",
+          status: { type: "active" },
+          turns: [
+            {
+              id: "native-turn",
+              status: "inProgress",
+              startedAt: 1,
+              completedAt: null,
+              durationMs: null,
+              error: null,
+              items: [
+                {
+                  type: "userMessage",
+                  id: "native-input",
+                  clientId: "native-tui-client",
+                  content: [{ type: "text", text: "Native prompt" }],
+                },
+              ],
+            },
+          ],
+        },
+        ...(source
+          ? {
+              history: {
+                version: 1,
+                currentTurnId: "native-turn",
+                currentTurnState: "live",
+                turns: [
+                  {
+                    turnId: "native-turn",
+                    source,
+                    retention: "complete",
+                    items: [],
+                    usage: null,
+                    warnings: null,
+                    errors: null,
+                  },
+                ],
+              },
+            }
+          : {}),
+      }));
+      const sync = await f.runtime.syncThread(options);
+      expect(sync).toMatchObject({
+        status: "running",
+        statusSource: "native-thread",
+      });
+      expect(sync.turns).toHaveLength(imports ? 1 : 0);
+      expect(f.request).toHaveBeenLastCalledWith("thread/read", {
+        threadId: "thread-1",
+        includeTurns: true,
+        includeHistoryMetadata: true,
+      });
+      f.runtime.close();
+    },
+  );
+
   it("reads raw native history without loading, changing configuration, or consuming sync baselines", async () => {
     const f = fixture();
     expect((await f.runtime.readNativeHistory("thread-1")).history).toBeNull();
@@ -971,7 +1041,14 @@ describe("thread session preparation", () => {
       "ide",
     );
     expect(f.request.mock.calls).toEqual([
-      ["thread/read", { threadId: "thread-1", includeTurns: true }],
+      [
+        "thread/read",
+        {
+          threadId: "thread-1",
+          includeTurns: true,
+          includeHistoryMetadata: true,
+        },
+      ],
     ]);
   });
 
