@@ -2413,3 +2413,38 @@ Validation: source review, direct formatting, mechanical protocol source export
 execution, hosted validation, or computer-use testing ran. Runtime/platform
 behavior remains unverified. The full concurrency goal's Task-private-cycle and
 remaining lifecycle audits continue.
+
+## Negative recovery observations and applied Goal setters
+
+A completed native read that finds a different Goal epoch or no active Goal is
+not permission to resend the original Goal prompt. That prompt's setter already
+applied before its unused first cycle acquired a provider ticket. Returning it to
+`pending` could overwrite a newer Goal or restart a completed one.
+
+Negative recovery receipts now carry the exact prepared placement, route/account,
+transport generation, native settings epoch, and provider ordering epoch. The
+worker brackets its actual Goal read with actual native settings reads and
+requires the same Core epoch. These are read-only RPCs; no native thread is
+loaded or configured by the observation. Both servers compare the receipt with
+the current canonical placement and full native binding under the existing chat
+lock. A late response from a replaced runtime, provider episode, or native thread
+incarnation is non-destructive. Older receipts without this observation cannot
+retire a marker.
+
+Retirement still requires no replacement admission and positive completion of
+the exact unused source with its canonical recovery identity. A retained
+first-cycle claim must have no child or native turn and must name its own
+already-applied `thread/goal/set` parent. The exact claimed prompt revision and
+claim become consumed; the encrypted input, native parent receipt, and current
+Goal remain unchanged. No original setter is replayed. Worker FIFO metadata
+retires through its existing canonical reconciliation, not through a server
+capacity grant or an observation timeout. Source-changed and paused receipts
+remain non-destructive.
+
+Validation: source review, direct Prettier/rustfmt, mechanical source protocol
+export (648 roots, 10,756 nodes; Run export 11 roots, 453 nodes), and
+`git diff --check`. No tests, builds, typechecks, benchmarks, native/helper
+execution, hosted validation, or computer-use testing ran. Runtime/platform
+behavior remains unverified. Task-private Goal transfer/checkpoint handling,
+other Goal mutation/control paths, and the remaining full lifecycle audit are
+still part of the active concurrency goal.

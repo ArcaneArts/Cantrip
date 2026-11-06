@@ -7147,11 +7147,29 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               NativeGoalRecoveryReceipt,
               { status: "ineligible" }
             >["reason"],
+            nativeEpoch?: string,
           ): NativeGoalRecoveryReceipt => ({
             source: command.source,
             status: "ineligible",
             workerGeneration: workerProcessGeneration,
             reason,
+            ...(nativeEpoch
+              ? {
+                  observation: {
+                    chatId: command.chatId,
+                    workerId: config.workerId,
+                    threadId,
+                    contextKind: entry.queueScope.identity.contextKind,
+                    projectId: entry.queueScope.identity.projectId,
+                    placementId: entry.queueScope.identity.placementId,
+                    modelRouteId: entry.queueSession().modelRouteId,
+                    providerAccountId: entry.queueSession().providerAccountId,
+                    runtimeGeneration: entry.generation,
+                    nativeEpoch,
+                    orderEpoch: command.recovery?.orderEpoch ?? 0,
+                  },
+                }
+              : {}),
           });
           if (!isDeepStrictEqual(snapshot.goalRecovery?.source, command.source))
             return ineligible("source-changed");
@@ -7192,8 +7210,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             entry.generation,
           );
           if (goal.goalEpoch !== command.source.goalEpoch)
-            return ineligible("epoch-changed");
-          if (goal.goal?.status !== "active") return ineligible("not-active");
+            return ineligible("epoch-changed", goal.nativeEpoch);
+          if (goal.goal?.status !== "active")
+            return ineligible("not-active", goal.nativeEpoch);
           const existing = entry.adapter.goalRecoveryAdmission(command.source);
           if (existing) return admitted(existing);
           const runner = managedExecutionRunners
