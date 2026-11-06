@@ -16,6 +16,7 @@ export {
   cantripOsProjectSources,
   cantripOsSourceBindings,
   cantripOsProvisionAdmissions,
+  cantripOsExistingSourceAdmissions,
   cantripOsChatPlacements,
 } from "./schema-cantrip-os.js";
 import {

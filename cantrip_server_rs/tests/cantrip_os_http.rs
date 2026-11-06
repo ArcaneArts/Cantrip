@@ -290,6 +290,79 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
         .json()
         .await?;
     let path = format!("{base}/api/projects/{project}/cantrip-os/bindings");
+    let existing_request = json!({"mode":"linux-existing","operationId":id(),"workspaceId":workspaces[0]["id"],"sourceKind":"git","relativePath":"restored checkout 日本語 "});
+    let response = client.post(&path).json(&existing_request).send().await?;
+    let status = response.status();
+    let existing: Value = response.json().await?;
+    assert_eq!(status, 200, "{existing}");
+    assert_eq!(existing["mode"], "linux-owned");
+    assert_eq!(existing["state"], "provisioning");
+    assert!(
+        existing["guestPath"]
+            .as_str()
+            .unwrap()
+            .ends_with("/restored checkout 日本語 ")
+    );
+    assert_ne!(existing["id"], existing["projectSourceId"]);
+    assert_ne!(existing["projectSourceId"], existing["worktreeId"]);
+    assert_eq!(
+        client
+            .post(&path)
+            .json(&existing_request)
+            .send()
+            .await?
+            .json()
+            .await?,
+        existing
+    );
+    let mut changed_existing = existing_request.clone();
+    changed_existing["relativePath"] = json!("another path");
+    assert_eq!(
+        client
+            .post(&path)
+            .json(&changed_existing)
+            .send()
+            .await?
+            .status(),
+        409
+    );
+    for invalid in ["../other", "a/../other", "/host/project", "repo\0path"] {
+        let mut invalid_request = existing_request.clone();
+        invalid_request["operationId"] = json!(id());
+        invalid_request["relativePath"] = json!(invalid);
+        assert_eq!(
+            client
+                .post(&path)
+                .json(&invalid_request)
+                .send()
+                .await?
+                .status(),
+            409
+        );
+    }
+    let mut invalid_request = existing_request.clone();
+    invalid_request["uid"] = json!(0);
+    assert_eq!(
+        client
+            .post(&path)
+            .json(&invalid_request)
+            .send()
+            .await?
+            .status(),
+        400
+    );
+    let response = client
+        .post(format!(
+            "{path}/{}/verify",
+            existing["id"].as_str().unwrap()
+        ))
+        .json(&json!({}))
+        .send()
+        .await?;
+    let status = response.status();
+    let verified: Value = response.json().await?;
+    assert_eq!(status, 200, "{verified}");
+    assert_eq!(verified["state"], "ready");
     let response = client
         .post(&path)
         .json(&json!({"mode":"linux-owned","workspaceId":workspaces[0]["id"],"sourceKind":"git"}))
@@ -623,10 +696,16 @@ async fn exercise_run_http(fixture: RunHttpFixture<'_>) -> Result<()> {
     let status = sources.status();
     let sources = sources.json().await?;
     assert_eq!(status, 200, "{sources}");
-    assert_eq!(sources[0]["target"]["isPrimary"], true);
-    assert_eq!(sources[0]["binding"]["id"], binding["id"]);
-    assert!(sources[0].get("transport").is_none());
-    assert!(sources[0]["target"].get("path").is_none());
+    let selected = sources
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|source| source["binding"]["id"] == binding["id"])
+        .context("The captured Run source is missing from the combined source list")?;
+    assert_eq!(selected["target"]["isPrimary"], true);
+    assert_eq!(selected["binding"]["id"], binding["id"]);
+    assert!(selected.get("transport").is_none());
+    assert!(selected["target"].get("path").is_none());
     let configuration = id();
     let selection = json!({"kind":"binding","bindingId":binding["id"],"bindingGeneration":binding["bindingGeneration"],"attachmentGeneration":attached["instance"]["attachmentGeneration"],"runtimeGeneration":attached["instance"]["runtimeGeneration"]});
     let run_url = format!("{base}/api/run-configuration-runtimes");

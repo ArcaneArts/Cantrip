@@ -37,6 +37,11 @@ transport references are scoped to its authenticated owner.
    - Linux-owned: `mode: "linux-owned"`, `workspaceId`, and `sourceKind` (`git` or
      `folder`, preserving the project's Git capability). The response includes
      new independent source and Primary worktree IDs. It is not yet ready.
+   - Existing/restored: `mode: "linux-existing"`, `operationId`, `workspaceId`,
+     `sourceKind` and `relativePath` beneath that Linux account's home. Server
+     reserves fresh identities and returns a `linux-owned` binding. Repeating
+     this creation ID with the same canonical selection returns that reservation;
+     changed intent is rejected. This step does not inspect or modify guest files.
 5. Seal `cantripOsProvisionRequestContentSchema` with the existing
    `repository-content` component and repository-operation encryption. Its AAD
    binds Server/project/worktree/operation IDs and request direction. Its plaintext
@@ -44,6 +49,11 @@ transport references are scoped to its authenticated owner.
    - Linked: selected worker path/routing reference and the admitted overlays.
    - Linux-owned Git: repository URL plus exact 40/64-digit revision.
    - Linux-owned folder: `source: {"kind":"folder"}`.
+   - Existing/restored: `mode: "linux-owned"` and
+     `source: {"kind":"existing","sourceKind":"git"}` (or `"folder"`). Worker
+     verifies the current canonical directory and repository root without clone,
+     checkout or file movement. A historical restore receipt is not verification
+     of the current files.
 6. `POST .../bindings/:bindingId/provision` with `operationId`,
    `bindingGeneration`, and `protectedRequest`. The Server durably records the
    original scope and ciphertext before dispatch. Repository URLs remain opaque

@@ -43,6 +43,7 @@ const sourceScope = scope
 
 const sourceDispatchScope = sourceScope.extend({
   repositoryFingerprint: z.string().min(1).nullable().optional(),
+  primaryGuestPath: cantripOsGuestPathSchema.optional(),
 });
 export const cantripOsSourceDispatchScopeSchema = z.discriminatedUnion("mode", [
   sourceDispatchScope
@@ -125,6 +126,12 @@ export const cantripOsProvisionIntentSchema = z.discriminatedUnion("mode", [
           })
           .strict(),
         z.object({ kind: z.literal("folder") }).strict(),
+        z
+          .object({
+            kind: z.literal("existing"),
+            sourceKind: z.enum(["git", "folder"]),
+          })
+          .strict(),
       ]),
     })
     .strict(),

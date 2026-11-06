@@ -24,6 +24,7 @@ export async function prepareOsSourceCommand(
     opaque: command.protectedRequest,
     schema: cantripOsProvisionRequestContentSchema,
     service,
+    allowHistoricalKeyRevision: true,
   });
   if (
     content.instanceId !== command.scope.instanceId ||

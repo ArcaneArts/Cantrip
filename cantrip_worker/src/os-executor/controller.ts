@@ -259,9 +259,11 @@ export class CantripOsController {
           throw new Error("Source mode changed after admission.");
         if (
           intent.mode === "linux-owned" &&
-          (intent.source.kind === "git-worktree"
-            ? "git"
-            : intent.source.kind) !== scope.sourceKind
+          (intent.source.kind === "existing"
+            ? intent.source.sourceKind
+            : intent.source.kind === "git-worktree"
+              ? "git"
+              : intent.source.kind) !== scope.sourceKind
         )
           throw new Error("Source kind changed after admission.");
         return this.result(
@@ -353,7 +355,9 @@ export class CantripOsController {
                         connection,
                         {
                           sourceId: scope.projectSourceId,
-                          sourceGuestPath: `${scope.homeGuestPath}/checkouts/${scope.projectSourceId}`,
+                          sourceGuestPath:
+                            scope.primaryGuestPath ??
+                            `${scope.homeGuestPath}/checkouts/${scope.projectSourceId}`,
                           worktreeId: scope.worktreeId,
                           guestPath: scope.guestPath,
                           revision: intent.source.revision,
@@ -363,24 +367,39 @@ export class CantripOsController {
                         },
                         mutations,
                       )
-                    : await provisionLinuxSource(
-                        connection,
-                        {
-                          sourceId: scope.projectSourceId,
-                          operationId: command.operationId,
-                          guestPath: scope.guestPath,
-                          sourceKind: intent.source.kind,
-                          repositoryUrl:
-                            intent.source.kind === "git"
-                              ? intent.source.repositoryUrl
-                              : null,
-                          revision:
-                            intent.source.kind === "git"
-                              ? intent.source.revision
-                              : null,
-                        },
-                        mutations,
-                      );
+                    : intent.source.kind === "existing"
+                      ? await inspectLinuxSource(
+                          connection,
+                          {
+                            sourceId: scope.projectSourceId,
+                            guestPath: scope.guestPath,
+                            sourceKind: intent.source.sourceKind,
+                            requireRepositoryRoot: true,
+                          },
+                          mutations,
+                        )
+                      : await provisionLinuxSource(
+                          connection,
+                          {
+                            sourceId: scope.projectSourceId,
+                            operationId: command.operationId,
+                            guestPath: scope.guestPath,
+                            sourceKind: intent.source.kind,
+                            repositoryUrl:
+                              intent.source.kind === "git"
+                                ? intent.source.repositoryUrl
+                                : null,
+                            revision:
+                              intent.source.kind === "git"
+                                ? intent.source.revision
+                                : null,
+                          },
+                          mutations,
+                        );
+                if (source.guestPath !== scope.guestPath)
+                  throw new Error(
+                    "The selected Linux source resolves to a different path; its binding was not redirected.",
+                  );
                 return {
                   kind: "source",
                   source: cantripOsSourceReceiptSchema.parse({
