@@ -33,6 +33,10 @@ import {
 } from "./suspension-terminal-resource.mjs";
 import { refuseActiveSuspensionSession } from "./suspension-resource-refusal.mjs";
 import {
+  startSuspensionCapacityBlocker,
+  pauseWaitingSuspension,
+} from "./suspension-capacity-browser.mjs";
+import {
   updatePausedSuspensionSettings,
   readSuspensionSettings,
 } from "./suspension-settings-browser.mjs";
@@ -154,12 +158,12 @@ async function flow(kind, executable, cliBinary) {
       "isolated durable suspension password",
     );
     await launch(enrollment.code);
-    const { chat, projectId, configuration } = await prepareSuspensionChat(
-      page,
-      workerId,
-      directory,
-      model,
-    );
+    const { chat, projectId, providerId, configuration } =
+      await prepareSuspensionChat(page, workerId, directory, model, {
+        ...(process.argv.includes("--capacity-waiting")
+          ? { maxConcurrentInference: 1 }
+          : {}),
+      });
     result.chatId = chat.id;
     await eventually(
       () =>
@@ -186,9 +190,20 @@ async function flow(kind, executable, cliBinary) {
         chat.id,
       );
     }
+    const capacityBlocker = process.argv.includes("--capacity-waiting")
+      ? await startSuspensionCapacityBlocker({
+          page,
+          model,
+          projectId,
+          providerId,
+          workerId,
+          configuration,
+        })
+      : null;
     const tool = model.reply({ text: "DURABLE_TOOL_REQUEST", hold: true });
     let boundary = model.reply({ text: "DURABLE_BOUNDARY_ONE", hold: true });
     const prompt = "DURABLE_ORIGINAL_PROMPT";
+    let acceptedPrompt;
     if (process.argv.includes("--terminal-origin")) {
       terminal = await openSuspensionTerminal(page, chat.id, workerId);
       terminalId = terminal.id;
@@ -215,6 +230,72 @@ async function flow(kind, executable, cliBinary) {
         { id: chat.id, prompt, configuration },
       );
       assert.equal(admitted.status, "queued");
+      acceptedPrompt = {
+        id: admitted.prompt.id,
+        revision: admitted.prompt.revision,
+        text: admitted.prompt.text,
+      };
+    }
+    if (capacityBlocker) {
+      result.capacityWaiting = await pauseWaitingSuspension({
+        page,
+        chatId: chat.id,
+        workerId,
+        workerData,
+        model,
+        blocker: capacityBlocker,
+      });
+      result.capacityWaiting.acceptedPrompt = acceptedPrompt;
+      const count = inferences();
+      const killed = worker;
+      worker = undefined;
+      terminal?.dispose();
+      terminal = undefined;
+      const terminated = await killOwnedWorkerTree(killed.child, {
+        executableRoots: [workerData],
+      });
+      result.kills.push({ round: "capacity-waiting", ...terminated });
+      await launch();
+      const reopened = await suspensionChat(page, projectId, chat.id);
+      assert.equal(reopened.automationPaused, true);
+      assert.equal(reopened.nativeSuspension?.resumable ?? false, false);
+      assert.equal(reopened.nativeSuspension?.active ?? null, null);
+      await openMountedSuspensionChat(page, vite.resolvedUrls.local[0], null);
+      if (acceptedPrompt) {
+        const retained = await eventually(
+          () =>
+            page.evaluate(
+              async ({ chatId, promptId }) =>
+                (
+                  await (
+                    await import("/src/lib/api/queue.ts")
+                  ).getQueuedPrompts(chatId)
+                ).find((item) => item.id === promptId),
+              { chatId: chat.id, promptId: acceptedPrompt.id },
+            ),
+          (item) => assert.ok(item),
+        );
+        assert.deepEqual(
+          { id: retained.id, revision: retained.revision, text: retained.text },
+          acceptedPrompt,
+        );
+        result.capacityWaiting.promptReopened = true;
+      }
+      if (terminalId)
+        terminal = await openSuspensionTerminal(
+          page,
+          chat.id,
+          workerId,
+          terminalId,
+        );
+      assert.equal(
+        inferences(),
+        count,
+        "Reopening a held request without a native turn starts no inference",
+      );
+      const resumed = await clickMountedSuspensionResume(page, chat.id);
+      assert.ok(resumed.every((value) => value.paused === false));
+      result.capacityWaiting.resumed = true;
     }
     await eventually(
       () => tool.entered,

@@ -181,11 +181,11 @@ export interface RevokedInferenceExecution {
  * One instance belongs to one launched native process, captured by its exit hook.
  */
 export class CodexInferenceAdmission {
-  private readonly pausedTasks = new Set<string>();
+  private readonly pausedChats = new Set<string>();
 
-  setTaskPaused(chatId: string, paused: boolean): void {
-    if (paused) this.pausedTasks.add(chatId);
-    else this.pausedTasks.delete(chatId);
+  setChatPaused(chatId: string, paused: boolean): void {
+    if (paused) this.pausedChats.add(chatId);
+    else this.pausedChats.delete(chatId);
     for (const operation of this.operations) {
       if (operation.chatId !== chatId || operation.settled) continue;
       if (paused) operation.ticket.pauseWaiting();
@@ -372,7 +372,7 @@ export class CodexInferenceAdmission {
       recovery: input.recovery,
       initiallySuspended:
         input.initiallySuspended ||
-        Boolean(input.chatId && this.pausedTasks.has(input.chatId)),
+        Boolean(input.chatId && this.pausedChats.has(input.chatId)),
     });
     let resolveSettlement!: () => void;
     const settlement = new Promise<void>((resolve) => {

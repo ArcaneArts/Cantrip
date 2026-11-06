@@ -2305,13 +2305,13 @@ export class CodexAppServer implements CodexRuntime {
       this.#pausedChats.delete(chatId);
       for (const wake of this.#privatePauseWaiters.get(chatId) ?? []) wake();
     }
+    this.#inference?.setChatPaused(chatId, paused);
   }
 
   setTaskChatPaused(chatId: string, paused: boolean): void {
     if (paused) this.#pausedTaskChats.add(chatId);
     else this.#pausedTaskChats.delete(chatId);
     this.setChatPaused(chatId, paused);
-    this.#inference?.setTaskPaused(chatId, paused);
   }
 
   private privateTaskRoot(chatId: string) {
@@ -8009,8 +8009,8 @@ export class CodexAppServer implements CodexRuntime {
     }
     this.#child = child;
     this.#inference = inference;
-    for (const chatId of this.#pausedTaskChats)
-      inference?.setTaskPaused(chatId, true);
+    for (const chatId of this.#pausedChats)
+      inference?.setChatPaused(chatId, true);
     // A launcher exit only begins reconciliation. The captured real native
     // process must release its OS lease before capacity can be reclaimed.
     const reconcileExit = () => {

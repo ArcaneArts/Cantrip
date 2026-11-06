@@ -81,7 +81,13 @@ export async function enrollSuspensionBrowser(
   );
 }
 
-export async function prepareSuspensionChat(page, workerId, directory, model) {
+export async function prepareSuspensionChat(
+  page,
+  workerId,
+  directory,
+  model,
+  { maxConcurrentInference } = {},
+) {
   await eventually(
     () =>
       page.evaluate(async () =>
@@ -113,13 +119,20 @@ export async function prepareSuspensionChat(page, workerId, directory, model) {
     (job) => assert.equal(job.state, "succeeded", JSON.stringify(job)),
   );
   return page.evaluate(
-    async ({ projectId, workerId, baseUrl, nativeModel }) => {
+    async ({
+      projectId,
+      workerId,
+      baseUrl,
+      nativeModel,
+      maxConcurrentInference,
+    }) => {
       const models = await import("/src/lib/api/models.ts");
       const provider = await models.createModelProvider({
         name: "Durable suspension provider",
         kind: "openai-compatible",
         baseUrl,
         apiKey: null,
+        ...(maxConcurrentInference ? { maxConcurrentInference } : {}),
       });
       const profile = await models.createModelProfile({
         name: "Durable suspension model",
@@ -157,6 +170,7 @@ export async function prepareSuspensionChat(page, workerId, directory, model) {
       return {
         chat,
         projectId,
+        providerId: provider.id,
         configuration: {
           modelId: profile.id,
           reasoningEffort: null,
@@ -171,6 +185,7 @@ export async function prepareSuspensionChat(page, workerId, directory, model) {
       workerId,
       baseUrl: model.baseUrl,
       nativeModel: model.model,
+      maxConcurrentInference,
     },
   );
 }

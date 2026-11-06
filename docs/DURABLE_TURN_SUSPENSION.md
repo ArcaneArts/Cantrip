@@ -324,6 +324,32 @@ The original turn keeps its captured settings in both resumed provider requests;
 the thread's future selection retains each accepted edit through the worker-tree
 restart. Settings observation epochs can change with the new runtime.
 
+Add `--capacity-waiting --mounted-ui` to occupy the provider's sole inference
+slot with a second chat, then accept a GUI prompt that waits before any native
+turn starts. Pause persists the existing encrypted queue hold and parks its
+waiting capacity ticket. Stopping the blocker frees the slot without running the
+held prompt. After terminating the whole worker tree, reopening retains the
+original queued item ID, revision and text and shows Resume automatic agent work.
+Only that explicit Resume dispatches the accepted input. The fixture then runs
+the usual two durable suspension/cold-resumption cycles under its single native
+thread and turn, checking unique history and completed tool results.
+
+There is no native turn identity or native checkpoint at the initial queue hold;
+the first native turn starts only when the retained input is explicitly resumed.
+This pre-start GUI recovery is qualified on both servers. The distinct native
+terminal producer's input recovery before its first native turn is still being
+integrated: the combined `--capacity-waiting --terminal-origin` scenario currently
+exposes a stale managed-session error after restart. Terminal-origin recovery
+after a native turn has started remains qualified separately above.
+
+Never-granted input recovery uses the actual native-ownership takeover and
+inference-journal evidence, preserving canonical queue identity while retiring
+the old attempt. A replacement obtains fresh execution and inference authority.
+Encrypted message idempotency compares JSON values independent of object-key
+order introduced by PostgreSQL JSONB; message identity, classification, attachment
+order and ciphertext must still match. Rust recovery binds serialized terminal
+evidence as text before casting it to JSONB.
+
 Add `--completed-session` to retain an actual yielded command session. A controlled
 release lets the command finish before capture, leaving unread terminal output.
 After the first worker-tree kill and cold Resume, the model polls the original

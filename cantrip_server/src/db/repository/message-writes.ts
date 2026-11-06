@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   chatMessageOpaqueContentSchema,
@@ -313,10 +314,14 @@ export class MessageWriteRepository {
         existing[0].role !== message.classification.role ||
         existing[0].mode !== message.classification.mode ||
         existing[0].reasoningEffort !== message.reasoningEffort ||
-        JSON.stringify(existing[0].attachmentIds) !==
-          JSON.stringify(message.classification.attachmentIds) ||
-        JSON.stringify(existing[0].protectedContent) !==
-          JSON.stringify(message.protectedContent)
+        !isDeepStrictEqual(
+          existing[0].attachmentIds,
+          message.classification.attachmentIds,
+        ) ||
+        !isDeepStrictEqual(
+          existing[0].protectedContent,
+          message.protectedContent,
+        )
       ) {
         throw new Error(
           "Encrypted chat message idempotency metadata is inconsistent.",

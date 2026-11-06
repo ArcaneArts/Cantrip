@@ -41,6 +41,13 @@ afterEach(() => {
 });
 
 describe("ChatComposerPrimaryActions", () => {
+  it("offers Resume for a held queue before a native turn exists", () => {
+    const markup = renderActions({ active: false, paused: true });
+    expect(markup).toContain('aria-label="Resume automatic agent work"');
+    expect(markup).toContain("Send prompt");
+    expect(markup).not.toContain('aria-label="Resume turn"');
+    expect(markup).not.toContain('aria-label="Stop current operation"');
+  });
   const native = (
     phase: ChatNativeSuspension["phase"],
   ): ChatNativeSuspension => ({

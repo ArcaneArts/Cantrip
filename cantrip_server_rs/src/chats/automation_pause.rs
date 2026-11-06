@@ -234,7 +234,8 @@ impl Service {
                 }
             }
         }
-        let native_owns_pause = native && truthy(control.get("activationGeneration")) && connected;
+        let native_owns_pause =
+            native && truthy(control.get("activationGeneration")) && connected && !active.is_null();
         let updated = if native_owns_pause {
             self.chats.execution_context(owner, &chat).await?
         } else {

@@ -126,19 +126,39 @@ export function ChatComposerPrimaryActions({
     recovery?.label ?? (paused ? "Resume automatic agent work" : "Pause agent");
   if (!active && !recovery) {
     return (
-      <Button
-        size="icon"
-        type="submit"
-        className="size-8 shrink-0 rounded-lg"
-        disabled={sendDisabled}
-      >
-        {sendPending ? (
-          <Loader2 className="size-3.5 animate-spin" />
-        ) : (
-          <Send className="size-3.5" />
-        )}
-        <span className="sr-only">Send prompt</span>
-      </Button>
+      <>
+        {paused && !nativeSuspension?.active ? (
+          <Button
+            size="icon"
+            type="button"
+            variant="outline"
+            className="size-8 shrink-0 rounded-lg"
+            disabled={pauseDisabled || pausePending}
+            onClick={() => onPauseChange(false)}
+            title="Resume automatic agent work"
+            aria-label="Resume automatic agent work"
+          >
+            {pausePending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Play className="size-3.5" />
+            )}
+          </Button>
+        ) : null}
+        <Button
+          size="icon"
+          type="submit"
+          className="size-8 shrink-0 rounded-lg"
+          disabled={sendDisabled}
+        >
+          {sendPending ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Send className="size-3.5" />
+          )}
+          <span className="sr-only">Send prompt</span>
+        </Button>
+      </>
     );
   }
 

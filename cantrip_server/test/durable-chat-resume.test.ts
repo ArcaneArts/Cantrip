@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import * as schema from "../src/db/schema.js";
 import {
   afterAll,
   beforeAll,
@@ -16,7 +17,10 @@ import {
 } from "@cantrip/protocol";
 import { createChatAutomationPauseRuntime } from "../src/app/runtime/chat-automation-pause-runtime.js";
 import { LOCAL_USER_ID as owner } from "../src/db/repository.js";
-import { createNativeSettingsFixture } from "./native-settings-repository-fixture.js";
+import {
+  createNativeSettingsFixture,
+  settingsEnvelope,
+} from "./native-settings-repository-fixture.js";
 
 let f: Awaited<ReturnType<typeof createNativeSettingsFixture>>;
 const active = { threadId: "native-thread", turnId: "saved-turn" };
@@ -36,6 +40,122 @@ beforeEach(async () => {
   await f.db.execute(
     sql`UPDATE chats SET native_suspension_state=NULL,automation_paused=false,managed_autonomy_stopped=false WHERE id=${f.chatId}`,
   );
+});
+
+it("persists a queue hold when the admitted native command has not started a turn", async () => {
+  const base = await f.input("gui");
+  const request = nativeCommandAdmissionSchema.parse({
+    ...base,
+    method: "turn/start",
+    intent: { scope: "thread", settingKeys: [], expectedTurnId: null },
+  });
+  const receipt = (await f.commands.admit(owner, request)).receipt;
+  expect(receipt.status).toBe("accepted");
+  await f.commands.dispatch(owner, {
+    ...request,
+    operationGeneration: receipt.operationGeneration,
+    workerGeneration: randomUUID(),
+  });
+  const hold = createChatAutomationPauseRuntime(
+    {
+      repository: f.repository,
+      bridge: {
+        isConnected: () => true,
+        request: vi.fn(async () => ({ paused: true, active: null })),
+      } as never,
+      publishChatSummary: vi.fn(),
+      resumeChatAutomation: vi.fn(),
+      runtimeForContext: vi.fn(async () => null),
+      routePairsForConfiguration: vi.fn() as never,
+    },
+    { log: { info: vi.fn() } } as never,
+  );
+  await expect(hold(owner, f.chatId, true)).resolves.toMatchObject({
+    paused: true,
+    active: null,
+  });
+  expect(
+    (await f.repository.getChatExecutionContext(owner, f.chatId))
+      ?.automationPaused,
+  ).toBe(true);
+  expect(await f.repository.nativeSuspensions.read(owner, f.chatId)).toBeNull();
+  await f.commands.finishExecution(
+    owner,
+    f.workerId,
+    receipt.operationId,
+    receipt.operationGeneration,
+    "idle",
+  );
+  await f.commands.finishLogicalGui(
+    owner,
+    f.workerId,
+    receipt.operationId,
+    receipt.operationGeneration,
+    "idle",
+  );
+});
+it("reuses persisted encrypted JSON regardless of object key order and rejects changed content", async () => {
+  const id = randomUUID();
+  const message = {
+    id,
+    classification: {
+      role: "user" as const,
+      mode: "default" as const,
+      attachmentIds: [],
+    },
+    protectedContent: {
+      formatVersion: 1 as const,
+      keyRevision: 1,
+      envelope: settingsEnvelope,
+    },
+    reasoningEffort: null,
+    idempotencyKey: `capacity-message:${id}`,
+  };
+  const first = await f.repository.appendEncryptedMessage(
+    owner,
+    f.chatId,
+    message,
+  );
+  expect(first?.id).toBe(id);
+  const reordered = {
+    ...message,
+    protectedContent: {
+      envelope: {
+        ciphertext: settingsEnvelope.ciphertext,
+        nonce: settingsEnvelope.nonce,
+        keyRevision: settingsEnvelope.keyRevision,
+        algorithm: settingsEnvelope.algorithm,
+        version: settingsEnvelope.version,
+      },
+      keyRevision: 1,
+      formatVersion: 1 as const,
+    },
+  };
+  expect(
+    (await f.repository.appendEncryptedMessage(owner, f.chatId, reordered))?.id,
+  ).toBe(id);
+  for (const changed of [
+    { ...message, id: randomUUID() },
+    {
+      ...message,
+      classification: { ...message.classification, role: "assistant" as const },
+    },
+    {
+      ...message,
+      protectedContent: {
+        ...message.protectedContent,
+        envelope: { ...settingsEnvelope, ciphertext: "AQEBAQEBAQEBAQEBAQEBAQ" },
+      },
+    },
+  ])
+    await expect(
+      f.repository.appendEncryptedMessage(owner, f.chatId, changed),
+    ).rejects.toThrow("idempotency metadata is inconsistent");
+  const [row] = await f.db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.chatMessages)
+    .where(eq(schema.chatMessages.id, id));
+  expect(row.count).toBe(1);
 });
 async function fixture(live = false) {
   const a = actor();
