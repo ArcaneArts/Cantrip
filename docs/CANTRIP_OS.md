@@ -647,6 +647,15 @@ desktop focus retains its file destination without Host fallback. Independent
 desktop lifecycle, held-input/service cleanup and the remaining lifecycle/upgrade
 matrix remain required. SSH attachment alone does not provide power-on.
 
+Workspace package 0.4.0 now supplies private durable desktop-operation journals
+and generation-bound root start/stop/restart/observe commands. Actual Docker tests
+recover a lost reply and a daemon killed after a real restart without replay,
+retain files/history across package lifecycle, and preserve other desktops and
+independent shells during an individual desktop transition. This is the guest
+administration foundation; Server-owned admissions and product desktop controls,
+native execution/input/service recovery and installed-system acceptance remain
+required for that workflow.
+
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output
 recovery, and worker-offline behavior. Deliver workspace backups/restores,

@@ -1,6 +1,6 @@
 # Optional workspace package
 
-`cantrip-os-workspaces` is an additive Debian package. Version 0.3.0 provides
+`cantrip-os-workspaces` is an additive Debian package. Version 0.4.0 provides
 its service, local administrative CLI, versioned state, persistent accounts,
 independent desktop sessions, and a local browser workspace selector. The existing personal desktop works independently.
 
@@ -10,7 +10,7 @@ Build a portable, architecture-independent package from the repository root:
 node cantrip_os/scripts/package.mjs
 ```
 
-Output: `cantrip_os/artifacts/packages/cantrip-os-workspaces_0.3.0_all.deb`.
+Output: `cantrip_os/artifacts/packages/cantrip-os-workspaces_0.4.0_all.deb`.
 The package uses Python, Debian's noVNC/websockify, and Debian service helpers. Its build
 runs in the pinned Debian image, fixes file timestamps/ownership, and uses a
 fixed default `SOURCE_DATE_EPOCH`. Rebuilding identical sources with the same
@@ -25,7 +25,7 @@ owned by the package. The Docker source watcher includes `packages/`.
 On a running OS, using the built package at its actual location:
 
 ```sh
-sudo apt install ./cantrip-os-workspaces_0.3.0_all.deb
+sudo apt install ./cantrip-os-workspaces_0.4.0_all.deb
 sudo cantrip-workspaces enable
 sudo cantrip-workspaces status
 sudo cantrip-workspaces service restart
@@ -125,6 +125,76 @@ The ordinary personal viewer remains at its existing printed URL.
 desktops with Chromium, independent buses, root access, saved files, individual
 stop/restart, whole-service restart, manager SIGKILL recovery, and a real
 conflicting X display. It also verifies a shell-only workspace stays stopped.
+
+## Durable desktop administration
+
+Version 0.4.0 adds root-only, generation-bound administrative operations:
+
+```sh
+sudo cantrip-workspaces desktop-target work
+sudo cantrip-workspaces desktop-execute '<original admission JSON>'
+sudo cantrip-workspaces desktop-observe '<same original admission JSON>'
+```
+
+An admission has `operation_id` (a canonical UUID), `action` (`start`, `stop` or
+`restart`), `scope_key` (64 lowercase hexadecimal characters), and `target` (the
+exact `desktop-target` result). The scope key namespaces the caller's admission;
+it is not a credential or a substitute for root or Server authorization. Targets
+include the persistent account, home, display, numeric generation, running/stopped
+state and SHA-256 of the desktop token. Raw viewer tokens never enter these
+requests, results or journals.
+
+For local administration, this example retains the request before dispatch:
+
+```sh
+sudo python3 - <<'PY'
+import hashlib, json, os, subprocess, uuid
+target = json.loads(subprocess.check_output(["cantrip-workspaces", "desktop-target", "work"]))
+request = {"operation_id": str(uuid.uuid4()), "action": "restart",
+           "scope_key": hashlib.sha256(b"local-admin").hexdigest(), "target": target}
+path = "/root/desktop-operation.json"
+with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as stream:
+    json.dump(request, stream)
+    stream.flush()
+    os.fsync(stream.fileno())
+print(subprocess.check_output(["cantrip-workspaces", "desktop-execute", json.dumps(request)], text=True))
+PY
+```
+
+Inspect `state` in the result; receiving JSON is not a claim of completion. After
+a lost reply, observe the saved request with `desktop-observe`. Do not reconstruct
+it from the current target or generate another operation ID as a retry. A second
+`desktop-execute` for an existing admission also only observes it. Changed content
+under that ID is rejected. An uncertain outcome is never dispatched again; a
+missing record returns `null` on observation. Damaged records fail without being
+overwritten. An admission saved before dispatch is conclusively reported as not
+sent. Desired state recovered after uncertain delivery is labeled `observed-state`,
+which does not attribute an out-of-band owner's action to this operation.
+
+Private versioned journals live at
+`/var/lib/cantrip-os-workspaces/desktop-operations/`, outside workspace homes, with
+0700 directories and 0600 files. Atomic reservation and updates sync both file and
+parent directory. Historical completion remains distinct from current desktop
+state and survives disable/removal/reinstall. When the daemon is unavailable,
+`desktop-observe` first attempts the real socket request and can read saved history
+under the actual service lock. It does not infer a running desktop from saved
+resume intent or enable/start the service. Execute never starts a disabled daemon.
+
+These commands manage the selected desktop only. They retain files and profiles,
+and do not stop independent executor/shell processes or another desktop. A whole
+workspace-service shutdown still stops all managed desktops. Existing runtime and
+desktop generation rules apply. This is the guest administration foundation;
+Server-owned desktop admissions, Worker routing and Cantrip controls remain
+required before claiming the Phase 5 product workflow complete.
+
+Host unit coverage: `python3 cantrip_os/tests/desktop-operations-unit.py`.
+Run `cantrip_os/tests/desktop-operations.py` as root inside a **disposable** OS after
+installing this package. It performs actual stop/start/restart, drops a real reply,
+checks other desktop/shell/file retention, and temporarily instruments its own
+daemon to SIGKILL it after a real restart but before saving completion. Recovery
+must observe without another restart. It also verifies disabled-service history
+and preserves a deliberately damaged test journal. The test prints its private
+proof path. Temporary fault instrumentation is not installed by the package.
 
 ## Browser access
 

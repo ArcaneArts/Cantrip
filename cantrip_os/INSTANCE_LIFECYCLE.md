@@ -157,3 +157,29 @@ verified guest bytes and the absence of a Host copy after recovery.
 Independent desktop controls, held-input and service cleanup, reset/image/upgrade
 semantics, current-runtime model acceptance and real remote acceptance remain
 separate Phase 5 requirements. These client checks do not claim them complete.
+
+## Guest desktop operation checkpoint
+
+Workspace package 0.4.0 adds generation-bound root administrative operations for
+one desktop, independently of instance power. See
+[durable desktop administration](packages/workspaces/README.md#durable-desktop-administration)
+for `desktop-target`, `desktop-execute` and `desktop-observe`.
+
+The caller retains the exact account/display/generation snapshot and operation
+identity before dispatch. The guest atomically reserves and syncs a private journal
+before invoking its existing serialized lifecycle commands. Existing admissions
+only observe; changed admissions, stale targets and damaged journals cannot mutate
+a replacement desktop. Historical completion is returned separately from current
+desktop observation. A stopped daemon does not turn saved resume intent into a
+running observation; its root CLI can inspect saved history without enabling it.
+
+Actual disposable Docker acceptance covers another desktop and an independent
+same-account shell surviving individual stop/start/restart, retained Unicode files,
+a lost socket reply, SIGKILL after a real restart but before completion was saved,
+and observation without another restart. Disable/removal/purge/reinstall retain
+journals and files while the personal desktop remains usable.
+
+These are package-owned administration commands, not Cantrip product controls.
+Server-owned desktop admissions, Worker routing, client controls, actual native
+terminal/Run/CUA/service recovery, installed-system acceptance and the rest of
+Phase 5 remain required. No Worker or model credentials are installed in the guest.
