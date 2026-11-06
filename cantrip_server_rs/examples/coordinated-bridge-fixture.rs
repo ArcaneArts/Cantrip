@@ -248,6 +248,7 @@ impl Driver {
             "releaseOwner"=>{release(&self.control.owner_gates,&text(&r,"workerId"));Ok(Value::Null)},
             "gateEvent"=>{gate(&self.control.event_gates,text(&r,"name"));Ok(Value::Null)},
             "releaseEvent"=>{release(&self.control.event_gates,&text(&r,"name"));Ok(Value::Null)},
+            "closeBridge"=>{self.transport.shutdown().await?;Ok(Value::Null)},
             "close"=>{self.transport.shutdown().await?;self.coordinator.close().await?;for p in self.peers.lock().unwrap().values(){p.writer.abort();}Ok(Value::Null)},
             _=>bail!("Unknown fixture operation"),
         }

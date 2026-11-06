@@ -57,7 +57,31 @@ impl WorkerService {
         config: &ServerConfig,
         usage: Option<crate::live::UsageRecorder>,
     ) -> Arc<Self> {
-        let bridge = WorkerBridge::with_usage(Duration::from_secs(15), usage);
+        Self::with_coordination(database, config, usage, None)
+    }
+    pub fn with_coordination(
+        database: Arc<Database>,
+        config: &ServerConfig,
+        usage: Option<crate::live::UsageRecorder>,
+        coordination: Option<Arc<dyn crate::coordination::RelayCoordinator>>,
+    ) -> Arc<Self> {
+        let bridge: Arc<dyn WorkerTransport> = match coordination {
+            Some(coordination) => {
+                let repository = WorkerRepository::new(database.clone());
+                let mut options = super::coordinated::Options::new(
+                    coordination,
+                    Arc::new(move |worker| {
+                        let repository = repository.clone();
+                        Box::pin(async move { repository.owner(&worker).await })
+                    }),
+                );
+                options.usage = usage;
+                super::transport::CoordinatedTransport::new(
+                    super::coordinated::CoordinatedBridge::new(options),
+                )
+            }
+            None => WorkerBridge::with_usage(Duration::from_secs(15), usage),
+        };
         Self::with_transport(database, config, bridge)
     }
     pub fn with_transport(

@@ -1,9 +1,10 @@
+use super::command::CommandConnection;
 use super::core::{Core, Listener, MAX_MESSAGE_BYTES, now, presence, session_claim};
 use crate::{
     operations::logging::{LogCall, Logger},
     wire::{JsString, Value, parse_json_text, value::json},
 };
-use ::redis::{Client, aio::ConnectionManager};
+use ::redis::Client;
 use anyhow::{Context, Result, anyhow, bail};
 use futures::{FutureExt, StreamExt};
 use std::{
@@ -67,7 +68,7 @@ pub struct RedisCoordinator {
     prefix: String,
     channel: String,
     logger: Logger,
-    connection: Mutex<Option<ConnectionManager>>,
+    connection: Mutex<Option<CommandConnection>>,
     tasks: AsyncMutex<Option<Tasks>>,
 }
 impl RedisCoordinator {
@@ -105,12 +106,19 @@ impl RedisCoordinator {
     pub fn cached_worker(&self, worker: &JsString) -> Option<Value> {
         self.core.cached(worker)
     }
-    fn command(&self) -> Result<ConnectionManager> {
+    fn command(&self) -> Result<CommandConnection> {
         self.connection
             .lock()
             .unwrap()
             .clone()
             .ok_or_else(|| anyhow!("Redis coordination is unavailable."))
+    }
+    fn ready_command(&self) -> Result<CommandConnection> {
+        let command = self.command()?;
+        if !command.is_ready() {
+            bail!("Redis coordination is unavailable.");
+        }
+        Ok(command)
     }
     fn key(&self, kind: &str, id: &JsString) -> Result<String> {
         let id = id.as_str().context("URI malformed")?;
@@ -178,7 +186,7 @@ impl RedisCoordinator {
             "starting",
             Value::Null,
         );
-        let command = self.client.get_connection_manager().await?;
+        let command = CommandConnection::new(&self.client).await?;
         *self.connection.lock().unwrap() = Some(command);
         let result = async {
             let mut subscriber = self.client.get_async_pubsub().await?;
@@ -226,7 +234,9 @@ impl RedisCoordinator {
         .await;
         if let Err(error) = result {
             tasks.take();
-            self.connection.lock().unwrap().take();
+            if let Some(command) = self.connection.lock().unwrap().take() {
+                command.close();
+            }
             self.log(
                 "error",
                 "Redis relay coordination failed to start",
@@ -354,10 +364,11 @@ impl RedisCoordinator {
     }
     pub async fn publish(&self, payload: Value, ttl_ms: Option<f64>) -> Result<()> {
         let envelope = self.core.envelope(payload, ttl_ms.unwrap_or(60_000.0))?;
+        let mut command = self.ready_command()?;
         let result: ::redis::RedisResult<i64> = ::redis::cmd("PUBLISH")
             .arg(&self.channel)
             .arg(envelope.stringify())
-            .query_async(&mut self.command()?)
+            .query_async(&mut command)
             .await;
         if let Err(error) = result {
             if error.is_io_error() || error.is_connection_dropped() {
@@ -549,7 +560,7 @@ impl RedisCoordinator {
         self.compare_set(&key, &raw, None).await
     }
     pub async fn health(&self) -> Result<bool> {
-        let Ok(mut connection) = self.command() else {
+        let Ok(mut connection) = self.ready_command() else {
             return Ok(false);
         };
         let pong: ::redis::RedisResult<String> =
@@ -593,12 +604,21 @@ impl RedisCoordinator {
         tasks.take();
         let command = self.connection.lock().unwrap().take();
         if let Some(mut command) = command {
-            let _: i64 = ::redis::cmd("DEL")
-                .arg(self.key("instance", &self.core.instance.clone().into())?)
-                .query_async(&mut command)
-                .await?;
-            let _: Result<String, ::redis::RedisError> =
-                ::redis::cmd("QUIT").query_async(&mut command).await;
+            let result: Result<()> = async {
+                if !command.is_ready() {
+                    return Ok(());
+                }
+                let _: i64 = ::redis::cmd("DEL")
+                    .arg(self.key("instance", &self.core.instance.clone().into())?)
+                    .query_async(&mut command)
+                    .await?;
+                let _: Result<String, ::redis::RedisError> =
+                    ::redis::cmd("QUIT").query_async(&mut command).await;
+                Ok(())
+            }
+            .await;
+            command.close();
+            result?;
         }
         self.log(
             "info",

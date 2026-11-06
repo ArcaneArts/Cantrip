@@ -506,6 +506,11 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     command: WorkerCommand,
     options: WorkerRequestOptions = {},
   ): Promise<unknown> {
+    if (this.#closed) {
+      return Promise.reject(
+        new WorkerUnavailableError("Server is shutting down."),
+      );
+    }
     if (this.#connections.has(workerId)) {
       return this.#local.request(workerId, command, options);
     }
@@ -603,6 +608,8 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       throw new Error("The shared worker command queue is full.");
     }
     const presence = await this.#coordinator.findWorker(workerId);
+    if (this.#closed)
+      throw new WorkerUnavailableError("Server is shutting down.");
     if (!presence) {
       this.#failedRequests += 1;
       serverLogger.rateLimited(
@@ -622,6 +629,8 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     }
     this.#knownRemoteWorkers.set(workerId, presence.connectionId);
     const ownerId = options.ownerId ?? (await this.#resolveOwnerId(workerId));
+    if (this.#closed)
+      throw new WorkerUnavailableError("Server is shutting down.");
     if (!ownerId || ownerId !== presence.ownerId) {
       this.#failedRequests += 1;
       throw new WorkerUnavailableError(`Worker ${workerId} is unavailable.`);

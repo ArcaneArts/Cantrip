@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use cantrip_server::{
     auth::{repository::AuthRepository, service::AuthService},
     config::{DatabaseMode, Environment, ServerConfig},
+    coordination::{Options as CoordinationOptions, RedisCoordinator, RelayCoordinator},
     database::Database,
     http,
     managed_postgres::ManagedPostgres,
@@ -320,7 +321,38 @@ async fn main() -> Result<()> {
         return Err(error);
     }
     if !arguments.migrate_only {
-        let service = AuthService::initialize(database.clone(), config.clone()).await?;
+        let coordination: Option<Arc<dyn RelayCoordinator>> = if let Some(url) = &config.redis_url {
+            let mut options = CoordinationOptions::new(
+                url.clone(),
+                config
+                    .server_instance_id
+                    .clone()
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+            );
+            options.maximum_instances = config.coordination_max_instances;
+            options.presence_ttl_ms = config.coordination_presence_ttl_ms;
+            options.logger = cantrip_server::operations::logging::server_logger();
+            let coordinator = RedisCoordinator::new(options)?;
+            RedisCoordinator::start(&coordinator).await?;
+            Some(coordinator)
+        } else {
+            None
+        };
+        let service = match AuthService::with_coordination(
+            database.clone(),
+            config.clone(),
+            coordination.clone(),
+        )
+        .await
+        {
+            Ok(service) => service,
+            Err(cause) => {
+                if let Some(coordinator) = &coordination {
+                    let _ = coordinator.close().await;
+                }
+                return Err(cause);
+            }
+        };
         let port = arguments.port.unwrap_or(config.port as u16);
         let listener = tokio::net::TcpListener::bind((config.host.as_str(), port)).await?;
         service.usage.start();
@@ -472,6 +504,9 @@ async fn main() -> Result<()> {
             service.native_handoffs.drained().await
         );
         shutdown_step!("usage", service.usage.close().await);
+        if let Some(coordinator) = &coordination {
+            shutdown_step!("coordination", coordinator.close().await)?;
+        }
     }
     shutdown_step!("database", database.close().await?);
     if let Some(runtime) = managed {

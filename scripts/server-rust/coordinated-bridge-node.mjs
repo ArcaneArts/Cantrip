@@ -303,6 +303,9 @@ async function dispatch(r) {
     case "releaseEvent":
       release(eventGates, r.name);
       return null;
+    case "closeBridge":
+      await bridge.close();
+      return null;
     case "close":
       await bridge.close();
       await coordinator.close();

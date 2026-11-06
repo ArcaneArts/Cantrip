@@ -73,7 +73,10 @@ impl FolderService {
         })
     }
     pub async fn start(self: &Arc<Self>) -> Result<()> {
-        self.repository.recover(true, crate::auth::now()).await?;
+        self.start_with_recovery(true).await
+    }
+    pub async fn start_with_recovery(self: &Arc<Self>, force: bool) -> Result<()> {
+        self.repository.recover(force, crate::auth::now()).await?;
         self.queue();
         let service = Arc::downgrade(self);
         let mut stop = self.stop.subscribe();

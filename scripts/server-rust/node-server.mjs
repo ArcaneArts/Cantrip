@@ -137,14 +137,27 @@ const workerLinkControl =
         m.prepareWorkerLinkHttpControl(config),
       )
     : undefined;
+const sharedRuntime =
+  process.env.CANTRIP_SHARED_RUNTIME_FIXTURE === "true"
+    ? await import("./shared-runtime-node.mjs").then((m) =>
+        m.prepareSharedRuntime(config, database),
+      )
+    : undefined;
 const app = await buildApp({
   config,
   database,
   logger: process.env.CANTRIP_FIXTURE_LOGGING === "true",
   ...(ingressBridge ? { workerBridge: ingressBridge } : {}),
   ...(workerLinkControl ? { coordinator: workerLinkControl.coordinator } : {}),
+  ...(sharedRuntime
+    ? {
+        coordinator: sharedRuntime.coordinator,
+        workerBridge: sharedRuntime.workerBridge,
+      }
+    : {}),
 });
 workerLinkControl?.install(app);
+sharedRuntime?.install(app);
 if (process.argv.includes("--live-sql-fixture")) {
   const { installLiveSqlFixture } = await import("./live-sql-node-fixture.mjs");
   installLiveSqlFixture(app, database);

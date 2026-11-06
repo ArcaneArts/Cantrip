@@ -23,6 +23,39 @@ mod cantrip_server {
             #[serde(default)]
             queries: Vec<String>,
         }
+        #[derive(Deserialize)]
+        struct LivePublications {
+            publications: Vec<::cantrip_server::wire::Value>,
+            #[serde(default)]
+            confirmed: bool,
+        }
+        async fn publish_live(
+            State(service): State<Arc<AuthService>>,
+            Json(input): Json<LivePublications>,
+        ) -> Response {
+            let result: anyhow::Result<Vec<::cantrip_server::wire::Value>> = if input.confirmed {
+                let mut events = Vec::new();
+                let mut failure = None;
+                for publication in input.publications {
+                    match service.live.hub.publish_confirmed(publication).await {
+                        Ok(event) => events.push(event),
+                        Err(error) => {
+                            failure = Some(error);
+                            break;
+                        }
+                    }
+                }
+                failure.map_or_else(|| Ok(events), Err)
+            } else {
+                service.live.hub.publish_group(input.publications)
+            };
+            match result {
+                Ok(events) => Json(serde_json::json!({"events":events})).into_response(),
+                Err(error) => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
+                }
+            }
+        }
 
         async fn setup(
             State(service): State<Arc<AuthService>>,
@@ -62,6 +95,7 @@ mod cantrip_server {
         pub fn router(service: Arc<AuthService>) -> Router {
             let controls = Router::new()
                 .route("/__fixture/sql", post(setup))
+                .route("/__fixture/live", post(publish_live))
                 .with_state(service.clone());
             ::cantrip_server::http::router(service).merge(controls)
         }

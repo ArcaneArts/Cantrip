@@ -10,6 +10,9 @@ cantrip_server_rs/target/
 # Mechanically imported upstream sources are verified by content manifest.
 cantrip_codex/upstream/
 
+# Preserve the pinned Redis crate; its original archive checksum is documented.
+cantrip_server_rs/third-party/redis/
+
 # Packaged skills may preserve licensed third-party instructions verbatim.
 skill_templates/
 
