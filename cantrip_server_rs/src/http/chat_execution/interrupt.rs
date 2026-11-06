@@ -31,6 +31,40 @@ impl Execution {
         } else {
             false
         };
+        if managed(context)
+            && let Some(state) = self.chats.native_suspension(&self.owner, chat).await?
+            && !state["checkpoint"].is_null()
+            && !state["active"].is_null()
+            && !matches!(
+                state["phase"].as_str(),
+                Some("stopped" | "completed" | "failed" | "idle")
+            )
+        {
+            return match self
+                .service
+                .execution
+                .pause
+                .stop_suspended(&self.owner, context, &control)
+                .await
+            {
+                Ok(result) => {
+                    if result["interrupted"] == true && context["status"] == "waiting-for-approval"
+                    {
+                        self.service
+                            .chat_mutations
+                            .interrupt_interactions(&self.owner, chat, None)
+                            .await?;
+                    }
+                    output(200, "chatInterruptAcceptedSchema", &result)
+                }
+                Err(cause) => {
+                    match downcast_ref::<crate::chats::automation_pause::PauseError>(&cause) {
+                        Some(failure) => Ok(error(failure.status_code, failure.message.clone())),
+                        None => Err(cause),
+                    }
+                }
+            };
+        }
         if !executing(context) {
             return output(
                 200,

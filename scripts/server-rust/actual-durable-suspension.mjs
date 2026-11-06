@@ -23,6 +23,10 @@ import { eventually, launchActualWorker } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
 import { killOwnedWorkerTree } from "./owned-worker-tree.mjs";
 import {
+  coldSuspensionStop,
+  damageColdStopCheckpoint,
+} from "./cold-suspension-stop.mjs";
+import {
   openMountedSuspensionChat,
   clickMountedSuspensionResume,
   clickMountedSuspensionPause,
@@ -278,6 +282,17 @@ async function flow(kind, executable, cliBinary) {
       });
       console.error(kind, "worker tree terminated", round, owned.length);
       result.workerDiagnostics = killed.diagnostics();
+      if (
+        process.argv.includes("--cold-stop") &&
+        option("--checkpoint-damage")
+      ) {
+        result.checkpointDamage = option("--checkpoint-damage");
+        await damageColdStopCheckpoint(
+          workerData,
+          active,
+          result.checkpointDamage,
+        );
+      }
       const count = inferences();
       await launch();
       const reopened = await identity();
@@ -302,6 +317,18 @@ async function flow(kind, executable, cliBinary) {
         await readFile(path.join(directory, "durable-cold-marker"), "utf8"),
         "DURABLE_TOOL_RESULT\n",
       );
+      if (process.argv.includes("--cold-stop")) {
+        result.stopped = await coldSuspensionStop({
+          page,
+          chatId: chat.id,
+          identity,
+          workerData,
+          active,
+          inferences,
+          mounted: process.argv.includes("--mounted-ui"),
+        });
+        return;
+      }
       const next = model.reply(
         round === 1
           ? { text: "DURABLE_BOUNDARY_TWO", hold: true }

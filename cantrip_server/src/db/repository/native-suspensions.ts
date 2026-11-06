@@ -295,7 +295,7 @@ export class NativeSuspensionRepository {
       const state = this.current(current, controlId);
       if (
         executionOwner &&
-        (state.phase !== "resuming" ||
+        (!["resuming", "stopping"].includes(state.phase) ||
           !state.checkpoint ||
           !sameActor(actor, executionOwner))
       )

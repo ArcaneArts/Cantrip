@@ -365,7 +365,7 @@ import {
 import { createManagedSuspensionCapture } from "./codex/managed-native-suspension.js";
 import {
   ManagedSuspensionResumes,
-  type ManagedSuspensionResumeCommand,
+  type ManagedSuspensionControlCommand,
 } from "./codex/managed-suspension-resume.js";
 import { WorktreeManager } from "./worktrees.js";
 import { CantripOsController } from "./os-executor/controller.js";
@@ -3398,7 +3398,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     token: () => config.token,
   });
   const suspensionResumeTarget = (
-    command: ManagedSuspensionResumeCommand,
+    command: ManagedSuspensionControlCommand,
     runtime: CodexAppServer,
     entry: { generation: string; adapter: ManagedNativeCommandSession },
   ) => {
@@ -3424,7 +3424,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     encryption: workerEncryption,
     signal: () => managedGuiBridgeLifetime.signal,
     active: (command) => {
-      if (!command.nativeActivationGeneration) return null;
+      const stopping = command.type === "chat.suspension.stop";
+      if (!command.nativeActivationGeneration && !stopping) return null;
       const matches = [...codexRuntimes.values()].flatMap((runtime) =>
         [...(managedCommandSessions.get(runtime)?.values() ?? [])]
           .filter(
@@ -3432,11 +3433,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               entry.chatId === command.chatId &&
               entry.threadId === command.threadId &&
               entry.generation === runtime.transportGeneration &&
-              (command.nativeRuntimeGeneration === null
+              (stopping || command.nativeRuntimeGeneration === null
                 ? managedCurrentRuntimes.get(command.chatId) === runtime
                 : entry.generation === command.nativeRuntimeGeneration) &&
-              entry.adapter.currentActivationGeneration ===
-                command.nativeActivationGeneration &&
+              (stopping
+                ? entry.adapter.currentActivationGeneration !== null
+                : entry.adapter.currentActivationGeneration ===
+                  command.nativeActivationGeneration) &&
               (entry.model.routeId ?? null) ===
                 (command.model.routeId ?? null) &&
               (entry.provider.accountId ?? null) ===
@@ -7481,6 +7484,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         if (result.paused) pausedChats.add(command.chatId);
         else pausedChats.delete(command.chatId);
         return result;
+      }
+      case "chat.suspension.stop": {
+        computerUseAgents.cancelChat(command.chatId);
+        computerUsePreviews.cancelChat(command.chatId);
+        computerUseApprovals.revokeChat(command.chatId);
+        osComputerUseServices.cancelChat(command.chatId, command.threadId);
+        return suspensionResumes.stop(command);
       }
       case "chat.pause.set": {
         if (command.task) {

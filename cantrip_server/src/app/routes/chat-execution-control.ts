@@ -21,6 +21,10 @@ import type {
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 import { interruptTask } from "../runtime/task-interrupt-runtime.js";
 import { ChatAutomationPauseError } from "../runtime/chat-automation-pause-error.js";
+import {
+  createDurableChatStopRuntime,
+  DurableChatStopError,
+} from "../runtime/durable-chat-stop.js";
 
 export interface ChatExecutionControlRouteDependencies {
   applicationOwnerId: () => string;
@@ -59,6 +63,13 @@ export function installChatExecutionControlRoutes(
     routePairsForConfiguration,
   }: ChatExecutionControlRouteDependencies,
 ): void {
+  const stopDurable = createDurableChatStopRuntime({
+    repository,
+    bridge,
+    publishChatSummary,
+    runtimeForContext,
+    routePairsForConfiguration,
+  });
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/compact",
     async (request, reply) => {
@@ -176,6 +187,35 @@ export function installChatExecutionControlRoutes(
             control.activationGeneration,
           )
         : false;
+      const suspension = managedTurnSessionContext(context)
+        ? await repository.nativeSuspensions.read(
+            applicationOwnerId(),
+            context.chatId,
+          )
+        : null;
+      if (
+        suspension?.checkpoint &&
+        suspension.active &&
+        !["stopped", "completed", "failed", "idle"].includes(suspension.phase)
+      ) {
+        try {
+          const result = await stopDurable(
+            applicationOwnerId(),
+            context,
+            control,
+            suspension,
+          );
+          if (result.interrupted && context.status === "waiting-for-approval")
+            await interruptLiveAgentInteractionRequests(context.chatId);
+          return reply.send(chatInterruptAcceptedSchema.parse(result));
+        } catch (error) {
+          if (error instanceof DurableChatStopError)
+            return reply
+              .code(409)
+              .send({ code: "stop-failed", error: error.message });
+          throw error;
+        }
+      }
       const chatCanBeInterrupted =
         context.status === "running" ||
         context.status === "waiting-for-approval";

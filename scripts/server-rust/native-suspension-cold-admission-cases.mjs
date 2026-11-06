@@ -342,7 +342,7 @@ export async function coldSuspensionAdmissionCases({
       protectedPayload: envelope,
     };
     head = (await call("suspension-execution", request)).receipt;
-    const stop = await control("turn/interrupt");
+    let stop = await control("turn/interrupt");
     await call(
       "dispatch",
       {
@@ -355,6 +355,42 @@ export async function coldSuspensionAdmissionCases({
       },
       "suspension-control-stale",
     );
+    const stopping = (await state()).state;
+    const priorStop = stop;
+    session = {
+      ...session,
+      connectionId: key + "-cold-stop-view",
+    };
+    const stoppingRequest = {
+      ...request,
+      action: "stop",
+      workerGeneration,
+      session,
+      operationId: key + "-cold-stop-owner",
+      controlId: stopping.controlId,
+    };
+    await call(
+      "suspension-execution",
+      { ...stoppingRequest, action: "resume" },
+      "suspension-control-stale",
+    );
+    const stopOwner = await call("suspension-execution", stoppingRequest);
+    assert.equal(stopOwner.source.operationId, original.operationId);
+    assert.equal(stopOwner.suspension.action, "stop");
+    head = stopOwner.receipt;
+    assert.equal(
+      (
+        await call("suspension-execution", {
+          ...stoppingRequest,
+          operationId: key + "-cold-stop-retry",
+        })
+      ).receipt.operationId,
+      head.operationId,
+    );
+    await dispatch(head);
+    await call("settle", ack(head));
+    stop = await control("turn/interrupt", undefined, stopping.controlId);
+    await call("settle", priorStop, "suspension-actor-stale");
     // A cold Stop observer may have a different runtime from the suspended
     // execution owner. That must not permit administrative terminal settlement.
     await fixture.seed(
