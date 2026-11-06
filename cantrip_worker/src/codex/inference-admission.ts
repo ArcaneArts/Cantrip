@@ -208,7 +208,9 @@ export class CodexInferenceAdmission {
     InferenceOperationLifetime,
     Operation
   >();
-  private readonly beforeAcquire = new WeakMap<
+  // Active preparations only; prepareBeforeAcquire removes each entry in its
+  // finally block. Stop must also reach labels awaiting a different provider.
+  private readonly beforeAcquire = new Map<
     InferenceOperationLifetime,
     BeforeAcquirePreparation
   >();
@@ -635,6 +637,17 @@ export class CodexInferenceAdmission {
   /** Only queued/unforwarded work is cancelled here; running work needs native Stop. */
   cancelWaiting(chatId: string): boolean {
     let cancelled = false;
+    for (const [lifetime, preparation] of this.beforeAcquire) {
+      if (preparation.input.chatId !== chatId) continue;
+      const reason = (preparation.reason ??= new Error(
+        "The turn was interrupted before response admission.",
+      ));
+      lifetime.close();
+      preparation.controller.abort(reason);
+      // The independent labeling operation still owns its actual native slot
+      // until settlement. No response-provider ticket has been acquired here.
+      cancelled = true;
+    }
     for (const operation of this.operations) {
       if (
         operation.chatId !== chatId ||

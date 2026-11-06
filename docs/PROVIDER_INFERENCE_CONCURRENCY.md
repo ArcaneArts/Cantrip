@@ -2802,3 +2802,54 @@ source export (691 roots, 11,278 nodes; Run 11 roots, 453 nodes), and
 or checks, runtime execution, hosted validation and computer-use testing were not
 performed. Runtime and platform behavior remain unverified. The full concurrency
 goal remains active for the remaining entry-point and lifecycle work.
+
+## Native Task interruption and FIFO episodes
+
+Raw Chat interruption now reaches Task execution even when the canonical chat's
+cached status is idle. Both servers first persist the existing Task pause intent,
+settle any provider transfer, and fence the Goal's queue-order episode under that
+same still-current control revision. An older unused private cycle cannot recover
+its pre-Stop ordinal after Resume. The worker adopts that metadata only for future
+begins; already captured physical requests keep their immutable keeper identities.
+Normal Task Pause/Resume continues to preserve the retained turn.
+
+The worker reads each actual owned private root's native history and interrupts
+only its real in-progress turn. Stop can clean up owners after model/account
+routing disappears. It no longer resolves or decrypts a model/provider merely to
+perform interruption. A newer Task control supersedes old Stop before native
+selection; native patch `0086` checks the paused revision at the actual turn take.
+An owned native Stop lifecycle survives loss of its RPC observer. Resume waits
+for that operation before it can apply, so old abort hooks do not overwrite a
+newly resumed Goal. Existing native suspension Stop handles cold held turns.
+
+No server or control response frees a provider slot. Native scope/transport and
+keeper settlement still own release, including uncertain teardown. Under the
+same Stop transaction, an accepted, enforced first Goal input that has never won
+dispatch is deferred through its existing execution lane and its dispatch lease
+is fenced before worker cancellation. A dispatch that already won remains
+physical execution and follows native Stop. Later Resume cannot turn the old
+cancelled observer into a failure of the replacement input.
+
+New first-Goal receipts carry the canonical queue-order epoch. Legacy omission
+means epoch zero for comparison only, without rewriting old keeper identities.
+Recovery retires an ended earlier episode instead of restoring its old ordinal;
+this does not authorize replay of any forwarded input. The original encrypted
+message and idempotency key stay canonical. SDK Stop also cancels an alternate
+provider's active title preparation before response admission, while that label
+retains its own slot through actual native settlement. Control waits use the
+native boundary observation window and do not consume inference deadlines.
+
+Rust now registers the public interruption route for both ordinary Chats and
+Tasks, retaining existing native command cancellation and autonomy controls.
+Absent Goal recovery markers are written as SQL NULL rather than JSON null;
+migration `0276_task_goal_empty_recovery` clears the invalid empty form left by
+earlier writes, without touching real recovery identities or native execution.
+
+Validation for this milestone is source review, direct formatting, mechanical
+protocol source export (691 roots, 11,285 nodes; Run 11 roots, 453 nodes), and
+`git diff --check`. No tests, builds, typechecks, benchmarks, native patch
+application/checks, migration execution, helper/native execution, hosted
+validation or computer-use testing ran. The native/worker/server update is paired
+and remains unverified at runtime. Cold child portability, remaining Goal
+configuration/resource lifecycle coverage, and final acceptance/documentation
+consolidation remain part of the active full goal.

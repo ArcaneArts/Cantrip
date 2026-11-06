@@ -3,8 +3,8 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "922a28ff731bf5cf0694740c30cda7b7bfb936e34a6ba0e204a48277631aa006",
-    "baselineCommit": "bb80c686d",
+    "sha256": "f4cae70ef0f51bc832c2d4dc09f77826f7d7d0857c9cb92448a21350e9e6e861",
+    "baselineCommit": "951b108cc",
     "counts": {
       "routes": 557,
       "workerCommands": 310,
@@ -12,7 +12,7 @@
       "repositoryMethods": 367,
       "liveResources": 47
     },
-    "workingTreeNote": "Source-only reconciliation atop bb80c686d extends Task Goal capture with its actual unused first-input receipt and preserves merged CantripOS power contracts. Five power routes and two command names from #2654 were read and classified directly; Task transfers add no route or command name. Backup URL tuple source remains normalized only in the temporary metadata extractor. Direct formatting, mechanical contract export and diff checks are the only validation; no audit, tests, builds, typechecks, native patch application/checks or runtime acceptance ran. Declared table count remains116; full native product/platform and replacement acceptance remain required.",
+    "workingTreeNote": "Source metadata reconciled at 951b108cc with revisioned Task interruption, canonical first-Goal dispatch deferral, FIFO episode fencing, and SQL NULL recovery-marker cleanup. No Node route or worker command name is added; the existing public interrupt route is now registered in Rust. Direct formatting, mechanical protocol source export and git diff --check are the validation for this extension. No audit, tests, builds, typechecks, native patch application/checks, migration execution, native/helper execution, hosted validation or computer-use testing ran. Earlier runtime qualifications retained in individual rows do not validate this paired native/worker/server change. Declared durable table count remains116; full replacement and supported-platform acceptance remain outstanding.",
     "migrationBackedTableCount": 122
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
@@ -5354,6 +5354,21 @@
         ],
         "remaining": [
           "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/interrupt",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/interrupt.rs",
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/src/http/chat_execution/interrupt.rs",
+          "cantrip_server_rs/src/chats/automation_pause_task.rs",
+          "cantrip_worker/src/task-pause-controls.ts",
+          "cantrip_codex/patches/0086-native-task-interrupt.patch"
+        ],
+        "remaining": [
+          "This extension was source-reviewed and formatted only. Native patch application, compilation, migration execution, actual HTTP/worker/native behavior and platform acceptance were not run."
         ]
       }
     ]

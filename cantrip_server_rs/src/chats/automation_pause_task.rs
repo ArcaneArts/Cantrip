@@ -2,6 +2,30 @@
 use super::*;
 
 impl Service {
+    pub fn interrupt_task(
+        self: &Arc<Self>,
+        owner: &str,
+        chat: &str,
+    ) -> BoxFuture<'static, Result<Value>> {
+        let (this, owner, chat) = (self.clone(), owner.to_owned(), chat.to_owned());
+        self.operations.run(async move {
+            let original = this.chats.request_task_pause(&owner,&chat,true,None).await?
+                .ok_or_else(||failure(404,"Task source not found."))?;
+            let result = async {
+                crate::native_handoffs::service::settle_task_control(&this.handoffs,&this.commands,&owner,&chat).await?;
+                let current = this.chats.fence_task_interrupt(&owner,&chat,
+                    original["scope"]["revision"].as_i64().context("Task interrupt revision")? as i32).await?;
+                let Some(current) = current.filter(|v|v["paused"]==true && v["scope"]["revision"]==original["scope"]["revision"]) else {
+                    return Ok(json!({"interrupted":false}));
+                };
+                let result = this.commands.request_with_timeout(&text(&current["scope"]["workerId"])?,
+                    json!({"type":"chat.interrupt","chatId":chat,"threadId":current["scope"]["threadId"],"task":current["scope"]}),RequestTimeout::Disabled,None).await?;
+                crate::settings::parse_response("chatInterruptAcceptedSchema",result.as_ref())
+            }.await;
+            this.publish_task_pause(&owner,&chat,&original);
+            result.map_err(|cause|wrapped(502,"The worker could not confirm this Task interruption: ",&cause))
+        })
+    }
     fn publish_task_pause(&self, owner: &str, chat: &str, intent: &Value) {
         self.live
             .publish_summary(owner, &json!(chat), &intent["scope"]["projectId"]);

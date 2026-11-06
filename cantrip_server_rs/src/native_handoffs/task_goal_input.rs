@@ -105,7 +105,7 @@ pub(super) async fn commit(
     }
     tx.query("UPDATE tasks SET model_configuration=$1::text::jsonb,row_version=row_version+1,updated_at=$2 WHERE chat_id=$3",
         &[&task_configuration.stringify(),&now,&text(&row["cycle"]["chat_id"])?]).await?;
-    tx.query("UPDATE task_dispatch_cycles SET model_configuration=$1::text::jsonb,model_route_id=$2,provider_account_id=$3,goal_order_epoch=$4,goal_input=$5::text::jsonb,goal_cycle_recovery=$6::text::jsonb,eligibility_code=NULL,updated_at=$7 WHERE id=$8",
+    tx.query("UPDATE task_dispatch_cycles SET model_configuration=$1::text::jsonb,model_route_id=$2,provider_account_id=$3,goal_order_epoch=$4,goal_input=$5::text::jsonb,goal_cycle_recovery=NULLIF($6::text::jsonb,'null'::jsonb),eligibility_code=NULL,updated_at=$7 WHERE id=$8",
         &[&cycle_configuration.stringify(),&text(&target["routeId"])?,&optional(&target["accountId"])?,&epoch,&input.stringify(),&marker.stringify(),&now,&text(&row["cycle"]["id"])?]).await?;
     let mut next = queued.clone();
     next["taskGoalControl"] =

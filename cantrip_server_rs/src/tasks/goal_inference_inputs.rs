@@ -179,6 +179,31 @@ async fn defer_locked(tx: &Transaction<'_>, owner: &str, c: &Value, state: &Valu
     Ok(())
 }
 impl Repository {
+    /// The Stop transaction already holds the owner/cycle/chat locks. Revoking
+    /// an enforced unused input fences its before-send dispatch, not its slot.
+    pub(crate) async fn defer_goal_input_for_interrupt(
+        tx: &Transaction<'_>,
+        owner: &str,
+        cycle: &Value,
+    ) -> Result<()> {
+        let state = &cycle["goal_input"];
+        if state.is_null()
+            || state["accepted"] != true
+            || state["allAttemptsEnforced"] != true
+            || state["deferred"] == true
+            || state["failedBeforeDispatch"] == true
+            || !state["firstDispatchedOperationId"].is_null()
+        {
+            return Ok(());
+        }
+        match defer_locked(tx, owner, cycle, state).await {
+            // A completed/archived/replaced Task has no reusable input. Stop
+            // must still reach its actual native owner to perform cleanup.
+            Err(error) if error.is::<crate::task_dispatch::Conflict>() => Ok(()),
+            result => result,
+        }
+    }
+
     pub async fn goal_launch_guard(&self, owner: &str, chat: &str, lease: &Value) -> Result<Value> {
         let (owner, chat, lease) = (owner.to_owned(), chat.to_owned(), lease.clone());
         self.database.transaction(|tx|Box::pin(async move {
@@ -470,13 +495,14 @@ impl Repository {
         let mut r = input.clone();
         r["kind"] = json!("goal");
         r["operationId"] = json!(uuid::Uuid::new_v4().to_string());
-        let r = parse("taskInferenceInputReceiptSchema", &r)?;
+        let mut r = parse("taskInferenceInputReceiptSchema", &r)?;
         let owner = owner.to_owned();
         self.database.transaction(|tx|Box::pin(async move {
             let (chat,id,operation)=(text(&r["chatId"])?,text(&r["dispatch"]["cycleId"])?,text(&r["dispatch"]["operationId"])?);
             dispatch_fence::assert(tx,&owner,&chat,&operation,&json!({"kind":"leased","lease":r["dispatch"]}),false).await?;
             let c=cycle(tx,&owner,&chat,Some(&id)).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?;
             if c["operation_kind"]!="finalize" || c["physical_worker_id"]!=r["workerId"] || c["worktree_id"]!=r["worktreeId"] {return stale();}
+            r["queueOrderEpoch"]=c["goal_order_epoch"].clone();
             let row=context(tx,&owner,&r,true,false).await?;
             assert_handoff_input(tx,&owner,&r,false).await?;
             if row["chat"]["automation_paused"]==true || row["project"]["task_scheduling_paused"]==true || row["task"]["state"]=="paused" || row["lane"]["state"]!="active" {return stale();}
@@ -692,8 +718,6 @@ impl Repository {
             || r["chatId"] != record["identity"]["chatId"]
             || r["clientMessageId"] != record["identity"]["recovery"]["messageId"]
             || r["providerId"] != record["identity"]["providerId"]
-            || (record["workerGeneration"] == input["workerGeneration"]
-                && !(record["state"] == "released" && record["outcome"] == "never-started"))
         {
             return Ok(result("unresolved", false));
         }
@@ -702,7 +726,14 @@ impl Repository {
             let record=&input["record"];let r=&record["identity"]["recovery"]["taskInput"];
             let result=|disposition:&str,no_input:bool|{let mut v=json!({"key":record["key"],"disposition":disposition,"chatId":r["chatId"]});if no_input{v["taskInputNotDispatched"]=json!(true);}v};
             let c=cycle(tx,&owner,&text(&r["chatId"])?,Some(&text(&r["dispatch"]["cycleId"])?)).await?;
-            let Some(c)=c else{return Ok(result("retired",false));};let mut s=c["goal_input"].clone();
+            // Retire only an ended old queue episode, never a current live
+            // holder. A fresh input still needs its own canonical dispatch.
+            if let Some(c)=&c
+                && r["queueOrderEpoch"].as_i64().unwrap_or(0)!=c["goal_order_epoch"].as_i64().context("Goal queue order")?
+                && (record["workerGeneration"]!=input["workerGeneration"] || record["state"]=="released") {return Ok(result("retired",false));}
+            if record["workerGeneration"]==input["workerGeneration"] && !(record["state"]=="released" && record["outcome"]=="never-started") {return Ok(result("unresolved",false));}
+            let Some(c)=c else{return Ok(result("retired",false));};
+            let mut s=c["goal_input"].clone();
             if s.is_null() || !matches!(c["state"].as_str(),Some("claimed"|"running"|"queued"|"paused"|"expired")) || s["failedBeforeDispatch"]==true || s["receipt"]["clientMessageId"]!=r["clientMessageId"] || s["receipt"]["workerId"]!=input["workerId"] || s["receipt"]["providerId"]!=r["providerId"]{return Ok(result("retired",false));}
             if s["accepted"]!=true || s["allAttemptsEnforced"]!=true{return Ok(result("unresolved",false));}
             if handoff(tx,&owner,&text(&r["chatId"])?).await?.is_some(){return Ok(result("unresolved",false));}

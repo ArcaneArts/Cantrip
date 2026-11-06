@@ -515,12 +515,13 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.interrupt"),
+    task: taskPauseScopeSchema.optional(),
     nativeActivationGeneration: z.string().min(1).nullable().optional(),
     executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     chatId: z.string().min(1),
     threadId: z.string().min(1).nullable(),
-    model: workerRuntimeModelSchema,
-    provider: workerRuntimeProviderSchema,
+    model: workerRuntimeModelSchema.optional(),
+    provider: workerRuntimeProviderSchema.optional(),
   }),
   z.object({
     type: z.literal("chat.turn.rollback"),

@@ -19,6 +19,8 @@ import type {
   ServerRepository,
 } from "../../db/repository.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
+import { interruptTask } from "../runtime/task-interrupt-runtime.js";
+import { ChatAutomationPauseError } from "../runtime/chat-automation-pause-error.js";
 
 export interface ChatExecutionControlRouteDependencies {
   applicationOwnerId: () => string;
@@ -31,6 +33,8 @@ export interface ChatExecutionControlRouteDependencies {
     | "getChatExecutionContext"
     | "nativeCommands"
     | "nativeSuspensions"
+    | "taskAutomationPause"
+    | "nativeRuntimeHandoffs"
     | "listEffectiveMcpServers"
     | "setChatModel"
     | "updateChatRuntime"
@@ -150,6 +154,21 @@ export function installChatExecutionControlRoutes(
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
       }
+      if (context.experience === "task") {
+        try {
+          return reply.send(
+            await interruptTask(applicationOwnerId(), context.chatId, {
+              repository,
+              bridge,
+              publishChatSummary,
+            }),
+          );
+        } catch (error) {
+          if (error instanceof ChatAutomationPauseError)
+            return reply.code(error.statusCode).send({ error: error.message });
+          throw error;
+        }
+      }
       const autonomyStopped = managedTurnSessionContext(context)
         ? await repository.nativeCommands.stopAutonomy(
             applicationOwnerId(),
@@ -203,11 +222,6 @@ export function installChatExecutionControlRoutes(
           chatInterruptAcceptedSchema.parse({ interrupted: true }),
         );
       }
-      const runtime = control.activationGeneration
-        ? null
-        : await runtimeForContext(context);
-      if (!control.activationGeneration && !runtime)
-        return reply.code(400).send({ error: "Selected model was not found." });
       const result = await bridge.request(
         context.workerId,
         control.activationGeneration
@@ -229,8 +243,6 @@ export function installChatExecutionControlRoutes(
                   : "ide",
               chatId: context.chatId,
               threadId: context.threadId,
-              model: runtime!.model,
-              provider: runtime!.provider,
             },
       );
       const parsedResult = chatInterruptAcceptedSchema.parse(result);

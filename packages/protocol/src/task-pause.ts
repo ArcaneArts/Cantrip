@@ -11,6 +11,13 @@ export const taskPauseScopeSchema = z
     modelRouteId: z.string().min(1).nullable(),
     providerAccountId: z.string().min(1).nullable(),
     cycleId: z.string().min(1).nullable(),
+    // Omitted by older senders; never reset an already known FIFO episode.
+    orderEpoch: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
   })
   .strict();
 export type TaskPauseScope = z.infer<typeof taskPauseScopeSchema>;
