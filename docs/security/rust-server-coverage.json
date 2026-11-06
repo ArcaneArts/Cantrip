@@ -5370,6 +5370,111 @@
         "remaining": [
           "This extension was source-reviewed and formatted only. Native patch application, compilation, migration execution, actual HTTP/worker/native behavior and platform acceptance were not run."
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/relocations",
+        "implementation": "cantrip_server_rs/src/http/chat_relocations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-relocation-repository-compatibility.mjs",
+          "scripts/server-rust/chat-hydration-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-lifecycle.mjs",
+          "scripts/server-rust/chat-relocation-http-failures.mjs",
+          "scripts/server-rust/chat-relocation-http-lifetimes.mjs",
+          "scripts/server-rust/chat-relocation-postcommit-cases.mjs",
+          "scripts/server-rust/chat-relocation-recovery-fence.mjs",
+          "docs/RUST_SERVER_CHAT_RELOCATIONS.md"
+        ],
+        "remaining": [
+          "Full browser/client and unchanged full worker acceptance with actual endpoint keys, native replay and physical attachment transfer remain required.",
+          "Mixed Node/Rust instances with Redis, additional cleanup/retry overlap, supported-platform packaging, existing-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/relocations",
+        "implementation": "cantrip_server_rs/src/http/chat_relocations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-relocation-repository-compatibility.mjs",
+          "scripts/server-rust/chat-hydration-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-lifecycle.mjs",
+          "scripts/server-rust/chat-relocation-http-failures.mjs",
+          "scripts/server-rust/chat-relocation-http-lifetimes.mjs",
+          "scripts/server-rust/chat-relocation-postcommit-cases.mjs",
+          "scripts/server-rust/chat-relocation-recovery-fence.mjs",
+          "docs/RUST_SERVER_CHAT_RELOCATIONS.md"
+        ],
+        "remaining": [
+          "Full browser/client and unchanged full worker acceptance with actual endpoint keys, native replay and physical attachment transfer remain required.",
+          "Mixed Node/Rust instances with Redis, additional cleanup/retry overlap, supported-platform packaging, existing-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chat-relocations/:jobId",
+        "implementation": "cantrip_server_rs/src/http/chat_relocations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-relocation-repository-compatibility.mjs",
+          "scripts/server-rust/chat-hydration-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-lifecycle.mjs",
+          "scripts/server-rust/chat-relocation-http-failures.mjs",
+          "scripts/server-rust/chat-relocation-http-lifetimes.mjs",
+          "scripts/server-rust/chat-relocation-postcommit-cases.mjs",
+          "scripts/server-rust/chat-relocation-recovery-fence.mjs",
+          "docs/RUST_SERVER_CHAT_RELOCATIONS.md"
+        ],
+        "remaining": [
+          "Full browser/client and unchanged full worker acceptance with actual endpoint keys, native replay and physical attachment transfer remain required.",
+          "Mixed Node/Rust instances with Redis, additional cleanup/retry overlap, supported-platform packaging, existing-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chat-relocations/:jobId/retry",
+        "implementation": "cantrip_server_rs/src/http/chat_relocations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-relocation-repository-compatibility.mjs",
+          "scripts/server-rust/chat-hydration-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-lifecycle.mjs",
+          "scripts/server-rust/chat-relocation-http-failures.mjs",
+          "scripts/server-rust/chat-relocation-http-lifetimes.mjs",
+          "scripts/server-rust/chat-relocation-postcommit-cases.mjs",
+          "scripts/server-rust/chat-relocation-recovery-fence.mjs",
+          "docs/RUST_SERVER_CHAT_RELOCATIONS.md"
+        ],
+        "remaining": [
+          "Full browser/client and unchanged full worker acceptance with actual endpoint keys, native replay and physical attachment transfer remain required.",
+          "Mixed Node/Rust instances with Redis, additional cleanup/retry overlap, supported-platform packaging, existing-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chat-relocations/:jobId/cancel",
+        "implementation": "cantrip_server_rs/src/http/chat_relocations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-relocation-repository-compatibility.mjs",
+          "scripts/server-rust/chat-hydration-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-lifecycle.mjs",
+          "scripts/server-rust/chat-relocation-http-failures.mjs",
+          "scripts/server-rust/chat-relocation-http-lifetimes.mjs",
+          "scripts/server-rust/chat-relocation-postcommit-cases.mjs",
+          "scripts/server-rust/chat-relocation-recovery-fence.mjs",
+          "docs/RUST_SERVER_CHAT_RELOCATIONS.md"
+        ],
+        "remaining": [
+          "Full browser/client and unchanged full worker acceptance with actual endpoint keys, native replay and physical attachment transfer remain required.",
+          "Mixed Node/Rust instances with Redis, additional cleanup/retry overlap, supported-platform packaging, existing-data upgrades, post-write rollback and final default cutover remain required."
+        ]
       }
     ]
   },
@@ -6403,6 +6508,98 @@
         "remaining": [
           "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
         ]
+      },
+      {
+        "command": "chat.relocation.hydration.begin",
+        "implementation": [
+          "cantrip_server_rs/src/chats/hydration.rs",
+          "cantrip_server_rs/src/chats/relocations/"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-relocation-repository-compatibility.mjs",
+          "scripts/server-rust/chat-hydration-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-lifecycle.mjs",
+          "scripts/server-rust/chat-relocation-http-failures.mjs",
+          "scripts/server-rust/chat-relocation-http-lifetimes.mjs",
+          "scripts/server-rust/chat-relocation-postcommit-cases.mjs",
+          "scripts/server-rust/chat-relocation-recovery-fence.mjs",
+          "docs/RUST_SERVER_CHAT_RELOCATIONS.md"
+        ],
+        "remaining": [
+          "Full browser/client and unchanged full worker acceptance with actual endpoint keys, native replay and physical attachment transfer remain required.",
+          "Mixed Node/Rust instances with Redis, additional cleanup/retry overlap, supported-platform packaging, existing-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "command": "chat.relocation.hydration.chunk",
+        "implementation": [
+          "cantrip_server_rs/src/chats/hydration.rs",
+          "cantrip_server_rs/src/chats/relocations/"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-relocation-repository-compatibility.mjs",
+          "scripts/server-rust/chat-hydration-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-lifecycle.mjs",
+          "scripts/server-rust/chat-relocation-http-failures.mjs",
+          "scripts/server-rust/chat-relocation-http-lifetimes.mjs",
+          "scripts/server-rust/chat-relocation-postcommit-cases.mjs",
+          "scripts/server-rust/chat-relocation-recovery-fence.mjs",
+          "docs/RUST_SERVER_CHAT_RELOCATIONS.md"
+        ],
+        "remaining": [
+          "Full browser/client and unchanged full worker acceptance with actual endpoint keys, native replay and physical attachment transfer remain required.",
+          "Mixed Node/Rust instances with Redis, additional cleanup/retry overlap, supported-platform packaging, existing-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "command": "chat.relocation.hydration.complete",
+        "implementation": [
+          "cantrip_server_rs/src/chats/hydration.rs",
+          "cantrip_server_rs/src/chats/relocations/"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-relocation-repository-compatibility.mjs",
+          "scripts/server-rust/chat-hydration-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-lifecycle.mjs",
+          "scripts/server-rust/chat-relocation-http-failures.mjs",
+          "scripts/server-rust/chat-relocation-http-lifetimes.mjs",
+          "scripts/server-rust/chat-relocation-postcommit-cases.mjs",
+          "scripts/server-rust/chat-relocation-recovery-fence.mjs",
+          "docs/RUST_SERVER_CHAT_RELOCATIONS.md"
+        ],
+        "remaining": [
+          "Full browser/client and unchanged full worker acceptance with actual endpoint keys, native replay and physical attachment transfer remain required.",
+          "Mixed Node/Rust instances with Redis, additional cleanup/retry overlap, supported-platform packaging, existing-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "command": "chat.relocation.thread.release",
+        "implementation": [
+          "cantrip_server_rs/src/chats/hydration.rs",
+          "cantrip_server_rs/src/chats/relocations/"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-relocation-repository-compatibility.mjs",
+          "scripts/server-rust/chat-hydration-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-lifecycle.mjs",
+          "scripts/server-rust/chat-relocation-http-failures.mjs",
+          "scripts/server-rust/chat-relocation-http-lifetimes.mjs",
+          "scripts/server-rust/chat-relocation-postcommit-cases.mjs",
+          "scripts/server-rust/chat-relocation-recovery-fence.mjs",
+          "docs/RUST_SERVER_CHAT_RELOCATIONS.md"
+        ],
+        "remaining": [
+          "Full browser/client and unchanged full worker acceptance with actual endpoint keys, native replay and physical attachment transfer remain required.",
+          "Mixed Node/Rust instances with Redis, additional cleanup/retry overlap, supported-platform packaging, existing-data upgrades, post-write rollback and final default cutover remain required."
+        ]
       }
     ]
   },
@@ -6682,7 +6879,8 @@
           "cantrip_server_rs/src/chats/catalog.rs",
           "cantrip_server_rs/src/chats/archive.rs",
           "cantrip_server_rs/src/chats/state.rs",
-          "cantrip_server_rs/src/chats/forks/"
+          "cantrip_server_rs/src/chats/forks/",
+          "cantrip_server_rs/src/chats/relocations/commit.rs"
         ],
         "status": "partial",
         "evidence": [
@@ -6691,7 +6889,16 @@
           "scripts/server-rust/chat-lifecycle-http-cases.mjs",
           "scripts/server-rust/standalone-chat-http-compatibility.mjs",
           "scripts/server-rust/chat-fork-repository-compatibility.mjs",
-          "scripts/server-rust/chat-fork-http-compatibility.mjs"
+          "scripts/server-rust/chat-fork-http-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-repository-compatibility.mjs",
+          "scripts/server-rust/chat-hydration-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-lifecycle.mjs",
+          "scripts/server-rust/chat-relocation-http-failures.mjs",
+          "scripts/server-rust/chat-relocation-http-lifetimes.mjs",
+          "scripts/server-rust/chat-relocation-postcommit-cases.mjs",
+          "scripts/server-rust/chat-relocation-recovery-fence.mjs",
+          "docs/RUST_SERVER_CHAT_RELOCATIONS.md"
         ],
         "remaining": [
           "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
@@ -7312,6 +7519,48 @@
         ],
         "tableName": "mcp_servers",
         "exportName": "mcpServers"
+      },
+      {
+        "tableName": "chat_relocation_jobs",
+        "exportName": "chatRelocationJobs",
+        "implementation": "cantrip_server_rs/src/chats/relocations/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-relocation-repository-compatibility.mjs",
+          "scripts/server-rust/chat-hydration-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-lifecycle.mjs",
+          "scripts/server-rust/chat-relocation-http-failures.mjs",
+          "scripts/server-rust/chat-relocation-http-lifetimes.mjs",
+          "scripts/server-rust/chat-relocation-postcommit-cases.mjs",
+          "scripts/server-rust/chat-relocation-recovery-fence.mjs",
+          "docs/RUST_SERVER_CHAT_RELOCATIONS.md"
+        ],
+        "remaining": [
+          "Full browser/client and unchanged full worker acceptance with actual endpoint keys, native replay and physical attachment transfer remain required.",
+          "Mixed Node/Rust instances with Redis, additional cleanup/retry overlap, supported-platform packaging, existing-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "tableName": "chat_relocation_snapshots",
+        "exportName": "chatRelocationSnapshots",
+        "implementation": "cantrip_server_rs/src/chats/relocations/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-relocation-repository-compatibility.mjs",
+          "scripts/server-rust/chat-hydration-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-lifecycle.mjs",
+          "scripts/server-rust/chat-relocation-http-failures.mjs",
+          "scripts/server-rust/chat-relocation-http-lifetimes.mjs",
+          "scripts/server-rust/chat-relocation-postcommit-cases.mjs",
+          "scripts/server-rust/chat-relocation-recovery-fence.mjs",
+          "docs/RUST_SERVER_CHAT_RELOCATIONS.md"
+        ],
+        "remaining": [
+          "Full browser/client and unchanged full worker acceptance with actual endpoint keys, native replay and physical attachment transfer remain required.",
+          "Mixed Node/Rust instances with Redis, additional cleanup/retry overlap, supported-platform packaging, existing-data upgrades, post-write rollback and final default cutover remain required."
+        ]
       }
     ]
   },
@@ -9606,7 +9855,8 @@
           "cantrip_server_rs/src/http/chat_catalogs.rs",
           "cantrip_server_rs/src/chats/roots/service.rs",
           "cantrip_server_rs/src/http/chat_lifecycle.rs",
-          "cantrip_server_rs/src/http/chat_forks.rs"
+          "cantrip_server_rs/src/http/chat_forks.rs",
+          "cantrip_server_rs/src/chats/relocations/service.rs"
         ],
         "status": "partial",
         "evidence": [
@@ -9616,7 +9866,16 @@
           "scripts/server-rust/chat-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/chat-lifecycle-http-cases.mjs",
           "scripts/server-rust/chat-fork-repository-compatibility.mjs",
-          "scripts/server-rust/chat-fork-http-compatibility.mjs"
+          "scripts/server-rust/chat-fork-http-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-repository-compatibility.mjs",
+          "scripts/server-rust/chat-hydration-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-lifecycle.mjs",
+          "scripts/server-rust/chat-relocation-http-failures.mjs",
+          "scripts/server-rust/chat-relocation-http-lifetimes.mjs",
+          "scripts/server-rust/chat-relocation-postcommit-cases.mjs",
+          "scripts/server-rust/chat-relocation-recovery-fence.mjs",
+          "docs/RUST_SERVER_CHAT_RELOCATIONS.md"
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
@@ -9738,6 +9997,26 @@
         ],
         "remaining": [
           "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "resource": "chat-relocation-job",
+        "implementation": "cantrip_server_rs/src/chats/relocations/service.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-relocation-repository-compatibility.mjs",
+          "scripts/server-rust/chat-hydration-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-compatibility.mjs",
+          "scripts/server-rust/chat-relocation-http-lifecycle.mjs",
+          "scripts/server-rust/chat-relocation-http-failures.mjs",
+          "scripts/server-rust/chat-relocation-http-lifetimes.mjs",
+          "scripts/server-rust/chat-relocation-postcommit-cases.mjs",
+          "scripts/server-rust/chat-relocation-recovery-fence.mjs",
+          "docs/RUST_SERVER_CHAT_RELOCATIONS.md"
+        ],
+        "remaining": [
+          "Full browser/client and unchanged full worker acceptance with actual endpoint keys, native replay and physical attachment transfer remain required.",
+          "Mixed Node/Rust instances with Redis, additional cleanup/retry overlap, supported-platform packaging, existing-data upgrades, post-write rollback and final default cutover remain required."
         ]
       }
     ]

@@ -374,10 +374,30 @@ export class ChatRelocationJobExecutor {
       });
     } catch (error) {
       if (hydratedTarget && !placementCommitted) {
-        const current = await this.repository.chatRelocationJobs
-          .get(claimed.ownerId, claimed.job.id)
-          .catch(() => null);
-        if (current?.state !== "succeeded") {
+        let current: ChatRelocationJobSummary | null;
+        try {
+          current = await this.repository.chatRelocationJobs.get(
+            claimed.ownerId,
+            claimed.job.id,
+          );
+        } catch (verificationError) {
+          this.logger.warn(
+            { err: verificationError, chatRelocationJobId: claimed.job.id },
+            "Could not verify relocation commit; retained target runtime",
+          );
+          // A lost COMMIT response can leave a succeeded placement. A failed
+          // read cannot establish that its hydrated thread is uncommitted.
+          throw error;
+        }
+        // Recovery can reuse this thread before the next attempt commits.
+        // An expired owner must not discard a queued or reassigned target.
+        const canRelease =
+          !current ||
+          (current.attempt === claimed.job.attempt &&
+            current.state !== "succeeded" &&
+            current.state !== "queued" &&
+            current.state !== "waiting-for-idle");
+        if (canRelease) {
           await this.#releaseTarget(hydratedTarget).catch((cleanupError) => {
             this.logger.warn(
               {

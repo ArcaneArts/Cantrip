@@ -1,5 +1,13 @@
 # Rust server replacement
 
+The native durable Chat relocation server now has repository, hydration, HTTP,
+job, Live, recovery and shutdown implementations. Local storage/authentication
+comparisons and real PostgreSQL interruption tests also reproduce and correct
+two shared Node/Rust target-cleanup safety bugs. See the
+[Chat relocation qualification](RUST_SERVER_CHAT_RELOCATIONS.md) for exact scope,
+reproduction commands and remaining full-worker/platform/product acceptance.
+The default server and overall replacement status remain unchanged.
+
 Validation policy, updated November 4, 2026: run development and milestone checks
 locally. GitHub Actions is reserved for releases and deployments. Historical CI
 results below retain their original scope; they are not instructions to dispatch

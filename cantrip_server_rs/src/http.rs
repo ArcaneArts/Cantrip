@@ -43,6 +43,7 @@ mod chat_lifecycle;
 mod chat_messages;
 mod chat_plan;
 mod chat_preparation;
+mod chat_relocations;
 mod chat_sync;
 mod cli;
 mod cli_commands;
@@ -217,6 +218,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(chat_plan::routes())
         .merge(chat_lifecycle::routes())
         .merge(chat_forks::routes())
+        .merge(chat_relocations::routes())
         .merge(chat_messages::routes())
         .merge(chat_preparation::routes())
         .merge(chat_sync::routes())

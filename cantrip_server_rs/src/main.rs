@@ -399,6 +399,7 @@ async fn main() -> Result<()> {
         service.managed_preparation.stop();
         service.folder_setup.stop();
         service.project_replicas.stop();
+        service.chat_relocations.stop();
         service.github_conversion.stop();
         service.workspace_discovery.stop();
         service.scratch_roots.stop();
@@ -472,6 +473,10 @@ async fn main() -> Result<()> {
         shutdown_step!("tunnel-runtime", service.tunnel_runtime.drained().await);
         shutdown_step!("folder-jobs", service.folder_setup.drained().await);
         shutdown_step!("scratch-root-jobs", service.scratch_roots.drained().await);
+        shutdown_step!(
+            "chat-relocation-jobs",
+            service.chat_relocations.drained().await
+        );
         shutdown_step!("replica-jobs", service.project_replicas.drained().await);
         shutdown_step!(
             "github-conversion-jobs",

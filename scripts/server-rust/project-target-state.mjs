@@ -21,7 +21,12 @@ export const state = (recordKind) =>
     protectedState: projectLabel.protectedLabel,
   });
 export const stamp = "2026-10-25T00:00:00.123Z";
-export function targetStateSql(owner = localOwner, other = otherOwner) {
+export function targetStateSql(
+  owner = localOwner,
+  other = otherOwner,
+  projectIds = {},
+) {
+  const projectId = (name) => projectIds[name] ?? name;
   const sql = [
     `INSERT INTO users(id,kind,display_name,role,status,email,normalized_email) VALUES(${literal(other)},'account','Other owner','member','active','other-target@example.invalid','other-target@example.invalid') ON CONFLICT(id) DO NOTHING`,
   ];
@@ -44,14 +49,14 @@ export function targetStateSql(owner = localOwner, other = otherOwner) {
     ["other", "github", true, null, other],
   ]) {
     sql.push(
-      `INSERT INTO projects(id,owner_id,protected_label,origin_kind,folder_management,git_capability,github_capability,worktree_policy,preferred_worker_id,github_repository_blind_index,created_at,updated_at) VALUES(${literal(project)},${literal(user)},${json(label("project"))},${literal(origin)},${literal(folder)},${git},${origin === "github"},${literal(origin === "github" ? "agent-managed" : "direct")},${literal(user === owner ? "alpha" : "foreign")},${literal(origin === "github" ? project + "-blind-index" : null)},${literal(stamp)},${literal(stamp)})`,
+      `INSERT INTO projects(id,owner_id,protected_label,origin_kind,folder_management,git_capability,github_capability,worktree_policy,preferred_worker_id,github_repository_blind_index,created_at,updated_at) VALUES(${literal(projectId(project))},${literal(user)},${json(label("project"))},${literal(origin)},${literal(folder)},${git},${origin === "github"},${literal(origin === "github" ? "agent-managed" : "direct")},${literal(user === owner ? "alpha" : "foreign")},${literal(origin === "github" ? project + "-blind-index" : null)},${literal(stamp)},${literal(stamp)})`,
     );
     for (const worker of user === owner ? ["alpha", "beta"] : ["foreign"]) {
       const source = project + "-" + worker,
         tree = source + "-main",
         root = "/fixture/" + source;
       sql.push(
-        `INSERT INTO project_sources(id,project_id,worker_id,source_kind,absolute_path,display_path,created_at,updated_at) VALUES(${literal(source)},${literal(project)},${literal(worker)},${literal(project === "folder" ? "folder" : "git")},${literal(root)},${literal(root)},${literal(stamp)},${literal(stamp)})`,
+        `INSERT INTO project_sources(id,project_id,worker_id,source_kind,absolute_path,display_path,created_at,updated_at) VALUES(${literal(source)},${literal(projectId(project))},${literal(worker)},${literal(project === "folder" ? "folder" : "git")},${literal(root)},${literal(root)},${literal(stamp)},${literal(stamp)})`,
       );
       sql.push(
         `INSERT INTO project_worktrees(id,project_source_id,worker_id,name,absolute_path,display_path,is_primary,origin,lifecycle_state,created_at,updated_at) VALUES(${literal(tree)},${literal(source)},${literal(worker)},'main',${literal(root)},${literal(root)},true,'cantrip','ready',${literal(stamp)},${literal(stamp)})`,
@@ -64,7 +69,7 @@ export function targetStateSql(owner = localOwner, other = otherOwner) {
       tree = project + "-" + worker + "-main",
       prefix = project === "github" ? "" : "other-";
     sql.push(
-      `INSERT INTO chats(id,owner_id,project_id,active_worktree_id,active_worker_id,protected_label,created_at,updated_at) VALUES(${literal(prefix + "chat")},${literal(user)},${literal(project)},${literal(tree)},${literal(worker)},${json(label("chat"))},${literal(stamp)},${literal(stamp)})`,
+      `INSERT INTO chats(id,owner_id,project_id,active_worktree_id,active_worker_id,protected_label,created_at,updated_at) VALUES(${literal(prefix + "chat")},${literal(user)},${literal(projectId(project))},${literal(tree)},${literal(worker)},${json(label("chat"))},${literal(stamp)},${literal(stamp)})`,
     );
     for (const [table, id, record, stateKind] of [
       ["terminals", prefix + "terminal", "terminal", "terminal-state"],
@@ -72,13 +77,13 @@ export function targetStateSql(owner = localOwner, other = otherOwner) {
       ["code_tabs", prefix + "code", "code-tab", null],
     ])
       sql.push(
-        `INSERT INTO ${table}(id,project_id,active_worker_id,worktree_id,protected_label${stateKind ? ",protected_state" : ""},created_at,updated_at) VALUES(${literal(id)},${literal(project)},${literal(worker)},${literal(tree)},${json(label(record))}${stateKind ? "," + json(state(stateKind)) : ""},${literal(stamp)},${literal(stamp)})`,
+        `INSERT INTO ${table}(id,project_id,active_worker_id,worktree_id,protected_label${stateKind ? ",protected_state" : ""},created_at,updated_at) VALUES(${literal(id)},${literal(projectId(project))},${literal(worker)},${literal(tree)},${json(label(record))}${stateKind ? "," + json(state(stateKind)) : ""},${literal(stamp)},${literal(stamp)})`,
       );
     sql.push(
-      `INSERT INTO browsers(id,project_id,protected_label,protected_state,created_at,updated_at) VALUES(${literal(prefix + "browser")},${literal(project)},${json(label("browser"))},${json(state("browser-state"))},${literal(stamp)},${literal(stamp)})`,
+      `INSERT INTO browsers(id,project_id,protected_label,protected_state,created_at,updated_at) VALUES(${literal(prefix + "browser")},${literal(projectId(project))},${json(label("browser"))},${json(state("browser-state"))},${literal(stamp)},${literal(stamp)})`,
     );
     sql.push(
-      `INSERT INTO project_views(id,project_id,kind,protected_label,created_at,updated_at) VALUES(${literal(prefix + "desktop")},${literal(project)},'remote-desktop',${json(label("project-view"))},${literal(stamp)},${literal(stamp)})`,
+      `INSERT INTO project_views(id,project_id,kind,protected_label,created_at,updated_at) VALUES(${literal(prefix + "desktop")},${literal(projectId(project))},'remote-desktop',${json(label("project-view"))},${literal(stamp)},${literal(stamp)})`,
     );
     for (const [id, kind, record, stateKind] of [
       [prefix + "browser", "browser", "browser", "browser-state"],
@@ -87,11 +92,11 @@ export function targetStateSql(owner = localOwner, other = otherOwner) {
       [prefix + "raw-browser", "browser", "remote-surface", "browser-state"],
     ])
       sql.push(
-        `INSERT INTO remote_surfaces(id,project_id,worker_id,kind,configuration,protected_label,protected_state,state_revision,created_at,updated_at) VALUES(${literal(id)},${literal(project)},${literal(worker)},${literal(kind)},${json(remoteSurfaceConfigurationSchema.parse({ kind }))},${json(label(record))},${json(state(stateKind))},1,${literal(stamp)},${literal(stamp)})`,
+        `INSERT INTO remote_surfaces(id,project_id,worker_id,kind,configuration,protected_label,protected_state,state_revision,created_at,updated_at) VALUES(${literal(id)},${literal(projectId(project))},${literal(worker)},${literal(kind)},${json(remoteSurfaceConfigurationSchema.parse({ kind }))},${json(label(record))},${json(state(stateKind))},1,${literal(stamp)},${literal(stamp)})`,
       );
   }
   sql.push(
-    `INSERT INTO terminals(id,project_id,active_worker_id,worktree_id,protected_label,protected_state,created_at,updated_at) VALUES('�','github','alpha','github-alpha-main',${json(label("terminal"))},${json(state("terminal-state"))},${literal(stamp)},${literal(stamp)})`,
+    `INSERT INTO terminals(id,project_id,active_worker_id,worktree_id,protected_label,protected_state,created_at,updated_at) VALUES('�',${literal(projectId("github"))},'alpha','github-alpha-main',${json(label("terminal"))},${json(state("terminal-state"))},${literal(stamp)},${literal(stamp)})`,
   );
   return sql;
 }
