@@ -3,6 +3,7 @@ import {
   reconcileUnstartedGui,
 } from "./native-undispatched-gui.js";
 import { isNativeTransportClosure } from "./native-transport-evidence.js";
+import { retainTerminalInput } from "./native-terminal-input.js";
 import { finishRestoredLogicalInput } from "./native-restored-logical-input.js";
 import { goalHandoffSessionMatches } from "./native-goal-handoff-affinity.js";
 import { reconcileNativeThreadObservation } from "./native-thread-observation.js";
@@ -909,6 +910,8 @@ export class NativeCommandRepository {
         "recording native admission",
       );
       await admitNativeSettingsState(tx, inserted);
+      if (initial.status === "accepted")
+        await retainTerminalInput(tx, ownerId, inserted, input);
       await recordGoalRecoveryAdmission(tx, input, inserted);
       if (consumeReply && initial.status === "accepted") {
         await tx

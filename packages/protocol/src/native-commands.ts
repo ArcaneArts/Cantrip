@@ -107,6 +107,14 @@ export const nativeCommandAdmissionSchema = z
       .object({ id, promptRevision: z.number().int().nonnegative() })
       .strict()
       .optional(),
+    /** Direct terminal input is retained atomically before waiting for capacity. */
+    retainedInput: z
+      .object({
+        prompt: queuedPromptOpaqueContentSchema,
+        attachments: z.array(chatAttachmentOpaqueSummarySchema),
+      })
+      .strict()
+      .optional(),
     origin: z.enum(["gui", "terminal", "autonomous"]),
     session: nativeCommandSessionSchema,
     method: z.string().min(1).max(120),

@@ -1,5 +1,6 @@
 import { record as suspensionRecord } from "./native-suspension-oracle.mjs";
 import { nativeGoalRecoveryWireFixtures } from "./native-goal-recovery-fixtures.mjs";
+import { retainedPrompt } from "./native-settlement-fixtures.mjs";
 export const autonomousAttempts = [
   {
     runnerGeneration: "runner",
@@ -299,5 +300,15 @@ export function nativeCommandWireFixtures(timestamp) {
       logicalRoot: restoredSuspension.source,
     },
   ];
+  const terminalInput = retainedPrompt();
+  fixtures.nativeCommandAdmissionSchema.push({
+    ...fixtures.nativeCommandAdmissionSchema[0],
+    origin: "terminal",
+    intent: {
+      scope: "thread",
+      nativeClientUserMessageId: terminalInput.nativeClientUserMessageId,
+    },
+    retainedInput: { prompt: terminalInput, attachments: [] },
+  });
   return fixtures;
 }

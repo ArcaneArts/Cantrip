@@ -245,6 +245,28 @@ async function flow(kind, executable, cliBinary) {
         model,
         blocker: capacityBlocker,
       });
+      if (!acceptedPrompt) {
+        const retained = await page.evaluate(
+          async ({ chatId, prompt }) => {
+            const matches = (
+              await (
+                await import("/src/lib/api/queue.ts")
+              ).getQueuedPrompts(chatId)
+            ).filter((item) => item.text === prompt);
+            if (matches.length !== 1)
+              throw new Error(
+                "The accepted terminal input must have one canonical queue item.",
+              );
+            return matches[0];
+          },
+          { chatId: chat.id, prompt },
+        );
+        acceptedPrompt = {
+          id: retained.id,
+          revision: retained.revision,
+          text: retained.text,
+        };
+      }
       result.capacityWaiting.acceptedPrompt = acceptedPrompt;
       const count = inferences();
       const killed = worker;

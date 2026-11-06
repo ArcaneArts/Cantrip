@@ -78,12 +78,16 @@ export async function deferGuiBeforeExecution(
       (row.status === "uncertain" &&
         row.rejectionCode === "missing-native-receipt")),
   );
+  const terminal = row.origin === "terminal";
   if (
-    row.origin !== "gui" ||
+    (row.origin !== "gui" && !terminal) ||
+    (terminal && !proof) ||
     row.kind !== "start" ||
     row.method !== "turn/start" ||
     (row.status !== "accepted" && !closedTransport) ||
-    row.logicalOperationId !== row.operationId ||
+    (terminal
+      ? row.logicalOperationId !== null
+      : row.logicalOperationId !== row.operationId) ||
     row.previousOperationId ||
     (row.logicalCompletedAt && !closedTransport) ||
     (row.executionCompletedAt && !closedTransport) ||
@@ -215,7 +219,8 @@ export async function deferGuiBeforeExecution(
 }
 
 /** Called only by the currently authenticated replacement worker after its
- * native scope takeover has fenced previous-generation execution. */
+ * native scope takeover has fenced previous-generation execution. Terminal
+ * sources must already have their encrypted canonical item and accepted claim. */
 export async function reconcileUnstartedGui(
   database: RepositoryDatabase,
   lanes: ChatExecutionLaneRepository,
@@ -267,7 +272,10 @@ export async function reconcileUnstartedGui(
       );
       if (
         row.chatId !== record.identity.chatId ||
-        row.logicalClientMessageId !== identity.messageId ||
+        (row.origin === "terminal"
+          ? (row.intent as NativeCommandAdmission["intent"])
+              .nativeClientUserMessageId
+          : row.logicalClientMessageId) !== identity.messageId ||
         (identity.threadId &&
           (row.identity as NativeCommandSession).threadId !== identity.threadId)
       )
