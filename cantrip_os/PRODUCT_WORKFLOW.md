@@ -61,6 +61,14 @@ The workspace selector URL opens its independent desktop. Shell execution does
 not require starting that desktop. The optional remote package supplies Linux
 computer use and Cantrip's integrated desktop viewer.
 
+## Local recovery administration
+
+For local root administration while the Phase 5 product backup controls are being
+implemented, the optional [recovery package](packages/recovery/README.md) provides
+capture, inspect, staged restore and rollback commands. Capture interrupts all
+managed workspaces, and its guest spool is root-private plaintext. This is not
+yet the encrypted backup/restore workflow through Cantrip.
+
 ## Agent computer use
 
 Enable **Settings → Computer Use → Enable computer use**, then start a new turn

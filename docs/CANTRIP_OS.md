@@ -597,6 +597,13 @@ changed identities without replaying work. See [dispatch behavior](../cantrip_os
 Process/output recovery, backups/restores, lifecycle preservation and real remote
 acceptance remain required for Phase 5 completion.
 
+The optional `cantrip-os-recovery` guest package now provides coordinated local
+capture, versioned manifests, staged/verified restore, retained originals and
+explicit rollback. It preserves package enablement and records workspace-wide
+interruption. This is a guest administration checkpoint, not completion of private
+backups: encrypted Worker storage, Server-owned backup admissions and product
+controls remain required. See [the package guide](../cantrip_os/packages/recovery/README.md).
+
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output
 recovery, and worker-offline behavior. Deliver workspace backups/restores,
