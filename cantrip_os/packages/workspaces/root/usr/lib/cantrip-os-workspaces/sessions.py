@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 import uuid
+from desktop_operations import DesktopOperations
 
 ID = re.compile(r"[a-z][a-z0-9-]{0,23}\Z")
 HERE = Path(__file__).parent
@@ -28,6 +29,7 @@ class Sessions:
             raise ValueError("Unsupported workspace registry; state was preserved")
         self.records = self.registry["workspaces"]
         self.children = {}
+        self.desktop_operations = DesktopOperations(self, write_json)
         self.is_stopping = lambda: False
         # Homes need traversal, while metadata files remain root-only (0600).
         store.state.chmod(0o711)
@@ -195,6 +197,11 @@ class Sessions:
 
     def dispatch(self, command, name=None):
         self.tick()
+        if command == "desktop-target":
+            return self.desktop_operations.target(name)
+        if command in ("desktop-execute", "desktop-observe"):
+            request = json.loads(name)
+            return self.desktop_operations.execute(request) if command == "desktop-execute" else self.desktop_operations.observe(request)
         if command == "list":
             return [self.info(key) for key in self.records]
         if command == "create":

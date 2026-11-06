@@ -3389,3 +3389,70 @@ desktop lifecycle, held-input/service cleanup, resets, image/customization and
 failed-upgrade recovery, optional-package lifecycle, real remote acceptance and
 final current Docker/ISO distribution acceptance remain required. No guest package,
 OCI image or ISO changed in this cycle. Phase 5 is not complete.
+
+## Phase 5: durable guest desktop administration (2026-11-06)
+
+The optional workspace package 0.4.0 adds strict generation-bound root
+`desktop-target`, `desktop-execute` and `desktop-observe` commands. Immutable
+admissions pin the workspace account, home, display, numeric generation and hashed
+desktop token. Private versioned journals use exclusive atomic reservation and
+synced file/directory updates. Repeating an existing admission only observes it;
+changed content, stale targets and corrupt journals cannot restart a replacement.
+Completion is historical and separate from current desktop state. Disabled-service
+history remains readable without starting the daemon or inferring a live desktop
+from saved resume intent. Raw VNC viewer tokens are not exposed by these commands.
+
+All 11 host Python journal tests passed, including reserved-before-dispatch,
+dispatched-but-unobserved, actual-effect-before-receipt, altered admissions,
+corrupt state/receipts, stale accounts/generations and historical completion.
+The existing Node foundation suite passed 15 tests with one explicitly unselected
+real-container integration test. Shell syntax, formatting and diff checks passed.
+Root `pnpm check` still stops at unchanged Server budgets, 1531/1500 and 2249/1999.
+No hosted validation ran.
+
+The normal Debian package build produced architecture-independent
+`cantrip-os-workspaces_0.4.0_all.deb`, 16,468 bytes, SHA-256
+`e82d169727c0ff8edc725b957c7a5e77ad6100678ce2c8a0b2aabcf3512a440e`.
+Repeating the normal package build produced the identical SHA-256.
+Package staging excludes host bytecode, and configure clears stale implementation
+bytecode before starting the updated daemon. No new desktop/native dependencies
+were added.
+
+Actual acceptance used a fresh, disposable ARM64 container
+`cantrip-os-phase5-desktop-lifecycle`, restricted to 4 GiB/two CPUs, with a personal
+desktop and two independently managed IceWM desktops. It upgraded the workspace
+package from 0.3.0 and exercised the installed 0.4.0 package:
+
+- Individual stop/start retained exact Unicode file bytes, 0640 mode and UID/GID.
+  The other desktop's generation and actual X PID remained unchanged. A shell
+  running as the selected account outside desktop ancestry survived.
+- An actual restart request's socket reply was discarded. Observation and repeated
+  execute calls returned its saved receipt; the new generation and actual X PID
+  remained unchanged, proving no extra restart.
+- Changed, missing and deliberately damaged admissions did not mutate the desktop;
+  the damaged journal remained intact.
+- A temporary QA wrapper killed the actual daemon after its real desktop restart
+  completed but before successful receipt persistence. The journal remained
+  dispatched. A new normal daemon recovered requested state with `observed-state`
+  evidence; repeated execute did not change its current generation or X PID.
+  Manager startup resumes prior-running desktops as documented; the receipt does
+  not attribute an out-of-band or resume action to the original operation.
+- Disable/enable preserved historical completion while reporting no current
+  observation offline. Execute against the disabled daemon failed without starting
+  it. The independent shell and personal X display remained available.
+
+The existing package lifecycle script also passed actual running/disabled
+reinstalls, remove, purge, reinstall and unsupported-settings preservation. Debian
+removed the dependent executor/remote packages when removing workspaces; it did not
+claim those integrations remained installed. The ordinary personal X/browser
+desktop remained usable. Subsequent observation verified original desktop receipts,
+file bytes/modes/ownership remained in the retained workspace volume.
+
+Private proof, after-package-lifecycle observations and package metadata are retained
+under ignored `cantrip_os/artifacts/phase5-desktop-lifecycle/`. The fault wrapper
+exists only in the disposable test's temporary directory and is not packaged.
+These are guest administration tests, not full Worker/client desktop-control or
+native model/CUA acceptance. Server-owned desktop admissions, Worker routing,
+client controls and held-input/service recovery remain next. Installed-system and
+final Docker/ISO qualification, resets/upgrades and real remote acceptance remain
+required. The full Phase 5 goal is active.
