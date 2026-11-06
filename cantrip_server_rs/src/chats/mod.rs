@@ -36,6 +36,7 @@ pub mod runtime_telemetry;
 mod state;
 mod summary;
 pub mod task_creation;
+mod task_pause;
 pub mod task_recovery;
 pub mod thread_sync;
 pub mod turn_behavior;

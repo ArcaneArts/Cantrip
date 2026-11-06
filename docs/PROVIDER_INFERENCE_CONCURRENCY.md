@@ -2666,3 +2666,96 @@ patch execution, hosted validation, or computer-use testing ran. The migration
 was not applied. Runtime and platform behavior remain unverified. Task-private
 provider transfers and the remaining full lifecycle audit are still part of the
 active concurrency goal.
+
+## Queued Task Goal provider transfers
+
+A Task with an existing active native Goal can transfer its actual unused private
+cycle through the same durable handoff used by Agent chats. Opening the control
+reads the owning worker's real SDK keeper record, native inference claim and
+protected settings snapshot. Begin captures that Source again outside the
+transaction, then rechecks the canonical Task cycle and binding under its normal
+lock. A browser never supplies an invented native Source or a copied Goal prompt.
+
+The worker withdraws only a positively unused inference scope, holds the exact
+native root producer, and exports after actual tree execution and Goal mutations
+settle. Existing children retain their gates while settling. Native patches0083
+and0084 bind the export to the Goal epoch and exact handoff operation; notification
+or request cancellation alone is not settlement. An owned export can wait beyond
+the ordinary RPC observation deadline. Cancelling its observation permits the
+existing coordinator to restore/release the exact hold; native I/O remains
+fenced by the original transfer identity.
+
+Commit changes the Task and dispatch-cycle root model configuration with the
+canonical route/account. Changing accounts or models within one provider retains
+the Source ordering episode and current-binding alias. Moving to another provider
+increments the durable Goal order epoch, retires the old Source as transferred,
+and lets the destination obtain a fresh FIFO position. Neither server grants a
+ticket. Task consoles and external-thread observation follow the acknowledged
+runtime. Publication never sends a Goal setter or replays input. Goal controls
+first settle an outstanding transfer so its export seal cannot strand a control
+against the old root. Pause/Stop and cold child portability still require the
+remaining full lifecycle audit.
+
+The Task view reuses the existing provider/account/model transfer editor. Handoff
+status uses scoped chat/task live invalidations and snapshot reads on reopen,
+rather than periodic whole-view polling. Explicit first-input Task Goal retargeting
+is not included in this milestone: a pending first setter and an already-applied
+setter need their own input-receipt handling and must never be replayed as an
+ordinary queued prompt.
+
+Validation for this milestone: source review, direct formatting, mechanical
+protocol-source export (671 roots, 11,131 nodes; Run export 11 roots, 453 nodes), and
+`git diff --check`. Route/command metadata was reconciled from reviewed source,
+including previously merged contracts missing from the old inventory. The
+existing static route parser cannot resolve the backup route's destructured
+literal tuple; its two literal URLs were read directly for this bookkeeping.
+No boundary audit, tests, builds, typechecks, benchmarks, native patch application
+or checks, native/helper execution, hosted validation, or computer-use testing
+ran. The migration and native patches remain unexecuted, and runtime/platform
+behavior remains unverified. The complete concurrency goal remains active.
+
+## Private Task pause and FIFO resumption
+
+Task pause/resume persists its intent before contacting the worker, using the
+canonical chat lock and managed input revision. The command includes the current
+Task project, worker, worktree, thread and dispatch cycle. Both server runtimes
+re-read that intent after asynchronous acknowledgements. A failed Resume can
+request a compensating Pause only if its revision is still current. A later
+device's control is never overwritten by an older HTTP acknowledgement.
+
+The worker retains one control record per live Task and server owner, coalesces
+redelivery, and reapplies intent when an actual private root is prepared or
+replaced. Native patch `0085` compares revisions and mutates the actual pause
+watch under the same root gate lock. This fences late native RPCs as well as
+worker callbacks. Controls neither grant inference nor manufacture Task input.
+
+An unused waiting permission can be parked without resolving its original
+acquisition promise. It owns no slot while paused. Resume puts it at the FIFO
+tail, preserving its input and physical native scope. Journal enqueue, adoption
+and requeue acknowledgements cannot restore an obsolete queue episode. An outer
+first-turn reservation can be suspended only after the worker confirms the
+exact pending main Core gate and sequential title preparation has settled.
+Running inference still requires the actual native model/tool pause boundary;
+setting a pause flag or receiving a notification never frees its ticket.
+
+Existing durable queue revision notices carry Task intent to its current worker,
+including after reconnect. Notices acknowledge the actual native intent apply,
+while an explicit control can await the safe boundary. Retries share the same
+boundary observer, rather than accumulating observers behind a long tool. A
+superseding intent or native invalidation wakes the older observation. The
+server retains configuration, intent and delivery state; the worker remains the
+only provider semaphore owner.
+
+Every fresh autonomous Task Goal scope also checks current canonical Task and
+project controls immediately before native allow. Its actual keeper Source
+identifies the request; an explicit first Goal input retains its own separate
+dispatch authority. Goal cycles still acquire separately and never reserve a
+future cycle's place.
+
+Validation is restricted to source review, direct formatting, mechanical source
+contract/diagnostic exports (673 protocol roots, 11,168 nodes; Run 11 roots,
+453 nodes) and `git diff --check`. Tests, builds, typechecks,
+benchmarks, native patch application/checks, runtime execution and computer-use
+testing are prohibited and were not performed. Explicit first-input Goal route
+changes, cold child portability and the final all-entrypoint lifecycle audit
+remain separate work in the active concurrency goal.

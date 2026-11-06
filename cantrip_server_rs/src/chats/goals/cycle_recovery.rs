@@ -76,11 +76,12 @@ impl Service {
             .console
             .prepare_launch(owner, &context, &runtime)
             .await?;
+        let binding = tasks::goal_cycle_binding(&current);
         anyhow::ensure!(
-            prepared["model"].get("routeId") == recovery["cycle"].get("modelRouteId")
-                && prepared["provider"].get("id") == recovery.get("providerId")
+            prepared["model"].get("routeId") == binding.get("modelRouteId")
+                && prepared["provider"].get("id") == current.get("providerId")
                 && selected(prepared["provider"].get("accountId"), &Value::Null)
-                    == recovery["cycle"]["providerAccountId"],
+                    == binding["providerAccountId"],
             "The Task Goal recovery route changed."
         );
         let mut command = json!({

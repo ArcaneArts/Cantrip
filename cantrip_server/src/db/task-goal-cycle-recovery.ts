@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   taskGoalCycleRecoverySchema,
+  taskGoalCycleRecoveryBinding,
   type NativeInferenceRecovery,
   type NativeInferenceRecoveryResult,
   type TaskGoalCycleDispatch,
@@ -110,7 +111,22 @@ export class TaskGoalCycleRecoveryRepository {
           .where(eq(schema.modelRoutes.id, cycle.modelRouteId))
           .limit(1)
       : [];
-    return { task, cycle, chat, context, project, route };
+    const [handoff] = await tx
+      .select({ operationId: schema.nativeRuntimeHandoffs.operationId })
+      .from(schema.nativeRuntimeHandoffs)
+      .where(
+        and(
+          eq(schema.nativeRuntimeHandoffs.ownerId, owner),
+          eq(schema.nativeRuntimeHandoffs.chatId, chatId),
+          inArray(schema.nativeRuntimeHandoffs.phase, [
+            "preparing",
+            "prepared",
+            "committed",
+          ]),
+        ),
+      )
+      .limit(1);
+    return { task, cycle, chat, context, project, route, handoff };
   }
 
   private sameBinding(
@@ -120,7 +136,10 @@ export class TaskGoalCycleRecoveryRepository {
     workerId: string,
     providerId: string,
     threadId: string,
-    cycle: TaskGoalCycleIdentity,
+    cycle: Pick<
+      TaskGoalCycleIdentity,
+      "cycleId" | "modelRouteId" | "providerAccountId" | "orderEpoch"
+    >,
   ) {
     return (
       row.context.experience === "task" &&
@@ -137,6 +156,7 @@ export class TaskGoalCycleRecoveryRepository {
       row.cycle.codexThreadId === threadId &&
       row.cycle.modelRouteId === cycle.modelRouteId &&
       row.cycle.providerAccountId === cycle.providerAccountId &&
+      row.cycle.goalOrderEpoch === cycle.orderEpoch &&
       row.route?.providerId === providerId &&
       row.context.workerId === workerId &&
       row.context.threadId === threadId &&
@@ -154,6 +174,9 @@ export class TaskGoalCycleRecoveryRepository {
   ) {
     const input = row.cycle.goalInput;
     return (
+      // The exact unused Source remains recoverable, but may not produce a new
+      // native cycle while its canonical provider transfer owns the root.
+      !row.handoff &&
       row.task.state !== "complete" &&
       row.task.state !== "failed" &&
       row.task.state !== "paused" &&
@@ -189,7 +212,7 @@ export class TaskGoalCycleRecoveryRepository {
           row.context.workerId,
           marker.providerId,
           marker.threadId,
-          marker.cycle,
+          taskGoalCycleRecoveryBinding(marker),
         )
       )
         return null;
@@ -243,6 +266,17 @@ export class TaskGoalCycleRecoveryRepository {
       return result;
     return this.database.transaction(async (tx) => {
       const row = await this.locked(tx, owner, chatId);
+      const retained = row?.cycle.goalCycleRecovery;
+      const sameEpisode =
+        retained &&
+        retained.providerId === record.identity.providerId &&
+        retained.threadId === identity.threadId &&
+        retained.cycle.cycleId === cycle.cycleId &&
+        retained.cycle.goalEpoch === cycle.goalEpoch &&
+        retained.cycle.orderEpoch === cycle.orderEpoch;
+      const currentBinding = sameEpisode
+        ? taskGoalCycleRecoveryBinding(retained)
+        : cycle;
       if (
         !row ||
         !this.sameBinding(
@@ -250,7 +284,7 @@ export class TaskGoalCycleRecoveryRepository {
           input.workerId,
           record.identity.providerId,
           identity.threadId!,
-          cycle,
+          currentBinding,
         ) ||
         (record.identity.projectId &&
           record.identity.projectId !== row.context.projectId) ||
@@ -342,14 +376,49 @@ export class TaskGoalCycleRecoveryRepository {
           "The native Task Goal binding changed.",
           "stale-lease",
         );
-      const marker = row.cycle.goalCycleRecovery;
+      let marker = row.cycle.goalCycleRecovery;
+      if (input.freshRuntimeGeneration) {
+        // The current worker read its actual never-allowed keeper record after
+        // binding this exact native scope. It owns capacity; this transaction
+        // checks the canonical Task controls before Core can receive allow.
+        const key = createHash("sha256")
+          .update(
+            JSON.stringify([
+              input.workerGeneration,
+              input.freshRuntimeGeneration,
+              input.operationId,
+            ]),
+          )
+          .digest("hex");
+        if (
+          key !== input.sourceKey ||
+          (marker && marker.sourceKey !== input.sourceKey && !marker.settled)
+        )
+          throw new TaskDispatchConflictError(
+            "The Task Goal Source changed.",
+            "stale-lease",
+          );
+        if (marker?.sourceKey !== input.sourceKey)
+          marker = taskGoalCycleRecoverySchema.parse({
+            sourceKey: input.sourceKey,
+            workerGeneration: input.workerGeneration,
+            runtimeGeneration: input.freshRuntimeGeneration,
+            operationId: input.operationId,
+            workerId: input.workerId,
+            providerId: input.providerId,
+            threadId: input.threadId,
+            turnId: input.turnId,
+            cycle: input.cycle,
+          });
+      }
       if (
         !marker ||
         marker.sourceKey !== input.sourceKey ||
         marker.cycle.goalEpoch !== input.cycle.goalEpoch ||
         marker.providerId !== input.providerId ||
-        marker.cycle.orderEpoch !== input.cycle.orderEpoch ||
-        marker.settled?.reason === "ineligible" ||
+        taskGoalCycleRecoveryBinding(marker).orderEpoch !==
+          input.cycle.orderEpoch ||
+        (marker.settled && marker.settled.reason !== "dispatched") ||
         (marker.settled &&
           (marker.settled.operationId !== input.operationId ||
             marker.settled.turnId !== input.turnId))
@@ -391,7 +460,7 @@ export class TaskGoalCycleRecoveryRepository {
           row.context.workerId,
           marker.providerId,
           marker.threadId,
-          marker.cycle,
+          taskGoalCycleRecoveryBinding(marker),
         ) ||
         !this.eligible(row)
       )
@@ -411,8 +480,10 @@ export class TaskGoalCycleRecoveryRepository {
       }
       if (
         receipt.threadId !== marker.threadId ||
-        receipt.modelRouteId !== marker.cycle.modelRouteId ||
-        receipt.providerAccountId !== marker.cycle.providerAccountId ||
+        receipt.modelRouteId !==
+          taskGoalCycleRecoveryBinding(marker).modelRouteId ||
+        receipt.providerAccountId !==
+          taskGoalCycleRecoveryBinding(marker).providerAccountId ||
         (receipt.observedGoalEpoch === marker.cycle.goalEpoch &&
           receipt.observedGoalStatus === "active")
       )

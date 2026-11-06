@@ -8,6 +8,7 @@ use crate::{
 use anyhow::Context;
 struct Native {
     repository: QueueRepository,
+    chats: crate::chats::Repository,
     commands: Arc<LimitedCommandBus>,
     publish: Publish,
     recover_goal: Option<GoalRecovery>,
@@ -23,6 +24,7 @@ impl QueueDelivery {
     ) -> Arc<Self> {
         Self::with_backend(
             Arc::new(Native {
+                chats: crate::chats::Repository::new(database.clone()),
                 repository: QueueRepository::new(database),
                 commands,
                 publish,
@@ -46,13 +48,17 @@ impl Backend for Native {
     fn request(&self, entry: Value) -> BoxFuture<'_, Result<()>> {
         async move {
             let command=json!({"type":"chat.queue.changed","chatId":entry["chatId"],"revision":entry["revision"]});
+            let task_pause = self.chats.task_pause_intent(&text(&entry["ownerId"])?, &text(&entry["chatId"])?).await?;
             let primary = text(&entry["workerId"])?;
             let mut workers = vec![primary.clone()];
             if let Some(Value::Array(additional)) = entry.get("additionalWorkerIds") {
                 for worker in additional { workers.push(text(worker)?); }
             }
             let outcomes = futures::future::join_all(workers.into_iter().map(|worker| {
-                let command = command.clone();
+                let mut command = command.clone();
+                if let Some(intent) = task_pause.as_ref().filter(|intent| intent["scope"]["workerId"] == worker.as_str()) {
+                    command["taskPause"] = intent.clone();
+                }
                 let former = worker != primary || entry["recoveryOnly"] == true;
                 async move { match self.commands.request(
                     &worker, command,

@@ -15,6 +15,7 @@ import {
   prepareCantripOsProvision,
 } from "@/lib/api/cantrip-os";
 import { errorMessage } from "@/lib/error-message";
+import { CantripOsExistingSourceForm } from "./cantrip-os-existing-source-form";
 
 export function CantripOsSourceForm({
   project,
@@ -27,7 +28,9 @@ export function CantripOsSourceForm({
   worktrees: ProjectWorktreeSummary[];
   onProvisioned(): void;
 }) {
-  const [mode, setMode] = useState<"linux-owned" | "linked">("linux-owned");
+  const [mode, setMode] = useState<"linux-owned" | "linked" | "linux-existing">(
+    "linux-owned",
+  );
   const [worktreeId, setWorktreeId] = useState(
     worktrees.find((w) => w.workerId === workspace.workerId && w.isPrimary)
       ?.id ?? "",
@@ -46,6 +49,8 @@ export function CantripOsSourceForm({
   const [added, setAdded] = useState(false);
   const provision = useMutation({
     mutationFn: async () => {
+      if (mode === "linux-existing")
+        throw new Error("Use the existing Linux source registration form.");
       if (!selection.current) {
         const binding = await createCantripOsBinding(
           project.id,
@@ -102,6 +107,15 @@ export function CantripOsSourceForm({
     },
     onSettled: onProvisioned,
   });
+  if (mode === "linux-existing")
+    return (
+      <CantripOsExistingSourceForm
+        project={project}
+        workspace={workspace}
+        onProvisioned={onProvisioned}
+        onCancel={() => setMode("linux-owned")}
+      />
+    );
   return (
     <form
       className="space-y-3 rounded-lg border p-4"
@@ -128,6 +142,9 @@ export function CantripOsSourceForm({
               Linux-owned {project.capabilities.git ? "checkout" : "folder"}
             </option>
             <option value="linked">Link a worktree from this worker</option>
+            <option value="linux-existing">
+              Register existing or restored Linux files
+            </option>
           </NativeSelect>
         </label>
         {mode === "linux-owned" ? (

@@ -124,7 +124,19 @@ pub(super) async fn confirm(
         .get("binding")
         .filter(|v| !v.is_null())
         .unwrap_or(&row["source"]);
-    guards::assert_source(tx, owner, source).await?;
+    guards::assert_source(tx, owner, source, &row["queued_source"], false).await?;
+    if truthy(queued.get("taskGoal")) {
+        task_goal::confirm(tx, owner, source, queued, record).await?;
+        guards::assert_idle(tx, &text(&row["chat_id"])?, queued).await?;
+        let mut confirmed = queued.clone();
+        confirmed["withdrawn"] = json!(true);
+        return update(
+            tx,
+            &row,
+            json!({"queuedSource":confirmed,"errorCode":Value::Null}),
+        )
+        .await;
+    }
     let operation = text(&queued["operationId"])?;
     let generation = text(&queued["operationGeneration"])?;
     let root = context::read(
@@ -284,14 +296,18 @@ pub(super) async fn decline(tx: &Transaction<'_>, owner: &str, row: Value) -> Re
     {
         return reject("handoff-phase-conflict");
     }
-    guards::assert_source(
-        tx,
-        owner,
-        row.get("binding")
-            .filter(|v| !v.is_null())
-            .unwrap_or(&row["source"]),
-    )
-    .await?;
+    if !truthy(row["queued_source"].get("taskGoal")) {
+        guards::assert_source(
+            tx,
+            owner,
+            row.get("binding")
+                .filter(|v| !v.is_null())
+                .unwrap_or(&row["source"]),
+            &row["queued_source"],
+            false,
+        )
+        .await?;
+    }
     let error = if row["cancel_requested"] == true {
         Value::Null
     } else {

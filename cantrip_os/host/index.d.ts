@@ -1,6 +1,50 @@
 export class DockerDeliveryError extends Error {
   readonly delivery: "unknown";
 }
+export interface RetainedContainerObservation {
+  containerId: string;
+  name: string;
+  running: boolean;
+  status: string;
+  startedAt: string;
+  finishedAt: string;
+}
+export interface RetainedContainerRequest {
+  operationId: string;
+  action: "start" | "stop" | "restart";
+  container: string;
+  expectedContainerId: string;
+}
+export interface RetainedContainerInput extends RetainedContainerRequest {
+  journalPath: string;
+  signal?: AbortSignal;
+}
+export interface RetainedContainerOperation {
+  version: 1;
+  request: RetainedContainerRequest;
+  state: "running" | "ready" | "failed" | "unknown";
+  phase:
+    "reserved" | "mutation-requested" | "mutation-acknowledged" | "verified";
+  startedAt: string;
+  updatedAt: string;
+  before: RetainedContainerObservation | null;
+  after: RetainedContainerObservation | null;
+  completionEvidence: "acknowledged-and-observed" | "observed-state" | null;
+  error: string | null;
+}
+export interface RetainedContainerResult {
+  operation: RetainedContainerOperation;
+  observation: RetainedContainerObservation | null;
+  observationError: string | null;
+}
+export function changeRetainedContainer(
+  engine: LocalDocker,
+  input: RetainedContainerInput,
+): Promise<RetainedContainerResult>;
+export function observeRetainedContainer(
+  engine: LocalDocker,
+  input: RetainedContainerInput,
+): Promise<RetainedContainerResult | null>;
 export function finalizeRecreation(
   engine: LocalDocker,
   journalPath: string,

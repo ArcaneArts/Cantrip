@@ -1,6 +1,54 @@
 //! Opaque Task operation metadata is checked without opening encrypted content.
 use super::{Parsed, ValidationError, Value, value::json};
 
+fn private_goal_source(record: &Value) -> bool {
+    let identity = &record["identity"];
+    let recovery = &identity["recovery"];
+    let cycle = &recovery["taskGoalCycle"];
+    let truthy = super::coercion::truthy;
+    if cycle.is_null()
+        || !truthy(identity.get("chatId"))
+        || !truthy(recovery.get("threadId"))
+        || !truthy(recovery.get("turnId"))
+        || [
+            "messageId",
+            "commandId",
+            "commandGeneration",
+            "taskInput",
+            "autonomousGoal",
+        ]
+        .iter()
+        .any(|key| truthy(recovery.get(key)))
+    {
+        return false;
+    }
+    let mut expected = "native-inference:".encode_utf16().collect::<Vec<_>>();
+    for (index, part) in [
+        &recovery["threadId"],
+        &recovery["turnId"],
+        &cycle["scopeId"],
+        &cycle["gateAttemptId"],
+    ]
+    .iter()
+    .enumerate()
+    {
+        let Some(text) = part.as_js_string() else {
+            return false;
+        };
+        if index > 0 {
+            expected.push(u16::from(b':'));
+        }
+        expected.extend_from_slice(text.units());
+    }
+    identity["operationId"]
+        .as_js_string()
+        .is_some_and(|operation| operation.units() == expected.as_slice())
+        && (!truthy(record.get("nativeExecution"))
+            || (record["nativeExecution"].get("threadId") == recovery.get("threadId")
+                && record["nativeExecution"].get("turnId") == recovery.get("turnId")
+                && record["nativeExecution"].get("scopeId") == cycle.get("scopeId")))
+}
+
 pub(super) fn refine(
     tag: &str,
     result: &mut Parsed,
@@ -17,6 +65,8 @@ pub(super) fn refine(
             | "chat-root-model"
             | "chat-goal-update"
             | "agent-sync-user-message"
+            | "task-goal-cycle-source"
+            | "task-goal-cycle-capture"
     ) {
         return Ok(false);
     }
@@ -33,6 +83,25 @@ pub(super) fn refine(
             .push(json!({"code":"custom","message":message,"path":at}));
     };
     match tag {
+        "task-goal-cycle-source" => {
+            if !private_goal_source(&value) {
+                custom(&[], "Invalid private Task Goal source");
+            }
+        }
+        "task-goal-cycle-capture" => {
+            let record = &value["record"];
+            let context = &value["snapshot"]["context"];
+            if !matches!(record["state"].as_str(), Some("waiting" | "granted"))
+                || !record["outcome"].is_null()
+                || record["identity"].get("chatId") != context.get("chatId")
+                || record["identity"]["recovery"].get("threadId") != context.get("threadId")
+            {
+                custom(
+                    &[],
+                    "The native snapshot does not capture a pending Task Goal source",
+                );
+            }
+        }
         "agent-sync-user-message" => {
             if value["text"]
                 .as_js_string()

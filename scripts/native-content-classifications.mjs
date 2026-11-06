@@ -34,6 +34,21 @@ const control = (rationale) =>
   classified("intentionally-public-control-plane", rationale);
 
 export function nativeRouteContentClassification({ path }) {
+  if (
+    path.startsWith("/api/cantrip-os/backup") ||
+    path === "/api/cantrip-os/:instanceId/backup-operations"
+  )
+    return protectedContract(
+      "owner-resolved backup operations carry endpoint-encrypted request/result envelopes; instance, operation, revision and phase are routing metadata, and archives remain on authorized endpoints",
+    );
+  if (path === "/api/internal/native-commands/task-goal-cycle-dispatch")
+    return control(
+      "worker-authenticated current owner/server/process and canonical Task cycle, Goal epoch, route and FIFO identity; accepted metadata only, without Goal text, prompt replay or server-owned capacity",
+    );
+  if (path === "/api/internal/native-commands/suspension-execution")
+    return protectedContract(
+      "worker-authenticated exact native suspension and session identities with a digest and protected payload; the actual admitted native checkpoint governs resumption, not copied plaintext tool or prompt content",
+    );
   if (path === "/api/tasks/:chatId/inference-route")
     return classified(
       "minimized-operational-metadata",
@@ -147,6 +162,32 @@ export function nativeRouteContentClassification({ path }) {
 }
 
 export function nativeWorkerCommandContentClassification(command) {
+  if (command === "task.goal.source")
+    return protectedContract(
+      "owned chat/project/thread, provider route and canonical Task cycle identities only; the actual worker captures private-scope journal metadata and endpoint-encrypted native settings without preparing or granting inference",
+    );
+  if (
+    [
+      "cantrip-os.backup.capture",
+      "cantrip-os.backup.restore",
+      "cantrip-os.backup.rollback",
+    ].includes(command)
+  )
+    return protectedContract(
+      "server-derived owned instance/workspace dispatch and operation identities accompany endpoint-encrypted private backup intent and results; archive contents and native execution remain worker-local",
+    );
+  if (command === "cantrip-os.backup.observe")
+    return protectedContract(
+      "owned backup scope and operation identity select observation or recovery of an existing operation; result details remain in the endpoint-protected result envelope",
+    );
+  if (command === "chat.goal.claim-recover")
+    return protectedContract(
+      "owner-bound original Goal claim and managed session retain protected provider/MCP configuration; the worker recovers the actual native claim without replaying a Goal setter or prompt",
+    );
+  if (command === "task.goal.recover")
+    return protectedContract(
+      "canonical Task Goal recovery and FIFO identities plus protected model/MCP configuration; no Goal setter or prompt is replayed, and only the owning worker may obtain a provider ticket",
+    );
   if (command === "cantrip-os.source.provision")
     return protectedContract(
       "server-derived owned source scope and durable admission accompany an opaque repository provision request; private intent is opened only by the authorized worker",

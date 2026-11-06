@@ -1,6 +1,7 @@
 //! Durable pause/resume and worker acknowledgements shared by Chat and Tasks.
 //! Native controls persist authorized intent at dispatch; late acknowledgements
 //! must observe that intent instead of writing an older request a second time.
+mod durable_resume;
 use super::{
     Repository, goals, live_mutations::Service as Live, managed_console,
     turn_runtime::stages::Operations,
@@ -15,6 +16,8 @@ use crate::{
 use anyhow::{Context, Result};
 use futures::future::BoxFuture;
 use std::sync::Arc;
+#[path = "automation_pause_task.rs"]
+mod task;
 #[derive(Debug)]
 pub struct PauseError {
     pub status_code: u16,
@@ -42,6 +45,7 @@ pub struct Service {
     chats: Repository,
     native: native_commands::Repository,
     prompts: PromptRepository,
+    handoffs: crate::native_handoffs::Repository,
     commands: Arc<LimitedCommandBus>,
     goals: Arc<goals::Service>,
     live: Arc<Live>,
@@ -77,6 +81,7 @@ impl Service {
         Arc::new(Self {
             chats: Repository::new(database.clone()),
             native: native_commands::Repository::new(database.clone()),
+            handoffs: crate::native_handoffs::Repository::new(database.clone()),
             prompts: PromptRepository::new(database),
             commands,
             goals,
@@ -110,6 +115,20 @@ impl Service {
         paused: bool,
         resume_automation: bool,
     ) -> Result<Value> {
+        crate::native_handoffs::service::settle_task_control(
+            &self.handoffs,
+            &self.commands,
+            owner,
+            chat,
+        )
+        .await
+        .map_err(|cause| {
+            wrapped(
+                409,
+                "Could not settle the provider transfer before changing pause state: ",
+                &cause,
+            )
+        })?;
         let control = self.native.control_context(owner, chat).await?;
         let context = &control["context"];
         if !truthy(Some(context)) {
@@ -127,6 +146,11 @@ impl Service {
                 "The project worker is offline. This chat remains paused so its next action is not lost.",
             ));
         }
+        if context["experience"] == "task" {
+            return self
+                .set_task_pause(owner, &chat, paused, resume_automation)
+                .await;
+        }
         let native = managed_console::turn_session_context(context).is_some();
         let suspension = if native {
             self.chats.native_suspension(owner, &chat).await?
@@ -143,14 +167,20 @@ impl Service {
             && suspension
                 .as_ref()
                 .is_some_and(|s| !s["checkpoint"].is_null());
-        let resumed = if native && !paused && !durable_resume {
+        if durable_resume {
+            return self
+                .durable_resume(owner, context, &control, resume_automation)
+                .await;
+        }
+        let resume_before_worker = !paused && native && !durable_resume;
+        let resumed = if resume_before_worker {
             self.chats
                 .set_automation_paused(owner, &chat, false)
                 .await?
         } else {
             None
         };
-        if native && !paused && !durable_resume && resumed.is_none() {
+        if resume_before_worker && resumed.is_none() {
             return Err(failure(404, "Chat source not found."));
         }
         if native && !paused && !durable_resume {
@@ -183,7 +213,7 @@ impl Service {
             match acknowledged {
                 Ok(value) => active = value,
                 Err(error) => {
-                    if !paused && native {
+                    if resume_before_worker {
                         self.chats.set_automation_paused(owner, &chat, true).await?;
                         self.publish(owner, context);
                     }

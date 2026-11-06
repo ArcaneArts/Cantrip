@@ -138,6 +138,7 @@ async fn handle(
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
         .merge(super::cantrip_os_backups::routes())
+        .merge(super::cantrip_os_power::routes())
         .route(
             "/api/projects/{projectId}/cantrip-os/bindings/{bindingId}/run-definitions",
             post(handle),

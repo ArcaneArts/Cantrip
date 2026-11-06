@@ -18,7 +18,7 @@ pub(super) async fn apply(
         .get("binding")
         .filter(|b| !b.is_null())
         .unwrap_or(&row["source"]);
-    guards::assert_source(tx, owner, previous).await?;
+    guards::assert_source(tx, owner, previous, &row["queued_source"], false).await?;
     let chat = text(&row["chat_id"])?;
     guards::assert_idle(tx, &chat, &row["queued_source"]).await?;
     let target = guards::target(
@@ -54,6 +54,16 @@ pub(super) async fn apply(
         &binding,
         &prepared["snapshot"],
     )?;
+    let task_queued = task_goal::commit(
+        tx,
+        owner,
+        &state["binding"],
+        &row["queued_source"],
+        &json!({"modelId":target["modelId"],"providerId":target["providerId"],
+            "routeId":row["target_model_route_id"],"accountId":row["target_provider_account_id"]}),
+        prepared,
+    )
+    .await?;
     let root = if row["source"]["contextKind"] == "project" {
         "worktree_id"
     } else {
@@ -103,6 +113,9 @@ pub(super) async fn apply(
     )
     .await?;
     let mut patch = json!({"phase":"committed","binding":binding,"retiredRuntimeGenerations":retire_runtime(&row,&previous["runtimeGeneration"]),"errorCode":Value::Null});
+    if let Some(queued) = task_queued {
+        patch["queuedSource"] = queued;
+    }
     goal_recovery::commit_provider(tx, &row, &target["providerId"]).await?;
     if row["source"]["contextKind"] == "standalone"
         && truthy(row.get("queued_source"))

@@ -3,6 +3,32 @@ use anyhow::{Context, Result, ensure};
 use postgres_types::Json;
 use serde_json::{Value, json};
 
+fn existing_guest_path(home: &str, relative: &str) -> Result<String> {
+    ensure!(
+        !relative.is_empty() && !relative.starts_with('/') && !relative.contains('\0'),
+        "Choose a path relative to the Linux workspace home."
+    );
+    let mut parts = Vec::new();
+    for part in relative.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => anyhow::bail!(
+                "Parent traversal is not allowed in a source path. Choose its direct home-relative path."
+            ),
+            part => parts.push(part),
+        }
+    }
+    Ok(format!(
+        "{}{}",
+        home.trim_end_matches('/'),
+        if parts.is_empty() {
+            String::new()
+        } else {
+            format!("/{}", parts.join("/"))
+        }
+    ))
+}
+
 impl Repository {
     pub async fn create_binding(&self, owner: &str, project: &str, input: &Value) -> Result<Value> {
         if input["mode"] == "linux-worktree" {
@@ -14,6 +40,18 @@ impl Repository {
             let target=target.first().context("Project and OS workspace must share an owner.")?;
             let instance=&target["instance"];let workspace=&target["workspace"];
             let worker=text(instance,"worker_id")?;
+            let home=text(workspace,"home_guest_path")?;
+            let existing=input["mode"]=="linux-existing";
+            let existing_path=if existing { Some(existing_guest_path(home,text(&input,"relativePath")?)?) } else { None };
+            let creation_request=json!({"projectId":project,"workspaceId":workspace["id"],"sourceKind":input["sourceKind"],"guestPath":existing_path});
+            if existing {
+                let old=decode(tx.query("SELECT to_jsonb(a)::text FROM cantrip_os_existing_source_admissions a WHERE operation_id=$1", &[&text(&input,"operationId")?]).await?)?;
+                if let Some(old)=old.first() {
+                    ensure!(old["owner_id"]==owner && old["request"]==creation_request,"This source creation ID already belongs to another selection.");
+                    let rows=decode(tx.query("SELECT to_jsonb(b)::text FROM cantrip_os_source_bindings b WHERE id=$1", &[&text(old,"binding_id")?]).await?)?;
+                    return summary(rows.first().context("The admitted existing source is no longer available.")?,"binding",Some(text(instance,"id")?));
+                }
+            }
             let binding=uuid();let generation=uuid();
             let (source,worktree,guest,linked)=if input["mode"]=="linked" {
                 ensure!(instance["transport"]["kind"]=="docker","Linked checkouts require Docker on the owning worker.");
@@ -23,15 +61,18 @@ impl Repository {
             } else {
                 ensure!((input["sourceKind"]=="git")==target["git"].as_bool().unwrap_or(false),"Linux source kind must preserve the project Git capability.");
                 let source=uuid();let worktree=uuid();
-                let guest=format!("{}/checkouts/{source}",text(workspace,"home_guest_path")?);
-                let values=Json(json!({"source":source,"worktree":worktree,"project":project,"worker":worker,"workspace":workspace["id"],"kind":input["sourceKind"],"guest":guest}));
+                let guest=existing_path.clone().unwrap_or_else(||format!("{home}/checkouts/{source}"));
+                let values=Json(json!({"source":source,"worktree":worktree,"project":project,"worker":worker,"workspace":workspace["id"],"kind":input["sourceKind"],"guest":guest,"ownership":if existing {"user"}else{"cantrip"}}));
                 tx.query("INSERT INTO project_source_identities(id,project_id,worker_id,location_kind) VALUES($1::jsonb->>'source',$1::jsonb->>'project',$1::jsonb->>'worker','cantrip-os')", &[&values]).await?;
-                tx.query("INSERT INTO cantrip_os_project_sources(id,workspace_id,source_kind,guest_path,ownership_kind) VALUES($1::jsonb->>'source',$1::jsonb->>'workspace',$1::jsonb->>'kind',$1::jsonb->>'guest','cantrip')", &[&values]).await?;
+                tx.query("INSERT INTO cantrip_os_project_sources(id,workspace_id,source_kind,guest_path,ownership_kind) VALUES($1::jsonb->>'source',$1::jsonb->>'workspace',$1::jsonb->>'kind',$1::jsonb->>'guest',$1::jsonb->>'ownership')", &[&values]).await?;
                 tx.query("INSERT INTO project_worktrees(id,project_source_id,worker_id,location_kind,guest_path,display_path,root_kind,name,is_primary,is_default,origin,lifecycle_state) VALUES($1::jsonb->>'worktree',$1::jsonb->>'source',$1::jsonb->>'worker','cantrip-os',$1::jsonb->>'guest',$1::jsonb->>'source',CASE WHEN $1::jsonb->>'kind'='git' THEN 'git-worktree' ELSE 'folder-root' END,'Primary',true,true,'cantrip','creating')", &[&values]).await?;
                 (json!(source),json!(worktree),guest,Value::Null)
             };
-            let values=Json(json!({"id":binding,"owner":owner,"project":project,"worker":worker,"source":source,"worktree":worktree,"workspace":workspace["id"],"mode":input["mode"],"linked":linked,"guest":guest,"generation":generation,"overlays":input.get("dependencyOverlays").cloned().unwrap_or_else(||json!([]))}));
+            let values=Json(json!({"id":binding,"owner":owner,"project":project,"worker":worker,"source":source,"worktree":worktree,"workspace":workspace["id"],"mode":if existing {json!("linux-owned")}else{input["mode"].clone()},"linked":linked,"guest":guest,"generation":generation,"overlays":input.get("dependencyOverlays").cloned().unwrap_or_else(||json!([]))}));
             let rows=decode(tx.query("INSERT INTO cantrip_os_source_bindings(id,owner_id,project_id,worker_id,project_source_id,worktree_id,workspace_id,mode,linked_worker_path,guest_path,binding_generation,state,dependency_overlays) VALUES($1::jsonb->>'id',$1::jsonb->>'owner',$1::jsonb->>'project',$1::jsonb->>'worker',$1::jsonb->>'source',$1::jsonb->>'worktree',$1::jsonb->>'workspace',$1::jsonb->>'mode',$1::jsonb->>'linked',$1::jsonb->>'guest',$1::jsonb->>'generation','provisioning',$1::jsonb->'overlays') RETURNING to_jsonb(cantrip_os_source_bindings)::text", &[&values]).await?)?;
+            if existing {
+                tx.query("INSERT INTO cantrip_os_existing_source_admissions(operation_id,owner_id,binding_id,request) VALUES($1,$2,$3,$4)", &[&text(&input,"operationId")?,&owner,&binding,&Json(creation_request)]).await?;
+            }
             summary(&rows[0],"binding",Some(text(instance,"id")?))
         })).await
     }

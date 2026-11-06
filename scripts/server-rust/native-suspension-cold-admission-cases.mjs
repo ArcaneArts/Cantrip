@@ -134,7 +134,40 @@ export async function coldSuspensionAdmissionCases({
     for (let cycle = 1; cycle <= 2; cycle++) {
       const pause = await control("turn/pause", true);
       await call("settle", { ...pause, suspensionEvidence: evidence });
+      // An older caller without an explicit epoch is bound at admission, and
+      // lost-ACK replay must retain that epoch after newer intent commits.
+      const delayedInput = command({
+        operationId: `${key}-delayed-${cycle}`,
+        origin: "terminal",
+        method: "turn/pause",
+        session,
+        expectedActivationGeneration: head.activationGeneration,
+        intent: {
+          durableSuspension: true,
+          workerGeneration,
+          expectedTurnId: active.turnId,
+          paused: false,
+          resumeAutonomy: true,
+        },
+      });
+      const delayed = await call("admit", delayedInput);
+      assert.equal(delayed.receipt.status, "accepted");
       const oldResume = await control("turn/pause", false);
+      const replay = await call("admit", delayedInput);
+      assert.equal(replay.replayed, true);
+      assert.equal(replay.receipt.operationId, delayed.receipt.operationId);
+      await call(
+        "dispatch",
+        {
+          workerId: "alpha",
+          workerGeneration,
+          operationId: delayed.receipt.operationId,
+          operationGeneration: delayed.receipt.operationGeneration,
+          payloadDigest: delayedInput.payloadDigest,
+          session,
+        },
+        "suspension-control-stale",
+      );
       const before = (await state()).state;
       assert.equal(before.phase, "resuming");
       workerGeneration = randomUUID();

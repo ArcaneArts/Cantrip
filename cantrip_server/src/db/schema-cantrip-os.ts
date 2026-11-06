@@ -71,6 +71,8 @@ export const cantripOsInstances = pgTable(
     runtimeGeneration: text("runtime_generation"),
     /** Last explicit recovery observation, scoped to this attachment. */
     workerProcessGeneration: text("worker_process_generation"),
+    /** Invalidates observations admitted before a retained power operation. */
+    powerEpoch: integer("power_epoch").notNull().default(0),
     lastError: text("last_error"),
     lastObservedAt: timestamp("last_observed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -253,6 +255,33 @@ export const cantripOsSourceBindings = pgTable(
       sql`jsonb_typeof(${table.dependencyOverlays}) = 'array' AND jsonb_array_length(${table.dependencyOverlays}) <= 32`,
     ),
   ],
+);
+
+/** Reserving an existing path has its own durable identity before encrypted
+ * verification starts. A lost creation response cannot allocate another source. */
+export const cantripOsExistingSourceAdmissions = pgTable(
+  "cantrip_os_existing_source_admissions",
+  {
+    operationId: text("operation_id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    bindingId: text("binding_id")
+      .notNull()
+      .unique()
+      .references(() => cantripOsSourceBindings.id, { onDelete: "cascade" }),
+    request: jsonb("request")
+      .$type<{
+        projectId: string;
+        workspaceId: string;
+        sourceKind: ProjectSourceKind;
+        guestPath: string;
+      }>()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
 );
 
 /** The encrypted request and original generations are immutable admission data.

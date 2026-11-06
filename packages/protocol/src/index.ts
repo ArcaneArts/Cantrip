@@ -5,6 +5,7 @@ export * from "./native-goal-recovery.js";
 export * from "./inference-failure.js";
 export * from "./task-inference-input.js";
 export * from "./task-goal-cycle.js";
+export * from "./task-goal-transfer.js";
 export * from "./task-inference-route.js";
 export * from "./task-goal-outcome.js";
 export * from "./provider-definitions.js";
@@ -14,6 +15,7 @@ export * from "./conversations.js";
 export * from "./file-documents.js";
 export * from "./workspace-ownership.js";
 export * from "./cantrip-os.js";
+export * from "./cantrip-os-power.js";
 export * from "./cantrip-os-backup.js";
 export * from "./cantrip-os-backup-operations.js";
 export * from "./worker-command-cantrip-os.js";
@@ -74,3 +76,5 @@ export * from "./cantrip-os-run-source.js";
 export * from "./native-suspensions.js";
 
 export * from "./cantrip-os-backup-api.js";
+
+export * from "./task-pause.js";

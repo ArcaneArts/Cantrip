@@ -280,7 +280,10 @@ export class CantripOsCoordinator {
   }
 
   async refresh(ownerId: string, instanceId: string) {
-    const { instance, transport } = await this.attachment(ownerId, instanceId);
+    const { instance, transport, powerEpoch } = await this.attachment(
+      ownerId,
+      instanceId,
+    );
     try {
       const actual = await this.inspect(ownerId, {
         workerId: instance.workerId,
@@ -309,9 +312,22 @@ export class CantripOsCoordinator {
           lastError: null,
         },
         instance.runtimeGeneration,
+        undefined,
+        powerEpoch,
       );
+      if (actual.powerTarget && transport.kind === "docker")
+        await this.repository.cantripOs.power.recordTarget(
+          ownerId,
+          instanceId,
+          instance.attachmentGeneration,
+          actual.runtimeGeneration,
+          actual.powerTarget.containerId,
+          powerEpoch,
+        );
       return {
-        instance: observed,
+        instance: actual.powerTarget
+          ? (await this.attachment(ownerId, instanceId)).instance
+          : observed,
         workspaces: await this.repository.cantripOs.listWorkspaces(
           ownerId,
           instanceId,
@@ -373,12 +389,20 @@ export class CantripOsCoordinator {
         projectId,
         input,
       );
-    if (input.mode === "linux-owned")
+    if (input.mode === "linux-owned" || input.mode === "linux-existing")
       return (
         await this.repository.cantripOs.createLinuxSource(ownerId, {
           projectId,
           workspaceId: input.workspaceId,
           sourceKind: input.sourceKind,
+          ...(input.mode === "linux-existing"
+            ? {
+                existing: {
+                  operationId: input.operationId,
+                  relativePath: input.relativePath,
+                },
+              }
+            : {}),
         })
       ).binding;
     // Ownership alone is insufficient: a project route must not admit another
@@ -411,6 +435,7 @@ export class CantripOsCoordinator {
       worktreeId: binding.worktreeId,
       sourceKind: context.sourceKind,
       repositoryFingerprint: context.repositoryFingerprint,
+      primaryGuestPath: context.primaryGuestPath,
       workspaceId: workspace.id,
       guestWorkspaceId: workspace.guestWorkspaceId,
       uid: workspace.uid,

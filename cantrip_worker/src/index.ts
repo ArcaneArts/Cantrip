@@ -11,6 +11,7 @@ import { dispatchRepositoryOperation } from "./repository-operation-dispatch.js"
 import { BrowserSurfaceWebRuntime } from "./browser/surface-web-runtime.js";
 import { generatePrivateLabel } from "./automatic-labeling.js";
 import { TaskInputExecutions } from "./task-input-executions.js";
+import { TaskPauseControls } from "./task-pause-controls.js";
 import { ClaimedInferenceSource } from "./inference-source.js";
 import { createNativeHistoryOutputModeResolver } from "./native-history-output-mode.js";
 import { managedNativePathsMatch } from "./codex/managed-native-policy.js";
@@ -27,6 +28,7 @@ import {
 import { ManagedRuntimeHandoffJournal } from "./codex/managed-runtime-handoff-journal.js";
 import { ManagedRuntimeHandoffStaging } from "./codex/managed-runtime-handoff-staging.js";
 import { NativeRuntimeHandoffClient } from "./native-runtime-handoff-client.js";
+import { UnstartedInferenceUnavailableError } from "./inference-withdrawal.js";
 import { protectNativeSettingsSnapshot } from "./native-settings-content.js";
 import type {
   NativeRuntimeHandoffConfiguration,
@@ -356,8 +358,13 @@ import {
   managedSuspensionNamespace,
 } from "./codex/managed-suspended-source.js";
 import { createManagedSuspensionCapture } from "./codex/managed-native-suspension.js";
+import {
+  ManagedSuspensionResumes,
+  type ManagedSuspensionResumeCommand,
+} from "./codex/managed-suspension-resume.js";
 import { WorktreeManager } from "./worktrees.js";
 import { CantripOsController } from "./os-executor/controller.js";
+import { CantripOsPowerManager } from "./os-executor/power.js";
 import { CantripOsBackupManager } from "./os-executor/backup-manager.js";
 import { OsTerminalLauncher } from "./os-executor/terminal-launcher.js";
 import { OsFileOperations } from "./os-executor/files.js";
@@ -1034,6 +1041,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     cantripOs,
     workerEncryption,
   );
+  const osPower = new CantripOsPowerManager(
+    config.dataDirectory,
+    config.workerId,
+  );
   const osTerminals = new OsTerminalLauncher(
     config.dataDirectory,
     cantripOs,
@@ -1640,6 +1651,25 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     ownerId: workerEncryption.ownerId(),
     workerId: config.workerId,
   });
+  const taskPauseControls = new TaskPauseControls({
+    scope: nativeNamespaceScope,
+    selected: (chatId) => managedCurrentRuntimes.get(chatId),
+    runtimes: () =>
+      [...codexRuntimes.values()].filter((runtime) =>
+        runtime.ownsInferenceAdmission(inferenceAdmissionForWorker()),
+      ),
+    setPaused: (chatId, paused) => {
+      if (paused) pausedChats.add(chatId);
+      else pausedChats.delete(chatId);
+    },
+    onError: (error) =>
+      workerLogger.event("warn", "Task pause boundary could not be confirmed", {
+        event: "task.pause.boundary-failed",
+        subsystem: "chat-execution",
+        operation: "task-pause",
+        error: workerLogError(error),
+      }),
+  });
   // This belongs to the worker, outside the per-project/per-model runtime maps.
   const nativeCommands = new NativeCommandClient({
     serverUrl: config.serverUrl,
@@ -1988,6 +2018,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           );
           inferenceAdmissionForWorker().wakeRecovery(input.chatId);
         },
+        (input, signal) =>
+          handoffStaging.waitInference(runtime!, input, signal),
+        (chatId) => taskPauseControls.prepared(chatId),
       );
       runtime.setGoalObserver((threadId, goal) => {
         if (runtime && handoffStaging.held(runtime, threadId)) return;
@@ -2033,6 +2066,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       });
       codexRuntimes.set(runtimeId, runtime);
+    }
+    // A runtime prepared during a pending Task pause inherits the same local
+    // control latch; transferring/creating an engine cannot bypass Resume.
+    if (command.chatId) {
+      runtime.setChatPaused(command.chatId, pausedChats.has(command.chatId));
+      taskPauseControls.seedRuntime(command.chatId, runtime);
     }
     return runtime;
   };
@@ -2937,6 +2976,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
         return {
           options: {
+            executionProfile:
+              session.contextKind === "standalone" ? "standalone-chat" : "ide",
             chatId: session.chatId,
             cwd: options.cwd,
             executionLaneId: grant.receipt.executionLaneId ?? undefined,
@@ -3299,11 +3340,118 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerId: config.workerId,
     token: () => config.token,
   });
+  const suspensionResumeTarget = (
+    command: ManagedSuspensionResumeCommand,
+    runtime: CodexAppServer,
+    entry: { generation: string; adapter: ManagedNativeCommandSession },
+  ) => {
+    const identity = managedSessionIdentity(command.session);
+    return {
+      runtime,
+      adapter: entry.adapter,
+      session: {
+        chatId: command.chatId,
+        threadId: command.threadId,
+        contextKind: command.session.contextKind,
+        projectId: command.session.projectId,
+        placementId: identity.placementId,
+        runtimeGeneration: entry.generation,
+        connectionId: `suspension:${command.controlId}:${entry.generation}`,
+        modelRouteId: command.model.routeId ?? null,
+        providerAccountId: command.provider.accountId ?? null,
+      },
+    };
+  };
+  const suspensionResumes = new ManagedSuspensionResumes({
+    client: nativeCommands,
+    encryption: workerEncryption,
+    signal: () => managedGuiBridgeLifetime.signal,
+    active: (command) => {
+      if (!command.nativeActivationGeneration) return null;
+      const matches = [...codexRuntimes.values()].flatMap((runtime) =>
+        [...(managedCommandSessions.get(runtime)?.values() ?? [])]
+          .filter(
+            (entry) =>
+              entry.chatId === command.chatId &&
+              entry.threadId === command.threadId &&
+              entry.generation === runtime.transportGeneration &&
+              (command.nativeRuntimeGeneration === null
+                ? managedCurrentRuntimes.get(command.chatId) === runtime
+                : entry.generation === command.nativeRuntimeGeneration) &&
+              entry.adapter.currentActivationGeneration ===
+                command.nativeActivationGeneration &&
+              (entry.model.routeId ?? null) ===
+                (command.model.routeId ?? null) &&
+              (entry.provider.accountId ?? null) ===
+                (command.provider.accountId ?? null),
+          )
+          .map((entry) => suspensionResumeTarget(command, runtime, entry)),
+      );
+      if (matches.length > 1)
+        throw new Error(
+          "The suspension identifies multiple connected managed owners.",
+        );
+      return matches[0] ?? null;
+    },
+    prepare: async (command) => {
+      const session = {
+        ...command.session,
+        heldSuspension: command.checkpoint,
+      };
+      const provider = await openRuntimeProvider({
+        provider: command.provider,
+        service: workerEncryption,
+      });
+      const prepared = await prepareManagedSession(
+        session,
+        {
+          cwd: command.cwd,
+          threadId: command.threadId,
+          model: command.model,
+          provider,
+          permissionProfileId: command.permissionProfileId,
+          subagentDefaults: command.subagentDefaults,
+          mcpServers: command.mcpServers,
+          planMode: command.planMode,
+        },
+        "preserve",
+      );
+      const entry = managedCommandSessionFor(prepared.runtime, session, {
+        cwd: command.cwd,
+        threadId: prepared.threadId,
+        model: command.model,
+        provider,
+        permissionProfileId: command.permissionProfileId,
+      });
+      return suspensionResumeTarget(command, prepared.runtime, entry);
+    },
+    openSource: (command) =>
+      openManagedSuspensionSource({
+        store: nativeSuspensionStore,
+        session: { ...command.session, heldSuspension: command.checkpoint },
+        threadId: command.threadId,
+        modelRouteId: command.model.routeId ?? null,
+        providerAccountId: command.provider.accountId ?? null,
+      }),
+  });
+
   const handoffConfigurations = new WeakMap<
     HandoffRuntime,
     NativeRuntimeHandoffConfiguration["configuration"]
   >();
   const handoffRuntimes = new WeakMap<HandoffRuntime, CodexAppServer>();
+  type TaskHandoffConfiguration = Extract<
+    NativeRuntimeHandoffConfiguration["configuration"],
+    { task: unknown }
+  >;
+  const taskHandoffRoots = new Map<
+    string,
+    {
+      runtime: CodexAppServer;
+      options: TaskHandoffConfiguration;
+      provider: RuntimeProvider;
+    }
+  >();
   let handoffCoordinator: {
     identity: string;
     coordinator: ManagedRuntimeHandoffCoordinator;
@@ -3318,6 +3466,63 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         ...options,
         provider: staged.configuration.provider,
       };
+      if ("task" in options) {
+        const runtime = handoffRuntimes.get(staged);
+        if (!runtime) throw new Error("Missing prepared Task handoff runtime.");
+        const result = await runtime.prepareManagedThread({
+          ...staged.configuration,
+          threadId: state.source.threadId,
+          intent: "preserve",
+        });
+        projectGoalDelivery.skip(result.threadId);
+        // Task transcripts retain their existing external-thread sync path.
+        // Establish the imported history baseline before the staging hold opens;
+        // no MCP/configuration load or managed-input session is created here.
+        await runtime.prepareExternalSync({
+          cwd: options.cwd,
+          threadId: result.threadId,
+          model: staged.configuration.model,
+          provider: staged.configuration.provider,
+          permissionProfileId: options.permissionProfileId,
+          subagentDefaults: staged.configuration.subagentDefaults,
+          executionProfile: "ide",
+        });
+        const source = taskHandoffRoots.get(state.operationId);
+        return {
+          ...result,
+          runtime,
+          subagentDefaults: staged.configuration.subagentDefaults,
+          executionProfile: "ide" as const,
+          codexHome: runtime.managedHistoryHome,
+          gateway: null,
+          ...(source
+            ? {
+                legacyTaskSource: {
+                  threadId: state.source.threadId,
+                  codexHome: source.runtime.managedHistoryHome,
+                  provider: source.provider,
+                },
+              }
+            : {}),
+          activate: () => {
+            settingsPublishers.get(state.chatId)?.publisher.close();
+            managedCurrentRuntimes.set(state.chatId, runtime);
+            threadObservations.bind(
+              observationScope(state.chatId, result.threadId, {
+                cwd: options.cwd,
+                model: staged.configuration.model,
+                provider: staged.configuration.provider,
+              }),
+              runtime,
+            );
+            taskHandoffRoots.set(state.operationId, {
+              runtime,
+              options,
+              provider: staged.configuration.provider,
+            });
+          },
+        };
+      }
       const result = await prepareManagedSession(
         options.session,
         configuration,
@@ -3371,6 +3576,30 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       observe: (runtime) =>
         observeManagedSettings(state.chatId, runtime, state.source.threadId),
       wake: async (runtime) => {
+        if (state.queuedSource?.taskGoal) {
+          const current = taskHandoffRoots.get(state.operationId);
+          if (!current) return; // Already finalized; recovery owns a cold wake.
+          if (current.runtime !== runtime)
+            throw new Error("Published Task handoff lost its private root.");
+          const { task, model, provider } = current.options;
+          await runtime.wakeTaskGoalAfterProviderTransfer(
+            state.operationId,
+            {
+              chatId: task.chatId,
+              threadId: state.source.threadId,
+              cycleId: task.cycleId,
+              orderEpoch: task.orderEpoch,
+              modelRouteId: model.routeId,
+              providerAccountId: provider.accountId ?? null,
+            },
+            runtime.transportGeneration!,
+            task.goalEpoch,
+            state.phase === "cancelled",
+          );
+          taskHandoffRoots.delete(state.operationId);
+          inferenceAdmissionForWorker().wakeRecovery(state.chatId);
+          return;
+        }
         const entry = managedCommandSessions
           .get(runtime)
           ?.get(`${state.chatId}:${state.source.threadId}`);
@@ -3415,6 +3644,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       // must not hold up destination publication or the original input's slot.
       void (async () => {
         if (
+          state.queuedSource!.taskGoal ||
           state.queuedSource!.goalRecovery ||
           state.queuedSource!.autonomousAttempt?.goalEpoch
         ) {
@@ -3457,9 +3687,33 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         if (JSON.stringify(nativeNamespaceScope()) !== identity)
           throw new Error("The handoff's worker owner binding changed.");
         const runtime = handoffRuntimes.get(prepared);
+        const options = handoffConfigurations.get(prepared);
+        const binding = state.binding ?? state.source;
+        if (runtime && options && "task" in options) {
+          const { task, model, provider } = options;
+          await runtime.holdTaskGoalForProviderTransfer(
+            state.operationId,
+            {
+              chatId: task.chatId,
+              threadId: state.source.threadId,
+              cycleId: task.cycleId,
+              orderEpoch: task.orderEpoch,
+              modelRouteId: model.routeId,
+              providerAccountId: provider.accountId ?? null,
+            },
+            binding.runtimeGeneration,
+          );
+          signal.throwIfAborted();
+          managedCurrentRuntimes.set(state.chatId, runtime);
+          taskHandoffRoots.set(state.operationId, {
+            runtime,
+            options,
+            provider: prepared.configuration.provider,
+          });
+          return;
+        }
         const runner =
           runtime && managedExecutionRunners.get(runtime)?.get(state.chatId);
-        const binding = state.binding ?? state.source;
         if (
           !runtime ||
           !runner ||
@@ -3519,6 +3773,52 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         const queued = state.queuedSource;
         if (!queued)
           throw new Error("The handoff has no reserved queued source.");
+        if (queued.taskGoal) {
+          const source = queued.taskGoal;
+          const recovery = source.identity.recovery!;
+          const cycle = recovery.taskGoalCycle!;
+          const binding = state.binding ?? state.source;
+          if (
+            source.identity.chatId !== state.chatId ||
+            source.identity.projectId !== state.source.projectId ||
+            recovery.threadId !== state.source.threadId ||
+            source.identity.operationId !== queued.operationId ||
+            source.identity.runtimeGeneration !== queued.operationGeneration
+          )
+            throw new Error(
+              "The Task Goal withdrawal belongs to another source.",
+            );
+          const runtime = [...new Set(codexRuntimes.values())].find(
+            (runtime) =>
+              runtime.transportGeneration === binding.runtimeGeneration,
+          );
+          if (!runtime) return admission.taskGoalWithdrawalRecord(source);
+          let proof: InferenceJournalRecord;
+          try {
+            proof = await runtime.withdrawTaskGoalForProviderTransfer(
+              state.operationId,
+              source,
+              existingOnly,
+            );
+          } catch (error) {
+            const recovered = await admission.taskGoalWithdrawalRecord(source);
+            if (!recovered) throw error;
+            proof = recovered;
+          }
+          // Persist withdrawal metadata only after the actual root holds new
+          // producers. Its old pending begin is still behind the deny barrier.
+          await runtime.holdTaskGoalForProviderTransfer(
+            state.operationId,
+            {
+              ...cycle,
+              chatId: state.chatId,
+              threadId: state.source.threadId,
+            },
+            binding.runtimeGeneration,
+          );
+          signal.throwIfAborted();
+          return proof;
+        }
         const runtime = managedCurrentRuntimes.get(state.chatId);
         const entry =
           runtime &&
@@ -3575,6 +3875,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         signal.throwIfAborted();
         if (JSON.stringify(nativeNamespaceScope()) !== identity)
           throw new Error("The handoff's worker owner binding changed.");
+        if (state.queuedSource?.taskGoal) {
+          const binding = state.binding ?? state.source;
+          const runtime = [...new Set(codexRuntimes.values())].find(
+            (runtime) =>
+              runtime.transportGeneration === binding.runtimeGeneration,
+          );
+          await runtime?.acknowledgeTaskGoalProviderWithdrawal(
+            state.operationId,
+            state.queuedSource.taskGoal,
+          );
+          retireQueuedWithdrawal(state);
+          return;
+        }
         const runtime = managedCurrentRuntimes.get(state.chatId);
         const entry =
           runtime &&
@@ -3615,20 +3928,27 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             }
           : null;
         const executionProfile =
-          options.session.contextKind === "standalone"
+          "session" in options && options.session.contextKind === "standalone"
             ? ("standalone-chat" as const)
             : ("ide" as const);
+        const task = "task" in options ? options.task : null;
         const runtime = runtimeFor(
           {
             ...options,
             provider,
             subagentDefaults,
             chatId: state.chatId,
+            ...(task?.osExecution ? { osExecution: task.osExecution } : {}),
             executionProfile,
           },
           side === "destination" ? state.operationId : undefined,
         );
-        handoffStaging.hold(runtime, state.source.threadId, state.operationId);
+        handoffStaging.hold(
+          runtime,
+          state.source.threadId,
+          state.operationId,
+          side === "destination" ? "tree" : "root",
+        );
         if (side === "destination") {
           let destinations = stagedHandoffDestinations.get(state.operationId);
           if (!destinations)
@@ -3638,34 +3958,58 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             );
           destinations.add(runtime);
         }
-        const runner = managedExecutionRunnerFor(runtime, options.session, {
+        if (task) projectGoalDelivery.skip(state.source.threadId);
+        const runner =
+          "session" in options
+            ? managedExecutionRunnerFor(runtime, options.session, {
+                ...options,
+                provider,
+              })
+            : null;
+        const configuration = {
           ...options,
           provider,
-        });
+          subagentDefaults,
+          executionProfile,
+          canonicalHistory: true,
+          ...(runner ? { executionGate: runner.configuration } : {}),
+          mcpServers: await agentMcpServers(
+            options.cwd,
+            options.mcpServers,
+            {
+              ...("session" in options
+                ? options.session
+                : {
+                    contextKind: "project" as const,
+                    chatId: options.task.chatId,
+                    projectId: options.task.projectId,
+                    worktreeId: options.task.worktreeId,
+                    rootKind: options.task.rootKind,
+                    scratchRootId: null,
+                  }),
+              workerId: config.workerId,
+              permissionProfileId: options.permissionProfileId,
+            },
+            executionProfile === "standalone-chat" ? "standalone-web" : "ide",
+            "session" in options
+              ? options.session.computerUseEnabled
+              : options.task.computerUseEnabled,
+          ),
+        };
         const prepared: HandoffRuntime = {
           runtime,
           home: runtime.managedHistoryHome,
-          configuration: {
-            ...options,
-            provider,
-            subagentDefaults,
-            executionProfile,
-            canonicalHistory: true,
-            executionGate: runner.configuration,
-            mcpServers: await agentMcpServers(
-              options.cwd,
-              options.mcpServers,
-              {
-                ...options.session,
-                workerId: config.workerId,
-                permissionProfileId: options.permissionProfileId,
-              },
-              options.session.contextKind === "standalone"
-                ? "standalone-web"
-                : "ide",
-              options.session.computerUseEnabled,
-            ),
-          },
+          configuration: task
+            ? runtime.taskGoalHandoffConfiguration({
+                ...configuration,
+                threadId: state.source.threadId,
+                chatId: task.chatId,
+                projectId: task.projectId,
+                taskOwned: true,
+                taskGoalCycleId: task.cycleId,
+                taskGoalOrderEpoch: task.orderEpoch,
+              })
+            : configuration,
         };
         handoffConfigurations.set(prepared, options);
         handoffRuntimes.set(prepared, runtime);
@@ -3902,6 +4246,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           }
         }
         for (const chatId of chatIds) {
+          taskPauseControls.forget(chatId);
           managedGuiPreparations.cancelChat(chatId);
           computerUseAgents.cancelChat(chatId);
           computerUsePreviews.cancelChat(chatId);
@@ -3951,6 +4296,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         );
       case "cantrip-os.run-definition":
         return osRunDefinitions.execute(command);
+      case "cantrip-os.power.status":
+      case "cantrip-os.power.operation":
+        return osPower.handle(command);
       case "cantrip-os.backup.capture":
       case "cantrip-os.backup.restore":
       case "cantrip-os.backup.rollback":
@@ -5166,6 +5514,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               prepared?.runtime ??
               runtimeFor({
                 ...managedRuntimeTarget(command.launch),
+                ...(command.launch.taskChatId
+                  ? { chatId: command.launch.taskChatId }
+                  : {}),
+                ...(osExecution ? { osExecution } : {}),
                 model: command.launch.model,
                 provider: provider(),
               });
@@ -5231,13 +5583,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 ...command.launch,
                 threadId: prepared?.threadId ?? command.launch.threadId,
                 binary: config.codexBinary,
-                codexHome: osExecution
-                  ? runtime.managedHistoryHome
-                  : accountBackedProvider(provider().kind)
-                    ? accountHomeFor(
-                        provider().credentialHomeKey ?? provider().id,
-                      )
-                    : codexHome,
+                codexHome:
+                  osExecution || command.launch.taskChatId
+                    ? runtime.managedHistoryHome
+                    : accountBackedProvider(provider().kind)
+                      ? accountHomeFor(
+                          provider().credentialHomeKey ?? provider().id,
+                        )
+                      : codexHome,
                 provider: provider(),
                 remoteUrl,
               },
@@ -5539,6 +5892,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return codec.normalizePrompt(command.prompt);
       }
       case "chat.queue.changed": {
+        if (command.taskPause)
+          await taskPauseControls.request(command.chatId, command.taskPause)
+            .applied;
         for (const admission of inferenceAdmissions.values())
           admission.wakeRecovery(command.chatId);
         const current = managedCurrentRuntimes.get(command.chatId);
@@ -7026,7 +7382,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           },
         );
       }
+      case "chat.suspension.resume": {
+        const result = await suspensionResumes.run(command);
+        if (result.paused) pausedChats.add(command.chatId);
+        else pausedChats.delete(command.chatId);
+        return result;
+      }
       case "chat.pause.set": {
+        if (command.task) {
+          const control = taskPauseControls.request(command.chatId, {
+            paused: command.paused,
+            scope: command.task,
+          });
+          if (command.waitForBoundary !== false) return control.settled;
+          await control.applied;
+          return { paused: control.intent.paused, active: null };
+        }
         const previouslyPaused = pausedChats.has(command.chatId);
         try {
           const activeTurns = await Promise.all(
@@ -7659,6 +8030,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           const result = await runtime.createGoal({
             configureTaskPermissions: encryptedTaskGoal,
             taskOwned: encryptedTaskGoal,
+            taskGoalCycleId: command.taskContext?.nativeCycle?.cycleId,
+            taskGoalOrderEpoch: command.taskContext?.nativeCycle?.orderEpoch,
             chatId: command.chatId,
             operationId: command.operationId,
             cwd: command.cwd,
@@ -7716,6 +8089,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           configureTaskPermissions:
             Boolean(command.taskContext) && command.status === "active",
           taskOwned: Boolean(command.taskContext),
+          taskGoalCycleId: command.taskContext?.nativeCycle?.cycleId,
+          taskGoalOrderEpoch: command.taskContext?.nativeCycle?.orderEpoch,
           chatId: command.chatId,
           cwd: command.cwd,
           model: command.model,
@@ -7773,6 +8148,52 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           request: command,
           resolve: () => managedSettingsTarget(command.binding),
         });
+      case "task.goal.source": {
+        const scope = nativeNamespaceScope();
+        const sameOwner = () =>
+          JSON.stringify(nativeNamespaceScope()) === JSON.stringify(scope);
+        const resolve = () => {
+          if (!sameOwner() || command.scope.workerId !== config.workerId)
+            return undefined;
+          const selected = managedRuntimeNamespaces.current(
+            scope,
+            command.scope.threadId,
+          );
+          const candidates = [...new Set(codexRuntimes.values())].filter(
+            (runtime) =>
+              (!selected ||
+                (selected.chatId === command.scope.chatId &&
+                  selected.home === runtime.managedHistoryHome)) &&
+              runtime.taskGoalCaptureTarget(command.scope, command.cycleId),
+          );
+          if (candidates.length !== 1) return undefined;
+          const runtime = candidates[0]!;
+          const generation = runtime.transportGeneration;
+          return generation
+            ? { runtime, generation, scope: command.scope }
+            : undefined;
+        };
+        const target = resolve();
+        if (!target)
+          throw new UnstartedInferenceUnavailableError(
+            "The requested Task Goal has no unique current native source.",
+          );
+        const captured = await target.runtime.captureTaskGoalSource(
+          command.scope,
+          command.cycleId,
+          () =>
+            readProtectedNativeSettings({
+              scope: command.scope,
+              service: workerEncryption,
+              resolve,
+            }),
+        );
+        if (!sameOwner())
+          throw new Error(
+            "The Task Goal source belongs to a replaced worker owner.",
+          );
+        return captured;
+      }
       case "chat.settings.read":
         return readProtectedNativeSettings({
           scope: command.scope,

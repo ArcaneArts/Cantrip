@@ -1,8 +1,15 @@
 use super::*;
-pub(super) async fn assert_source(tx: &Transaction<'_>, owner: &str, source: &Value) -> Result<()> {
+pub(super) async fn assert_source(
+    tx: &Transaction<'_>,
+    owner: &str,
+    source: &Value,
+    queued: &Value,
+    allow_inactive_task: bool,
+) -> Result<()> {
     let current = context::execution(tx, owner, &text(&source["chatId"])?).await?;
     let valid = current.as_ref().is_some_and(|c| {
-        c["experience"] == "agent"
+        (c["experience"] == "agent"
+            || (c["experience"] == "task" && truthy(queued.get("taskGoal"))))
             && (if c["contextKind"] == "project" {
                 c.get("worktreeId")
             } else {
@@ -31,6 +38,12 @@ pub(super) async fn assert_source(tx: &Transaction<'_>, owner: &str, source: &Va
         .is_none_or(|b| b.is_null() || !deep_equal(b, source))
     {
         return reject("handoff-source-replaced");
+    }
+    if current
+        .as_ref()
+        .is_some_and(|context| context["experience"] == "task")
+    {
+        task_goal::assert_current(tx, owner, source, queued, allow_inactive_task).await?;
     }
     Ok(())
 }

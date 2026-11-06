@@ -3098,3 +3098,219 @@ Restored-source adoption, installed-system product controls, broader admitted
 operation and agent/viewer/service recovery, lifecycle/reset/customization and
 failed-upgrade preservation, real remote acceptance and final recorded
 Docker/ISO artifacts remain required for the full Phase 5 goal.
+
+## Phase 5: existing and restored source registration (2026-11-06)
+
+Project CantripOS settings now register an existing home-relative Linux folder
+or Git checkout. Both Servers durably reserve fresh source, Primary worktree and
+binding identities before verification. The same creation ID returns its original
+reservation; another owner or changed selection is rejected. Worker inspects the
+actual canonical directory without cloning, moving or rewriting it. A Git project
+requires its worktree root. Existing files are recorded as user-owned data.
+
+Secondary Git worktree provisioning now receives the Server-owned Primary path,
+including a restored path whose directory name contains an old source ID. New
+worktree destinations remain generated beneath the selected home. Verification
+rejects symlink redirection, parent traversal and a repository subdirectory.
+
+The client retains its creation request and exact encrypted verification admission
+before dispatch. Lost-response/reload cases resume the same operation rather than
+allocating another binding or re-encrypting another request. Historical encryption
+revisions are accepted only for this explicitly opted-in durable source admission
+and only while the grant remains active; ordinary repository requests retain their
+current-key policy. A revoked historical grant remains unavailable.
+
+### Actual product and native evidence
+
+Codex IAB exercised the real Node Server, full Worker and production encryption
+grants against the retained ARM64 Docker instance from the preceding checkpoint:
+
+- Capture `ee268ff0-a8bd-4ec5-b6bb-d3cbd2948e14` was restored again, into new
+  workspace `source-adopt`, UID 20002. Restore
+  `63432656-aa11-4dd6-b536-c3e7b9d4cc58` completed through the client.
+- Registration of `checkouts/940f4bf8-181b-4aa4-a3de-3f4f47f0bcb6` produced ready
+  binding `a9263eab-71ab-4690-96c3-c1e6f4d10433`, fresh source
+  `d3f9f6b4-9b7c-4b21-8b1f-df2b4f283cb6` and fresh Primary worktree
+  `40d778ca-9d8d-4dea-8707-79029e3af50d`. The old source ID remains only in the
+  restored directory name. Only one registration exists for this workspace.
+- Explorer read the restored files. Saving an editor marker changed the actual
+  restored `tracked.txt`. A product terminal reported UID 20002 and that exact
+  restored cwd, read the editor marker and wrote `terminal-proof.txt`.
+- A Shell Run configuration selected this restored source through the combined
+  destination list, exited with code 0, read the same marker and wrote
+  `run-proof.txt`. Reload retained the selected terminal and completed Run.
+- Actual guest assertions confirmed retained `.git`, ignored `.env` and dependency
+  files, untracked and Unicode filenames, executable mode 0751, remapped UID and
+  a nonempty real Chromium History database. Original-source files did not receive
+  the restored source's editor, terminal or Run markers.
+
+The actual native Controller test also ran in Docker and over strict SSH to the
+installed AMD64 VM. It registers a non-generated Git path containing Unicode and
+a significant trailing space, compares the complete file-content/mode digest
+before and after inspection, resumes the same admission in a new Controller,
+rejects symlink and subdirectory selections, and creates a secondary Git worktree
+from the actual registered Primary. Docker passed in 7.12 seconds; the installed
+VM passed in 64.71 seconds. These are real native/transport tests, not full
+installed-system product or cloud acceptance.
+
+The trailing-space case first failed because command output used `trim()`, which
+removed valid path bytes. Removing only the final newline fixes that reproduced
+failure. The original failure log is retained with the passing evidence.
+Review also reproduced a foreign-key restriction that prevented deletion of a
+project with a registration receipt. The creation receipt now follows binding
+deletion, like the existing provision admission. The real SQL regression test
+deletes the project and confirms receipt cleanup without contacting Worker.
+
+### Checks and limits
+
+Both Node HTTP/PGlite restart admission tests and the native PostgreSQL HTTP test
+exercise the new public registration variant. The native HTTP suite passed in
+9.60 seconds; the source/chat contract suites passed with 33,682 validation cases.
+The native HTTP fixture now locates its captured source by binding ID rather than
+assuming it is first in a list that legitimately contains another source.
+
+The 10 client API/form checks passed, including saved admissions after lost replies
+and wrong-target rejection. The seven client worktree/placement guide suites
+passed all 68 checks. Worker source encryption, private backup, worktree and GitHub
+focused coverage passed; two unrelated app-server capacity assertions failed and
+also failed on unchanged Primary. Full app/Worker/Server type checks, production
+app build, formatting and diff checks passed.
+
+The broad suites are not green. The full Worker run passed 2,779 tests and failed
+16, including runtime assertions and timeout failures. Its focused rerun passed
+129 and failed those two app-server capacity cases. The initial full protocol run
+passed 1,110 tests and failed four assertions across duplicate source/compiled
+public-surface suites. The new export is explicitly reviewed in the compatibility
+list; unchanged Primary separately reproduces the remaining 28-export and
+six-command baseline discrepancies. Root `pnpm check` still stops at unchanged
+Server budgets of 1527/1500 and 2249/1999 lines. Exact logs retain failures rather
+than replacing them with a passing claim. No hosted validation ran.
+
+The full Server run passed 1,665 tests and failed 62, with 126 skipped. Early
+PGlite hooks timed out during the concurrent broad Worker run; other failures
+include existing Task/native-runtime fixture contracts. A serial focused Server
+matrix passed 70 and failed the standalone-chat assertion expecting immediate
+`started` instead of `queued`. That testcase also fails on unchanged Primary,
+there with an unrecognized `goalRecovery` protocol field; the distinct failures
+are recorded. The final source-admission/management rerun passed all three checks,
+including actual database restart and project-deletion cleanup.
+
+After rebasing onto Main `348760ffd`, generated native contracts were unchanged.
+The 49 focused Worker checks and full Worker type check passed. Both native
+contract suites passed again (33,682 source cases in 35.06 seconds), and the
+actual native PostgreSQL HTTP suite passed again in 3.80 seconds with the final
+migration. The implementation introduces no new Worker command discriminator.
+
+Creating a new agent captured the restored source and populated its Explorer,
+but preparation actually failed because the selected old Host executable rejects
+the current `--scope` argument. No model-agent acceptance is claimed. The ordinary
+desktop packages and native executor source did not change in this cycle; no new
+guest package, OCI image or ISO is claimed. Current-runtime model acceptance,
+broader reconnect/lifecycle and failed-upgrade recovery, real remote acceptance
+and final recorded distribution artifacts remain required for Phase 5.
+
+## Phase 5: retained Docker lifecycle carrier (2026-11-06)
+
+The shared host library now journals exact-ID retained-container start, stop and
+restart without creating/removing containers or replacing their images/volumes.
+Repeated admissions only observe. A changed named container is rejected before
+mutation, Engine refusals remain failures, and uncertain delivery is reconciled
+from actual carrier state without a second POST. Historical completion and
+current observation are separate. See [the lifecycle guide](INSTANCE_LIFECYCLE.md).
+
+Eight focused tests cover private receipts, exact-ID mutation, changed admission,
+lost response, historical completion after removal, actual API refusal, interrupted
+dispatch and damaged completion evidence. All 15 enabled foundation checks passed;
+the separately enabled real Docker test is skipped in that default run.
+
+The actual test ran against disposable `cantrip-os-phase5-backups`. It wrote a
+root configuration file under `/etc` and a file in the workspace data volume,
+both mode 0640. Stop/start retained their exact bytes/modes, the actual Debian
+package inventory, container ID, image and mounts. A real restart completed but
+its response was deliberately dropped; the journal reported unknown, observation
+recovered it and repeated admission did not issue another restart. The earlier
+stop remained historically ready while its current observation reported running.
+The complete real-container check passed in 24.91 seconds and left it running.
+
+This is host-carrier acceptance, not full Worker SIGKILL or product acceptance.
+Server-owned power-target admission, operation history and client controls are
+still required. So are desktop/reset/image/upgrade semantics and the rest of the
+full Phase 5 acceptance matrix. No guest package, OCI image or ISO changed here.
+
+## Phase 5: Server and Worker retained power admissions (2026-11-06)
+
+Both Servers now persist owner-scoped Docker power targets and immutable lifecycle
+admissions. Actual owned guest observation discovers the immutable Engine ID;
+clients receive an opaque target generation. Start/stop/restart and history APIs
+use the original Worker, attachment, target and runtime scope. Repeating the same
+request observes it, while changed content under the same ID is rejected. A
+missing Worker journal remains unknown and never authorizes another mutation.
+SSH attachment alone advertises no power-on path.
+
+Admission fences instance execution before dispatch. Ordinary refresh and the
+independent recovery path retain that fence while power remains active/uncertain.
+A private power epoch also rejects refresh/recovery replies admitted before a
+subsequently completed mutation. Both actual HTTP suites hold those old replies,
+settle a newer power operation, then deliver the old results and verify rejection.
+Historical terminal results remain separate from current carrier observation.
+
+The Node HTTP/PGlite test reopens its persistent database after a lost reply,
+observes the original immutable command, verifies only one execute dispatch,
+rejects changed/foreign admissions, rotates a replaced physical target, and keeps
+its target stable across a retained container's runtime change. The final focused
+Server matrix passed five checks across four suites after rebasing onto Main
+`0dcc5ddc4`. Full Server and Worker type checks passed at that revision.
+
+The actual Docker Worker Manager test passed in 7.13 seconds against disposable
+`cantrip-os-phase5-backups`. It verifies root-file bytes and mode 0640 after actual
+stop/start, observes a fresh guest runtime, drops a completed restart's response,
+and recovers it through a new Manager without a second mutation. Saved completion
+remains readable with the Engine unavailable. Worker units cover missing and
+interrupted journals, wrong Worker/scope/action, definite failure history,
+replacement IDs and unavailable current observation. All 15 focused Worker checks
+passed. This is Manager acceptance, not full Worker SIGKILL or Cantrip UI evidence.
+
+Native source contracts passed all 38,014 cases; the three OS contract tests
+also exercise the new commands through the complete Worker request envelope.
+Actual native PostgreSQL HTTP passed in 3.69 seconds. Repository admission and
+generation tests passed against PostgreSQL and native PGlite. The first PGlite run
+failed because its shared temporary runtime lacked `postgres.bki`; rerunning with
+a private fresh temporary directory passed. No repository workaround was added.
+
+The wider checks retain explicit failures. Protocol passed 1,110 tests and failed
+four duplicate public-surface assertions; reviewed additions preserve legacy
+fingerprints. The pre-rebase comparison against unchanged Primary reproduces the
+same remaining 32-export and seven-command discrepancies. The global native Worker
+command oracle still fails its fixture-inventory assertion for existing Goal and
+suspension commands before producing cases. The two new power command fixtures
+are registered, and their dedicated envelope comparison passes; the wider oracle
+is not described as passing. Worker placement coverage passed 81 checks and failed
+two existing app-server capacity cases, with two related unhandled errors. Server
+placement passed 59 checks and failed the existing standalone-Chat assertion
+expecting started instead of queued. Its historical source-migration fixture also
+fails on a missing Git source column, reproduced on unchanged Primary; its new
+power migration is applied when invoking today's repository. These unrelated
+fixtures were not repaired in this cycle.
+
+All 56 focused app/worktree checks and the production app build passed. Root
+`pnpm check` stopped at existing Server line budgets (1527/1500 and 2249/1999
+before the final Main update; 1531/1500 and 2249/1999 afterward).
+Formatting and diff checks passed. No hosted validation ran.
+
+A normal Host native build completed with all 85 patches at `15ffe6a7a`, four
+binaries and no cached-runtime input override. Its packaged hashes, executable
+version and protocol extensions were verified through the `0dcc5ddc4` input and
+preserved as historical evidence. Main then advanced to `f578965af` with changed
+native inputs. A normal build of its complete 86-patch input is running with the
+existing Cargo cache; no current artifact or model acceptance is claimed yet.
+
+After that final rebase, unchanged Main files prevent fresh Server compilation:
+Node reports a possibly undefined `managedInputRevision` in
+`task-automation-pause.ts`; Worker reports a promise-result mismatch and possibly
+undefined `journalEnqueued` in `inference-admission.ts`; Rust reports the unresolved
+`hex` crate in `tasks/goal_cycle_recovery.rs`. The final Node lifecycle HTTP matrix
+and all 15 focused Worker checks still pass. Earlier native passes belong to the recorded
+`0dcc5ddc4` base. These unrelated compilation failures were not repaired here.
+No guest package, OCI image or ISO changed in this checkpoint. Client lifecycle
+controls, full Worker failure, desktop/reset/upgrade semantics, real remote
+acceptance and final current distribution artifacts remain required for Phase 5.

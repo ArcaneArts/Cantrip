@@ -535,6 +535,22 @@ const agentChatExports = [
 ].sort();
 
 const cantripOsExports = [
+  "cantripOsDockerCarrierSchema",
+  "cantripOsPowerActionSchema",
+  "cantripOsPowerEvidenceSchema",
+  "cantripOsPowerObservationSchema",
+  "cantripOsPowerTargetSchema",
+  "workerCantripOsPowerCommandSchemas",
+  "cantripOsPowerWorkerCommandSchema",
+  "cantripOsPowerReceiptSchema",
+  "cantripOsPowerOperationResultSchema",
+  "cantripOsPowerCreateSchema",
+  "cantripOsPowerTargetSummarySchema",
+  "cantripOsPowerStatusSchema",
+  "cantripOsPowerSummarySchema",
+  "cantripOsPowerListQuerySchema",
+  "cantripOsPowerPageSchema",
+
   "CANTRIP_OS_BACKUP_CHUNK_BYTES",
   "CANTRIP_OS_BACKUP_METADATA_BYTES",
   "CANTRIP_OS_BACKUP_END_BYTES",
@@ -572,6 +588,7 @@ const cantripOsExports = [
   "cantripOsInspectSchema",
   "cantripOsWorkspaceCreateSchema",
   "cantripOsBindingCreateSchema",
+  "cantripOsExistingSourceCreateSchema",
   "cantripOsProvisionSchema",
   "cantripOsAttachSchema",
   "cantripOsDependencyOverlaySchema",
@@ -871,6 +888,18 @@ describe("protocol public surface compatibility", () => {
     const advertisedCommandTypes = workerCommandSchema.options.map(
       (option) => option.shape.type.value,
     );
+    // Reviewed explicit cold recovery preserves every previous discriminator.
+    expect(
+      advertisedCommandTypes.filter(
+        (type) => type === "chat.suspension.resume",
+      ),
+    ).toEqual(["chat.suspension.resume"]);
+    // Retained carrier operations are additive; keep every legacy fingerprint intact.
+    expect(
+      advertisedCommandTypes.filter((type) =>
+        type.startsWith("cantrip-os.power."),
+      ),
+    ).toEqual(["cantrip-os.power.status", "cantrip-os.power.operation"]);
     // Reviewed additive OS preparation leaves every legacy order/fingerprint intact.
     expect(
       advertisedCommandTypes.filter(
@@ -898,7 +927,9 @@ describe("protocol public surface compatibility", () => {
         type !== "surface.desktop.os-prepare" &&
         type !== "surface.tunnel.os-prepare" &&
         type !== "inference.revoke" &&
-        type !== "inference.task-revoke",
+        type !== "inference.task-revoke" &&
+        type !== "chat.suspension.resume" &&
+        !type.startsWith("cantrip-os.power."),
     );
     expect(inferenceStatusCommandTypes).toHaveLength(296);
     expect(inferenceStatusCommandTypes[6]).toBe("inference.status");

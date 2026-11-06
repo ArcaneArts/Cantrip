@@ -169,7 +169,7 @@ pub(super) async fn confirm(
         .get("binding")
         .filter(|b| !b.is_null())
         .unwrap_or(&row["source"]);
-    guards::assert_source(tx, owner, source).await?;
+    guards::assert_source(tx, owner, source, &row["queued_source"], false).await?;
     if queued.get("operationId") != queued["goalRecovery"].get("operationId")
         || queued.get("operationGeneration") != queued["goalRecovery"].get("operationGeneration")
         || receipt.get("operationId") != row.get("operation_id")

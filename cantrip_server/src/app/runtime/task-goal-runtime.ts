@@ -17,6 +17,7 @@ import {
   nativeGoalClaimRecoveryReceiptSchema,
   type TaskGoalCycleRecovery,
   taskGoalCycleRecoveryReceiptSchema,
+  taskGoalCycleRecoveryBinding,
   type AgentTurnResult,
   type ChatMessage,
   type ChatTurnCreate,
@@ -185,6 +186,10 @@ export function createTaskGoalRuntime({
       options.runtimes,
     );
     const runtime = routePairs[0]!.root.runtime;
+    const currentTask = await repository.tasks.get(
+      applicationOwnerId(),
+      context.chatId,
+    );
     const result = taskGoalWorkerResultSchema.parse(
       await bridge.request(context.workerId, {
         type: "chat.goal.create",
@@ -200,6 +205,14 @@ export function createTaskGoalRuntime({
         permissionProfileId: effectivePermissionProfile(context).effectiveId,
         taskContext: {
           task,
+          ...(currentTask?.dispatch
+            ? {
+                nativeCycle: {
+                  cycleId: currentTask.dispatch.id,
+                  orderEpoch: currentTask.dispatch.goalOrderEpoch ?? 0,
+                },
+              }
+            : {}),
           automationPaused: context.automationPaused,
           chatStatus: context.status,
           message: options.goalControlMessage ?? null,
@@ -826,6 +839,14 @@ export function createTaskGoalRuntime({
         taskContext: {
           ...(runtimeFailure ? { runtimeFailure } : {}),
           task: taskContentFromSummary(task),
+          ...(task.dispatch
+            ? {
+                nativeCycle: {
+                  cycleId: task.dispatch.id,
+                  orderEpoch: task.dispatch.goalOrderEpoch ?? 0,
+                },
+              }
+            : {}),
           automationPaused: context.automationPaused,
           chatStatus: context.status,
           message,
@@ -1177,10 +1198,11 @@ export function createTaskGoalRuntime({
       repository,
       routePairsForConfiguration,
     });
+    const currentBinding = taskGoalCycleRecoveryBinding(current);
     if (
-      prepared.model.routeId !== recovery.cycle.modelRouteId ||
-      prepared.provider.id !== recovery.providerId ||
-      (prepared.provider.accountId ?? null) !== recovery.cycle.providerAccountId
+      prepared.model.routeId !== currentBinding.modelRouteId ||
+      prepared.provider.id !== current.providerId ||
+      (prepared.provider.accountId ?? null) !== currentBinding.providerAccountId
     )
       throw new Error("The Task Goal recovery route changed.");
     const command = {

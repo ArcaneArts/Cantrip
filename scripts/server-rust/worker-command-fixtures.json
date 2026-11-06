@@ -5402,6 +5402,27 @@
       }
     },
     {
+      "type": "task.goal.source",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "task.goal.source",
+          "cycleId": "11111111-1111-4111-8111-111111111111",
+          "scope": {
+            "chatId": "chat",
+            "workerId": "worker",
+            "threadId": "thread",
+            "contextKind": "project",
+            "projectId": "project",
+            "placementId": "worktree",
+            "modelRouteId": "model",
+            "providerAccountId": null
+          }
+        }
+      }
+    },
+    {
       "type": "task.goal.recover",
       "input": {
         "kind": "request",
@@ -6164,6 +6185,65 @@
             "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
           },
           "operationId": "12345678-1234-4234-8234-123456789abc"
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.power.status",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "scope": {
+            "ownerId": "owner",
+            "serverId": "server",
+            "workerId": "worker",
+            "instanceId": "11111111-1111-4111-8111-111111111111",
+            "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+            "attachmentGeneration": "11111111-1111-4111-8111-111111111111",
+            "runtimeGeneration": "11111111-1111-4111-8111-111111111111"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "fixture"
+          },
+          "powerTarget": {
+            "kind": "docker",
+            "generation": "11111111-1111-4111-8111-111111111111",
+            "containerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "type": "cantrip-os.power.status"
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.power.operation",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "scope": {
+            "ownerId": "owner",
+            "serverId": "server",
+            "workerId": "worker",
+            "instanceId": "11111111-1111-4111-8111-111111111111",
+            "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+            "attachmentGeneration": "11111111-1111-4111-8111-111111111111",
+            "runtimeGeneration": "11111111-1111-4111-8111-111111111111"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "fixture"
+          },
+          "powerTarget": {
+            "kind": "docker",
+            "generation": "11111111-1111-4111-8111-111111111111",
+            "containerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "type": "cantrip-os.power.operation",
+          "mode": "execute",
+          "operationId": "11111111-1111-4111-8111-111111111111",
+          "action": "stop"
         }
       }
     },

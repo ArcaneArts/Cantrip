@@ -8,6 +8,62 @@ use futures::future::{BoxFuture, Shared};
 use std::{collections::HashMap, sync::Mutex};
 pub type Recovery = Shared<BoxFuture<'static, Result<(), Arc<anyhow::Error>>>>;
 pub type Publish = Arc<dyn Fn(&str, &str) + Send + Sync>;
+/// Finish the actual native transfer before a Task Goal control selects a root.
+/// This performs no inference and owns no provider ticket.
+pub async fn settle_task_control(
+    repository: &Repository,
+    commands: &Arc<LimitedCommandBus>,
+    owner: &str,
+    chat: &str,
+) -> Result<()> {
+    let Some(mut state) = repository.active_task_goal_for_chat(owner, chat).await? else {
+        return Ok(());
+    };
+    if state["phase"] != "committed" {
+        match repository
+            .request_cancellation(owner, chat, &text(&state["operationId"])?)
+            .await
+        {
+            Ok(cancelled) => state = cancelled,
+            Err(cause) => {
+                if cause
+                    .downcast_ref::<CommandError>()
+                    .is_none_or(|error| error.code != "handoff-already-committed")
+                {
+                    return Err(cause);
+                }
+                let Some(current) = repository
+                    .get(owner, chat, &text(&state["operationId"])?)
+                    .await?
+                else {
+                    return Err(cause);
+                };
+                state = current;
+            }
+        }
+    }
+    commands
+        .request_with_timeout(
+            &text(&state["workerId"])?,
+            json!({
+        "type":"chat.runtime.handoff","chatId":chat,"operationId":state["operationId"],
+        "intent":if state["cancelRequested"]==true{"cancel"}else{"continue"}}),
+            RequestTimeout::Disabled,
+            None,
+        )
+        .await?;
+    let settled = repository
+        .get(owner, chat, &text(&state["operationId"])?)
+        .await?;
+    if settled
+        .as_ref()
+        .is_none_or(|state| !matches!(state["phase"].as_str(), Some("completed" | "cancelled")))
+    {
+        return Err(CommandError::new("handoff-control-settlement-pending",
+            Some("The provider transfer has not settled. Retry the Goal control after the transfer finishes."),409).into());
+    }
+    Ok(())
+}
 #[derive(Clone)]
 pub struct Service {
     repository: Repository,
@@ -17,6 +73,56 @@ pub struct Service {
     operations: Arc<Operations>,
 }
 impl Service {
+    fn task_reader(&self, owner: &str) -> task_goal_capture::TaskGoalCaptureReader {
+        let (commands, owner) = (self.commands.clone(), owner.to_owned());
+        Arc::new(move |scope, cycle| {
+            let (commands, owner) = (commands.clone(), owner.clone());
+            async move {
+                let worker = text(&scope["workerId"])?;
+                // Attempt the actual capture before checking connection identity.
+                let response = commands
+                    .request_with_timeout(
+                        &worker,
+                        json!({"type":"task.goal.source","scope":scope,"cycleId":cycle}),
+                        RequestTimeout::After(std::time::Duration::from_secs(10)),
+                        None,
+                    )
+                    .await?;
+                let captured = crate::settings::parse_response(
+                    "taskGoalCycleCaptureSchema",
+                    response.as_ref(),
+                )?;
+                let actual = commands.connection_identity(&worker);
+                if actual.as_ref().is_none_or(|connection| {
+                    connection.owner != owner
+                        || captured["record"]["workerGeneration"].as_str()
+                            != Some(connection.process_generation.as_str())
+                }) {
+                    return reject("handoff-task-goal-worker-replaced");
+                }
+                Ok(captured)
+            }
+            .boxed()
+        })
+    }
+    async fn begin_captured(&self, owner: &str, chat: &str, input: &Value) -> Result<Value> {
+        let input = parse("nativeRuntimeHandoffRequestSchema", input)?;
+        let captured = self
+            .repository
+            .capture_task_goal(owner, chat, self.task_reader(owner), Some(&input))
+            .await?;
+        self.repository
+            .begin_captured(owner, chat, &input, captured)
+            .await
+    }
+    pub fn read_task_source(&self, owner: &str, chat: &str) -> BoxFuture<'static, Result<Value>> {
+        let (this, owner, chat) = (self.clone(), owner.to_owned(), chat.to_owned());
+        self.operations.run(async move {
+            this.repository
+                .read_task_source(&owner, &chat, this.task_reader(&owner))
+                .await
+        })
+    }
     pub fn owned<T, F>(&self, operation: F) -> BoxFuture<'static, Result<T>>
     where
         T: Send + 'static,
@@ -90,7 +196,7 @@ impl Service {
             input.clone(),
         );
         self.operations.run(async move {
-            let state = this.repository.begin(&owner, &chat, &input).await?;
+            let state = this.begin_captured(&owner, &chat, &input).await?;
             drop(this.dispatch(&owner, &state, false));
             (this.publish)(&owner, &text(&state["chatId"])?);
             Ok(state)
@@ -151,7 +257,7 @@ impl Service {
             input.clone(),
         );
         self.operations.run(async move{
-            let state=this.repository.begin(&owner,&chat,&input).await?;(this.publish)(&owner,&chat);
+            let state=this.begin_captured(&owner,&chat,&input).await?;(this.publish)(&owner,&chat);
             // Keep the actual error available to HTTP/error mapping without
             // flattening SQL or command failures into a synthetic string error.
             let transport=this.dispatch(&owner,&state,false).await;

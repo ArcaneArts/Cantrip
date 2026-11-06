@@ -61,7 +61,9 @@ export class NativeRuntimeHandoffClient {
       result.state.chatId !== input.chatId ||
       result.state.workerId !== input.workerId ||
       result.side !== input.side ||
-      result.configuration.session.chatId !== input.chatId ||
+      ("session" in result.configuration
+        ? result.configuration.session.chatId
+        : result.configuration.task.chatId) !== input.chatId ||
       result.configuration.threadId !== result.state.source.threadId
     )
       throw new Error("Handoff configuration belongs to another operation.");

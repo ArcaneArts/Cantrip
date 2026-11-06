@@ -69,6 +69,35 @@ without cloning or moving it. Folders retain null Git metadata, keeping attached
 repositories/folders distinct from managed provisioning. Guest paths and file
 URIs remain explicit Linux locations; host path conversion is never used.
 
+### Register existing or restored files
+
+In **Project settings → CantripOS**, select the destination workspace and choose
+**Register existing or restored Linux files**. Enter a path relative to that
+account's home, for example `checkouts/<original-source-id>` after a home restore,
+or `.cantrip-restored-sources-<restore-operation-id>/extra-0` for a restored extra
+root. The original source ID in a directory name does not become its new identity.
+
+Server reserves fresh source, Primary worktree and binding identities. Worker
+then inspects the actual directory through that account's native executor. It
+does not clone, move, reset or rewrite the source. Git projects require the Git
+worktree root; folder projects remain folders even when their files include
+`.git`. The canonical directory must match the admitted home-relative path;
+traversal and symlink redirection are rejected. Spaces and Unicode are retained.
+
+Registration uses a durable creation ID. Repeating the same request returns the
+same reservation, while changing its selection is rejected. The client retains
+that ID and the exact encrypted verification admission in this tab before
+submission. **Resume registration** observes those same operations after a lost
+reply or reload. **Discard local draft** does not remove files or undo a Server
+reservation. An unverified reservation is not an executable source.
+
+Existing files are recorded as user-owned data. Secondary Git worktrees use the
+registered Primary's actual canonical path and verified repository fingerprint,
+with new destinations under `~/worktrees/<new-worktree-id>`. Old chats retain
+their captured bindings; opening a new Linux agent selects the new binding.
+This registers a source in an existing instance, not a machine clone or an
+identity-preserving instance recovery operation.
+
 ## Outcomes and lifecycle
 
 Finite commands record their native process IDs through the caller's durable

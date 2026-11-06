@@ -25,6 +25,7 @@ use crate::{
     wire::{Value, coercion::truthy, value::json},
 };
 use anyhow::{Context, Result};
+pub(crate) use goal_cycle_recovery::current_binding as goal_cycle_binding;
 pub use reads::find_operation_round;
 use rows::*;
 pub(crate) use rows::{summary as opaque_summary, task_columns as opaque_columns};

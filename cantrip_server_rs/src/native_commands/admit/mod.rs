@@ -2,7 +2,7 @@
 mod checks;
 mod persist;
 mod queue;
-use super::{CommandError, Repository, admission, context, receipt};
+use super::{CommandError, Repository, admission, context, receipt, suspension};
 use crate::{
     database::Transaction,
     wire::{Value, coercion::truthy, value::json},
@@ -70,6 +70,18 @@ pub(super) async fn admit(
     if !context::same_placement(current.as_ref(), &input["workerId"], input.get("session"))? {
         return reject("stale-placement");
     }
+    let mut normalized = input.clone();
+    if normalized["intent"]["durableSuspension"] == true
+        && matches!(
+            normalized["method"].as_str(),
+            Some("turn/pause" | "turn/interrupt")
+        )
+        && !truthy(normalized["intent"].get("expectedSuspensionControlId"))
+        && let Some(state) = suspension::read(&suspension::chat(tx, owner, &chat).await?)?
+    {
+        normalized["intent"]["expectedSuspensionControlId"] = state["controlId"].clone();
+    }
+    let input = &normalized;
     let queue_claim = options
         .get("queueClaim")
         .filter(|v| !v.is_null())

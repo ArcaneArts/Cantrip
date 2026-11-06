@@ -30,6 +30,16 @@ export const taskGoalCycleRecoverySchema = z
     threadId: id,
     turnId: id,
     cycle: taskGoalCycleIdentitySchema,
+    /** Current route for this same-provider recovery episode. The original
+     * physical Source/cycle above is immutable keeper evidence. */
+    binding: z
+      .object({
+        modelRouteId: id,
+        providerAccountId: id.nullable(),
+        orderEpoch: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+      })
+      .strict()
+      .optional(),
     /** Advisory producer receipt, written only after actual journal enqueue.
      * It never grants capacity or retires the original FIFO Source. */
     admission: z
@@ -44,7 +54,7 @@ export const taskGoalCycleRecoverySchema = z
     /** Bounded retirement evidence for the Source and last replacement turn. */
     settled: z
       .object({
-        reason: z.enum(["dispatched", "ineligible"]),
+        reason: z.enum(["dispatched", "ineligible", "transferred"]),
         turnId: id,
         operationId: id.nullable(),
       })
@@ -59,6 +69,8 @@ export const taskGoalCycleRecoverySchema = z
 export const taskGoalCycleDispatchSchema = z
   .object({
     sourceKey: z.string().regex(/^[a-f0-9]{64}$/u),
+    /** Present only for the actual fresh keeper Source, not a recovered alias. */
+    freshRuntimeGeneration: z.uuid().optional(),
     serverId: id,
     workerId: id,
     workerGeneration: z.uuid(),
@@ -122,3 +134,17 @@ export type TaskGoalCycleDispatch = z.infer<typeof taskGoalCycleDispatchSchema>;
 export type TaskGoalCycleRecoveryReceipt = z.infer<
   typeof taskGoalCycleRecoveryReceiptSchema
 >;
+
+/** Current logical binding, without inventing a physical scope or changing the
+ * immutable keeper Source. Accounts/models in one provider retain its episode. */
+export function taskGoalCycleRecoveryBinding(value: TaskGoalCycleRecovery) {
+  return {
+    cycleId: value.cycle.cycleId,
+    goalEpoch: value.cycle.goalEpoch,
+    orderEpoch: value.binding?.orderEpoch ?? value.cycle.orderEpoch,
+    modelRouteId: value.binding?.modelRouteId ?? value.cycle.modelRouteId,
+    providerAccountId: value.binding
+      ? value.binding.providerAccountId
+      : value.cycle.providerAccountId,
+  };
+}

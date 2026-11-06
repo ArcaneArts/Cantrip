@@ -18,6 +18,7 @@ type Dependencies = ManagedConsoleRouting & {
     | "getModelRuntimeByRoute"
     | "listModelProviderAccountRuntimes"
     | "listEffectiveMcpServers"
+    | "nativeRuntimeHandoffs"
   >;
 };
 
@@ -42,7 +43,7 @@ export async function runtimeHandoffConfiguration(
   if (
     !context ||
     context.contextKind !== state.source.contextKind ||
-    context.experience !== "agent" ||
+    context.experience !== (state.queuedSource?.taskGoal ? "task" : "agent") ||
     context.workerId !== state.workerId ||
     context.threadId !== state.source.threadId ||
     context.projectId !== state.source.projectId ||
@@ -101,7 +102,15 @@ export async function runtimeHandoffConfiguration(
     state,
     side,
     configuration: {
-      session: managedTurnSessionContext(context),
+      ...(state.queuedSource?.taskGoal
+        ? {
+            task: await repository.nativeRuntimeHandoffs.taskContext(
+              ownerId,
+              state,
+              root.provider.id,
+            ),
+          }
+        : { session: managedTurnSessionContext(context) }),
       threadId: state.source.threadId,
       cwd: context.cwd,
       model: root.model,

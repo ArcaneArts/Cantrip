@@ -8,6 +8,10 @@ import type {
 } from "@cantrip/protocol";
 import type { TaskInferenceInputState } from "./task-inference-inputs.js";
 export { projectAlerts, chatGoalObservations } from "./schema-alerts.js";
+export {
+  cantripOsPowerTargets,
+  cantripOsPowerOperations,
+} from "./schema-cantrip-os-power.js";
 export { inferenceResourceRevocations } from "./schema-inference-resource-revocations.js";
 export {
   projectSourceIdentities,
@@ -16,6 +20,7 @@ export {
   cantripOsProjectSources,
   cantripOsSourceBindings,
   cantripOsProvisionAdmissions,
+  cantripOsExistingSourceAdmissions,
   cantripOsChatPlacements,
 } from "./schema-cantrip-os.js";
 import {
@@ -3906,6 +3911,9 @@ export const taskDispatchCycles = pgTable(
     goalCycleRecovery: jsonb(
       "goal_cycle_recovery",
     ).$type<TaskGoalCycleRecovery>(),
+    goalOrderEpoch: bigint("goal_order_epoch", { mode: "number" })
+      .notNull()
+      .default(0),
     modelConfiguration: jsonb(
       "model_configuration",
     ).$type<ModelConfiguration>(),
@@ -3948,6 +3956,10 @@ export const taskDispatchCycles = pgTable(
     uniqueIndex("task_dispatch_cycles_active_task_unique")
       .on(table.chatId)
       .where(sql`${table.state} IN ('queued', 'claimed', 'running', 'paused')`),
+    check(
+      "task_dispatch_cycles_goal_order_epoch_check",
+      sql`${table.goalOrderEpoch} BETWEEN 0 AND 9007199254740991`,
+    ),
     index("task_dispatch_cycles_fifo_index").on(
       table.ownerId,
       table.state,

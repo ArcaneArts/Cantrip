@@ -7,6 +7,7 @@ mod cycle_recovery;
 mod leases;
 mod observe;
 mod start;
+mod suspension;
 mod synchronize;
 use super::{
     Repository, RuntimeUpdate,
@@ -162,6 +163,13 @@ pub fn content_from_summary(task: &Value) -> Value {
         classification[key] = task[key].clone();
     }
     json!({"classification":classification,"protectedContent":task["protectedContent"]})
+}
+/// Logical provider queue episode; this carries no physical inference authority.
+pub fn native_cycle_from_summary(task: &Value) -> Option<Value> {
+    let dispatch = task.get("dispatch").filter(|value| !value.is_null())?;
+    Some(
+        json!({"cycleId":dispatch["id"],"orderEpoch":dispatch.get("goalOrderEpoch").cloned().unwrap_or_else(||json!(0))}),
+    )
 }
 impl Service {
     pub fn new(dependencies: Dependencies) -> Arc<Self> {

@@ -3,6 +3,8 @@ import { modelProviderAccountWireSummarySchema } from "./providers.js";
 import { inferenceJournalRecordSchema } from "./inference-recovery.js";
 import { nativeAutonomousAttemptSchema } from "./native-commands.js";
 import { nativeGoalRecoverySourceSchema } from "./native-goal-recovery.js";
+import { taskGoalCycleSourceRecordSchema } from "./task-goal-transfer.js";
+import { modelConfigurationSchema } from "./model-configuration.js";
 import {
   nativeSettingsBindingSchema,
   protectedNativeSettingsSnapshotSchema,
@@ -33,6 +35,16 @@ export const nativeRuntimeHandoffQueuedSourceSchema = z
     autonomousAttempt: nativeAutonomousAttemptSchema.optional(),
     goalRecovery: nativeGoalRecoverySourceSchema.optional(),
     goalWithdrawal: nativeGoalRecoveryWithdrawalSchema.optional(),
+    // A private Task scope comes from the worker's actual keeper/Core capture;
+    // it has no managed command or user-input claim to manufacture.
+    taskGoal: taskGoalCycleSourceRecordSchema.optional(),
+    taskGoalControl: z
+      .object({
+        taskConfiguration: modelConfigurationSchema,
+        cycleConfiguration: modelConfigurationSchema.nullable(),
+      })
+      .strict()
+      .optional(),
     // The acknowledged Goal setter is never replayed. Only its exact pending
     // first-cycle claim is carried across the canonical route binding.
     goalClaim: z

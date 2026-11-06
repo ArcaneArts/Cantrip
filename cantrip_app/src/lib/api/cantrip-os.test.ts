@@ -60,13 +60,24 @@ const binding = {
   workerId: "worker",
   instanceId: "instance",
   workspaceId: "workspace",
-  bindingGeneration: "generation",
+  bindingGeneration: "00000000-0000-4000-8000-000000000006",
 } as CantripOsSourceBindingSummary;
+const opaque = {
+  formatVersion: 1,
+  keyRevision: 1,
+  envelope: {
+    version: 1,
+    algorithm: "AES-256-GCM",
+    keyRevision: 1,
+    nonce: "AAAAAAAAAAAAAAAA",
+    ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+  },
+};
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.matches.mockReturnValue(true);
   mocks.workers.mockResolvedValue([{ workerId: "worker" }]);
-  mocks.protect.mockResolvedValue({ ciphertext: "opaque" });
+  mocks.protect.mockResolvedValue(opaque);
 });
 it("seals provisioning once and retains the identical admission after response loss", async () => {
   const intent = {
@@ -89,8 +100,8 @@ it("seals provisioning once and retains the identical admission after response l
   const body = JSON.parse(mocks.request.mock.calls[0]![1].body);
   expect(body).toEqual({
     operationId: expect.any(String),
-    bindingGeneration: "generation",
-    protectedRequest: { ciphertext: "opaque" },
+    bindingGeneration: binding.bindingGeneration,
+    protectedRequest: opaque,
   });
   expect(mocks.protect).toHaveBeenCalledExactlyOnceWith({
     context: {
@@ -105,7 +116,7 @@ it("seals provisioning once and retains the identical admission after response l
       instanceId: "instance",
       workspaceId: "workspace",
       bindingId: "binding",
-      bindingGeneration: "generation",
+      bindingGeneration: binding.bindingGeneration,
       intent,
     },
   });
@@ -114,7 +125,7 @@ it("seals provisioning once and retains the identical admission after response l
 it("rejects an account change during preparation before dispatching any mutation", async () => {
   mocks.protect.mockImplementation(async () => {
     mocks.matches.mockReturnValue(false);
-    return { ciphertext: "opaque" };
+    return opaque;
   });
   await expect(
     prepareCantripOsProvision(binding, {

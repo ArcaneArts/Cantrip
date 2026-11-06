@@ -1,3 +1,4 @@
+import { taskPauseScopeSchema, taskPauseIntentSchema } from "./task-pause.js";
 import {
   cantripOsExecutionSchema,
   cantripOsDesktopPlacement,
@@ -11,6 +12,7 @@ import { taskGoalCycleRecoverySchema } from "./task-goal-cycle.js";
 import { queuedPromptOpaqueContentSchema } from "./communication-content.js";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
 import { nativeCommandReceiptSchema } from "./native-commands.js";
+import { nativeSuspensionEvidenceSchema } from "./native-suspensions.js";
 import {
   nativeGoalRecoverySourceSchema,
   nativeGoalRecoverySchema,
@@ -83,6 +85,13 @@ export const workerChatCommandSchemas = [
     .object({
       type: z.literal("chat.settings.read"),
       scope: nativeSettingsReadScopeSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("task.goal.source"),
+      scope: nativeSettingsReadScopeSchema,
+      cycleId: z.string().min(1).max(255),
     })
     .strict(),
   z.object({
@@ -409,6 +418,26 @@ export const workerChatCommandSchemas = [
     .strict(),
   z
     .object({
+      type: z.literal("chat.suspension.resume"),
+      chatId: z.string().min(1),
+      threadId: z.string().min(1),
+      controlId: z.uuid(),
+      checkpoint: nativeSuspensionEvidenceSchema,
+      nativeActivationGeneration: z.string().min(1).nullable(),
+      nativeRuntimeGeneration: z.string().min(1).nullable(),
+      session: managedSessionContextSchema,
+      cwd: z.string().min(1),
+      executionProfile: z.enum(["ide", "standalone-chat"]),
+      model: workerRuntimeModelSchema,
+      provider: workerRuntimeProviderSchema,
+      permissionProfileId: permissionProfileIdSchema,
+      planMode: planModeSchema,
+      subagentDefaults: managedSessionSubagentDefaultsSchema.nullable(),
+      mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("chat.native-control"),
       operationId: z.string().min(1).max(255).optional(),
       queueClaim: z
@@ -461,6 +490,8 @@ export const workerChatCommandSchemas = [
     .strict(),
   z.object({
     type: z.literal("chat.pause.set"),
+    task: taskPauseScopeSchema.optional(),
+    waitForBoundary: z.boolean().optional(),
     nativeActivationGeneration: z.string().min(1).nullable().optional(),
     chatId: z.string().min(1),
     paused: z.boolean(),
@@ -513,6 +544,7 @@ export const workerChatCommandSchemas = [
       type: z.literal("chat.queue.changed"),
       chatId: z.string().min(1),
       revision: z.number().int().nonnegative(),
+      taskPause: taskPauseIntentSchema.optional(),
     })
     .strict(),
   z

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { repositoryOperationOpaqueSchema } from "./repository-operation.js";
 import { gitBranchNameInputSchema } from "./git-contracts.js";
+import { cantripOsDockerCarrierSchema } from "./cantrip-os-power-state.js";
 import {
   cantripOsDependencyOverlaysSchema,
   cantripOsGuestPathSchema,
@@ -43,6 +44,7 @@ const sourceScope = scope
 
 const sourceDispatchScope = sourceScope.extend({
   repositoryFingerprint: z.string().min(1).nullable().optional(),
+  primaryGuestPath: cantripOsGuestPathSchema.optional(),
 });
 export const cantripOsSourceDispatchScopeSchema = z.discriminatedUnion("mode", [
   sourceDispatchScope
@@ -125,6 +127,12 @@ export const cantripOsProvisionIntentSchema = z.discriminatedUnion("mode", [
           })
           .strict(),
         z.object({ kind: z.literal("folder") }).strict(),
+        z
+          .object({
+            kind: z.literal("existing"),
+            sourceKind: z.enum(["git", "folder"]),
+          })
+          .strict(),
       ]),
     })
     .strict(),
@@ -209,6 +217,7 @@ export const cantripOsObservedInstanceSchema = z
     runtimeGeneration: z.uuid(),
     attachment: z.object({ ownerId: id, workerId: id }).strict().nullable(),
     workspaces: z.array(cantripOsWorkspaceObservationSchema),
+    powerTarget: cantripOsDockerCarrierSchema.optional(),
   })
   .strict();
 

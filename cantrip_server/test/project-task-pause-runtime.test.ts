@@ -17,6 +17,9 @@ function fixture() {
   const repository = {
     tasks: { list: vi.fn(async () => tasks) },
     taskDispatch: { pause, pauseUnstarted },
+    nativeRuntimeHandoffs: {
+      activeTaskGoalForChat: vi.fn(async () => null),
+    },
     getChatExecutionContext: async (_ownerId: string, chatId: string) =>
       contexts.get(chatId) ?? null,
     listQueuedPrompts: async () => [],

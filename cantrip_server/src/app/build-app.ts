@@ -1158,6 +1158,8 @@ export async function buildApp({
     publishChatSummary,
     repository,
     resumeChatAutomation,
+    runtimeForContext,
+    routePairsForConfiguration,
   });
 
   installChatPlanRoutes(app, {
@@ -1312,6 +1314,8 @@ export async function buildApp({
   });
   const managedQueueDelivery = createManagedQueueDelivery({
     repository: repository.managedQueue,
+    readTaskPause: (ownerId, chatId) =>
+      repository.taskAutomationPause.read(ownerId, chatId),
     bridge,
     dispatch: (ownerId, chatId) =>
       runAsOwner(ownerId, () => dispatchNextQueuedPrompt(chatId)),

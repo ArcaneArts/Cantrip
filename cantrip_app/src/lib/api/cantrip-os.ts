@@ -17,6 +17,7 @@ import {
   cantripOsWorkspaceSummarySchema,
   cantripOsWorkspaceCreateSchema,
   cantripOsProvisionRequestContentSchema,
+  cantripOsProvisionSchema,
   type CantripOsSourceBindingSummary,
   type CantripOsProvisionIntent,
 } from "@cantrip/protocol";
@@ -24,6 +25,7 @@ import { request, CantripApiError } from "@/lib/api-client";
 import {
   getClientSessionIdentitySnapshot,
   clientSessionIdentityMatches,
+  type ClientSessionIdentitySnapshot,
 } from "@/lib/client-session";
 import { ensureRepositoryWorkerEncryption } from "@/lib/repository-worker-encryption";
 import { protectRepositoryOperationContent } from "@/lib/repository-operation-encryption";
@@ -174,11 +176,12 @@ export async function verifyCantripOsBinding(
   );
 }
 
-/** Prepare once. Keep this closure while its outcome is uncertain; the recover
- * endpoint observes the Server's saved admission without a second mutation. */
-export async function prepareCantripOsProvision(
+/** Prepare once and retain the exact opaque admission while its outcome is
+ * uncertain. Recovery observes it without preparing a second mutation. */
+export async function prepareCantripOsProvisionRequest(
   binding: CantripOsSourceBindingSummary,
   intent: CantripOsProvisionIntent,
+  operationId: string = crypto.randomUUID(),
 ) {
   const identity = getClientSessionIdentitySnapshot();
   if (!identity)
@@ -190,7 +193,6 @@ export async function prepareCantripOsProvision(
     refresh: refreshWorkerEncryption,
     worker,
   });
-  const operationId = crypto.randomUUID();
   const protectedRequest = await protectRepositoryOperationContent({
     context: {
       projectId: binding.projectId,
@@ -213,19 +215,43 @@ export async function prepareCantripOsProvision(
       "The account or server changed while preparing this source.",
       409,
     );
-  const body = JSON.stringify({
+  return cantripOsProvisionSchema.parse({
     operationId,
     bindingGeneration: binding.bindingGeneration,
     protectedRequest,
   });
-  return async () =>
-    cantripOsOperationResultSchema.parse(
-      await request(
-        `${project(binding.projectId)}/${route(binding.id)}/provision`,
-        { method: "POST", body },
-        { expectedIdentity: identity, allowCsrfRecovery: false },
-      ),
+}
+
+/** An opaque request may be retained in a client draft before its first send. */
+export async function submitCantripOsProvision(
+  binding: CantripOsSourceBindingSummary,
+  input: z.input<typeof cantripOsProvisionSchema>,
+  identity: ClientSessionIdentitySnapshot | null = getClientSessionIdentitySnapshot(),
+) {
+  if (!identity)
+    throw new CantripApiError("An authenticated session is required.", 401);
+  const body = JSON.stringify(cantripOsProvisionSchema.parse(input));
+  return cantripOsOperationResultSchema.parse(
+    await request(
+      `${project(binding.projectId)}/${route(binding.id)}/provision`,
+      { method: "POST", body },
+      { expectedIdentity: identity, allowCsrfRecovery: false },
+    ),
+  );
+}
+
+export async function prepareCantripOsProvision(
+  binding: CantripOsSourceBindingSummary,
+  intent: CantripOsProvisionIntent,
+) {
+  const identity = getClientSessionIdentitySnapshot();
+  const prepared = await prepareCantripOsProvisionRequest(binding, intent);
+  if (!identity || !clientSessionIdentityMatches(identity))
+    throw new CantripApiError(
+      "The account or server changed while preparing this source.",
+      409,
     );
+  return () => submitCantripOsProvision(binding, prepared, identity);
 }
 
 export async function getCantripOsRunSources(projectId: string) {

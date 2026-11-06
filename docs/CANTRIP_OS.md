@@ -620,9 +620,27 @@ paginated catalogue entries and protected outcomes. Explicit continuation can
 authorize a fresh runtime on the same attachment without rewriting its original
 admission; actual guest receipt/activation checks still apply. Cantrip's capture,
 history, restore, rollback and recovery controls are exercised against the full
-Worker and production grants in Docker. Restored-source adoption, installed-system
-product controls and broader remote/lifecycle acceptance remain required. This
-checkpoint does not complete Phase 5.
+Worker and production grants in Docker. Explicit existing/restored source
+registration now creates fresh source/worktree/binding identities and verifies
+the chosen Linux directory without cloning or moving it. Actual Docker product
+acceptance covers Explorer/editor, terminal and Run access to a restored source;
+native Controller acceptance covers non-generated Git paths and secondary
+worktrees in Docker and an installed VM. Current-runtime model acceptance,
+installed-system product controls and broader remote/lifecycle acceptance remain
+required. These checkpoints do not complete Phase 5.
+
+The [retained-instance lifecycle carrier](../cantrip_os/INSTANCE_LIFECYCLE.md)
+now journals exact-ID Docker start/stop/restart, observes uncertain delivery
+without replay, and keeps historical completion separate from current state.
+Actual Docker acceptance retains root customization, package inventory and
+volumes. Server-owned power admissions and paginated history now pin the actual container
+identity in both Server implementations. Worker jobs preserve original operation
+scope and observe lost receipts without replay, including while the guest helper
+is unavailable. Active admissions fence execution; observation epochs reject stale
+refresh/recovery replies arriving after a completed transition. Actual Manager
+acceptance covers retained root state and lost restart replies. Client controls,
+full Worker-process failure and independent desktop lifecycle remain required;
+SSH attachment alone does not provide power-on.
 
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output

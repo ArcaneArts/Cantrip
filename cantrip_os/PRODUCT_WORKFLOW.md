@@ -467,8 +467,40 @@ its authenticated file, never inferred from the response envelope. Revoked
 historical grants are not silently recreated. Missing keys or a corrupt archive
 fail the actual restore rather than falling back to plaintext or the Host.
 
-Restoring files does not yet register their fresh project source bindings. Keep
-that distinction explicit: using the restored checkout from a new Cantrip agent
-requires the subsequent restored-source adoption milestone. The current browser
-acceptance covers the real Docker/Server/Worker backup workflow; it does not
-establish real remote/cloud or complete Phase 5 acceptance.
+Restoring files does not automatically register project sources or redirect old
+chats. Select the restored workspace, choose **Register existing or restored
+Linux files**, and enter the restored directory relative to its Linux home.
+For a home-contained source, retain its original relative path, such as
+`checkouts/<original-source-id>`. The private restore receipt identifies extra
+roots relocated beneath `.cantrip-restored-sources-<restore-operation-id>`.
+
+**Register existing source** reserves fresh source/worktree/binding identities
+and verifies the actual files without cloning or moving them. A Git project
+requires its repository root. Once the source is ready, **New Linux agent** opens
+a freshly bound chat; Explorer, editor, terminal and per-configuration Run
+destinations use that source. The original chats remain bound to the original
+workspace. See [source registration](SOURCES.md#register-existing-or-restored-files)
+for retry and path semantics.
+
+The actual Docker browser acceptance covers restore, registration, file editing,
+Linux terminal and Run execution through the full Server/Worker. Agent creation
+captures the restored source, but current-runtime model acceptance is still
+outstanding. Separate native Controller tests cover Git registration and a new
+secondary worktree in Docker and the installed VM; they do not substitute for
+full installed-system product or real remote/cloud acceptance. Phase 5 remains
+in progress.
+
+## Retained instance power backend
+
+The [lifecycle API](INSTANCE_LIFECYCLE.md#server-owned-power-admissions) now supports
+owned Docker start/stop/restart and retained operation history through Server and
+Worker. This is a backend checkpoint; Cantrip's start/stop/restart controls are not
+yet exposed by this cycle. Ordinary refresh and Check recovery cannot make an
+unresolved power operation executable. A delayed observation from before a power
+transition cannot restore availability after it completes either.
+
+Power observation can recover the original receipt without repeating an uncertain
+mutation. Running at the Docker carrier level does not imply the guest helper,
+project sources or desktop are ready. After restart, use the explicit recovery and
+source verification paths before opening fresh work; old chats keep their captured
+placement. SSH alone supplies no powered-off-machine control capability.

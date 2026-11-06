@@ -169,6 +169,7 @@ fn is_execution_control(command: &Value) -> bool {
             | "chat.goal.recover"
             | "chat.goal.claim-recover"
             | "task.goal.recover"
+            | "task.goal.source"
             | "agent.interaction.respond"
             | "agent.interaction.respond.protected"
             | "agent.interaction.cancel"

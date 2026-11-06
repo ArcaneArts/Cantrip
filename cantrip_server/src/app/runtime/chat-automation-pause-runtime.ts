@@ -1,14 +1,27 @@
+import { setTaskAutomationPause } from "./task-automation-pause-runtime.js";
 import type { FastifyInstance } from "fastify";
 import {
   chatPauseRuntimeStateSchema,
   chatNativeSuspension,
   type ChatPauseRuntimeState,
 } from "@cantrip/protocol";
-import { managedTurnSessionContext } from "../../terminals/managed-session.js";
+import {
+  managedTurnSessionContext,
+  type ManagedConsoleRouting,
+} from "../../terminals/managed-session.js";
+import type {
+  ChatExecutionContext,
+  ModelRuntime,
+} from "../../db/repository.js";
+import {
+  createDurableChatResumeRuntime,
+  DurableChatResumeError,
+} from "./durable-chat-resume.js";
 import type { ServerRepository } from "../../db/repository.js";
 import { errorMessage } from "../../http/request-helpers.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 import { STREAMING_WORKER_COMMAND_TIMEOUT_MS } from "../shared/constants.js";
+import { settleTaskGoalHandoffForControl } from "../../terminals/task-goal-handoff-control.js";
 
 export interface ChatAutomationPauseRouteDependencies {
   applicationOwnerId: () => string;
@@ -21,18 +34,21 @@ export interface ChatAutomationPauseRouteDependencies {
     | "setChatAutomationPaused"
     | "nativeCommands"
     | "nativeSuspensions"
+    | "nativeRuntimeHandoffs"
+    | "listEffectiveMcpServers"
+    | "setChatModel"
+    | "updateChatRuntime"
+    | "taskAutomationPause"
   >;
   resumeChatAutomation: (chatId: string) => Promise<void>;
+  runtimeForContext: (
+    context: ChatExecutionContext,
+  ) => Promise<ModelRuntime | null>;
+  routePairsForConfiguration: ManagedConsoleRouting["routePairsForConfiguration"];
 }
 
-export class ChatAutomationPauseError extends Error {
-  constructor(
-    readonly statusCode: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+export { ChatAutomationPauseError } from "./chat-automation-pause-error.js";
+import { ChatAutomationPauseError } from "./chat-automation-pause-error.js";
 
 /** Shares durable pause state and native controls across Chat and Task-list actions. */
 export function createChatAutomationPauseRuntime(
@@ -41,15 +57,36 @@ export function createChatAutomationPauseRuntime(
     publishChatSummary,
     repository,
     resumeChatAutomation,
+    runtimeForContext,
+    routePairsForConfiguration,
   }: Omit<ChatAutomationPauseRouteDependencies, "applicationOwnerId">,
   app: Pick<FastifyInstance, "log">,
 ) {
+  const resumeDurable = createDurableChatResumeRuntime(
+    {
+      bridge,
+      publishChatSummary,
+      repository,
+      resumeChatAutomation,
+      runtimeForContext,
+      routePairsForConfiguration,
+    },
+    app,
+  );
   return async function setChatAutomationPause(
     ownerId: string,
     chatId: string,
     paused: boolean,
     { resumeAutomation = true }: { resumeAutomation?: boolean } = {},
   ): Promise<ChatPauseRuntimeState> {
+    try {
+      await settleTaskGoalHandoffForControl(ownerId, chatId, {
+        repository,
+        bridge,
+      });
+    } catch (error) {
+      throw new ChatAutomationPauseError(409, errorMessage(error));
+    }
     const control = await repository.nativeCommands.controlContext(
       ownerId,
       chatId,
@@ -72,6 +109,13 @@ export function createChatAutomationPauseRuntime(
       );
     }
 
+    if (context.experience === "task")
+      return setTaskAutomationPause(ownerId, chatId, paused, resumeAutomation, {
+        repository,
+        bridge,
+        publishChatSummary,
+        resumeChatAutomation,
+      });
     const managedNative = managedTurnSessionContext(context) !== undefined;
     const suspension = managedNative
       ? await repository.nativeSuspensions.read(ownerId, context.chatId)
@@ -84,17 +128,28 @@ export function createChatAutomationPauseRuntime(
       };
     const durableResume =
       managedNative && !paused && Boolean(suspension?.checkpoint);
+    if (durableResume && suspension) {
+      try {
+        return await resumeDurable(
+          ownerId,
+          context,
+          control,
+          suspension,
+          resumeAutomation,
+        );
+      } catch (error) {
+        if (error instanceof DurableChatResumeError)
+          throw new ChatAutomationPauseError(error.statusCode, error.message);
+        throw error;
+      }
+    }
     // Native goal/queue resume may start execution, so admission must observe
     // the user's durable unpause before the worker forwards that mutation.
-    const resumed =
-      managedNative && !paused && !durableResume
-        ? await repository.setChatAutomationPaused(
-            ownerId,
-            context.chatId,
-            false,
-          )
-        : null;
-    if (managedNative && !paused && !durableResume && !resumed)
+    const resumeBeforeWorker = !paused && managedNative && !durableResume;
+    const resumed = resumeBeforeWorker
+      ? await repository.setChatAutomationPaused(ownerId, context.chatId, false)
+      : null;
+    if (resumeBeforeWorker && !resumed)
       throw new ChatAutomationPauseError(404, "Chat source not found.");
     if (managedNative && !paused && !durableResume)
       await repository.nativeCommands.resumeAutonomy(ownerId, context.chatId);
@@ -128,7 +183,7 @@ export function createChatAutomationPauseRuntime(
           );
         active = receipt.active;
       } catch (error) {
-        if (!paused && managedNative) {
+        if (resumeBeforeWorker) {
           await repository.setChatAutomationPaused(
             ownerId,
             context.chatId,

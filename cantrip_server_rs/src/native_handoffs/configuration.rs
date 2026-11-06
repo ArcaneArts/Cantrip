@@ -19,7 +19,12 @@ impl Repository {
             .await?;
         let Some(context) = context.filter(|c| {
             c.get("contextKind") == state["source"].get("contextKind")
-                && c["experience"] == "agent"
+                && c["experience"]
+                    == (if truthy(state["queuedSource"].get("taskGoal")) {
+                        "task"
+                    } else {
+                        "agent"
+                    })
                 && c.get("workerId") == state.get("workerId")
                 && c.get("threadId") == state["source"].get("threadId")
                 && c.get("projectId") == state["source"].get("projectId")
@@ -106,6 +111,14 @@ impl Repository {
             if let Some(value) = launch.get(key) {
                 configuration[key] = value.clone();
             }
+        }
+        if truthy(state["queuedSource"].get("taskGoal")) {
+            if let Value::Object(fields) = &mut configuration {
+                fields.retain(|key, _| key.as_str() != Some("session"));
+            }
+            configuration["task"] = self
+                .task_context(owner, state, &launch["provider"]["id"])
+                .await?;
         }
         parse(
             "nativeRuntimeHandoffConfigurationSchema",

@@ -65,13 +65,25 @@ pub async fn existing(tx: &Transaction<'_>, owner: &str, input: &Value) -> Resul
         return Ok(None);
     };
     let row: Value = serde_json::from_str(&row.get::<String>(0)?)?;
+    let mut intent = input["intent"].clone();
+    if intent["durableSuspension"] == true
+        && matches!(
+            input["method"].as_str(),
+            Some("turn/pause" | "turn/interrupt")
+        )
+        && !coercion::truthy(intent.get("expectedSuspensionControlId"))
+        && let Some(control) = row["intent"].get("expectedSuspensionControlId")
+        && coercion::truthy(Some(control))
+    {
+        intent["expectedSuspensionControlId"] = control.clone();
+    }
     if row["owner_id"] != json!(owner)
         || row["worker_id"] != input["workerId"]
         || row["chat_id"] != input["session"]["chatId"]
         || row["payload_digest"] != input["payloadDigest"]
         || row["method"] != input["method"]
         || row["origin"] != input["origin"]
-        || intent_identity(row.get("intent"))? != intent_identity(input.get("intent"))?
+        || intent_identity(row.get("intent"))? != intent_identity(Some(&intent))?
     {
         return Err(CommandError::new("operation-id-conflict", None, 409).into());
     }

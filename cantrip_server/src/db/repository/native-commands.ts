@@ -416,6 +416,20 @@ export class NativeCommandRepository {
         .select()
         .from(schema.nativeCommands)
         .where(eq(schema.nativeCommands.operationId, input.operationId));
+      if (
+        existing &&
+        input.intent.durableSuspension === true &&
+        ["turn/pause", "turn/interrupt"].includes(input.method) &&
+        !input.intent.expectedSuspensionControlId
+      ) {
+        const controlId = (existing.intent as NativeCommandAdmission["intent"])
+          ?.expectedSuspensionControlId;
+        if (controlId)
+          input = {
+            ...input,
+            intent: { ...input.intent, expectedSuspensionControlId: controlId },
+          };
+      }
       if (existing) {
         if (
           existing.ownerId !== ownerId ||
@@ -466,6 +480,23 @@ export class NativeCommandRepository {
       );
       if (!samePlacement(context, input.workerId, input.session))
         throw new NativeCommandError("stale-placement");
+      if (
+        input.intent.durableSuspension === true &&
+        ["turn/pause", "turn/interrupt"].includes(input.method) &&
+        !input.intent.expectedSuspensionControlId
+      ) {
+        const state = await new NativeSuspensionRepository(this.database)
+          .inTransaction(tx)
+          .read(ownerId, input.session.chatId);
+        if (state)
+          input = {
+            ...input,
+            intent: {
+              ...input.intent,
+              expectedSuspensionControlId: state.controlId,
+            },
+          };
+      }
       const initial = {
         operationId: input.operationId,
         ownerId,

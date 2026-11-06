@@ -1,10 +1,12 @@
-import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createServer, type ServerResponse } from "node:http";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { verifyBuiltRuntime } from "../../scripts/cantrip-codex/verify-built-runtime.mjs";
-import { protectNativeCommandContent } from "../src/native-command-content.js";
+import { workerCommandSchema } from "@cantrip/protocol";
+import { managedTurnSessionContext } from "../../cantrip_server/src/terminals/managed-session.js";
+import { ManagedSuspensionResumes } from "../src/codex/managed-suspension-resume.js";
+import { openManagedSuspensionSource } from "../src/codex/managed-suspended-source.js";
 import { createNativeSharedViewFixture } from "./native-shared-view-fixture.js";
 
 const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
@@ -66,6 +68,7 @@ describe.skipIf(!binary || process.platform === "win32")(
         });
         let f:
           Awaited<ReturnType<typeof createNativeSharedViewFixture>> | undefined;
+        let releaseResume: (() => void) | undefined;
         try {
           provider.listen(0, "127.0.0.1");
           await once(provider, "listening");
@@ -123,45 +126,102 @@ describe.skipIf(!binary || process.platform === "win32")(
               f.authority.chatId,
               "resume",
             );
-          const operationId = randomUUID();
-          const content = await protectNativeCommandContent({
-            service: fresh.encryption,
-            context: {
-              chatId: f.authority.chatId,
-              operationId,
-              direction: "request",
+          let grant!: Awaited<
+            ReturnType<typeof fresh.client.admitSuspendedExecution>
+          >;
+          let restored!: Awaited<
+            ReturnType<typeof fresh.adapter.restoreSuspendedExecution>
+          >;
+          const resumeGate = new Promise<void>((resolve) => {
+            releaseResume = resolve;
+          });
+          let held!: () => void;
+          const heldReady = new Promise<void>((resolve) => {
+            held = resolve;
+          });
+          const command = workerCommandSchema.parse({
+            type: "chat.suspension.resume",
+            chatId: f.authority.chatId,
+            threadId: f.threadId,
+            controlId: requested.state.controlId,
+            checkpoint: evidence,
+            nativeActivationGeneration: null,
+            nativeRuntimeGeneration: fresh.oldGeneration,
+            session: {
+              ...managedTurnSessionContext(f.authority.context)!,
+              heldSuspension: evidence,
             },
-            content: {
-              method: "thread/resume",
-              params: {
-                threadId: f.threadId,
-                expectedSuspension: evidence.suspension,
+            cwd: source.continuation!.cwd,
+            executionProfile: "ide",
+            model: source.continuation!.model,
+            provider: {
+              id: source.continuation!.providerId,
+              kind: source.continuation!.providerKind,
+              name: "Fixture",
+              baseUrl: `http://127.0.0.1:${(provider.address() as { port: number }).port}/v1`,
+              apiKey: null,
+            },
+            permissionProfileId: ":workspace",
+            planMode: "default",
+            subagentDefaults: null,
+            mcpServers: [],
+          });
+          if (command.type !== "chat.suspension.resume")
+            throw new Error("Resume fixture packet");
+          const coordinator = new ManagedSuspensionResumes({
+            encryption: fresh.encryption,
+            signal: () => new AbortController().signal,
+            active: () => null,
+            prepare: async () => ({
+              session: fresh.session,
+              runtime: {
+                setActiveChatPaused: async (chat, paused) => {
+                  held();
+                  await resumeGate;
+                  return f!.runtime.setActiveChatPaused(chat, paused);
+                },
+                isChatPaused: (chat) => f!.runtime.isChatPaused(chat),
+              },
+              adapter: {
+                get currentActivationGeneration() {
+                  return fresh.adapter.currentActivationGeneration;
+                },
+                withExpectedActivationGeneration:
+                  fresh.adapter.withExpectedActivationGeneration.bind(
+                    fresh.adapter,
+                  ),
+                restoreSuspendedExecution: async (...args) => {
+                  const [one, two] = await Promise.all([
+                    fresh.adapter.restoreSuspendedExecution(...args),
+                    fresh.adapter.restoreSuspendedExecution(...args),
+                  ]);
+                  expect(two).toBe(one);
+                  restored = one;
+                  return one;
+                },
+              },
+            }),
+            openSource: (command) =>
+              openManagedSuspensionSource({
+                store: f!.suspensionStore,
+                session: command.session,
+                threadId: command.threadId,
+                modelRouteId: fresh.session.modelRouteId,
+                providerAccountId: fresh.session.providerAccountId,
+              }),
+            client: {
+              admitSuspendedExecution: async (...args) => {
+                grant = await fresh.client.admitSuspendedExecution(...args);
+                return grant;
               },
             },
           });
-          const grant = await fresh.client.admitSuspendedExecution({
-            operationId,
-            controlId: requested.state.controlId,
-            checkpoint: evidence,
-            session: fresh.session,
-            payloadDigest: content.digest,
-            protectedPayload: content.envelope,
-          });
+          const resuming = coordinator.run(command);
+          void resuming.catch(() => {});
+          expect(coordinator.run(structuredClone(command))).toBe(resuming);
+          await heldReady;
           expect(grant.receipt.operationId).not.toBe(grant.source.operationId);
           expect(Boolean(grant.logicalRoot)).toBe(origin === "gui");
-          const [restored, duplicate] = await Promise.all([
-            fresh.adapter.restoreSuspendedExecution(
-              grant,
-              fresh.session,
-              source.continuation!,
-            ),
-            fresh.adapter.restoreSuspendedExecution(
-              grant,
-              fresh.session,
-              source.continuation!,
-            ),
-          ]);
-          expect(duplicate).toBe(restored);
           expect(f.publicationSources.at(-1)).toEqual(grant.source);
           expect(
             (
@@ -204,14 +264,10 @@ describe.skipIf(!binary || process.platform === "win32")(
                 f.authority.chatId,
                 "stop",
               );
-            await expect(
-              fresh.adapter.withExpectedActivationGeneration(
-                grant.receipt.activationGeneration,
-                () =>
-                  f!.runtime.setActiveChatPaused(f!.authority.chatId, false),
-                requested.state.controlId,
-              ),
-            ).rejects.toThrow();
+            releaseResume!();
+            await expect(resuming).rejects.toMatchObject({
+              code: "restore-failed",
+            });
             expect(
               (await f.runtime.inspectTurnSuspension(f.threadId)).paused,
             ).toBe(true);
@@ -232,14 +288,8 @@ describe.skipIf(!binary || process.platform === "win32")(
               ),
             ).toMatchObject({ phase: "stopped", checkpoint: null, active });
           } else {
-            expect(
-              await fresh.adapter.withExpectedActivationGeneration(
-                grant.receipt.activationGeneration,
-                () =>
-                  f!.runtime.setActiveChatPaused(f!.authority.chatId, false),
-                requested.state.controlId,
-              ),
-            ).toEqual(active);
+            releaseResume!();
+            expect(await resuming).toEqual({ paused: false, active });
             await vi.waitFor(() => expect(requests).toHaveLength(2), {
               timeout: 15000,
             });
@@ -304,6 +354,7 @@ describe.skipIf(!binary || process.platform === "win32")(
             ).toMatchObject({ rootOperationId: grant.logicalRoot.operationId });
           }
         } finally {
+          releaseResume?.();
           for (const request of requests) request.response.destroy();
           provider.closeAllConnections();
           await f?.close();

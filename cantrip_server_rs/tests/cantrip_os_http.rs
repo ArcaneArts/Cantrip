@@ -41,6 +41,9 @@ impl ResponseJson for reqwest::Response {
 fn id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
+fn text_power<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
+    value[key].as_str().context("Power fixture identity")
+}
 
 #[tokio::test]
 async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()> {
@@ -97,8 +100,15 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     });
     let provisions = Arc::new(AtomicUsize::new(0));
     let count = provisions.clone();
+    let power_mutations = Arc::new(AtomicUsize::new(0));
+    let power_count = power_mutations.clone();
+    let lose_power_reply = Arc::new(AtomicBool::new(true));
+    let lose_power = lose_power_reply.clone();
     let lose_run_reply = Arc::new(AtomicBool::new(false));
     let lose_reply = lose_run_reply.clone();
+    let hold_inspection = Arc::new(AtomicBool::new(false));
+    let hold_next = hold_inspection.clone();
+    let (held_inspections, mut held_responses) = tokio::sync::mpsc::unbounded_channel();
     let recovery_mode = Arc::new(AtomicUsize::new(0));
     let observed_mode = recovery_mode.clone();
     let bridge = service.workers.bridge.clone();
@@ -113,6 +123,9 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
         let mut profiles = Vec::new();
         let mut operations = HashMap::new();
         let mut runs = HashMap::<String, Value>::new();
+        let mut power_jobs = HashMap::<String, Value>::new();
+        let mut power_running = true;
+        let mut power_started = "2026-11-06T00:00:00Z".to_owned();
         while let Some(frame) = output.recv().await {
             let Outgoing::Text(encoded) = frame else {
                 continue;
@@ -125,8 +138,35 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
                 bridge.receive(&target, &peer, &json!({"kind":"response","requestId":request["requestId"],"ok":false,"error":{"message":"Fixture transport unavailable"}}).to_string());
                 continue;
             }
-            let observed = |attached: bool, profiles: &Vec<Value>| json!({"guestInstanceId":if mode == 2 {&replacement_guest} else {&guest},"runtimeGeneration":if mode == 3 {&replacement_generation} else {&generation},"attachment":if attached {json!({"ownerId":actual_owner,"workerId":target})}else{Value::Null},"workspaces":profiles});
+            let observed = |attached: bool, profiles: &Vec<Value>| json!({"guestInstanceId":if mode == 2 {&replacement_guest} else {&guest},"runtimeGeneration":if mode == 3 {&replacement_generation} else {&generation},"attachment":if attached {json!({"ownerId":actual_owner,"workerId":target})}else{Value::Null},"workspaces":profiles,"powerTarget":{"kind":"docker","containerId":"a".repeat(64)}});
+            let power_observation = |running: bool, started: &str| json!({"containerId":"a".repeat(64),"running":running,"status":if running{"running"}else{"exited"},"startedAt":started,"finishedAt":"0001-01-01T00:00:00Z"});
             let result = match command["type"].as_str().context("OS fixture command")? {
+                "cantrip-os.power.status" => power_observation(power_running, &power_started),
+                "cantrip-os.power.operation" => {
+                    let operation = text_power(command, "operationId")?;
+                    if command["mode"] == "observe" {
+                        power_jobs.get(operation).cloned().unwrap_or(Value::Null)
+                    } else {
+                        let before = power_observation(power_running, &power_started);
+                        let serial = power_count.fetch_add(1, Ordering::SeqCst) + 1;
+                        power_running = command["action"] != "stop";
+                        if power_running {
+                            power_started = format!("2026-11-06T00:00:{serial:02}Z");
+                        }
+                        let after = power_observation(power_running, &power_started);
+                        let now =
+                            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                        let result = json!({"operationId":operation,"action":command["action"],"state":"ready","startedAt":now,"updatedAt":now,"error":null,
+                            "receipt":{"targetGeneration":command["powerTarget"]["generation"],"containerId":"a".repeat(64),"before":before,"after":after,"completionEvidence":"acknowledged-and-observed"},
+                            "observation":after,"observationError":null});
+                        power_jobs.insert(operation.to_owned(), result.clone());
+                        if lose_power.swap(false, Ordering::SeqCst) {
+                            bridge.receive(&target,&peer,&json!({"kind":"response","requestId":request["requestId"],"ok":false,"error":{"message":"Fixture lost admitted power reply"}}).to_string());
+                            continue;
+                        }
+                        result
+                    }
+                }
                 "chat.files.references" => {
                     assert_eq!(command["root"]["kind"], "cantrip-os");
                     assert!(
@@ -232,6 +272,10 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
                     .clone(),
                 other => anyhow::bail!("Unexpected OS fixture command: {other}"),
             };
+            if command["type"] == "cantrip-os.inspect" && hold_next.swap(false, Ordering::SeqCst) {
+                held_inspections.send((peer, request["requestId"].clone(), result))?;
+                continue;
+            }
             bridge.receive(&target,&peer,&json!({"kind":"response","requestId":request["requestId"],"ok":true,"result":result}).to_string());
         }
         Ok::<_, anyhow::Error>(())
@@ -271,6 +315,155 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     let attached: Value = response.json().await?;
     assert_eq!(status, 200, "{attached}");
     let instance = attached["instance"]["id"].as_str().unwrap();
+    let power_path = format!("{base}/api/cantrip-os/{instance}/power-operations");
+    let power: Value = client
+        .get(format!("{base}/api/cantrip-os/{instance}/power"))
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(power["target"]["kind"], "docker", "{power}");
+    assert_eq!(power["observation"]["running"], true);
+    assert!(!power.to_string().contains(&"a".repeat(64)));
+    let stop_id = id();
+    let power_input = json!({"operationId":stop_id,"action":"stop","attachmentGeneration":attached["instance"]["attachmentGeneration"],"targetGeneration":power["target"]["generation"]});
+    let mut forged = power_input.clone();
+    forged["containerId"] = json!("forged");
+    assert_eq!(
+        client
+            .post(&power_path)
+            .json(&forged)
+            .send()
+            .await?
+            .status(),
+        400
+    );
+    let first: Value = client
+        .post(&power_path)
+        .json(&power_input)
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(first["state"], "unknown", "{first}");
+    let during: Value = client
+        .post(format!("{base}/api/cantrip-os/{instance}/refresh"))
+        .json(&json!({}))
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(during["instance"]["status"], "unknown", "{during}");
+    // Recovery's independent compare-and-swap observation must preserve the
+    // same active-operation fence as ordinary refresh.
+    let during_recovery: Value = client
+        .post(format!("{base}/api/cantrip-os/{instance}/recovery"))
+        .json(&json!({"attachmentGeneration":attached["instance"]["attachmentGeneration"],"runtimeGeneration":attached["instance"]["runtimeGeneration"]}))
+        .send().await?.json().await?;
+    assert_eq!(
+        during_recovery["instance"]["status"], "unknown",
+        "{during_recovery}"
+    );
+    assert_eq!(
+        during_recovery["recovery"]["workerContinuity"],
+        "first-observation"
+    );
+    let recovered: Value = client
+        .post(&power_path)
+        .json(&power_input)
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(recovered["state"], "ready", "{recovered}");
+    assert_eq!(power_mutations.load(Ordering::SeqCst), 1);
+    let mut changed = power_input.clone();
+    changed["action"] = json!("restart");
+    assert_eq!(
+        client
+            .post(&power_path)
+            .json(&changed)
+            .send()
+            .await?
+            .status(),
+        409
+    );
+    let start_id = id();
+    let start = json!({"operationId":start_id,"action":"start","attachmentGeneration":power_input["attachmentGeneration"],"targetGeneration":power_input["targetGeneration"]});
+    let started: Value = client
+        .post(&power_path)
+        .json(&start)
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(started["state"], "ready", "{started}");
+    assert_eq!(power_mutations.load(Ordering::SeqCst), 2);
+    let refreshed: Value = client
+        .post(format!("{base}/api/cantrip-os/{instance}/refresh"))
+        .json(&json!({}))
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(refreshed["instance"]["status"], "connected", "{refreshed}");
+    database.query("UPDATE cantrip_os_power_operations SET created_at='2026-11-06T01:00:00.123101Z' WHERE operation_id=$1", &[&stop_id]).await?;
+    database.query("UPDATE cantrip_os_power_operations SET created_at='2026-11-06T01:00:00.123202Z' WHERE operation_id=$1", &[&start_id]).await?;
+    let page: Value = client
+        .get(format!("{power_path}?limit=1"))
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(page["items"][0]["operationId"], start_id, "{page}");
+    let next: Value = client
+        .get(format!("{power_path}?limit=1&cursor={start_id}"))
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(next["items"][0]["operationId"], stop_id, "{next}");
+    for endpoint in ["refresh", "recovery"] {
+        hold_inspection.store(true, Ordering::SeqCst);
+        let request = client.post(format!("{base}/api/cantrip-os/{instance}/{endpoint}"))
+            .json(&if endpoint == "refresh" {json!({})}else{json!({"attachmentGeneration":attached["instance"]["attachmentGeneration"],"runtimeGeneration":attached["instance"]["runtimeGeneration"]})});
+        let delayed = tokio::spawn(async move { request.send().await });
+        let (peer, request_id, old_result) =
+            tokio::time::timeout(Duration::from_secs(10), held_responses.recv())
+                .await?
+                .context("Held guest observation")?;
+        let restart = json!({"operationId":id(),"action":"restart","attachmentGeneration":power_input["attachmentGeneration"],"targetGeneration":power_input["targetGeneration"]});
+        let settled: Value = client
+            .post(&power_path)
+            .json(&restart)
+            .send()
+            .await?
+            .json()
+            .await?;
+        assert_eq!(settled["state"], "ready", "{settled}");
+        service.workers.bridge.receive(
+            &worker,
+            &peer,
+            &json!({"kind":"response","requestId":request_id,"ok":true,"result":old_result})
+                .to_string(),
+        );
+        let delayed = delayed.await??;
+        assert_eq!(delayed.status(), 409, "{}", delayed.text().await?);
+        let state = database
+            .query(
+                "SELECT status FROM cantrip_os_instances WHERE id=$1",
+                &[&instance],
+            )
+            .await?;
+        assert_eq!(state[0].get::<String>(0)?, "unknown");
+    }
+    client
+        .post(format!("{base}/api/cantrip-os/{instance}/refresh"))
+        .json(&json!({}))
+        .send()
+        .await?
+        .error_for_status()?;
+
     let response = client
         .post(format!("{base}/api/cantrip-os/{instance}/workspaces"))
         .json(&json!({"guestWorkspaceId":"alpha","operationId":id(),"uid":0}))
@@ -290,6 +483,79 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
         .json()
         .await?;
     let path = format!("{base}/api/projects/{project}/cantrip-os/bindings");
+    let existing_request = json!({"mode":"linux-existing","operationId":id(),"workspaceId":workspaces[0]["id"],"sourceKind":"git","relativePath":"restored checkout 日本語 "});
+    let response = client.post(&path).json(&existing_request).send().await?;
+    let status = response.status();
+    let existing: Value = response.json().await?;
+    assert_eq!(status, 200, "{existing}");
+    assert_eq!(existing["mode"], "linux-owned");
+    assert_eq!(existing["state"], "provisioning");
+    assert!(
+        existing["guestPath"]
+            .as_str()
+            .unwrap()
+            .ends_with("/restored checkout 日本語 ")
+    );
+    assert_ne!(existing["id"], existing["projectSourceId"]);
+    assert_ne!(existing["projectSourceId"], existing["worktreeId"]);
+    assert_eq!(
+        client
+            .post(&path)
+            .json(&existing_request)
+            .send()
+            .await?
+            .json()
+            .await?,
+        existing
+    );
+    let mut changed_existing = existing_request.clone();
+    changed_existing["relativePath"] = json!("another path");
+    assert_eq!(
+        client
+            .post(&path)
+            .json(&changed_existing)
+            .send()
+            .await?
+            .status(),
+        409
+    );
+    for invalid in ["../other", "a/../other", "/host/project", "repo\0path"] {
+        let mut invalid_request = existing_request.clone();
+        invalid_request["operationId"] = json!(id());
+        invalid_request["relativePath"] = json!(invalid);
+        assert_eq!(
+            client
+                .post(&path)
+                .json(&invalid_request)
+                .send()
+                .await?
+                .status(),
+            409
+        );
+    }
+    let mut invalid_request = existing_request.clone();
+    invalid_request["uid"] = json!(0);
+    assert_eq!(
+        client
+            .post(&path)
+            .json(&invalid_request)
+            .send()
+            .await?
+            .status(),
+        400
+    );
+    let response = client
+        .post(format!(
+            "{path}/{}/verify",
+            existing["id"].as_str().unwrap()
+        ))
+        .json(&json!({}))
+        .send()
+        .await?;
+    let status = response.status();
+    let verified: Value = response.json().await?;
+    assert_eq!(status, 200, "{verified}");
+    assert_eq!(verified["state"], "ready");
     let response = client
         .post(&path)
         .json(&json!({"mode":"linux-owned","workspaceId":workspaces[0]["id"],"sourceKind":"git"}))
@@ -367,7 +633,7 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     let mut expected = json!({"attachmentGeneration":attached["instance"]["attachmentGeneration"], "runtimeGeneration":attached["instance"]["runtimeGeneration"]});
     let invalid = client.post(&recovery_url).json(&json!({})).send().await?;
     assert_eq!(invalid.status(), 400);
-    for (index, (mode, kind)) in [
+    for (mode, kind) in [
         (0, "same-runtime"),
         (1, "unavailable"),
         (0, "same-runtime"),
@@ -375,24 +641,14 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
         (0, "same-runtime"),
         (3, "runtime-changed"),
         (0, "runtime-changed"),
-    ]
-    .into_iter()
-    .enumerate()
-    {
+    ] {
         recovery_mode.store(mode, Ordering::SeqCst);
         let response = client.post(&recovery_url).json(&expected).send().await?;
         let status = response.status();
         let result: Value = response.json().await?;
         assert_eq!(status, 200, "{result}");
         assert_eq!(result["recovery"]["kind"], kind);
-        assert_eq!(
-            result["recovery"]["workerContinuity"],
-            if index == 0 {
-                "first-observation"
-            } else {
-                "same-worker"
-            }
-        );
+        assert_eq!(result["recovery"]["workerContinuity"], "same-worker");
         assert_eq!(
             result["recovery"]["observedWorkerProcessGeneration"],
             worker_generation
@@ -623,10 +879,16 @@ async fn exercise_run_http(fixture: RunHttpFixture<'_>) -> Result<()> {
     let status = sources.status();
     let sources = sources.json().await?;
     assert_eq!(status, 200, "{sources}");
-    assert_eq!(sources[0]["target"]["isPrimary"], true);
-    assert_eq!(sources[0]["binding"]["id"], binding["id"]);
-    assert!(sources[0].get("transport").is_none());
-    assert!(sources[0]["target"].get("path").is_none());
+    let selected = sources
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|source| source["binding"]["id"] == binding["id"])
+        .context("The captured Run source is missing from the combined source list")?;
+    assert_eq!(selected["target"]["isPrimary"], true);
+    assert_eq!(selected["binding"]["id"], binding["id"]);
+    assert!(selected.get("transport").is_none());
+    assert!(selected["target"].get("path").is_none());
     let configuration = id();
     let selection = json!({"kind":"binding","bindingId":binding["id"],"bindingGeneration":binding["bindingGeneration"],"attachmentGeneration":attached["instance"]["attachmentGeneration"],"runtimeGeneration":attached["instance"]["runtimeGeneration"]});
     let run_url = format!("{base}/api/run-configuration-runtimes");
