@@ -235,6 +235,7 @@ describe.skipIf(!binary || process.platform === "win32")(
             await kill(denied);
           }
           actor = launch({
+            preparationIntent: cycle === 0 ? "preserve" : "configure",
             storageId: paused.evidence.storageId,
             suspension: paused.evidence.suspension,
             home: path.join(directory, `changed-default-home-${cycle}`),
