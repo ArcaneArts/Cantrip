@@ -766,8 +766,17 @@ explicitly as excluded. Lost commit replies recover one matching labeled image;
 observation never repeats a mutation, and continuation sends only unrequested
 future steps. Private image bytes can be streamed for protected transfer or
 explicitly exported by the administrator. This is a host administration foundation;
-shared-system replacement/rollback, private Worker/Server admissions and client
+shared-system replacement/rollback, Server-owned product admissions and client
 controls remain dependent work, alongside clone identities and final acceptance.
+
+The Worker now streams that captured image into a distinct private system-archive
+format with encrypted mount metadata, ordered content, authenticated completion
+and exact archive digests. Durable transfer journals recover a fully published
+archive without contacting Docker or regenerating ciphertext. Observation never
+requests another export; explicit continuation can authorize a fresh read of the
+same captured image after an unpublished interruption. Terminal protected receipts
+remain immutable across Manager restarts. This is the internal transfer foundation,
+not Server routing, shared-system replacement/rollback or full product acceptance.
 
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output

@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./cantrip-os-system": {
+      "types": "./src/cantrip-os-system.ts",
+      "import": "./dist/cantrip-os-system.js"
+    },
     "./cantrip-os-backup-operations": {
       "types": "./src/cantrip-os-backup-operations.ts",
       "import": "./dist/cantrip-os-backup-operations.js"
