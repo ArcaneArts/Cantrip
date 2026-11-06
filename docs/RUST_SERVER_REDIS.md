@@ -6,9 +6,10 @@ coordinator's Redis directory and message envelopes. The native
 The authenticated worker socket and resource services accept a local or shared
 `WorkerTransport`; production startup still selects the local implementation.
 The native `worker_links::authority::Authority` also implements the existing
-WorkerLink service's distributed operations and revocation. Shared startup,
-WorkerLink HTTP/runtime binding and App Live still need integration and product
-acceptance.
+WorkerLink service's distributed operations and revocation. Production WorkerLink
+HTTP handlers and resource consumers now use that authority through the composed
+service and relay. Shared startup, App Live and instance-aware recovery still
+need integration and product acceptance.
 Setting `REDIS_URL` on the Rust server does not yet enable shared routing.
 Node remains the default server and the worker remains Node.
 
@@ -57,6 +58,18 @@ Node remains the default server and the worker remains Node.
   The service preserves the ten-second RPC timeout, missing response results,
   500 UTF-16-unit error limit, caller-drop lifetime and exact-authority cleanup.
   Bulk revocation retains the reference directory-claim TTL behavior.
+- WorkerLink HTTP authorization awaits the authority before entering operation
+  error handling. Authorization failures and uncaught DELETE failures retain
+  the reference general 500 response; caught operation failures retain their
+  409/502 responses. Resource revocation and auth cleanup propagate failures in
+  the reference order. Service revocations start eagerly and remain owned when
+  their caller drops the future.
+- The composed service retains its relay-revocation subscription and releases
+  it before relay shutdown. During the second, upgraded WebSocket authorization
+  lookup, the socket handles Ping, client close and shutdown while discarding
+  application frames received before relay attachment. A rejected upgraded
+  authorization terminates the connection without a Close frame, matching the
+  reference WebSocket handler's 1006 client observation.
 
 The runtime uses the native Redis client with Tokio and native TLS support.
 There is no JavaScript database or coordination helper in this module. The
@@ -178,3 +191,37 @@ The existing `worker-link-http-compatibility.mjs --database pglite --keep-data`
 suite retains its real database and server fixture directory in the report's
 `root` field for inspection. Build TypeScript dependencies again after changing
 Git revisions so both peers use the same generated server version metadata.
+
+The authority harness also constructs the actual native `Service` and both
+implementations' real relay classes. Its expanded 96 scenario groups across
+all four pairings include closing attached relay sockets on route, session,
+account and owner revocation; retaining session sockets on resource-only
+revocation; harmless unmatched UTF-16 scopes; and eager service revocation
+while a worker acknowledgment is held. Shutdown closes attached sockets before
+authority cleanup. Worker acknowledgments and relay sockets remain controlled;
+these cases do not establish real remote binary worker execution.
+
+The HTTP authorization and await boundaries have a separate local harness:
+
+```sh
+node --import tsx scripts/server-rust/worker-link-http-boundary-compatibility.mjs \
+  --redis-bin /path/to/redis-server \
+  --report .qa/rust-worker-links/http-boundaries.json
+```
+
+It launches the production handlers with isolated PGlite databases and private
+Redis. Thirty observations per implementation compare authorization and
+operation failures, the real ten-second RPC timeout, pre-upgrade rejection,
+post-upgrade termination, Ping during held authorization, discarded early data,
+client close and shutdown. Controlled faults run after real Redis directory
+reads. The native fixture replaces only the WorkerLink service dependency;
+other services retain their ordinary local composition. This is HTTP facade
+acceptance, not shared production bootstrap, Redis outage timing or full
+multi-instance product acceptance.
+
+The existing local HTTP/WebSocket suite also passes with authority-backed
+handlers on PGlite, external PostgreSQL and private bundled PostgreSQL. Each
+store covers `none` and `accounts` authentication with 182 paired observations
+and controlled acknowledgments through the unchanged worker connection.
+These macOS arm64 results do not qualify Linux/Windows artifacts, packaging,
+App Live coordination or a mixed rolling product deployment.

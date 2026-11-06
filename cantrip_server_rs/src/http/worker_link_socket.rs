@@ -30,6 +30,8 @@ use std::{
 };
 use tokio::sync::{mpsc, watch};
 use tungstenite::{Message, protocol::CloseFrame};
+#[path = "worker_link_socket_authorization.rs"]
+mod authorization;
 
 enum Outgoing {
     Text(Queued<String>),
@@ -98,13 +100,22 @@ impl relay::Socket for Peer {
         self.close(code, reason);
     }
 }
-fn authorized(service: &AuthService, ctx: &Context, session: &str, query: &Value) -> Option<Value> {
-    let session = super::worker_links::authorized(service, ctx, session)?;
-    (query["clientInstanceId"] == session["identity"]["clientInstanceId"]
-        && query
-            .get("routeGeneration")
-            .is_none_or(|v| v.as_str() == Some(session["routeGeneration"].stringify().as_str())))
-    .then_some(session)
+async fn authorized(
+    service: &AuthService,
+    ctx: &Context,
+    session: &str,
+    query: &Value,
+) -> Result<Option<Value>> {
+    let Some(session) = super::worker_links::authorized(service, ctx, session).await? else {
+        return Ok(None);
+    };
+    Ok(
+        (query["clientInstanceId"] == session["identity"]["clientInstanceId"]
+            && query.get("routeGeneration").is_none_or(|v| {
+                v.as_str() == Some(session["routeGeneration"].stringify().as_str())
+            }))
+        .then_some(session),
+    )
 }
 async fn connect(
     State(service): State<Arc<AuthService>>,
@@ -120,8 +131,10 @@ async fn connect(
         return error(403, "Origin not allowed.");
     }
     let query = account::query(request.uri());
-    let Some(current) = super::worker_links::authorized(&service, &ctx, &session) else {
-        return error(404, "WorkerLink session is unavailable.");
+    let current = match super::worker_links::authorized(&service, &ctx, &session).await {
+        Ok(Some(current)) => current,
+        Ok(None) => return error(404, "WorkerLink session is unavailable."),
+        Err(cause) => return middleware::failure(&service, &ctx.id, &cause),
     };
     if query["clientInstanceId"] != current["identity"]["clientInstanceId"] {
         return error(404, "WorkerLink session is unavailable.");
@@ -168,26 +181,49 @@ async fn run(
             .live
             .sessions
             .register(peer.clone(), &user.id, ctx.principal.session_id.as_deref());
-    let connection = if registration.is_some() {
-        match authorized(&service, &ctx, &session, &query) {
-            Some(session) => service.worker_links.relay.attach(session, peer.clone()),
-            None => {
-                peer.close(1008, "WorkerLink session is unavailable");
-                None
-            }
-        }
-    } else {
-        None
-    };
+    let registered = registration.is_some();
+    let connection_slot = Arc::new(Mutex::new(None::<Arc<relay::Connection>>));
     let relay = service.worker_links.relay.clone();
-    let retained = connection.clone();
+    let retained = connection_slot.clone();
+    let registered_peer = peer.clone();
     socket.on_closed(move || {
-        if let Some(connection) = retained {
+        registered_peer.open.store(false, Ordering::Release);
+        if let Some(connection) = retained.lock().unwrap().take() {
             relay.retire(&connection);
         }
         drop(registration);
         drop(lifetime);
     });
+    let connection = if registered {
+        match authorization::wait(
+            &mut socket,
+            &peer,
+            &mut outgoing,
+            authorized(&service, &ctx, &session, &query),
+        )
+        .await
+        {
+            Some(Ok(Some(session))) => service.worker_links.relay.attach(session, peer.clone()),
+            Some(Ok(None)) => {
+                peer.close(1008, "WorkerLink session is unavailable");
+                None
+            }
+            Some(Err(_)) => {
+                // @fastify/websocket terminates an upgraded socket when its
+                // async route handler rejects, without a protocol Close frame.
+                eprintln!(
+                    "{}",
+                    serde_json::json!({"event":"worker-link.authorization.failed","subsystem":"worker-link","operation":"authorize-relay","reasonCode":"authorization-unavailable","status":"failed","requestId":ctx.id})
+                );
+                forced.store(true, Ordering::Release);
+                return;
+            }
+            None => return,
+        }
+    } else {
+        None
+    };
+    *connection_slot.lock().unwrap() = connection.clone();
     let (mut output, mut input) = socket.split();
     let reader = async {
         while let Some(message) = input.next().await {

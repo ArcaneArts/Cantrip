@@ -21,7 +21,7 @@ pub(super) async fn execute(
         Ok(value) => value,
         Err(response) => return Ok(response),
     };
-    let Some(session) = authorized(service, ctx, session_id) else {
+    let Some(session) = authorized(service, ctx, session_id).await? else {
         return Ok(error(404, "WorkerLink session not found."));
     };
     let owner = &ctx.principal.user.as_ref().context("Observation owner")?.id;
@@ -44,7 +44,7 @@ pub(super) async fn execute(
     Ok(
         match service
             .worker_links
-            .local
+            .authority
             .issue_grant(json!({
                 "attachmentId": subscription,
                 "lanes": ["events"],

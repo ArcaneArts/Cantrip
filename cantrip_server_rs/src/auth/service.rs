@@ -588,7 +588,7 @@ impl AuthService {
                     } else {
                         Revocation::Session(Some(id))
                     })
-                    .await;
+                    .await?;
                 Ok(count)
             })
             .await
@@ -598,12 +598,12 @@ impl AuthService {
         self.worker_links
             .local
             .owned(async move {
-                service.apply_revocation(revocation).await;
+                service.apply_revocation(revocation).await?;
                 Ok(())
             })
             .await
     }
-    async fn apply_revocation(&self, revocation: Revocation) {
+    async fn apply_revocation(&self, revocation: Revocation) -> Result<()> {
         // Complete local socket side effects before the logout/revoke response.
         // The broadcast remains available to other asynchronous consumers.
         self.live.revoke_live(&revocation);
@@ -614,7 +614,7 @@ impl AuthService {
                         crate::wire::Value::String(owner.clone().into()),
                     ))
                     .await;
-                self.worker_links.revoke_owner(owner).await;
+                self.worker_links.revoke_owner(owner).await?;
             }
             Revocation::Session(Some(session)) => {
                 self.direct_attachments
@@ -622,11 +622,12 @@ impl AuthService {
                         crate::wire::Value::String(session.clone().into()),
                     ))
                     .await;
-                self.worker_links.revoke_account(session).await;
+                self.worker_links.revoke_account(session).await?;
             }
             Revocation::Session(None) => {}
         }
         self.live.close_revoked_sockets(&revocation);
         let _ = self.revocations.send(revocation);
+        Ok(())
     }
 }

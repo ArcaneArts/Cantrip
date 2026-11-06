@@ -10,6 +10,7 @@ import { workerLinkWireFixtures } from "./worker-link-wire-fixtures.mjs";
 import { verifyAuthorityOperations } from "./worker-link-authority-operation-cases.mjs";
 import { verifyAuthorityFences } from "./worker-link-authority-fence-cases.mjs";
 import { verifyAuthorityRevocations } from "./worker-link-authority-revocation-cases.mjs";
+import { verifyServiceRelays } from "./worker-link-service-relay-cases.mjs";
 const { values } = parseArgs({
   options: {
     pair: { type: "string", multiple: true },
@@ -27,7 +28,7 @@ const report = {
   platform: process.platform,
   architecture: process.arch,
   scope:
-    "Actual Node WorkerLinkService and native Authority/local coordinators with real private Redis and controlled worker ACKs. No SQL, HTTP, production startup or real-worker product claim.",
+    "Actual Node WorkerLinkService and native Service/Authority with their real relay classes, private Redis and controlled worker ACKs/sockets. No SQL, HTTP, production startup or real remote binary worker claim.",
   cases: [],
 };
 async function save() {
@@ -103,6 +104,7 @@ async function run(pair) {
     await b.call("init", init("b"));
     await verifyAuthorityOperations(context);
     await verifyAuthorityRevocations(context);
+    await verifyServiceRelays(context);
     await verifyAuthorityFences(context);
     observation.passed = true;
   } catch (error) {

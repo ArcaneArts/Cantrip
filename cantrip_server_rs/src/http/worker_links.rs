@@ -21,19 +21,43 @@ use axum::{
 };
 use std::{collections::HashMap, sync::Arc};
 
-pub(super) fn authorized(service: &AuthService, ctx: &Context, session: &str) -> Option<Value> {
-    let user = ctx.principal.user.as_ref()?;
-    service.worker_links.local.session_for_authorization(
-        session,
-        &Value::String(user.id.clone().into()),
-        &Value::String(
-            ctx.principal
-                .session_id
-                .clone()
-                .unwrap_or_else(|| format!("local:{}", user.id))
-                .into(),
-        ),
-    )
+// The reference authorizes outside its operation catches. Retain that boundary
+// so Redis/auth failures and uncaught DELETE failures use the general handler.
+#[derive(Debug)]
+struct Uncaught(Error);
+impl std::fmt::Display for Uncaught {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+impl std::error::Error for Uncaught {}
+pub(super) fn uncaught(cause: Error) -> anyhow::Error {
+    anyhow::Error::new(Uncaught(cause))
+}
+pub(super) async fn authorized(
+    service: &AuthService,
+    ctx: &Context,
+    session: &str,
+) -> Result<Option<Value>> {
+    let Some(user) = ctx.principal.user.as_ref() else {
+        return Ok(None);
+    };
+    service
+        .worker_links
+        .authority
+        .session_for_authorization(
+            session,
+            Value::String(user.id.clone().into()),
+            Value::String(
+                ctx.principal
+                    .session_id
+                    .clone()
+                    .unwrap_or_else(|| format!("local:{}", user.id))
+                    .into(),
+            ),
+        )
+        .await
+        .map_err(uncaught)
 }
 fn uuid(schema: &str, field: &str, id: &str) -> Result<bool> {
     match wire::parse_property(schema, field, &Value::String(id.into())) {
@@ -76,7 +100,7 @@ async fn execute(
         .as_ref()
         .context("Authenticated WorkerLink owner")?
         .id;
-    let local = &service.worker_links.local;
+    let authority = &service.worker_links.authority;
     if let Some(worker) = params.get("workerId") {
         let input = match parse("workerLinkSessionOpenRequestSchema", body.as_ref())? {
             Ok(v) => v,
@@ -94,7 +118,7 @@ async fn execute(
         if !service.workers.bridge.is_connected(worker) {
             return Ok(error(503, "Worker is offline."));
         }
-        return Ok(match local.open_session(json!({"ownerId":owner,"accountSessionId":ctx.principal.session_id.clone().unwrap_or_else(||format!("local:{owner}")),"clientInstanceId":input["clientInstanceId"],"workerId":worker})).await {
+        return Ok(match authority.open_session(json!({"ownerId":owner,"accountSessionId":ctx.principal.session_id.clone().unwrap_or_else(||format!("local:{owner}")),"clientInstanceId":input["clientInstanceId"],"workerId":worker})).await {
             Ok(value) => output(201, "workerLinkSessionSchema", &value)?, Err(cause) => failure(&cause),
         });
     }
@@ -174,7 +198,7 @@ async fn execute(
     } else {
         Value::Null
     };
-    if authorized(&service, &ctx, session).is_none() {
+    if authorized(&service, &ctx, session).await?.is_none() {
         return Ok(if deleting {
             axum::http::StatusCode::NO_CONTENT.into_response()
         } else {
@@ -183,7 +207,10 @@ async fn execute(
     }
     if let Some(peer) = peer {
         if deleting {
-            local.revoke_peer(session, peer, "released").await;
+            authority
+                .revoke_peer(session, peer)
+                .await
+                .map_err(uncaught)?;
             return Ok(axum::http::StatusCode::NO_CONTENT.into_response());
         }
         if path.ends_with("/signals") {
@@ -204,23 +231,28 @@ async fn execute(
                 ));
             }
             for signal in signals {
-                if let Err(cause) = local.signal_peer(signal.clone()).await {
+                if let Err(cause) = authority.signal_peer(session, signal.clone()).await {
                     return Ok(failure(&cause));
                 }
             }
             return Ok(axum::http::StatusCode::NO_CONTENT.into_response());
         }
-        return Ok(match local.read_peer_mailbox(session, peer, input) {
-            Ok(value) => output(200, "workerLinkPeerMailboxSchema", &value)?,
-            Err(cause) => failure(&cause),
-        });
+        return Ok(
+            match authority.read_peer_mailbox(session, peer, input).await {
+                Ok(value) => output(200, "workerLinkPeerMailboxSchema", &value)?,
+                Err(cause) => failure(&cause),
+            },
+        );
     }
     if let Some(grant) = grant {
         if deleting {
-            local.revoke_grant(session, grant, "released").await;
+            authority
+                .revoke_grant(session, grant, "released")
+                .await
+                .map_err(uncaught)?;
             return Ok(axum::http::StatusCode::NO_CONTENT.into_response());
         }
-        return Ok(match local.renew_grant(session, grant, None).await {
+        return Ok(match authority.renew_grant(session, grant).await {
             Ok(value) => output(200, "workerLinkLeaseSchema", &value)?,
             Err(cause) => failure(&cause),
         });
@@ -231,7 +263,7 @@ async fn execute(
             Err(cause) => failure(&cause),
         }
     } else {
-        match local.renew_session(session, None).await {
+        match authority.renew_session(session).await {
             Ok(value) => output(200, "workerLinkSessionSchema", &value)?,
             Err(cause) => failure(&cause),
         }
@@ -278,7 +310,9 @@ pub(super) async fn handle(
         }
         Ok(response) => response,
         Err(cause) => {
-            if let Some(cause) = cause.downcast_ref::<Error>() {
+            if cause.is::<Uncaught>() {
+                middleware::failure(&service, &ctx.id, &cause)
+            } else if let Some(cause) = cause.downcast_ref::<Error>() {
                 failure(cause)
             } else {
                 middleware::failure(&service, &ctx.id, &cause)

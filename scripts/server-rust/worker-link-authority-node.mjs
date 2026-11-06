@@ -1,12 +1,35 @@
 // Development-only: actual reference services, real Redis, controlled worker ACKs.
 import { createInterface } from "node:readline";
+import { EventEmitter } from "node:events";
 import { RedisRelayCoordinator } from "../../cantrip_server/src/coordination/relay-coordinator.ts";
 import {
   WorkerLinkCoordinator,
   WorkerLinkUnavailableError,
 } from "../../cantrip_server/src/worker-links/coordinator.ts";
 import { WorkerLinkService } from "../../cantrip_server/src/worker-links/service.ts";
-let coordination, local, service, server, generation;
+import { WorkerLinkRelay } from "../../cantrip_server/src/worker-links/relay.ts";
+let coordination, local, service, server, generation, relay, unsubscribeRelay;
+const relaySockets = new Map();
+class RelaySocket extends EventEmitter {
+  readyState = 1;
+  bufferedAmount = 0;
+  constructor(name) {
+    super();
+    this.name = name;
+  }
+  send() {}
+  close(code, reason) {
+    if (this.readyState !== 1) return;
+    this.readyState = 3;
+    events.push({ kind: "relay-close", name: this.name, code, reason });
+    this.emit("close");
+  }
+}
+async function closeService() {
+  unsubscribeRelay?.();
+  relay?.close();
+  await service?.close();
+}
 const events = [],
   commands = [],
   behavior = new Map(),
@@ -43,6 +66,12 @@ const workers = {
   },
   subscribeWorkerOffline() {
     return () => {};
+  },
+  subscribeWorkerLinkFrames() {
+    return () => {};
+  },
+  sendWorkerLinkFrame() {
+    return true;
   },
   subscribeNotifications(worker, listener) {
     const set = notifications.get(worker) ?? new Set();
@@ -136,7 +165,7 @@ async function invoke(r) {
         );
         break;
       case "close":
-        result = await service.close();
+        result = await closeService();
         break;
       default:
         throw new Error(`Unknown authority method ${r.method}`);
@@ -178,6 +207,13 @@ async function dispatch(r) {
         },
       );
       service = new WorkerLinkService(local, coordination);
+      relay = new WorkerLinkRelay(workers);
+      unsubscribeRelay = service.subscribeRelayRevocations((scope) => {
+        if (scope.kind === "session") relay.revokeSession(scope.sessionId);
+        else if (scope.kind === "account-session")
+          relay.revokeAccountSession(scope.accountSessionId);
+        else if (scope.kind === "owner") relay.revokeOwner(scope.ownerId);
+      });
       coordination.subscribe((message) => {
         if (message.kind === "fixture-barrier")
           events.push({ kind: "barrier", name: message.name });
@@ -194,6 +230,14 @@ async function dispatch(r) {
     case "abandon":
       // JS promises retain an already-started operation without a waiter.
       void invoke(r.call);
+      return null;
+    case "abandonServiceResource":
+      void service.revokeResource(r.owner, r.kind, r.resource).catch((error) =>
+        events.push({
+          kind: "abandoned-resource-error",
+          error: error.message,
+        }),
+      );
       return null;
     case "behavior":
       r.value === null
@@ -214,6 +258,17 @@ async function dispatch(r) {
       return events.splice(0);
     case "stats":
       return service.stats();
+    case "attachRelay": {
+      const socket = new RelaySocket(r.name);
+      relaySockets.set(r.name, socket);
+      return relay.attach(r.session, socket);
+    }
+    case "relayOpen":
+      return relaySockets.get(r.name)?.readyState === 1;
+    case "relayStats":
+      return relay.stats();
+    case "coordinationStats":
+      return coordination.stats();
     case "claim":
       return coordination.findWorkerLinkSession(r.session);
     case "notify":
@@ -238,7 +293,7 @@ async function dispatch(r) {
       });
       return null;
     case "close":
-      await service.close();
+      await closeService();
       await coordination.close();
       return null;
     default:
@@ -259,7 +314,7 @@ createInterface({ input: process.stdin })
   })
   .on("close", () => {
     void (async () => {
-      await service?.close();
+      await closeService();
       await coordination?.close();
     })();
   });

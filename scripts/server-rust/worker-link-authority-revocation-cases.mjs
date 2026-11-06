@@ -176,6 +176,9 @@ export async function verifyAuthorityRevocations({
     await call(b, "revokeSession", { session: survivor.sessionId }),
     true,
   );
+  // The publish response does not acknowledge the remote relay callback. Drain
+  // that actual delivery before installing listeners whose mutation is tested.
+  await barrier(b, a, "a", "owner-isolation-relay-delivered");
   step("owner-wide revocation crosses instances and preserves another tenant");
   // Set iteration is live: first removes a later callback and adds one which
   // must run during the same notification. The same callback is deduplicated.

@@ -105,18 +105,15 @@ pub async fn preserving_files(
                 let terminals = context["terminals"]
                     .as_array()
                     .context("Project removal terminals")?;
-                futures::future::join_all(terminals.iter().map(|t| async {
-                    service
-                        .worker_links
-                        .revoke_resource(
-                            &owner,
-                            "terminal",
-                            t["id"].as_str().unwrap(),
-                            "resource-deleted",
-                        )
-                        .await;
+                futures::future::try_join_all(terminals.iter().map(|t| {
+                    service.worker_links.revoke_resource(
+                        &owner,
+                        "terminal",
+                        t["id"].as_str().unwrap(),
+                        "resource-deleted",
+                    )
                 }))
-                .await;
+                .await?;
                 attempt(
                     &project,
                     "run-configurations",

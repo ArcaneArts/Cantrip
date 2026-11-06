@@ -131,12 +131,20 @@ if (drainAuthNotifications) {
     return subscribe(worker, wrappers.get(listener));
   };
 }
+const workerLinkControl =
+  process.env.CANTRIP_WORKER_LINK_HTTP_FIXTURE === "true"
+    ? await import("./worker-link-http-node-control.mjs").then((m) =>
+        m.prepareWorkerLinkHttpControl(config),
+      )
+    : undefined;
 const app = await buildApp({
   config,
   database,
   logger: process.env.CANTRIP_FIXTURE_LOGGING === "true",
   ...(ingressBridge ? { workerBridge: ingressBridge } : {}),
+  ...(workerLinkControl ? { coordinator: workerLinkControl.coordinator } : {}),
 });
+workerLinkControl?.install(app);
 if (process.argv.includes("--live-sql-fixture")) {
   const { installLiveSqlFixture } = await import("./live-sql-node-fixture.mjs");
   installLiveSqlFixture(app, database);

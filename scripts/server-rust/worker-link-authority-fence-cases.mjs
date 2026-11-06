@@ -214,6 +214,14 @@ export async function verifyAuthorityFences({
   );
   step("unreachable authority observes actual 10-second operation timeout");
   const closeOffset = messages.length;
+  assert.equal(
+    await b.call("attachRelay", { name: "shutdown-b", session: abandoned }),
+    true,
+  );
+  assert.equal(
+    await a.call("attachRelay", { name: "shutdown-a", session: lost }),
+    true,
+  );
   await b.call("begin", {
     name: "close-pending",
     call: { method: "renew", session: abandoned.sessionId },
@@ -224,6 +232,18 @@ export async function verifyAuthorityFences({
     "pending RPC published before close",
   );
   assert.equal(await call(b, "close"), null);
+  await b.drain();
+  assert.deepEqual(
+    b.events.filter((e) => e.kind === "relay-close" && e.name === "shutdown-b"),
+    [
+      {
+        kind: "relay-close",
+        name: "shutdown-b",
+        code: 1001,
+        reason: "Server is shutting down",
+      },
+    ],
+  );
   assert.deepEqual(await completion(b, "close-pending"), {
     ok: false,
     error: {
@@ -240,6 +260,18 @@ export async function verifyAuthorityFences({
     "WorkerLink service is closed.",
   );
   assert.equal(await call(a, "close"), null);
+  await a.drain();
+  assert.deepEqual(
+    a.events.filter((e) => e.kind === "relay-close" && e.name === "shutdown-a"),
+    [
+      {
+        kind: "relay-close",
+        name: "shutdown-a",
+        code: 1001,
+        reason: "Server is shutting down",
+      },
+    ],
+  );
   assert.deepEqual(
     JSON.parse(await redis.client.get(key(lost.sessionId))),
     replaced,
@@ -253,5 +285,8 @@ export async function verifyAuthorityFences({
   );
   step(
     "close rejects pending RPCs, fences claim releases and rejects subsequent operations",
+  );
+  step(
+    "composed Service shutdown closes relay sockets before releasing authority state",
   );
 }

@@ -48,7 +48,7 @@ pub(super) async fn execute(
     } else {
         Value::Null
     };
-    let Some(current) = worker_links::authorized(service, ctx, session) else {
+    let Some(current) = worker_links::authorized(service, ctx, session).await? else {
         return Ok(if deleting {
             StatusCode::NO_CONTENT.into_response()
         } else {
@@ -63,7 +63,8 @@ pub(super) async fn execute(
         service
             .worker_links
             .revoke_session(session, "released")
-            .await;
+            .await
+            .map_err(worker_links::uncaught)?;
         return Ok(StatusCode::NO_CONTENT.into_response());
     }
     if path.ends_with("/route") {
