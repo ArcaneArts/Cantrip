@@ -109,6 +109,13 @@ export interface InferenceTicket {
   /** Seal this exact unused reservation before returning durable no-start
    * evidence. This is not permission to replay its canonical input. */
   withdrawUnstarted(reason?: Error): Promise<InferenceJournalRecord>;
+  /** Actual keeper metadata for a fresh private Task Goal begin which has not
+   * received model permission. Reading this does not reserve or withdraw it. */
+  privateTaskGoalSource(): Promise<InferenceJournalRecord>;
+  /** The owner must install its root producer hold before acknowledging the
+   * original private gate's withdrawal barrier. Native binding is correlation;
+   * start() remains the model permission boundary. */
+  withdrawTaskGoalBeforeAllow(reason: Error): Promise<InferenceJournalRecord>;
 }
 
 export interface InferenceRuntime {
@@ -539,6 +546,46 @@ export class WorkerInferenceAdmission {
     return records.reduce((latest, record) =>
       record.revision > latest.revision ? record : latest,
     );
+  }
+
+  /** Read the exact private Task Source from the keeper after an uncertain
+   * withdrawal ACK. A missing SDK entry is never settlement evidence. */
+  async taskGoalWithdrawalRecord(
+    source: InferenceJournalRecord,
+  ): Promise<InferenceJournalRecord | null> {
+    const recovery = source.identity.recovery;
+    const cycle = recovery?.taskGoalCycle;
+    if (
+      !this.journal ||
+      !cycle ||
+      !recoveryQueueIdentity(source.identity.chatId, recovery) ||
+      source.identity.operationId !==
+        `native-inference:${recovery?.threadId}:${recovery?.turnId}:${cycle.scopeId}:${cycle.gateAttemptId}`
+    )
+      return null;
+    const record = (await this.journal.snapshot()).find(
+      (record) => record.key === source.key,
+    );
+    if (
+      !record ||
+      record.workerGeneration !== source.workerGeneration ||
+      record.identity.runtimeGeneration !== source.identity.runtimeGeneration ||
+      record.identity.operationId !== source.identity.operationId ||
+      record.identity.providerId !== source.identity.providerId ||
+      record.identity.chatId !== source.identity.chatId ||
+      record.identity.projectId !== source.identity.projectId ||
+      record.identity.recoveryKey !== source.identity.recoveryKey ||
+      recoveryIdentity(record.identity.recovery) !==
+        recoveryIdentity(recovery) ||
+      record.state !== "released" ||
+      record.outcome !== "never-started" ||
+      (record.nativeExecution &&
+        (record.nativeExecution.threadId !== recovery?.threadId ||
+          record.nativeExecution.turnId !== recovery?.turnId ||
+          record.nativeExecution.scopeId !== cycle.scopeId))
+    )
+      return null;
+    return record;
   }
 
   /** Only after canonical acknowledgement and closure of the actual source.
@@ -1094,6 +1141,12 @@ export class WorkerInferenceAdmission {
         status: () => this.status(ticket),
         cancel: (reason) => this.cancel(ticket, reason),
         withdrawUnstarted: (reason) => this.withdrawUnstarted(ticket, reason),
+        privateTaskGoalSource: () => this.privateTaskGoalSource(ticket),
+        withdrawTaskGoalBeforeAllow: (reason) => {
+          if (ticket.withdrawal) return ticket.withdrawal;
+          this.unusedTaskGoalBinding(ticket);
+          return this.withdrawUnstarted(ticket, reason, true);
+        },
       },
       lease: {
         taskGoalRecovery: () => ticket.taskGoalRecovery,
@@ -1262,9 +1315,79 @@ export class WorkerInferenceAdmission {
     ticket.controller.abort(reason);
   }
 
+  private unusedTaskGoalBinding(ticket: Ticket): InferenceNativeExecution {
+    const recovery = ticket.input.recovery;
+    const cycle = recovery?.taskGoalCycle;
+    const threadId = recovery?.threadId;
+    const turnId = recovery?.turnId;
+    if (
+      !cycle ||
+      !threadId ||
+      !turnId ||
+      !this.journal ||
+      !ticket.journalKey ||
+      !ticket.durableQueueReady ||
+      !["waiting", "granted"].includes(ticket.state) ||
+      ticket.startedAt !== null ||
+      ticket.controller.signal.aborted ||
+      ticket.runtime.retired ||
+      ticket.runtime.retiring ||
+      this.closing ||
+      ticket.recoveryPending ||
+      !recoveryQueueIdentity(ticket.input.chatId, recovery) ||
+      ticket.input.operationId !==
+        `native-inference:${threadId}:${turnId}:${cycle.scopeId}:${cycle.gateAttemptId}`
+    )
+      throw new UnstartedInferenceUnavailableError(
+        "The private Task Goal begin no longer owns an unused reservation.",
+      );
+    const binding = { threadId, turnId, scopeId: cycle.scopeId };
+    if (
+      ticket.nativeExecution &&
+      (ticket.nativeExecution.threadId !== binding.threadId ||
+        ticket.nativeExecution.turnId !== binding.turnId ||
+        ticket.nativeExecution.scopeId !== binding.scopeId)
+    )
+      throw new UnstartedInferenceUnavailableError(
+        "The private Task Goal reservation has another native scope.",
+      );
+    return binding;
+  }
+
+  private async privateTaskGoalSource(ticket: Ticket) {
+    this.unusedTaskGoalBinding(ticket);
+    const record = (await this.journal!.snapshot()).find(
+      (record) => record.key === ticket.journalKey,
+    );
+    const binding = this.unusedTaskGoalBinding(ticket);
+    if (
+      !record ||
+      record.workerGeneration !== this.scope.workerGeneration ||
+      record.identity.runtimeGeneration !== ticket.runtime.generation ||
+      record.identity.operationId !== ticket.input.operationId ||
+      record.identity.providerId !== ticket.input.providerId ||
+      record.identity.chatId !== (ticket.input.chatId ?? null) ||
+      record.identity.projectId !== (ticket.input.projectId ?? null) ||
+      record.identity.recoveryKey !== (ticket.input.recoveryKey ?? null) ||
+      recoveryIdentity(record.identity.recovery) !==
+        recoveryIdentity(ticket.input.recovery) ||
+      !["waiting", "granted"].includes(record.state) ||
+      record.outcome !== null ||
+      (record.nativeExecution &&
+        (record.nativeExecution.threadId !== binding.threadId ||
+          record.nativeExecution.turnId !== binding.turnId ||
+          record.nativeExecution.scopeId !== binding.scopeId))
+    )
+      throw new UnstartedInferenceUnavailableError(
+        "The keeper no longer observes this private Task Goal source.",
+      );
+    return record;
+  }
+
   private withdrawUnstarted(
     ticket: Ticket,
     reason = new Error("Unstarted inference reservation withdrawn."),
+    privateTaskGoal = false,
   ): Promise<InferenceJournalRecord> {
     if (ticket.withdrawal) return ticket.withdrawal;
     if (
@@ -1272,7 +1395,7 @@ export class WorkerInferenceAdmission {
       !ticket.journalKey ||
       !["waiting", "granted"].includes(ticket.state) ||
       ticket.startedAt !== null ||
-      ticket.nativeExecution ||
+      (ticket.nativeExecution && !privateTaskGoal) ||
       ticket.recoveryPending
     )
       throw new UnstartedInferenceUnavailableError(
@@ -1296,7 +1419,13 @@ export class WorkerInferenceAdmission {
         record.identity.projectId !== (ticket.input.projectId ?? null) ||
         record.state !== "released" ||
         record.outcome !== "never-started" ||
-        record.nativeExecution
+        (record.nativeExecution &&
+          (!privateTaskGoal ||
+            record.nativeExecution.threadId !==
+              ticket.input.recovery?.threadId ||
+            record.nativeExecution.turnId !== ticket.input.recovery?.turnId ||
+            record.nativeExecution.scopeId !==
+              ticket.input.recovery?.taskGoalCycle?.scopeId))
       )
         throw new Error(
           "Inference withdrawal did not receive its exact durable no-start receipt.",
@@ -1840,10 +1969,9 @@ export class WorkerInferenceAdmission {
                       taskCycle.goalEpoch ||
                     result.taskGoalRecovery.cycle.orderEpoch !==
                       taskCycle.orderEpoch ||
-                    result.taskGoalRecovery.cycle.modelRouteId !==
-                      taskCycle.modelRouteId ||
-                    result.taskGoalRecovery.cycle.providerAccountId !==
-                      taskCycle.providerAccountId)
+                    (result.taskGoalRecovery.binding &&
+                      result.taskGoalRecovery.binding.orderEpoch !==
+                        taskCycle.orderEpoch))
                 )
                   throw new Error(
                     "Recovery returned another unused Task Goal cycle.",

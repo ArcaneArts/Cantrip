@@ -232,6 +232,9 @@ impl ManagedConsole {
         }
         fields["type"] = json!("codex");
         fields["threadId"] = thread;
+        if context["experience"] == "task" {
+            fields["taskChatId"] = context["chatId"].clone();
+        }
         Ok(fields)
     }
 }

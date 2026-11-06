@@ -256,6 +256,7 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
               ["messages", event.scope.chatId],
               ["chat-runtime-selection", event.scope.chatId],
               ["native-settings", event.scope.chatId],
+              ["native-runtime-handoffs", event.scope.chatId],
               ["task-dashboard", event.scope.chatId],
             ]
           : event.scope.kind === "current-user"
@@ -272,6 +273,7 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
               ["task", event.scope.chatId],
               ["task-dashboard", event.scope.chatId],
               ["project-task-workload"],
+              ["native-runtime-handoffs", event.scope.chatId],
             ]
           : event.entityId
             ? [
@@ -513,6 +515,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["chat-sync", scope.chatId],
         ["chat-runtime-selection", scope.chatId],
         ["native-settings", scope.chatId],
+        ["native-runtime-handoffs", scope.chatId],
         ["managed-chat-preparation", scope.chatId],
         ["chat-relocation-jobs", scope.chatId],
         ["messages", scope.chatId],

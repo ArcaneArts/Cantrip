@@ -85,6 +85,13 @@ export const workerChatCommandSchemas = [
       scope: nativeSettingsReadScopeSchema,
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("task.goal.source"),
+      scope: nativeSettingsReadScopeSchema,
+      cycleId: z.string().min(1).max(255),
+    })
+    .strict(),
   z.object({
     type: z.literal("chat.message.protect"),
     message: chatMessageCreateSchema

@@ -13,6 +13,8 @@ mod queued_source;
 mod reads;
 mod recover;
 pub mod service;
+mod task_goal;
+mod task_goal_capture;
 use crate::{
     database::{Database, Executor, Parameters, Transaction},
     native_commands::{

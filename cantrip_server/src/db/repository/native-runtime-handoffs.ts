@@ -8,18 +8,26 @@ import {
   nativeRuntimeHandoffRequestSchema,
   nativeRuntimeHandoffPreparedSchema,
   nativeRuntimeHandoffStateSchema,
+  nativeRuntimeHandoffTaskContextSchema,
+  taskGoalCycleCaptureSchema,
   type NativeRuntimeHandoffRequest,
   type NativeRuntimeHandoffPrepared,
   type NativeSettingsBinding,
   type InferenceJournalRecord,
   type NativeGoalRecoveryWithdrawal,
+  type NativeSettingsReadScope,
+  type TaskGoalCycleCapture,
+  type NativeRuntimeHandoffQueuedSource,
 } from "@cantrip/protocol";
 import * as schema from "../schema.js";
 import type { RepositoryDatabase, RepositoryTransaction } from "./database.js";
 import { lockNativeCommandChat } from "./native-command-lock.js";
 import { NativeCommandError } from "./native-command-errors.js";
 import { ChatRuntimeContextRepository } from "./chat-runtime-context.js";
-import { NativeSettingsStateRepository } from "./native-settings-persistence.js";
+import {
+  NativeSettingsStateRepository,
+  changeNativeSettingsState,
+} from "./native-settings-persistence.js";
 import { bindNativeSettingsRead } from "./native-settings-state.js";
 import type {
   ChatExecutionContext,
@@ -39,6 +47,20 @@ import {
   confirmGoalRecoveryHandoff,
   commitGoalRecoveryProvider,
 } from "./native-handoff-goal-recovery.js";
+import {
+  readTaskGoalHandoff,
+  assertTaskGoalRecord,
+  reserveTaskGoalHandoff,
+  assertTaskGoalHandoff,
+  confirmTaskGoalHandoff,
+  commitTaskGoalHandoff,
+} from "./native-handoff-task-goal.js";
+import { scopedNativeModelAttribution } from "./native-model-attribution.js";
+
+export type TaskGoalCaptureReader = (
+  scope: NativeSettingsReadScope,
+  cycleId: string,
+) => Promise<TaskGoalCycleCapture>;
 
 type Row = typeof schema.nativeRuntimeHandoffs.$inferSelect;
 const activePhases = ["preparing", "prepared", "committed"];
@@ -246,12 +268,33 @@ export class NativeRuntimeHandoffRepository {
       );
     return rows.map(wire);
   }
+  async activeTaskGoalForChat(ownerId: string, chatId: string) {
+    const [row] = await this.database
+      .select()
+      .from(schema.nativeRuntimeHandoffs)
+      .where(
+        and(
+          eq(schema.nativeRuntimeHandoffs.ownerId, ownerId),
+          eq(schema.nativeRuntimeHandoffs.chatId, chatId),
+          inArray(schema.nativeRuntimeHandoffs.phase, activePhases),
+          sql`${schema.nativeRuntimeHandoffs.queuedSource}->'taskGoal' IS NOT NULL`,
+        ),
+      )
+      .limit(1);
+    return row ? wire(row) : null;
+  }
   async begin(
     ownerId: string,
     chatId: string,
     value: NativeRuntimeHandoffRequest,
+    readTaskGoal?: TaskGoalCaptureReader,
   ) {
     const input = nativeRuntimeHandoffRequestSchema.parse(value);
+    // A Task has no managed command to reserve. Capture its actual private
+    // native/keeper Source through the authenticated worker, outside DB locks.
+    const taskCapture = readTaskGoal
+      ? await this.captureTaskGoal(ownerId, chatId, readTaskGoal, input)
+      : null;
     return this.database.transaction(async (tx) => {
       await lockNativeCommandChat(tx, ownerId, chatId);
       const [existing] = await tx
@@ -277,8 +320,24 @@ export class NativeRuntimeHandoffRepository {
       const source = state?.binding;
       if (!source || source.bindingId !== input.bindingId)
         fail("handoff-source-replaced");
-      await this.assertSource(tx, ownerId, source!);
-      const queuedSource = await reserveHandoffQueuedSource(tx, source!);
+      const task = await readTaskGoalHandoff(tx, ownerId, chatId);
+      const queuedSource = task
+        ? taskCapture && isDeepStrictEqual(task.scope, taskCapture.scope)
+          ? reserveTaskGoalHandoff(task, task.scope, taskCapture.value.record)
+          : fail("handoff-task-goal-capture-required")
+        : await reserveHandoffQueuedSource(tx, source!);
+      await this.assertSource(tx, ownerId, source!, queuedSource);
+      if (taskCapture) {
+        const snapshot = taskCapture.value.snapshot;
+        if (
+          snapshot.context.workerId !== source!.workerId ||
+          snapshot.context.chatId !== chatId ||
+          snapshot.context.threadId !== source!.threadId ||
+          snapshot.context.runtimeGeneration !== source!.runtimeGeneration ||
+          snapshot.context.settingsVersion.epoch !== source!.nativeEpoch
+        )
+          fail("handoff-source-replaced");
+      }
       if (state!.pending.length) fail("handoff-settings-pending");
       const target = await this.target(
         tx,
@@ -292,7 +351,8 @@ export class NativeRuntimeHandoffRepository {
         .where(eq(schema.modelRoutes.id, source!.modelRouteId ?? ""));
       if (
         sourceRoute?.providerId === target.providerId &&
-        source!.providerAccountId === input.targetProviderAccountId
+        source!.providerAccountId === input.targetProviderAccountId &&
+        (!task || source!.modelRouteId === input.targetModelRouteId)
       )
         fail("handoff-same-provider-account");
       const [row] = await tx
@@ -311,6 +371,167 @@ export class NativeRuntimeHandoffRepository {
         })
         .returning();
       return wire(row!);
+    });
+  }
+
+  private async captureTaskGoal(
+    ownerId: string,
+    chatId: string,
+    read: TaskGoalCaptureReader,
+    input?: NativeRuntimeHandoffRequest,
+  ) {
+    const before = await this.database.transaction(async (tx) => {
+      await lockNativeCommandChat(tx, ownerId, chatId);
+      if (input) {
+        const [existing] = await tx
+          .select({ id: schema.nativeRuntimeHandoffs.operationId })
+          .from(schema.nativeRuntimeHandoffs)
+          .where(
+            eq(schema.nativeRuntimeHandoffs.operationId, input.operationId),
+          );
+        if (existing) return null; // The normal begin transaction deduplicates it.
+      }
+      await assertNativeRuntimeWritable(tx, chatId);
+      const row = await readTaskGoalHandoff(tx, ownerId, chatId);
+      if (!row) return null;
+      const state = await new NativeSettingsStateRepository(tx).get(
+        ownerId,
+        chatId,
+      );
+      if (input && state?.binding?.bindingId !== input.bindingId)
+        fail("handoff-source-replaced");
+      return {
+        scope: row.scope,
+        cycleId: row.cycle.id,
+        bindingId: state?.binding?.bindingId ?? null,
+      };
+    });
+    if (!before) return null;
+    const value = taskGoalCycleCaptureSchema.parse(
+      await read(before.scope, before.cycleId),
+    );
+    return { ...before, value };
+  }
+
+  /** Explicit Task provider-selector read; it never prepares a native runtime.
+   * A later begin always captures again and synchronously races actual dispatch. */
+  async readTaskSource(
+    ownerId: string,
+    chatId: string,
+    read: TaskGoalCaptureReader,
+  ) {
+    const captured = await this.captureTaskGoal(ownerId, chatId, read);
+    if (!captured) fail("handoff-task-goal-source-required");
+    return this.database.transaction(async (tx) => {
+      await lockNativeCommandChat(tx, ownerId, chatId);
+      const { value, scope, bindingId } = captured!;
+      const snapshot = value.snapshot;
+      await assertNativeRuntimeWritable(
+        tx,
+        chatId,
+        snapshot.context.runtimeGeneration,
+        snapshot.context.settingsVersion.epoch,
+      );
+      const row = await readTaskGoalHandoff(tx, ownerId, chatId);
+      if (!row) fail("handoff-task-goal-source-replaced");
+      assertTaskGoalRecord(row!, scope, value.record);
+      if (
+        snapshot.context.workerId !== scope.workerId ||
+        snapshot.context.chatId !== chatId ||
+        snapshot.context.threadId !== scope.threadId
+      )
+        fail("handoff-task-goal-source-replaced");
+      const scoped = await scopedNativeModelAttribution(
+        tx,
+        ownerId,
+        scope,
+        snapshot,
+      );
+      return changeNativeSettingsState(tx, chatId, (state) => {
+        if (
+          (state.binding?.bindingId ?? null) !== bindingId ||
+          state.pending.length
+        )
+          fail("handoff-source-replaced");
+        const source = {
+          ...scope,
+          runtimeGeneration: snapshot.context.runtimeGeneration,
+          nativeEpoch: snapshot.context.settingsVersion.epoch,
+        };
+        const { bindingId: previous, ...current } = state.binding ?? {};
+        return bindNativeSettingsRead(
+          state,
+          bindingId,
+          {
+            bindingId:
+              previous &&
+              isDeepStrictEqual(current, source) &&
+              state.effective?.protectedContent.keyRevision ===
+                snapshot.protectedContent.keyRevision
+                ? previous
+                : randomUUID(),
+            ...source,
+          },
+          scoped,
+        );
+      });
+    });
+  }
+
+  async taskContext(
+    ownerId: string,
+    state: ReturnType<typeof nativeRuntimeHandoffStateSchema.parse>,
+    providerId: string,
+  ) {
+    if (!state.queuedSource?.taskGoal) return null;
+    return this.database.transaction(async (tx) => {
+      await lockNativeCommandChat(tx, ownerId, state.chatId);
+      const [stored] = await tx
+        .select()
+        .from(schema.nativeRuntimeHandoffs)
+        .where(
+          and(
+            eq(schema.nativeRuntimeHandoffs.operationId, state.operationId),
+            eq(schema.nativeRuntimeHandoffs.ownerId, ownerId),
+          ),
+        );
+      if (
+        !stored ||
+        stored.phase !== state.phase ||
+        stored.updatedAt.toISOString() !== state.updatedAt
+      )
+        fail("handoff-phase-conflict");
+      await this.assertSource(
+        tx,
+        ownerId,
+        stored!.binding ?? stored!.source,
+        stored!.queuedSource,
+        stored!.cancelRequested,
+      );
+      const row = await readTaskGoalHandoff(
+        tx,
+        ownerId,
+        state.chatId,
+        stored!.cancelRequested,
+      );
+      if (!row) fail("handoff-task-goal-source-replaced");
+      const source = state.queuedSource!.taskGoal!;
+      const cycle = source.identity.recovery!.taskGoalCycle!;
+      return nativeRuntimeHandoffTaskContextSchema.parse({
+        chatId: state.chatId,
+        projectId: row!.context.projectId,
+        worktreeId: row!.context.worktreeId,
+        rootKind: row!.context.rootKind,
+        ...(row!.context.osExecution
+          ? { osExecution: row!.context.osExecution }
+          : {}),
+        computerUseEnabled: row!.context.computerUseEnabled === true,
+        cycleId: cycle.cycleId,
+        goalEpoch: cycle.goalEpoch,
+        orderEpoch:
+          cycle.orderEpoch +
+          (providerId === source.identity.providerId ? 0 : 1),
+      });
     });
   }
   async requestCancellation(
@@ -431,7 +652,12 @@ export class NativeRuntimeHandoffRepository {
         selection.providerAccountId !== row.targetProviderAccountId
       )
         fail("handoff-prepared-source-mismatch");
-      await this.assertSource(tx, ownerId, row.binding ?? row.source);
+      await this.assertSource(
+        tx,
+        ownerId,
+        row.binding ?? row.source,
+        row.queuedSource,
+      );
       await this.assertIdle(tx, row.chatId, row.queuedSource?.goalClaim);
       return this.update(tx, row, {
         phase: "prepared",
@@ -463,7 +689,12 @@ export class NativeRuntimeHandoffRepository {
       if (row.cancelRequested) fail("handoff-cancel-requested");
       if (row.phase !== "prepared" || !row.prepared)
         fail("handoff-not-prepared");
-      await this.assertSource(tx, ownerId, row.binding ?? row.source);
+      await this.assertSource(
+        tx,
+        ownerId,
+        row.binding ?? row.source,
+        row.queuedSource,
+      );
       await this.assertIdle(tx, row.chatId, row.queuedSource?.goalClaim);
       const target = await this.target(
         tx,
@@ -498,6 +729,18 @@ export class NativeRuntimeHandoffRepository {
         state!.binding!.bindingId,
         binding,
         prepared.snapshot,
+      );
+      const taskQueuedSource = await commitTaskGoalHandoff(
+        tx,
+        ownerId,
+        state!.binding!,
+        row.queuedSource,
+        {
+          ...target,
+          routeId: row.targetModelRouteId,
+          accountId: row.targetProviderAccountId,
+        },
+        prepared,
       );
       const updated = await tx
         .update(schema.chatRuntimeSessions)
@@ -559,6 +802,7 @@ export class NativeRuntimeHandoffRepository {
       return this.update(tx, row, {
         phase: "committed",
         binding,
+        ...(taskQueuedSource ? { queuedSource: taskQueuedSource } : {}),
         ...(retargetedPrompt
           ? { queuedSource: { ...row.queuedSource!, retargetedPrompt } }
           : {}),
@@ -622,7 +866,13 @@ export class NativeRuntimeHandoffRepository {
               modelRouteId: row.targetModelRouteId,
               providerAccountId: row.targetProviderAccountId,
             });
-      await this.assertSource(tx, ownerId, prior);
+      await this.assertSource(
+        tx,
+        ownerId,
+        prior,
+        row.queuedSource,
+        row.cancelRequested,
+      );
       await this.assertIdle(tx, row.chatId, row.queuedSource?.goalClaim);
       const routeId =
         side === "source" ? row.source.modelRouteId! : row.targetModelRouteId;
@@ -775,16 +1025,30 @@ export class NativeRuntimeHandoffRepository {
       if (row.queuedSource?.withdrawn) return row;
       if (row.phase !== "preparing" || row.prepared || !row.queuedSource)
         fail("handoff-phase-conflict");
-      await this.assertSource(tx, ownerId, row.binding ?? row.source);
-      await confirmHandoffQueuedSource(
+      await this.assertSource(
         tx,
-        this.lanes,
         ownerId,
-        workerId,
-        row.source,
-        row.queuedSource!,
-        record,
+        row.binding ?? row.source,
+        row.queuedSource,
       );
+      if (row.queuedSource?.taskGoal)
+        await confirmTaskGoalHandoff(
+          tx,
+          ownerId,
+          row.binding ?? row.source,
+          row.queuedSource,
+          record,
+        );
+      else
+        await confirmHandoffQueuedSource(
+          tx,
+          this.lanes,
+          ownerId,
+          workerId,
+          row.source,
+          row.queuedSource!,
+          record,
+        );
       await this.assertIdle(tx, row.chatId, row.queuedSource?.goalClaim);
       return this.update(tx, row, {
         queuedSource: { ...row.queuedSource!, withdrawn: true },
@@ -812,7 +1076,7 @@ export class NativeRuntimeHandoffRepository {
       )
         fail("handoff-phase-conflict");
       const source = row.binding ?? row.source;
-      await this.assertSource(tx, ownerId, source);
+      await this.assertSource(tx, ownerId, source, row.queuedSource);
       await confirmGoalRecoveryHandoff(
         tx,
         source,
@@ -848,7 +1112,15 @@ export class NativeRuntimeHandoffRepository {
         row.queuedSource.withdrawn
       )
         fail("handoff-phase-conflict");
-      await this.assertSource(tx, ownerId, row.binding ?? row.source);
+      // A private Task refusal only abandons this reservation. Stop/archival or
+      // a newer Task control may already have made the Source ineligible.
+      if (!row.queuedSource.taskGoal)
+        await this.assertSource(
+          tx,
+          ownerId,
+          row.binding ?? row.source,
+          row.queuedSource,
+        );
       const result = await this.update(tx, row, {
         phase: "cancelled",
         errorCode: row.cancelRequested
@@ -917,13 +1189,18 @@ export class NativeRuntimeHandoffRepository {
     tx: RepositoryTransaction,
     ownerId: string,
     source: NativeSettingsBinding,
+    queued?: NativeRuntimeHandoffQueuedSource | null,
+    allowInactiveTask = false,
   ) {
     const context = await new ChatRuntimeContextRepository(tx, {
       getChatExecutionContext: async () => null,
     }).getChatExecutionContext(ownerId, source.chatId);
     if (
       !context ||
-      context.experience !== "agent" ||
+      !(
+        context.experience === "agent" ||
+        (context.experience === "task" && queued?.taskGoal)
+      ) ||
       context.workerId !== source.workerId ||
       context.contextKind !== source.contextKind ||
       context.projectId !== source.projectId ||
@@ -940,6 +1217,14 @@ export class NativeRuntimeHandoffRepository {
     )?.binding;
     if (!current || !isDeepStrictEqual(current, source))
       fail("handoff-source-replaced");
+    if (context!.experience === "task")
+      await assertTaskGoalHandoff(
+        tx,
+        ownerId,
+        source,
+        queued!,
+        allowInactiveTask,
+      );
   }
   private async assertIdle(
     tx: RepositoryTransaction,

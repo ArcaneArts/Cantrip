@@ -9,6 +9,7 @@ import type { ServerRepository } from "../../db/repository.js";
 import { errorMessage } from "../../http/request-helpers.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 import { STREAMING_WORKER_COMMAND_TIMEOUT_MS } from "../shared/constants.js";
+import { settleTaskGoalHandoffForControl } from "../../terminals/task-goal-handoff-control.js";
 
 export interface ChatAutomationPauseRouteDependencies {
   applicationOwnerId: () => string;
@@ -21,6 +22,7 @@ export interface ChatAutomationPauseRouteDependencies {
     | "setChatAutomationPaused"
     | "nativeCommands"
     | "nativeSuspensions"
+    | "nativeRuntimeHandoffs"
   >;
   resumeChatAutomation: (chatId: string) => Promise<void>;
 }
@@ -50,6 +52,14 @@ export function createChatAutomationPauseRuntime(
     paused: boolean,
     { resumeAutomation = true }: { resumeAutomation?: boolean } = {},
   ): Promise<ChatPauseRuntimeState> {
+    try {
+      await settleTaskGoalHandoffForControl(ownerId, chatId, {
+        repository,
+        bridge,
+      });
+    } catch (error) {
+      throw new ChatAutomationPauseError(409, errorMessage(error));
+    }
     const control = await repository.nativeCommands.controlContext(
       ownerId,
       chatId,

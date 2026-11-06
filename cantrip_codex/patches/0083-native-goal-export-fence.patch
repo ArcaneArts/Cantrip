@@ -1,0 +1,152 @@
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+--- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+@@ -2681,4 +2681,7 @@
+     pub expected_last_turn_id: Option<String>,
++    /// Exact Goal configuration captured by a queued private cycle, when any.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub expected_goal_epoch: Option<String>,
+ }
+ 
+ /// Import an owned export into an unused destination conversation. The caller
+diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
+--- a/codex-rs/app-server/src/request_processors/turn_processor.rs
++++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
+@@ -200 +200,4 @@
+-            .export_managed_history(params.expected_last_turn_id.as_deref())
++            .export_managed_history(
++                params.expected_last_turn_id.as_deref(),
++                params.expected_goal_epoch.as_deref(),
++            )
+diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+--- a/codex-rs/core/src/codex_thread.rs
++++ b/codex-rs/core/src/codex_thread.rs
+@@ -1086,8 +1086,9 @@
+     pub async fn export_managed_history(
+         &self,
+         expected_last_turn_id: Option<&str>,
++        expected_goal_epoch: Option<&str>,
+     ) -> CodexResult<codex_thread_store::PortableThreadHistory> {
+         self.session
+-            .export_managed_history(expected_last_turn_id)
++            .export_managed_history(expected_last_turn_id, expected_goal_epoch)
+             .await
+     }
+diff --git a/codex-rs/core/src/session/managed_context.rs b/codex-rs/core/src/session/managed_context.rs
+--- a/codex-rs/core/src/session/managed_context.rs
++++ b/codex-rs/core/src/session/managed_context.rs
+@@ -5,4 +5,5 @@
+     pub(crate) async fn export_managed_history(
+         &self,
+         expected_last_turn_id: Option<&str>,
++        expected_goal_epoch: Option<&str>,
+     ) -> CodexResult<codex_thread_store::PortableThreadHistory> {
+@@ -47,4 +48,13 @@
+         let _settings = thread_settings::acquire_persistence_lock(self).await;
+-        live.export_portable_history()
++        let snapshot = live
++            .export_portable_history()
+             .await
+-            .map_err(|err| CodexErr::Io(std::io::Error::other(err)))
++            .map_err(|err| CodexErr::Io(std::io::Error::other(err)))?;
++        if let Some(expected) = expected_goal_epoch
++            && snapshot.state.goal.as_ref().map(|goal| goal.epoch()).as_deref() != Some(expected)
++        {
++            return Err(CodexErr::InvalidRequest(
++                "history transfer targets a stale native Goal".into(),
++            ));
++        }
++        Ok(snapshot)
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+--- a/codex-rs/core/src/managed_execution.rs
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -47 +47,2 @@
+     handoff_export_sealed: bool,
++    handoff_goal_mutations: usize,
+@@ -98 +99,16 @@
++pub struct ManagedGoalMutation {
++    gate: Arc<ManagedExecutionGate>,
++}
++
++impl Drop for ManagedGoalMutation {
++    fn drop(&mut self) {
++        let mut state = self
++            .gate
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        state.handoff_goal_mutations = state.handoff_goal_mutations.saturating_sub(1);
++    }
++}
++
+ pub struct ManagedExecutionGate {
+@@ -354 +370,20 @@
++    /// Coupled to the Goal runtime's existing mutation permit. This guard owns
++    /// no inference and never waits while the tree's export lock is held.
++    pub fn goal_mutation(self: &Arc<Self>) -> Result<ManagedGoalMutation, String> {
++        let mut state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state.handoff_export_sealed {
++            return Err("native Goal is sealed for provider transfer".into());
++        }
++        state.handoff_goal_mutations = state
++            .handoff_goal_mutations
++            .checked_add(1)
++            .ok_or("native Goal mutation count exhausted")?;
++        Ok(ManagedGoalMutation {
++            gate: Arc::clone(self),
++        })
++    }
++
+     /// A root producer hold leaves child inference and live task settlement
+@@ -444,3 +479,6 @@
++        if state.handoff_goal_mutations != 0 {
++            return Err("cannot migrate history while native Goal state is changing".into());
++        }
+         if state.handoff_operation.is_some() {
+             state.handoff_export_sealed = true;
+         }
+diff --git a/codex-rs/ext/goal/src/runtime.rs b/codex-rs/ext/goal/src/runtime.rs
+--- a/codex-rs/ext/goal/src/runtime.rs
++++ b/codex-rs/ext/goal/src/runtime.rs
+@@ -27,2 +27,7 @@
++pub(crate) struct GoalStatePermit<'a> {
++    _goal: SemaphorePermit<'a>,
++    _native: Option<codex_core::managed_execution::ManagedGoalMutation>,
++}
++
+ #[derive(Clone)]
+ pub struct GoalRuntimeHandle {
+@@ -156,7 +161,27 @@
+-    pub(crate) async fn goal_state_permit(&self) -> Result<SemaphorePermit<'_>, String> {
+-        self.inner
++    pub(crate) async fn goal_state_permit(&self) -> Result<GoalStatePermit<'_>, String> {
++        let goal = self
++            .inner
+             .goal_state_lock
+             .acquire()
+             .await
+-            .map_err(|err| err.to_string())
++            .map_err(|err| err.to_string())?;
++        // The Goal extension depends on Core, not the other way round. Couple
++        // its actual permit to the native root instead of acquiring this async
++        // lock from Core while holding tree execution admission.
++        let native = if let Some(manager) = self.inner.thread_manager.upgrade() {
++            match manager.get_thread(self.inner.thread_id).await {
++                Ok(thread) => thread
++                    .managed_execution_gate()
++                    .await
++                    .map(|gate| gate.goal_mutation())
++                    .transpose()?,
++                Err(_) => None,
++            }
++        } else {
++            None
++        };
++        Ok(GoalStatePermit {
++            _goal: goal,
++            _native: native,
++        })
+     }

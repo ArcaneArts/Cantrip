@@ -48,7 +48,7 @@ export class CodexRpcRequests {
   request(
     method: string,
     params: unknown,
-    timeoutMs: number,
+    timeoutMs: number | null,
     settlement?: NativeRpcSettlementObserver,
   ): Promise<unknown> {
     const id = this.#nextId;
@@ -57,25 +57,30 @@ export class CodexRpcRequests {
     if (settlement) this.#settlementObservers.set(id, settlement);
     return new Promise((resolve, reject) => {
       const startedAtMs = Date.now();
-      const timeout = setTimeout(() => {
-        this.#pending.delete(id);
-        workerLogger.rateLimited(
-          `codex-rpc-timeout:${method}`,
-          "warn",
-          "Codex app-server request timed out",
-          {
-            event: "codex.rpc.timeout",
-            subsystem: "codex",
-            operation: method,
-            status: "timed-out",
-            runtimeId: this.ports.runtimeId(),
-            durationMs: Date.now() - startedAtMs,
-          },
-        );
-        reject(
-          new CodexRpcObservationError(`Codex request ${method} timed out.`),
-        );
-      }, timeoutMs);
+      const timeout =
+        timeoutMs === null
+          ? undefined
+          : setTimeout(() => {
+              this.#pending.delete(id);
+              workerLogger.rateLimited(
+                `codex-rpc-timeout:${method}`,
+                "warn",
+                "Codex app-server request timed out",
+                {
+                  event: "codex.rpc.timeout",
+                  subsystem: "codex",
+                  operation: method,
+                  status: "timed-out",
+                  runtimeId: this.ports.runtimeId(),
+                  durationMs: Date.now() - startedAtMs,
+                },
+              );
+              reject(
+                new CodexRpcObservationError(
+                  `Codex request ${method} timed out.`,
+                ),
+              );
+            }, timeoutMs);
       this.#pending.set(id, {
         method,
         reject,

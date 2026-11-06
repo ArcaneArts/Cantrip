@@ -62,6 +62,9 @@ impl Service {
         command["permissionProfileId"] =
             managed_console::permission_profile(context)["effectiveId"].clone();
         let mut task_context = json!({"task":content_from_summary(task),"automationPaused":context["automationPaused"],"chatStatus":context["status"],"message":options.message.as_ref().unwrap_or(&Value::Null)});
+        if let Some(cycle) = native_cycle_from_summary(task) {
+            task_context["nativeCycle"] = cycle;
+        }
         if let Some(failure) = &options.runtime_failure {
             task_context["runtimeFailure"] = failure.clone();
         }

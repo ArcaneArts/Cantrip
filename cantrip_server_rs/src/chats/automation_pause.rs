@@ -42,6 +42,7 @@ pub struct Service {
     chats: Repository,
     native: native_commands::Repository,
     prompts: PromptRepository,
+    handoffs: crate::native_handoffs::Repository,
     commands: Arc<LimitedCommandBus>,
     goals: Arc<goals::Service>,
     live: Arc<Live>,
@@ -77,6 +78,7 @@ impl Service {
         Arc::new(Self {
             chats: Repository::new(database.clone()),
             native: native_commands::Repository::new(database.clone()),
+            handoffs: crate::native_handoffs::Repository::new(database.clone()),
             prompts: PromptRepository::new(database),
             commands,
             goals,
@@ -110,6 +112,20 @@ impl Service {
         paused: bool,
         resume_automation: bool,
     ) -> Result<Value> {
+        crate::native_handoffs::service::settle_task_control(
+            &self.handoffs,
+            &self.commands,
+            owner,
+            chat,
+        )
+        .await
+        .map_err(|cause| {
+            wrapped(
+                409,
+                "Could not settle the provider transfer before changing pause state: ",
+                &cause,
+            )
+        })?;
         let control = self.native.control_context(owner, chat).await?;
         let context = &control["context"];
         if !truthy(Some(context)) {

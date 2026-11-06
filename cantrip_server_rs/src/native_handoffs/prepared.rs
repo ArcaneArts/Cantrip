@@ -89,7 +89,7 @@ pub(super) async fn apply(
     {
         return reject("handoff-prepared-source-mismatch");
     }
-    guards::assert_source(tx, owner, binding).await?;
+    guards::assert_source(tx, owner, binding, &row["queued_source"], false).await?;
     guards::assert_idle(tx, &text(&row["chat_id"])?, &row["queued_source"]).await?;
     let epochs = prior.map_or_else(
         || row["retired_native_epochs"].clone(),

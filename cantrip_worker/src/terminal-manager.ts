@@ -528,13 +528,32 @@ export class TerminalManager {
         "provider" | "model" | "codexHome"
       >
     >,
+    legacyTaskSource?: {
+      threadId: string;
+      codexHome: string;
+      provider: RuntimeProvider;
+    },
   ): Promise<void> {
     const changes: Promise<void>[] = [];
     for (const [terminalId, session] of this.#sessions) {
       const launch = session.launch;
       if (
         launch.type !== "codex" ||
-        launch.session?.chatId !== chatId ||
+        !(
+          launch.session?.chatId === chatId ||
+          (!launch.session &&
+            (launch.taskChatId === chatId ||
+              (!launch.taskChatId &&
+                legacyTaskSource &&
+                launch.threadId === legacyTaskSource.threadId &&
+                launch.codexHome === legacyTaskSource.codexHome &&
+                launch.provider.id === legacyTaskSource.provider.id &&
+                launch.provider.kind === legacyTaskSource.provider.kind &&
+                launch.provider.accountId ===
+                  legacyTaskSource.provider.accountId &&
+                launch.provider.credentialHomeKey ===
+                  legacyTaskSource.provider.credentialHomeKey)))
+        ) ||
         session.removeAfterExit ||
         this.#closing
       )

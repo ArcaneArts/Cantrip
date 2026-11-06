@@ -59,7 +59,18 @@ impl Service {
         let runtime = &pairs
             .first()
             .context("No provider route is currently available.")?["root"]["runtime"];
-        let result=self.request(&context["workerId"],json!({"type":"chat.goal.create","chatId":context["chatId"],"cwd":context["cwd"],"threadId":if super::super::runtime_telemetry::RuntimeTelemetry::can_resume(context,runtime){context["threadId"].clone()}else{Value::Null},"objective":objective,"tokenBudget":Value::Null,"model":runtime["model"],"provider":runtime["provider"],"permissionProfileId":managed_console::permission_profile(context)["effectiveId"],"taskContext":json!({"task":task,"automationPaused":context["automationPaused"],"chatStatus":context["status"],"message":options.control_message.clone().unwrap_or(Value::Null)})}),"taskGoalWorkerResultSchema").await?;
+        let mut task_context = json!({"task":task,"automationPaused":context["automationPaused"],"chatStatus":context["status"],"message":options.control_message.clone().unwrap_or(Value::Null)});
+        if let Some(current) = self.tasks.get(owner, &text(&context["chatId"])?).await?
+            && let Some(cycle) = native_cycle_from_summary(&current)
+        {
+            task_context["nativeCycle"] = cycle;
+        }
+        let result = self.request(&context["workerId"], json!({
+            "type":"chat.goal.create", "chatId":context["chatId"], "cwd":context["cwd"],
+            "threadId":if super::super::runtime_telemetry::RuntimeTelemetry::can_resume(context,runtime){context["threadId"].clone()}else{Value::Null},
+            "objective":objective, "tokenBudget":Value::Null, "model":runtime["model"], "provider":runtime["provider"],
+            "permissionProfileId":managed_console::permission_profile(context)["effectiveId"], "taskContext":task_context
+        }), "taskGoalWorkerResultSchema").await?;
         let failure = result["task"]["classification"]["lastError"]["code"]
             .as_str()
             .unwrap_or("");

@@ -78,7 +78,7 @@ export interface PendingRpcRequest {
   reject(error: Error): void;
   resolve(result: unknown): void;
   startedAtMs: number;
-  timeout: ReturnType<typeof setTimeout>;
+  timeout: ReturnType<typeof setTimeout> | undefined;
 }
 
 export interface ActiveTurn {
@@ -375,6 +375,9 @@ export interface RunAgentTurnOptions {
   /** Immutable canonical dispatch cycle for native Task Goal continuations.
    * Null explicitly removes a preceding Goal cycle's private association. */
   taskGoalCycleId?: string | null;
+  /** The current provider FIFO episode. Account/model changes keep it; a
+   * committed provider switch increments it before the next native begin. */
+  taskGoalOrderEpoch?: number;
   /** First-message metadata is serial with this turn, never a concurrent borrower. */
   initialLabel?: {
     providerId: string;
@@ -653,6 +656,7 @@ export type GoalRuntimeOptions = Pick<
   projectId?: string | null;
   taskOwned?: boolean;
   taskGoalCycleId?: string | null;
+  taskGoalOrderEpoch?: number;
 };
 
 export interface NativeReplacementSettings {

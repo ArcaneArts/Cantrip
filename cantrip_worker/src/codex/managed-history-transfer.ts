@@ -7,6 +7,8 @@ const exportSchema = z
     threadId: identity,
     transferId: z.string().uuid(),
     expectedLastTurnId: identity.nullable(),
+    expectedGoalEpoch: identity.optional(),
+    expectedHandoffOperation: z.string().uuid().optional(),
   })
   .strict();
 const importSchema = z
@@ -44,7 +46,26 @@ export async function requestManagedHistoryTransfer(
   ).parse(value);
   signal?.throwIfAborted();
   const before = generation();
-  const response = await request(method, params);
+  const pending = request(method, params);
+  // Stop observing promptly on cancellation. This is not proof that native I/O
+  // stopped: the export's exact root-hold fence prevents a late seal/publication
+  // from becoming another transfer's authority, and the coordinator reconciles
+  // the same immutable transfer identity.
+  let abort: (() => void) | undefined;
+  const response = await (signal
+    ? new Promise<unknown>((resolve, reject) => {
+        abort = () =>
+          reject(
+            signal.reason ??
+              new Error("Native history transfer observation was cancelled."),
+          );
+        signal.addEventListener("abort", abort, { once: true });
+        pending.then(resolve, reject);
+        if (signal.aborted) abort();
+      }).finally(() => {
+        if (abort) signal.removeEventListener("abort", abort);
+      })
+    : pending);
   signal?.throwIfAborted();
   if (generation() !== before)
     throw new Error(

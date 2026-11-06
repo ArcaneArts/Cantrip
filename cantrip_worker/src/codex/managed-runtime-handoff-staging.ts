@@ -9,18 +9,26 @@ export class ManagedRuntimeHandoffStaging<T extends object> {
         operationId: string;
         ready: Promise<void>;
         retired: boolean;
+        scope: "root" | "tree";
         release(): void;
         retire(): void;
       }
     >
   >();
-  hold(runtime: T, threadId: string, operationId: string): void {
+  hold(
+    runtime: T,
+    threadId: string,
+    operationId: string,
+    scope: "root" | "tree" = "root",
+  ): void {
     let threads = this.entries.get(runtime);
     if (!threads) this.entries.set(runtime, (threads = new Map()));
     const prior = threads.get(threadId);
     if (prior) {
       if (prior.operationId !== operationId)
         throw new Error("Native thread already belongs to another handoff.");
+      if (prior.scope !== scope)
+        throw new Error("Native handoff staging scope changed.");
       return;
     }
     let resolve!: () => void;
@@ -34,12 +42,37 @@ export class ManagedRuntimeHandoffStaging<T extends object> {
       operationId,
       ready,
       retired: false,
+      scope,
       release: resolve,
       retire: () => reject(new Error("The handoff source runtime is retired.")),
     });
   }
   held(runtime: T, threadId: string): boolean {
     return this.entries.get(runtime)?.has(threadId) ?? false;
+  }
+
+  /** A source holds new root turns while existing children/helpers finish. An
+   * unpublished destination holds every model scope; a retired source denies
+   * all of them. These waits never allocate a provider ticket. */
+  async waitInference(
+    runtime: T,
+    input: {
+      threadId: string;
+      rootThreadId?: string | null;
+      phase: "begin" | "begin-independent" | "resume";
+    },
+    signal: AbortSignal,
+  ): Promise<void> {
+    signal.throwIfAborted();
+    const root = input.rootThreadId ?? input.threadId;
+    const entry = this.entries.get(runtime)?.get(root);
+    if (
+      entry &&
+      (entry.retired ||
+        entry.scope === "tree" ||
+        (input.threadId === root && input.phase === "begin"))
+    )
+      await this.wait(runtime, root, signal);
   }
   async wait(runtime: T, threadId: string, signal: AbortSignal): Promise<void> {
     signal.throwIfAborted();
