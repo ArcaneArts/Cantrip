@@ -2723,3 +2723,160 @@ The rebased root check reports `build-app.ts` at 1519/1500 and
 `chat-turn-runtime.ts` at 2230/1999; the repository check reports
 `native-commands.ts` at 2143/2000. Those files are unchanged by this cycle.
 Formatting and diff checks passed on the final source.
+
+## Phase 5: guest workspace recovery package (2026-11-05)
+
+The optional `cantrip-os-recovery` 0.1.0 package supplies command-only guest
+capture, receive/export, inspect, staged restore, interruption recovery and
+rollback. Docker/ISO scripts select it with the executor edition and allow
+`CANTRIP_OS_RECOVERY=0`. It is not yet the encrypted product backup workflow:
+Worker encryption/storage, Server admissions and Cantrip backup controls remain
+required, alongside the rest of Phase 5.
+
+Actual disposable ARM64 Docker tests passed all 10 cases (25.125s): a real
+workspace writer stopped before capture; dirty/untracked/ignored files and
+Unicode names; explicit cache exclusion and linked-source omission; Chromium
+SQLite profile bytes; root/numeric ownership, modes, named POSIX ACL remapping,
+extended attributes, hard links and symlinks; real Git worktree relocation;
+omitted external Git metadata becoming inactive references; corrupted payloads;
+abrupt root-process death before/after actual directory exchange; interrupted
+capture release; explicit replacement/rollback retaining both homes; and actual
+package removal/reinstall releasing interrupted maintenance while retaining
+desktop, files and modified conffile preferences. A real shutdown plus injected
+lost acknowledgement verifies that recovery observes stopped state without
+issuing a second stop.
+
+Earlier runs exposed intermittent nonzero remote-service stop replies before
+data staging. The original remained active and maintenance was released. The
+package now records that error and accepts stopped state only after the package's
+actual status/lock confirms it. Focused repeats and the final Docker run passed;
+the earlier failures are not recorded as passes.
+
+Installed AMD64 Debian/QEMU acceptance initially passed seven package tests
+(118.188s). A subsequent nine-case run passed the eight data/recovery cases but
+failed its removal assertion because the fixture assumed Docker's personal
+browser port also existed in an installed OS. The installed personal X desktop
+and retained files had passed. The fixture now checks that browser endpoint only
+in the container edition; the final installed run is recorded below.
+
+The final installed AMD64/QEMU run passed all 10 cases (144.315s), including
+actual remove/reinstall, conffile preservation and independent personal X
+desktop operation. It used recovery 0.1.0 with executor/remote 0.9.0. This is an
+installed local VM over strict SSH, not real remote/cloud product acceptance.
+
+The final architecture-independent recovery package SHA-256 is
+`0c89db5a0f6275558eabf9134ba3ed3bc5a4da2d0dc0dcbfb269ef325238167a`.
+The fresh ARM64 OCI recipe built with recovery enabled and remote omitted:
+`cantrip-os-phase5-recovery-foundation:dev`, image ID
+`sha256:218011d91526178db401b382bedcf50cc6072792c6bb7a3d9ba67f19bacea97e`.
+Its actual fresh instance completed capture with only workspace/executor services
+present, and retained a working personal X desktop and browser viewer. A second
+recipe build with recovery omitted confirmed that its command was absent while
+IceWM and the executor remained installed. These package-wiring checks reused
+the existing executor 0.9.0 Debian artifact; they are not the final Phase 5
+distribution of the changed native executor.
+
+The package spools plaintext under root-private permissions in the retained
+executor volume; retained original homes stay privately staged in the workspace
+volume. It does not back up machine enrollment, host keys, runtime handles or
+arbitrary shared root customization. Managed workspaces are interrupted for
+capture; trusted independent root writers are not an isolation boundary. Browser
+profile bytes are covered, not guaranteed portable authenticated sessions.
+
+Three existing launcher/lock/cancellation tests passed (131ms). Node, Python and
+shell syntax checks passed. Required `pnpm check` stops at unchanged baseline
+Server budgets: `build-app.ts` 1519/1500 and `chat-turn-runtime.ts` 2230/1999.
+No hosted ordinary validation was run. A fresh ISO is still required for final
+Phase 5 distribution acceptance; script wiring alone is not ISO boot evidence.
+
+## Phase 5: private Worker archive primitives (2026-11-05)
+
+The Worker now has versioned private archive framing using existing account
+component keys, HKDF and authenticated encryption with a backup-specific domain.
+Its files contain encrypted manifest/profile/path metadata and bounded archive
+chunks plus a mandatory authenticated end record. Sequence, account, Server,
+backup and revision binding prevent frame substitution. Complete data checks
+precede publication; existing destinations are never overwritten.
+
+The crypto identity/domain case passed, and four Worker file cases passed
+(2.76s bodies / 3.74s total). They verify historical grants after rotation,
+0600/0700 permissions, arbitrary input fragmentation, missing/reordered/duplicate/
+corrupt/trailing frames, preserved destinations, receipt mismatches, missing
+historical keys and an injected input-stream failure after a delivered prefix. Failed
+authentication/transfer leaves no published plaintext or partial file.
+
+Actual package roundtrips passed on ARM64 Docker with executor 0.9.0 (5.13s body /
+6.13s total), and installed AMD64 Debian/QEMU over strict SSH with executor 0.10.0
+(26.31s / 27.26s). Each wrote real ignored, Unicode and >2 MiB binary files using
+the native filesystem executor, captured through the optional package, streamed
+and sealed the archive outside native output retention, authenticated it on the
+Worker side, then received/restored into a new workspace account and read back
+identical bytes. Captured guest transfer staging was explicitly forgotten after
+success; Worker test plaintext/encrypted artifacts were removed. Proof JSON
+contains IDs/hashes/results rather than backup content or keys.
+
+These fixtures use ephemeral component key material through the Worker grant
+interface. They do not establish actual Server grant delivery, Server backup
+admissions/catalogue/UI, a real remote target or full product acceptance. Those
+remain required alongside Worker-failure recovery, lifecycle/upgrade preservation
+and final fresh distribution artifacts. The ordinary package command is still
+usable independently. See [the format and boundaries](BACKUPS.md).
+
+Protocol/Crypto builds, Worker type checking and strict checking of the real
+fixture import graph passed. Required `pnpm check` still stops at unchanged
+Server budgets (1519/1500 and 2230/1999). No guest package/native binary changed
+in this cycle and no new ISO is claimed.
+
+## Phase 5: output retention recovery (2026-11-05)
+
+Executor 0.10.0 reports the last actually evicted output sequence. Lifecycle
+sequence gaps do not imply lost output. Older executors omit this capability;
+the Worker reports unavailable coverage instead of claiming complete history.
+Run/terminal recovery retains the original process admission, marks actual loss,
+and continues observation. Read-only observation never kills work because its
+own output/time bound was reached. A lost successful source-command receipt is
+an unknown outcome, not a definite failure that can safely be repeated.
+
+Actual upgraded ARM64 Docker tests passed all three cases (21.05s total): native
+
+> 2 MiB output after carrier loss, Run recovery after a separate Worker SIGKILL,
+> and terminal recovery including nano, Unicode, resize, root descendants and an
+> independent process. Run/terminal floods caused real native eviction; they
+> retained their original process/admission and truncation state. Commands/input
+> were not replayed; explicit Stop performed cleanup. The installed AMD64
+> Debian/QEMU native eviction case passed over strict SSH (11.66s body / 13.01s
+> total). Earlier actual executor 0.9.0 installed compatibility also passed: its
+> stdout/exit result was usable while output coverage remained unavailable.
+
+Normal source builds produced both architecture packages without a cached
+runtime override. Their SHA-256 values are:
+
+- AMD64: `49200086f4cabf3cd328759f88c188dbb73568952ab3f9a1d3ea5b725f2f1336`
+- ARM64: `6373974698190b59d61499b962939b6d57f6193629f224721059a9a6d8b94f92`
+
+These package tests used the pre-rebase 78-patch native input, including this
+retention change. Later Main adds two separate Goal CLI journal patches; final
+Phase 5 distributions must rebuild the current complete input and record their
+source/checksums. These are not claimed as the final Docker/ISO artifacts.
+
+Sixteen native local-process unit cases passed (1.00s test bodies), and native
+core tests compiled. The cold Host build and shared-cache waits are not counted
+as test runtime. Forty-four focused Worker cases, Worker type checking and strict
+fixture-import checking passed on the feature source. Final rebased validation
+and patch verification are recorded below. The required root check on the
+original feature base reports unchanged Server budgets (1516/1500 and
+2230/1999). No hosted ordinary validation was run.
+
+Actual remote/product Worker restart acceptance, other admitted operations,
+private backup product controls, lifecycle/upgrade preservation and final
+recorded distribution acceptance remain Phase 5 requirements.
+
+After rebasing onto `413630b7e`, the retention change is patch `0079`; Main owns
+the intervening `0077`/`0078` CLI journal patches. The full upstream verifier
+actually applied all 80 patches and verified 9,191 pristine source files. The
+retention patch and affected Worker recovery source are unchanged by that
+rebase. The three focused Worker suites passed again (44 cases / 5.48s), and
+Worker/fixture type checking passed. Root validation reports the current
+unchanged budgets (1519/1500 and 2230/1999). The actual guest package tests above
+remain explicitly tied to their earlier native build input; final complete
+distribution builds are still pending.

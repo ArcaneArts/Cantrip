@@ -248,6 +248,28 @@ const durablePauseResult = {
 };
 
 describe("managed native command session", () => {
+  it.each(["completed", "failed", "interrupted"] as const)(
+    "records actual GUI native %s before separate logical cleanup",
+    async (terminalStatus) => {
+      const f = fixture(false);
+      await f.adapter.guiTerminal(receipt, session, "turn", terminalStatus);
+      expect(f.client.settle).toHaveBeenCalledExactlyOnceWith({
+        operationId: receipt.operationId,
+        operationGeneration: receipt.operationGeneration,
+        status: "applied",
+        resultDigest: null,
+        protectedResult: null,
+        rejectionCode: null,
+        executionComplete: false,
+        reconciliation: {
+          nativeTurnId: "turn",
+          runtimeGeneration: "transport",
+          terminalStatus,
+        },
+      });
+      expect(f.runtime.prepareAdmittedNativeExecution).not.toHaveBeenCalled();
+    },
+  );
   it.each([true, false])(
     "keeps the original inference source alive for paused=%s",
     async (paused) => {
@@ -291,7 +313,15 @@ describe("managed native command session", () => {
   );
   it("confirms Pause only after native capture and worker storage acknowledge", async () => {
     const committed = deferred<void>();
-    const capture = vi.fn(() => committed.promise);
+    const capture = vi.fn(async () => {
+      await committed.promise;
+      return {
+        suspension: durablePauseResult.suspension,
+        storageId: "00000000-0000-4000-8000-000000000001",
+        runtimeVersion: "fixture",
+        runtimeFingerprint: null,
+      };
+    });
     const f = fixture(false, capture);
     f.operation.method = "turn/pause";
     f.operation.frame.method = "turn/pause";
@@ -351,7 +381,13 @@ describe("managed native command session", () => {
       admitted.settle({ result: durablePauseResult }),
     ).rejects.toThrow("actual checkpoint write failed");
     expect(capture).toHaveBeenCalledOnce();
-    expect(f.client.settle).not.toHaveBeenCalled();
+    expect(f.client.settle).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        status: "uncertain",
+        durableSuspension: true,
+        protectedResult: null,
+      }),
+    );
   });
   it.each(["interrupted", "failed"] as const)(
     "settles native %s with its authoritative terminal outcome",
@@ -1321,6 +1357,7 @@ describe("managed native command session", () => {
         reconciliation: {
           nativeTurnId: "turn",
           runtimeGeneration: "transport",
+          terminalStatus: "completed",
         },
       }),
     );

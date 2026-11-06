@@ -15,6 +15,7 @@ export function createManagedSuspensionCapture(
     | "inspectTurnSuspension"
     | "managedHistoryHome"
     | "compatibility"
+    | "captureWorkerTurnContinuation"
   >,
   store: NativeSuspensionStore,
 ) {
@@ -52,6 +53,10 @@ export function createManagedSuspensionCapture(
       // Diagnostic only. Native checkpoint decoding decides compatibility.
       runtimeVersion: runtime.compatibility.version?.raw ?? "unknown",
       runtimeFingerprint: null,
+      continuation: runtime.captureWorkerTurnContinuation(
+        suspension.threadId,
+        suspension.turnId,
+      ),
     });
     const observed = await runtime.inspectTurnSuspension(suspension.threadId);
     if (

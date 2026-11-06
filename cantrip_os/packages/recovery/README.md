@@ -1,0 +1,180 @@
+# Optional workspace recovery package
+
+`cantrip-os-recovery` 0.1.0 supplies root administration commands for consistent
+workspace capture, staged restore and rollback. It has no daemon, network
+listener, Worker, model credentials or scheduler. Docker and ISO launch scripts
+include it with the executor edition; `CANTRIP_OS_RECOVERY=0` omits it. The ordinary
+OS remains selectable with `CANTRIP_OS_WORKSPACES=0`.
+
+This is the guest package checkpoint. Encrypted Worker storage, Server admissions
+and Cantrip backup controls are subsequent Phase 5 work. Local staging is
+plaintext readable by root; it is not an encrypted portable backup product yet.
+
+## Build and install
+
+From the repository root:
+
+```sh
+node cantrip_os/scripts/recovery-package.mjs
+```
+
+The architecture-independent output is
+`cantrip_os/artifacts/packages/cantrip-os-recovery_0.1.0_all.deb`. Install it with
+`sudo apt install ./cantrip-os-recovery_0.1.0_all.deb`. Dependencies are the existing
+workspace and executor packages plus Python. No extra desktop environment or
+full Worker is installed. Package configuration is a Debian conffile at
+`/etc/cantrip-os/recovery.json`.
+
+Default root-private records and staging live in
+`/var/lib/cantrip-os-executor/recovery`, inside the existing retained Docker
+executor volume. Restore staging and retained original homes live beside the
+workspace home, inside the retained workspace volume. Ordinary Docker stop/start
+and linked-source recreation retain these paths; they are not a backup of the
+container's entire writable system layer.
+
+## Capture and transfer
+
+Use a new canonical UUID for each intended operation. Retain it when a response
+is lost. Example, with an existing workspace named `example`:
+
+```sh
+sudo cantrip-recovery capture "$CAPTURE_ID" example --request '{"exclusions":["repo/node_modules"]}'
+sudo cantrip-recovery inspect "$CAPTURE_ID"
+sudo cantrip-recovery export "$CAPTURE_ID" > workspace.tar
+```
+
+The capture receipt includes the archive's byte length and SHA-256. `export`
+also supports `--offset` and `--length`; it verifies the retained archive before
+emitting bytes. Repeating a capture with the same ID/request observes its saved
+outcome. Reusing the ID for different intent fails. It never silently captures a
+newer state under an older operation ID.
+
+Capture stops the actual remote, executor and workspace services, then remaining
+processes running as registered workspace accounts. This interrupts **all**
+Cantrip workspaces on the instance, including managed root descendants. The
+personal console desktop is independent. Services previously running are
+restarted in reverse order; enable/disable preferences are preserved. Stopped
+desktop windows and processes are not resurrected. The receipt records the
+affected workspace IDs and remaining workspace writer PIDs.
+
+Included root permissions are temporarily closed to ordinary workspace users.
+Linux filesystem watches reject changes during copying, including unavailable
+watch coverage. Arbitrary trusted root processes can bypass account permissions;
+this coordinates managed writers, not hostile root users or independent external
+writers. A stopped service may create a fresh runtime generation on restart;
+existing captured handles require the normal explicit product recovery path.
+
+The home includes dirty/untracked/ignored files, Chromium profile bytes,
+configuration, modes, numeric ownership, hard links, symlinks and Linux extended
+attributes. Gitignore is never consulted. Exclusions are explicit home-relative
+paths recorded in the manifest; Git metadata cannot be excluded this way.
+Sockets/devices and nested mount contents are omitted with recorded reasons.
+Symlinks are stored without following their contents. File content is streamed;
+member/inventory indexes still use memory proportional to the number of entries.
+
+Additional sources are explicit private request metadata:
+
+```json
+{
+  "sources": [
+    { "mode": "linked", "guestPath": "/projects/host-source" },
+    {
+      "mode": "linux-owned",
+      "guestPath": "/projects/linux-source",
+      "gitMetadataPaths": ["/projects/primary/.git"]
+    }
+  ]
+}
+```
+
+Linked sources are references, including when their path is inside the home.
+Their bytes are not copied. Linux-owned paths are included. Administrative Git
+pointers include common metadata only within the home or explicitly declared
+Linux roots/`gitMetadataPaths`; they do not grant access to arbitrary external
+trees. Missing external Git metadata is recorded as a reference. Verify the
+manifest's roots, exclusions, references and skipped entries for intended scope.
+
+## Receive, restore and roll back
+
+Create a destination workspace with `cantrip-workspaces create destination`.
+Supply the authenticated receipt values received with the archive:
+
+```sh
+sudo cantrip-recovery receive "$RESTORE_ID" destination \
+  --request '{"archive_bytes":20480,"archive_sha256":"<actual lowercase SHA-256>"}' < workspace.tar
+sudo cantrip-recovery restore "$RESTORE_ID"
+```
+
+`receive` streams and checks the exact bytes before accepting the archive. Restore
+validates version, member graph, inventory and file digests in root-private
+staging. Data and directory changes are synced before an atomic Linux directory
+exchange activates the restored home. The original home is retained privately.
+The destination must be newly created and empty by default; to deliberately
+replace existing data, include `"replace":true` in the original receive request.
+
+Source workspace UID/GID values, including named POSIX ACL entries, map to the
+destination account. Root-owned and other numeric owners remain numeric; no
+unrelated system accounts are created. Additional Linux source roots move into
+`.cantrip-restored-sources-<restore-ID>/extra-N` beneath the new home. Git
+administrative pointers to included paths are relocated. Unresolved external
+Git targets become intentionally absent paths listed in the private receipt,
+so Git does not continue operating on the old workspace. Exotic quoted Git
+configuration and generic external symlinks may need manual repair. The receipt
+reports source roots and references for deliberate source rebinding.
+
+This restores workspace data, not machine/enrollment identities, SSH host keys,
+Server source bindings, live processes or runtime handles. Browser files can be
+restored, but authenticated browser sessions may depend on machine/account keys
+and are not promised portable.
+
+To restore the retained original after an explicit replacement:
+
+```sh
+sudo cantrip-recovery rollback "$ROLLBACK_ID" "$RESTORE_ID"
+```
+
+Rollback has its own durable admission and retains the replaced home rather than
+deleting either copy. It requires the actual directory identities from that
+restore; it cannot exchange an unrelated subsequently replaced home.
+
+## Interruption and removal
+
+`inspect` is read-only. A dead command with an unfinished admission reports
+`unknown`, not success. An uncertain capture is never recaptured automatically.
+After the root command has actually exited, run:
+
+```sh
+sudo cantrip-recovery recover "$OPERATION_ID"
+```
+
+Recovery observes recorded directory identities to determine whether the atomic
+exchange happened, then restores permissions and the previously running
+services. It does not repeat the exchange. A failure before activation preserves
+the active original; an observed completed exchange is reported as restored.
+Unknown directory identities leave both paths untouched for administration.
+
+`forget ID` deletes transfer spool files only after maintenance is released. It
+does not delete retained original homes. Protect/export backups before forgetting
+their guest archive. Retained originals need deliberate administrator cleanup.
+
+Removing or upgrading the package executes maintenance release under the real
+operation lock. An active command must finish first. Interrupted maintenance is
+recovered before the helper disappears. Removal retains records, files and
+conffiles; reinstall can inspect the old operation. This command-only package has
+no service to disable. Omit/remove it to disable backup commands while keeping
+ordinary desktops and files.
+
+## Disposable integration test
+
+Copy `test/integration.py` and the built package to a disposable running OS as
+`/tmp/recovery-integration.py` and `/tmp/recovery.deb`, then run as root:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 /tmp/recovery-integration.py
+```
+
+The fixture requires the remote package too, creates real accounts and data,
+stops services/writers, injects abrupt process exits around the actual exchange,
+and removes/reinstalls recovery. It is destructive test administration; do not
+run it against a user's working OS. See `cantrip_os/ACCEPTANCE.md` for recorded
+Docker/installed results and remaining Phase 5 product work.

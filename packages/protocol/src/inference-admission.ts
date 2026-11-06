@@ -84,7 +84,8 @@ export const inferenceOperationStatusSchema = z.object({
   providerId: z.string().min(1),
   chatId: z.string().min(1).nullable(),
   projectId: z.string().min(1).nullable(),
-  state: inferenceTicketStateSchema,
+  // Recovery preparation owns no provider slot and has no queue position.
+  state: z.union([inferenceTicketStateSchema, z.literal("recovering")]),
   queuePosition: z.number().int().positive().nullable(),
   enqueuedAt: z.number().int().nonnegative(),
   grantedAt: z.number().int().nonnegative().nullable(),

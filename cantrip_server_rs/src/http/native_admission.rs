@@ -221,6 +221,22 @@ async fn apply(
         );
     }
     if phase == "receipt" {
+        if truthy(input.get("durableSuspension")) {
+            let worker = input["workerId"].as_str().unwrap();
+            if input["workerGeneration"].is_null()
+                || !service
+                    .workers
+                    .bridge
+                    .connection_identity(worker)
+                    .is_some_and(|identity| {
+                        identity.owner == owner
+                            && Some(identity.process_generation.as_str())
+                                == input["workerGeneration"].as_str()
+                    })
+            {
+                return Err(CommandError::new("stale-worker-generation", None, 409).into());
+            }
+        }
         return service.execution.receipts.settle(&owner, &input).await;
     }
     let repo = Repository::new(service.repository.database.clone());
@@ -291,7 +307,10 @@ async fn apply(
         };
         invalidation(&service, &owner, scope, &execution["chatId"]);
     }
-    if result["receipt"]["method"] == "thread/settings/update" {
+    if matches!(
+        result["receipt"]["method"].as_str(),
+        Some("thread/settings/update" | "turn/pause" | "turn/interrupt")
+    ) {
         let chat = &result["receipt"]["chatId"];
         invalidation(
             &service,

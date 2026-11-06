@@ -87,6 +87,7 @@ async fn settle(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Valu
     if truthy(input.get("terminalResult")) && !truthy(input.get("executionComplete")) {
         return reject("terminal-result-requires-completion");
     }
+    super::suspension::assert_terminal_proof(tx, owner, &current, input).await?;
     let missing = current["status"] == "uncertain"
         && current["rejection_code"] == "missing-native-receipt"
         && [
@@ -140,6 +141,8 @@ async fn settle(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Valu
     if truthy(input.get("reconciliation")) {
         turns::remember(tx, &state.current, &input["reconciliation"]).await?;
     }
+    super::suspension::settle(tx, owner, &state.current, input).await?;
+    super::suspension::finish(tx, owner, &state.current, input).await?;
     let updated = state.persist(tx).await?;
     settings_persistence::settle_transport(tx, &updated).await?;
     let goal_before_dispatch =

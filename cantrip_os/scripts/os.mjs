@@ -89,6 +89,12 @@ export function remoteEdition() {
   );
 }
 
+export function recoveryEdition() {
+  return (
+    process.env.CANTRIP_OS_RECOVERY ?? (executorEdition() === "1" ? "1" : "0")
+  );
+}
+
 export async function build(options = {}) {
   const executor = executorEdition();
   const remote = remoteEdition();
@@ -121,6 +127,8 @@ export async function build(options = {}) {
       `CANTRIP_OS_EXECUTOR=${executor}`,
       "--build-arg",
       `CANTRIP_OS_REMOTE=${remote}`,
+      "--build-arg",
+      `CANTRIP_OS_RECOVERY=${recoveryEdition()}`,
       "--build-context",
       `remote=${remoteContext}`,
       "--build-context",

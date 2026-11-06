@@ -250,9 +250,8 @@ async fn complete_recovered_withdrawal(
         }) {
             return Ok(());
         }
-        let source = json!({"operationId":root["operation_id"],"operationGeneration":root["operation_generation"],
-            "threadId":root["identity"]["threadId"],"goalEpoch":attempt["goalEpoch"]});
-        let marker = json!({"source":source,"admission":Value::Null,
+        let marker = json!({"source":json!({"operationId":root["operation_id"],"operationGeneration":root["operation_generation"],
+            "threadId":root["identity"]["threadId"],"goalEpoch":attempt["goalEpoch"]}),"admission":Value::Null,
             "providerId":record["identity"]["providerId"],"orderEpoch":0});
         tx.query("INSERT INTO managed_queue_states(chat_id,goal_recovery) VALUES($1,$2::text::jsonb) ON CONFLICT(chat_id) DO UPDATE SET goal_recovery=EXCLUDED.goal_recovery", &[&chat,&marker.stringify()]).await?;
         marker

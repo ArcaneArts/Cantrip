@@ -3,7 +3,11 @@ import { posix } from "node:path";
 import { cantripOsGuestPathSchema } from "@cantrip/protocol";
 import type { OsExecutorConnection } from "./connection.js";
 import { guestFileUri, guestPathFromFileUri } from "./paths.js";
-import { runGuestProcess, type GuestProcessResult } from "./process.js";
+import {
+  runGuestProcess,
+  OsProcessOutcomeUnknownError,
+  type GuestProcessResult,
+} from "./process.js";
 
 interface SourceScope {
   sourceId: string;
@@ -56,12 +60,14 @@ async function command(
     env: { GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" },
     prepared: (id) => options.prepared?.(id, argv) ?? Promise.resolve(),
   });
-  if (
-    result.exitCode !== 0 ||
-    result.failure ||
-    result.terminationRequested ||
-    result.outputTruncated
-  )
+  if (result.outputTruncated)
+    throw new OsProcessOutcomeUnknownError(
+      result.processId,
+      new Error(
+        "Linux source command output is incomplete; its mutation was not repeated.",
+      ),
+    );
+  if (result.exitCode !== 0 || result.failure || result.terminationRequested)
     throw new LinuxSourceCommandError(result);
   return result.stdout.trim();
 }

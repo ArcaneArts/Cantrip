@@ -594,8 +594,22 @@ In progress. The first checkpoint adds an explicit Server-owned recovery check
 for the selected attachment, with matching Node/native HTTP contracts and a
 client action. It distinguishes verified same/new runtimes from unavailable or
 changed identities without replaying work. See [dispatch behavior](../cantrip_os/DISPATCH.md#explicit-instance-recovery-observation).
-Process/output recovery, backups/restores, lifecycle preservation and real remote
-acceptance remain required for Phase 5 completion.
+Linux Run recovery resumes recorded native processes after Worker memory loss.
+Executor 0.10.0 reports actual output eviction, with explicit terminal/Run loss
+notices and retained Run truncation state. Transport retries preserve their live
+cursor; fresh Worker models rebuild from retained output without repeating the
+command. Worker continuity is classified separately from guest runtime changes.
+Other admitted operations, backups/restores, lifecycle preservation and actual
+remote/Worker-restart product acceptance remain required for Phase 5 completion.
+
+The optional `cantrip-os-recovery` guest package now provides coordinated local
+capture, versioned manifests, staged/verified restore, retained originals and
+explicit rollback. It preserves package enablement and records workspace-wide
+interruption. This is a guest administration checkpoint, not completion of private
+backups: private Worker encryption/transfer primitives are now exercised, while
+durable Server-owned backup admissions, a catalogue and product controls remain
+required. See [the package guide](../cantrip_os/packages/recovery/README.md) and
+[private backup format](../cantrip_os/BACKUPS.md).
 
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output

@@ -31,14 +31,14 @@ requested.
 Workspace support remains enabled by default. Including the executor requires
 the workspace package; apt enforces that dependency.
 
-Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.9.0_<arch>.deb`.
+Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.10.0_<arch>.deb`.
 It contains the source/patch fingerprint manifest, binary hashes, licenses, and
 sandbox helper. Docker and ISO recipes install the same package.
 
 Inside Linux, after copying the package there:
 
 ```sh
-sudo apt install ./cantrip-os-executor_0.9.0_arm64.deb  # amd64 for the VM edition
+sudo apt install ./cantrip-os-executor_0.10.0_arm64.deb  # amd64 for the VM edition
 sudo cantrip-executor enable
 sudo cantrip-executor status
 sudo cantrip-executor attach OWNER_ID WORKER_ID
@@ -69,6 +69,22 @@ owner/worker, workspace and runtime generations. It does not start an executor
 or select a fallback. Native `initialize`/`initialized` establishes the session;
 the native session ID supports explicit reconnect. Disconnect is not process
 cancellation: use native `process/terminate`. The carrier never replays requests.
+
+Version 0.10.0 adds optional `outputEvictedThroughSeq` metadata to native
+`process/read`. This is the last output sequence actually discarded by the
+executor, not an inference from gaps in the shared output/lifecycle sequence.
+Zero reports no eviction; an absent value means the backend does not report
+coverage. The retained buffer is bounded by 1 MiB and 50,000 chunks per process.
+Completed, closed processes expire after 30 seconds; reconnect does not make
+expired output or dead processes recoverable.
+
+Workers report actual missing output in terminals and Run output, keep Run
+truncation in the private admission journal, and continue observing the same
+admitted process. Fresh terminal/Run models replay retained output from the
+beginning; transport retries within a live reader retain its current cursor.
+An older executor remains usable, with an explicit coverage-unavailable notice
+when rebuilding a model after recovery. Read-only administrative observation
+never starts, writes to, or terminates a process, including on observation limits.
 
 The worker module `cantrip_worker/src/os-executor/connection.ts` implements the
 carrier and preserves unknown delivery outcomes. Product callers must apply

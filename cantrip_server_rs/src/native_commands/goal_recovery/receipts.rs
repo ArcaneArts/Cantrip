@@ -146,17 +146,123 @@ pub(in crate::native_commands) async fn confirm_receipt(
         }
         return Ok(());
     }
+    let Some(observation) = receipt.get("observation").filter(|o| !o.is_null()) else {
+        return Ok(());
+    };
+    if observation["chatId"] != chat
+        || observation.get("threadId") != marker["source"].get("threadId")
+        || observation["orderEpoch"].as_f64().unwrap_or(0.0)
+            != marker["orderEpoch"].as_f64().unwrap_or(0.0)
+    {
+        return Ok(());
+    }
+    let settings = raw_one(
+        tx,
+        "SELECT to_jsonb(s)::text FROM native_settings_states s WHERE chat_id=$1",
+        &[&chat],
+    )
+    .await?;
+    let binding = settings
+        .as_ref()
+        .and_then(|s| s["state"].get("binding"))
+        .filter(|b| !b.is_null());
+    if binding.is_none_or(|binding| {
+        [
+            "chatId",
+            "workerId",
+            "threadId",
+            "contextKind",
+            "projectId",
+            "placementId",
+            "modelRouteId",
+            "providerAccountId",
+            "runtimeGeneration",
+            "nativeEpoch",
+        ]
+        .iter()
+        .any(|field| binding.get(*field) != observation.get(*field))
+    }) {
+        return Ok(());
+    }
+    let current = context::execution(tx, owner, chat).await?;
+    if !context::same_placement(
+        current.as_ref(),
+        &observation["workerId"],
+        Some(observation),
+    )? || !context::same_runtime_route(current.as_ref(), Some(observation))?
+        || current.as_ref().and_then(|c| c.get("threadId")) != observation.get("threadId")
+    {
+        return Ok(());
+    }
     if truthy(marker.get("admission")) {
         return reject("goal-recovery-already-admitted");
+    }
+    let worker = text(&observation["workerId"])?;
+    let source = context::read(
+        Executor::Transaction(tx),
+        owner,
+        &worker,
+        &text(&marker["source"]["operationId"])?,
+        &text(&marker["source"]["operationGeneration"])?,
+    )
+    .await?;
+    if source["chat_id"] != chat
+        || !truthy(source.get("execution_completed_at"))
+        || recovered(&source).is_none_or(|s| !deep_equal(s, &marker["source"]))
+    {
+        return reject("goal-recovery-source-unsettled");
+    }
+    let rows = tx.query("SELECT to_jsonb(c)::text FROM managed_queue_claims c WHERE chat_id=$1 AND awaiting_goal=true AND goal_epoch=$2 AND status IN ('dispatched','uncertain') LIMIT 2", &[&chat,&text(&receipt["source"]["goalEpoch"])?]).await?;
+    let claims = rows
+        .iter()
+        .map(|row| -> Result<Value> { Ok(serde_json::from_str(&row.get::<String>(0)?)?) })
+        .collect::<Result<Vec<_>>>()?;
+    if claims.len() > 1 {
+        return reject("goal-recovery-claim-conflict");
+    }
+    for claim in &claims {
+        if truthy(claim.get("native_turn_id"))
+            || truthy(claim.get("goal_operation_id"))
+            || truthy(claim.get("goal_operation_generation"))
+            || !truthy(claim.get("operation_id"))
+            || !truthy(claim.get("operation_generation"))
+        {
+            return reject("goal-recovery-already-admitted");
+        }
+        let parent = context::read(
+            Executor::Transaction(tx),
+            owner,
+            &worker,
+            &text(&claim["operation_id"])?,
+            &text(&claim["operation_generation"])?,
+        )
+        .await?;
+        if parent["chat_id"] != chat
+            || parent["method"] != "thread/goal/set"
+            || parent["status"] != "applied"
+        {
+            return reject("goal-recovery-parent-unsettled");
+        }
     }
     tx.query(
         "UPDATE managed_queue_states SET goal_recovery=NULL WHERE chat_id=$1",
         &[&chat],
     )
     .await?;
-    let claims = tx.query("UPDATE managed_queue_claims SET status='rejected' WHERE chat_id=$1 AND awaiting_goal=true AND goal_epoch=$2 AND goal_operation_id IS NULL AND status IN ('dispatched','uncertain') RETURNING id,prompt_id,prompt_revision", &[&chat,&text(&receipt["source"]["goalEpoch"])?]).await?;
+    // The original setter is already applied. Retire its exact claim without
+    // putting that old Goal prompt back into the current native Goal's queue.
     for claim in claims {
-        tx.query("UPDATE queued_prompts SET state='pending' WHERE id=$1 AND revision=$2 AND state='claimed'", &[&claim.get::<String>(1)?,&claim.get::<i32>(2)?]).await?;
+        tx.query(
+            "UPDATE managed_queue_claims SET status='consumed' WHERE id=$1",
+            &[&text(&claim["id"])?],
+        )
+        .await?;
+        let revision = i32::try_from(
+            claim["prompt_revision"]
+                .as_i64()
+                .ok_or_else(|| anyhow::anyhow!("Goal claim revision is missing"))?,
+        )?;
+        tx.query("UPDATE queued_prompts SET state='consumed',updated_at=now() WHERE id=$1 AND chat_id=$2 AND revision=$3 AND state='claimed'", &[&text(&claim["prompt_id"])?,&chat,&revision]).await?;
     }
     queue::changed(tx, chat).await
 }

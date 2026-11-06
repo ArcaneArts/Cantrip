@@ -27,6 +27,9 @@ function WorkerUsage({
           ? {
               active: pool.activeCount,
               queued: pool.queuedCount,
+              recovering: pool.operations.filter(
+                (operation) => operation.state === "recovering",
+              ).length,
               limit: pool.maxConcurrentInference,
             }
           : null;
@@ -42,7 +45,7 @@ function WorkerUsage({
         : status.isPending
           ? "Loading inference status…"
           : !status.isError && status.data
-            ? `${status.data.active}/${status.data.limit} active, ${status.data.queued} queued`
+            ? `${status.data.active}/${status.data.limit} active, ${status.data.queued} queued${status.data.recovering ? `, ${status.data.recovering} recovering` : ""}`
             : "Inference status unavailable"}
     </p>
   );

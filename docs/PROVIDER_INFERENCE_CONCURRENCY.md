@@ -2368,3 +2368,83 @@ it was not applied, checked or executed. No tests, builds, typechecks,
 benchmarks, native/helper execution, hosted validation or computer-use testing
 ran. Runtime and platform behavior remain unverified. The wider lifecycle and
 Task-private-cycle audit continues as part of the full concurrency goal.
+
+## Preparation failure during unused Goal recovery
+
+A restored unused Goal retains its journal ordinal while the replacement native
+session prepares. Previously, a preparation failure could leave that ticketless
+entry at the head of the provider queue, preventing all otherwise free slots
+from admitting other projects.
+
+The worker now tracks the actual preparation attempt against the canonical Goal
+source, provider, and ordering epoch. A completed preparation failure makes only
+that unused restoration temporarily ineligible. Its input and ordinal remain in
+the existing journal; no inference lease is released, native execution cancelled,
+or prompt replayed by this eligibility change. A subsequent successful
+preparation or actual canonical producer can adopt the retained position through
+the normal worker admission path. Repeated failed attempts retain ineligibility
+without repeatedly publishing an unchanged status. Ordinary eligible restored
+entries still prevent newer arrivals from bypassing them.
+
+Both servers include the canonical marker in recovery metadata and delivery.
+Matching an old Source alone is insufficient: worker preparation deduplication
+also distinguishes provider, model route, account, and ordering epoch. Late
+attempts cannot change another marker's eligibility. Preparation state is removed
+when the retained source is adopted or retired; only active preparations and
+matching pending recovery reads can retain it in memory. No prompt copy,
+server-side semaphore, extra durable queue, or new polling loop was added.
+
+Native RPC deadlines and connection loss have an explicit observation-error
+type. They do not establish a completed failure and cannot make an entry
+ineligible. Lost start/settlement acknowledgements retain their existing native
+ownership and fencing rules. The short Goal admission observer runs after this
+preparation boundary and does not control eligibility or execution lifetime.
+
+An ineligible preparation appears as `recovering` in worker status, without a
+provider queue position or an active/queued slot count. Chats and Task/Goal views
+show a runtime-recovery notice and retain their existing Stop/Cancel controls.
+The same status freezes Goal inference-clock extrapolation through the existing
+selected observation; wall-clock elapsed keeps its previous meaning. Provider
+settings show the recovering count separately from active and queued work.
+
+Validation: source review, direct formatting, mechanical protocol source export
+(648 roots, 10,743 nodes; Run export 11 roots, 453 nodes), and
+`git diff --check`. No tests, builds, typechecks, benchmarks, native/helper
+execution, hosted validation, or computer-use testing ran. Runtime/platform
+behavior remains unverified. The full concurrency goal's Task-private-cycle and
+remaining lifecycle audits continue.
+
+## Negative recovery observations and applied Goal setters
+
+A completed native read that finds a different Goal epoch or no active Goal is
+not permission to resend the original Goal prompt. That prompt's setter already
+applied before its unused first cycle acquired a provider ticket. Returning it to
+`pending` could overwrite a newer Goal or restart a completed one.
+
+Negative recovery receipts now carry the exact prepared placement, route/account,
+transport generation, native settings epoch, and provider ordering epoch. The
+worker brackets its actual Goal read with actual native settings reads and
+requires the same Core epoch. These are read-only RPCs; no native thread is
+loaded or configured by the observation. Both servers compare the receipt with
+the current canonical placement and full native binding under the existing chat
+lock. A late response from a replaced runtime, provider episode, or native thread
+incarnation is non-destructive. Older receipts without this observation cannot
+retire a marker.
+
+Retirement still requires no replacement admission and positive completion of
+the exact unused source with its canonical recovery identity. A retained
+first-cycle claim must have no child or native turn and must name its own
+already-applied `thread/goal/set` parent. The exact claimed prompt revision and
+claim become consumed; the encrypted input, native parent receipt, and current
+Goal remain unchanged. No original setter is replayed. Worker FIFO metadata
+retires through its existing canonical reconciliation, not through a server
+capacity grant or an observation timeout. Source-changed and paused receipts
+remain non-destructive.
+
+Validation: source review, direct Prettier/rustfmt, mechanical source protocol
+export (648 roots, 10,756 nodes; Run export 11 roots, 453 nodes), and
+`git diff --check`. No tests, builds, typechecks, benchmarks, native/helper
+execution, hosted validation, or computer-use testing ran. Runtime/platform
+behavior remains unverified. Task-private Goal transfer/checkpoint handling,
+other Goal mutation/control paths, and the remaining full lifecycle audit are
+still part of the active concurrency goal.

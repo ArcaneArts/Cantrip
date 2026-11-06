@@ -14,8 +14,9 @@ CodeMode data through both gRPC and the default framed-stdio transport. Patch
 `0075` quiesces MCP clients and defers held startup until explicit resumption.
 The managed worker now captures a native checkpoint and commits its encrypted
 source locator before confirming Pause through either shared control path.
-Server control orchestration, cold execution adoption and client recovery are
-still being integrated. Do not treat the current product acknowledgement as
+Native command receipts now commit server suspension ownership and status.
+Cold execution adoption and client recovery are still being integrated. Do not
+treat the current product acknowledgement as
 the complete process-termination/resumption guarantee yet.
 
 The complete acceptance target is:
@@ -169,6 +170,96 @@ error from suspension Read immediately after Stop completion instead of the
 expected empty result. This terminal-cleanup inspection race remains tracked;
 it did not resume the stopped turn. The standard repository check stopped at
 existing application decomposition limits, so later stages were not run.
+
+## Server control and native receipts
+
+Managed Pause, Resume and Stop declare the exact original native turn and the
+current worker incarnation. Authorized dispatch commits the control epoch and
+actor claim in the same database transaction as its native command dispatch.
+GUI and terminal controls use this shared path in both server implementations.
+The actor's worker/runtime/operation generations fence acknowledgements; they
+are correlation data, never persisted execution authority.
+
+Pause settlement includes the committed worker locator and native descriptor.
+The command receipt and `paused` record commit together. Resume dispatch keeps
+automation held through `resuming`; only its native acknowledgement changes the
+record to `running` and releases the global hold. A failed database write leaves
+both receipt and recovery state retryable. The HTTP Resume path skips its old
+early unpause when checkpoint evidence exists. Stale workers and superseded
+control acknowledgements cannot release that hold.
+
+Actual native terminal evidence retires recovery separately from GUI logical
+cleanup. This covers GUI and terminal origins without waiting for a new turn.
+Transport failure and administrative execution retirement are not native
+terminal proof. Stop retains the existing input/Goal cancellation fence and
+clears checkpoint resumability on acknowledgement. A previous completed turn's
+record cannot absorb Stop for a different active native turn.
+
+Worker persistence failure records a fixed public control error while retaining
+native recovery bytes. The complete cold path still needs original-home
+selection, fresh execution admission/adoption, restoration errors, duplicate
+control reconciliation, and the client controls that distinguish Pausing from
+durably Paused. This transaction integration does not authorize startup or
+reconnection to resume inference or queued work.
+
+Control integration validation passed 97 focused worker tests, 84 server tests,
+all 1,114 protocol tests, and worker/server typechecks. The database compatibility
+harness ran 34 operations against each actual server implementation with
+separate migrated databases, including a real failed SQL write and retry.
+The normal 79-patch macOS arm64 development build and runtime verifier passed
+with `patchesSha256` of
+`a4529c16e562ab5db15d93993056903bbfc3af835de00a6d051343c128274379`.
+All 40 native cases in the shared-control, durable-Goal and durable-suspension
+suites passed against that binary. Whole worker-tree cold product Resume
+acceptance remains required; these results do not claim that path is delivered.
+
+## Cold worker observer preparation
+
+New managed captures use source-locator format 2. Its encrypted payload adds
+versioned worker observer bookkeeping: the original workspace baseline,
+effective model and settings, token context, publication deduplication, pending
+messages and activity, and Goal checkpoint
+publication state. Native history remains the only conversation record. Old
+execution grants, controllers, capacity tickets, callbacks and timers are never
+serialized. Resolved reply RPC IDs are transport-local and are not restored:
+a new process can reuse an old numeric ID for an unrelated question. Native
+continuation owns accepted input. Restoration keeps fresh authority, reply
+tracking and callbacks and reconstructs
+maps and sets. Observer fallback timing excludes time spent offline.
+
+Format 1 source locators remain readable and inspectable. They lack the worker
+bookkeeping required for cold observer reconstruction; callers must report that
+limitation while retaining the saved bytes. They must not create a replacement
+turn. Format 2 has a distinct immutable locator even for the same native
+checkpoint, and retries retain the original published bookkeeping.
+
+The worker API can open an exact locator with a fresh component grant and select
+its original native home despite changed credential-derived defaults. It reads
+the actual stored native suspension, attaches with `expectedSuspension`, reads
+again, and binds the original turn into a fresh admitted observer. Attachment
+and observer preparation do not send Resume or input and do not emit another
+TurnStarted. Matching concurrent preparations join one observer; another owner
+is rejected. Attachment failures retain the native hold and allow retry.
+
+The isolated worker API acceptance fixture kills the entire worker/Codex tree
+immediately after durable capture, restores in fresh processes, and repeats the
+cycle. It checks the original thread and turn, one completed command side effect,
+one original input and tool result in restored context, accepted pending steering,
+effective settings, workspace baseline and token bookkeeping, fresh encryption
+grants, held startup, and explicit Resume. A missing grant fails before native
+startup. This is worker API acceptance, not full server-owned product acceptance.
+The production cold-control handler, fresh server execution adoption and client
+recovery controls remain required before the end-to-end guarantee is available.
+
+The current normal 80-patch macOS arm64 development build and runtime verifier
+passed with `patchesSha256`
+`72e03cab144f69f706bdc8f96749d017e65e19fe77a2ca5cc5843e39b93986ce`.
+All 41 native cases across cold worker restoration, shared GUI/TUI controls,
+durable Goals and native suspension passed. The focused worker checks pass;
+the broader app-server/admission run has five retry failures reproduced on
+the pristine merged baseline. `pnpm check` still stops at the existing
+application decomposition limits, leaving its later stages unrun. Full
+server/worker/client cold acceptance and other platforms remain outstanding.
 
 ## Checkpoint store foundation
 

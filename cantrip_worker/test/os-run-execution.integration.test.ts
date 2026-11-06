@@ -509,7 +509,7 @@ describe.skipIf(!enabled)("actual Linux Run generation driver", () => {
       expect(await get(`${targetPath}/runs.txt`)).toBe("once\n");
       await put(
         `${targetPath}/long.py`,
-        "import subprocess,time,pathlib\nsubprocess.Popen(['sudo','-n','setsid','python','-c',\"import os,time,pathlib;pathlib.Path('root-child.pid').write_text(str(os.getpid()));time.sleep(300)\"])\nwhile not pathlib.Path('root-child.pid').exists():time.sleep(.05)\nprint('ROOT_CHILD_READY',flush=True)\ntime.sleep(300)\n",
+        "import subprocess,time,pathlib\nsubprocess.Popen(['sudo','-n','setsid','python','-c',\"import os,time,pathlib;pathlib.Path('root-child.pid').write_text(str(os.getpid()));time.sleep(300)\"])\nwhile not pathlib.Path('root-child.pid').exists():time.sleep(.05)\nprint('ROOT_CHILD_READY',flush=True)\nwhile not pathlib.Path('flood-trigger').exists():time.sleep(.05)\nprint('x'*(2*1024*1024),flush=True)\nprint('RETENTION_END',flush=True)\npathlib.Path('flood-done').write_text('done')\ntime.sleep(300)\n",
       );
       const longDoc = runConfigurationShellDocumentSchema.parse({
         ...doc,
@@ -851,6 +851,21 @@ describe.skipIf(!enabled)("actual Linux Run generation driver", () => {
       crashWorker.kill("SIGKILL");
       await crashed;
       crashWorker = undefined;
+      // Produce more than the real executor's 1 MiB retention while there is
+      // no Worker output consumer. Recovery must report loss and keep the PID.
+      await put(`${targetPath}/flood-trigger`, "go");
+      await expect
+        .poll(
+          async () => {
+            try {
+              return await get(`${targetPath}/flood-done`);
+            } catch {
+              return "";
+            }
+          },
+          { timeout: 30000 },
+        )
+        .toBe("done");
       // A fresh Worker supervisor resumes the exact recorded native session.
       // Reconciliation must neither stop nor replace the still-running process.
       const recovered = makeSupervisor();
@@ -862,6 +877,33 @@ describe.skipIf(!enabled)("actual Linux Run generation driver", () => {
         })
         .toMatchObject({ found: true, observation: { state: "running" } });
       expect(await gone(thirdRoot)).toBe(false);
+      const recoveredRunOutput = () =>
+        recovered.output({
+          type: "cantrip-os.run-runtime.output",
+          ...managedCapture(),
+          serverId: core.serverId,
+          requestOperationId: randomUUID(),
+          tail: 100_000,
+        });
+      await expect
+        .poll(() => recoveredRunOutput(), { timeout: 30000 })
+        .toMatchObject({ truncated: true });
+      await expect
+        .poll(() => recoveredRunOutput().data, { timeout: 30000 })
+        .toContain("RETENTION_END");
+      expect(
+        JSON.parse(
+          await readFile(
+            path.join(
+              directory,
+              "os-run-generations",
+              managedLong.identity.runtimeId,
+              "3.json",
+            ),
+            "utf8",
+          ),
+        ).outputTruncated,
+      ).toBe(true);
       expect(await get(`${targetPath}/root-child.pid`)).toBe(thirdRoot);
       await recovered.reconcileLinux([managedCapture()]);
       expect(await get(`${targetPath}/root-child.pid`)).toBe(thirdRoot);

@@ -10,7 +10,10 @@ import { nativeSettingsReadScopeSchema } from "./native-settings-state.js";
 import { queuedPromptOpaqueContentSchema } from "./communication-content.js";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
 import { nativeCommandReceiptSchema } from "./native-commands.js";
-import { nativeGoalRecoverySourceSchema } from "./native-goal-recovery.js";
+import {
+  nativeGoalRecoverySourceSchema,
+  nativeGoalRecoverySchema,
+} from "./native-goal-recovery.js";
 import { z } from "zod";
 import { initialLabelCommandSchema } from "./labeling.js";
 import {
@@ -571,6 +574,7 @@ export const workerChatCommandSchemas = [
     .object({
       type: z.literal("chat.goal.recover"),
       source: nativeGoalRecoverySourceSchema,
+      recovery: nativeGoalRecoverySchema.optional(),
       session: managedSessionContextSchema,
       subagentDefaults: managedSessionSubagentDefaultsSchema.nullable(),
       mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200),

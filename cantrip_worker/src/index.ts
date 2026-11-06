@@ -113,6 +113,7 @@ import { protectProjectAutomationDispatch } from "./automation-encryption.js";
 import { codexAccountHome } from "./codex/account-home.js";
 import {
   CodexAppServer,
+  CodexTurnFailureError,
   codexChatThreadSecurityParams,
   codexModelProviderName,
   codexRuntimeId,
@@ -329,6 +330,7 @@ import { RemoteSurfaceWorkerLinkAdapter } from "./remote-surface-worker-link-ada
 import { WorkerObservationHub } from "./worker-observation-worker-link-adapter.js";
 import { LocalNativeInferenceOwnership } from "./native-inference-ownership.js";
 import { WorkerInferenceAdmission } from "./inference-admission.js";
+import { CodexRpcObservationError } from "./codex/rpc-protocol.js";
 import {
   withInferenceCommand,
   inferenceCommandResource,
@@ -6661,7 +6663,37 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             return await finalizeCuaAgentTurn(
               async () => {
                 try {
-                  return await runtime.runTurn(turnOptions);
+                  const terminal = async (
+                    turnId: string | undefined,
+                    status: "completed" | "failed" | "interrupted",
+                  ) => {
+                    if (
+                      nativeCommandState.entry &&
+                      nativeCommandState.dispatch &&
+                      nativeCommandState.receipt
+                    ) {
+                      if (!turnId)
+                        throw new Error(
+                          "The managed native terminal result has no turn identity.",
+                        );
+                      await nativeCommandState.entry.adapter.guiTerminal(
+                        nativeCommandState.receipt,
+                        nativeCommandState.dispatch,
+                        turnId,
+                        status,
+                      );
+                    }
+                  };
+                  let result;
+                  try {
+                    result = await runtime.runTurn(turnOptions);
+                  } catch (error) {
+                    if (error instanceof CodexTurnFailureError)
+                      await terminal(error.turnId, error.terminalStatus);
+                    throw error;
+                  }
+                  await terminal(result.turnId, "completed");
+                  return result;
                 } finally {
                   taskInputExecution?.settled();
                 }
@@ -7036,13 +7068,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "chat.goal.recover": {
         if (
           command.source.threadId !== command.threadId ||
-          command.session.chatId !== command.chatId
+          command.session.chatId !== command.chatId ||
+          (command.recovery &&
+            !isDeepStrictEqual(command.recovery.source, command.source))
         )
           throw new Error("Goal recovery belongs to another managed session.");
         const key = JSON.stringify([
           nativeNamespaceScope(),
           command.chatId,
           command.source,
+          command.recovery?.orderEpoch ?? 0,
+          command.provider.id,
+          command.model.routeId,
+          command.provider.accountId ?? null,
         ]);
         const pending = managedGoalRecoveries.get(key);
         if (pending) return pending;
@@ -7069,7 +7107,25 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               ?.get(`${command.chatId}:${command.threadId}`)
               ?.adapter.goalRecoveryAdmission(command.source);
           if (owned) return admitted(owned);
-          const prepared = await prepareManagedMutation(command, provider());
+          const preparation = command.recovery
+            ? inferenceAdmissionForWorker().beginGoalRecoveryPreparation({
+                chatId: command.chatId,
+                providerId: provider().id,
+                recovery: command.recovery,
+              })
+            : undefined;
+          let prepared: Awaited<ReturnType<typeof prepareManagedMutation>>;
+          try {
+            prepared = await prepareManagedMutation(command, provider());
+          } catch (error) {
+            // A native deadline or lost connection is not a completed failure.
+            // It must keep the conservative restoration boundary intact.
+            if (error instanceof CodexRpcObservationError)
+              preparation?.unconfirmed();
+            else preparation?.failed();
+            throw error;
+          }
+          preparation?.succeeded();
           if (!prepared)
             throw new Error("Goal recovery has no prepared session.");
           const { runtime, threadId } = prepared;
@@ -7091,11 +7147,29 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               NativeGoalRecoveryReceipt,
               { status: "ineligible" }
             >["reason"],
+            nativeEpoch?: string,
           ): NativeGoalRecoveryReceipt => ({
             source: command.source,
             status: "ineligible",
             workerGeneration: workerProcessGeneration,
             reason,
+            ...(nativeEpoch
+              ? {
+                  observation: {
+                    chatId: command.chatId,
+                    workerId: config.workerId,
+                    threadId,
+                    contextKind: entry.queueScope.identity.contextKind,
+                    projectId: entry.queueScope.identity.projectId,
+                    placementId: entry.queueScope.identity.placementId,
+                    modelRouteId: entry.queueSession().modelRouteId,
+                    providerAccountId: entry.queueSession().providerAccountId,
+                    runtimeGeneration: entry.generation,
+                    nativeEpoch,
+                    orderEpoch: command.recovery?.orderEpoch ?? 0,
+                  },
+                }
+              : {}),
           });
           if (!isDeepStrictEqual(snapshot.goalRecovery?.source, command.source))
             return ineligible("source-changed");
@@ -7136,8 +7210,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             entry.generation,
           );
           if (goal.goalEpoch !== command.source.goalEpoch)
-            return ineligible("epoch-changed");
-          if (goal.goal?.status !== "active") return ineligible("not-active");
+            return ineligible("epoch-changed", goal.nativeEpoch);
+          if (goal.goal?.status !== "active")
+            return ineligible("not-active", goal.nativeEpoch);
           const existing = entry.adapter.goalRecoveryAdmission(command.source);
           if (existing) return admitted(existing);
           const runner = managedExecutionRunners
