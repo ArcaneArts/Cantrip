@@ -441,6 +441,7 @@ export const contractRoots = [
   "nativeHistoryBatchArchivePageSchema",
   "nativeTurnModelAttributionSchema",
   "chatPlanOpaqueStateSchema",
+  "chatPlanUpdateSchema",
   "nativeSettingsRefreshRequestSchema",
   "nativeSettingsUpdateRequestSchema",
   "nativeSettingsUpdateReceiptSchema",
