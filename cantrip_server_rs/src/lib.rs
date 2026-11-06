@@ -3,6 +3,7 @@ pub mod auth;
 pub mod browsers;
 pub mod cantrip_os;
 pub mod chats;
+pub mod cli;
 pub mod config;
 pub mod database;
 pub mod database_transfer;

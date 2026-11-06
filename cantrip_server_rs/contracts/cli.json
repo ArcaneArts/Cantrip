@@ -1,0 +1,344 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "cantripCliCommandNameSchema": 0,
+    "cantripCliContextSchema": 1,
+    "cantripCliCommandRequestSchema": 14,
+    "workerCliCommandCallSchema": 19,
+    "cantripCliCommandResultSchema": 29
+  },
+  "nodes": [
+    {
+      "type": "enum",
+      "name": "cantripCliCommandNameSchema",
+      "values": [
+        "status",
+        "policy.list",
+        "policy.read",
+        "worktree.list",
+        "worktree.create",
+        "worktree.switch",
+        "worktree.status",
+        "worktree.release",
+        "worktree.remove",
+        "target.list",
+        "target.show",
+        "run.list",
+        "run.show",
+        "run.detect",
+        "run.create",
+        "run.update",
+        "run.delete",
+        "run.start",
+        "run.restart",
+        "run.status",
+        "run.logs",
+        "run.stop",
+        "run.secret-set",
+        "target.resolve-browser",
+        "target.resolve-explorer",
+        "target.resolve-terminal",
+        "explorer.list",
+        "explorer.read",
+        "explorer.write",
+        "terminal.read",
+        "terminal.send",
+        "terminal.restart",
+        "browser.services",
+        "browser.create",
+        "browser.open"
+      ],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "cantripCliContextSchema",
+      "shape": {
+        "codexThreadId": 2,
+        "terminalId": 5,
+        "cwd": 8,
+        "selection": 11
+      },
+      "catchall": 13,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 3,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 4, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 7, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 10, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 12,
+      "defaultValue": "auto",
+      "checks": []
+    },
+    { "type": "enum", "values": ["auto", "cwd", "lane"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripCliCommandRequestSchema",
+      "shape": { "command": 0, "context": 1, "arguments": 15 },
+      "catchall": 18,
+      "checks": []
+    },
+    {
+      "type": "record",
+      "keyType": 16,
+      "valueType": 17,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "cli-arguments-size",
+          "messageAfterPath": true,
+          "message": "Cantrip CLI commands accept at most 20 arguments."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "unknown", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "workerCliCommandCallSchema",
+      "shape": {
+        "command": 0,
+        "context": 1,
+        "arguments": 15,
+        "chatContext": 20,
+        "requestId": 26,
+        "workerId": 27
+      },
+      "catchall": 28,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 21,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 22, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "chatId": 23, "executionLaneId": 24 },
+      "catchall": 25,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripCliCommandResultSchema",
+      "shape": {
+        "summary": 30,
+        "target": 31,
+        "worktreeId": 51,
+        "continuationScheduled": 54,
+        "mutated": 56,
+        "data": 58
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 32,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 33, "checks": [] },
+    {
+      "type": "union",
+      "name": "executionTargetSchema",
+      "options": [34, 38, 41, 44, 47],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 35, "projectId": 36 },
+      "catchall": 37,
+      "checks": []
+    },
+    { "type": "literal", "values": ["project"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 39, "projectId": 36, "workerId": 36 },
+      "catchall": 40,
+      "checks": []
+    },
+    { "type": "literal", "values": ["worker"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 42, "projectId": 36, "projectReplicaId": 36 },
+      "catchall": 43,
+      "checks": []
+    },
+    { "type": "literal", "values": ["replica"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 45, "projectId": 36, "worktreeId": 36 },
+      "catchall": 46,
+      "checks": []
+    },
+    { "type": "literal", "values": ["worktree"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 48,
+        "projectId": 36,
+        "surfaceKind": 49,
+        "surfaceId": 36
+      },
+      "catchall": 50,
+      "checks": []
+    },
+    { "type": "literal", "values": ["surface"], "checks": [] },
+    {
+      "type": "enum",
+      "name": "executionSurfaceKindSchema",
+      "values": [
+        "chat",
+        "terminal",
+        "explorer",
+        "code",
+        "browser",
+        "remote-desktop",
+        "remote-surface"
+      ],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 52,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 53, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 55,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 57,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 59,
+      "checks": []
+    },
+    { "type": "unknown", "checks": [] }
+  ]
+}

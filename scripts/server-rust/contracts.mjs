@@ -705,6 +705,14 @@ export const surfaceMcpContractRoots = [
   "cantripMcpClientShowInteractionInputSchema",
 ];
 
+export const cliContractRoots = [
+  "cantripCliCommandNameSchema",
+  "cantripCliContextSchema",
+  "cantripCliCommandRequestSchema",
+  "workerCliCommandCallSchema",
+  "cantripCliCommandResultSchema",
+];
+
 // Resolve the actual source schemas, including their separate protocol modules.
 // Compatibility oracles use this registry, never the generated native manifest.
 export function sourceContractSchema(name) {
@@ -748,6 +756,7 @@ const refinements = new Map([
     "worker-command-unique",
   ],
   [protocol.cantripAgentOperationArgumentsSchema, "mcp-arguments-size"],
+  [protocol.workerCliCommandCallSchema.shape.arguments, "cli-arguments-size"],
   [protocol.mcpServerDiscoveryCandidateSchema, "mcp-discovery-worker"],
   [protocol.projectAlertProjectionSchema, "project-alert-projection"],
   [protocol.projectAlertProtectedDetailSchema, "project-alert-detail"],
@@ -1461,6 +1470,18 @@ if (
     await format(JSON.stringify(surfaceManifest), {
       ...(await resolveConfig(fileURLToPath(surfaceDestination))),
       filepath: fileURLToPath(surfaceDestination),
+    }),
+  );
+  const cliManifest = buildContractManifest(cliContractRoots);
+  const cliDestination = new URL(
+    "../../cantrip_server_rs/contracts/cli.json",
+    import.meta.url,
+  );
+  await writeFile(
+    cliDestination,
+    await format(JSON.stringify(cliManifest), {
+      ...(await resolveConfig(fileURLToPath(cliDestination))),
+      filepath: fileURLToPath(cliDestination),
     }),
   );
   // Zod's strict object checks enumerate inherited Buffer properties as well

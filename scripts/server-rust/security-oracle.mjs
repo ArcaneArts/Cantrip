@@ -25,6 +25,7 @@ import { projectAutomationWireCases } from "./project-automation-wire-fixtures.m
 import { endpointProviderWireCases } from "./endpoint-provider-wire-fixtures.mjs";
 import { mcpCompatibleWireCases } from "./mcp-compatible-wire-fixtures.mjs";
 import { runMcpInputWireCases } from "./run-wire-fixtures.mjs";
+import { cliWireCases } from "./cli-wire-fixtures.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -74,6 +75,7 @@ export function* vectorCases(name, samples = securityFixtures[name]) {
   }
   yield prepare(undefined, false);
   for (const input of runMcpInputWireCases(name, samples)) yield prepare(input);
+  for (const input of cliWireCases(name)) yield prepare(input);
   for (const input of mcpCompatibleWireCases(name, samples))
     yield prepare(input);
   for (const input of endpointProviderWireCases(name)) yield prepare(input);

@@ -37,7 +37,7 @@ pub(super) fn refine(
     result: &mut Parsed,
     path: &[Value],
 ) -> Result<bool, ValidationError> {
-    if !tag.starts_with("mcp-") {
+    if !tag.starts_with("mcp-") && tag != "cli-arguments-size" {
         return Ok(false);
     }
     let value = result
@@ -83,9 +83,16 @@ pub(super) fn refine(
                 }
             }
         }
-        "mcp-arguments-size" => {
-            if value.as_object().is_some_and(|v| v.len() > 32) {
-                result.issues.push(json!({"code":"custom","path":path,"message":"Cantrip agent operations accept at most 32 arguments."}));
+        "mcp-arguments-size" | "cli-arguments-size" => {
+            let (maximum, message) = if tag == "cli-arguments-size" {
+                (20, "Cantrip CLI commands accept at most 20 arguments.")
+            } else {
+                (32, "Cantrip agent operations accept at most 32 arguments.")
+            };
+            if value.as_object().is_some_and(|v| v.len() > maximum) {
+                result
+                    .issues
+                    .push(json!({"code":"custom","path":path,"message":message}));
             }
         }
         "mcp-discovery-worker" => {

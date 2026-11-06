@@ -1,4 +1,5 @@
 import { agentOperationWireFixtures } from "./agent-operation-wire-fixtures.mjs";
+import { cliWireFixtures } from "./cli-wire-fixtures.mjs";
 import { threadSyncWireFixtures } from "./chat-thread-sync-fixtures.mjs";
 import { cantripOsWireFixtures } from "./cantrip-os-wire-fixtures.mjs";
 import { projectSurfaceWireFixtures } from "./project-surface-wire-fixtures.mjs";
@@ -839,6 +840,7 @@ Object.assign(securityFixtures, mcpChatReadWireFixtures(securityFixtures));
 Object.assign(securityFixtures, mcpChatSendWireFixtures(securityFixtures));
 Object.assign(securityFixtures, nativeSuspensionWireFixtures());
 Object.assign(securityFixtures, nativeGoalRecoveryWireFixtures());
+Object.assign(securityFixtures, cliWireFixtures());
 const notification = securityFixtures.clientControlRequestSchema.find(
   (input) => input.command.kind === "notify",
 ).command;
