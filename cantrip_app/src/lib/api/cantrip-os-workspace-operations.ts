@@ -158,3 +158,34 @@ export async function getCantripOsWorkspaceOperations(
   }
   return page;
 }
+
+/** Older restore drafts have no guarded create request. Observe their original
+ * Server admission only; absence never authorizes an unfenced first create. */
+export async function observeLegacyCantripOsRestoreWorkspace(plan: {
+  instanceId: string;
+  operationId: string;
+  guestWorkspaceId: string;
+  attachmentGeneration: string;
+}) {
+  const accountKey = cantripOsWorkspaceCreateAccountKey();
+  const original = cantripOsWorkspaceOperationSummarySchema.parse(
+    await request(
+      path(plan.instanceId, plan.operationId),
+      {},
+      { expectedIdentity: identity(accountKey) },
+    ),
+  );
+  if (
+    original.instanceId !== plan.instanceId ||
+    original.operationId !== plan.operationId ||
+    original.guestWorkspaceId !== plan.guestWorkspaceId ||
+    original.attachmentGeneration !== plan.attachmentGeneration
+  )
+    throw new Error(
+      "The legacy restore workspace admission differs from its saved destination.",
+    );
+  return observeCantripOsWorkspaceOperation(
+    matches(original, original),
+    accountKey,
+  );
+}

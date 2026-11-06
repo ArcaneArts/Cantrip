@@ -26,6 +26,7 @@ import {
   cantripOsWorkspaceCreateAccountKey,
 } from "@/lib/cantrip-os-workspace-create-draft";
 import {
+  observeLegacyCantripOsRestoreWorkspace,
   submitCantripOsWorkspaceCreate,
   observeCantripOsWorkspaceCreateDraft,
   getCantripOsWorkspaceOperations,
@@ -260,4 +261,52 @@ it("requires a verified terminal outcome before accepting history completion", a
       cantripOsWorkspaceCreateAccountKey(),
     ),
   ).rejects.toThrow("verified receipt");
+});
+
+it("observes a legacy restore creation through its original owned admission without a create POST", async () => {
+  const { summary, result } = fixture();
+  mocks.request
+    .mockResolvedValueOnce(summary)
+    .mockResolvedValueOnce(summary)
+    .mockResolvedValueOnce(result)
+    .mockResolvedValueOnce(summary);
+  expect(
+    await observeLegacyCantripOsRestoreWorkspace({
+      instanceId: summary.instanceId,
+      operationId: summary.operationId,
+      guestWorkspaceId: summary.guestWorkspaceId,
+      attachmentGeneration: summary.attachmentGeneration,
+    }),
+  ).toEqual(summary);
+  const posts = mocks.request.mock.calls.filter(
+    (call) => call[1]?.method === "POST",
+  );
+  expect(posts).toHaveLength(1);
+  expect(posts[0]![0]).toMatch(/\/observe$/);
+  expect(posts[0]![1].body).toBeUndefined();
+});
+it("keeps unavailable or changed legacy restore creation uncertain without a replacement mutation", async () => {
+  const { summary } = fixture();
+  const plan = {
+    instanceId: summary.instanceId,
+    operationId: summary.operationId,
+    guestWorkspaceId: summary.guestWorkspaceId,
+    attachmentGeneration: summary.attachmentGeneration,
+  };
+  mocks.request.mockRejectedValueOnce(
+    new Error("Original admission unavailable"),
+  );
+  await expect(observeLegacyCantripOsRestoreWorkspace(plan)).rejects.toThrow(
+    "unavailable",
+  );
+  mocks.request.mockResolvedValueOnce({
+    ...summary,
+    attachmentGeneration: id(30),
+  });
+  await expect(observeLegacyCantripOsRestoreWorkspace(plan)).rejects.toThrow(
+    "saved destination",
+  );
+  expect(
+    mocks.request.mock.calls.some((call) => call[1]?.method === "POST"),
+  ).toBe(false);
 });

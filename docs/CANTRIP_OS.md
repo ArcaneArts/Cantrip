@@ -694,9 +694,9 @@ survive; maintenance explicitly interrupts managed work across the instance.
 Actual Docker and installed-VM tests cover original data, ignored/Git files,
 metadata, interrupted staging/exchange, old-helper rejection and package removal.
 The VM also exercises a real nested mount; ordinary Docker reports its actual
-mount permission failure. This is the guest administration foundation. Server/
-Worker reset authority and Cantrip reset controls remain required, alongside the
-remaining system-preservation, upgrade, clone and distribution work.
+mount permission failure. The following backend and product checkpoints build
+on this guest administration foundation; system preservation, upgrades, clone
+identity handling and final distributions remain required.
 
 Both Servers and the Worker now admit reset through the existing private recovery
 operation flow. Explicit selections remain encrypted; durable original admissions
@@ -704,7 +704,15 @@ pin the workspace account and attachment. Worker recovery observes the original
 guest exchange without resetting again, and rollback accepts retained resets as
 well as restores. Actual Worker-process failure and selected/whole-home reset
 roundtrips are exercised in Docker and over strict SSH to the installed VM.
-Dedicated product reset controls and full Worker/browser acceptance remain next.
+Cantrip now exposes explicit reset review/confirmation, private saved-request
+recovery, owned history and retained-home undo. Actual full Worker death after a
+committed reset, browser reload while offline and restart/resume recover the same
+admission and encrypted receipt without another reset. Product acceptance also
+preserves dirty/ignored/Unicode files, browser data, package inventory and root
+customization, retains later writes on undo and explicitly verifies restored
+Linux sources. New restore-workspace plans pin initial creation generations;
+legacy plans observe original admissions only. Account changes cannot redirect
+pending requests or erase another account's local draft.
 See [reset admissions](../cantrip_os/BACKUPS.md#workspace-reset-admissions).
 
 Attach a reachable cloud VM or physical install through authenticated transport.

@@ -1,5 +1,6 @@
 import {
   cantripOsBackupAdmissionSchema,
+  cantripOsResetPathsSchema,
   cantripOsBackupListQuerySchema,
   cantripOsBackupPageSchema,
   cantripOsBackupRecoverySchema,
@@ -248,6 +249,21 @@ export async function openCantripOsBackupDetails(
     throw new Error(
       "Private backup outcome differs from its Server admission.",
     );
+  if (result?.action === "reset") {
+    if (
+      intent.action !== "reset" ||
+      JSON.stringify(
+        cantripOsResetPathsSchema.parse(result.receipt.reset_paths),
+      ) !== JSON.stringify(intent.paths) ||
+      result.receipt.shared_system_state_changed !== false ||
+      result.receipt.runtime_handles_restored !== false ||
+      typeof result.receipt.retained_original_home !== "string" ||
+      !result.receipt.retained_original_home.startsWith("/")
+    )
+      throw new Error(
+        "The private reset receipt differs from its saved selection.",
+      );
+  }
   if (
     summary.result?.state === "ready" &&
     (!result || result.action === "error")
