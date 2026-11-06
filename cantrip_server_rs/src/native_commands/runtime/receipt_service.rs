@@ -59,7 +59,10 @@ impl ReceiptService {
         let chat = receipt["chatId"]
             .as_js_string()
             .context("Native receipt chat")?;
-        if receipt["method"] == "thread/settings/update" {
+        if receipt["method"] == "thread/settings/update"
+            || truthy(input.get("durableSuspension"))
+            || truthy(input["reconciliation"].get("terminalStatus"))
+        {
             (self.publish)(
                 json!({"type":"invalidation","ownerId":owner,"chatId":receipt["chatId"],"resource":"chat"}),
             );

@@ -10,6 +10,7 @@ import { cuaAgentAuthoritySchema } from "./computer-use-agent.js";
 import { z } from "zod";
 import { nativeGoalRecoverySourceSchema } from "./native-goal-recovery.js";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
+import { nativeSuspensionEvidenceSchema } from "./native-suspensions.js";
 
 const id = z.string().min(1).max(255);
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
@@ -49,6 +50,7 @@ export const nativeCommandIntentSchema = z
     settingsBindingId: id.optional(),
     resumeAutonomy: z.boolean().optional(),
     paused: z.boolean().optional(),
+    durableSuspension: z.literal(true).optional(),
     goalStatus: z.enum(["active", "paused"]).optional(),
     settingKeys: z.array(z.string().min(1).max(120)).max(64).default([]),
     expectedTurnId: id.nullable().default(null),
@@ -198,6 +200,9 @@ export type NativeCommandContinuation = z.infer<
 export const nativeCommandSettlementSchema = z
   .object({
     workerId: id,
+    workerGeneration: z.uuid().optional(),
+    durableSuspension: z.literal(true).optional(),
+    suspensionEvidence: nativeSuspensionEvidenceSchema.optional(),
     operationId: id,
     operationGeneration: id,
     status: z.enum(["applied", "rejected", "uncertain"]),
@@ -245,7 +250,13 @@ export const nativeCommandSettlementSchema = z
     executionComplete: z.boolean().default(false),
     executionStatus: z.enum(["idle", "failed"]).optional(),
     reconciliation: z
-      .object({ nativeTurnId: id, runtimeGeneration: id })
+      .object({
+        nativeTurnId: id,
+        runtimeGeneration: id,
+        terminalStatus: z
+          .enum(["completed", "failed", "interrupted"])
+          .optional(),
+      })
       .strict()
       .optional(),
   })

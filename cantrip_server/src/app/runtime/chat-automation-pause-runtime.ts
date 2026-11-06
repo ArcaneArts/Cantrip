@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import {
   chatPauseRuntimeStateSchema,
+  chatNativeSuspension,
   type ChatPauseRuntimeState,
 } from "@cantrip/protocol";
 import { managedTurnSessionContext } from "../../terminals/managed-session.js";
@@ -19,6 +20,7 @@ export interface ChatAutomationPauseRouteDependencies {
     | "listQueuedPrompts"
     | "setChatAutomationPaused"
     | "nativeCommands"
+    | "nativeSuspensions"
   >;
   resumeChatAutomation: (chatId: string) => Promise<void>;
 }
@@ -71,19 +73,30 @@ export function createChatAutomationPauseRuntime(
     }
 
     const managedNative = managedTurnSessionContext(context) !== undefined;
+    const suspension = managedNative
+      ? await repository.nativeSuspensions.read(ownerId, context.chatId)
+      : null;
+    if (paused && suspension?.phase === "paused")
+      return {
+        paused: true,
+        active: suspension.active,
+        nativeSuspension: chatNativeSuspension(suspension),
+      };
+    const durableResume =
+      managedNative && !paused && Boolean(suspension?.checkpoint);
     // Native goal/queue resume may start execution, so admission must observe
     // the user's durable unpause before the worker forwards that mutation.
     const resumed =
-      managedNative && !paused
+      managedNative && !paused && !durableResume
         ? await repository.setChatAutomationPaused(
             ownerId,
             context.chatId,
             false,
           )
         : null;
-    if (managedNative && !paused && !resumed)
+    if (managedNative && !paused && !durableResume && !resumed)
       throw new ChatAutomationPauseError(404, "Chat source not found.");
-    if (managedNative && !paused)
+    if (managedNative && !paused && !durableResume)
       await repository.nativeCommands.resumeAutonomy(ownerId, context.chatId);
     const workerConnected = bridge.isConnected(context.workerId);
     const pauseCommand = (paused: boolean) =>

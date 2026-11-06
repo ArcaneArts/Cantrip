@@ -14,8 +14,9 @@ CodeMode data through both gRPC and the default framed-stdio transport. Patch
 `0075` quiesces MCP clients and defers held startup until explicit resumption.
 The managed worker now captures a native checkpoint and commits its encrypted
 source locator before confirming Pause through either shared control path.
-Server control orchestration, cold execution adoption and client recovery are
-still being integrated. Do not treat the current product acknowledgement as
+Native command receipts now commit server suspension ownership and status.
+Cold execution adoption and client recovery are still being integrated. Do not
+treat the current product acknowledgement as
 the complete process-termination/resumption guarantee yet.
 
 The complete acceptance target is:
@@ -169,6 +170,48 @@ error from suspension Read immediately after Stop completion instead of the
 expected empty result. This terminal-cleanup inspection race remains tracked;
 it did not resume the stopped turn. The standard repository check stopped at
 existing application decomposition limits, so later stages were not run.
+
+## Server control and native receipts
+
+Managed Pause, Resume and Stop declare the exact original native turn and the
+current worker incarnation. Authorized dispatch commits the control epoch and
+actor claim in the same database transaction as its native command dispatch.
+GUI and terminal controls use this shared path in both server implementations.
+The actor's worker/runtime/operation generations fence acknowledgements; they
+are correlation data, never persisted execution authority.
+
+Pause settlement includes the committed worker locator and native descriptor.
+The command receipt and `paused` record commit together. Resume dispatch keeps
+automation held through `resuming`; only its native acknowledgement changes the
+record to `running` and releases the global hold. A failed database write leaves
+both receipt and recovery state retryable. The HTTP Resume path skips its old
+early unpause when checkpoint evidence exists. Stale workers and superseded
+control acknowledgements cannot release that hold.
+
+Actual native terminal evidence retires recovery separately from GUI logical
+cleanup. This covers GUI and terminal origins without waiting for a new turn.
+Transport failure and administrative execution retirement are not native
+terminal proof. Stop retains the existing input/Goal cancellation fence and
+clears checkpoint resumability on acknowledgement. A previous completed turn's
+record cannot absorb Stop for a different active native turn.
+
+Worker persistence failure records a fixed public control error while retaining
+native recovery bytes. The complete cold path still needs original-home
+selection, fresh execution admission/adoption, restoration errors, duplicate
+control reconciliation, and the client controls that distinguish Pausing from
+durably Paused. This transaction integration does not authorize startup or
+reconnection to resume inference or queued work.
+
+Control integration validation passed 97 focused worker tests, 84 server tests,
+all 1,114 protocol tests, and worker/server typechecks. The database compatibility
+harness ran 34 operations against each actual server implementation with
+separate migrated databases, including a real failed SQL write and retry.
+The normal 79-patch macOS arm64 development build and runtime verifier passed
+with `patchesSha256` of
+`a4529c16e562ab5db15d93993056903bbfc3af835de00a6d051343c128274379`.
+All 40 native cases in the shared-control, durable-Goal and durable-suspension
+suites passed against that binary. Whole worker-tree cold product Resume
+acceptance remains required; these results do not claim that path is delivered.
 
 ## Checkpoint store foundation
 

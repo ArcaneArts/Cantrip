@@ -6,6 +6,13 @@ import { isNativeTransportClosure } from "./native-transport-evidence.js";
 import { goalHandoffSessionMatches } from "./native-goal-handoff-affinity.js";
 import { reconcileNativeThreadObservation } from "./native-thread-observation.js";
 import { NativeCommandRecoveryRepository } from "./native-command-recovery.js";
+import { NativeSuspensionRepository } from "./native-suspensions.js";
+import {
+  dispatchNativeSuspension,
+  settleNativeSuspension,
+  finishNativeSuspension,
+  assertSuspensionTerminalProof,
+} from "./native-command-suspension.js";
 import { authorizeNativeInferenceResource } from "./native-inference-resources.js";
 import type { NativeInferenceResourceAuthorization } from "@cantrip/protocol";
 import {
@@ -513,6 +520,13 @@ export class NativeCommandRepository {
           (input.method !== "turn/pause" && input.intent.paused !== undefined)
         )
           throw new NativeCommandError("invalid-pause-intent");
+        if (
+          input.intent.durableSuspension &&
+          (!["turn/pause", "turn/interrupt"].includes(input.method) ||
+            !input.intent.expectedTurnId ||
+            !input.intent.workerGeneration)
+        )
+          throw new NativeCommandError("invalid-suspension-control");
         if (
           input.intent.resumeAutonomy &&
           ![
@@ -1240,6 +1254,12 @@ export class NativeCommandRepository {
         (row.method === "thread/goal/set" && intent.goalStatus === "paused")
       )
         await cancelGoalHandoffs(tx, row.chatId);
+      const durableControl = await dispatchNativeSuspension(
+        new NativeSuspensionRepository(this.database).inTransaction(tx),
+        ownerId,
+        row,
+        input,
+      );
       if (row.method === "turn/interrupt")
         await this.stopAutonomyInTransaction(tx, row.chatId);
       else if (intent.resumeAutonomy)
@@ -1247,7 +1267,7 @@ export class NativeCommandRepository {
           .update(schema.chats)
           .set({ managedAutonomyStopped: false })
           .where(eq(schema.chats.id, row.chatId));
-      if (row.method === "turn/pause") {
+      if (row.method === "turn/pause" && !durableControl) {
         await tx
           .update(schema.chats)
           .set({ automationPaused: intent.paused! })
@@ -1753,6 +1773,12 @@ export class NativeCommandRepository {
       );
       if (input.terminalResult && !input.executionComplete)
         throw new NativeCommandError("terminal-result-requires-completion");
+      await assertSuspensionTerminalProof(
+        new NativeSuspensionRepository(this.database).inTransaction(tx),
+        ownerId,
+        current,
+        input,
+      );
       const terminalEvidence = input.deferred
         ? {
             kind: "deferred",
@@ -2037,6 +2063,11 @@ export class NativeCommandRepository {
         throw new NativeCommandError("receipt-conflict");
       if (input.reconciliation)
         await rememberNativeCommandTurn(tx, current, input.reconciliation);
+      const suspensions = new NativeSuspensionRepository(
+        this.database,
+      ).inTransaction(tx);
+      await settleNativeSuspension(suspensions, ownerId, current, input);
+      await finishNativeSuspension(suspensions, ownerId, current, input);
       const updated = firstOrThrow(
         await tx
           .update(schema.nativeCommands)

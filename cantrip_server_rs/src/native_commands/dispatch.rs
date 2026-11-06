@@ -175,6 +175,7 @@ async fn dispatch(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Va
     {
         queue::cancel_goal_handoffs(tx, &chat).await?;
     }
+    let durable_control = super::suspension::dispatch(tx, owner, &row, input).await?;
     if row["method"] == "turn/interrupt" {
         queue::stop_autonomy(tx, &chat).await?;
     } else if truthy(intent.get("resumeAutonomy")) {
@@ -184,7 +185,7 @@ async fn dispatch(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Va
         )
         .await?;
     }
-    if row["method"] == "turn/pause" {
+    if row["method"] == "turn/pause" && !durable_control {
         let paused = intent["paused"].as_bool().context("Native pause intent")?;
         tx.query(
             "UPDATE chats SET automation_paused=$1 WHERE id=$2",

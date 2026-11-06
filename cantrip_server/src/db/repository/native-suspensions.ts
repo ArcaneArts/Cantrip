@@ -85,10 +85,17 @@ function finishPausedTime(state: State, now: Date): State {
 /** Durable control records, not admission grants. Callers must authenticate and admit
  * actual worker/runtime operations separately before claiming their correlation IDs. */
 export class NativeSuspensionRepository {
-  constructor(private readonly database: RepositoryDatabase) {}
+  constructor(
+    private readonly database: RepositoryDatabase,
+    private readonly transaction?: RepositoryTransaction,
+  ) {}
+
+  inTransaction(tx: RepositoryTransaction): NativeSuspensionRepository {
+    return new NativeSuspensionRepository(this.database, tx);
+  }
 
   async read(ownerId: string, chatId: string): Promise<State | null> {
-    const [row] = await this.database
+    const [row] = await (this.transaction ?? this.database)
       .select({ state: schema.chats.nativeSuspensionState })
       .from(schema.chats)
       .where(
@@ -109,7 +116,7 @@ export class NativeSuspensionRepository {
       now: Date,
     ) => Promise<Change>,
   ): Promise<Change> {
-    return this.database.transaction(async (tx) => {
+    const applyChange = async (tx: RepositoryTransaction) => {
       await lockNativeCommandChat(tx, ownerId, chatId);
       const [chat] = await tx
         .select()
@@ -154,7 +161,10 @@ export class NativeSuspensionRepository {
         .set({ revision: sql`${schema.managedQueueStates.revision} + 1` })
         .where(eq(schema.managedQueueStates.chatId, chatId));
       return { state, changed: true };
-    });
+    };
+    return this.transaction
+      ? applyChange(this.transaction)
+      : this.database.transaction(applyChange);
   }
 
   /** Commit intent before IPC. Duplicates join the canonical in-flight control. */
@@ -162,7 +172,10 @@ export class NativeSuspensionRepository {
     ownerId: string,
     chatId: string,
     action: State["action"],
+    expectedActive?: NativeSuspensionActiveTurn,
   ): Promise<Change> {
+    if (expectedActive)
+      expectedActive = nativeSuspensionActiveTurnSchema.parse(expectedActive);
     return this.change(ownerId, chatId, async (tx, chat, current, now) => {
       if (
         current &&
@@ -172,7 +185,10 @@ export class NativeSuspensionRepository {
           (action === "stop" &&
             ["stopping", "stopped", "completed", "failed", "idle"].includes(
               current.phase,
-            )))
+            ) &&
+            (current.phase === "stopping" ||
+              !expectedActive ||
+              sameTurn(current.active, expectedActive))))
       )
         return { state: current, changed: false };
       if (
