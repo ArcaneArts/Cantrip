@@ -22,6 +22,7 @@ import { HttpFixture } from "./http-fixture.mjs";
 import { eventually, launchActualWorker } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
 import { killOwnedWorkerTree } from "./owned-worker-tree.mjs";
+import { openSuspensionTerminal } from "./suspension-terminal-browser.mjs";
 import {
   coldSuspensionStop,
   damageColdStopCheckpoint,
@@ -111,7 +112,7 @@ async function flow(kind, executable, cliBinary) {
       CANTRIP_APP_ORIGINS: new URL(vite.resolvedUrls.local[0]).origin,
     },
   });
-  let worker;
+  let worker, terminal, terminalId;
   const launch = async (enrollmentCode) => {
     worker = launchActualWorker(fixture, workerData, {
       cliBinary,
@@ -159,16 +160,33 @@ async function flow(kind, executable, cliBinary) {
     const tool = model.reply({ text: "DURABLE_TOOL_REQUEST", hold: true });
     let boundary = model.reply({ text: "DURABLE_BOUNDARY_ONE", hold: true });
     const prompt = "DURABLE_ORIGINAL_PROMPT";
-    const admitted = await page.evaluate(
-      async ({ id, prompt, configuration }) =>
-        (await import("/src/lib/api/chats.ts")).startTurn(
-          id,
-          prompt,
-          configuration,
-        ),
-      { id: chat.id, prompt, configuration },
-    );
-    assert.equal(admitted.status, "queued");
+    if (process.argv.includes("--terminal-origin")) {
+      terminal = await openSuspensionTerminal(page, chat.id, workerId);
+      terminalId = terminal.id;
+      const before = inferences();
+      await terminal.input(prompt);
+      await eventually(terminal.read, (state) =>
+        assert.ok(state.text.includes(prompt)),
+      );
+      assert.equal(
+        inferences(),
+        before,
+        "Opening and editing a native terminal draft do not start inference",
+      );
+      await terminal.input("\r");
+      result.terminalOrigin = true;
+    } else {
+      const admitted = await page.evaluate(
+        async ({ id, prompt, configuration }) =>
+          (await import("/src/lib/api/chats.ts")).startTurn(
+            id,
+            prompt,
+            configuration,
+          ),
+        { id: chat.id, prompt, configuration },
+      );
+      assert.equal(admitted.status, "queued");
+    }
     await eventually(
       () => tool.entered,
       (value) => assert.equal(value, true),
@@ -215,6 +233,15 @@ async function flow(kind, executable, cliBinary) {
       );
     if (process.argv.includes("--mounted-ui"))
       await openMountedSuspensionChat(page, vite.resolvedUrls.local[0], false);
+    if (terminalId && process.argv.includes("--mounted-ui")) {
+      terminal.dispose();
+      terminal = await openSuspensionTerminal(
+        page,
+        chat.id,
+        workerId,
+        terminalId,
+      );
+    }
     let active;
     for (let round = 1; round <= 2; round++) {
       const steering = "DURABLE_ACCEPTED_PENDING_" + round;
@@ -307,6 +334,24 @@ async function flow(kind, executable, cliBinary) {
         );
         (result.mountedUi ??= []).push({ round, ...opened });
       }
+      if (terminalId) {
+        terminal.dispose();
+        terminal = await openSuspensionTerminal(
+          page,
+          chat.id,
+          workerId,
+          terminalId,
+        );
+        let state;
+        await eventually(
+          async () => (state = await terminal.read()),
+          (value) => {
+            assert.ok(value.text.includes(prompt), value.text);
+            assert.ok(value.text.includes("DURABLE_TOOL_RESULT"), value.text);
+          },
+        );
+        (result.terminalReattachments ??= []).push({ round, text: state.text });
+      }
       await delay(300);
       assert.equal(
         inferences(),
@@ -393,6 +438,12 @@ async function flow(kind, executable, cliBinary) {
         .first()
         .waitFor({ state: "visible" });
       result.mountedFinalVisible = true;
+    }
+    if (terminal) {
+      await eventually(terminal.read, (state) =>
+        assert.ok(state.text.includes("DURABLE_RECOVERED_FINAL")),
+      );
+      result.terminalFinalVisible = true;
     }
     assert.equal(textItems.filter((item) => item.text === prompt).length, 1);
     const final = textItems.find(
@@ -482,6 +533,7 @@ async function flow(kind, executable, cliBinary) {
     result.error = error.stack;
     throw error;
   } finally {
+    terminal?.dispose();
     if (worker) {
       result.workerDiagnostics = worker.diagnostics();
       await killOwnedWorkerTree(worker.child);

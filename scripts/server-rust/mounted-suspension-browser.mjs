@@ -53,6 +53,7 @@ export async function clickMountedSuspensionPause(page, chatId) {
       new URL(response.url()).pathname === "/api/chats/" + chatId + "/pause" &&
       response.request().method() === "PATCH",
   );
+  void reply.catch(() => {});
   await page.getByRole("button", { name: "Pause agent" }).click();
   const response = await reply;
   assert.equal(response.status(), 200, await response.text());
@@ -65,6 +66,7 @@ export async function clickMountedSuspensionResume(page, chatId) {
       new URL(response.url()).pathname === "/api/chats/" + chatId + "/pause" &&
       response.request().method() === "PATCH",
   );
+  void reply.catch(() => {});
   await page
     .getByRole("button", { name: /^Resume( automatic agent work| turn)?$/ })
     .click();

@@ -281,6 +281,11 @@
       "fuzzyFileSearch/sessionUpdate",
       "fuzzyFileSearch/sessionStop"
     ],
-    "sessionDiscoveryMethods": ["skills/list", "hooks/list"]
+    "sessionDiscoveryMethods": [
+      "skills/list",
+      "hooks/list",
+      "thread/resume",
+      "thread/unsubscribe"
+    ]
   }
 }

@@ -4656,13 +4656,24 @@ export class CodexAppServer implements CodexRuntime {
     cwd: string;
     threadId: string;
   }): Promise<AgentThreadSync> {
-    const response = (await this.request("thread/read", {
-      threadId: options.threadId,
-      includeTurns: true,
-    })) as CodexThreadReadResponse;
+    const snapshot = await this.readNativeHistory(options.threadId);
+    const response = snapshot as unknown as CodexThreadReadResponse;
     const baseline = this.#externalTurnBaselines.get(options.threadId);
+    const canonicalHistory =
+      this.#managedThreadOverlays.get(options.threadId)?.options
+        .canonicalHistory === true;
     const sourceTurns = response.thread.turns
       .filter((turn) => (baseline ? !baseline.has(turn.id) : false))
+      // The encrypted history pipeline owns these exact native turns. Sending
+      // them through legacy console sync would create another message identity,
+      // particularly for TUI input without a Cantrip client-message prefix.
+      .filter(
+        (turn) =>
+          !canonicalHistory ||
+          !snapshot.history?.turns.some(
+            (entry) => entry.turnId === turn.id && entry.source === "canonical",
+          ),
+      )
       .filter(
         (turn) =>
           !turn.items.some(

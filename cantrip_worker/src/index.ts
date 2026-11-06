@@ -2657,6 +2657,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         ...options,
         executionProfile,
         subagentDefaults,
+        canonicalHistory: session.contextKind === "project",
         mcpServers: undefined,
         ...(heldSource
           ? { expectedSuspension: heldSource.evidence.suspension }

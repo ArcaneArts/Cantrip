@@ -11,7 +11,7 @@ import {
 } from "./agent-trajectory";
 import { buildAgentTurnProjection } from "./agent-turn-projection";
 import { AgentInspectContent } from "./agent-inspect-content";
-import { projectTrajectory } from "./trajectory-model";
+import { projectTrajectory, turnSlices } from "./trajectory-model";
 import { chatScrollIsNearBottom } from "./use-sticky-chat-scroll";
 
 const { buildAgentTurnProjectionSpy, projectTrajectorySpy } = vi.hoisted(
@@ -20,6 +20,48 @@ const { buildAgentTurnProjectionSpy, projectTrajectorySpy } = vi.hoisted(
     projectTrajectorySpy: vi.fn(),
   }),
 );
+
+it("retains early assistant history when delayed native correlation empties its former slice", () => {
+  const correlated = (text: string, turnId: string): ChatMessage["content"] => [
+    {
+      type: "text",
+      text,
+      correlation: {
+        sourceMethod: "native-history",
+        diagnosticId: null,
+        threadId: "thread",
+        turnId,
+        itemId: text,
+      },
+    },
+  ];
+  const slices = turnSlices([
+    message(
+      "early",
+      1,
+      "assistant",
+      1000,
+      correlated("Early result", "original"),
+    ),
+    message("other", 2, "user", 1100, correlated("Other input", "other")),
+    message(
+      "original",
+      3,
+      "user",
+      1200,
+      correlated("Original prompt", "original"),
+    ),
+  ]);
+  expect(slices.map((slice) => slice.runtimeTurnId)).toEqual([
+    "other",
+    "original",
+  ]);
+  expect(slices[1]!.messages.map((entry) => entry.id)).toEqual([
+    "original",
+    "early",
+  ]);
+  expect(slices.flatMap((slice) => slice.messages)).toHaveLength(3);
+});
 
 vi.mock("./trajectory-model", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./trajectory-model")>();
