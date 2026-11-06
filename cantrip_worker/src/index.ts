@@ -1934,6 +1934,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         nativeEnvironment,
         inferenceAdmissionForWorker(),
         createNativeResourceProtection(workerEncryption),
+        async (input, signal) => {
+          await nativeCommands.dispatchTaskGoalCycle(
+            {
+              ...input,
+              serverId: nativeNamespaceScope().serverId,
+              workerGeneration: workerProcessGeneration,
+            },
+            signal,
+          );
+          inferenceAdmissionForWorker().wakeRecovery(input.chatId);
+        },
       );
       runtime.setGoalObserver((threadId, goal) => {
         if (runtime && handoffStaging.held(runtime, threadId)) return;
@@ -6034,6 +6045,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             }
             const turnOptions: Parameters<typeof runtime.runTurn>[0] = {
               taskOwned: encryptedTask,
+              taskGoalCycleId: encryptedTask
+                ? command.taskInferenceInput?.kind === "goal"
+                  ? command.taskInferenceInput.dispatch.cycleId
+                  : null
+                : undefined,
               initialLabel,
               inferenceSource: taskInferenceOwner?.source,
               preparationSignal:
@@ -7246,6 +7262,76 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           })
           .catch(() => {});
         return recovery;
+      }
+      case "task.goal.recover": {
+        const admission = inferenceAdmissionForWorker();
+        const preparation = admission.beginGoalRecoveryPreparation({
+          chatId: command.chatId,
+          providerId: provider().id,
+          recovery: command.recovery,
+        });
+        try {
+          await admission.confirmNativeOwnership();
+          const subagentDefaults = command.subagentDefaults
+            ? {
+                model: command.subagentDefaults.model,
+                provider: await openRuntimeProvider({
+                  provider: command.subagentDefaults.provider,
+                  service: workerEncryption,
+                }),
+              }
+            : null;
+          if (
+            subagentDefaults &&
+            (subagentDefaults.provider.id !== provider().id ||
+              subagentDefaults.provider.kind !== provider().kind ||
+              subagentDefaults.provider.accountId !== provider().accountId ||
+              subagentDefaults.provider.credentialHomeKey !==
+                provider().credentialHomeKey)
+          )
+            throw new Error(
+              "Custom subagents must use the root model's provider identity.",
+            );
+          const runtime = runtimeFor({
+            ...command,
+            provider: provider(),
+            subagentDefaults,
+          });
+          projectGoalDelivery.skip(command.threadId);
+          const mcpServers = await agentMcpServers(
+            command.cwd,
+            command.mcpServers,
+            {
+              contextKind: "project",
+              chatId: command.chatId,
+              projectId: command.projectId,
+              worktreeId: command.worktreeId,
+              rootKind: command.rootKind,
+              workerId: config.workerId,
+              scratchRootId: null,
+              permissionProfileId: command.permissionProfileId,
+            },
+            "ide",
+            command.computerUseEnabled,
+          );
+          const result = await runtime.recoverTaskGoalCycle({
+            ...command,
+            provider: provider(),
+            subagentDefaults,
+            mcpServers,
+          });
+          preparation.succeeded();
+          return {
+            ...result,
+            sourceKey: command.recovery.sourceKey,
+            workerGeneration: workerProcessGeneration,
+          };
+        } catch (error) {
+          if (error instanceof CodexRpcObservationError)
+            preparation.unconfirmed();
+          else preparation.failed();
+          throw error;
+        }
       }
       case "chat.automation.resume": {
         const prepared = await prepareManagedMutation(command, provider());

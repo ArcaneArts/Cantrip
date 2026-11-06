@@ -49,6 +49,7 @@ const EXECUTION_CONTROL_COMMANDS = new Set<WorkerCommand["type"]>([
   "chat.queue.prepare",
   "chat.automation.resume",
   "chat.goal.recover",
+  "task.goal.recover",
   "agent.interaction.respond",
   "agent.interaction.respond.protected",
   "agent.interaction.cancel",

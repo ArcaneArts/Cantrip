@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { taskInferenceInputReceiptSchema } from "./task-inference-input.js";
 import {
+  taskGoalCycleIdentitySchema,
+  taskGoalCycleRecoverySchema,
+} from "./task-goal-cycle.js";
+import {
   nativeGoalRecoveryAdmissionSchema,
   nativeGoalRecoverySchema,
 } from "./native-goal-recovery.js";
@@ -38,6 +42,7 @@ export const inferenceRecoveryIdentitySchema = z
       .strict()
       .optional(),
     taskInput: taskInferenceInputReceiptSchema.nullable().optional(),
+    taskGoalCycle: taskGoalCycleIdentitySchema.optional(),
   })
   .strict();
 
@@ -130,6 +135,9 @@ export const nativeInferenceRecoveryResultSchema = z
     /** Current canonical unused cycle, never a provider grant. Allows worker
      * preparation eligibility to follow this exact source and ordering epoch. */
     goalRecovery: nativeGoalRecoverySchema.optional(),
+    /** A private Task cycle whose begin never reached model/tool execution. */
+    taskGoalCycleNotDispatched: z.boolean().optional(),
+    taskGoalRecovery: taskGoalCycleRecoverySchema.optional(),
     goalOwnershipChallenge: nativeGoalRecoveryAdmissionSchema.optional(),
   })
   .strict();

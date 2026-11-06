@@ -2448,3 +2448,72 @@ execution, hosted validation, or computer-use testing ran. Runtime/platform
 behavior remains unverified. Task-private Goal transfer/checkpoint handling,
 other Goal mutation/control paths, and the remaining full lifecycle audit are
 still part of the active concurrency goal.
+
+## Recovering unused Task-private Goal cycles
+
+Task-owned Goals use an inference-only native gate rather than the managed
+command queue. Their explicit initial input keeps its existing Task receipt.
+Later native cycles now carry a separate identity: the approved Task dispatch
+cycle, actual Core Goal epoch, thread/turn, private scope and attempt, configured
+route/account, and provider ordering episode. Core confirms the Goal epoch and
+inference-only owner under the same lock as its pending inference claim. A
+notification alone cannot create that identity. Native checkpoint restoration,
+independent helpers, child agents and ordinary user turns do not obtain the
+unused Task-cycle identity.
+
+The worker journal groups eligible replacements by chat, Task dispatch cycle,
+thread, Goal epoch and ordering episode. Recovery requires an actually fenced
+previous owner or a positively settled unused scope. A native binding generally
+excludes this replay path; a positive `never-started` receipt can still establish
+that the private allow was never forwarded. Bound or suspended execution with
+potential model/tool output keeps its existing checkpoint/uncertainty handling.
+Neither a quiet stream nor an observation timeout establishes unused work.
+
+Both servers retain one metadata marker on the existing Task dispatch cycle.
+The marker contains identifiers and bounded producer/retirement evidence, with
+no copy of the encrypted Goal or user input. Reconciliation checks the current
+owner, latest approved Task cycle, native thread, worker, worktree, route/account
+and Task controls. The original explicit input and its terminal projection keep
+their own authority.
+
+The existing durable queue-revision delivery carries the recovery notice and
+wakes journals on the current and Source workers. No additional poller, prompt
+queue or Task Worker preset is introduced. Recovery prepares the full native
+runtime through the existing credential, MCP and subagent helpers, reads the
+actual native Goal on that prepared transport, and wakes that Goal without
+setting it again or sending a synthetic Resume message.
+
+A wake request is not an enqueue acknowledgement. The worker observes the
+actual private scope's durable journal enqueue separately from its capacity
+grant. The recovery control request acknowledges that physical enqueue while
+inference can remain queued for any duration. Its short observation timeout does
+not cancel the Goal, release a running lease or classify an uncertain runtime as
+failed. An advisory producer receipt refers to that actual journal actor; a
+fenced or positively unused matching record clears the receipt and schedules
+another durable wake. Repeated identical receipts do not create notice loops.
+
+The worker adopts the retained ordinal before granting replacement capacity.
+Only a ticket that actually adopted the Task marker carries that recovery
+authority into its native lease. Before forwarding private allow, it binds its
+native scope durably, re-reads the actual Goal epoch/status, and confirms the
+exact current Task binding and Source with the server. The server does not grant
+capacity. Ordinary fresh native cycles continue using the worker's existing
+private gate without a server round trip per cycle. They release and rejoin FIFO
+at their normal native boundaries.
+
+A completed negative Goal read retires only the exact marker whose scope is
+still current. The marker retains bounded Source/replacement provenance so a
+late unused record cannot recreate a consumed cycle. Incoming scopes with a
+different epoch are not, by themselves, authority to retire another marker.
+Changing accounts/providers or transferring a private Task Goal's route remains
+part of the subsequent lifecycle audit; this recovery path requires the retained
+canonical binding and does not guess a replacement route.
+
+Validation for this milestone is source review, direct formatting, mechanical
+protocol source export (653 roots, 10,820 nodes; Run export 11 roots, 453 nodes),
+and `git diff --check`. Native patch `0080` is authored
+from tracked source fragments; it has not been applied, checked or executed.
+No tests, builds, typechecks, benchmarks, native/helper execution, hosted
+validation, or computer-use testing ran. Runtime/platform behavior remains
+unverified. The full concurrency goal remains active while the remaining
+provider-transfer, control and entry-point audits continue.

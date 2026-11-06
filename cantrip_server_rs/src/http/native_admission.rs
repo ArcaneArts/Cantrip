@@ -150,7 +150,10 @@ async fn apply(
     }
     if matches!(
         phase.as_str(),
-        "inference-recovery" | "task-input-dispatch" | "goal-recovery-fence"
+        "inference-recovery"
+            | "task-input-dispatch"
+            | "task-goal-cycle-dispatch"
+            | "goal-recovery-fence"
     ) {
         let worker = input["workerId"].as_str().unwrap();
         let current = || {
@@ -172,6 +175,10 @@ async fn apply(
         let repo = Repository::new(service.repository.database.clone());
         let result = if phase == "goal-recovery-fence" {
             repo.fence_goal_recovery_admission(&owner, &input).await?
+        } else if phase == "task-goal-cycle-dispatch" {
+            crate::tasks::Repository::new(service.repository.database.clone())
+                .dispatch_goal_cycle(&owner, &input)
+                .await?
         } else if phase == "task-input-dispatch" {
             crate::tasks::Repository::new(service.repository.database.clone())
                 .dispatch_inference_input(
@@ -180,6 +187,13 @@ async fn apply(
                     &input["receipt"],
                     input["phase"].as_str().unwrap(),
                 )
+                .await?
+        } else if input["record"]["identity"]["recovery"]
+            .get("taskGoalCycle")
+            .is_some_and(|v| !v.is_null())
+        {
+            crate::tasks::Repository::new(service.repository.database.clone())
+                .reconcile_goal_cycle(&owner, &input)
                 .await?
         } else if input["record"]["identity"]["recovery"]
             .get("taskInput")
@@ -202,9 +216,11 @@ async fn apply(
                 &Value::Null,
             );
             if result["disposition"] == "requeued"
-                && input["record"]["identity"]["recovery"]
-                    .get("taskInput")
-                    .is_some_and(|v| !v.is_null())
+                && ["taskInput", "taskGoalCycle"].iter().any(|key| {
+                    input["record"]["identity"]["recovery"]
+                        .get(key)
+                        .is_some_and(|v| !v.is_null())
+                })
             {
                 service.execution.scheduler.queue_tick();
             }
@@ -212,6 +228,8 @@ async fn apply(
         return crate::settings::parse_response(
             if phase == "task-input-dispatch" {
                 "taskInferenceInputDispatchResultSchema"
+            } else if phase == "task-goal-cycle-dispatch" {
+                "taskGoalCycleDispatchResultSchema"
             } else if phase == "goal-recovery-fence" {
                 "nativeGoalRecoveryFenceResultSchema"
             } else {
@@ -348,6 +366,7 @@ async fn handle(
             "goal-recovery-fence" => "nativeGoalRecoveryFenceSchema",
             "inference-resource-authorize" => "nativeInferenceResourceAuthorizationSchema",
             "task-input-dispatch" => "taskInferenceInputDispatchSchema",
+            "task-goal-cycle-dispatch" => "taskGoalCycleDispatchSchema",
             "task-goal-outcome" => "taskGoalOutcomeDeliverySchema",
             _ => "nativeCommandDispatchSchema",
         },
@@ -359,6 +378,7 @@ async fn handle(
                 400,
                 match phase.as_str() {
                     "task-input-dispatch" => "invalid-task-input-dispatch",
+                    "task-goal-cycle-dispatch" => "invalid-task-goal-cycle-dispatch",
                     "task-goal-outcome" => "invalid-task-goal-outcome",
                     "inference-recovery" => "invalid-inference-recovery",
                     "goal-recovery-fence" => "invalid-goal-recovery-fence",
@@ -392,6 +412,7 @@ async fn handle(
         Ok(None) => return code(404, "worker-not-found"),
         Err(cause) => return middleware::failure(&service, &ctx.id, &cause),
     };
+    let task_goal_cycle_dispatch = phase == "task-goal-cycle-dispatch";
     match service
         .scratch_roots
         .owned(apply(service.clone(), owner, input, phase))
@@ -402,7 +423,14 @@ async fn handle(
             if let Some(e) = cause.downcast_ref::<CommandError>() {
                 code(e.status, &e.code)
             } else if cause.is::<crate::task_dispatch::Conflict>() {
-                code(409, "stale-task-input")
+                code(
+                    409,
+                    if task_goal_cycle_dispatch {
+                        "stale-task-goal-cycle"
+                    } else {
+                        "stale-task-input"
+                    },
+                )
             } else {
                 middleware::failure(&service, &ctx.id, &cause)
             }
@@ -425,6 +453,10 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         )
         .route(
             "/api/internal/native-commands/task-input-dispatch",
+            post(handle),
+        )
+        .route(
+            "/api/internal/native-commands/task-goal-cycle-dispatch",
             post(handle),
         )
         .route(

@@ -18,6 +18,7 @@ import {
   type NativeCommandAdmission,
   type NativeCommandSession,
   type NativeGoalRecoveryReceipt,
+  type TaskGoalCycleRecovery,
 } from "@cantrip/protocol";
 import type { ServerRepository } from "../repository.js";
 import * as schema from "../schema.js";
@@ -152,6 +153,7 @@ export class ManagedQueueRepository {
       .select({
         state: schema.managedQueueStates,
         ownerId: schema.chats.ownerId,
+        taskGoalRecovery: sql<TaskGoalCycleRecovery | null>`(SELECT c.goal_cycle_recovery FROM task_dispatch_cycles c WHERE c.chat_id = ${schema.chats.id} ORDER BY c.created_at DESC,c.id DESC LIMIT 1)`,
         goalEligible: sql<boolean>`${noPendingPermission(schema.chats.id)} AND ${noPendingHandoff(schema.chats.id)}`,
       })
       .from(schema.managedQueueStates)
@@ -185,6 +187,7 @@ export class ManagedQueueRepository {
       const workerIds = [
         ...new Set([
           ...(context ? [context.workerId] : []),
+          ...(row.taskGoalRecovery ? [row.taskGoalRecovery.workerId] : []),
           ...previous.map((entry) => entry.workerId),
         ]),
       ];
@@ -197,6 +200,11 @@ export class ManagedQueueRepository {
           revision: row.state.revision,
           ...(row.state.goalRecovery && row.goalEligible
             ? { goalRecovery: row.state.goalRecovery }
+            : {}),
+          ...(row.taskGoalRecovery &&
+          !row.taskGoalRecovery.settled &&
+          row.goalEligible
+            ? { taskGoalRecovery: row.taskGoalRecovery }
             : {}),
           ...(workerIds.length ? { additionalWorkerIds: workerIds } : {}),
           ...(!context ? { recoveryOnly: true } : {}),

@@ -372,6 +372,9 @@ export interface RunAgentTurnRetry {
 export interface RunAgentTurnOptions {
   /** The existing Task lifecycle owns input; native cycles still need provider admission. */
   taskOwned?: boolean;
+  /** Immutable canonical dispatch cycle for native Task Goal continuations.
+   * Null explicitly removes a preceding Goal cycle's private association. */
+  taskGoalCycleId?: string | null;
   /** First-message metadata is serial with this turn, never a concurrent borrower. */
   initialLabel?: {
     providerId: string;
@@ -641,7 +644,12 @@ export type GoalRuntimeOptions = Pick<
   | "permissionProfileId"
   | "provider"
   | "threadId"
-> & { chatId?: string; taskOwned?: boolean };
+> & {
+  chatId?: string;
+  projectId?: string | null;
+  taskOwned?: boolean;
+  taskGoalCycleId?: string | null;
+};
 
 export interface NativeReplacementSettings {
   sourceThreadId: string;

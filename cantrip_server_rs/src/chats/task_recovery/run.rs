@@ -61,6 +61,15 @@ impl Service {
             goals.reconcile(owner, &task, &json!("complete")).await?;
             return Ok(true);
         }
+        if self
+            .tasks
+            .pending_goal_cycle_recovery(owner, chat)
+            .await?
+            .is_some()
+        {
+            // Durable revision delivery owns the unchanged native Goal wake.
+            return Ok(true);
+        }
         anyhow::ensure!(
             self.dependencies
                 .commands

@@ -19,6 +19,8 @@ import {
   nativeInferenceResourceAuthorizationResultSchema,
   taskInferenceInputDispatchSchema,
   taskInferenceInputDispatchResultSchema,
+  taskGoalCycleDispatchSchema,
+  taskGoalCycleDispatchResultSchema,
   taskGoalOutcomeDeliverySchema,
   taskGoalOutcomeCommitSchema,
   TASK_GOAL_OUTCOME_MAX_BYTES,
@@ -300,6 +302,56 @@ export function installInternalNativeCommandRoutes(
     },
   );
   app.post(
+    "/api/internal/native-commands/task-goal-cycle-dispatch",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const parsed = taskGoalCycleDispatchSchema.safeParse(request.body);
+      if (!parsed.success)
+        return reply
+          .code(400)
+          .send({ code: "invalid-task-goal-cycle-dispatch" });
+      const input = parsed.data;
+      const authentication = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        input.workerId,
+        "worker:agent-tools",
+      );
+      if (!authentication)
+        return reply.code(401).send({ code: "unauthorized" });
+      const current = () => {
+        const identity = dependencies.bridge?.connectionIdentity?.(
+          input.workerId,
+        );
+        return (
+          input.serverId === serverId &&
+          identity?.ownerId === authentication.ownerId &&
+          identity.workerProcessGeneration === input.workerGeneration &&
+          dependencies.bridge?.isConnected(input.workerId)
+        );
+      };
+      if (!current())
+        return reply.code(409).send({ code: "stale-worker-generation" });
+      return runAsOwner(authentication.ownerId, async () => {
+        try {
+          const result =
+            await repository.tasks.inferenceInputs.goalCycles.dispatch(
+              authentication.ownerId,
+              input,
+            );
+          if (!current())
+            return reply.code(409).send({ code: "stale-worker-generation" });
+          return taskGoalCycleDispatchResultSchema.parse(result);
+        } catch (error) {
+          if (error instanceof TaskDispatchConflictError)
+            return reply.code(409).send({ code: "stale-task-goal-cycle" });
+          throw error;
+        }
+      });
+    },
+  );
+  app.post(
     "/api/internal/native-commands/goal-recovery-fence",
     { logLevel: "warn" },
     async (request, reply) => {
@@ -379,22 +431,28 @@ export function installInternalNativeCommandRoutes(
       if (!current())
         return reply.code(409).send({ code: "stale-worker-generation" });
       return runAsOwner(authentication.ownerId, async () => {
-        const result = input.record.identity.recovery?.taskInput
-          ? await repository.tasks.inferenceInputs.reconcile(
+        const result = input.record.identity.recovery?.taskGoalCycle
+          ? await repository.tasks.inferenceInputs.goalCycles.reconcile(
               authentication.ownerId,
               input,
             )
-          : await repository.nativeCommands.reconcileInference(
-              authentication.ownerId,
-              input,
-            );
+          : input.record.identity.recovery?.taskInput
+            ? await repository.tasks.inferenceInputs.reconcile(
+                authentication.ownerId,
+                input,
+              )
+            : await repository.nativeCommands.reconcileInference(
+                authentication.ownerId,
+                input,
+              );
         if (!current())
           return reply.code(409).send({ code: "stale-worker-generation" });
         if (result.chatId && result.disposition !== "unresolved")
           live.publishChatInvalidation(result.chatId, "chat");
         if (
           result.disposition === "requeued" &&
-          input.record.identity.recovery?.taskInput
+          (input.record.identity.recovery?.taskInput ||
+            input.record.identity.recovery?.taskGoalCycle)
         )
           dependencies.queueTaskScheduleTick?.();
         return nativeInferenceRecoveryResultSchema.parse(result);

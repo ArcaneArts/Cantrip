@@ -38,6 +38,9 @@ import {
   taskInferenceInputDispatchResultSchema,
   taskInferenceInputReceiptSchema,
   type TaskInferenceInputDispatch,
+  type TaskGoalCycleDispatch,
+  taskGoalCycleDispatchSchema,
+  taskGoalCycleDispatchResultSchema,
   taskGoalOutcomeDeliverySchema,
   taskGoalOutcomeCommitSchema,
   type TaskGoalOutcomeDelivery,
@@ -223,6 +226,21 @@ export class NativeCommandClient {
         "Task input dispatch returned another operation's receipt.",
       );
     return result;
+  }
+
+  async dispatchTaskGoalCycle(
+    input: Omit<TaskGoalCycleDispatch, "workerId">,
+    signal: AbortSignal,
+  ) {
+    return this.post(
+      "task-goal-cycle-dispatch",
+      taskGoalCycleDispatchSchema.parse({
+        ...input,
+        workerId: this.options.workerId,
+      }),
+      taskGoalCycleDispatchResultSchema,
+      AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
+    );
   }
 
   async commitGoalOutcome(input: TaskGoalOutcomeDelivery, signal: AbortSignal) {

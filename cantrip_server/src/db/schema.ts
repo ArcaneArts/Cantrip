@@ -4,6 +4,7 @@ import type {
   NativeSuspensionRecord,
   NativeGoalRecovery,
   NativeGoalRecoverySource,
+  TaskGoalCycleRecovery,
 } from "@cantrip/protocol";
 import type { TaskInferenceInputState } from "./task-inference-inputs.js";
 export { projectAlerts, chatGoalObservations } from "./schema-alerts.js";
@@ -3902,6 +3903,9 @@ export const taskDispatchCycles = pgTable(
     taskWorkerRevision: integer("task_worker_revision"),
     continuityFamily: text("continuity_family"),
     goalInput: jsonb("goal_input").$type<TaskInferenceInputState>(),
+    goalCycleRecovery: jsonb(
+      "goal_cycle_recovery",
+    ).$type<TaskGoalCycleRecovery>(),
     modelConfiguration: jsonb(
       "model_configuration",
     ).$type<ModelConfiguration>(),

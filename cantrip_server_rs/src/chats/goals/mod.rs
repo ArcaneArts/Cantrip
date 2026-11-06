@@ -2,6 +2,7 @@
 //! existing worker observes, activates and protects their actual objectives.
 mod automation;
 mod continuation;
+mod cycle_recovery;
 mod leases;
 mod observe;
 mod start;
