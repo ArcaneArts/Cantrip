@@ -23,7 +23,7 @@ import {
   type TaskGoalInputTransfer,
 } from "./native-handoff-task-goal-input.js";
 
-const fail = (): never => {
+const fail: () => never = () => {
   throw new NativeCommandError(
     "handoff-task-goal-source-replaced",
     "The queued Goal cycle changed or has already started. Refresh the queued cycle and try again.",

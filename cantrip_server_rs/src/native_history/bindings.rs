@@ -19,6 +19,10 @@ fn mapped(row: &Value) -> Result<Value> {
 /// Same project/chat serialization as native admission, without borrowing its
 /// active lane, runtime, settings or computer-use permission.
 async fn lock_chat(tx: &Transaction<'_>, owner: &str, worker: &str, chat: &str) -> Result<Value> {
+    // History also writes usage in this transaction. Keep its owner FK lock
+    // ahead of project/chat locks, matching standalone telemetry persistence.
+    tx.query("SELECT id FROM users WHERE id=$1 FOR KEY SHARE", &[&owner])
+        .await?;
     if let Err(error) = context::lock_chat(tx, owner, chat).await {
         if error
             .downcast_ref::<crate::native_commands::CommandError>()

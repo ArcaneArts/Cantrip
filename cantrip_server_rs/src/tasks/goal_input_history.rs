@@ -81,7 +81,7 @@ pub(super) async fn recover(
         "threadId":if n["outcome"]["ok"]==true{n["outcome"]["result"]["threadId"].clone()}else{Value::Null},
         "turnId":if n["outcome"]["ok"]==true{n["outcome"]["result"]["turnId"].clone()}else{n["outcome"]["inference"]["turnId"].clone()}})
     };
-    let root=one(Executor::Transaction(tx),"SELECT jsonb_build_object('id',w.id)::text FROM project_worktrees w JOIN projects p ON p.id=w.project_id AND p.owner_id=$1 WHERE w.id=$2 LIMIT 1",&[&owner,&text(&r["worktreeId"])?]).await?;
+    let root=one(Executor::Transaction(tx),"SELECT jsonb_build_object('id',w.id)::text FROM project_worktrees w JOIN project_sources s ON s.id=w.project_source_id JOIN projects p ON p.id=s.project_id AND p.owner_id=$1 WHERE w.id=$2 LIMIT 1",&[&owner,&text(&r["worktreeId"])?]).await?;
     let root = root
         .as_ref()
         .map(|r| r["id"].clone())

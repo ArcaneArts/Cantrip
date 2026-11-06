@@ -68,6 +68,10 @@ async fn record(
     input: &Value,
     identity: Option<&Value>,
 ) -> Result<()> {
+    // Acquire the insert's owner FK lock before project/chat locks. Task control
+    // serializes on the owner first and must never wait behind our project lock.
+    tx.query("SELECT id FROM users WHERE id=$1 FOR KEY SHARE", &[&owner])
+        .await?;
     let source = text(&input["sourceKey"])?;
     let chat = input
         .get("chatId")

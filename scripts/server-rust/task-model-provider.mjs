@@ -84,7 +84,13 @@ export async function taskModelProvider({
       );
       assert.equal(input.model, model);
       assert.equal(input.stream, true);
-      const plan = replies.shift();
+      let plan = replies.shift();
+      // A possible extra Goal continuation belongs to that conversation. If it
+      // never runs, it must not consume the next Task's scripted quota failure.
+      while (plan?.onlyFor && !plan.onlyFor(record)) {
+        plan.skipped = true;
+        plan = replies.shift();
+      }
       assert.ok(
         plan,
         "the real runtime requested an unscripted model response",

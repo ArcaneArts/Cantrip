@@ -35,6 +35,13 @@ export async function withNativeUsageIdentity(
   if (capture && capture.turnId !== input.turnId)
     throw new Error("Native usage attribution belongs to another turn.");
   return database.transaction(async (tx) => {
+    // Acquire the insert's owner FK lock before project/chat locks, in the same
+    // order as Task control's owner serialization.
+    await tx
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.id, ownerId))
+      .for("key share");
     if (input.chatId) {
       // Same project -> chat order as history ingestion. Never hold this across
       // native input, inference or a worker request.

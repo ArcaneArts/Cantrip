@@ -1020,7 +1020,7 @@ export function createChatTurnRuntime({
                       protectedHistory,
                       protectedPlan,
                     }
-                  : taskConversation && encryptedTaskMessages
+                  : !encryptedTaskRelay && encryptedTaskMessages
                     ? {
                         protectedTaskPrompt: encryptedTaskMessages.userMessage,
                         protectedHistory: [],

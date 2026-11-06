@@ -6,6 +6,7 @@ import { actualProjectWorktrees } from "./actual-project-worktrees.mjs";
 import { actualTaskClient } from "./actual-task-client.mjs";
 import { actualProjectChatClient } from "./actual-project-chat-client.mjs";
 import { providerTestBoundary } from "./provider-test-boundary.mjs";
+import { observePostgresErrors } from "./postgres-error-observation.mjs";
 import { actualGithubConversion } from "./actual-github-conversion.mjs";
 import { actualWorkspaceDiscovery } from "./actual-workspace-discovery.mjs";
 import {
@@ -17,6 +18,7 @@ import {
 // command handler, crypto adapter or repository implementation is substituted.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { appendFileSync } from "node:fs";
 import {
   actualProjectGitViews,
   retainedProjectGitViews,
@@ -87,7 +89,9 @@ const option = (name) => {
 const databaseMode = option("--database") ?? "pglite";
 const workerLinkRoute = option("--worker-link-route") ?? "relay";
 const reportPath = option("--report");
-const liveTaskDiagnostics = process.argv.includes("--task-diagnostics");
+const liveTaskDiagnostics =
+  process.argv.includes("--task-diagnostics") ||
+  process.argv.includes("--postgres-errors");
 const surfaceFixtureRequests = [];
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-actual-folder-"));
 const appRoot = path.join(repositoryRoot, "cantrip_app");
@@ -363,6 +367,8 @@ async function flow(
     result.steps.push(
       "existing browser initializes account, session and durable endpoint encryption",
     );
+    if (process.argv.includes("--postgres-errors"))
+      await observePostgresErrors(fixture, page);
     await startWorker(enrollment.code);
     await eventually(workers, (workers) => {
       assert.equal(workers.length, 1);
@@ -988,19 +994,44 @@ try {
     }
     const result = { kind, steps: [], workerStops: [], workerDiagnostics: [] };
     report.runtimes.push(result);
+    if (liveTaskDiagnostics) {
+      const start = fixture.start.bind(fixture);
+      fixture.start = async (...args) => {
+        await start(...args);
+        const generation = (result.serverDiagnosticFiles ??= []).length + 1;
+        const file = path.join(root, `${kind}-server-${generation}.stderr.log`);
+        appendFileSync(file, "");
+        result.serverDiagnosticFiles.push(file);
+        fixture.server.child.stderr.on("data", (chunk) =>
+          appendFileSync(file, chunk),
+        );
+      };
+    }
     const close = fixture.close.bind(fixture);
     fixture.close = async (...args) => {
       const server = fixture.server;
       try {
         return await close(...args);
       } finally {
-        if (server)
-          (result.serverShutdowns ??= []).push({
+        if (server) {
+          const observation = {
             stages: server.events.filter(
               (event) => event.event === "server.shutdown.stage",
             ),
             diagnostics: server.diagnostics(),
-          });
+          };
+          if (liveTaskDiagnostics) {
+            try {
+              observation.fullDiagnostics = await readFile(
+                result.serverDiagnosticFiles.at(-1),
+                "utf8",
+              );
+            } catch (cause) {
+              observation.diagnosticFileError = cause.message;
+            }
+          }
+          (result.serverShutdowns ??= []).push(observation);
+        }
       }
     };
     try {

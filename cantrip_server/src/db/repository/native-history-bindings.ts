@@ -46,6 +46,13 @@ export class NativeHistoryBindingRepository {
     workerId: string,
     chatId: string,
   ) {
+    // Canonical history also writes usage under this transaction. Acquire its
+    // owner FK lock before project/chat locks, as the standalone writer does.
+    await tx
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.id, ownerId))
+      .for("key share");
     await tx.execute(projectChatExecutionLock(ownerId, chatId));
     const [chat] = await tx
       .select()
