@@ -759,6 +759,16 @@ recorded. Shared-system
 preservation/replacement, clone identities, remote/model acceptance and final
 current distributions remain required for the full Phase 5 goal.
 
+The host [system checkpoint carrier](../cantrip_os/SYSTEM_CHECKPOINTS.md) now
+reserves durable stop/commit/resume operations against an exact Docker ID. It
+captures root customization from a stopped container and records mounted data
+explicitly as excluded. Lost commit replies recover one matching labeled image;
+observation never repeats a mutation, and continuation sends only unrequested
+future steps. Private image bytes can be streamed for protected transfer or
+explicitly exported by the administrator. This is a host administration foundation;
+shared-system replacement/rollback, private Worker/Server admissions and client
+controls remain dependent work, alongside clone identities and final acceptance.
+
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output
 recovery, and worker-offline behavior. Deliver workspace backups/restores,

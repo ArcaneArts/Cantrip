@@ -133,4 +133,67 @@ export class LocalDocker {
       options,
     );
   }
+
+  /** Bounded JSON receipts and unbounded streamed image bytes have separate
+   * lifetimes. Consumers must drain/destroy this GET stream; it is never retried. */
+  readStream(path, { timeout = 300_000, signal } = {}) {
+    return new Promise((resolve, reject) => {
+      let response;
+      const request = httpRequest(
+        {
+          socketPath: this.socketPath,
+          signal,
+          method: "GET",
+          path: `/v1.41${path}`,
+        },
+        (incoming) => {
+          response = incoming;
+          incoming.on("error", () => {});
+          if (incoming.statusCode !== 200) {
+            let diagnostic = "";
+            incoming.setEncoding("utf8");
+            incoming.on("data", (chunk) => {
+              if (diagnostic.length + chunk.length > 16384) {
+                incoming.destroy(
+                  new DockerApiError(
+                    incoming.statusCode,
+                    "Docker archive error response exceeded the diagnostic limit.",
+                  ),
+                );
+              } else diagnostic += chunk;
+            });
+            incoming.once("error", reject);
+            incoming.once("end", () => {
+              let message = `Docker HTTP ${incoming.statusCode}`;
+              try {
+                message = JSON.parse(diagnostic).message ?? message;
+              } catch {
+                /* Actual non-JSON error. */
+              }
+              reject(new DockerApiError(incoming.statusCode, message));
+            });
+          } else resolve(incoming);
+        },
+      );
+      request.setTimeout(timeout, () =>
+        request.destroy(
+          new DockerDeliveryError(
+            "Docker archive stream timed out; no operation was replayed.",
+          ),
+        ),
+      );
+      request.once("error", (cause) => {
+        const error =
+          cause instanceof DockerDeliveryError ||
+          cause instanceof DockerApiError
+            ? cause
+            : new DockerDeliveryError(
+                `Docker archive stream disconnected: ${cause.message}`,
+              );
+        if (response) response.destroy(error);
+        reject(error);
+      });
+      request.end();
+    });
+  }
 }

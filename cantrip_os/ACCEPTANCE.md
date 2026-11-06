@@ -4150,3 +4150,76 @@ also does not claim current-runtime model/CUA or cloud acceptance. No guest sour
 or package version changes, Docker image or ISO are part of this UI cycle.
 Shared-system preservation/replacement, clone identities, actual remote/model
 acceptance and final current distributions remain required for Phase 5.
+
+## Phase 5: private system checkpoint carrier (2026-11-06)
+
+The external host library now provides durable root-system capture, observation,
+explicit continuation and streamed image export. It stops and verifies the exact
+container before capture, preserves the committed image, and optionally resumes
+the original. It reuses instance locking and additionally serializes the exact
+physical container ID. A synced original reservation and per-step claims prevent
+repeating uncertain stop, commit or start requests. Image recovery verifies one
+actual matching operation/request/container/instance label set. Missing, foreign
+or ambiguous proof stays unknown. Historical completion is separate from current
+Engine/container availability. The raw administration CLI and normal host package
+include the implementation; no guest helper is needed for this management path.
+
+The image manifest explicitly excludes mounted data and identifies private
+identity content and same-instance-only use. It does not claim a full instance
+backup or merge arbitrary root customization into a new base. Administrative
+export is private plaintext mode 0600; the streamed API is the input for the
+dependent Worker's protected-transfer implementation, not an encrypted publication
+claim in this carrier cycle. No original container, volume or image is removed by
+the library.
+
+Actual tests used Docker 26.1.5+dfsg1 on the disposable installed AMD64 Debian VM,
+through a pinned SSH/private Unix socket bridge. The shared macOS Docker Desktop
+Engine still returned filesystem I/O errors and was not restarted or pruned. This
+is Linux Docker-in-VM acceptance, not recovered macOS Engine or cloud acceptance.
+The fixture image is Debian trixie-slim with the foundation label; it is not a
+new full CantripOS distribution or desktop/model acceptance record.
+
+Each real case installs `ed` 1.21.1-1, writes binary root customization at a Unicode
+path with mode 0640 and UID/GID 12345/23456, and stores separate mounted workspace
+data. A child coordinator invokes the actual Engine mutation, holds the completed
+reply and is then killed with SIGKILL. The commit-loss case recovers the original
+labeled image without another commit; only explicit continuation sends the one
+remaining start. The start-loss case observes completion with no further mutation.
+The original startup counter is exactly two, including its initial boot and one
+resume. Both cases preserve original bytes, package state, ownership and mounted
+data, while honestly excluding mount contents from the image.
+
+Each case exports 82,348,544 actual image bytes, removes only that test's committed
+image to force a real reload, loads the tar and runs a fresh network-disabled
+probe. The probe verifies the same image identity, root bytes, installed package,
+mode and ownership, and absence of the excluded mounted marker. Final export
+SHA-256 values are
+`62cac0eb9460b478b3fc18f7b6df242d0928fb57a7293cf7726db395ee903eb1`
+(commit loss) and
+`ad23b88713ad354dce1b6198506cd1c33992c860eb36a1328fb4a97594e60ae7`
+(start loss). Actual follow-up GETs confirm all eight owned fixture resources are
+gone. Base digests, source hashes, per-run journals, exports, logs and mutation
+traces are retained under `cantrip_os/artifacts/phase5-system-preservation`.
+The final normally packed library also reads an actual reloaded image with the
+original container gone. A real CLI export to an existing destination returns
+EEXIST, preserves the original bytes and removes its own partial. Re-exporting
+the same image produced a different tar digest, confirming that protected transfer
+must retain its completed archive/receipt rather than assume byte-identical tar
+regeneration from an image ID.
+
+Both actual Engine cases pass in 132.24 seconds. The ordinary OS suite passes
+27 tests with four explicit opt-in integrations skipped, including the two cases
+run separately above. The Worker OS suite passes 94 tests; Worker typecheck,
+normal host-package extraction/import, formatting and diff checks pass. Adding
+the stream method exposed an overly broad power-carrier type; the existing
+retained-power signatures now require only the request/inspect methods they use.
+`pnpm check` still stops at unchanged Server budgets 1531/1500 and 2286/1999.
+Initial fixture pipe/half-close failures and the corrected type/test failures are
+retained rather than counted as passing evidence.
+
+This is an administration foundation. Private Worker/Server product admissions,
+encrypted export/publication, explicit shared-system replacement/rollback and
+client controls remain dependent work. Clone identity handling, external remote
+acceptance, current-native model/CUA and final normal Docker/ISO artifacts also
+remain required for the complete Phase 5 goal. No guest package version or public
+image/ISO changes in this carrier cycle.
