@@ -123,6 +123,7 @@ async fn settle(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Valu
         {
             return reject("receipt-conflict");
         }
+        super::logical_inputs::finish_restored(tx, owner, &state.current).await?;
         return response(tx, owner, input, &state.current, &chat).await;
     }
     state.deferred(tx).boxed().await?;
@@ -159,6 +160,7 @@ async fn settle(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Valu
     if goal && state.current["status"] != "applied" {
         queue::changed(tx, &chat).await?;
     }
+    super::logical_inputs::finish_restored(tx, owner, &updated).await?;
     response(tx, owner, input, &updated, &chat).await
 }
 impl Repository {

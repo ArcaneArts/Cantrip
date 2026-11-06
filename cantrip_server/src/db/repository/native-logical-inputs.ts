@@ -9,7 +9,11 @@ import { and, eq, or, sql } from "drizzle-orm";
 import * as schema from "../schema.js";
 import { effectivePermissionProfile } from "../../chats/execution-helpers.js";
 import { ChatExecutionLaneRepository } from "./chat-execution-lanes.js";
-import { firstOrThrow, type RepositoryDatabase } from "./database.js";
+import {
+  firstOrThrow,
+  type RepositoryDatabase,
+  type RepositoryTransaction,
+} from "./database.js";
 import {
   nativeCommandContext,
   readNativeCommand,
@@ -398,79 +402,46 @@ export class NativeLogicalInputRepository {
     status: "idle" | "failed",
     transportEnded = false,
   ): Promise<boolean> {
-    return this.database.transaction(async (tx) => {
-      const captured = await readNativeCommand(
+    return this.database.transaction((tx) =>
+      this.finishLogicalGuiInTransaction(
         tx,
         ownerId,
         workerId,
         rootOperationId,
         rootOperationGeneration,
-      );
-      await lockNativeCommandChat(tx, ownerId, captured.chatId);
-      const root = await readNativeCommand(
-        tx,
-        ownerId,
-        workerId,
-        rootOperationId,
-        rootOperationGeneration,
-      );
-      if (root.origin !== "gui" || root.logicalOperationId !== root.operationId)
-        throw new NativeCommandError("invalid-continuation-lineage");
-      if (root.logicalCompletedAt) {
-        await tx
-          .insert(schema.nativeLogicalCompletions)
-          .values({
-            ownerId,
-            workerId,
-            chatId: root.chatId,
-            rootOperationId,
-            rootOperationGeneration,
-          })
-          .onConflictDoNothing();
-        return false;
-      }
-      const [activation] = await tx
-        .select()
-        .from(schema.nativeCommandActivations)
-        .where(eq(schema.nativeCommandActivations.chatId, root.chatId));
-      if (!activation) return false;
-      const [head] = await tx
-        .select()
-        .from(schema.nativeCommands)
-        .where(eq(schema.nativeCommands.operationId, activation.operationId));
-      if (
-        !head ||
-        head.logicalOperationId !== root.operationId ||
-        head.executionLaneId !== root.executionLaneId ||
-        !head.executionLaneId
-      )
-        return false;
-      if (
-        await retainedNativeSuspension(
-          new NativeSuspensionRepository(this.database).inTransaction(tx),
-          ownerId,
-          head,
-        )
-      )
-        return false;
-      if (
-        retainsRestoredLogicalInput(
-          await new NativeSuspensionRepository(this.database)
-            .inTransaction(tx)
-            .read(ownerId, root.chatId),
-          head,
-        )
-      )
-        return false;
-      const finished = activation.active
-        ? await this.lanes
-            .inTransaction(tx)
-            .finishChatExecutionLane(root.chatId, head.executionLaneId, status)
-        : false;
-      await tx
-        .update(schema.nativeCommands)
-        .set({ logicalCompletedAt: new Date() })
-        .where(eq(schema.nativeCommands.operationId, root.operationId));
+        status,
+        transportEnded,
+      ),
+    );
+  }
+
+  async finishLogicalGuiInTransaction(
+    tx: RepositoryTransaction,
+    ownerId: string,
+    workerId: string,
+    rootOperationId: string,
+    rootOperationGeneration: string,
+    status: "idle" | "failed",
+    transportEnded = false,
+  ): Promise<boolean> {
+    const captured = await readNativeCommand(
+      tx,
+      ownerId,
+      workerId,
+      rootOperationId,
+      rootOperationGeneration,
+    );
+    await lockNativeCommandChat(tx, ownerId, captured.chatId);
+    const root = await readNativeCommand(
+      tx,
+      ownerId,
+      workerId,
+      rootOperationId,
+      rootOperationGeneration,
+    );
+    if (root.origin !== "gui" || root.logicalOperationId !== root.operationId)
+      throw new NativeCommandError("invalid-continuation-lineage");
+    if (root.logicalCompletedAt) {
       await tx
         .insert(schema.nativeLogicalCompletions)
         .values({
@@ -481,43 +452,96 @@ export class NativeLogicalInputRepository {
           rootOperationGeneration,
         })
         .onConflictDoNothing();
-      await tx
-        .update(schema.nativeCommandActivations)
-        .set({ active: false })
-        .where(eq(schema.nativeCommandActivations.chatId, root.chatId));
-      await tx
-        .update(schema.nativeCommands)
-        .set({
-          executionCompletedAt: new Date(),
-          ...(transportEnded &&
-          !activation.logicalCancelled &&
-          ["accepted", "dispatched"].includes(head.status) &&
-          !head.resultDigest &&
-          !head.protectedResult &&
-          !head.terminalResultDigest &&
-          !head.protectedTerminalResult &&
-          !head.terminalEvidence
-            ? {
-                terminalEvidence: {
-                  kind: "transport-ended",
-                  source: "worker-command",
-                },
-              }
+      return false;
+    }
+    const [activation] = await tx
+      .select()
+      .from(schema.nativeCommandActivations)
+      .where(eq(schema.nativeCommandActivations.chatId, root.chatId));
+    if (!activation) return false;
+    const [head] = await tx
+      .select()
+      .from(schema.nativeCommands)
+      .where(eq(schema.nativeCommands.operationId, activation.operationId));
+    if (
+      !head ||
+      head.logicalOperationId !== root.operationId ||
+      head.executionLaneId !== root.executionLaneId ||
+      !head.executionLaneId
+    )
+      return false;
+    if (
+      await retainedNativeSuspension(
+        new NativeSuspensionRepository(this.database).inTransaction(tx),
+        ownerId,
+        head,
+      )
+    )
+      return false;
+    if (
+      retainsRestoredLogicalInput(
+        await new NativeSuspensionRepository(this.database)
+          .inTransaction(tx)
+          .read(ownerId, root.chatId),
+        head,
+      )
+    )
+      return false;
+    const finished = activation.active
+      ? await this.lanes
+          .inTransaction(tx)
+          .finishChatExecutionLane(root.chatId, head.executionLaneId, status)
+      : false;
+    await tx
+      .update(schema.nativeCommands)
+      .set({ logicalCompletedAt: new Date() })
+      .where(eq(schema.nativeCommands.operationId, root.operationId));
+    await tx
+      .insert(schema.nativeLogicalCompletions)
+      .values({
+        ownerId,
+        workerId,
+        chatId: root.chatId,
+        rootOperationId,
+        rootOperationGeneration,
+      })
+      .onConflictDoNothing();
+    await tx
+      .update(schema.nativeCommandActivations)
+      .set({ active: false })
+      .where(eq(schema.nativeCommandActivations.chatId, root.chatId));
+    await tx
+      .update(schema.nativeCommands)
+      .set({
+        executionCompletedAt: new Date(),
+        ...(transportEnded &&
+        !activation.logicalCancelled &&
+        ["accepted", "dispatched"].includes(head.status) &&
+        !head.resultDigest &&
+        !head.protectedResult &&
+        !head.terminalResultDigest &&
+        !head.protectedTerminalResult &&
+        !head.terminalEvidence
+          ? {
+              terminalEvidence: {
+                kind: "transport-ended",
+                source: "worker-command",
+              },
+            }
+          : {}),
+        ...(head.status === "accepted"
+          ? { status: "rejected", rejectionCode: "not-dispatched" }
+          : head.status === "dispatched"
+            ? { status: "uncertain", rejectionCode: "missing-native-receipt" }
             : {}),
-          ...(head.status === "accepted"
-            ? { status: "rejected", rejectionCode: "not-dispatched" }
-            : head.status === "dispatched"
-              ? { status: "uncertain", rejectionCode: "missing-native-receipt" }
-              : {}),
-        })
-        .where(eq(schema.nativeCommands.operationId, head.operationId));
-      const [completedHead] = await tx
-        .select()
-        .from(schema.nativeCommands)
-        .where(eq(schema.nativeCommands.operationId, head.operationId));
-      await settleQueueClaim(tx, completedHead!);
-      return finished;
-    });
+      })
+      .where(eq(schema.nativeCommands.operationId, head.operationId));
+    const [completedHead] = await tx
+      .select()
+      .from(schema.nativeCommands)
+      .where(eq(schema.nativeCommands.operationId, head.operationId));
+    await settleQueueClaim(tx, completedHead!);
+    return finished;
   }
 
   async hasDeferredLogicalGui(

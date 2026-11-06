@@ -333,16 +333,8 @@ describe.skipIf(!binary || process.platform === "win32")(
           ).toBe(true);
           if (gui) await gui.settled;
           if (grant.logicalRoot) {
-            // The caller's old HTTP lifetime cannot finish a cold continuation.
-            // Verify the original logical row becomes finishable only after the
-            // real observer's terminal proof; production delivery follows separately.
-            await f.authority.repository.nativeCommands.finishLogicalGui(
-              f.authority.ownerId,
-              f.authority.workerId,
-              grant.logicalRoot.operationId,
-              grant.logicalRoot.operationGeneration,
-              "idle",
-            );
+            // The original caller died with its transport. Native settlement
+            // must retire its logical input and publish the completion itself.
             expect(
               await f.authority.repository.nativeCommands.getLogicalCompletion(
                 f.authority.ownerId,
