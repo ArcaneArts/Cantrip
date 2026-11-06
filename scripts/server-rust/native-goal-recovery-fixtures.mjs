@@ -12,6 +12,14 @@ const admission = {
 
 export function nativeGoalRecoveryWireFixtures() {
   const recovery = { source, admission };
+  const providerEpisodes = [0, 1, Number.MAX_SAFE_INTEGER].map(
+    (orderEpoch) => ({
+      source,
+      providerId: "configured-goal-provider",
+      orderEpoch,
+      admission: orderEpoch === 0 ? null : admission,
+    }),
+  );
   return {
     nativeGoalRecoverySourceSchema: [source],
     nativeGoalRecoveryAdmissionSchema: [admission],
@@ -19,6 +27,7 @@ export function nativeGoalRecoveryWireFixtures() {
       { source },
       { source, admission: null },
       recovery,
+      ...providerEpisodes,
     ],
     nativeGoalRecoveryReceiptSchema: [
       { source, status: "admitted", admission },
@@ -44,6 +53,10 @@ export function nativeGoalRecoveryWireFixtures() {
         admission,
       },
     ],
-    nativeGoalRecoveryFenceResultSchema: [{ recovery: null }, { recovery }],
+    nativeGoalRecoveryFenceResultSchema: [
+      { recovery: null },
+      { recovery },
+      ...providerEpisodes.map((recovery) => ({ recovery })),
+    ],
   };
 }

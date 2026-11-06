@@ -839,5 +839,34 @@ Object.assign(securityFixtures, mcpChatReadWireFixtures(securityFixtures));
 Object.assign(securityFixtures, mcpChatSendWireFixtures(securityFixtures));
 Object.assign(securityFixtures, nativeSuspensionWireFixtures());
 Object.assign(securityFixtures, nativeGoalRecoveryWireFixtures());
+const notification = securityFixtures.clientControlRequestSchema.find(
+  (input) => input.command.kind === "notify",
+).command;
+Object.assign(securityFixtures, {
+  protectedClientNotificationSchema: [
+    {
+      operationId: notification.operationId,
+      protectedContent: notification.protectedContent,
+    },
+  ],
+  cantripMcpClientFocusProjectInputSchema: [{}],
+  cantripMcpClientFocusSurfaceInputSchema: [
+    "chat",
+    "terminal",
+    "explorer",
+    "code",
+    "browser",
+  ].map((surfaceKind) => ({
+    target: {
+      kind: "surface",
+      projectId: "project",
+      surfaceKind,
+      surfaceId: "surface",
+    },
+  })),
+  cantripMcpClientShowInteractionInputSchema: [
+    { interactionId: "interaction" },
+  ],
+});
 export const agentOperationWireCases = (name) =>
   agentOperations.boundaries[name] ?? [];

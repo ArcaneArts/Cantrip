@@ -65,12 +65,32 @@ impl OperationError {
                 JsString::new(message.units()[..message.len().min(2000)].to_vec()),
             );
         }
+        if let Some(error) = cause.downcast_ref::<crate::workers::bridge::CommandError>() {
+            if error.encoding_error.is_some() {
+                return Self::validation();
+            }
+            if error.unavailable {
+                return Self::new(503, "unavailable", error.message.clone());
+            }
+            return Self::new(
+                400,
+                "invalid",
+                JsString::new(error.message.units()[..error.message.len().min(2000)].to_vec()),
+            );
+        }
         if let Some(error) = cause.downcast_ref::<crate::run_configurations::lifecycle::ApiError>()
         {
             return Self::new(
                 error.status,
                 error.mcp_code.unwrap_or(error.code),
                 error.message.clone(),
+            );
+        }
+        if cause.is::<crate::browsers::StateConflict>() {
+            return Self::new(
+                409,
+                "conflict",
+                "Browser state changed before this operation.",
             );
         }
         if let Some(error) = cause.downcast_ref::<crate::projects::placement::Unavailable>() {

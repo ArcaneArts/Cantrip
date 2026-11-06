@@ -3,10 +3,12 @@ use super::Contracts;
 
 const BASE: &str = include_str!("../../contracts/security.json");
 const RUN: &str = include_str!("../../contracts/mcp-run.json");
+const SURFACE: &str = include_str!("../../contracts/mcp-surface.json");
 
 pub(super) fn load() -> Contracts {
     let mut contracts: Contracts = serde_json::from_str(BASE).expect("embedded protocol contracts");
     contracts.append(serde_json::from_str(RUN).expect("embedded Run MCP contracts"));
+    contracts.append(serde_json::from_str(SURFACE).expect("embedded surface MCP contracts"));
     contracts.compile_patterns();
     contracts
 }
@@ -73,9 +75,26 @@ mod tests {
 
     #[test]
     fn run_source_contracts_survive_unrelated_base_graph_growth() -> Result<()> {
+        source_contracts_survive_growth(RUN, "Run")
+    }
+
+    #[test]
+    fn surface_source_contracts_survive_unrelated_base_graph_growth() -> Result<()> {
+        source_contracts_survive_growth(SURFACE, "surface")
+    }
+
+    fn source_contracts_survive_growth(block: &str, label: &str) -> Result<()> {
         let base: Contracts = serde_json::from_str(BASE)?;
         let run: Contracts = serde_json::from_str(RUN)?;
+        let surface: Contracts = serde_json::from_str(SURFACE)?;
         assert!(run.roots.keys().all(|name| !base.roots.contains_key(name)));
+        assert!(
+            surface
+                .roots
+                .keys()
+                .all(|name| !base.roots.contains_key(name) && !run.roots.contains_key(name))
+        );
+        let selected: Contracts = serde_json::from_str(block)?;
         let mut graphs = Vec::new();
         for extra_nodes in [0, 7, 41] {
             let mut graph: Contracts = serde_json::from_str(BASE)?;
@@ -85,10 +104,11 @@ mod tests {
                     .push(serde_json::from_str(r#"{"type":"unknown"}"#)?);
             }
             graph.append(serde_json::from_str(RUN)?);
+            graph.append(serde_json::from_str(SURFACE)?);
             graph.compile_patterns();
             graphs.push(graph);
         }
-        let mut schemas: Vec<_> = run.roots.keys().collect();
+        let mut schemas: Vec<_> = selected.roots.keys().collect();
         schemas.sort();
         let mut count = 0;
         for schema in schemas {
@@ -140,7 +160,9 @@ mod tests {
                 }
             }
         }
-        println!("{count} Source comparisons across three independent base graph sizes matched");
+        println!(
+            "{count} {label} Source comparisons across three independent base graph sizes matched"
+        );
         Ok(())
     }
 }

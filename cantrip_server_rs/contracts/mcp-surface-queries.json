@@ -1,0 +1,3 @@
+{
+  "interactionGet": "select \"id\", \"request_key\", \"interaction_owner\", \"owner_id\", \"project_id\", \"chat_id\", \"worker_id\", \"execution_lane_id\", \"thread_id\", \"turn_id\", \"item_id\", \"kind\", \"status\", \"payload\", \"protected_payload\", \"response\", \"protected_response\", \"resolution_idempotency_key\", \"resolved_by_user_id\", \"expires_at\", \"resolved_at\", \"created_at\", \"updated_at\" from \"agent_interaction_requests\" where (\"agent_interaction_requests\".\"id\" = $1 and \"agent_interaction_requests\".\"owner_id\" = $2) limit $3"
+}

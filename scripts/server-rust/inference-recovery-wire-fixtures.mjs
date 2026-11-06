@@ -266,6 +266,28 @@ export const inferenceRecoveryWireFixtures = {
 
 const goalAdmission =
   nativeGoalRecoveryWireFixtures().nativeGoalRecoveryAdmissionSchema[0];
+const goalSource =
+  nativeGoalRecoveryWireFixtures().nativeGoalRecoverySourceSchema[0];
+const goalRequest =
+  inferenceRecoveryWireFixtures.nativeInferenceRecoverySchema[0];
+inferenceRecoveryWireFixtures.nativeInferenceRecoverySchema.push(
+  ...[0, 1, Number.MAX_SAFE_INTEGER].map((orderEpoch) => ({
+    ...goalRequest,
+    record: {
+      ...goalRequest.record,
+      identity: {
+        ...goalRequest.record.identity,
+        operationId: goalSource.operationId,
+        recovery: {
+          commandId: goalSource.operationId,
+          commandGeneration: goalSource.operationGeneration,
+          threadId: goalSource.threadId,
+          autonomousGoal: { goalEpoch: goalSource.goalEpoch, orderEpoch },
+        },
+      },
+    },
+  })),
+);
 inferenceRecoveryWireFixtures.nativeInferenceRecoverySchema.push(
   ...inferenceRecoveryWireFixtures.nativeInferenceRecoverySchema.map(
     (value) => ({

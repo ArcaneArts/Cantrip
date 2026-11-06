@@ -12644,11 +12644,11 @@
         "scripts/server-rust/agent-worktree-http-disconnect.mjs",
         "scripts/server-rust/mcp-worktree-query-manifest.mjs"
       ],
-      "scope": "Six MCP worktree verbs reuse native owned worktree, project coordinator, lane and Run-retirement services. Registry34 of canonical Source55; worktree.acquire is legacy CLI only and remains forbidden by MCP even when the binding grants it. Source validation order, capability/readonly/stale guards, lease visibility/paging/status truncation, structured mutation errors, exact worker inventory result, transaction rollback and SQL diagnostics retain Source behavior.",
+      "scope": "Six MCP worktree verbs reuse native owned worktree, project coordinator, lane and Run-retirement services. Registry34 at delivery; the surface milestone brings the current registry to46 of canonical Source55; worktree.acquire is legacy CLI only and remains forbidden by MCP even when the binding grants it. Source validation order, capability/readonly/stale guards, lease visibility/paging/status truncation, structured mutation errors, exact worker inventory result, transaction rollback and SQL diagnostics retain Source behavior.",
       "localEvidence": "Local integrated 20001aa43 qualification passes102 exact MCP response/worker-command/durable-snapshot cases per peer across all3stores x3auth modes:918 pairs,1836 responses,18 actual socket disconnects,1854 matching audit rows and18 real server restarts. NUL-purpose writes, including unpaired UTF16 and literal replacement-character variants, fail actual SQL and roll back the earlier lane suspension; full Source query text and original parameters match. Both peers capture all8 Task tables over live HTTP using the required result alias. Fifty Rust library tests and five focused OS/MCP contract/binding tests pass; fresh base and independent Run manifests equal current Source. All633 base roots have valid samples (2121 samples); all643 existing fixture arrays retain identical serialized JSON, with5 samples added only for the missing OS recovery result root. Production WorkerConnection carries controlled Git replies; full native product/platform acceptance is not established.",
       "remaining": [
         "Current-head supported-platform and full-worker native product acceptance, additional multi-worker/retirement/interruption cases, and full replacement requirements remain active.",
-        "Twenty-one other canonical MCP operations and legacy CLI transport/acquire remain required. Actual native worker product, additional multi-worker/retirement/interruption acceptance and supported-platform packaging remain separate.",
+        "Nine other canonical MCP operations and legacy CLI transport/acquire remain required. Actual native worker product, additional multi-worker/retirement/interruption acceptance and supported-platform packaging remain separate.",
         "Full replacement requirements, coordination, existing-data migrations/post-write rollback, performance, desktop/Winterhold rehearsal, default cutover and production Node server removal remain active."
       ],
       "currentSourceIntegration": {
@@ -12721,6 +12721,64 @@
         "incomingPauseScope": "Worker-only native suspension changes leave all qualified server, protocol and controlled worker transport inputs unchanged. Current Main admission options and strengthened assertions are retained.",
         "workerPauseIntegrationTests": 62
       }
+    },
+    "agentSurfaceMcp": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/http/agent_surfaces.rs",
+        "cantrip_server_rs/src/http/agent_operations.rs",
+        "cantrip_server_rs/src/agent_interactions/reads.rs",
+        "cantrip_server_rs/src/live/hub/control.rs",
+        "cantrip_server_rs/src/wire/contract_blocks.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/agent-surface-http-compatibility.mjs",
+        "scripts/server-rust/agent-surface-http-context.mjs",
+        "scripts/server-rust/agent-surface-http-success.mjs",
+        "scripts/server-rust/agent-surface-http-boundaries.mjs",
+        "scripts/server-rust/agent-surface-http-text.mjs",
+        "scripts/server-rust/agent-surface-http-isolation.mjs",
+        "scripts/server-rust/agent-surface-http-recovery.mjs",
+        "scripts/server-rust/agent-surface-http-placement.mjs",
+        "scripts/server-rust/mcp-surface-query-manifest.mjs"
+      ],
+      "scope": "Twelve MCP operations implement Explorer list/read/write, terminal read/send/restart, browser services/open and all four client controls. Registry46 of Source55. Exact owned target placement permits other owned workers; readonly/grant/lane/standalone guards retain Source order. Browser conflicts map409/conflict, committed state survives worker failure, and showing an interaction never resolves it. Endpoint content remains opaque. Native Live controls preserve unpaired UTF16 instead of converting through serde_json::Value.",
+      "localQualification": {
+        "base": "f49dc8cbe223c681e2d2b7023bd76e81b6e1104e",
+        "actualHttp": true,
+        "actualWorkerConnection": true,
+        "fullWorkerProcess": false,
+        "databaseModes": ["pglite", "postgres", "bundled-postgres"],
+        "authModes": ["none", "password", "accounts"],
+        "casesPerPeerPerProfile": 230,
+        "pairedCases": 2070,
+        "httpResponses": 4140,
+        "disconnectedCallers": 18,
+        "auditRows": 4158,
+        "serverRestarts": 18,
+        "actualTenSecondControlDeadlines": 18,
+        "notificationEndpointDecryptions": 18,
+        "afterLiveUtf16Repair": {
+          "database": "pglite",
+          "auth": "none",
+          "pairedCases": 232,
+          "actualLiveAckRoundtrips": true,
+          "liveCoreOraclePassed": true
+        }
+      },
+      "wireQualification": {
+        "independentInputRoots": 4,
+        "sourceComparisonsWithUnrelatedGraphGrowth": 2688,
+        "changedBaseRoots": 12,
+        "sourceBaseComparisons": 68462,
+        "unchangedBaseRoots": 636,
+        "outgoingWorkerEnvelopeGraphIdenticalTo": "9b00c9db22dffba712cd9c03249dd4646dca9811"
+      },
+      "remaining": [
+        "Current-head full worker/native product, platform and packaged acceptance.",
+        "Nine other canonical MCP operations, legacy CLI transport and worktree.acquire remain required.",
+        "Shared coordination, existing-data migration and post-write rollback, container/desktop/Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; the worker remains Node."
+      ]
     }
   },
   "remainingAcceptance": [

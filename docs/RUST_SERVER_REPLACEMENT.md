@@ -80,10 +80,33 @@ actual queries and rejects other owner/project scopes. This evidence-capture
 test does not establish successful native Task or Goal execution.
 
 The worktree MCP port implements six advertised operations: list, status, create,
-switch, release and remove. Rust now advertises 34 of Source's 55 MCP operations.
+switch, release and remove. With the surface port, Rust advertises 46 of Source's
+55 MCP operations.
 `worktree.acquire` belongs to the shared legacy CLI executor and is rejected by
 the MCP allowlist, including when a binding explicitly grants it. Legacy CLI
 transport and its acquisition behavior remain separate required work.
+
+The surface milestone adds twelve native MCP operations: Explorer list/read/write,
+terminal read/send/restart, browser services/open, and client notify/focus-project/
+focus-surface/show-interaction. It reuses the native resource and Live services,
+keeps endpoint content opaque, and permits exact targets on another owned worker
+as Source does. Four independent generated input contracts remain valid after
+unrelated growth of the base schema graph. Interaction reads retain Source SQL
+diagnostics and original UTF16 parameters after an actual query failure.
+
+Qualification on base `f49dc8cbe` passes 230 paired response/header/worker-command/
+Live-event/audit/durable-state scenarios across all three stores and authentication
+modes: 2,070 pairs, 4,140 HTTP responses, 18 disconnected callers, 4,158 audit rows
+and 18 server restarts. Tests include actual ten-second control expiry, protected
+notification endpoint decryption, ownership/provenance isolation, folder roots,
+Run-terminal restrictions, committed browser writes after worker failure and
+second-worker dispatch. Concurrent browser-placement SQL reads retain either
+Source first failure; every diagnostic and original parameter is verified before
+normalizing that scheduling choice. A further Unicode regression fixes a native
+Live control JSON panic; 232 paired PGlite/anonymous cases and the Live core oracle
+pass after that repair. These are controlled endpoint peers, not full native
+worker or supported-platform product acceptance. Nine canonical MCP operations,
+legacy CLI, migration/rollback, packaging and the full replacement goal remain.
 
 The worktree handlers retain Source argument order, history visibility, pagination
 caps, status truncation, UTF16 summaries, capability/permission guards and durable

@@ -36,6 +36,18 @@ pub const OPERATIONS: &[&str] = &[
     "worktree.switch",
     "worktree.release",
     "worktree.remove",
+    "explorer.list",
+    "explorer.read",
+    "explorer.write",
+    "terminal.read",
+    "terminal.send",
+    "terminal.restart",
+    "browser.services",
+    "browser.open",
+    "client.notify",
+    "client.focus-project",
+    "client.focus-surface",
+    "client.show-interaction",
 ];
 pub fn is_mutation(operation: &str) -> bool {
     matches!(
@@ -56,6 +68,14 @@ pub fn is_mutation(operation: &str) -> bool {
             | "worktree.switch"
             | "worktree.release"
             | "worktree.remove"
+            | "explorer.write"
+            | "terminal.send"
+            | "terminal.restart"
+            | "browser.open"
+            | "client.notify"
+            | "client.focus-project"
+            | "client.focus-surface"
+            | "client.show-interaction"
     )
 }
 fn permitted(permission: &Value, operation: &str) -> bool {
@@ -82,6 +102,10 @@ fn permitted(permission: &Value, operation: &str) -> bool {
                 | "run-configuration.read-output"
                 | "worktree.list"
                 | "worktree.status"
+                | "explorer.list"
+                | "explorer.read"
+                | "terminal.read"
+                | "browser.services"
         )
 }
 #[derive(Debug)]
