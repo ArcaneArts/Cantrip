@@ -1114,7 +1114,7 @@ export class NativeRuntimeHandoffRepository {
         fail("handoff-phase-conflict");
       // A private Task refusal only abandons this reservation. Stop/archival or
       // a newer Task control may already have made the Source ineligible.
-      if (!row.queuedSource.taskGoal)
+      if (!row.queuedSource!.taskGoal)
         await this.assertSource(
           tx,
           ownerId,
