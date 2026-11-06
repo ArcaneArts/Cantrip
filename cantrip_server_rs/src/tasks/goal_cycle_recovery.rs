@@ -48,12 +48,12 @@ async fn locked(tx: &Transaction<'_>, owner: &str, chat: &str) -> Result<Option<
         return Ok(None);
     }
     row["handoff"] = Value::Bool(
-        tx.query_opt(
+        !tx.query(
             "SELECT operation_id FROM native_runtime_handoffs WHERE owner_id=$1 AND chat_id=$2 AND phase IN ('preparing','prepared','committed') LIMIT 1",
             &[&owner, &chat],
         )
         .await?
-        .is_some(),
+        .is_empty(),
     );
     Ok(Some(row))
 }

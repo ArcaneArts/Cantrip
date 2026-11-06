@@ -17,8 +17,8 @@ impl Repository {
         let before = self.database.transaction(|tx|Box::pin(async move {
             context::lock_chat(tx,&first_owner,&first_chat).await?;
             if let Some(input) = &input {
-                let existing = tx.query_opt("SELECT operation_id FROM native_runtime_handoffs WHERE operation_id=$1",&[&text(&input["operationId"])?]).await?;
-                if existing.is_some() {return Ok(None);}
+                let existing = tx.query("SELECT operation_id FROM native_runtime_handoffs WHERE operation_id=$1",&[&text(&input["operationId"])?]).await?;
+                if !existing.is_empty() {return Ok(None);}
             }
             crate::chats::guard::assert_runtime_writable(tx,&first_chat,None,None,crate::chats::guard::Access::Write).await?;
             let Some(row) = task_goal::read(tx,&first_owner,&first_chat,false).await? else {return Ok(None)};

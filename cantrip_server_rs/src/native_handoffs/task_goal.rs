@@ -196,8 +196,13 @@ pub(super) async fn assert_current(
         return replaced();
     };
     let mut scope = binding.clone();
-    for key in ["bindingId", "runtimeGeneration", "nativeEpoch"] {
-        scope.as_object_mut().unwrap().remove(key);
+    if let Value::Object(fields) = &mut scope {
+        fields.retain(|key, _| {
+            !matches!(
+                key.as_str(),
+                Some("bindingId" | "runtimeGeneration" | "nativeEpoch")
+            )
+        });
     }
     let source = &queued["taskGoal"];
     assert_record(&row, &scope, source, Some(source))?;
@@ -262,7 +267,9 @@ pub(super) async fn confirm(
         "threadId":binding["threadId"],"turnId":source["identity"]["recovery"]["turnId"],"cycle":cycle})
     };
     if same {
-        marker.as_object_mut().unwrap().remove("settled");
+        if let Value::Object(fields) = &mut marker {
+            fields.retain(|key, _| key.as_str() != Some("settled"));
+        }
         marker["admission"] = Value::Null;
     }
     let marker = parse("taskGoalCycleRecoverySchema", &marker)?;

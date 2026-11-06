@@ -113,7 +113,9 @@ impl Repository {
             }
         }
         if truthy(state["queuedSource"].get("taskGoal")) {
-            configuration.as_object_mut().unwrap().remove("session");
+            if let Value::Object(fields) = &mut configuration {
+                fields.retain(|key, _| key.as_str() != Some("session"));
+            }
             configuration["task"] = self
                 .task_context(owner, state, &launch["provider"]["id"])
                 .await?;

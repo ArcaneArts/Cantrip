@@ -538,6 +538,13 @@ it.skipIf(!process.env.CANTRIP_CODEX_TEST_BINARY).each([
       const namespaces = new ManagedRuntimeNamespaces(root);
       let failWake = disposition === "wake-retry";
       const wake = async (runtime: CodexAppServer) => {
+        await entries
+          .find((entry) => entry.runtime === runtime)!
+          .runner.resumeAfterProviderTransfer(
+            job.operationId,
+            threadId,
+            runtime.transportGeneration!,
+          );
         if (failWake) {
           failWake = false;
           throw new Error("fixture wake response lost");
@@ -567,6 +574,19 @@ it.skipIf(!process.env.CANTRIP_CODEX_TEST_BINARY).each([
         client: handoffClient,
         namespaces,
         journal: new ManagedRuntimeHandoffJournal(root, scope),
+        holdSource: async (state, prepared, signal) => {
+          signal.throwIfAborted();
+          const entry = entries.find(
+            (entry) => entry.runtime === prepared.runtime,
+          )!;
+          await entry.runner.holdForProviderTransfer(
+            state.operationId,
+            entry.runner.configuration.runnerGeneration,
+            threadId,
+            (state.binding ?? state.source).runtimeGeneration,
+          );
+          signal.throwIfAborted();
+        },
         resolve: async (state, side) => {
           const { configuration } = await handoffClient.configuration({
             chatId: f.chatId,
@@ -578,7 +598,12 @@ it.skipIf(!process.env.CANTRIP_CODEX_TEST_BINARY).each([
               ? source.runtime.managedHistoryHome
               : namespaces.destination(scope, threadId, state.operationId);
           const entry = byHome.get(home) ?? (await createRuntime(home));
-          staging.hold(entry.runtime, threadId, state.operationId);
+          staging.hold(
+            entry.runtime,
+            threadId,
+            state.operationId,
+            side === "destination" ? "tree" : "root",
+          );
           const config = {
             ...configuration,
             provider: { ...configuration.provider, apiKey: null },

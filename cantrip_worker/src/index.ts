@@ -27,6 +27,7 @@ import {
 import { ManagedRuntimeHandoffJournal } from "./codex/managed-runtime-handoff-journal.js";
 import { ManagedRuntimeHandoffStaging } from "./codex/managed-runtime-handoff-staging.js";
 import { NativeRuntimeHandoffClient } from "./native-runtime-handoff-client.js";
+import { UnstartedInferenceUnavailableError } from "./inference-withdrawal.js";
 import { protectNativeSettingsSnapshot } from "./native-settings-content.js";
 import type {
   NativeRuntimeHandoffConfiguration,

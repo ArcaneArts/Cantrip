@@ -12,7 +12,7 @@ pub type Publish = Arc<dyn Fn(&str, &str) + Send + Sync>;
 /// This performs no inference and owns no provider ticket.
 pub async fn settle_task_control(
     repository: &Repository,
-    commands: &LimitedCommandBus,
+    commands: &Arc<LimitedCommandBus>,
     owner: &str,
     chat: &str,
 ) -> Result<()> {
