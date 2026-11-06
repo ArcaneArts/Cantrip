@@ -17,9 +17,11 @@ source locator before confirming Pause through either shared control path.
 Native command receipts now commit server suspension ownership and status.
 Both server implementations can now admit a fresh physical observer for an
 explicit Resume while retaining the original input and native turn. Production
-worker orchestration and client recovery are still being integrated. Do not
-treat the current product acknowledgement as
-the complete process-termination/resumption guarantee yet.
+worker orchestration now connects explicit cold Resume to fresh admission,
+held restoration and original-input completion. The production worker acceptance
+below exercises this through the encrypted browser SDK. The complete UI,
+resource and autonomous-execution matrix is still being integrated; this is
+not yet the complete product guarantee.
 
 The complete acceptance target is:
 
@@ -102,9 +104,10 @@ strict recovery reads reject them without replacing their bytes. Rust uses
 the generated source contracts, explicit semantic validation, strict recovery
 reads, and the same public projection.
 
-Production cold control orchestration, worker reconciliation and client controls
-still need to adopt these services. These server transitions do not establish
-whole-worker termination acceptance by themselves.
+The production cold control service uses these transitions and the typed
+`chat.suspension.resume` worker command. It holds queues until the actual native
+Resume acknowledgement. Server transitions alone do not establish native
+restoration or whole-worker termination acceptance.
 
 The server foundation is checked by 15 real migrated-database state tests,
 62 existing native-command cases, and seven settings-persistence cases. All
@@ -132,7 +135,7 @@ process-isolated worker fixture covers both profiles, two whole-worker-tree
 terminations, missing and corrupt checkpoint contents during attachment, and
 subsequent same-turn restoration. Production managed preparation now selects
 the encrypted source as described below; the explicit cold Resume control
-service still needs to connect fresh admission and observer publication.
+service connects fresh admission and observer publication.
 
 ## Selecting the original home during preparation
 
@@ -154,7 +157,7 @@ selects a default home. Runtime version/fingerprint diagnostics do not decide
 checkpoint compatibility; explicit native inspection remains authoritative.
 Preparation installs expected suspension before native attachment and does not
 create fresh execution admission, release automation or submit Resume. The
-complete cold Resume publication/control lifecycle remains a separate step.
+cold Resume publication/control lifecycle uses this held preparation.
 
 ## Fresh execution ownership for cold restoration
 
@@ -216,9 +219,53 @@ Stop intent.
 The component integration exercises actual authenticated server admission,
 native process replacement, GUI and terminal inputs, accepted steering, held
 preparation and original native turn identity. Production server-to-worker
-Resume delivery and automatic logical-input completion after the original GUI
-caller disappears still need to invoke this lifecycle. Whole-worker restart
-acceptance remains separate from this native-process component test.
+Resume delivery invokes this lifecycle. After actual native terminal evidence
+and protected outcome publication, both repositories atomically retire the
+fresh physical execution, original GUI logical input and completion outbox.
+Transport loss cannot finish that logical input. Duplicate terminal receipts
+are idempotent, including when native completion precedes Stop acknowledgement.
+
+## Production worker recovery acceptance
+
+`scripts/server-rust/actual-durable-suspension.mjs` uses a real browser, account
+encryption, normal server HTTP routes, the built production worker entrypoint,
+provider admission and the verified patched native runtime. Only the public
+model HTTP responses are controlled. It performs two durable Pause/SIGKILL/
+restart/explicit Resume cycles on a GUI-originated project chat with a completed
+native command and accepted pending steering.
+
+The test records the owned process tree, including separately grouped native
+helpers and the shared TUI, and verifies that those processes stopped. Startup
+and chat reads must produce no model request. Repeated concurrent Resume calls
+must join one execution. The resumed requests must retain model/reasoning
+settings, cwd, original input, accepted steering and exactly one completed
+command result. The original rollout must contain one turn start, one terminal
+completion and one copy of each accepted input and completed command result.
+The final browser-decrypted answer must retain the original thread and turn.
+
+Pause preserves the managed runner until Core commits its boundary. Invalidating
+that runner before forwarding Pause aborts the turn and prevents checkpoint
+capture. Stop and explicit Goal cancellation retain their cancellation paths.
+
+Build the worker and its dependencies, then run with a normally built native
+bundle whose manifest matches the current patch series:
+
+```sh
+pnpm --filter @cantrip/worker... --filter @cantrip/glitch --filter @cantrip/nbt -r build
+CANTRIP_CODEX_BIN=/absolute/path/to/bundle/codex \
+  node --import tsx scripts/server-rust/actual-durable-suspension.mjs
+```
+
+The default run exercises both Node and Rust servers with isolated PGlite
+storage. `--server node` or `--server rust` selects one implementation;
+`--report <path>` saves its report. Successful runs remove disposable state
+unless `--retain` is supplied; failures preserve it for diagnosis. The current
+process-tree inspection uses POSIX tools.
+
+This fixture drives the existing browser SDK, not the mounted application UI.
+It does not qualify native-terminal-originated production input, cold Stop
+before restoration, Task/Goal recovery, or the complete resource/error matrix.
+Those remain separate acceptance requirements.
 
 ## Managed worker capture and source locator
 
@@ -259,10 +306,10 @@ and the registry does not choose a latest checkpoint using timestamps or PIDs.
 These files are historical capture evidence, not execution authority or proof
 that a turn is still resumable. Native checkpoint/history inspection and the
 server's current control/owner fences must establish that at restoration.
-Original-home selection through credential changes, fresh execution/observer
-adoption, server control records and the recovery UI remain required for cold
-product Resume. Startup and reconnect must retain the hold while those paths
-are connected; the worker capture milestone does not complete that guarantee.
+Original-home selection, fresh execution/observer adoption and server control
+records are connected to cold Resume. Startup and reconnect retain the hold.
+The remaining UI and resource acceptance requirements still apply; the worker
+capture milestone alone does not complete the product guarantee.
 
 Local capture validation used the normal development build of all 78 patches,
 fingerprint `6b953a3bbca421aef73a5dc2dd08f64db330315c3397d88f2116e4be09a59c52`.

@@ -2825,7 +2825,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             commandSession.runtimeGeneration,
             intent?.resumeAutonomy === true,
             method === "thread/goal/clear" ||
-              (method === "turn/pause" && intent?.paused === true) ||
               (method === "thread/goal/set" && intent?.goalStatus === "paused"),
           );
       },
