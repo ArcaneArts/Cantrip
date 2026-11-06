@@ -37,7 +37,10 @@ import { computerUsePreviewAuthority } from "../../cantrip_server/src/app/routes
 import { createNativeResourceProtection } from "../src/native-resource-protection.js";
 import { NativeSuspensionStore } from "../src/native-suspension-store.js";
 import { createManagedSuspensionCapture } from "../src/codex/managed-native-suspension.js";
-import type { NativeSuspensionEvidence } from "@cantrip/protocol";
+import type {
+  NativeSuspensionEvidence,
+  NativeCommandSettlement,
+} from "@cantrip/protocol";
 
 const { Terminal: HeadlessTerminal } = createRequire(import.meta.url)(
   "@xterm/headless",
@@ -53,6 +56,11 @@ export async function createNativeSharedViewFixture(
     plugins?: boolean;
     durablePause?: boolean;
     afterNativeReceipt?(method: string): void;
+    beforeRestoredPublication?(): Promise<void>;
+    beforeNativeSettlement?(
+      method: string,
+      input: NativeCommandSettlement,
+    ): Promise<void>;
     planMode?: "default" | "plan";
     mcpServers?: McpServerConfiguration[];
   } = {},
@@ -261,7 +269,22 @@ export async function createNativeSharedViewFixture(
       workerId,
       workerGeneration: f.workerGeneration,
       token: () => f.token,
-      fetch: f.fetch,
+      fetch: (async (input, init) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (options.beforeNativeSettlement && url.endsWith("/receipt")) {
+          const body = JSON.parse(
+            String(init?.body),
+          ) as NativeCommandSettlement;
+          const command = await f.repository.nativeCommands.get(
+            ownerId,
+            workerId,
+            body.operationId,
+            body.operationGeneration,
+          );
+          await options.beforeNativeSettlement(command.method, body);
+        }
+        return f.fetch(input, init);
+      }) as typeof fetch,
     };
     const client = new NativeCommandClient(transport);
     const suspensionStore = new NativeSuspensionStore(
@@ -308,9 +331,19 @@ export async function createNativeSharedViewFixture(
               onMessage: (message) => messages.push(message.text),
             },
             complete: async (result) => {
+              if (
+                grant.receipt.method === "thread/resume" &&
+                grant.receipt.startsExecution
+              )
+                await options.beforeRestoredPublication?.();
               completed.push(result.turnId!);
             },
             failed: async (error) => {
+              if (
+                grant.receipt.method === "thread/resume" &&
+                grant.receipt.startsExecution
+              )
+                await options.beforeRestoredPublication?.();
               turnFailures.push(error);
             },
             release: async () => {
