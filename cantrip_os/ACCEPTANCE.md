@@ -4297,3 +4297,94 @@ version, public Worker command, OCI image or ISO change in this cycle. Root-imag
 replacement/rollback, Server/client controls, identity fencing/clones, external
 remote and current-native model/CUA acceptance, and final current distribution
 artifacts remain required for the complete Phase 5 goal.
+
+## Phase 5: retained system replacement and rollback (2026-11-06)
+
+The host carrier now supports exact-image root replacement, deliberate normal-base
+reset and separate retained-original rollback admissions. The private journal
+claims image load, policy fencing, stop, creation, renames, start and policy
+restoration before dispatch. Repeated execution and observation do not mutate;
+continuation sends only unrequested future effects. Creation recovery requires
+one matching candidate under its reserved name. Copied labels under a different
+name or ambiguous candidates cannot substitute another physical generation.
+
+The original restart policy is disabled and verified before stopping it. The
+candidate starts only after the original is stopped/retained, initially with
+automatic restart disabled. Its desired policy is then restored; inactive roots
+keep `no`. Rollback reverses the active root through its own journal, retaining
+the replacement and its later writes. A definitely failed startup can roll back;
+a still uncertain pending start cannot be bypassed by admitting both identities.
+These are management facts, not new Server execution authority. An unrestricted
+Docker administrator can still start retained containers outside this protocol.
+
+Image default merging is shared with source recreation, preserving explicit
+current runtime overrides and linked source metadata. Actual named/anonymous
+volume identities survive, including conversion of retained volume bindings to
+`NoCopy` mounts. Extra or mismatched mounts refuse activation but do not block
+fencing the same proven candidate for rollback. Neither root container, volume
+nor image is automatically deleted by production operations. Known private
+checkpoint images cannot be relabeled as reusable base templates by the API.
+
+The streamed Engine image-load path accepts bytes beyond the JSON receipt cap,
+retains backpressure and bounded progress receipts, and reports actual HTTP
+refusals, embedded errors, truncation, oversized replies, input failure and
+timeouts without retry. Fully authenticated plaintext staging comes from the
+Worker checkpoint pipeline. The host verifies its actual bytes/digest through an
+open descriptor before upload and checks the streamed bytes again, then verifies
+the loaded image ID and original checkpoint labels before changing the root.
+No guest executor or recovery helper is required for these management operations.
+
+Final actual tests used the normal packed `@cantrip/os-host` library and normally
+compiled Worker checkpoint modules against Docker 26.1.5+dfsg1 on the disposable
+installed AMD64 Debian VM, through pinned SSH/private Unix-socket transport.
+The public base digest was
+`sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2`.
+The host package is 29,302 bytes, SHA-256
+`28ad3adf2e16865435486a8efc08836c020ce5e4dc34a026e6ba745ddeb5c1ff`.
+This is Linux Docker-in-VM administration acceptance with dedicated fixture key
+providers, not macOS Engine repair, cloud acceptance, real account grants, a full
+Worker/client process or a fresh CantripOS desktop distribution.
+
+The normal Worker creates/encrypts a fresh private root checkpoint with `ed`
+1.21.1-1 and a Unicode/binary root marker. It authenticates the complete archive
+before plaintext staging. The final 82,348,032 archive bytes have SHA-256
+`63aeb9c3cabc8c6b0457c65c3faccaf302981742794f92db028059668553d7fe`;
+the image ID is
+`sha256:3d0a75c0a40d871d017294f579b7817bf95e705ad1a200be87c7883ef0101fc2`.
+The owned source container/image are removed to force actual image loading.
+Each replacement original contains newer root customization and `bc` 1.07.1-4,
+plus a separate current data volume.
+
+The first two cases kill real coordinators with SIGKILL after actual creation or
+rollback-start while their successful replies are held. Read-only recovery
+observes the original effect; continuation completes only future steps. Root
+probes verify the checkpoint's bytes, mode 0640 and UID/GID 12345/23456, package
+inventory, one replacement start and current mounted contents. Later replacement
+root writes remain readable in its stopped retained container after rollback.
+The original returns with its newer bytes/package state and the replacement's
+shared-volume writes. Original/replacement startup counters are each exactly two,
+and traces verify one load/create and one start per intended transition.
+
+The third case uses a genuinely missing executable in a new base image. Actual
+Docker start refuses it; the failed candidate remains retained and explicit
+rollback starts the exact original, preserving its package, root and volume
+data. All three final cases pass in 270.77 seconds. Fourteen actual 404 cleanup
+observations verify removal of owned fixture containers/images/volumes. Earlier
+passing cases before the final candidate-name guard remain separate evidence.
+
+The ordinary OS suite passes 46 tests with seven explicit opt-in integrations
+skipped, including the three run separately above. Worker OS tests pass 107;
+normal dependency/Worker builds, packed-source checks, changed-file formatting and
+diff checks pass. `pnpm check` still stops at unchanged Server budgets 1531/1500
+and 2286/1999. Initial upload tests exposed early-refusal EPIPE handling; the fix
+preserves actual 403/302 errors and its failed log remains recorded.
+
+Evidence, normal package, source hashes, private archive/journals, Engine traces
+and actual results are retained under
+`cantrip_os/artifacts/phase5-system-replacement`. See
+[administrative semantics and commands](SYSTEM_REPLACEMENT.md). Server-owned
+admissions, integrated Worker/client controls, stale-authority retirement and
+fresh recovery remain the next dependent block. Clone provisioning, external
+remote/current-native model/CUA acceptance and final normal OCI/DEB/ISO artifacts
+still prevent full Phase 5 completion. No guest package version or public image/
+ISO changed in this host-carrier cycle.

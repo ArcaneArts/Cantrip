@@ -134,6 +134,134 @@ export class LocalDocker {
     );
   }
 
+  /** Stream a verified private tar without JSON-encoding or buffering it.
+   * Completion is not image identity proof; callers must inspect the exact ID.
+   * No upload is retried, including after a lost receipt. */
+  loadImage(source, { timeout = 300_000, signal } = {}) {
+    return new Promise((resolve, reject) => {
+      let response,
+        finished = false,
+        receipt;
+      const complete = () => {
+        if (finished && receipt !== undefined) resolve(receipt);
+      };
+      const request = httpRequest(
+        {
+          socketPath: this.socketPath,
+          signal,
+          method: "POST",
+          path: "/v1.41/images/load?quiet=true",
+          headers: { "Content-Type": "application/x-tar" },
+        },
+        (incoming) => {
+          response = incoming;
+          if (incoming.statusCode !== 200) source.unpipe(request);
+          const chunks = [];
+          let size = 0;
+          incoming.on("data", (bytes) => {
+            size += bytes.length;
+            if (size > 4 * 1024 * 1024)
+              request.destroy(
+                new DockerDeliveryError(
+                  "Docker image-load receipt exceeded its limit; outcome is unknown.",
+                ),
+              );
+            else chunks.push(bytes);
+          });
+          incoming.once("error", (error) =>
+            reject(
+              incoming.statusCode !== 200
+                ? new DockerApiError(
+                    incoming.statusCode,
+                    `Docker image-load response disconnected: ${error.message}`,
+                  )
+                : new DockerDeliveryError(
+                    `Docker image-load response disconnected: ${error.message}`,
+                  ),
+            ),
+          );
+          incoming.once("end", () => {
+            const text = Buffer.concat(chunks).toString("utf8");
+            if (incoming.statusCode !== 200) {
+              let message = text.slice(0, 16384);
+              try {
+                message = JSON.parse(text).message ?? message;
+              } catch {
+                /* Actual non-JSON refusal. */
+              }
+              reject(
+                new DockerApiError(
+                  incoming.statusCode,
+                  message || `Docker HTTP ${incoming.statusCode}`,
+                ),
+              );
+              source.unpipe(request);
+              request.destroy();
+              return;
+            }
+            try {
+              receipt = text
+                .split("\n")
+                .filter((line) => line.trim())
+                .map((line) => JSON.parse(line));
+              const error = receipt.find(
+                (entry) => entry.error || entry.errorDetail,
+              );
+              if (error)
+                throw new DockerDeliveryError(
+                  `Docker image load reported: ${error.error ?? error.errorDetail.message}`,
+                );
+              complete();
+            } catch (error) {
+              reject(
+                error instanceof DockerDeliveryError
+                  ? error
+                  : new DockerDeliveryError(
+                      "Docker returned an invalid image-load receipt; outcome is unknown.",
+                    ),
+              );
+            }
+          });
+        },
+      );
+      request.setTimeout(timeout, () =>
+        request.destroy(
+          new DockerDeliveryError(
+            "Docker image load timed out; outcome is unknown.",
+          ),
+        ),
+      );
+      request.once("finish", () => {
+        finished = true;
+        complete();
+      });
+      request.on("error", (error) => {
+        source.unpipe(request);
+        if (response && response.statusCode !== 200) return;
+        reject(
+          error instanceof DockerDeliveryError
+            ? error
+            : new DockerDeliveryError(
+                `Docker image load disconnected: ${error.message}`,
+              ),
+        );
+      });
+      const inputError = (error) =>
+        request.destroy(
+          new DockerDeliveryError(
+            `Docker image input failed: ${error.message}`,
+          ),
+        );
+      source.once("error", inputError);
+      request.once("close", () => {
+        source.unpipe(request);
+        source.destroy();
+      });
+      source.once("close", () => source.removeListener("error", inputError));
+      source.pipe(request);
+    }).finally(() => source.destroy());
+  }
+
   /** Bounded JSON receipts and unbounded streamed image bytes have separate
    * lifetimes. Consumers must drain/destroy this GET stream; it is never retried. */
   readStream(path, { timeout = 300_000, signal } = {}) {
