@@ -86,7 +86,7 @@ export async function prepareSuspensionChat(
   workerId,
   directory,
   model,
-  { maxConcurrentInference } = {},
+  { maxConcurrentInference, taskOrigin = false } = {},
 ) {
   await eventually(
     () =>
@@ -125,6 +125,7 @@ export async function prepareSuspensionChat(
       baseUrl,
       nativeModel,
       maxConcurrentInference,
+      taskOrigin,
     }) => {
       const models = await import("/src/lib/api/models.ts");
       const provider = await models.createModelProvider({
@@ -161,14 +162,29 @@ export async function prepareSuspensionChat(
       await (
         await import("/src/lib/surface-private-state-worker-encryption.ts")
       ).ensureSurfacePrivateStateWorkerEncryption({ worker });
-      const create = await (
-        await import("/src/lib/api/conversations.ts")
-      ).prepareConversationCreation(projectId, "Durable suspension", false);
-      const chat = await create();
+      let chat, task;
+      if (taskOrigin) {
+        await (
+          await import("/src/lib/task-worker-encryption.ts")
+        ).ensureTaskWorkerEncryption({ worker });
+        const tasks = await import("/src/lib/api/tasks.ts");
+        const created = await tasks.createTask(projectId, "Durable suspension");
+        chat = created.chat;
+        task = await tasks.updateTaskDraft(chat.id, {
+          rowVersion: created.task.rowVersion,
+          briefMarkdown: "DURABLE_ORIGINAL_PROMPT",
+        });
+      } else {
+        const create = await (
+          await import("/src/lib/api/conversations.ts")
+        ).prepareConversationCreation(projectId, "Durable suspension", false);
+        chat = await create();
+      }
       window.suspensionLive.retainScope({ kind: "project", projectId });
       window.suspensionLive.retainScope({ kind: "chat", chatId: chat.id });
       return {
         chat,
+        ...(task ? { task } : {}),
         projectId,
         providerId: provider.id,
         configuration: {
@@ -186,6 +202,7 @@ export async function prepareSuspensionChat(
       baseUrl: model.baseUrl,
       nativeModel: model.model,
       maxConcurrentInference,
+      taskOrigin,
     },
   );
 }

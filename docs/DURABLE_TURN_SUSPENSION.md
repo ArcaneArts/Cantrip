@@ -123,6 +123,23 @@ format checks pass. The standard check still stops at the existing application
 decomposition limits; the separate repository guard reports the existing
 `native-commands.ts` limit. Later standard-check stages did not run.
 
+## Task recovery qualification
+
+Task controls use a separate admission-intent route. Patch `0090` restores native
+journal compatibility with the canonical Task queue epoch. Run the production
+fixture with `--task-origin --task-complete` to qualify a tool-using Task's normal
+completion. Both Node and Rust pass with two provider requests, one native turn,
+one completed command, and no native abort. This mode performs no cold recovery.
+
+The same fixture with `--task-origin` exercises the strict Task cold target.
+The Node run currently fails: Pause acknowledges the admission hold without a
+Task checkpoint; killing the worker tree leaves the Task failed. Explicit Resume
+creates a new Task operation, planning round, native thread and turn, and its next
+provider request loses the completed tool result. Startup/reopening remains idle.
+Rust Task cold recovery remains unqualified. The retained failure is an
+outstanding integration dependency; Task Pause does
+not yet provide the confirmed-pause/process-termination guarantee above.
+
 ## Held managed attachment
 
 Managed thread preparation can carry the server's expected suspension into
