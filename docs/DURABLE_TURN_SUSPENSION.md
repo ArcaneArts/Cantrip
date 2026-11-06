@@ -297,6 +297,20 @@ prevents a TUI input from acquiring both a legacy `codex-sync` message and a
 canonical history message. Unmanaged and legacy history keep their existing
 sync path.
 
+Add `--post-pause-queue` to accept a new encrypted queued prompt after the first
+durable Pause acknowledgement, revise its text, and then kill the worker tree.
+The reopened queue must retain the same item ID, revision and revised text
+without consuming it on startup or the first Resume. The test then explicitly
+steers that retained item into the running original turn before its next
+checkpoint. Its revised text must reach the second cold-resumed provider request
+and appear once in GUI and native history; the replaced text must not execute.
+
+A frozen native turn rejects direct steering. Newly queued input and its edits
+remain authoritative in the encrypted server queue, separate from the immutable
+worker checkpoint locator. They enter the native continuation only through an
+explicit steer with current execution admission after Resume. Queue acceptance
+does not release the pause or authorize inference.
+
 Both composer and linked console controls use authoritative suspension phases.
 Restoration errors preserve the chat and expose an explicit retry; Stop intent
 cannot offer Resume. Pause persistence failure keeps Retry Pause and the
