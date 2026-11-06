@@ -145,7 +145,7 @@ async fn revoked_credential_cannot_attach_after_awaited_owner_lookup() -> Result
     }.await;
     // Dropping release on any earlier error also releases the held transaction.
     lock.await??;
-    service.workers.close();
+    service.workers.close().await.unwrap();
     let _ = stop.send(());
     server.await??;
     observer.close().await?;

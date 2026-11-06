@@ -1,12 +1,12 @@
 //! Preparation for protected project repository operations. Content remains
 //! opaque; only owned execution bindings and configured runtimes are resolved.
 use super::targets::TargetRepository;
+use crate::workers::transport::WorkerTransport;
 use crate::{
     chats::{Repository as ChatRepository, routing::ModelRouting},
     database::Database,
     settings::repository::SettingsRepository,
     wire::{Value, coercion::truthy, value::json},
-    workers::bridge::WorkerBridge,
 };
 use anyhow::{Context, Result};
 use std::sync::Arc;
@@ -52,7 +52,7 @@ pub struct Prepared {
 /// they do in Source. Model preparation below belongs inside that boundary.
 pub async fn context(
     database: Arc<Database>,
-    bridge: &WorkerBridge,
+    bridge: &dyn WorkerTransport,
     owner: &str,
     project: &str,
     worktree: &str,

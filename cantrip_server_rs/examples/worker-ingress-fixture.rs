@@ -155,6 +155,13 @@ async fn unsubscribe(State(f): State<Arc<Fixture>>, Json(body): Json<Value>) -> 
 async fn request(State(f): State<Arc<Fixture>>, Json(body): Json<Value>) -> Json<Value> {
     let key = text(&body, "key");
     let worker = text(&body, "workerId");
+    let owner = f
+        .service
+        .workers
+        .bridge
+        .connection_identity(&worker)
+        .map(|identity| identity.owner)
+        .unwrap_or_default();
     let hold = boolean(&body, "hold");
     let fail = boolean(&body, "fail");
     f.settled.lock().unwrap().insert(key.clone(), false);
@@ -192,8 +199,10 @@ async fn request(State(f): State<Arc<Fixture>>, Json(body): Json<Value>) -> Json
         .service
         .workers
         .bridge
+        .clone()
         .request(
-            &worker,
+            owner,
+            worker,
             body["command"].clone(),
             Some(Duration::from_millis(
                 body["timeoutMs"].as_u64().unwrap_or(2000),
@@ -335,7 +344,11 @@ async fn main() -> Result<()> {
         f.close();
         close_service.live.transports.pre_close();
         close_service.live.close();
-        close_service.workers.close();
+        close_service
+            .workers
+            .close()
+            .await
+            .expect("worker transport closes");
     })
     .await?;
     service.live.transports.drained().await;

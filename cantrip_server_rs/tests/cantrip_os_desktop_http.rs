@@ -46,8 +46,14 @@ async fn serve(
         credential: "fixture".into(),
         process_generation: id(),
     });
-    assert!(service.workers.bridge.attach(worker, peer.clone(), None));
-    let bridge = service.workers.bridge.clone();
+    assert!(
+        service
+            .workers
+            .bridge
+            .local()
+            .attach(worker, peer.clone(), None)
+    );
+    let bridge = service.workers.bridge.clone().local_arc();
     let worker = worker.to_owned();
     let responder = tokio::spawn(async move {
         while let Some(Outgoing::Text(encoded)) = output.recv().await {

@@ -305,7 +305,7 @@ impl Drop for RequestTask {
 impl LimitedCommandBus {
     pub fn new(
         database: Arc<Database>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn CommandDelegate>,
         quotas: Arc<RelayQuotas>,
         config: &ServerConfig,
     ) -> Arc<Self> {

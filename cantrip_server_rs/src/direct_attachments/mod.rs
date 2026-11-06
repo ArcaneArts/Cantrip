@@ -1,4 +1,5 @@
 //! Native one-use direct capabilities and resource lifecycle fencing.
+use crate::workers::transport::WorkerTransport;
 mod events;
 mod lifecycle;
 mod native;
@@ -9,7 +10,7 @@ mod telemetry;
 
 use crate::{
     wire::{self, JsString, Value, value::json},
-    workers::bridge::{OfflineSubscription, WorkerBridge},
+    workers::bridge::OfflineSubscription,
 };
 use futures::{FutureExt, future::BoxFuture};
 use indexmap::IndexMap;
@@ -178,7 +179,7 @@ struct State {
 pub struct Coordinator {
     workers: WorkerRequest,
     options: Options,
-    bridge: Option<Arc<WorkerBridge>>,
+    bridge: Option<Arc<dyn WorkerTransport>>,
     state: Mutex<State>,
     changed: Notify,
 }
@@ -189,7 +190,7 @@ impl Coordinator {
     pub fn construct(
         workers: WorkerRequest,
         options: Options,
-        bridge: Option<Arc<WorkerBridge>>,
+        bridge: Option<Arc<dyn WorkerTransport>>,
     ) -> Arc<Self> {
         Arc::new(Self {
             workers,

@@ -1,14 +1,15 @@
 use super::runtime::*;
+use crate::workers::transport::WorkerTransport;
 use crate::{
     wire::{Value, coercion::truthy},
-    workers::{bridge::WorkerBridge, command_bus::RequestTimeout},
+    workers::command_bus::RequestTimeout,
 };
 use anyhow::Result;
 use futures::FutureExt;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 impl Service {
-    pub fn subscribe(self: &Arc<Self>, bridge: &Arc<WorkerBridge>, worker: &str) {
+    pub fn subscribe(self: &Arc<Self>, bridge: &Arc<dyn WorkerTransport>, worker: &str) {
         let mut state = self.state.lock().unwrap();
         if state.subscriptions.contains_key(worker) {
             return;

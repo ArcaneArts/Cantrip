@@ -24,7 +24,7 @@ async fn execute(
     };
     let binding = match operation::context(
         service.repository.database.clone(),
-        &service.workers.bridge,
+        service.workers.bridge.as_ref(),
         &owner,
         &project,
         &worktree,

@@ -1,10 +1,8 @@
 use super::*;
+use crate::workers::transport::WorkerTransport;
 use crate::{
     live::LiveService,
-    workers::{
-        bridge::WorkerBridge,
-        command_bus::{CommandFailure, LimitedCommandBus},
-    },
+    workers::command_bus::{CommandFailure, LimitedCommandBus},
 };
 use std::{sync::Mutex, time::Duration};
 use tokio::sync::{Notify, watch};
@@ -20,7 +18,7 @@ struct State {
 pub struct ReplicaService {
     pub repository: ReplicaRepository,
     pub(super) commands: Arc<LimitedCommandBus>,
-    pub(super) bridge: Arc<WorkerBridge>,
+    pub(super) bridge: Arc<dyn WorkerTransport>,
     live: Arc<LiveService>,
     observations: Arc<crate::projects::observations::Service>,
     state: Mutex<State>,
@@ -62,7 +60,7 @@ impl ReplicaService {
     pub fn new(
         database: Arc<Database>,
         commands: Arc<LimitedCommandBus>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
         live: Arc<LiveService>,
         observations: Arc<crate::projects::observations::Service>,
     ) -> Arc<Self> {

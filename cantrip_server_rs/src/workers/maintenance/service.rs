@@ -1,9 +1,7 @@
 use super::{Repository, surface_material_changed};
+use crate::workers::transport::WorkerTransport;
 use crate::{
-    database::Database,
-    live::LiveService,
-    wire::Value,
-    workers::{bridge::WorkerBridge, command_bus::LimitedCommandBus},
+    database::Database, live::LiveService, wire::Value, workers::command_bus::LimitedCommandBus,
 };
 use anyhow::{Context, Result};
 use std::{
@@ -20,7 +18,7 @@ struct State {
 }
 pub struct Service {
     pub repository: Repository,
-    bridge: Arc<WorkerBridge>,
+    bridge: Arc<dyn WorkerTransport>,
     commands: Arc<LimitedCommandBus>,
     live: Arc<LiveService>,
     server_id: String,
@@ -37,7 +35,7 @@ impl Drop for Admission {
 impl Service {
     pub fn new(
         database: Arc<Database>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
         commands: Arc<LimitedCommandBus>,
         live: Arc<LiveService>,
         server_id: String,

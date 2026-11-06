@@ -27,6 +27,7 @@ import { workerNotificationSchema } from "../../packages/protocol/dist/index.js"
 import { verifyIncomingDeadlines } from "./coordinated-deadline-cases.mjs";
 import { verifyRedisInterruption } from "./coordinated-interruption-cases.mjs";
 import { verifyBounds } from "./coordinated-bound-cases.mjs";
+import { verifyTransportAdapter } from "./coordinated-transport-cases.mjs";
 const { values } = parseArgs({
   options: {
     "redis-bin": { type: "string" },
@@ -1143,6 +1144,16 @@ async function run(pair) {
       prefix,
       root,
       step,
+      requested,
+      response,
+    });
+    await verifyTransportAdapter({
+      a,
+      b,
+      redis,
+      prefix,
+      step,
+      event,
       requested,
       response,
     });

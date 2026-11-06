@@ -1,15 +1,12 @@
 //! Owned worker observations and reconnect reconciliation for durable runtimes.
 use super::{Repository, text};
+use crate::workers::transport::WorkerTransport;
 use crate::{
     database::Database,
     live::LiveService,
     projects::coordinator::Coordinator,
     wire::{Value, value::json},
-    workers::{
-        bridge::{NotificationSubscription, WorkerBridge},
-        command_bus::LimitedCommandBus,
-        maintenance,
-    },
+    workers::{bridge::NotificationSubscription, command_bus::LimitedCommandBus, maintenance},
 };
 use anyhow::Result;
 use futures::{FutureExt, future::BoxFuture};
@@ -20,7 +17,7 @@ use std::{
 
 pub struct Service {
     repository: Repository,
-    bridge: Arc<WorkerBridge>,
+    bridge: Arc<dyn WorkerTransport>,
     commands: Arc<LimitedCommandBus>,
     live: Weak<LiveService>,
     maintenance: Arc<maintenance::Service>,
@@ -40,7 +37,7 @@ fn logged(worker: &str, message: &'static str, result: Result<()>) {
 impl Service {
     pub fn new(
         database: Arc<Database>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
         commands: Arc<LimitedCommandBus>,
         live: &Arc<LiveService>,
         maintenance: Arc<maintenance::Service>,

@@ -135,6 +135,11 @@ async function dispatch(r) {
       });
       return null;
     }
+    case "abandonAttach":
+      void dispatch({ ...r, op: "attach" }).catch((error) =>
+        record({ kind: "attachment-error", error: error.message }),
+      );
+      return null;
     case "attach": {
       const socket = new Socket(r.peer, r.workerId, r.ready);
       if (r.open === false) socket.readyState = 3;
@@ -155,9 +160,11 @@ async function dispatch(r) {
       );
       return null;
     }
-    case "begin": {
+    case "begin":
+    case "delegateBegin": {
       const options = {
         ...r.options,
+        ...(r.op === "delegateBegin" ? { forwardInferenceTiming: true } : {}),
         onEvent: async (event) => {
           record({ kind: "command-event", name: r.name, event });
           if (r.failEvent) throw new Error("Controlled event handler failed.");

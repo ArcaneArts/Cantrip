@@ -60,7 +60,7 @@ pub struct AccountService {
     live: Arc<LiveService>,
     catalogs: Arc<super::catalog_runtime::CatalogRuntime>,
     commands: Arc<LimitedCommandBus>,
-    bridge: Arc<crate::workers::bridge::WorkerBridge>,
+    bridge: Arc<dyn crate::workers::transport::WorkerTransport>,
     auth_state: Mutex<AuthState>,
     observation_subscriptions:
         Mutex<std::collections::HashMap<String, crate::workers::bridge::NotificationSubscription>>,
@@ -101,7 +101,7 @@ impl AccountService {
         commands: Arc<LimitedCommandBus>,
         live: Arc<LiveService>,
         catalogs: Arc<super::catalog_runtime::CatalogRuntime>,
-        bridge: Arc<crate::workers::bridge::WorkerBridge>,
+        bridge: Arc<dyn crate::workers::transport::WorkerTransport>,
     ) -> Arc<Self> {
         let migrations = MigrationCoordinator::with_purge_kinds(
             repository.clone(),

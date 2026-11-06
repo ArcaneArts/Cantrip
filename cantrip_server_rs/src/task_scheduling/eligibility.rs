@@ -1,6 +1,7 @@
 //! Provider reads precede dispatch transactions; the admitted resolver reads only
 //! this snapshot and rejects changed placement or model configuration fences.
 use super::*;
+use crate::workers::transport::WorkerTransport;
 use crate::{
     chats::{
         Repository as Chats,
@@ -11,7 +12,7 @@ use crate::{
     operations::logging::{self, LogCall, Logger},
     settings::reasoning::ConfigurationFailure,
     task_dispatch,
-    workers::{bridge::WorkerBridge, repository::WorkerRepository},
+    workers::repository::WorkerRepository,
 };
 use futures::{FutureExt, future::BoxFuture};
 pub const PREFLIGHT_TIMEOUT_MS: f64 = 30_000.0;
@@ -82,7 +83,7 @@ impl Service {
     pub fn new(
         database: Arc<Database>,
         routing: Arc<ModelRouting>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
     ) -> Arc<Self> {
         Self::with_dependencies(
             database,

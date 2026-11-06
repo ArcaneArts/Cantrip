@@ -1,11 +1,12 @@
 //! Runtime route selection shared by consoles and later execution consumers.
 use super::eligibility;
+use crate::workers::transport::WorkerTransport;
 use crate::{
     database::Database,
     operations::logging::{self, LogCall, Logger},
     settings::{catalog_runtime::CatalogRuntime, reasoning, repository::SettingsRepository},
     wire::{JsString, Value, coercion::truthy, value::json},
-    workers::{bridge::WorkerBridge, repository::WorkerRepository},
+    workers::repository::WorkerRepository,
 };
 use anyhow::{Context, Result, bail};
 use futures::future::BoxFuture;
@@ -74,7 +75,7 @@ impl ModelRouting {
     pub fn new(
         database: Arc<Database>,
         catalogs: Arc<CatalogRuntime>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
     ) -> Arc<Self> {
         Self::with_dependencies(
             database,
