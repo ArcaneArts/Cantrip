@@ -1,5 +1,6 @@
 use super::*;
 use crate::database::Transaction;
+use crate::native_commands::managed_queue::deep_equal;
 use futures::FutureExt;
 async fn append(
     tx: &Transaction<'_>,
@@ -33,9 +34,11 @@ async fn append(
             || saved["role"] != input["classification"]["role"]
             || saved["mode"] != input["classification"]["mode"]
             || saved["reasoning_effort"] != input["reasoningEffort"]
-            || saved["attachment_ids"].stringify()
-                != input["classification"]["attachmentIds"].stringify()
-            || saved["protected_content"].stringify() != input["protectedContent"].stringify()
+            || !deep_equal(
+                &saved["attachment_ids"],
+                &input["classification"]["attachmentIds"],
+            )
+            || !deep_equal(&saved["protected_content"], &input["protectedContent"])
         {
             anyhow::bail!("Encrypted chat message idempotency metadata is inconsistent.")
         }

@@ -110,7 +110,7 @@ export async function taskModelProvider({
         record.completed = true;
         return;
       }
-      const id = `task-fixture-response-${nextResponse++}`;
+      const id = plan.responseId ?? `task-fixture-response-${nextResponse++}`;
       response.writeHead(200, {
         "content-type": "text/event-stream",
         "cache-control": "no-cache",

@@ -162,7 +162,7 @@ pub(crate) async fn defer(
     );
     let evidence = serde_json::to_string(&evidence)?;
     tx.query(
-        "UPDATE native_commands SET status='rejected',rejection_code=$4,terminal_evidence=$5::jsonb,logical_completed_at=$1,execution_completed_at=$1,updated_at=$1 WHERE operation_id=$2 AND operation_generation=$3",
+        "UPDATE native_commands SET status='rejected',rejection_code=$4,terminal_evidence=$5::text::jsonb,logical_completed_at=$1,execution_completed_at=$1,updated_at=$1 WHERE operation_id=$2 AND operation_generation=$3",
         &[&now, &operation, &generation, &rejection, &evidence],
     ).await?;
     tx.query(

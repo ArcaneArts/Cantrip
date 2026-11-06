@@ -207,8 +207,13 @@ export function createChatAutomationPauseRuntime(
     // Active native controls persist their intent at authorized dispatch. A
     // boundary acknowledgement may arrive after a newer pause/resume, so this
     // older HTTP request must not write its original intent a second time.
+    // Before a native turn exists the worker returns no active control; retain
+    // the accepted input with the ordinary durable queue hold instead.
     const nativeOwnsPause =
-      managedNative && Boolean(control.activationGeneration) && workerConnected;
+      managedNative &&
+      Boolean(control.activationGeneration) &&
+      workerConnected &&
+      active !== null;
     const updated = nativeOwnsPause
       ? await repository.getChatExecutionContext(ownerId, context.chatId)
       : (resumed ??
