@@ -19,8 +19,8 @@ Both server implementations can now admit a fresh physical observer for an
 explicit Resume while retaining the original input and native turn. Production
 worker orchestration now connects explicit cold Resume to fresh admission,
 held restoration and original-input completion. The production worker acceptance
-below exercises this through the encrypted browser SDK. The complete UI,
-resource and autonomous-execution matrix is still being integrated; this is
+below exercises this through the encrypted browser SDK and mounted application.
+The complete resource, error and autonomous-execution matrix is still being integrated; this is
 not yet the complete product guarantee.
 
 The complete acceptance target is:
@@ -263,8 +263,26 @@ storage. `--server node` or `--server rust` selects one implementation;
 unless `--retain` is supplied; failures preserve it for diagnosis. The current
 process-tree inspection uses POSIX tools.
 
-This fixture drives the existing browser SDK, not the mounted application UI.
-It does not qualify native-terminal-originated production input, cold Stop
+Add `--mounted-ui` to drive the real application. Setup still uses the encrypted
+SDK. The test then selects the chat through the sidebar, clicks Pause while
+the provider response is held, checks Pausing and an enabled Stop, and rejects
+any premature Paused status. After each worker-tree kill it reloads the actual
+application, reopens the paused chat and clicks Resume. It also checks that the
+final answer is visible in the mounted transcript. The same original-rollout
+and inference assertions apply to both servers.
+
+Both composer and linked console controls use authoritative suspension phases.
+Restoration errors preserve the chat and expose an explicit retry; Stop intent
+cannot offer Resume. Pause persistence failure keeps Retry Pause and the
+existing live continuation control. A reopened composer's duration uses the
+original correlated turn start and saved pause timing, including offline time;
+accepted steering does not start another clock, and later turns cannot inherit
+an older turn's pause total.
+
+The mounted path is qualified in a desktop browser. Recovery-error controls and
+timing have focused component coverage; actual missing/corrupt checkpoint UI
+flows remain part of the broader error matrix. This does not qualify
+native-terminal-originated production input, cold Stop
 before restoration, Task/Goal recovery, or the complete resource/error matrix.
 Those remain separate acceptance requirements.
 

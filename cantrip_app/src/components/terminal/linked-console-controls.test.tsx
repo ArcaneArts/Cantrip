@@ -67,6 +67,56 @@ afterEach(async () => {
 });
 
 describe("linked console controls", () => {
+  it("renders a remote durable pause before its acknowledgement without blocking Stop", async () => {
+    await mount([
+      {
+        ...current(),
+        automationPaused: true,
+        nativeSuspension: {
+          phase: "pausing",
+          action: "pause",
+          resumable: false,
+          active: { threadId: "thread", turnId: "turn" },
+          controlId: null,
+          updatedAt: null,
+          pausedAt: null,
+          pausedMilliseconds: 0,
+          error: null,
+        },
+      } as ReturnType<typeof current>,
+    ]);
+    expect(text()).toContain("Pausing at the next safe boundary");
+    expect(button("Pausing").props.disabled).toBe(true);
+    expect(button("Stop current operation").props.disabled).toBe(false);
+    expect(api.setChatPaused).not.toHaveBeenCalled();
+  });
+
+  it("shows a persisted recovery error and retries Resume explicitly", async () => {
+    await mount([
+      {
+        ...current(),
+        status: "idle",
+        automationPaused: true,
+        nativeSuspension: {
+          phase: "error",
+          action: "resume",
+          resumable: true,
+          active: { threadId: "thread", turnId: "turn" },
+          controlId: null,
+          updatedAt: null,
+          pausedAt: null,
+          pausedMilliseconds: 0,
+          error: { code: "checkpoint-incompatible", protectedDetails: null },
+        },
+      } as ReturnType<typeof current>,
+    ]);
+    expect(text()).toContain("Saved turn data needs a compatible runtime");
+    expect(api.setChatPaused).not.toHaveBeenCalled();
+    api.setChatPaused.mockResolvedValue({ paused: false });
+    await act(async () => button("Retry resume").props.onClick());
+    await settle();
+    expect(api.setChatPaused).toHaveBeenCalledWith("chat-one", false);
+  });
   it("reflects canonical state changes without submitting input", async () => {
     await mount();
     expect(text()).toContain("Working");

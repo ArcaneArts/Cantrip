@@ -1,4 +1,4 @@
-import type { ChatMessage } from "@cantrip/protocol";
+import type { ChatMessage, ChatNativeSuspension } from "@cantrip/protocol";
 
 const EPOCH_MILLISECONDS_THRESHOLD = 100_000_000_000;
 
@@ -20,7 +20,46 @@ function timestampMilliseconds(
 export function resolveRunningAgentStartedAtMs(
   messages: readonly ChatMessage[],
   fallbackStartedAt: string,
+  suspension?: ChatNativeSuspension,
 ): number | null {
+  const active =
+    suspension &&
+    !["idle", "completed", "stopped", "failed"].includes(suspension.phase)
+      ? suspension.active
+      : null;
+  if (active) {
+    for (const message of messages) {
+      for (const content of message.content) {
+        if (
+          content.type !== "activity" ||
+          content.activity.type !== "turnSummary"
+        )
+          continue;
+        const summary = content.activity;
+        if (
+          summary.status === "running" &&
+          summary.correlation?.threadId === active.threadId &&
+          summary.correlation.turnId === active.turnId
+        )
+          return (
+            epochMilliseconds(summary.startedAtMs) ??
+            epochMilliseconds(summary.startedAt) ??
+            timestampMilliseconds(message.createdAt)
+          );
+      }
+    }
+    const original = messages.find(
+      (message) =>
+        message.role === "user" &&
+        message.content.some(
+          (content) =>
+            content.type === "text" &&
+            content.correlation?.threadId === active.threadId &&
+            content.correlation.turnId === active.turnId,
+        ),
+    );
+    return original ? timestampMilliseconds(original.createdAt) : null;
+  }
   let latestTurnAnchorIndex = -1;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const role = messages[index]?.role;
