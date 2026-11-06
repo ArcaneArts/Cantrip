@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { and, desc, eq, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   cantripOsBackupOperationResultSchema,
   cantripOsBackupWorkerCommandSchema,
@@ -45,13 +45,9 @@ export class CantripOsBackupRepository {
           eq(table.ownerId, ownerId),
           capturesOnly ? eq(table.action, "capture") : undefined,
           cursor
-            ? or(
-                lt(table.createdAt, cursor.createdAt),
-                and(
-                  eq(table.createdAt, cursor.createdAt),
-                  lt(table.operationId, cursor.operationId),
-                ),
-              )
+            ? // Keep PostgreSQL's full timestamp precision. The Date projection
+              // used by summaries truncates microseconds and cannot be a cursor.
+              sql`(${table.createdAt}, ${table.operationId}) < (SELECT created_at, operation_id FROM cantrip_os_backup_operations WHERE owner_id = ${ownerId} AND operation_id = ${cursor.operationId})`
             : undefined,
         ),
       )

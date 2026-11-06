@@ -317,6 +317,27 @@ async fn backup_http_keeps_owned_admissions_across_native_server_restart() -> Re
         second["items"][0]["operationId"],
         all["items"][0]["operationId"]
     );
+    database.query("UPDATE cantrip_os_backup_operations SET created_at='2026-11-05T00:00:00.123101Z'::timestamptz WHERE operation_id=$1", &[&capture_id]).await?;
+    database.query("UPDATE cantrip_os_backup_operations SET created_at='2026-11-05T00:00:00.123303Z'::timestamptz WHERE operation_id=$1", &[&restore_id]).await?;
+    let (status, precise) = get(
+        &client,
+        &running.base,
+        "/api/cantrip-os/backup-operations?limit=1",
+    )
+    .await?;
+    assert_eq!(status, 200, "{precise}");
+    assert_eq!(precise["items"][0]["operationId"], restore_id);
+    let cursor = precise["nextCursor"]
+        .as_str()
+        .context("Microsecond cursor")?;
+    let (status, tail) = get(
+        &client,
+        &running.base,
+        &format!("/api/cantrip-os/backup-operations?limit=1&cursor={cursor}"),
+    )
+    .await?;
+    assert_eq!(status, 200, "{tail}");
+    assert_eq!(tail["items"][0]["operationId"], capture_id);
     assert!(repository.backup_get("other", &capture_id).await?.is_none());
     let wrong = json!({"mode":"continue","scope":{"workerId":"other"}});
     assert_eq!(

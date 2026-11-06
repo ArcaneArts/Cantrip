@@ -3022,3 +3022,9 @@ declares `chat.goal.claim-recover` without its fixture. Base `db40fc16d` contain
 that declaration and lacks the fixture before this change; the failure is
 recorded without adding an unrelated Goal repair. Backup HTTP and dedicated OS
 wire validation above passed. This cycle adds no new Worker command type.
+
+Final review reproduced a Node keyset-pagination bug: JavaScript Date conversion
+truncated PostgreSQL microseconds and skipped two of three captures created
+within one millisecond. Cursor comparison now reads the exact timestamp in SQL.
+The regression and existing Node HTTP suites passed (17.22s), Server type
+checking passed, and native HTTP passed the equivalent precision case (6.87s).

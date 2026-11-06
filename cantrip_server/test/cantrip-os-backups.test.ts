@@ -430,6 +430,33 @@ it(
           )
         ).result?.state,
       ).toBe("ready");
+      for (const [operation, timestamp] of [
+        [captureId, "2026-11-05T00:00:00.123101Z"],
+        [secondId, "2026-11-05T00:00:00.123202Z"],
+        [thirdId, "2026-11-05T00:00:00.123303Z"],
+      ])
+        await database.query(
+          "UPDATE cantrip_os_backup_operations SET created_at=$2::timestamptz WHERE operation_id=$1",
+          [operation, timestamp],
+        );
+      const ordered: string[] = [];
+      let cursor: string | null = null;
+      for (let pageCount = 0; pageCount < 4; pageCount++) {
+        const page = (
+          await app.inject(
+            "/api/cantrip-os/backups?limit=1" +
+              (cursor ? `&cursor=${cursor}` : ""),
+          )
+        ).json();
+        ordered.push(
+          ...page.items.map(
+            (item: { operationId: string }) => item.operationId,
+          ),
+        );
+        cursor = page.nextCursor;
+        if (!cursor) break;
+      }
+      expect(ordered).toEqual([thirdId, secondId, captureId]);
       online = false;
       const offline = await post(
         `/api/cantrip-os/backup-operations/${captureId}/recovery`,
