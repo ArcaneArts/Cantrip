@@ -31,6 +31,7 @@ import {
   type LinuxWorktreeAdmission,
 } from "./cantrip-os-worktrees.js";
 import { resolveOsRunPrimary } from "./cantrip-os-run.js";
+import { existingLinuxSourcePath } from "./cantrip-os-existing-path.js";
 
 const instance = ({
   workerProcessGeneration: _workerProcessGeneration,
@@ -69,6 +70,32 @@ const binding = (
 const fail = (message: string): never => {
   throw new CantripOsPlacementError(message);
 };
+
+function createdLinuxSource(
+  source: typeof schema.cantripOsProjectSources.$inferSelect,
+  row: typeof schema.cantripOsSourceBindings.$inferSelect,
+  projectId: string,
+  workerId: string,
+  instanceId: string,
+) {
+  const {
+    removedAt: _removed,
+    gitCommonGuestPath: _common,
+    ...sourceSummary
+  } = source;
+  return {
+    source: cantripOsProjectSourceSummarySchema.parse({
+      ...sourceSummary,
+      projectId,
+      workerId,
+      instanceId,
+      primaryWorktreeId: row.worktreeId,
+      createdAt: source.createdAt.toISOString(),
+      updatedAt: source.updatedAt.toISOString(),
+    }),
+    binding: binding(row, instanceId),
+  };
+}
 
 /** Server-owned identities and placement. This repository never touches a
  * filesystem or retries guest mutations. Observations must come from the owning
@@ -504,6 +531,7 @@ export class CantripOsRepository {
       projectId: string;
       workspaceId: string;
       sourceKind: ProjectSourceKind;
+      existing?: { operationId: string; relativePath: string };
     },
   ) {
     return this.database.transaction(async (tx) => {
@@ -544,6 +572,62 @@ export class CantripOsRepository {
         )
         .for("update");
       if (!target) return fail("Project and OS workspace must share an owner.");
+      const existingPath = input.existing
+        ? existingLinuxSourcePath(
+            target.workspace.homeGuestPath,
+            input.existing.relativePath,
+          )
+        : null;
+      const request = {
+        projectId: input.projectId,
+        workspaceId: input.workspaceId,
+        sourceKind: input.sourceKind,
+        guestPath: existingPath!,
+      };
+      if (input.existing) {
+        const [old] = await tx
+          .select()
+          .from(schema.cantripOsExistingSourceAdmissions)
+          .where(
+            eq(
+              schema.cantripOsExistingSourceAdmissions.operationId,
+              input.existing.operationId,
+            ),
+          );
+        if (old) {
+          if (
+            old.ownerId !== ownerId ||
+            !isDeepStrictEqual(old.request, request)
+          )
+            return fail(
+              "This source creation ID already belongs to another selection.",
+            );
+          const [previous] = await tx
+            .select()
+            .from(schema.cantripOsSourceBindings)
+            .where(eq(schema.cantripOsSourceBindings.id, old.bindingId));
+          const [source] = previous
+            ? await tx
+                .select()
+                .from(schema.cantripOsProjectSources)
+                .where(
+                  eq(
+                    schema.cantripOsProjectSources.id,
+                    previous.projectSourceId,
+                  ),
+                )
+            : [];
+          if (!previous || !source)
+            return fail("The admitted existing source is no longer available.");
+          return createdLinuxSource(
+            source,
+            previous,
+            input.projectId,
+            target.instance.workerId,
+            target.instance.id,
+          );
+        }
+      }
       if ((input.sourceKind === "git") !== target.gitCapability)
         return fail(
           "Linux source kind must preserve the project Git capability.",
@@ -551,7 +635,9 @@ export class CantripOsRepository {
       const sourceId = randomUUID(),
         worktreeId = randomUUID(),
         bindingId = randomUUID();
-      const guestPath = `${target.workspace.homeGuestPath}/checkouts/${sourceId}`;
+      const guestPath =
+        existingPath ??
+        `${target.workspace.homeGuestPath}/checkouts/${sourceId}`;
       await tx.insert(schema.projectSourceIdentities).values({
         id: sourceId,
         projectId: input.projectId,
@@ -565,7 +651,7 @@ export class CantripOsRepository {
           workspaceId: input.workspaceId,
           sourceKind: input.sourceKind,
           guestPath,
-          ownershipKind: "cantrip",
+          ownershipKind: input.existing ? "user" : "cantrip",
         })
         .returning();
       await tx.insert(schema.projectWorktrees).values({
@@ -598,23 +684,20 @@ export class CantripOsRepository {
           state: "provisioning",
         })
         .returning();
-      const {
-        removedAt: _removed,
-        gitCommonGuestPath: _common,
-        ...sourceSummary
-      } = source!;
-      return {
-        source: cantripOsProjectSourceSummarySchema.parse({
-          ...sourceSummary,
-          projectId: input.projectId,
-          workerId: target.instance.workerId,
-          instanceId: target.instance.id,
-          primaryWorktreeId: worktreeId,
-          createdAt: source!.createdAt.toISOString(),
-          updatedAt: source!.updatedAt.toISOString(),
-        }),
-        binding: binding(row!, target.instance.id),
-      };
+      if (input.existing)
+        await tx.insert(schema.cantripOsExistingSourceAdmissions).values({
+          operationId: input.existing.operationId,
+          ownerId,
+          bindingId,
+          request,
+        });
+      return createdLinuxSource(
+        source!,
+        row!,
+        input.projectId,
+        target.instance.workerId,
+        target.instance.id,
+      );
     });
   }
 
@@ -755,6 +838,7 @@ export class CantripOsRepository {
               : row.linuxSource?.sourceKind) ??
             fail("Source details are unavailable."),
           repositoryFingerprint: row.linuxSource?.repositoryFingerprint ?? null,
+          primaryGuestPath: row.linuxSource?.guestPath,
           sourceMatches:
             row.worktree.projectSourceId === row.binding.projectSourceId &&
             row.worktree.workerId === row.binding.workerId &&

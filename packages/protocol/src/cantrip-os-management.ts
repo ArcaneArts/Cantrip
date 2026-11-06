@@ -58,6 +58,16 @@ export const cantripOsWorkspaceCreateSchema = z
   })
   .strict();
 
+export const cantripOsExistingSourceCreateSchema = z
+  .object({
+    mode: z.literal("linux-existing"),
+    operationId: z.uuid(),
+    workspaceId: z.uuid(),
+    sourceKind: z.enum(["git", "folder"]),
+    relativePath: z.string().min(1).max(8192),
+  })
+  .strict();
+
 export const cantripOsBindingCreateSchema = z.discriminatedUnion("mode", [
   z
     .object({
@@ -74,6 +84,7 @@ export const cantripOsBindingCreateSchema = z.discriminatedUnion("mode", [
       sourceKind: z.enum(["git", "folder"]),
     })
     .strict(),
+  cantripOsExistingSourceCreateSchema,
   z
     .object({
       mode: z.literal("linux-worktree"),

@@ -69,7 +69,9 @@ async function command(
     );
   if (result.exitCode !== 0 || result.failure || result.terminationRequested)
     throw new LinuxSourceCommandError(result);
-  return result.stdout.trim();
+  // Git paths may end in significant spaces or even a newline. Remove only
+  // the command's final Linux line delimiter, never filesystem-name bytes.
+  return result.stdout.replace(/\n$/u, "");
 }
 
 async function gitIdentity(
@@ -129,7 +131,12 @@ async function gitIdentity(
  * separate provisioning operation below. */
 export async function inspectLinuxSource(
   connection: OsExecutorConnection,
-  source: { sourceId: string; guestPath: string; sourceKind: "git" | "folder" },
+  source: {
+    sourceId: string;
+    guestPath: string;
+    sourceKind: "git" | "folder";
+    requireRepositoryRoot?: boolean;
+  },
   options: SourceCommandOptions = {},
 ): Promise<LinuxSourceReceipt> {
   if (!uuid.test(source.sourceId))
@@ -149,6 +156,18 @@ export async function inspectLinuxSource(
   );
   if (!metadata.isDirectory)
     throw new Error("The selected Linux source is not a directory.");
+  if (source.sourceKind === "git" && source.requireRepositoryRoot) {
+    const root = await command(
+      connection,
+      ["git", "-C", guestPath, "rev-parse", "--show-toplevel"],
+      guestPath,
+      options,
+    );
+    if (root !== guestPath)
+      throw new Error(
+        "Select the Git worktree root when registering an existing repository.",
+      );
+  }
   return source.sourceKind === "git"
     ? gitIdentity(connection, source.sourceId, guestPath, options)
     : {
@@ -323,21 +342,36 @@ export async function createLinuxWorktree(
     throw new Error(
       "Canonical source/worktree IDs and an exact revision are required.",
     );
+  const source = cantripOsGuestPathSchema.parse(plan.sourceGuestPath);
+  const relative = posix.relative(connection.binding.home, source);
   if (
-    plan.sourceGuestPath !==
-      posix.join(connection.binding.home, "checkouts", plan.sourceId) ||
+    relative === ".." ||
+    relative.startsWith("../") ||
+    posix.isAbsolute(relative)
+  )
+    throw new Error(
+      "The Primary source is outside its selected Linux workspace.",
+    );
+  if (
     plan.guestPath !==
-      posix.join(connection.binding.home, "worktrees", plan.worktreeId)
+    posix.join(connection.binding.home, "worktrees", plan.worktreeId)
   )
     throw new Error("Worktree locations do not match the selected workspace.");
   if (plan.expectedRepositoryFingerprint) {
-    const actual = await gitIdentity(
+    const actual = await inspectLinuxSource(
       connection,
-      plan.sourceId,
-      plan.sourceGuestPath,
+      {
+        sourceId: plan.sourceId,
+        guestPath: source,
+        sourceKind: "git",
+        requireRepositoryRoot: true,
+      },
       options,
     );
-    if (actual.repositoryFingerprint !== plan.expectedRepositoryFingerprint)
+    if (
+      actual.guestPath !== source ||
+      actual.repositoryFingerprint !== plan.expectedRepositoryFingerprint
+    )
       throw new Error(
         "The Linux Git common directory changed; no worktree mutation was started.",
       );

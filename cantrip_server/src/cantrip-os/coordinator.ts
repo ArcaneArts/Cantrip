@@ -373,12 +373,20 @@ export class CantripOsCoordinator {
         projectId,
         input,
       );
-    if (input.mode === "linux-owned")
+    if (input.mode === "linux-owned" || input.mode === "linux-existing")
       return (
         await this.repository.cantripOs.createLinuxSource(ownerId, {
           projectId,
           workspaceId: input.workspaceId,
           sourceKind: input.sourceKind,
+          ...(input.mode === "linux-existing"
+            ? {
+                existing: {
+                  operationId: input.operationId,
+                  relativePath: input.relativePath,
+                },
+              }
+            : {}),
         })
       ).binding;
     // Ownership alone is insufficient: a project route must not admit another
@@ -411,6 +419,7 @@ export class CantripOsCoordinator {
       worktreeId: binding.worktreeId,
       sourceKind: context.sourceKind,
       repositoryFingerprint: context.repositoryFingerprint,
+      primaryGuestPath: context.primaryGuestPath,
       workspaceId: workspace.id,
       guestWorkspaceId: workspace.guestWorkspaceId,
       uid: workspace.uid,

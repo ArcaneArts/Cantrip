@@ -23,10 +23,13 @@ export type RepositoryOperationContentSchema<T> = { parse(value: unknown): T };
 
 function componentKey(input: {
   keyRevision?: number;
+  allowHistoricalKeyRevision?: boolean;
   service: WorkerEncryptionService;
 }): { key: Uint8Array; keyRevision: number; ownerId: string } {
   try {
-    const material = input.service.componentKey("repository-content");
+    const material = input.allowHistoricalKeyRevision
+      ? input.service.componentKey("repository-content", input.keyRevision)
+      : input.service.componentKey("repository-content");
     if (
       input.keyRevision !== undefined &&
       input.keyRevision !== material.keyRevision
@@ -72,11 +75,15 @@ export async function openWorkerRepositoryOperationContent<T>(input: {
   opaque: unknown;
   schema: RepositoryOperationContentSchema<T>;
   service: WorkerEncryptionService;
+  /** Only a caller with a durable, Server-owned admission may opt in. Revoked
+   * revisions remain unavailable; ordinary repository requests stay current. */
+  allowHistoricalKeyRevision?: boolean;
 }): Promise<T> {
   const opaque = repositoryOperationOpaqueSchema.parse(input.opaque);
   const material = componentKey({
     service: input.service,
     keyRevision: opaque.keyRevision,
+    allowHistoricalKeyRevision: input.allowHistoricalKeyRevision,
   });
   let plaintext: Uint8Array | null = null;
   try {

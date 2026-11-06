@@ -572,6 +572,7 @@ const cantripOsExports = [
   "cantripOsInspectSchema",
   "cantripOsWorkspaceCreateSchema",
   "cantripOsBindingCreateSchema",
+  "cantripOsExistingSourceCreateSchema",
   "cantripOsProvisionSchema",
   "cantripOsAttachSchema",
   "cantripOsDependencyOverlaySchema",

@@ -620,9 +620,14 @@ paginated catalogue entries and protected outcomes. Explicit continuation can
 authorize a fresh runtime on the same attachment without rewriting its original
 admission; actual guest receipt/activation checks still apply. Cantrip's capture,
 history, restore, rollback and recovery controls are exercised against the full
-Worker and production grants in Docker. Restored-source adoption, installed-system
-product controls and broader remote/lifecycle acceptance remain required. This
-checkpoint does not complete Phase 5.
+Worker and production grants in Docker. Explicit existing/restored source
+registration now creates fresh source/worktree/binding identities and verifies
+the chosen Linux directory without cloning or moving it. Actual Docker product
+acceptance covers Explorer/editor, terminal and Run access to a restored source;
+native Controller acceptance covers non-generated Git paths and secondary
+worktrees in Docker and an installed VM. Current-runtime model acceptance,
+installed-system product controls and broader remote/lifecycle acceptance remain
+required. These checkpoints do not complete Phase 5.
 
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output

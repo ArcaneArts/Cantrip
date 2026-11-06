@@ -223,6 +223,9 @@ impl Coordinator {
         ] {
             scope[key] = value;
         }
+        if context["primaryGuestPath"].is_string() {
+            scope["primaryGuestPath"] = context["primaryGuestPath"].clone();
+        }
         context["scope"] = checked("cantripOsSourceDispatchScopeSchema", scope)?;
         Ok(context)
     }
