@@ -52,6 +52,10 @@ the ISO when you want the same source configuration as bootable media.
 Phase 5's optional [recovery package](packages/recovery/README.md) supplies local
 workspace capture, staged restore, selected home-state reset, interruption
 recovery and rollback commands.
+Recovery 0.4.0 adds [package upgrade and external repair](PACKAGE_RECOVERY.md)
+through the same authenticated Docker/SSH carrier, including when installed
+Cantrip helpers are broken. Its durable administrative jobs are the foundation
+for subsequent product package controls.
 Docker/ISO scripts include it with the executor edition;
 `CANTRIP_OS_RECOVERY=0` omits it independently. The package is an administrative
 foundation. [Private Worker archive encryption/transfer and Server admissions](BACKUPS.md)

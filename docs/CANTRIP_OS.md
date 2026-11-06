@@ -715,6 +715,17 @@ legacy plans observe original admissions only. Account changes cannot redirect
 pending requests or erase another account's local draft.
 See [reset admissions](../cantrip_os/BACKUPS.md#workspace-reset-admissions).
 
+Recovery 0.4.0 adds package-owned upgrade/repair commands and the same trusted
+rescue source over the external Docker/strict-SSH carrier. Durable one-shot jobs
+verify Debian artifact metadata, retain original conffiles/payload, respect actual
+dpkg/recovery locks and observe lost carriers or coordinators without replay.
+Actual Docker and installed-VM tests break both helpers and maintainer scripts,
+exercise normal reinstall failure and repair, and retain dirty/ignored/Unicode
+workspace files, browser data and root customization. Package product admissions,
+shared system-image preservation/replacement, clone identities and final current
+distributions remain required; this checkpoint does not complete Phase 5.
+See [package recovery](../cantrip_os/PACKAGE_RECOVERY.md).
+
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output
 recovery, and worker-offline behavior. Deliver workspace backups/restores,
