@@ -26,12 +26,14 @@ const owner = {
   runner: request.runnerGeneration,
 };
 
-async function fixture() {
+async function fixture(
+  component: "chat-content" | "task-content" = "chat-content",
+) {
   const directory = await mkdtemp(
     path.join(tmpdir(), "cantrip-resource-control-"),
   );
   directories.push(directory);
-  return resourceProtectionFixture(directory);
+  return resourceProtectionFixture(directory, component);
 }
 
 afterEach(async () => {
@@ -59,6 +61,42 @@ describe("native private resource control", () => {
     });
     expect(JSON.stringify(result)).not.toContain("RESOURCE_PRIVATE_VALUE");
     expect(await protection.open(binding, result.value)).toEqual(request.value);
+  });
+
+  it("selects the actual Task owner's component grant for private resource capture", async () => {
+    const encryption = await fixture("task-content");
+    const resolve = vi.fn(async (_params: unknown) => ({}));
+    await handleNativeResourceProtection(request, {
+      owner: () => ({ ...owner, component: "task-content" }),
+      protection: encryption.protection,
+      resolve,
+    });
+    const value = (resolve.mock.calls[0]![0] as { value: unknown }).value;
+    expect(value).toMatchObject({
+      formatVersion: 2,
+      component: "task-content",
+    });
+    expect(
+      await encryption.protection.open(binding, value, "task-content"),
+    ).toEqual(request.value);
+  });
+
+  it("does not publish Task ciphertext after its component owner changes", async () => {
+    const encryption = await fixture("task-content");
+    let component: "chat-content" | "task-content" = "task-content";
+    const seal = encryption.protection.seal.bind(encryption.protection);
+    encryption.protection.seal = async (...args) => {
+      const value = await seal(...args);
+      component = "chat-content";
+      return value;
+    };
+    const resolve = vi.fn(async () => ({}));
+    await handleNativeResourceProtection(request, {
+      owner: () => ({ ...owner, component }),
+      protection: encryption.protection,
+      resolve,
+    });
+    expect(resolve).not.toHaveBeenCalled();
   });
 
   it("explicitly denies when the actual component grant is absent", async () => {

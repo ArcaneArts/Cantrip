@@ -81,6 +81,7 @@ pub struct EventSink {
     pub subagent: Option<Value>,
     pub attempt_id: Value,
     pub task_input_operation: Mutex<Option<Value>>,
+    pub task_restored: Mutex<Option<super::engine::TaskRestored>>,
     pub inference_timing: Mutex<Option<(u64, Value)>>,
     pub source: JsString,
     pub turn_state: Arc<Mutex<TurnState>>,
@@ -183,6 +184,7 @@ impl EventSink {
             subagent,
             attempt_id,
             task_input_operation: Mutex::new(None),
+            task_restored: Mutex::new(None),
             inference_timing: Mutex::new(None),
             source,
             turn_state,
@@ -190,6 +192,30 @@ impl EventSink {
         })
     }
     pub async fn on_event(self: &Arc<Self>, event: &Value) -> Result<()> {
+        if event["type"] == "agent.task-resumed" {
+            let operation = self.task_input_operation.lock().unwrap().clone();
+            let saved = crate::chats::Repository::new(self.dependencies.database.clone())
+                .native_suspension(&self.turn.owner, &text(&self.turn.execution["chatId"])?)
+                .await?
+                .context("Task Resume acknowledgement missing")?;
+            anyhow::ensure!(
+                !self.turn.options["taskResumption"].is_null()
+                    && event["controlId"] == self.turn.options["taskResumption"]["controlId"]
+                    && operation.as_ref() == Some(&event["inputOperationId"])
+                    && saved["controlId"] == event["controlId"]
+                    && saved["phase"] == "running"
+                    && saved["actor"]["operationId"] == event["inputOperationId"]
+                    && saved["actor"]["operationGeneration"] == event["inputOperationId"]
+                    && saved["active"]["threadId"] == event["threadId"]
+                    && saved["active"]["turnId"] == event["turnId"],
+                "The Task Resume acknowledgement changed its native owner."
+            );
+            let signal = self.task_restored.lock().unwrap().clone();
+            if let Some(signal) = signal {
+                signal(Ok(()));
+            }
+            return Ok(());
+        }
         if event["type"] == "agent.automatic-label" {
             if let Some(job) = self.turn.options.get("initialLabel")
                 && event["chatId"] == self.turn.execution["chatId"]

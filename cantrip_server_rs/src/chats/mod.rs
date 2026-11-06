@@ -28,6 +28,7 @@ mod messages;
 mod model_configuration;
 mod native_history;
 pub mod native_suspensions;
+pub(crate) mod native_task_suspension;
 pub mod protect_input;
 pub mod recovery;
 pub mod relocations;

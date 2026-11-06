@@ -289,6 +289,28 @@ pub(super) fn refine(
             false
         }
         "chat-turn" => {
+            if let Some(restore) = value.get("taskResumption") {
+                let task = &value["taskInferenceInput"];
+                let source = &restore["source"];
+                if task.is_null()
+                    || truth(task.get("kind"))
+                    || truth(source.get("kind"))
+                    || source["operationId"] == task["operationId"]
+                    || source["chatId"] != value["chatId"]
+                    || source["clientMessageId"] != value["clientMessageId"]
+                    || source["executionLaneId"] != value["executionLaneId"]
+                    || source["worktreeId"] != value["worktreeId"]
+                    || source["dispatch"]["operationId"] != task["dispatch"]["operationId"]
+                    || source["dispatch"]["cycleId"] != task["dispatch"]["cycleId"]
+                    || value["threadId"] != restore["checkpoint"]["suspension"]["threadId"]
+                {
+                    let mut at = path.to_vec();
+                    at.push(json!("taskResumption"));
+                    // Preserve Source's issue field order in its public error text.
+                    result.issues.push(json!({"code":"custom","path":at,
+                        "message":"Task restoration must retain its original input, lane, and native turn under fresh authority."}));
+                }
+            }
             if let Some(task) = value.get("taskInferenceInput")
                 && (value.get("nativeCommandReceipt").is_some()
                     || (if task["kind"] == "goal" {

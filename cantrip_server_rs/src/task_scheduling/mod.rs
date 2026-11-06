@@ -8,6 +8,7 @@ mod pause;
 pub mod project_pause;
 pub mod resumed_execution;
 pub mod scheduler;
+pub(crate) mod suspension_resume;
 mod workers;
 use crate::task_dispatch::{model_configuration, worker_summary};
 use crate::{

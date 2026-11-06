@@ -9,6 +9,15 @@ impl Service {
     ) -> BoxFuture<'static, Result<Value>> {
         let (this, owner, chat) = (self.clone(), owner.to_owned(), chat.to_owned());
         self.operations.run(async move {
+            let lock = {
+                let mut controls = this.stop_controls.lock().unwrap();
+                controls.retain(|_, lock|lock.strong_count() > 0);
+                let entry = controls.entry((owner.clone(), chat.clone())).or_default();
+                entry.upgrade().unwrap_or_else(|| {let lock = Arc::new(tokio::sync::Mutex::new(())); *entry = Arc::downgrade(&lock); lock})
+            };
+            let _stop = lock.lock().await;
+            let mut stopping = this.native.prepare_task_stop(&owner, &chat).await?;
+            if stopping.as_ref().is_some_and(|state|state["stop"].is_null()) {return Ok(json!({"interrupted":true}));}
             let original = this.chats.request_task_pause(&owner,&chat,true,None).await?
                 .ok_or_else(||failure(404,"Task source not found."))?;
             let result = async {
@@ -18,10 +27,20 @@ impl Service {
                 let Some(current) = current.filter(|v|v["paused"]==true && v["scope"]["revision"]==original["scope"]["revision"]) else {
                     return Ok(json!({"interrupted":false}));
                 };
+                stopping = this.native.prepare_task_stop(&owner, &chat).await?;
+                if let Some(prepared) = &stopping {
+                    if prepared["stop"].is_null() {return Ok(json!({"interrupted":true}));}
+                    let handler = this.task_stop.lock().unwrap().clone().context("Task Stop service unavailable")?;
+                    return handler(owner.clone(), chat.clone(), prepared["state"].clone(), current).await;
+                }
                 let result = this.commands.request_with_timeout(&text(&current["scope"]["workerId"])?,
                     json!({"type":"chat.interrupt","chatId":chat,"threadId":current["scope"]["threadId"],"task":current["scope"]}),RequestTimeout::Disabled,None).await?;
                 crate::settings::parse_response("chatInterruptAcceptedSchema",result.as_ref())
             }.await;
+            if result.is_err() && let Some(stopping) = stopping {
+                let _ = this.native.fail_suspension_control(&owner, &chat, &stopping["state"],
+                    &json!({"code":"stop-failed","protectedDetails":Value::Null})).await;
+            }
             this.publish_task_pause(&owner,&chat,&original);
             result.map_err(|cause|wrapped(502,"The worker could not confirm this Task interruption: ",&cause))
         })
@@ -36,7 +55,7 @@ impl Service {
             json!({"type":"chat.pause.set","chatId":chat,"paused":intent["paused"],"task":intent["scope"],"waitForBoundary":wait}),
             RequestTimeout::Disabled, None,
         ).await?;
-        crate::settings::parse_response("chatPauseRuntimeStateSchema", response.as_ref())
+        crate::settings::parse_response("taskPauseRuntimeStateSchema", response.as_ref())
     }
     async fn rollback_task_resume(
         &self,
@@ -77,6 +96,8 @@ impl Service {
             .ok_or_else(|| failure(404, "Task source not found."))?;
         let original_revision = intent["scope"]["revision"].clone();
         let active;
+        let mut suspension: Option<Value> = None;
+        let mut restored = None;
         loop {
             let result: Result<(Value, Value)> = async {
                 crate::native_handoffs::service::settle_task_control(
@@ -91,6 +112,46 @@ impl Service {
                     .task_pause_intent(owner, chat)
                     .await?
                     .ok_or_else(|| failure(404, "Task source not found."))?;
+                suspension = None;
+                if !intent["scope"]["taskRound"].is_null() {
+                    let previous = self.chats.native_suspension(owner, chat).await?;
+                    if intent["paused"] == false
+                        && previous
+                            .as_ref()
+                            .is_some_and(|state| state["phase"] == "running")
+                    {
+                        suspension = previous;
+                    } else if intent["paused"] == true
+                        || previous
+                            .as_ref()
+                            .is_some_and(|state| !state["checkpoint"].is_null())
+                    {
+                        suspension = Some(
+                            self.native
+                                .request_task_suspension(owner, chat, &intent)
+                                .await?,
+                        );
+                        self.publish_task_pause(owner, chat, &intent);
+                    }
+                }
+                if intent["paused"] == false
+                    && suspension
+                        .as_ref()
+                        .is_some_and(|state| !state["checkpoint"].is_null())
+                {
+                    let handler = self.task_resume.lock().unwrap().clone();
+                    if let Some(handler) = handler {
+                        let result = handler(
+                            owner.to_owned(),
+                            chat.to_owned(),
+                            suspension.as_ref().unwrap().clone(),
+                            intent.clone(),
+                        )
+                        .await?;
+                        restored = Some(result.clone());
+                        return Ok((result, intent.clone()));
+                    }
+                }
                 let receipt = self.send_task_pause(chat, &intent, true).await?;
                 let latest = self
                     .chats
@@ -103,6 +164,23 @@ impl Service {
             let (receipt, latest) = match result {
                 Ok(value) => value,
                 Err(error) => {
+                    if error
+                        .downcast_ref::<crate::native_commands::CommandError>()
+                        .is_some_and(|error| error.code == "suspension-control-stale")
+                    {
+                        if let Some(latest) = self.chats.task_pause_intent(owner, chat).await? {
+                            if latest != intent {
+                                intent = latest;
+                                continue;
+                            }
+                        }
+                    }
+                    if let Some(state) = suspension.as_ref().filter(|state| {
+                        matches!(state["phase"].as_str(), Some("pausing" | "resuming"))
+                    }) {
+                        let _ = self.native.fail_suspension_control(owner, chat, state,
+                            &json!({"code":if intent["paused"]==true {"pause-failed"} else {"restore-failed"},"protectedDetails":Value::Null})).await;
+                    }
                     self.rollback_task_resume(owner, chat, &intent, &original_revision)
                         .await?;
                     self.publish_task_pause(owner, chat, &intent);
@@ -113,6 +191,9 @@ impl Service {
                     ));
                 }
             };
+            if let Some(restored) = restored {
+                return Ok(restored);
+            }
             if intent != latest {
                 intent = latest;
                 continue;
@@ -126,6 +207,26 @@ impl Service {
                 ));
             }
             active = receipt["active"].clone();
+            if let Some(state) = &suspension {
+                match self
+                    .native
+                    .acknowledge_task_suspension(owner, chat, &intent, state, &receipt)
+                    .await
+                {
+                    Ok(state) => suspension = Some(state),
+                    Err(error) => {
+                        let _ = self.native.fail_suspension_control(owner, chat, state,
+                            &json!({"code":if intent["paused"]==true {"pause-failed"} else {"restore-failed"},"protectedDetails":Value::Null})).await;
+                        self.rollback_task_resume(owner, chat, &intent, &original_revision)
+                            .await?;
+                        return Err(wrapped(
+                            502,
+                            "The worker could not confirm this Task control: ",
+                            &error,
+                        ));
+                    }
+                }
+            }
             break;
         }
         self.publish_task_pause(owner, chat, &intent);
@@ -140,6 +241,11 @@ impl Service {
             return Err(wrapped(409, "The Task could not continue: ", &error));
         }
         let latest = self.chats.task_pause_intent(owner, chat).await?;
-        Ok(json!({"paused":latest.as_ref().unwrap_or(&intent)["paused"],"active":active}))
+        let mut result =
+            json!({"paused":latest.as_ref().unwrap_or(&intent)["paused"],"active":active});
+        if let Some(state) = suspension {
+            result["nativeSuspension"] = crate::chats::native_suspensions::stored_summary(&state);
+        }
+        Ok(result)
     }
 }

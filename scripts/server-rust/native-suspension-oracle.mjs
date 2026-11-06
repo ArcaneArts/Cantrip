@@ -54,6 +54,7 @@ function add(schema, input) {
     outcome: parsed.success
       ? { ok: parsed.data }
       : { issues: parsed.error.issues },
+    ...(!parsed.success ? { errorMessage: parsed.error.message } : {}),
   });
 }
 for (const [schema, value] of [
@@ -105,6 +106,66 @@ for (const patch of [
   },
 ])
   add("nativeSuspensionRecordSchema", { ...record, ...patch });
+
+const taskRound = { operationId: uuid, inputOperationId: uuid, cycleId: uuid };
+const taskTarget = {
+  ...record.target,
+  executionLaneId: "task-lane",
+  originalOperationId: uuid,
+  taskRound,
+};
+add("nativeSuspensionRecordSchema", { ...record, target: taskTarget });
+for (const patch of [
+  { contextKind: "standalone" },
+  { projectId: null },
+  { executionLaneId: null },
+  { originalOperationId: "another-input" },
+  { taskRound: { ...taskRound, cycleId: "invalid" } },
+])
+  add("nativeSuspensionRecordSchema", {
+    ...record,
+    target: { ...taskTarget, ...patch },
+  });
+const taskScope = {
+  revision: 1,
+  workerId: "worker",
+  projectId: "project",
+  worktreeId: "tree",
+  threadId: active.threadId,
+  modelRouteId: "route",
+  providerAccountId: null,
+  cycleId: uuid,
+  orderEpoch: 1,
+  taskRound,
+};
+for (const [schema, value] of [
+  ["taskPauseScopeSchema", taskScope],
+  ["taskPauseIntentSchema", { paused: true, scope: taskScope }],
+  [
+    "taskPauseRuntimeStateSchema",
+    {
+      paused: true,
+      active,
+      execution: {
+        actor: { ...actor, operationId: uuid, operationGeneration: uuid },
+        checkpoint: evidence,
+      },
+    },
+  ],
+  ["taskPauseRuntimeStateSchema", { paused: true, active: null }],
+  [
+    "taskPauseRuntimeStateSchema",
+    { paused: false, active, execution: { actor, checkpoint: null } },
+  ],
+]) {
+  add(schema, value);
+  add(schema, { ...value, executionGrant: "must-not-persist" });
+  for (const key of Object.keys(value)) {
+    const missing = { ...value };
+    delete missing[key];
+    add(schema, missing);
+  }
+}
 for (const patch of [
   { version: 99 },
   { actorControlId: "6f2b4be5-491a-4bea-b950-0b41ec38081e" },

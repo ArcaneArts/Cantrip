@@ -234,6 +234,24 @@ impl Repository {
                     .await?;
                     let row = context(tx, &owner, &receipt).await?;
                     let mut state = row["round"]["inference_input"].clone();
+                    let mut physical = super::resumption::physical(&state).clone();
+                    let resumed = !state["resumption"].is_null();
+                    if !physical.is_null() && physical["receipt"] != receipt {
+                        return stale();
+                    }
+                    if resumed {
+                        let current =
+                            crate::native_commands::suspension::chat(tx, &owner, &chat).await?;
+                        let saved = crate::native_commands::suspension::read(&current)?
+                            .unwrap_or(Value::Null);
+                        if saved["controlId"] != state["resumption"]["controlId"]
+                            || saved["action"] != "resume"
+                            || !(saved["phase"] == "resuming"
+                                || (phase == "native" && saved["phase"] == "running"))
+                        {
+                            return stale();
+                        }
+                    }
                     if phase == "native" {
                         return super::native_input_binding::bind(
                             tx, &owner, &receipt, &row, &metadata,
@@ -243,49 +261,51 @@ impl Repository {
                     if state.is_null()
                         || state["deferred"] == true
                         || state["failedBeforeDispatch"] == true
-                        || state["dispatched"] == true
-                        || state["receipt"] != receipt
+                        || physical["dispatched"] == true
+                        || physical["receipt"] != receipt
                         || row["lane"]["state"] != "active"
-                        || row["chat"]["automation_paused"] == true
+                        || (row["chat"]["automation_paused"] == true && !resumed)
                         || row["project"]["task_scheduling_paused"] == true
                         || row["task"]["state"] == "paused"
                     {
                         return stale();
                     }
-                    if !state["claimWorkerGeneration"].is_null()
-                        && state["claimWorkerGeneration"] != metadata["workerGeneration"]
+                    if !physical["claimWorkerGeneration"].is_null()
+                        && physical["claimWorkerGeneration"] != metadata["workerGeneration"]
                     {
                         return stale();
                     }
                     if phase == "accepted" || phase == "claim" {
-                        if phase == "claim" && state["accepted"] == true {
+                        if phase == "claim" && physical["accepted"] == true {
                             return stale();
                         }
-                        state["accepted"] = json!(true);
+                        physical["accepted"] = json!(true);
                         if phase == "claim" && !metadata["workerGeneration"].is_null() {
-                            state["claimWorkerGeneration"] = metadata["workerGeneration"].clone();
+                            physical["claimWorkerGeneration"] =
+                                metadata["workerGeneration"].clone();
                         }
-                        update(
-                            tx,
-                            Table::Round,
-                            &operation,
-                            &json!({"inference_input":state}),
-                            None,
-                        )
-                        .await?;
-                        return Ok(json!({"receipt":receipt}));
+                    } else {
+                        if physical["accepted"] != true {
+                            return stale();
+                        }
+                        physical["dispatched"] = json!(true);
+                        if !resumed {
+                            physical["multipleDispatched"] = json!(
+                                physical["multipleDispatched"] == true
+                                    || (!physical["firstDispatchedOperationId"].is_null()
+                                        && physical["firstDispatchedOperationId"]
+                                            != receipt["operationId"])
+                            );
+                            if physical["firstDispatchedOperationId"].is_null() {
+                                physical["firstDispatchedOperationId"] =
+                                    receipt["operationId"].clone();
+                            }
+                        }
                     }
-                    if state["accepted"] != true {
-                        return stale();
-                    }
-                    state["dispatched"] = json!(true);
-                    state["multipleDispatched"] = json!(
-                        state["multipleDispatched"] == true
-                            || (!state["firstDispatchedOperationId"].is_null()
-                                && state["firstDispatchedOperationId"] != receipt["operationId"])
-                    );
-                    if state["firstDispatchedOperationId"].is_null() {
-                        state["firstDispatchedOperationId"] = receipt["operationId"].clone();
+                    if resumed {
+                        state["resumption"] = physical;
+                    } else {
+                        state = physical;
                     }
                     update(
                         tx,

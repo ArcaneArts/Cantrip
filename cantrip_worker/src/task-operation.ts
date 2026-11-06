@@ -1,4 +1,9 @@
+import { TaskRestorationError } from "./task-restoration-error.js";
 import { randomUUID } from "node:crypto";
+import {
+  taskEventSealerStateSchema,
+  type TaskEventSealerState,
+} from "./task-event-sealer-state.js";
 import { copyInferenceFailure } from "./inference-failure.js";
 
 import {
@@ -84,6 +89,8 @@ export function protectedTaskRuntimeError(
   error: unknown,
   scope: "turn" | "operation" = "turn",
 ) {
+  if (error instanceof TaskRestorationError)
+    return copyInferenceFailure(error, new Error(error.message));
   const kind = taskFailureKindForError(error);
   return copyInferenceFailure(
     error,
@@ -97,19 +104,36 @@ export class EncryptedTaskEventSealer {
   readonly #ids = new Map<string, string>();
   readonly #mode: "default" | "goal" | "plan";
   readonly #service: WorkerEncryptionService;
-  #completedRootMessage: {
-    threadId: string;
-    turnId: string;
-    text: string;
-    message: TaskMessageOpaqueContent;
-  } | null = null;
+  #completedRootMessage: TaskEventSealerState["completedRootMessage"] = null;
 
   constructor(
     service: WorkerEncryptionService,
     mode: "default" | "goal" | "plan" = "goal",
+    continuation?: TaskEventSealerState,
   ) {
+    const saved = continuation
+      ? taskEventSealerStateSchema.parse(continuation)
+      : null;
+    if (saved && saved.mode !== mode)
+      throw new Error(
+        "Task event continuation belongs to another execution mode.",
+      );
     this.#service = service;
     this.#mode = mode;
+    if (saved) {
+      for (const [key, id] of saved.ids) this.#ids.set(key, id);
+      this.#completedRootMessage = saved.completedRootMessage;
+    }
+  }
+
+  /** The caller drains the protected event queue before capturing this state. */
+  snapshot(): TaskEventSealerState {
+    return taskEventSealerStateSchema.parse({
+      version: 1,
+      mode: this.#mode,
+      ids: [...this.#ids],
+      completedRootMessage: this.#completedRootMessage,
+    });
   }
 
   #id(key: string): string {

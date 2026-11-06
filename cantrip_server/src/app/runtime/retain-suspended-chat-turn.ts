@@ -1,4 +1,7 @@
-import type { NativeCommandReceipt } from "@cantrip/protocol";
+import type {
+  NativeCommandReceipt,
+  TaskInferenceInputReceipt,
+} from "@cantrip/protocol";
 import type { ChatTurnRuntimeDependencies } from "./chat-turn-types.js";
 
 /** Preserve the existing logical input on worker loss. This reads the actual
@@ -11,26 +14,45 @@ export async function retainSuspendedChatTurn(
   ownerId: string,
   workerId: string,
   receipt: NativeCommandReceipt | null | undefined,
+  taskInput?: TaskInferenceInputReceipt,
 ): Promise<boolean> {
-  if (!receipt) return false;
-  const suspension =
-    await dependencies.repository.nativeCommands.suspendedExecution(
-      ownerId,
-      workerId,
-      receipt.operationId,
-      receipt.operationGeneration,
-    );
+  const stopped = taskInput
+    ? await dependencies.repository.nativeSuspensions.taskExecutionStopped(
+        ownerId,
+        workerId,
+        taskInput,
+      )
+    : null;
+  if (stopped && taskInput) {
+    dependencies.publishChatSummary(taskInput.chatId, stopped.target.projectId);
+    return true;
+  }
+  const suspension = taskInput
+    ? await dependencies.repository.nativeSuspensions.retainTaskExecution(
+        ownerId,
+        workerId,
+        taskInput,
+      )
+    : receipt
+      ? await dependencies.repository.nativeCommands.suspendedExecution(
+          ownerId,
+          workerId,
+          receipt.operationId,
+          receipt.operationGeneration,
+        )
+      : null;
   if (!suspension) return false;
-  dependencies.publishChatSummary(receipt.chatId, suspension.target.projectId);
+  const chatId = taskInput?.chatId ?? receipt!.chatId;
+  dependencies.publishChatSummary(chatId, suspension.target.projectId);
   dependencies.app.log.info(
     {
       event: "chat.turn.suspended",
       subsystem: "chat-execution",
       operation: "retain-suspended-turn",
       status: suspension.phase,
-      chatId: receipt.chatId,
+      chatId,
       workerId,
-      operationId: receipt.operationId,
+      operationId: taskInput?.operationId ?? receipt!.operationId,
       turnId: suspension.active!.turnId,
     },
     "Suspended native turn retained after its worker submission ended",

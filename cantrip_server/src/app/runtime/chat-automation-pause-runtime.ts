@@ -23,6 +23,7 @@ import { isLiveNativeSuspensionResume } from "../../db/repository/native-suspens
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 import { STREAMING_WORKER_COMMAND_TIMEOUT_MS } from "../shared/constants.js";
 import { settleTaskGoalHandoffForControl } from "../../terminals/task-goal-handoff-control.js";
+import type { ResumeTaskSuspension } from "./task-suspension-resume-runtime.js";
 
 export interface ChatAutomationPauseRouteDependencies {
   applicationOwnerId: () => string;
@@ -42,6 +43,7 @@ export interface ChatAutomationPauseRouteDependencies {
     | "taskAutomationPause"
   >;
   resumeChatAutomation: (chatId: string) => Promise<void>;
+  resumeTaskSuspension?: ResumeTaskSuspension;
   runtimeForContext: (
     context: ChatExecutionContext,
   ) => Promise<ModelRuntime | null>;
@@ -58,6 +60,7 @@ export function createChatAutomationPauseRuntime(
     publishChatSummary,
     repository,
     resumeChatAutomation,
+    resumeTaskSuspension,
     runtimeForContext,
     routePairsForConfiguration,
   }: Omit<ChatAutomationPauseRouteDependencies, "applicationOwnerId">,
@@ -116,6 +119,7 @@ export function createChatAutomationPauseRuntime(
         bridge,
         publishChatSummary,
         resumeChatAutomation,
+        resumeTaskSuspension,
       });
     const managedNative = managedTurnSessionContext(context) !== undefined;
     const suspension = managedNative

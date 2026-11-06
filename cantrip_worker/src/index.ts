@@ -362,7 +362,10 @@ import {
   openManagedSuspensionSource,
   managedSuspensionNamespace,
 } from "./codex/managed-suspended-source.js";
-import { createManagedSuspensionCapture } from "./codex/managed-native-suspension.js";
+import {
+  createManagedSuspensionCapture,
+  createTaskSuspensionCapture,
+} from "./codex/managed-native-suspension.js";
 import {
   ManagedSuspensionResumes,
   type ManagedSuspensionControlCommand,
@@ -1864,6 +1867,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             },
             signal,
           );
+          if (!receipt.kind)
+            taskInputExecutions.bind(
+              receipt,
+              scope,
+              nativeExecution,
+              nativeRuntimeGeneration,
+            );
         },
       );
       admission.subscribe((status) => {
@@ -6294,6 +6304,46 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               return { ...opened, input: managedQueueTurnInput(opened) };
             })()
           : null;
+        const restoredTask = command.taskResumption
+          ? await (async () => {
+              const source = command.taskResumption!.source;
+              const opened = await nativeSuspensionStore.open(
+                command.taskResumption!.checkpoint.storageId,
+                {
+                  chatId: command.chatId,
+                  threadId:
+                    command.taskResumption!.checkpoint.suspension.threadId,
+                  contextKind: "project",
+                  projectId: command.policyProjectId!,
+                  placementId: source.worktreeId,
+                  modelRouteId: source.modelRouteId,
+                  providerAccountId: source.providerAccountId,
+                  taskInput: source,
+                },
+              );
+              if (
+                !opened.continuation ||
+                !opened.taskContinuation ||
+                command.resultMode.kind !== "task-encrypted" ||
+                !isDeepStrictEqual(
+                  opened.taskContinuation.request,
+                  command.resultMode.operation,
+                ) ||
+                !isDeepStrictEqual(
+                  opened.evidence,
+                  command.taskResumption!.checkpoint,
+                )
+              )
+                throw new Error(
+                  "The saved Task continuation does not match its original operation.",
+                );
+              return {
+                ...opened,
+                continuation: opened.continuation,
+                taskContinuation: opened.taskContinuation,
+              };
+            })()
+          : null;
         const encryptedTaskSealer = encryptedTask
           ? new EncryptedTaskEventSealer(
               workerEncryption,
@@ -6303,6 +6353,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   ? "plan"
                   : (command.protectedTaskPrompt?.classification.mode ??
                     "goal"),
+              restoredTask?.taskContinuation.events,
             )
           : null;
         const policyContext = command.policyProjectId
@@ -6579,6 +6630,37 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 preparationSignal
                   ? AbortSignal.any([preparationSignal, guiBridgeSignal])
                   : guiBridgeSignal,
+                command.resultMode.kind === "task-encrypted" &&
+                  encryptedTaskSealer
+                  ? createTaskSuspensionCapture(
+                      runtime,
+                      nativeSuspensionStore,
+                      {
+                        receipt:
+                          command.taskResumption?.source ??
+                          command.taskInferenceInput,
+                        projectId: command.policyProjectId!,
+                        request: command.resultMode.operation,
+                        events: async () => {
+                          await protectedEventQueue;
+                          if (protectedEventFailure)
+                            throw protectedEventFailure;
+                          return encryptedTaskSealer.snapshot();
+                        },
+                      },
+                    )
+                  : undefined,
+                command.taskResumption
+                  ? (execution) =>
+                      emit({
+                        type: "agent.task-resumed",
+                        controlId: command.taskResumption!.controlId,
+                        inputOperationId:
+                          command.taskInferenceInput!.operationId,
+                        threadId: execution.threadId,
+                        turnId: execution.turnId,
+                      })
+                  : undefined,
               );
               // Claim the actual input once before creating a collectible
               // admission owner. Repeated accepted receipts cannot remint it.
@@ -7256,7 +7338,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   };
                   let result;
                   try {
-                    result = await runtime.runTurn(turnOptions);
+                    result = restoredTask
+                      ? await runtime.runRestoredTaskTurn(
+                          turnOptions,
+                          restoredTask.evidence.suspension,
+                          restoredTask.continuation,
+                          () => !pausedChats.has(command.chatId),
+                        )
+                      : await runtime.runTurn(turnOptions);
                   } catch (error) {
                     if (error instanceof CodexTurnFailureError)
                       await terminal(error.turnId, error.terminalStatus);
@@ -7526,7 +7615,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             paused: command.paused,
             scope: command.task,
           });
-          if (command.waitForBoundary !== false) return control.settled;
+          if (command.waitForBoundary !== false) {
+            const state = await control.settled;
+            if (!state.active || !command.task.taskRound) return state;
+            const execution = await taskInputExecutions.pauseState(
+              command.chatId,
+              nativeNamespaceScope(),
+              command.task,
+              state.active,
+              state.paused,
+              workerProcessGeneration,
+            );
+            return { ...state, execution };
+          }
           await control.applied;
           return { paused: control.intent.paused, active: null };
         }
@@ -7580,11 +7681,95 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           threadId: prepared?.threadId ?? command.threadId,
         });
       }
-      case "chat.interrupt":
+      case "chat.interrupt": {
         computerUseAgents.cancelChat(command.chatId);
         computerUsePreviews.cancelChat(command.chatId);
         computerUseApprovals.revokeChat(command.chatId);
         osComputerUseServices.cancelChat(command.chatId, command.threadId);
+        if (command.taskStop) {
+          try {
+            const stop = command.taskStop;
+            const round = stop.scope.taskRound;
+            if (
+              stop.source.kind ||
+              !round ||
+              stop.source.chatId !== command.chatId ||
+              command.threadId !== stop.active.threadId ||
+              stop.source.workerId !== stop.scope.workerId ||
+              stop.scope.threadId !== stop.active.threadId ||
+              stop.source.worktreeId !== stop.scope.worktreeId ||
+              round.inputOperationId !== stop.source.operationId ||
+              round.operationId !== stop.source.dispatch.operationId ||
+              round.cycleId !== stop.source.dispatch.cycleId ||
+              (stop.checkpoint &&
+                (stop.checkpoint.suspension.threadId !== stop.active.threadId ||
+                  stop.checkpoint.suspension.turnId !== stop.active.turnId))
+            )
+              throw new Error(
+                "The Task Stop control does not match its canonical native source.",
+              );
+            const intent = { paused: true, scope: stop.scope };
+            const control = taskPauseControls.request(command.chatId, intent);
+            await control.applied;
+            const owners = [...codexRuntimes.values()].filter((runtime) =>
+              runtime.matchesTaskPauseScope(command.chatId, stop.scope),
+            );
+            if (owners.length > 1)
+              throw new Error(
+                "The Task Stop identifies multiple native owners.",
+              );
+            let runtime = owners[0];
+            let configuration;
+            if (!runtime) {
+              if (!stop.model || !stop.provider)
+                throw new Error(
+                  "The saved Task runtime is unavailable. Restore its provider and retry Stop.",
+                );
+              const provider = await openRuntimeProvider({
+                provider: stop.provider,
+                service: workerEncryption,
+              });
+              runtime = runtimeFor({
+                ...managedRuntimeTarget(command),
+                model: stop.model,
+                provider,
+              });
+              configuration = {
+                cwd: stop.cwd,
+                threadId: stop.active.threadId,
+                model: stop.model,
+                provider,
+                permissionProfileId: stop.permissionProfileId,
+                projectId: stop.scope.projectId,
+                executionProfile: "ide" as const,
+              };
+            }
+            runtime.setTaskChatPaused(command.chatId, true);
+            const proof = await runtime.stopTaskSuspension(
+              command.chatId,
+              stop.active,
+              stop.checkpoint?.suspension ?? null,
+              () => taskPauseControls.owns(command.chatId, intent),
+              configuration,
+            );
+            return {
+              controlId: stop.controlId,
+              interrupted: true,
+              active: stop.active,
+              outcome: proof.outcome,
+              actor: {
+                workerGeneration: workerProcessGeneration,
+                runtimeGeneration: proof.runtimeGeneration,
+                operationId: stop.controlId,
+                operationGeneration: stop.controlId,
+              },
+            };
+          } catch {
+            throw new Error(
+              "The Task did not confirm Stop. Retry Stop; Resume remains disabled.",
+            );
+          }
+        }
         if (command.task)
           return taskPauseControls.interrupt(command.chatId, {
             paused: true,
@@ -7595,6 +7780,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.chatId,
           command.threadId,
         );
+      }
       case "computer-use.effects.sync":
         return computerUse.effects.update(command.preferences);
       case "computer-use.approval.respond":

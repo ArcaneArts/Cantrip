@@ -242,6 +242,15 @@ export const inferenceProgressUpdateSchema = z.discriminatedUnion("kind", [
 export const workerEventSchema = z.discriminatedUnion("type", [
   z
     .object({
+      type: z.literal("agent.task-resumed"),
+      controlId: z.uuid(),
+      inputOperationId: z.uuid(),
+      threadId: z.string().min(1).max(500),
+      turnId: z.string().min(1).max(500),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("inference.command-state"),
       sequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
       state: z.enum(["waiting", "preparing", "running"]),

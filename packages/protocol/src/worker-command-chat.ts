@@ -1,4 +1,9 @@
-import { taskPauseScopeSchema, taskPauseIntentSchema } from "./task-pause.js";
+import {
+  taskPauseScopeSchema,
+  taskPauseIntentSchema,
+  taskTurnResumptionSchema,
+  taskTurnStopSchema,
+} from "./task-pause.js";
 import {
   cantripOsExecutionSchema,
   cantripOsDesktopPlacement,
@@ -247,9 +252,32 @@ export const workerChatCommandSchemas = [
       resultMode: agentTurnResultModeSchema.default({ kind: "visible" }),
       taskDispatchLease: taskDispatchWorkerLeaseSchema.optional(),
       taskInferenceInput: taskInferenceInputReceiptSchema.optional(),
+      taskResumption: taskTurnResumptionSchema.optional(),
     })
     .superRefine((command, context) => {
       const taskInput = command.taskInferenceInput;
+      const restore = command.taskResumption;
+      if (
+        restore &&
+        (!taskInput ||
+          taskInput.kind ||
+          restore.source.kind ||
+          restore.source.operationId === taskInput.operationId ||
+          restore.source.chatId !== command.chatId ||
+          restore.source.clientMessageId !== command.clientMessageId ||
+          restore.source.executionLaneId !== command.executionLaneId ||
+          restore.source.worktreeId !== command.worktreeId ||
+          restore.source.dispatch.operationId !==
+            taskInput.dispatch.operationId ||
+          restore.source.dispatch.cycleId !== taskInput.dispatch.cycleId ||
+          command.threadId !== restore.checkpoint.suspension.threadId)
+      )
+        context.addIssue({
+          code: "custom",
+          path: ["taskResumption"],
+          message:
+            "Task restoration must retain its original input, lane, and native turn under fresh authority.",
+        });
       if (
         taskInput &&
         (command.nativeCommandReceipt !== undefined ||
@@ -531,6 +559,14 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.interrupt"),
+    taskStop: taskTurnStopSchema
+      .extend({
+        cwd: z.string().min(1),
+        model: workerRuntimeModelSchema.optional(),
+        provider: workerRuntimeProviderSchema.optional(),
+        permissionProfileId: permissionProfileIdSchema,
+      })
+      .optional(),
     task: taskPauseScopeSchema.optional(),
     nativeActivationGeneration: z.string().min(1).nullable().optional(),
     executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),

@@ -743,6 +743,14 @@ const inferenceRecoveryExports = [
   "taskInferenceInputReceiptSchema",
 ].sort();
 
+const taskSuspensionExports = [
+  "nativeSuspensionTaskRoundSchema",
+  "taskPauseRuntimeStateSchema",
+  "taskTurnResumptionSchema",
+  "taskTurnStopResultSchema",
+  "taskTurnStopSchema",
+];
+
 const desktopIoExports = [
   "CUA_MAX_CLIPBOARD_BYTES",
   "cuaClipboardResultSchema",
@@ -767,6 +775,19 @@ const nativeResourceAndTimingExports = [
 ].sort();
 
 describe("protocol public surface compatibility", () => {
+  it("advertises Task continuation contracts independently of legacy snapshots", () => {
+    expect(
+      Object.keys(protocol)
+        .filter((name) => taskSuspensionExports.includes(name))
+        .sort(),
+    ).toEqual(taskSuspensionExports);
+    expect(
+      workerEventSchema.options
+        .map((option) => option.shape.type.value)
+        .filter((type) => type === "agent.task-resumed"),
+    ).toEqual(["agent.task-resumed"]);
+  });
+
   it("advertises the reviewed CantripOS additions independently of legacy snapshots", () => {
     expect(
       Object.keys(protocol)
@@ -788,12 +809,14 @@ describe("protocol public surface compatibility", () => {
     const allExportNames = currentExportNames.filter(
       (name) =>
         !endpointProviderExports.includes(name) &&
-        !desktopIoExports.includes(name),
+        !desktopIoExports.includes(name) &&
+        !taskSuspensionExports.includes(name),
     );
     expect(currentExportNames).toHaveLength(
       allExportNames.length +
         endpointProviderExports.length +
-        desktopIoExports.length,
+        desktopIoExports.length +
+        taskSuspensionExports.length,
     );
     expect(
       allExportNames.filter((name) => agentTaskExports.includes(name)),
@@ -1043,9 +1066,9 @@ describe("protocol public surface compatibility", () => {
     const currentCommandTypes = inferenceStatusCommandTypes.filter(
       (type) => type !== "inference.status",
     );
-    const allEventTypes = workerEventSchema.options.map(
-      (option) => option.shape.type.value,
-    );
+    const allEventTypes = workerEventSchema.options
+      .map((option) => option.shape.type.value)
+      .filter((type) => type !== "agent.task-resumed");
     const advertisedNotificationTypes = workerNotificationSchema.options.map(
       (option) => option.shape.type.value,
     );

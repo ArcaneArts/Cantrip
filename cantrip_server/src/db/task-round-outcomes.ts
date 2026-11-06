@@ -21,6 +21,8 @@ import { TaskDispatchConflictError } from "./task-dispatch.js";
 import { parseTaskOperationRelayResult } from "../tasks/encrypted-relay.js";
 import { TaskRetryRepository } from "./task-retries.js";
 import { classifyTaskFailure } from "../tasks/automatic-retry.js";
+import { currentTaskInputExecution } from "./task-input-execution-state.js";
+import { NativeSuspensionRepository } from "./repository/native-suspensions.js";
 
 type Outcome = Extract<WorkerNotification, { type: "chat.turn.outcome" }>;
 interface Dependencies {
@@ -97,11 +99,14 @@ export async function recoverRoundOutcome(
       }
     }
     const input = round.inferenceInput;
-    const receipt = input?.receipt;
+    const execution = input ? currentTaskInputExecution(input) : null;
+    const receipt = execution?.receipt;
     if (
       !input ||
       (outcome !== null &&
-        (!input.accepted || !input.dispatched || input.failedBeforeDispatch)) ||
+        (!execution?.accepted ||
+          !execution.dispatched ||
+          input.failedBeforeDispatch)) ||
       !receipt ||
       receipt.kind === "goal" ||
       receipt.operationId !== n.taskInferenceInputOperationId ||
@@ -115,6 +120,57 @@ export async function recoverRoundOutcome(
       receipt.dispatch.leaseOwner !== fence.leaseOwner
     )
       stale();
+    const stopped = !n.outcome.ok
+      ? await new NativeSuspensionRepository(
+          dependencies.database,
+          tx,
+        ).taskExecutionStopped(owner, worker, receipt)
+      : null;
+    if (stopped) {
+      return {
+        state: "owned" as const,
+        message: null,
+        chat: {
+          projectId: stopped.target.projectId!,
+          experience: "task" as const,
+        },
+        terminal: undefined,
+      };
+    }
+    if (
+      !n.outcome.ok &&
+      input.resumption &&
+      !input.resumption.nativeExecution
+    ) {
+      const suspensions = new NativeSuspensionRepository(
+        dependencies.database,
+        tx,
+      );
+      const retained = await suspensions.retainTaskExecution(
+        owner,
+        worker,
+        receipt,
+      );
+      if (retained) {
+        if (["pausing", "resuming"].includes(retained.phase))
+          await suspensions.failedControl(
+            owner,
+            n.chatId,
+            retained.controlId,
+            retained.actor,
+            { code: "restore-failed", protectedDetails: null },
+          );
+        return {
+          state: "owned" as const,
+          message: null,
+          chat: {
+            projectId: retained.target.projectId!,
+            experience: "task" as const,
+          },
+          terminal: undefined,
+        };
+      }
+    }
     const failureKind = result
       ? null
       : classifyTaskFailure(
@@ -332,6 +388,23 @@ export async function recoverRoundOutcome(
       .update(schema.taskPlanningRounds)
       .set({ inferenceInput: { ...input, terminal: observedTerminal } })
       .where(eq(schema.taskPlanningRounds.id, round.id));
+    if (
+      outcome?.turnId &&
+      execution?.nativeExecution &&
+      execution.nativeExecution.threadId === outcome.threadId &&
+      execution.nativeExecution.turnId === outcome.turnId
+    )
+      await new NativeSuspensionRepository(
+        dependencies.database,
+        tx,
+      ).retireTaskExecution(
+        owner,
+        input.receipt,
+        receipt,
+        execution.nativeOwner,
+        { threadId: outcome.threadId, turnId: outcome.turnId },
+        result ? "completed" : "failed",
+      );
     await tx
       .update(schema.agentInteractionRequests)
       .set({ status: "interrupted", resolvedAt: now, updatedAt: now })

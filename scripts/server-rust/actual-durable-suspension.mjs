@@ -166,7 +166,8 @@ async function flow(kind, executable, cliBinary) {
     const { chat, task, projectId, providerId, configuration } =
       await prepareSuspensionChat(page, workerId, directory, model, {
         taskOrigin: process.argv.includes("--task-origin"),
-        ...(process.argv.includes("--capacity-waiting")
+        ...(process.argv.includes("--capacity-waiting") ||
+        process.argv.includes("--task-stop-restoring")
           ? { maxConcurrentInference: 1 }
           : {}),
       });
@@ -524,6 +525,29 @@ async function flow(kind, executable, cliBinary) {
     if (task) {
       result.taskSuspension = await qualifyTaskSuspension({
         completeOnly: process.argv.includes("--task-complete"),
+        pauseOnly: process.argv.includes("--task-pause-only"),
+        livePause: process.argv.includes("--task-live-pause"),
+        rounds:
+          option("--task-cold-rounds") === undefined
+            ? 1
+            : Number(option("--task-cold-rounds")),
+        duplicateResume: process.argv.includes("--task-duplicate-resume"),
+        restoreDamage: option("--task-restore-damage"),
+        stopOnly: process.argv.includes("--task-cold-stop"),
+        stopDamage: option("--task-stop-damage"),
+        stopPendingPause: process.argv.includes("--task-stop-pending-pause"),
+        stopRunning: process.argv.includes("--task-running-stop"),
+        stopRestoring: process.argv.includes("--task-stop-restoring"),
+        workerId,
+        startBlocker: () =>
+          startSuspensionCapacityBlocker({
+            page,
+            model,
+            projectId,
+            providerId,
+            workerId,
+            configuration,
+          }),
         page,
         projectId,
         chatId: chat.id,
@@ -534,13 +558,17 @@ async function flow(kind, executable, cliBinary) {
         command,
         inferences,
         result,
-        async restart(native) {
+        async restart(native, round) {
           const killed = worker;
           worker = undefined;
           const terminated = await killOwnedWorkerTree(killed.child, {
             executableRoots: [workerData],
           });
-          result.kills.push({ round: "task-paused", ...terminated, native });
+          result.kills.push({
+            round: `task-paused-${round}`,
+            ...terminated,
+            native,
+          });
           await launch();
         },
       });

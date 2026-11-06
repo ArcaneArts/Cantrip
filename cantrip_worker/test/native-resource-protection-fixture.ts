@@ -3,7 +3,10 @@ import { WorkerEncryptionService } from "../src/worker-encryption.js";
 import { createNativeResourceProtection } from "../src/native-resource-protection.js";
 
 /** Real HPKE bootstrap and component grant, confined to the fixture's storage. */
-export async function resourceProtectionFixture(dataDirectory: string) {
+export async function resourceProtectionFixture(
+  dataDirectory: string,
+  component: "chat-content" | "task-content" = "chat-content",
+) {
   const workerId = "native-resource-fixture";
   const service = await WorkerEncryptionService.open({
     dataDirectory,
@@ -17,7 +20,7 @@ export async function resourceProtectionFixture(dataDirectory: string) {
   const wrappedKey = await wrapComponentKeyForWorker({
     ownerId,
     workerId,
-    component: "chat-content",
+    component,
     componentKey: key,
     keyRevision: 1,
     workerPublicKey: registration.publicKey,
@@ -48,7 +51,7 @@ export async function resourceProtectionFixture(dataDirectory: string) {
               id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
               ownerId,
               principalId: registration.principalId,
-              component: "chat-content",
+              component,
               keyRevision: 1,
               wrappedKey,
               state: "active",

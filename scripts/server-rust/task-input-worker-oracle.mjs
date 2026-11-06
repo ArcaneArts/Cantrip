@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as protocol from "../../packages/protocol/dist/index.js";
 import alternatives from "./worker-command-alternatives.json" with { type: "json" };
 import { outcome, vectorCases } from "./security-oracle.mjs";
+import { record as suspension } from "./native-suspension-oracle.mjs";
 const envelope = structuredClone(
   alternatives.cases.find(
     ({ input }) =>
@@ -56,6 +57,44 @@ const nativeBinding = {
   nativeRuntimeGeneration: "00000000-0000-4000-8000-000000000005",
 };
 const samples = {
+  taskTurnStopSchema: [
+    {
+      controlId: "00000000-0000-4000-8000-000000000008",
+      source: command.taskInferenceInput,
+      active: suspension.active,
+      checkpoint: suspension.checkpoint,
+      scope: {
+        revision: 1,
+        workerId: command.taskInferenceInput.workerId,
+        projectId: command.policyProjectId,
+        worktreeId: command.worktreeId,
+        threadId: suspension.active.threadId,
+        modelRouteId: command.model.routeId,
+        providerAccountId: command.provider.accountId,
+        cycleId: command.taskDispatchLease.cycleId,
+        orderEpoch: 0,
+        taskRound: {
+          operationId: operation.operationId,
+          inputOperationId: command.taskInferenceInput.operationId,
+          cycleId: command.taskDispatchLease.cycleId,
+        },
+      },
+    },
+  ],
+  taskTurnStopResultSchema: [
+    {
+      controlId: "00000000-0000-4000-8000-000000000008",
+      interrupted: true,
+      active: suspension.active,
+      outcome: "stopped",
+      actor: {
+        workerGeneration: dispatch.workerGeneration,
+        runtimeGeneration: nativeBinding.nativeRuntimeGeneration,
+        operationId: "00000000-0000-4000-8000-000000000008",
+        operationGeneration: "00000000-0000-4000-8000-000000000008",
+      },
+    },
+  ],
   taskInferenceInputReceiptSchema: [command.taskInferenceInput],
   taskInferenceInputDispatchSchema: [
     dispatch,
@@ -107,6 +146,22 @@ function worker(name, input) {
   return expected;
 }
 worker("canonical Task receipt", envelope);
+const stopEnvelope = structuredClone(envelope);
+stopEnvelope.command = {
+  type: "chat.interrupt",
+  chatId: command.chatId,
+  threadId: suspension.active.threadId,
+  taskStop: {
+    ...samples.taskTurnStopSchema[0],
+    cwd: command.cwd,
+    model: command.model,
+    provider: command.provider,
+    permissionProfileId: command.permissionProfileId,
+  },
+};
+assert.ok(
+  worker("scoped Task Stop without inference admission", stopEnvelope).ok,
+);
 for (const key of [
   "chatId",
   "clientMessageId",
@@ -183,4 +238,46 @@ mixed.command.nativeCommandReceipt = structuredClone(
   native.input.command.nativeCommandReceipt,
 );
 worker("Task input excludes native command receipt", mixed);
+const restored = structuredClone(envelope);
+restored.command.threadId = suspension.active.threadId;
+restored.command.taskResumption = {
+  controlId: "00000000-0000-4000-8000-000000000008",
+  checkpoint: suspension.checkpoint,
+  source: structuredClone(command.taskInferenceInput),
+};
+restored.command.taskResumption.source.operationId =
+  "00000000-0000-4000-8000-000000000009";
+restored.command.taskDispatchLease.fencingToken = 2;
+restored.command.taskInferenceInput.dispatch.fencingToken = 2;
+assert.ok(worker("fresh physical Task restoration", restored).ok);
+for (const path of [
+  ["source", "chatId"],
+  ["source", "clientMessageId"],
+  ["source", "executionLaneId"],
+  ["source", "worktreeId"],
+  ["source", "dispatch", "operationId"],
+  ["source", "dispatch", "cycleId"],
+  ["checkpoint", "suspension", "threadId"],
+]) {
+  const input = structuredClone(restored);
+  let target = input.command.taskResumption;
+  for (const key of path.slice(0, -1)) target = target[key];
+  target[path.at(-1)] = "00000000-0000-4000-8000-000000000099";
+  assert.ok(worker("restore source mismatch " + path.join("."), input).issues);
+}
+for (const field of ["source", "physical", "missing"]) {
+  const input = structuredClone(restored);
+  if (field === "source") input.command.taskResumption.source.kind = "goal";
+  else if (field === "physical") {
+    input.command.taskInferenceInput.operationId =
+      input.command.taskResumption.source.operationId;
+  } else delete input.command.taskInferenceInput;
+  assert.ok(
+    worker("restore requires fresh Task authority " + field, input).issues,
+  );
+}
+const bothIssues = structuredClone(restored);
+bothIssues.command.taskInferenceInput.chatId = "wrong-task";
+bothIssues.command.taskResumption.source.worktreeId = "wrong-tree";
+worker("restore issue precedes physical binding issue", bothIssues);
 console.log(JSON.stringify({ done: count }));

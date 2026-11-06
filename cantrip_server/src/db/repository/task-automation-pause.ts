@@ -4,6 +4,8 @@ import * as schema from "../schema.js";
 import type { RepositoryDatabase, RepositoryTransaction } from "./database.js";
 import { projectChatExecutionLock } from "./chat-execution-lock.js";
 import { nativeCommandContext } from "./native-command-context.js";
+import { nativeTaskSuspensionContext } from "./native-task-suspension-context.js";
+import { NativeSuspensionRepository } from "./native-suspensions.js";
 import type { TaskInferenceInputRepository } from "../task-inference-inputs.js";
 
 /** Durable Task control order shares the canonical chat lock and revision.
@@ -44,16 +46,26 @@ export class TaskAutomationPauseRepository {
         desc(schema.taskDispatchCycles.id),
       )
       .limit(1);
+    const task = await nativeTaskSuspensionContext(tx, context);
+    const source = task?.context ?? context;
+    const suspension = await new NativeSuspensionRepository(
+      this.database,
+      tx,
+    ).read(owner, chat);
     return {
-      paused: context.automationPaused,
+      paused:
+        suspension?.target.taskRound && suspension.phase === "resuming"
+          ? false
+          : context.automationPaused,
       scope: taskPauseScopeSchema.parse({
         revision: context.managedInputRevision,
         workerId: context.workerId,
         projectId: context.projectId,
         worktreeId: context.worktreeId,
-        threadId: context.threadId,
-        modelRouteId: context.modelRouteId,
-        providerAccountId: context.providerAccountId,
+        threadId: source.threadId,
+        modelRouteId: source.modelRouteId,
+        providerAccountId: source.providerAccountId,
+        ...(task ? { taskRound: task.taskRound } : {}),
         cycleId: cycle?.id ?? null,
         orderEpoch: cycle?.orderEpoch ?? 0,
       }),
@@ -153,10 +165,40 @@ export class TaskAutomationPauseRepository {
   ) {
     return this.database.transaction(async (tx) => {
       await tx.execute(projectChatExecutionLock(owner, chat));
+      const [current] = await tx
+        .select({ revision: schema.chats.managedInputRevision })
+        .from(schema.chats)
+        .where(
+          and(
+            eq(schema.chats.ownerId, owner),
+            eq(schema.chats.id, chat),
+            eq(schema.chats.experience, "task"),
+          ),
+        );
+      if (
+        !current ||
+        (expectedRevision !== undefined &&
+          current.revision !== expectedRevision)
+      )
+        return null;
+      const suspensions = new NativeSuspensionRepository(this.database, tx);
+      const saved = await suspensions.read(owner, chat);
+      const held = Boolean(
+        saved?.target.taskRound &&
+        saved.checkpoint &&
+        ["paused", "pausing", "resuming", "error"].includes(saved.phase),
+      );
+      if (
+        held &&
+        saved?.action !== "stop" &&
+        !(paused && saved?.phase === "error" && saved.action === "resume")
+      )
+        await suspensions.request(owner, chat, paused ? "pause" : "resume");
       const [updated] = await tx
         .update(schema.chats)
         .set({
-          automationPaused: paused,
+          // Ordered Resume intent is distinct from releasing the durable hold.
+          automationPaused: held ? true : paused,
           managedInputRevision: sql`${schema.chats.managedInputRevision}+1`,
           updatedAt: new Date(),
         })

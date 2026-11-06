@@ -87,7 +87,25 @@ impl Service {
             prepared_runtime.cloned(),
         );
         self.operations
-            .run(async move { this.run_one(&owner, &claim, runtime).await })
+            .run(async move { this.run_one(&owner, &claim, runtime, None).await })
+    }
+    pub fn restore(
+        self: &Arc<Self>,
+        owner: &str,
+        claim: &Value,
+        restore: &Value,
+        signal: crate::chats::turn_runtime::engine::TaskRestored,
+    ) -> BoxFuture<'static, Result<()>> {
+        let (this, owner, claim, restore) = (
+            self.clone(),
+            owner.to_owned(),
+            claim.clone(),
+            restore.clone(),
+        );
+        self.operations.run(async move {
+            this.run_one(&owner, &claim, None, Some((restore, signal)))
+                .await
+        })
     }
     pub async fn drained(&self) {
         self.operations.drained().await;

@@ -1,4 +1,5 @@
 import { createTaskSchedulerRuntime } from "./task-scheduler-runtime.js";
+import { createTaskSuspensionResumeRuntime } from "./task-suspension-resume-runtime.js";
 import { createTaskResumedExecutionRuntime } from "./task-resumed-execution-runtime.js";
 import { createTaskClaimedExecutionRuntime } from "./task-claimed-execution-runtime.js";
 import { createTaskDispatchEligibilityRuntime } from "./task-dispatch-eligibility-runtime.js";
@@ -112,7 +113,10 @@ export function installTaskRouteRuntime(
   } = dependencies;
   const nameTask = createTaskLabeler(dependencies);
   const setChatAutomationPause = createChatAutomationPauseRuntime(
-    dependencies,
+    {
+      ...dependencies,
+      resumeTaskSuspension: (...args) => resumeTaskSuspension(...args),
+    },
     app,
   );
   const taskRecovery = createTaskExecutionRecovery({
@@ -424,6 +428,14 @@ export function installTaskRouteRuntime(
     ...dependencies,
     setChatAutomationPause,
     runClaimedTaskOperation,
+  });
+  const resumeTaskSuspension = createTaskSuspensionResumeRuntime({
+    repository,
+    bridge,
+    leaseOwner: `${serverId}:${serverInstanceId}`,
+    eligibility: prepareTaskResumeEligibility,
+    run: runClaimedTaskOperation,
+    publish: publishChatSummary,
   });
 
   const queueTaskOperation = createTaskOperationQueue({
@@ -1099,6 +1111,7 @@ export function installTaskRouteRuntime(
     },
   );
   return {
+    resumeTaskSuspension,
     recoverTaskExecution: taskRecovery.recover,
     reconcileTaskExecutions: taskRecovery.reconcile,
     queueTaskScheduleTick,

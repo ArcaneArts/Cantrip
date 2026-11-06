@@ -8,6 +8,7 @@ import type { RepositoryTransaction } from "./repository/database.js";
 import type { TaskInferenceInputState } from "./task-inference-inputs.js";
 import { TaskDispatchConflictError } from "./task-dispatch.js";
 import * as schema from "./schema.js";
+import type { NativeSuspensionRepository } from "./repository/native-suspensions.js";
 
 /** The caller holds the actual Task dispatch/input/lane locks. Native Core has
  * bound its scope; recording that identity does not grant or replay input. */
@@ -18,6 +19,7 @@ export async function bindTaskNativeInput(
   nativeExecution: InferenceNativeExecution,
   state: TaskInferenceInputState,
   nativeOwner: { workerGeneration: string; runtimeGeneration: string },
+  suspensions?: NativeSuspensionRepository,
 ) {
   const stale = (): never => {
     throw new TaskDispatchConflictError(
@@ -25,12 +27,24 @@ export async function bindTaskNativeInput(
       "stale-lease",
     );
   };
+  const execution = state.resumption ?? state;
   if (
-    state.nativeExecution &&
-    !isDeepStrictEqual(state.nativeExecution, nativeExecution)
+    state.resumption &&
+    (!suspensions ||
+      receipt.operationId !== state.resumption.receipt.operationId ||
+      nativeExecution.threadId !== state.nativeExecution?.threadId ||
+      nativeExecution.turnId !== state.nativeExecution?.turnId)
   )
     stale();
-  if (state.nativeOwner && !isDeepStrictEqual(state.nativeOwner, nativeOwner))
+  if (
+    execution.nativeExecution &&
+    !isDeepStrictEqual(execution.nativeExecution, nativeExecution)
+  )
+    stale();
+  if (
+    execution.nativeOwner &&
+    !isDeepStrictEqual(execution.nativeOwner, nativeOwner)
+  )
     stale();
   const now = new Date();
   const [lane] = await tx
@@ -64,8 +78,45 @@ export async function bindTaskNativeInput(
   if (!lane || !cycle) stale();
   await tx
     .update(schema.taskPlanningRounds)
-    .set({ inferenceInput: { ...state, nativeExecution, nativeOwner } })
+    .set({
+      inferenceInput: state.resumption
+        ? {
+            ...state,
+            resumption: { ...state.resumption, nativeExecution, nativeOwner },
+          }
+        : { ...state, nativeExecution, nativeOwner },
+    })
     .where(eq(schema.taskPlanningRounds.id, receipt.dispatch.operationId));
+  if (state.resumption) {
+    const saved = await suspensions!.read(ownerId, receipt.chatId);
+    if (!saved) return stale();
+    if (
+      saved.controlId !== state.resumption.controlId ||
+      saved.action !== "resume"
+    )
+      stale();
+    const actor = {
+      ...nativeOwner,
+      operationId: receipt.operationId,
+      operationGeneration: receipt.operationId,
+    };
+    if (saved.phase !== "running") {
+      await suspensions!.claim(
+        ownerId,
+        receipt.chatId,
+        saved.controlId,
+        saved.actor,
+        actor,
+        { threadId: nativeExecution.threadId, turnId: nativeExecution.turnId },
+      );
+      await suspensions!.running(
+        ownerId,
+        receipt.chatId,
+        saved.controlId,
+        actor,
+      );
+    }
+  }
   return {
     receipt,
     nativeExecution,

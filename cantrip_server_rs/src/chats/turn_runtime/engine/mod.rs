@@ -46,8 +46,10 @@ pub struct Structured {
     pub failed: Failed,
     pub after_completed: Option<Completed>,
 }
+pub type TaskRestored = Arc<dyn Fn(Result<(), Arc<anyhow::Error>>) + Send + Sync>;
 #[derive(Default)]
 pub struct Hooks {
+    pub task_restored: Option<TaskRestored>,
     pub structured: Option<Structured>,
     pub after_completed: Option<Completed>,
     pub after_failed: Option<Failed>,
@@ -208,6 +210,9 @@ impl Runtime {
         }
         if let Err(error) = result {
             let error = Arc::new(error);
+            if let Some(signal) = &hooks.task_restored {
+                signal(Err(error.clone()));
+            }
             if let Some(started) = started.take() {
                 let _ = started.send(Err(error.clone()));
             }
@@ -237,12 +242,18 @@ impl Runtime {
                 index,
                 state.clone(),
             );
+            *sink.task_restored.lock().unwrap() = hooks.task_restored.clone();
             let began = (self.dependencies.events.clock)();
             self.prepare_attempt(&sink, index, began).await?;
             let result = self.dispatch(&sink, index, began, hooks, started).await;
             match result {
                 Ok(()) => return Ok(()),
                 Err(error) => {
+                    if let Some(signal) = &hooks.task_restored {
+                        signal(Err(Arc::new(anyhow::anyhow!(
+                            message(&error).lossy().into_owned()
+                        ))));
+                    }
                     if self.retain_suspension(&turn).await? {
                         return Ok(());
                     }

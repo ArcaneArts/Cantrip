@@ -148,7 +148,7 @@ impl Bootstrap {
         let started_at = (self.clock)();
         crate::chats::turn_configuration::validate(&context, &input, &options)?;
         let mut options = options;
-        if context["experience"] == "task" && options["expectedInputRevision"].is_null() {
+        if context["experience"] == "task" && options["taskResumption"].is_null() && options["expectedInputRevision"].is_null() {
             options["expectedInputRevision"] = context["managedInputRevision"].clone();
         }
         let context = self.placement.reconcile(&owner, &context).await?;
@@ -179,7 +179,11 @@ impl Bootstrap {
             .map(|v| &v["userMessage"])
             .or_else(|| turn.encrypted_task.as_ref().map(|v| &v["userMessage"]))
             .or_else(|| turn.options["structuredResult"]["taskOperation"].get("userMessage"));
-        let admitted = self
+        let admitted = if !turn.options["taskResumption"].is_null() {
+            let execution = crate::tasks::Repository::new(self.database.clone())
+                .restored_execution_context(&turn.owner, &turn.options["taskResumption"], &turn.options["taskDispatchLease"]).await?;
+            json!({"execution":execution})
+        } else { self
             .admission
             .acquire_observed(
                 &turn.owner,
@@ -188,7 +192,7 @@ impl Bootstrap {
                 protected_input,
                 Some(&turn.observer),
             )
-            .await?;
+            .await? };
         turn.execution = admitted["execution"].clone();
         turn.native_receipt = admitted.get("nativeCommandReceipt").cloned();
         self.live.publish_summary(
@@ -198,7 +202,7 @@ impl Bootstrap {
         );
         turn.attribution = json!({"contextKind":turn.execution["contextKind"],"executionLaneId":turn.execution["executionLaneId"],"worktreeId":turn.execution["worktreeId"],"scratchRootId":turn.execution["scratchRootId"]});
         if let Err(error) = self.persist(&mut turn).await {
-            self.finish(&turn, "failed", false).await?;
+            if turn.options["taskResumption"].is_null() { self.finish(&turn, "failed", false).await?; }
             self.live.publish_summary(
                 &turn.owner,
                 &turn.execution["chatId"],

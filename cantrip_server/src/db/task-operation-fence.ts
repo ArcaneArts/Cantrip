@@ -9,6 +9,7 @@ import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import * as schema from "./schema.js";
 import { TaskDispatchConflictError } from "./task-dispatch.js";
 import { projectChatExecutionLock } from "./repository/chat-execution-lock.js";
+import { currentTaskInputExecution } from "./task-input-execution-state.js";
 
 export type TaskOperationLeaseFence = {
   kind: "leased";
@@ -253,7 +254,10 @@ export async function assertTaskOperationDispatchFence(
           .for("update")
           .limit(1);
     const input = goal ? cycle.goalInput : round?.input;
-    const receipt = input?.receipt;
+    const receipt =
+      !goal && round?.input
+        ? currentTaskInputExecution(round.input).receipt
+        : input?.receipt;
     if (
       !input ||
       input.deferred ||
@@ -409,7 +413,8 @@ export async function assertTaskOperationDispatchFence(
       } else if (
         !input ||
         input.deferred ||
-        input.receipt.operationId !== expected.inferenceInputOperationId
+        currentTaskInputExecution(input).receipt.operationId !==
+          expected.inferenceInputOperationId
       )
         fail();
     }

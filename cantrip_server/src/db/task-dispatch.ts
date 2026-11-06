@@ -842,7 +842,11 @@ export class TaskDispatchRepository {
     ownerId: string,
     leaseOwner: string,
     resolveEligibility: TaskDispatchResumeEligibilityResolver,
-    options: { now?: Date; leaseMs?: number } = {},
+    options: {
+      now?: Date;
+      leaseMs?: number;
+      nativeSuspension?: { chatId: string; controlId: string };
+    } = {},
   ): Promise<ClaimedTaskDispatch | null> {
     const now = options.now ?? new Date();
     const leaseMs = options.leaseMs ?? TASK_DISPATCH_LEASE_MS;
@@ -880,6 +884,27 @@ export class TaskDispatchRepository {
           and(
             eq(schema.taskDispatchCycles.ownerId, ownerId),
             eq(schema.taskDispatchCycles.state, "paused"),
+            // A committed native continuation requires an explicit restore
+            // admission. The ordinary scheduler must never unpause its input.
+            options.nativeSuspension
+              ? and(
+                  eq(
+                    schema.taskDispatchCycles.chatId,
+                    options.nativeSuspension.chatId,
+                  ),
+                  sql`${schema.chats.nativeSuspensionState}->>'controlId'=${options.nativeSuspension.controlId}`,
+                  sql`${schema.chats.nativeSuspensionState}->>'phase'='resuming'`,
+                  sql`${schema.chats.nativeSuspensionState}->>'action'='resume'`,
+                  sql`${schema.chats.nativeSuspensionState}->'target'->'taskRound'->>'cycleId'=${schema.taskDispatchCycles.id}`,
+                  sql`${schema.chats.nativeSuspensionState}->'checkpoint' <> 'null'::jsonb`,
+                )
+              : sql`NOT COALESCE((
+              ${schema.chats.nativeSuspensionState}->'target'->'taskRound'->>'cycleId'=${schema.taskDispatchCycles.id}
+              AND (${schema.chats.nativeSuspensionState}->>'action'='stop' OR (
+                ${schema.chats.nativeSuspensionState}->'checkpoint' <> 'null'::jsonb
+                AND ${schema.chats.nativeSuspensionState}->>'phase' IN ('pausing','paused','resuming','error')
+              ))
+            ), false)`,
             sql`NOT EXISTS (SELECT 1 FROM native_runtime_handoffs h
               WHERE h.chat_id=${schema.taskDispatchCycles.chatId}
                 AND h.phase IN ('preparing','prepared','committed'))`,
@@ -907,10 +932,18 @@ export class TaskDispatchRepository {
           .update(schema.taskDispatchCycles)
           .set({
             state: "running",
-            leaseOwner: candidate.cycle.leaseOwner ?? leaseOwner,
+            leaseOwner: options.nativeSuspension
+              ? leaseOwner
+              : (candidate.cycle.leaseOwner ?? leaseOwner),
             leaseExpiresAt,
             lastHeartbeatAt: now,
-            attemptCount: sql`${schema.taskDispatchCycles.attemptCount} + CASE WHEN ${schema.taskDispatchCycles.goalInput}->>'deferred'='true' THEN 0 ELSE 1 END`,
+            ...(options.nativeSuspension
+              ? {
+                  fencingToken: sql`${schema.taskDispatchCycles.fencingToken}+1`,
+                }
+              : {
+                  attemptCount: sql`${schema.taskDispatchCycles.attemptCount} + CASE WHEN ${schema.taskDispatchCycles.goalInput}->>'deferred'='true' THEN 0 ELSE 1 END`,
+                }),
             eligibilityCode: null,
             pausedAt: null,
             updatedAt: now,

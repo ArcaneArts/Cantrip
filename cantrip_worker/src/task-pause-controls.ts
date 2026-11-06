@@ -38,6 +38,13 @@ export class TaskPauseControls {
     this.#controls.delete(this.key(chat));
   }
 
+  owns(chat: string, intent: TaskPauseIntent): boolean {
+    return isDeepStrictEqual(
+      this.#controls.get(this.key(chat))?.intent,
+      intent,
+    );
+  }
+
   async prepared(chat: string) {
     const control = this.#controls.get(this.key(chat));
     if (control) await this.request(chat, control.intent).applied;

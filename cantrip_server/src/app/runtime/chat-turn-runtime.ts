@@ -342,6 +342,8 @@ export function createChatTurnRuntime({
     });
     publishChatSummary(execution.chatId, execution.projectId);
     const executionLaneId = execution.executionLaneId;
+    let taskInferenceInput:
+      import("@cantrip/protocol").TaskInferenceInputReceipt | undefined;
     const clearExecutionRequests = () =>
       interruptLiveAgentInteractionRequests(execution.chatId, executionLaneId);
     const finishExecution = (
@@ -908,8 +910,6 @@ export function createChatTurnRuntime({
           if (!options.taskDispatchLease) {
             await recordStartedAttempt();
           }
-          let taskInferenceInput:
-            import("@cantrip/protocol").TaskInferenceInputReceipt | undefined;
           try {
             if (options.taskDispatchLease) {
               app.log.info(
@@ -953,33 +953,43 @@ export function createChatTurnRuntime({
               : (initialLabel ?? undefined);
             initialLabelSent = true;
             taskInferenceInput =
-              options.taskDispatchLease &&
-              (encryptedTaskRelay ||
-                (turnMode === "goal" && encryptedTaskMessages))
-                ? await repository.tasks.inferenceInputs.prepare(
+              options.taskResumption && options.taskDispatchLease
+                ? await repository.tasks.inferenceInputs.prepareResumption(
                     ownerId,
                     {
-                      ...(encryptedTaskRelay ? {} : { kind: "goal" as const }),
-                      chatId: execution.chatId,
-                      clientMessageId: userMessage.id,
-                      workerId: execution.workerId,
-                      worktreeId: execution.worktreeId!,
-                      executionLaneId,
-                      executionLaneActivatedAt:
-                        execution.executionLaneActivatedAt!,
-                      providerId: runtime.provider.id,
-                      modelRouteId: runtime.routeId,
-                      providerAccountId: runtime.provider.accountId ?? null,
-                      dispatch: {
-                        cycleId: options.taskDispatchLease.cycleId,
-                        operationId: options.taskDispatchLease.operationId,
-                        leaseOwner: options.taskDispatchLease.leaseOwner,
-                        fencingToken: options.taskDispatchLease.fencingToken,
-                      },
+                      resumption: options.taskResumption,
+                      lease: options.taskDispatchLease,
                     },
-                    taskInputRevision,
                   )
-                : undefined;
+                : options.taskDispatchLease &&
+                    (encryptedTaskRelay ||
+                      (turnMode === "goal" && encryptedTaskMessages))
+                  ? await repository.tasks.inferenceInputs.prepare(
+                      ownerId,
+                      {
+                        ...(encryptedTaskRelay
+                          ? {}
+                          : { kind: "goal" as const }),
+                        chatId: execution.chatId,
+                        clientMessageId: userMessage.id,
+                        workerId: execution.workerId,
+                        worktreeId: execution.worktreeId!,
+                        executionLaneId,
+                        executionLaneActivatedAt:
+                          execution.executionLaneActivatedAt!,
+                        providerId: runtime.provider.id,
+                        modelRouteId: runtime.routeId,
+                        providerAccountId: runtime.provider.accountId ?? null,
+                        dispatch: {
+                          cycleId: options.taskDispatchLease.cycleId,
+                          operationId: options.taskDispatchLease.operationId,
+                          leaseOwner: options.taskDispatchLease.leaseOwner,
+                          fencingToken: options.taskDispatchLease.fencingToken,
+                        },
+                      },
+                      taskInputRevision,
+                    )
+                  : undefined;
             const rawResultPromise = bridge.request(
               execution.workerId,
               {
@@ -989,6 +999,7 @@ export function createChatTurnRuntime({
                   ? { osExecution: execution.osExecution }
                   : {}),
                 nativeCommandReceipt,
+                taskResumption: options.taskResumption,
                 protectedNativeInput: options.protectedNativeInput,
                 nativeClientUserMessageId: options.nativeClientUserMessageId,
                 queuedPromptId: options.queuedPromptId,
@@ -1080,7 +1091,9 @@ export function createChatTurnRuntime({
                   effectivePermissionProfile(execution).effectiveId,
                 planMode: turnPlanMode,
                 mcpServers,
-                automationPaused: execution.automationPaused,
+                automationPaused: options.taskResumption
+                  ? false
+                  : execution.automationPaused,
                 resultMode: options.structuredResult
                   ? (encryptedTaskRelay?.resultMode ?? {
                       kind: "structured" as const,
@@ -1117,6 +1130,36 @@ export function createChatTurnRuntime({
                 },
                 onEvent: (event) =>
                   runAsOwner(ownerId, async () => {
+                    if (event.type === "agent.task-resumed") {
+                      const restore = options.taskResumption;
+                      if (
+                        !restore ||
+                        !taskInferenceInput ||
+                        event.controlId !== restore.controlId ||
+                        event.inputOperationId !==
+                          taskInferenceInput.operationId ||
+                        event.threadId !==
+                          restore.checkpoint.suspension.threadId ||
+                        event.turnId !== restore.checkpoint.suspension.turnId
+                      )
+                        throw new Error(
+                          "The Task Resume acknowledgement changed its canonical execution.",
+                        );
+                      const state = await repository.nativeSuspensions.read(
+                        ownerId,
+                        execution.chatId,
+                      );
+                      if (
+                        state?.controlId !== event.controlId ||
+                        state.phase !== "running" ||
+                        state.actor?.operationId !== event.inputOperationId
+                      )
+                        throw new Error(
+                          "The Task Resume has no current native ownership acknowledgement.",
+                        );
+                      await options.onTaskResumed?.();
+                      return;
+                    }
                     if (event.type === "agent.automatic-label") {
                       if (
                         initialLabel &&
@@ -2000,12 +2043,14 @@ export function createChatTurnRuntime({
               );
               return;
             }
+            if (options.taskResumption) options.onTaskRestoreFailed?.(error);
             if (
               await retainSuspendedChatTurn(
                 { repository, app, publishChatSummary },
                 ownerId,
                 execution.workerId,
                 nativeCommandReceipt,
+                taskInferenceInput,
               )
             )
               return;
@@ -2181,12 +2226,14 @@ export function createChatTurnRuntime({
           }
         }
       } catch (error: unknown) {
+        if (options.taskResumption) options.onTaskRestoreFailed?.(error);
         if (
           await retainSuspendedChatTurn(
             { repository, app, publishChatSummary },
             ownerId,
             execution.workerId,
             nativeCommandReceipt,
+            taskInferenceInput,
           )
         )
           return;

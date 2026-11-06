@@ -1158,6 +1158,7 @@ export async function buildApp({
     publishChatSummary,
     repository,
     resumeChatAutomation,
+    resumeTaskSuspension: taskRouteRuntime.resumeTaskSuspension,
     runtimeForContext,
     routePairsForConfiguration,
   });

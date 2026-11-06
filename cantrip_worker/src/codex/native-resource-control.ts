@@ -1,13 +1,15 @@
 import {
   nativeResourceProtectionRequestSchema,
   type NativeResourceProtection,
+  type NativeResourceComponent,
 } from "../native-resource-protection.js";
 
 interface ResourceControlPorts {
-  owner(request: {
-    threadId: string;
-    runnerGeneration: string;
-  }): { transport: string; runner: string } | null;
+  owner(request: { threadId: string; runnerGeneration: string }): {
+    transport: string;
+    runner: string;
+    component?: NativeResourceComponent;
+  } | null;
   protection: NativeResourceProtection | null;
   resolve(params: unknown): Promise<unknown>;
 }
@@ -30,8 +32,12 @@ export async function handleNativeResourceProtection(
     if (!ports.protection)
       throw new Error("Native resource protection is unavailable.");
     value = request.seal
-      ? await ports.protection.seal(binding, request.value)
-      : await ports.protection.open(binding, request.value);
+      ? owner.component === "task-content"
+        ? await ports.protection.seal(binding, request.value, owner.component)
+        : await ports.protection.seal(binding, request.value)
+      : owner.component === "task-content"
+        ? await ports.protection.open(binding, request.value, owner.component)
+        : await ports.protection.open(binding, request.value);
   } catch {
     // Explicit denial. Errors and private values never enter diagnostic payloads.
   }
@@ -39,7 +45,9 @@ export async function handleNativeResourceProtection(
   if (
     !current ||
     current.transport !== owner.transport ||
-    current.runner !== owner.runner
+    current.runner !== owner.runner ||
+    (current.component ?? "chat-content") !==
+      (owner.component ?? "chat-content")
   )
     return;
   await ports.resolve({

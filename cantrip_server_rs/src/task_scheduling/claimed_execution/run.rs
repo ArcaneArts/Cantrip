@@ -5,6 +5,7 @@ impl Service {
         owner: &str,
         claim: &Value,
         prepared_runtime: Option<Value>,
+        restoration: Option<(Value, crate::chats::turn_runtime::engine::TaskRestored)>,
     ) -> Result<()> {
         let mut launch_stage = "resolve-context";
         let mut preparation_guard = None;
@@ -66,9 +67,11 @@ impl Service {
             launch_stage="begin-turn";
             let user_message={
                 let _retention=self.retain_preflight(claim);
-                let hooks=self.completion_hooks(owner,claim,&context,&runtime,&request);
+                let mut hooks=self.completion_hooks(owner,claim,&context,&runtime,&request);
+                hooks.task_restored = restoration.as_ref().map(|(_, signal)| signal.clone());
                 let input=json!({"text":"Run the encrypted Task operation.","attachmentIds":started_task["draftAttachmentIds"],"idempotencyKey":format!("task-operation:{}",text(&request["operationId"])?),"modelId":model,"reasoningEffort":configuration["reasoningEffort"],"customSubagentModel":configuration["customSubagentModel"],"subagentModelId":configuration["subagentModelId"],"subagentReasoningEffort":configuration["subagentReasoningEffort"]});
-                let options=json!({"purpose":"Scheduled encrypted Task operation","encryptedTaskMessages":json!({"userMessage":request["userMessage"]}),"preflightWorkerCommandTimeoutMs":self.dependencies.limits.preflight_timeout_ms,"runtimes":vec![runtime.clone()],"taskDispatchLease":claim["lease"],"structuredResult":json!({"taskOperation":request})});
+                let mut options=json!({"purpose":"Scheduled encrypted Task operation","encryptedTaskMessages":json!({"userMessage":request["userMessage"]}),"preflightWorkerCommandTimeoutMs":self.dependencies.limits.preflight_timeout_ms,"runtimes":vec![runtime.clone()],"taskDispatchLease":claim["lease"],"structuredResult":json!({"taskOperation":request})});
+                if let Some((restore, _)) = &restoration { options["taskResumption"] = restore.clone(); }
                 // begin() admits owned bootstrap work immediately. Invoke it
                 // inside the stage so its events follow the launch-stage start.
                 let (runtime,owner,context)=(self.dependencies.runtime.clone(),owner.to_owned(),context.clone());
@@ -83,6 +86,9 @@ impl Service {
             Ok(())
         }.await;
         if let Err(error) = result {
+            if restoration.is_some() {
+                return Err(error);
+            }
             if downcast_ref::<task_dispatch::Conflict>(&error).is_some() {
                 (self.dependencies.queue_tick)();
                 return Ok(());

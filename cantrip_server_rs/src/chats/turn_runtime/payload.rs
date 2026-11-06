@@ -167,8 +167,13 @@ impl EventSink {
             if t.task_relay.is_none() {
                 task_input["kind"] = json!("goal");
             }
-            command["taskInferenceInput"] =
-                crate::tasks::Repository::new(self.dependencies.database.clone())
+            let tasks = crate::tasks::Repository::new(self.dependencies.database.clone());
+            command["taskInferenceInput"] = if !t.options["taskResumption"].is_null() {
+                command["taskResumption"] = t.options["taskResumption"].clone();
+                command["automationPaused"] = json!(false);
+                tasks.prepare_resumption_input(&t.owner, &json!({"resumption":t.options["taskResumption"],"lease":lease,"expectedInputRevision":t.options["expectedInputRevision"]})).await?
+            } else {
+                tasks
                     .prepare_inference_input_at_revision(
                         &t.owner,
                         &task_input,
@@ -180,7 +185,8 @@ impl EventSink {
                             })
                             .transpose()?,
                     )
-                    .await?;
+                    .await?
+            };
             *self.task_input_operation.lock().unwrap() =
                 Some(command["taskInferenceInput"]["operationId"].clone());
         }

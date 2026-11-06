@@ -2,6 +2,7 @@
 // Rust differential corpus. The extracted function body retains Source order.
 import type { FastifyInstance } from "fastify";
 import { workerInferenceFailure } from "../../chats/inference-failure.js";
+import type { TaskTurnResumption } from "@cantrip/protocol";
 import {
   taskEncryptedOperationStartSchema,
   type TaskOpaqueSummary,
@@ -196,6 +197,11 @@ export function createTaskClaimedExecutionRuntime(
     ownerId: string,
     claim: ClaimedTaskDispatch,
     preparedRuntime: ModelRuntime | null,
+    resumption?: {
+      restore: TaskTurnResumption;
+      onResumed(): void;
+      onFailed(error: unknown): void;
+    },
   ): Promise<void> => {
     await runAsOwner(ownerId, async () => {
       let launchStage: TaskLaunchStage = "resolve-context";
@@ -401,6 +407,13 @@ export function createTaskClaimedExecutionRuntime(
                   },
                   {
                     purpose: "Scheduled encrypted Task operation",
+                    ...(resumption
+                      ? {
+                          taskResumption: resumption.restore,
+                          onTaskResumed: resumption.onResumed,
+                          onTaskRestoreFailed: resumption.onFailed,
+                        }
+                      : {}),
                     encryptedTaskMessages: { userMessage: request.userMessage },
                     preflightWorkerCommandTimeoutMs:
                       TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
@@ -550,6 +563,10 @@ export function createTaskClaimedExecutionRuntime(
           { timeoutMs: TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS },
         );
       } catch (error) {
+        if (resumption) {
+          resumption.onFailed(error);
+          return;
+        }
         if (error instanceof TaskDispatchConflictError) {
           queueTaskScheduleTick();
           return;

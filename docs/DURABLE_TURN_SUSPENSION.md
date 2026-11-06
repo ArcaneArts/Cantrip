@@ -142,14 +142,42 @@ input replay. A failed write rejects model permission and rolls back all three
 records. The live completion fixture checks the server's thread and turn against
 the actual native keeper while the Task is still running.
 
-The same fixture with `--task-origin` exercises the strict Task cold target.
-The retained Node run fails: Pause acknowledges the admission hold without a
-Task checkpoint; killing the worker tree leaves the Task failed. Explicit Resume
-creates a new Task operation, planning round, native thread and turn, and its next
-provider request loses the completed tool result. Startup/reopening remains idle.
-Rust Task cold recovery remains unqualified. The retained failure is an
-outstanding integration dependency; Task Pause does
-not yet provide the confirmed-pause/process-termination guarantee above.
+Direct Task rounds now commit both the native checkpoint and a Task-encrypted
+worker continuation before confirming Pause. The continuation retains the
+original opaque round request and published event identities, including cached
+completion ciphertext. It contains no reusable dispatch grant. Task and chat
+checkpoint protection remain separate; opening a Task continuation requires
+current Task-content authority.
+
+Explicit cold Resume acquires a fresh Task lease and physical input receipt while
+retaining the original logical operation, planning round, native thread and turn.
+It restores the result-publication pipeline from the protected continuation and
+submits native Resume without resending the input. Ordinary Task scheduling cannot
+claim a held checkpoint. Failed attachment or restoration retains the checkpoint
+and logical round for an explicit retry; an unbound retry cannot replace the
+actual execution owner of the saved checkpoint.
+
+The production fixture with `--task-origin` now passes on Node and Rust after
+whole-worker-tree termination. It checks completed tool context, unchanged round
+and attempt counters, one original input and turn-start event, and no execution
+on restart/reopening. `--task-cold-rounds 2 --task-duplicate-resume` exercises
+repeated recovery and concurrent Resume requests. `--task-restore-damage` accepts
+`missing`, `corrupt`, or `incompatible`: actual failed restoration retains recovery
+state, and repairing the fixture-owned checkpoint allows same-turn retry.
+
+Task Stop persists its intent before cancellation and remains separate from
+Pause. Its acknowledgement requires actual terminal native history. It can cancel
+a surviving owner or attach a cold held owner without Resume, including with a
+missing, corrupt or incompatible checkpoint. The fixture covers
+`--task-running-stop`, `--task-stop-pending-pause`, `--task-cold-stop`,
+`--task-live-pause --task-cold-stop`, and `--task-stop-restoring`. The last case
+cancels an actual restoration waiting for provider capacity and verifies that
+freeing capacity cannot restart it. Late physical failure callbacks cannot fail
+the stopped logical Task; matching native terminal proof still retires recovery.
+
+These results qualify direct Task rounds. Planning/finalizer rounds, autonomous
+Task Goal accounting, and the complete resource/client matrix still require
+production qualification; this section does not claim those paths complete.
 
 ## Held managed attachment
 

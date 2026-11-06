@@ -20,12 +20,25 @@ export const nativeResourceBindingSchema = z
   })
   .strict();
 
-export const protectedNativeResourcesSchema = z
-  .object({
-    formatVersion: z.literal(1),
-    envelope: encryptedPayloadEnvelopeSchema,
-  })
-  .strict();
+export const protectedNativeResourcesSchema = z.discriminatedUnion(
+  "formatVersion",
+  [
+    z
+      .object({
+        formatVersion: z.literal(1),
+        envelope: encryptedPayloadEnvelopeSchema,
+      })
+      .strict(),
+    z
+      .object({
+        formatVersion: z.literal(2),
+        component: z.literal("task-content"),
+        envelope: encryptedPayloadEnvelopeSchema,
+      })
+      .strict(),
+  ],
+);
+export type NativeResourceComponent = "chat-content" | "task-content";
 
 export type NativeResourceBinding = z.infer<typeof nativeResourceBindingSchema>;
 export type ProtectedNativeResources = z.infer<
@@ -46,8 +59,13 @@ export interface NativeResourceProtection {
   seal(
     binding: NativeResourceBinding,
     value: unknown,
+    component?: NativeResourceComponent,
   ): Promise<ProtectedNativeResources>;
-  open(binding: NativeResourceBinding, value: unknown): Promise<unknown>;
+  open(
+    binding: NativeResourceBinding,
+    value: unknown,
+    component?: NativeResourceComponent,
+  ): Promise<unknown>;
 }
 
 const encoder = new TextEncoder();
@@ -55,12 +73,12 @@ const decoder = new TextDecoder("utf-8", { fatal: true });
 type ProtectionDomain =
   "native_turn_resources" | "native_turn_suspension_sources";
 const field = "payload";
-const component = "chat-content" as const;
 
 function material(
   service: WorkerEncryptionService,
   input: NativeResourceBinding,
   table: ProtectionDomain,
+  component: NativeResourceComponent,
   revision?: number,
 ) {
   const binding = nativeResourceBindingSchema.parse(input);
@@ -129,7 +147,7 @@ function createProtection(
   domain: ProtectionDomain,
 ): NativeResourceProtection {
   return {
-    async seal(binding, value) {
+    async seal(binding, value, component = "chat-content") {
       let serialized: string | undefined;
       try {
         serialized = JSON.stringify(value);
@@ -138,12 +156,14 @@ function createProtection(
       }
       if (serialized === undefined)
         throw new Error("Native resource state is not JSON data.");
-      const encryption = material(service, binding, domain);
+      const encryption = material(service, binding, domain, component);
       let plaintext: Uint8Array | undefined;
       try {
         plaintext = encoder.encode(serialized);
         return protectedNativeResourcesSchema.parse({
-          formatVersion: 1,
+          ...(component === "task-content"
+            ? { formatVersion: 2, component }
+            : { formatVersion: 1 }),
           envelope: await encryptPayload({
             key: encryption.key,
             plaintext,
@@ -155,16 +175,25 @@ function createProtection(
         clearSensitiveBytes(encryption.key);
       }
     },
-    async open(binding, value) {
+    async open(binding, value, component = "chat-content") {
       const opaque = protectedNativeResourcesSchema.safeParse(value);
       if (!opaque.success)
         throw new Error(
           "Native resource protection format is invalid or unsupported.",
         );
+      const storedComponent =
+        opaque.data.formatVersion === 2
+          ? opaque.data.component
+          : "chat-content";
+      if (storedComponent !== component)
+        throw new Error(
+          "Native resource protection belongs to another component.",
+        );
       const encryption = material(
         service,
         binding,
         domain,
+        component,
         opaque.data.envelope.keyRevision,
       );
       let plaintext: Uint8Array | undefined;
