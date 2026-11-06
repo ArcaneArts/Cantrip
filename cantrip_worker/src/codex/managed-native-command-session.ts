@@ -1730,20 +1730,13 @@ export class ManagedNativeCommandSession {
       operationGeneration: grant.receipt.operationGeneration,
       ...(forward ? { forward } : {}),
       beforeForward: async () => {
-        if (
+        const cancelsInference =
           operation.method === "turn/interrupt" ||
           operation.method === "thread/goal/clear" ||
           (operation.method === "thread/goal/set" &&
-            intent.goalStatus === "paused")
-        ) {
-          if (this.active && !this.active.inferenceForwarded)
-            cancelledWaitingRoot = this.active;
-          this.active?.inferenceAbort.abort(
-            new Error(
-              "Native execution was stopped while waiting for capacity.",
-            ),
-          );
-        }
+            intent.goalStatus === "paused");
+        if (cancelsInference && root && !root.inferenceForwarded)
+          cancelledWaitingRoot = root;
         // Pause retains this exact execution source. Native suspension releases
         // its inference lease without terminal cancellation and resumes with
         // fresh capacity; aborting the source here makes that impossible.
@@ -1829,6 +1822,14 @@ export class ManagedNativeCommandSession {
           assertRootCurrent();
           this.assertTransport(session);
           execution.handle?.assertCurrent();
+          // A rejected/stale control has no authority to revoke the current
+          // source. Dispatch revalidates the epoch before local cancellation.
+          if (cancelsInference)
+            root?.inferenceAbort.abort(
+              new Error(
+                "Native execution was stopped while waiting for capacity.",
+              ),
+            );
           if (
             operation.method === "thread/goal/set" &&
             operation.queueClaim &&
@@ -1891,6 +1892,19 @@ export class ManagedNativeCommandSession {
           if (start) {
             execution.handle?.dispatchInference?.();
             execution.inferenceForwarded = true;
+          } else if (
+            operation.method === "turn/pause" &&
+            intent.paused === false &&
+            root &&
+            this.restored?.execution === root &&
+            !root.inferenceForwarded
+          ) {
+            // Held observer registration grants no provider work. Only this
+            // freshly dispatched explicit Resume reaches its forwarding fence.
+            root.inferenceSource.assertCurrent();
+            root.handle?.assertCurrent();
+            root.handle?.dispatchInference?.();
+            root.inferenceForwarded = true;
           }
         } catch (error) {
           if (execution.routeWithdrawal) return awaitWithdrawal();

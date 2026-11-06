@@ -11,6 +11,7 @@ import { taskGoalCycleRecoverySchema } from "./task-goal-cycle.js";
 import { queuedPromptOpaqueContentSchema } from "./communication-content.js";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
 import { nativeCommandReceiptSchema } from "./native-commands.js";
+import { nativeSuspensionEvidenceSchema } from "./native-suspensions.js";
 import {
   nativeGoalRecoverySourceSchema,
   nativeGoalRecoverySchema,
@@ -412,6 +413,26 @@ export const workerChatCommandSchemas = [
       chatId: z.string().min(1),
       rootOperationId: z.string().min(1),
       rootOperationGeneration: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("chat.suspension.resume"),
+      chatId: z.string().min(1),
+      threadId: z.string().min(1),
+      controlId: z.uuid(),
+      checkpoint: nativeSuspensionEvidenceSchema,
+      nativeActivationGeneration: z.string().min(1).nullable(),
+      nativeRuntimeGeneration: z.string().min(1).nullable(),
+      session: managedSessionContextSchema,
+      cwd: z.string().min(1),
+      executionProfile: z.enum(["ide", "standalone-chat"]),
+      model: workerRuntimeModelSchema,
+      provider: workerRuntimeProviderSchema,
+      permissionProfileId: permissionProfileIdSchema,
+      planMode: planModeSchema,
+      subagentDefaults: managedSessionSubagentDefaultsSchema.nullable(),
+      mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200),
     })
     .strict(),
   z

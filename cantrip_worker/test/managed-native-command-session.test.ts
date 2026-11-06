@@ -1794,6 +1794,92 @@ describe("restored managed execution publication", () => {
     await restored.completion;
   });
 
+  it("forwards restored inference only at the admitted explicit Resume boundary", async () => {
+    const f = restoredFixture();
+    const dispatchInference = vi.fn(() => {
+      f.order.push("forward-restored-inference");
+    });
+    f.handle.dispatchInference = dispatchInference;
+    const restored = await f.adapter.restoreSuspendedExecution(
+      f.grant,
+      session,
+      f.continuation,
+    );
+    expect(dispatchInference).not.toHaveBeenCalled();
+    f.client.admit.mockResolvedValueOnce({
+      receipt: {
+        ...receipt,
+        method: "turn/pause",
+        operationId: "resume-control",
+        operationGeneration: "resume-generation",
+        startsExecution: false,
+      },
+      execution: null,
+      computerUseAuthority: null,
+    });
+    const resume = await f.adapter.admit({
+      ...f.operation,
+      operationId: "resume-control",
+      kind: "control",
+      method: "turn/pause",
+      frame: {
+        id: 2,
+        method: "turn/pause",
+        params: { threadId: "thread", turnId: "turn", paused: false },
+      },
+    });
+    expect(dispatchInference).not.toHaveBeenCalled();
+    await resume.beforeForward();
+    expect(f.order.slice(0, 5)).toEqual([
+      "dispatch",
+      "restore",
+      "receipt",
+      "dispatch",
+      "forward-restored-inference",
+    ]);
+    await resume.beforeForward();
+    expect(dispatchInference).toHaveBeenCalledOnce();
+    await resume.settle({ result: {} });
+    f.done.resolve(result);
+    await restored.completion;
+  });
+
+  it("keeps the restored source current when a stale Stop is rejected at dispatch", async () => {
+    const f = restoredFixture();
+    const restored = await f.adapter.restoreSuspendedExecution(
+      f.grant,
+      session,
+      f.continuation,
+    );
+    const source = (
+      f.runtime.prepareRestoredNativeExecution.mock.calls[0] as unknown as [
+        { inferenceSource: { assertCurrent(): void } },
+      ]
+    )[0].inferenceSource;
+    f.client.admit.mockResolvedValueOnce({
+      receipt: {
+        ...receipt,
+        method: "turn/interrupt",
+        operationId: "stale-stop",
+        operationGeneration: "stale-stop-generation",
+        startsExecution: false,
+      },
+      execution: null,
+      computerUseAuthority: null,
+    });
+    const stop = await f.adapter.admit({
+      ...f.operation,
+      operationId: "stale-stop",
+      kind: "control",
+      method: "turn/interrupt",
+    });
+    f.client.dispatch.mockRejectedValueOnce(new Error("stale control epoch"));
+    await expect(stop.beforeForward()).rejects.toThrow("stale control epoch");
+    expect(() => source.assertCurrent()).not.toThrow();
+    f.done.resolve(result);
+    await restored.completion;
+  });
+
   it("waits for protected publication before sending terminal evidence", async () => {
     const f = restoredFixture();
     const flushed = deferred<void>();
