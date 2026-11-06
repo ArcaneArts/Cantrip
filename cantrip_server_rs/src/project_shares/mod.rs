@@ -199,7 +199,7 @@ impl Service {
         };
         self.worker_links
             .revoke_resource(owner, "tunnel", id, "resource-deleted")
-            .await;
+            .await?;
         self.close_worker(
             id,
             tunnel["destination"]["workerId"]
@@ -225,7 +225,7 @@ impl Service {
         let id = tunnel["id"].as_str().context("Share identity")?;
         self.worker_links
             .revoke_resource(owner, "tunnel", id, "resource-deleted")
-            .await;
+            .await?;
         self.close_worker(
             id,
             tunnel["destination"]["workerId"]

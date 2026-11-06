@@ -85,7 +85,7 @@ async fn execute(
         service
             .worker_links
             .revoke_attachment(owner, "tunnel", tunnel, id)
-            .await;
+            .await?;
         crate::tunnels::publish(
             &service.live,
             &json!({"attachmentId":id,"ownerId":owner,"projectId":created["projectId"],"tunnelId":tunnel}),
@@ -111,7 +111,7 @@ async fn execute(
                             auth["tunnelId"].as_str().context("Tunnel identity")?,
                             auth["attachmentId"].as_str().context("Tunnel attachment")?,
                         )
-                        .await;
+                        .await?;
                 }
                 service.tunnel_runtime.revoke(owner, id, false, None).await
             })

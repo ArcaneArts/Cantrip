@@ -389,7 +389,7 @@ async fn main() -> Result<()> {
             "direct-attachments-close",
             service.direct_attachments.close().await
         );
-        shutdown_step!("worker-links-close", service.worker_links.close().await);
+        shutdown_step!("worker-links-close", service.worker_links.close().await)?;
         shutdown_step!("worker-bridge-close", service.workers.close().await)?;
         shutdown_step!("execution", service.execution.drained().await);
         shutdown_step!(
@@ -415,7 +415,7 @@ async fn main() -> Result<()> {
         shutdown_step!("worker-handshakes", service.workers.drained().await?);
         shutdown_step!(
             "worker-link-callbacks",
-            service.worker_links.local.drained().await
+            service.worker_links.drained().await
         );
         shutdown_step!(
             "provider-accounts",

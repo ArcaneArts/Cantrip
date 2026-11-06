@@ -3,7 +3,10 @@ use anyhow::{Context, Result, bail};
 use cantrip_server::{
     coordination::{Options as RedisOptions, RedisCoordinator},
     wire::{Value, parse_json_text},
-    worker_links::{Coordinator, Error, Options, authority::Authority},
+    worker_links::{
+        Coordinator, Error, Options, authority::Authority, relay::Relay, service::Service,
+    },
+    workers::bridge::WorkerBridge,
 };
 use futures::FutureExt;
 use std::sync::{Arc, Mutex};
@@ -24,6 +27,8 @@ fn record(events: &Events, value: Value) {
 struct Driver {
     coordinator: Arc<RedisCoordinator>,
     authority: Arc<Authority>,
+    service: Arc<Service>,
+    relay_sockets: control::RelaySockets,
     workers: Arc<Mutex<control::Workers>>,
     listeners: Arc<control::Listeners>,
     events: Events,
@@ -59,10 +64,16 @@ impl Driver {
                 j!({"kind":"log","level":call.level,"message":call.message,"context":call.context}),
             )
         });
-        let authority = Authority::new(
+        let relay = Relay::new(
+            WorkerBridge::new(std::time::Duration::from_secs(15)),
+            Default::default(),
+        );
+        let service = Service::compose(
             Coordinator::new(request, options),
+            relay.clone(),
             Some(coordinator.clone()),
         );
+        let authority = service.authority.clone();
         let listeners = control::Listeners::new(&authority, events.clone());
         let observed = events.clone();
         coordinator.subscribe(Arc::new(move |message| {
@@ -74,6 +85,8 @@ impl Driver {
         Ok(Arc::new(Self {
             coordinator,
             authority,
+            service,
+            relay_sockets: control::RelaySockets::new(relay, events.clone()),
             workers,
             listeners,
             events,
@@ -94,11 +107,13 @@ impl Driver {
                     .unwrap_or(Value::Null),
                 "renew" => c.renew_session(&text(&r, "session")).await?,
                 "route" => {
-                    c.replace_route(&text(&r, "session"), r["route"].clone())
+                    self.service
+                        .replace_route(&text(&r, "session"), r["route"].clone())
                         .await?
                 }
                 "openPeer" => {
-                    c.open_peer(&text(&r, "session"), r["input"].clone())
+                    self.service
+                        .open_peer(&text(&r, "session"), &r["input"])
                         .await?
                 }
                 "signal" => {
@@ -128,41 +143,51 @@ impl Driver {
                     .await?,
                 ),
                 "revokeSession" => Value::Bool(
-                    c.revoke_session(
-                        &text(&r, "session"),
-                        r["reason"].as_str().unwrap_or("released"),
-                    )
-                    .await?,
+                    self.service
+                        .revoke_session(
+                            &text(&r, "session"),
+                            r["reason"].as_str().unwrap_or("released"),
+                        )
+                        .await?,
                 ),
                 "revokeAccount" => {
-                    Value::from_serialize(&c.revoke_account(r["account"].clone()).await?)
+                    Value::from_serialize(&self.service.revoke_account(&text(&r, "account")).await?)
                 }
-                "revokeOwner" => Value::from_serialize(&c.revoke_owner(r["owner"].clone()).await?),
+                "revokeOwner" => {
+                    Value::from_serialize(&self.service.revoke_owner(&text(&r, "owner")).await?)
+                }
                 "revokeResource" => Value::from_serialize(
-                    &c.revoke_resource(
-                        r["owner"].clone(),
-                        r["kind"].clone(),
-                        r["resource"].clone(),
-                        r.get("reason")
-                            .cloned()
-                            .unwrap_or_else(|| Value::String("resource-stopped".into())),
-                    )
-                    .await?,
+                    &self
+                        .service
+                        .revoke_resource(
+                            &text(&r, "owner"),
+                            &text(&r, "kind"),
+                            &text(&r, "resource"),
+                            r["reason"].as_str().unwrap_or("resource-stopped"),
+                        )
+                        .await?,
                 ),
-                "revokeAttachment" => Value::from_serialize(
-                    &c.revoke_attachment(
+                "revokeAttachment" => Value::from_serialize(&if r.get("reason").is_none() {
+                    self.service
+                        .revoke_attachment(
+                            &text(&r, "owner"),
+                            &text(&r, "kind"),
+                            &text(&r, "resource"),
+                            &text(&r, "attachment"),
+                        )
+                        .await?
+                } else {
+                    c.revoke_attachment(
                         r["owner"].clone(),
                         r["kind"].clone(),
                         r["resource"].clone(),
                         r["attachment"].clone(),
-                        r.get("reason")
-                            .cloned()
-                            .unwrap_or_else(|| Value::String("resource-stopped".into())),
+                        r["reason"].clone(),
                     )
-                    .await?,
-                ),
+                    .await?
+                }),
                 "close" => {
-                    c.close().await?;
+                    self.service.close().await?;
                     Value::Null
                 }
                 _ => return Err(anyhow::anyhow!("Unknown authority method").into()),
@@ -200,6 +225,15 @@ impl Driver {
                 // The Authority's owned work must finish without this waiter.
                 let mut operation = Box::pin(self.invoke(r["call"].clone()));
                 let _ = operation.as_mut().now_or_never();
+                Ok(Value::Null)
+            }
+            "abandonServiceResource" => {
+                drop(self.service.revoke_resource(
+                    &text(&r, "owner"),
+                    &text(&r, "kind"),
+                    &text(&r, "resource"),
+                    "resource-stopped",
+                ));
                 Ok(Value::Null)
             }
             "behavior" => {
@@ -241,6 +275,13 @@ impl Driver {
                 &mut *self.events.lock().unwrap(),
             ))),
             "stats" => Ok(self.authority.stats()),
+            "attachRelay" => Ok(Value::Bool(
+                self.relay_sockets
+                    .attach(text(&r, "name"), r["session"].clone()),
+            )),
+            "relayOpen" => Ok(Value::Bool(self.relay_sockets.open(&text(&r, "name")))),
+            "relayStats" => Ok(self.service.relay.stats()),
+            "coordinationStats" => Ok(self.coordinator.stats()),
             "claim" => Ok(self
                 .coordinator
                 .find_worker_link_session(&text(&r, "session").into())
@@ -271,8 +312,8 @@ impl Driver {
                 Ok(Value::Null)
             }
             "close" => {
-                self.authority.close().await?;
-                self.authority.drained().await;
+                self.service.close().await?;
+                self.service.drained().await;
                 self.coordinator.close().await?;
                 Ok(Value::Null)
             }
@@ -308,8 +349,8 @@ async fn main() -> Result<()> {
             let _ = tx.send(result);
         });
     }
-    driver.authority.close().await?;
-    driver.authority.drained().await;
+    driver.service.close().await?;
+    driver.service.drained().await;
     driver.coordinator.close().await?;
     drop(tx);
     output.await??;

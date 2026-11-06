@@ -162,7 +162,7 @@ async fn mutate(
     service
         .worker_links
         .revoke_resource(&owner, "browser", id, "resource-deleted")
-        .await;
+        .await?;
     if let Some(existing) = existing {
         revoke_attachments(&service, &owner, &existing, false).await?;
         tunnels.remove_managed(&owner, &managed).await?;

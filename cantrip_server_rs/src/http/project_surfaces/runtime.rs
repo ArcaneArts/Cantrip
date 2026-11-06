@@ -144,7 +144,7 @@ pub(super) async fn delete(
         service
             .worker_links
             .revoke_resource(owner, resource, surface, "resource-deleted")
-            .await;
+            .await?;
         let worker = context["workerId"]
             .as_str()
             .context("Deleted project view worker")?;

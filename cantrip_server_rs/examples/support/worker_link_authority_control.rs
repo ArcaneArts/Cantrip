@@ -6,12 +6,17 @@ use cantrip_server::{
     worker_links::{
         WorkerRequest,
         authority::{Authority, RelayRevokeListener, RelayRevokeSubscription},
+        frame::Frame,
+        relay::{Connection, Relay, Socket},
     },
 };
 use futures::FutureExt;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, Weak},
+    sync::{
+        Arc, Mutex, Weak,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tokio::sync::oneshot;
 
@@ -20,6 +25,74 @@ pub struct Workers {
     pub commands: Vec<Value>,
     pub behavior: HashMap<String, Value>,
     pub held: HashMap<String, Vec<oneshot::Sender<Value>>>,
+}
+struct RelaySocket {
+    name: String,
+    events: Events,
+    open: AtomicBool,
+    closed: Mutex<Option<(Weak<Relay>, Weak<Connection>)>>,
+}
+impl Socket for RelaySocket {
+    fn is_open(&self) -> bool {
+        self.open.load(Ordering::Acquire)
+    }
+    fn buffered_amount(&self) -> usize {
+        0
+    }
+    fn send(&self, _: Frame) -> Result<()> {
+        Ok(())
+    }
+    fn close(&self, code: u16, reason: &str) {
+        if !self.open.swap(false, Ordering::AcqRel) {
+            return;
+        }
+        record(
+            &self.events,
+            j!({"kind":"relay-close","name":self.name,"code":code,"reason":reason}),
+        );
+        let binding = self.closed.lock().unwrap().clone();
+        if let Some((relay, connection)) = binding
+            && let (Some(relay), Some(connection)) = (relay.upgrade(), connection.upgrade())
+        {
+            relay.retire(&connection);
+        }
+    }
+}
+pub struct RelaySockets {
+    relay: Arc<Relay>,
+    events: Events,
+    sockets: Mutex<HashMap<String, Arc<RelaySocket>>>,
+}
+impl RelaySockets {
+    pub fn new(relay: Arc<Relay>, events: Events) -> Self {
+        Self {
+            relay,
+            events,
+            sockets: Mutex::default(),
+        }
+    }
+    pub fn attach(&self, name: String, session: Value) -> bool {
+        let socket = Arc::new(RelaySocket {
+            name: name.clone(),
+            events: self.events.clone(),
+            open: AtomicBool::new(true),
+            closed: Mutex::default(),
+        });
+        let connection = self.relay.attach(session, socket.clone());
+        if let Some(connection) = connection.as_ref() {
+            *socket.closed.lock().unwrap() =
+                Some((Arc::downgrade(&self.relay), Arc::downgrade(connection)));
+        }
+        self.sockets.lock().unwrap().insert(name, socket);
+        connection.is_some()
+    }
+    pub fn open(&self, name: &str) -> bool {
+        self.sockets
+            .lock()
+            .unwrap()
+            .get(name)
+            .is_some_and(|s| s.is_open())
+    }
 }
 impl Workers {
     pub fn request(state: Arc<Mutex<Self>>, server: Value, generation: Value) -> WorkerRequest {

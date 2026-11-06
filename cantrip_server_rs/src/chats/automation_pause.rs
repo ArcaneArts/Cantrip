@@ -42,6 +42,8 @@ fn wrapped(status: u16, prefix: &str, error: &anyhow::Error) -> anyhow::Error {
     units.extend_from_slice(crate::settings::operation_error_message(error).units());
     failure(status, JsString::new(units))
 }
+type StopControlRegistry =
+    std::collections::HashMap<(String, String), std::sync::Weak<tokio::sync::Mutex<()>>>;
 pub struct Service {
     chats: Repository,
     native: native_commands::Repository,
@@ -52,9 +54,7 @@ pub struct Service {
     live: Arc<Live>,
     logger: Logger,
     operations: Arc<Operations>,
-    stop_controls: std::sync::Mutex<
-        std::collections::HashMap<(String, String), std::sync::Weak<tokio::sync::Mutex<()>>>,
-    >,
+    stop_controls: std::sync::Mutex<StopControlRegistry>,
 }
 fn text(value: &Value) -> Result<String> {
     Ok(value

@@ -209,7 +209,7 @@ async fn create(
         let existing=repository.get_managed(&owner,&json!({"kind":"project-share","id":managed_id})).await?;
         if existing.as_ref().is_some_and(|t|t["id"]!=input["tunnelId"]) {return Err(OperationError::stale(if project.is_some(){"The project share tunnel identity is stale."}else{"The Chat share tunnel identity is stale."}).into());}
         if let Some(existing)=existing {
-            service.worker_links.revoke_resource(&owner,"tunnel",existing["id"].as_str().context("Share tunnel identity")?,"resource-stopped").await;
+            service.worker_links.revoke_resource(&owner,"tunnel",existing["id"].as_str().context("Share tunnel identity")?,"resource-stopped").await?;
             revoke_attachments(&service,&owner,&existing,true).await?;
         }
         let attachment=service.project_shares.open(&setup).await?;
@@ -248,7 +248,7 @@ async fn remove(service: Arc<AuthService>, owner: String, id: String) -> Result<
             service
                 .worker_links
                 .revoke_resource(&owner, "tunnel", &id, "resource-deleted")
-                .await;
+                .await?;
             revoke_attachments(&service, &owner, &tunnel, true).await?;
             Ok(
                 if service

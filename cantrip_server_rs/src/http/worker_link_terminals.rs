@@ -138,7 +138,7 @@ pub(super) async fn execute(
         Ok(v) => v,
         Err(response) => return Ok(response),
     };
-    let Some(session) = authorized(service, ctx, session_id) else {
+    let Some(session) = authorized(service, ctx, session_id).await? else {
         return Ok(error(404, "WorkerLink session not found."));
     };
     let owner = &ctx
@@ -185,10 +185,10 @@ pub(super) async fn execute(
         }
         bootstrap(service,&context,owner,&input["operationId"],&attachment,launch,&mut detached).await?;
         service.worker_maintenance.record_status(owner,terminal_id,"running").await?;
-        let grant=service.worker_links.local.issue_grant(json!({"attachmentId":input["operationId"],"lanes":["interactive"],"maxChannels":1,"operations":["stream:open","stream:read","stream:write"],"resourceId":context["terminalId"],"resourceKind":"terminal","sessionId":session["sessionId"]})).await?;
+        let grant=service.worker_links.authority.issue_grant(json!({"attachmentId":input["operationId"],"lanes":["interactive"],"maxChannels":1,"operations":["stream:open","stream:read","stream:write"],"resourceId":context["terminalId"],"resourceKind":"terminal","sessionId":session["sessionId"]})).await?;
         let current=repository.context(owner,terminal_id).await?;
         if current.as_ref().is_none_or(|v|v["kind"]=="run-configuration" || v["workerId"]!=context["workerId"] || v["worktreePath"]!=context["worktreePath"]) {
-            service.worker_links.local.revoke_grant(session_id,grant["binding"]["grantId"].as_str().context("Terminal grant identity")?,if current.is_some(){"resource-stopped"}else{"resource-deleted"}).await;
+            service.worker_links.authority.revoke_grant(session_id,grant["binding"]["grantId"].as_str().context("Terminal grant identity")?,if current.is_some(){"resource-stopped"}else{"resource-deleted"}).await?;
             return Ok(error(409,"Terminal placement changed while its stream was opening."));
         }
         output(201,"workerLinkResourceGrantSchema",&grant)

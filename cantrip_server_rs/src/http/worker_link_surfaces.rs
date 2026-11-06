@@ -26,7 +26,7 @@ pub(super) async fn execute(
         Ok(value) => value,
         Err(response) => return Ok(response),
     };
-    let Some(session) = authorized(service, ctx, session_id) else {
+    let Some(session) = authorized(service, ctx, session_id).await? else {
         return Ok(error(404, "WorkerLink session not found."));
     };
     let owner = &ctx
@@ -74,12 +74,12 @@ pub(super) async fn execute(
         let attached_result=service.workers.commands.request(worker,command,Some(Duration::from_secs(30)),None).await?;
         crate::settings::parse_response("remoteSurfaceAttachResultSchema",attached_result.as_ref())?;
         attached=true;
-        let grant=service.worker_links.local.issue_grant(json!({"attachmentId":attachment,"lanes":["interactive","realtime"],"maxChannels":2,"operations":["stream:open","stream:read","stream:write"],"resourceId":surface["id"],"resourceKind":resource_kind,"sessionId":session["sessionId"]})).await?;
+        let grant=service.worker_links.authority.issue_grant(json!({"attachmentId":attachment,"lanes":["interactive","realtime"],"maxChannels":2,"operations":["stream:open","stream:read","stream:write"],"resourceId":surface["id"],"resourceKind":resource_kind,"sessionId":session["sessionId"]})).await?;
         grant_id=Some(grant["binding"]["grantId"].as_str().context("Surface grant ID")?.to_owned());
         let current=repository.context(owner,surface_id).await?;
         if let Some(current) = current.as_ref() { let _ = repository.desktop_execution(owner,current).await?; }
         if current.as_ref().is_none_or(|v|v["surface"]["kind"]!=surface["kind"] || v["workerId"]!=context["workerId"] || v["surface"]["projectId"]!=surface["projectId"] || v["surface"]["configuration"]!=surface["configuration"] || v["surface"]["stateRevision"]!=surface["stateRevision"]) {
-            service.worker_links.local.revoke_grant(session_id,grant_id.as_deref().unwrap(),if current.is_some(){"resource-stopped"}else{"resource-deleted"}).await;
+            service.worker_links.authority.revoke_grant(session_id,grant_id.as_deref().unwrap(),if current.is_some(){"resource-stopped"}else{"resource-deleted"}).await?;
             attached=false;grant_id=None;
             return Ok(error(if current.is_some(){409}else{404},if current.is_some(){format!("{name} placement or state changed while opening.")}else{format!("{name} surface not found.")}));
         }
@@ -90,9 +90,9 @@ pub(super) async fn execute(
         Ok(response) => Ok(response),
         Err(cause) => {
             if let Some(grant) = grant_id.as_ref() {
-                service
+                let _ = service
                     .worker_links
-                    .local
+                    .authority
                     .revoke_grant(session_id, grant, "resource-stopped")
                     .await;
                 attached = false;
