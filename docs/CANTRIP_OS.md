@@ -681,8 +681,12 @@ history and observation. Retries inspect the original Worker journal without
 creating again. Lost-reply recovery is exercised against the real Docker guest;
 Server restart, changed-attachment registration and stale-observation fencing
 have matching Node/native HTTP acceptance. A missing Worker receipt stays
-unknown rather than inferring success from an account name. Persistent client
-creation recovery/history remains a separate checkpoint.
+unknown rather than inferring success from an account name. The creation form
+now saves its exact request before dispatch and exposes saved-request observation
+and owned history after reload. Actual product acceptance kills the full Worker
+after account creation with a withheld reply, reloads the client, and recovers
+the same receipt and UID without another create. Optional request generations
+also fence a destination change before the initial Server admission.
 
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output

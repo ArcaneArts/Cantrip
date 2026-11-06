@@ -100,13 +100,35 @@ it(
       );
       install();
       const base = `/api/cantrip-os/${instance.id}`,
-        input = { operationId: randomUUID(), guestWorkspaceId: "first" };
+        input = {
+          operationId: randomUUID(),
+          guestWorkspaceId: "first",
+          attachmentGeneration: instance.attachmentGeneration,
+          runtimeGeneration: runtime,
+        };
       const post = (path: string, payload?: unknown) =>
         app.inject({
           method: "POST",
           url: base + path,
           ...(payload ? { payload } : {}),
         });
+      expect(
+        (
+          await post("/workspaces", {
+            ...input,
+            runtimeGeneration: randomUUID(),
+          })
+        ).statusCode,
+      ).toBe(409);
+      expect(
+        (
+          await post("/workspaces", {
+            ...input,
+            attachmentGeneration: randomUUID(),
+          })
+        ).statusCode,
+      ).toBe(409);
+      expect(commands).toHaveLength(0);
       expect((await post("/workspaces", input)).json()).toMatchObject({
         operationId: input.operationId,
         state: "unknown",

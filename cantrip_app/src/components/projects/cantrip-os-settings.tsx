@@ -1,3 +1,4 @@
+import { CantripOsWorkspaceCreateControls } from "./cantrip-os-workspace-create-controls";
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
@@ -7,7 +8,6 @@ import type {
   CantripOsSourceBindingSummary,
 } from "@cantrip/protocol";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import {
   getCantripOsInstances,
@@ -15,7 +15,6 @@ import {
   getCantripOsBindings,
   recoverCantripOsInstance,
   refreshCantripOs,
-  createCantripOsWorkspace,
   recoverCantripOsBinding,
   verifyCantripOsBinding,
 } from "@/lib/api/cantrip-os";
@@ -46,7 +45,6 @@ export function CantripOsSettings({
   const queryClient = useQueryClient();
   const [instanceId, setInstanceId] = useState("");
   const [workspaceId, setWorkspaceId] = useState("");
-  const [profile, setProfile] = useState("work");
   const [adding, setAdding] = useState(false);
   const [worktreeSource, setWorktreeSource] = useState<string | null>(null);
   const instances = useQuery({
@@ -80,28 +78,6 @@ export function CantripOsSettings({
   const refresh = useMutation({
     mutationFn: () => recoverCantripOsInstance(selected!),
     onSettled: refreshLists,
-  });
-  const workspaceOperations = useRef(new Map<string, string>());
-  const createWorkspace = useMutation({
-    mutationFn: async () => {
-      const key = `${selected!.id}/${profile}`;
-      let operationId = workspaceOperations.current.get(key);
-      if (!operationId) {
-        operationId = crypto.randomUUID();
-        workspaceOperations.current.set(key, operationId);
-      }
-      const result = await createCantripOsWorkspace(selected!.id, {
-        guestWorkspaceId: profile,
-        operationId,
-      });
-      if (result.state !== "ready")
-        throw new Error(
-          result.error ??
-            `Workspace creation is ${result.state}. Submit again to observe this same operation.`,
-        );
-      return result;
-    },
-    onSuccess: refreshLists,
   });
   const observe = useMutation({
     mutationFn: (binding: CantripOsSourceBindingSummary) =>
@@ -178,7 +154,6 @@ export function CantripOsSettings({
     workspaces.error ??
     bindings.error ??
     refresh.error ??
-    createWorkspace.error ??
     observe.error ??
     verify.error ??
     open.error ??
@@ -276,26 +251,11 @@ export function CantripOsSettings({
                 ))}
               </NativeSelect>
             </label>
-            <form
-              className="flex items-end gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                createWorkspace.mutate();
-              }}
-            >
-              <label className="min-w-0 flex-1 space-y-1 text-sm">
-                New workspace ID
-                <Input
-                  value={profile}
-                  onChange={(e) => setProfile(e.target.value)}
-                  maxLength={24}
-                  required
-                />
-              </label>
-              <Button type="submit" disabled={createWorkspace.isPending}>
-                Create workspace
-              </Button>
-            </form>
+            <CantripOsWorkspaceCreateControls
+              key={`create:${selected.id}`}
+              instance={selected}
+              onChanged={refreshLists}
+            />
           </div>
           {workspace ? (
             <CantripOsDesktopControls

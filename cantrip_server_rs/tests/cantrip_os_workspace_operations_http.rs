@@ -192,7 +192,14 @@ async fn workspace_creation_retains_original_authority_after_server_restart_and_
     let base = format!("/api/cantrip-os/{instance_id}");
     let create = format!("{base}/workspaces");
     let history = format!("{base}/workspace-operations");
-    let input = json!({"operationId":id(),"guestWorkspaceId":"work"});
+    let input = json!({"operationId":id(),"guestWorkspaceId":"work","attachmentGeneration":attachment,"runtimeGeneration":runtime});
+    let mut stale = input.clone();
+    stale["runtimeGeneration"] = json!(id());
+    assert_eq!(post(&client, &running.base, &create, &stale).await?.0, 409);
+    stale = input.clone();
+    stale["attachmentGeneration"] = json!(id());
+    assert_eq!(post(&client, &running.base, &create, &stale).await?.0, 409);
+    assert!(commands.lock().unwrap().is_empty());
     let (code, first) = post(&client, &running.base, &create, &input).await?;
     assert_eq!(code, 200, "{first}");
     assert_eq!(first["state"], "unknown");

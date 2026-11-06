@@ -3659,3 +3659,50 @@ persistent client recovery/history is the next dependent checkpoint. Resets,
 system customization and failed-upgrade recovery, installed-system lifecycle,
 clone identity handling, actual remote/model acceptance and final current
 Docker/ISO artifacts remain required. Phase 5 is not complete.
+
+## Phase 5: persistent workspace-create product recovery (2026-11-06)
+
+The creation form now retains its original request before HTTP dispatch, scoped
+to the account, logical Server and instance. Reload recovery only observes that
+request. Owned history supports explicit observation and pagination; dismissing
+a browser draft does not remove accounts or history. Client response validation
+checks the original operation, workspace name, Worker and attachment/runtime,
+and requires a verified terminal receipt before accepting completion.
+
+Optional attachment/runtime fields on the public create request fence a selected
+destination change before the first Server admission. Both Server implementations
+reject stale fields before any Worker dispatch. Existing administrative callers
+may omit them. Retries of an existing admission still observe its original scope
+after replacement; optional request fields are not forwarded to the Worker.
+
+Actual product acceptance used the full external Worker, Node Server and current
+client in Codex IAB against the retained Docker guest. Normal creation produced
+UID 20003. The second create reached guest completion and its private Worker
+journal before its successful response was withheld. The full Worker was killed,
+the client reloaded offline, and the Worker restarted. The restored form retained
+its submitted request. Observe recovered operation
+`0d27bbf7-5841-4903-a4d7-3b738578c402`, UID/GID 20004 and its original home, receipt
+and Worker journal start time. The event log records exactly one create command.
+Both accounts appear as Completed in history. The guest account records were
+unchanged across recovery; neither desktop was started for these new accounts.
+
+During reload, a superseded own test tab held the same origin-wide workspace
+renderer lifetime lock. Closing it restored the project in the active test tab.
+This was harness contention, with no product lock workaround or code change.
+The unrelated retained IAB tab was untouched. Existing old source surfaces kept
+their stale captured destinations and were not relaunched or redirected.
+
+Client types, the production client build and 59 client regressions pass.
+Sixteen focused client tests cover reload, unsent/submitted requests, changed
+account/Server/instance, concurrent submission, missing receipts, response
+validation and history pagination. Node HTTP acceptance exercises stale request
+generations before admission. Four native contract suites and native HTTP
+acceptance pass with the same optional fields and negative cases. Focused native
+Clippy passes with warnings denied. Root `pnpm check` again stops at the existing
+Server line budgets (1531/1500 and 2286/1999); no hosted validation ran. Actual browser
+screenshots, account/admission/journal evidence, and structured QA events are
+retained under ignored `cantrip_os/artifacts/phase5-workspace-create-controls/`.
+No guest package, OCI image or ISO changed in this checkpoint. Remaining resets,
+shared system customization and failed-upgrade recovery, installed-system and
+remote/model acceptance, clone identities and final distributions still prevent
+Phase 5 completion.

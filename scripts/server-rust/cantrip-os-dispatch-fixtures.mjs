@@ -509,6 +509,12 @@ export function osDispatchFixtures() {
     ],
     cantripOsWorkspaceCreateSchema: [
       { guestWorkspaceId: "example", operationId: id },
+      {
+        guestWorkspaceId: "example",
+        operationId: id,
+        attachmentGeneration: id,
+        runtimeGeneration: id,
+      },
     ],
     cantripOsBindingCreateSchema: [
       { mode: "linux-owned", workspaceId: id, sourceKind: "git" },
