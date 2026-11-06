@@ -39,6 +39,10 @@ const model = {
   name: "gpt-5",
   reasoningEffort: null,
 };
+const executionProfile =
+  config.executionProfile === "standalone-chat"
+    ? ("standalone-chat" as const)
+    : ("ide" as const);
 let threadId = config.suspension?.threadId ?? "";
 let turnId = config.suspension?.turnId ?? "";
 let runtime: CodexAppServer;
@@ -47,9 +51,10 @@ const activities: unknown[] = [];
 const source = () => ({
   chatId: "chat",
   threadId,
-  contextKind: "standalone" as const,
-  projectId: null,
-  placementId: "scratch",
+  contextKind:
+    executionProfile === "ide" ? ("project" as const) : ("standalone" as const),
+  projectId: executionProfile === "ide" ? "project" : null,
+  placementId: executionProfile === "ide" ? "worktree" : "scratch",
   modelRouteId: "route",
   providerAccountId: "account",
 });
@@ -116,7 +121,7 @@ try {
       model: opened.continuation.model,
       provider,
       permissionProfileId: ":yolo",
-      executionProfile: "standalone-chat" as const,
+      executionProfile,
       planMode: "default" as const,
       subagentDefaults: null,
       mcpServers: [],
@@ -149,7 +154,7 @@ try {
     }
     const options = {
       operationGeneration: `fresh-${process.pid}`,
-      executionProfile: "standalone-chat" as const,
+      executionProfile,
       threadId,
       chatId: "chat",
       cwd: config.cwd,
@@ -200,7 +205,7 @@ try {
         chatId: "chat",
         cwd: config.cwd,
         executionLaneId: "original-lane",
-        executionProfile: "standalone-chat",
+        executionProfile,
         developerInstructions: null,
         prompt: "ORIGINAL_COLD_INPUT",
         history: [],

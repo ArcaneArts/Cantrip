@@ -118,6 +118,21 @@ format checks pass. The standard check still stops at the existing application
 decomposition limits; the separate repository guard reports the existing
 `native-commands.ts` limit. Later standard-check stages did not run.
 
+## Held managed attachment
+
+Managed thread preparation can carry the server's expected suspension into
+both preserving and configuring native attachment. This hold is installed
+before native recovery or prewarm. Attachment may succeed while the checkpoint
+file is missing or damaged; it must remain idle. Explicit restoration separately
+inspects the actual checkpoint and reports compatibility or storage errors.
+
+Worker restoration also carries the execution profile used to start the native
+process. A standalone chat must not be reopened as an IDE runtime. The
+process-isolated worker fixture covers both profiles, two whole-worker-tree
+terminations, missing and corrupt checkpoint contents during attachment, and
+subsequent same-turn restoration. Production source selection and the Resume
+control service still need to connect these preparation operations.
+
 ## Fresh execution ownership for cold restoration
 
 `POST /api/internal/native-commands/suspension-execution` admits an observer
