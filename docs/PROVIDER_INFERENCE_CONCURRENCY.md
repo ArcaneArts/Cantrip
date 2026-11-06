@@ -2550,6 +2550,28 @@ capacity. Ordinary fresh native cycles continue using the worker's existing
 private gate without a server round trip per cycle. They release and rejoin FIFO
 at their normal native boundaries.
 
+An unused Task-private cycle released in the current worker generation also
+enters the journal's existing recovery list. The list retains its actual keeper
+receipt and original ordinal, replacing duplicate keys. A bound Task scope is
+eligible only with a positive `never-started` receipt; potentially executed
+bound scopes are excluded. Queue/control notifications reinstall its provider
+reconciliation barrier before the existing canonical read, just as for managed
+Goal sources. No new acquisition or provider grant is made by that read.
+
+Previously, release installed this barrier for Task cycles while the live
+journal list and notification wake only handled managed Goal sources. The Task
+receipt could never reach reconciliation, so unrelated work on the same
+provider stayed blocked. Retaining and waking the actual Task receipt lets the
+existing canonical result requeue, retire or keep it unresolved and remove the
+temporary reconciliation barrier. Paused/stopped work does not gain eligibility;
+its existing Task controls and native ownership checks remain authoritative.
+
+This live recovery correction was source-reviewed and directly formatted;
+`git diff --check` ran. No tests, builds, typechecks, benchmarks, native patch
+application/checks, native/helper execution, hosted validation or computer-use
+testing ran. Runtime/platform behavior remains unverified. Task-private Goal
+provider transfer is still unfinished.
+
 A completed negative Goal read retires only the exact marker whose scope is
 still current. The marker retains bounded Source/replacement provenance so a
 late unused record cannot recreate a consumed cycle. Incoming scopes with a

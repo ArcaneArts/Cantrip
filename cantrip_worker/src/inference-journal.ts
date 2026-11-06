@@ -254,8 +254,11 @@ export class WorkerInferenceJournal {
   ): Promise<InferenceJournalRecord> {
     return this.write({ action: "release", key, outcome }).then((record) => {
       if (
-        record.identity.recovery?.autonomousGoal &&
-        !record.nativeExecution &&
+        (record.identity.recovery?.autonomousGoal ||
+          record.identity.recovery?.taskGoalCycle) &&
+        (!record.nativeExecution ||
+          (record.identity.recovery.taskGoalCycle &&
+            record.outcome === "never-started")) &&
         record.state === "released" &&
         ["never-started", "runtime-exited"].includes(record.outcome ?? "")
       ) {
