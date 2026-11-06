@@ -4223,3 +4223,77 @@ client controls remain dependent work. Clone identity handling, external remote
 acceptance, current-native model/CUA and final normal Docker/ISO artifacts also
 remain required for the complete Phase 5 goal. No guest package version or public
 image/ISO changes in this carrier cycle.
+
+## Phase 5: private system archive transfer (2026-11-06)
+
+The internal Worker transfer manager now reserves immutable system-capture
+admissions, invokes the exact-ID host carrier and streams its image directly into
+an encrypted system archive. It accepts an already authorized management target;
+Server-owned target probing/admissions, WorkerLink routing and client controls
+remain dependent work. No live guest executor or workspace scope is invented for
+this instance-wide operation.
+
+The new format separates system files from workspace backups and operation
+results. Every frame binds the complete owning admission, random stream identity,
+kind, sequence and granted key revision. The complete identity tuple is hashed to
+fit the envelope AAD bound even at maximum protocol string lengths. The encrypted
+footer commits the actual streamed archive size, digest, chunk count and manifest
+digest; capture does not need a plaintext tar or a speculative upfront digest.
+Restore preparation authenticates the complete file, EOF and original immutable
+proof before publishing a private plaintext staging file without overwrite.
+
+Durable journals retain the exact published ciphertext and protected terminal
+receipt. Repeated execution only observes. Published-artifact recovery needs no
+Docker connection; incomplete unpublished transfers require explicit continuation
+and a fresh stream identity. Observation never exports again, and corrupt
+published artifacts are preserved. Completed history remains immutable if its
+artifact later disappears; opening that artifact reports its actual missing-file
+error. A locked key does not erase already committed encrypted history.
+
+Final actual acceptance used the normally compiled Worker modules against Docker
+26.1.5+dfsg1 on the disposable installed AMD64 Debian VM, through the existing
+pinned SSH/private Unix-socket bridge. It used the recorded Debian base digest
+`sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2`.
+This is Linux Docker-in-VM acceptance, not macOS Engine recovery, cloud acceptance,
+a full CantripOS desktop distribution or a full Worker/client process test.
+The integration uses dedicated fixture key providers; real account-grant and
+product acceptance remain required when this manager is routed through Cantrip.
+
+Each case installs `ed` 1.21.1-1, writes binary root data at a Unicode path with
+mode 0640 and UID/GID 12345/23456, and stores a separate mounted marker. The real
+transfer process is killed with SIGKILL after encrypted publication with its reply
+held, or after more than 2 MiB of an unfinished export. The publication-loss case
+recovers with Docker deliberately unavailable to the recovered manager. The
+partial case observes without another export, then explicitly continues with a
+different stream identity. Real child Engine traces show one stop, commit, resume
+and initial export; the original startup counter is exactly two.
+
+Both cases authenticate and decrypt 82,348,032 archive bytes, delete only their
+test image to force a real reload, and run a fresh network-disabled probe. The
+probe verifies image identity, root bytes, package state, mode/ownership and
+absence of excluded mounted data and later root changes. The original retains
+its later root and mounted-data writes. Final archive SHA-256 values are
+`41703a20cde20f88999fc11365bc7b389ae5be5861bd7096072e2fc51f6cf8fb`
+(publication loss) and
+`0586d0c56ae4a80f5f99e627cf93fb989f2442539bde74444fbf9ba59dee6fb5`
+(partial download). The two final cases pass in 149.30 seconds. Owned fixture
+cleanup is checked separately through actual Engine observations.
+
+The final Worker OS suite passes 107 tests across 20 files. The related crypto
+suite passes nine tests. Together these cover full identity lengths, context/domain changes,
+frame bounds, valid-ciphertext corruption, false authenticated footer commitments,
+cross-stream splicing, interrupted streams, key/account changes, immutable retries
+and missing-artifact history. Normal protocol, crypto and Worker builds pass.
+The unchanged OS suite passes 27 tests with four explicit opt-in integrations
+skipped. `pnpm check` still stops at unchanged Server budgets 1531/1500 and
+2286/1999. An initial suite lacked a built logging dependency; it was built through
+the normal dependency command before the final passing suite. Initial actual
+harness comparison/hold failures and pre-final-context runs remain as separate
+evidence rather than being counted as final acceptance.
+
+Private source hashes, journals, traces, fixtures and results are retained under
+`cantrip_os/artifacts/phase5-private-system-transfer`. There is no guest package
+version, public Worker command, OCI image or ISO change in this cycle. Root-image
+replacement/rollback, Server/client controls, identity fencing/clones, external
+remote and current-native model/CUA acceptance, and final current distribution
+artifacts remain required for the complete Phase 5 goal.

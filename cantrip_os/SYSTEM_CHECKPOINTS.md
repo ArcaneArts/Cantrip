@@ -3,8 +3,9 @@
 This host administration checkpoint preserves a Docker container's writable
 system layer: installed software, its package database, `/etc`, and other root
 customization outside mounted data. It is the foundation for Phase 5 shared-system
-replacement and private Worker transfer. Server admissions, encrypted publication,
-replacement/rollback controls and the client workflow remain subsequent work.
+replacement and private Worker transfer. The Worker now has a durable encrypted
+archive pipeline; Server admissions, replacement/rollback controls and the client
+workflow remain subsequent work.
 
 The external Worker remains the orchestrator. Nothing installs a Worker or model
 credentials in the guest. No guest executor or recovery helper is required for
@@ -68,6 +69,69 @@ image ID, so each archive has its own byte digest. Retain a completed encrypted
 archive and receipt rather than regenerating it after uncertain publication.
 A missing image returns its actual Engine error. No container, volume or image
 is deleted by this carrier.
+
+## Private Worker archive pipeline
+
+`CantripOsSystemCheckpointManager` accepts an already authorized exact Docker
+target. Its immutable admission pins the owner, Server, Worker, logical and guest
+instance IDs, attachment and target generations, operation, checkpoint and full
+physical container ID. It deliberately requires no live guest executor. Product
+target probing, Server admissions and command routing are the dependent layer;
+calling this internal class is not the full product workflow.
+
+The Worker reserves a private journal before capture, then uses the existing
+stop/commit/resume carrier. Image export streams directly into encrypted records;
+the capture path never writes a plaintext tar. Each export uses a fresh random
+stream identity. Dedicated cryptographic associated data binds every frame to
+that stream, its complete admission, kind, sequence and key revision, separately
+from workspace backups and operation results.
+
+The version-1 `CantripOS-private-system` file has an encrypted manifest, ordered
+1 MiB content frames and an encrypted footer. Docker export size and digest are
+unknown at stream start; the footer commits the actual byte count, SHA-256,
+chunk count and manifest digest. Verification authenticates the entire file and
+EOF. Missing, duplicated, reordered, altered, cross-stream and trailing frames
+are rejected. Restore preparation writes only a private partial tar until the
+complete archive and expected immutable receipt match, then publishes without
+overwriting an existing destination. Loaded-image verification and activation
+remain responsibilities of the forthcoming replacement carrier.
+
+Archives and restored staging files are mode 0600 in mode-0700 directories.
+Publication syncs the file and directory and never overwrites a prior archive.
+The existing repository-content grants supply current or explicitly granted
+historical keys; derived keys and plaintext frame buffers are cleared. Mount
+references and actual errors are encrypted, not projected into public results.
+The journal, host image and any administrator-created plaintext export remain
+private local state; this is not a cloud-storage publication mechanism.
+
+Repeated execution only observes the original admission. A published archive
+can recover completion after process death without contacting Docker, even if
+the image or Engine is unavailable. Its exact ciphertext and protected terminal
+receipt are retained. Completed history remains observable while encryption is
+locked; opening the archive still requires the original granted key.
+
+Observation never requests another export. If no complete archive was published,
+explicit continuation may authorize a new read of the same verified captured
+image, using a fresh stream identity. It does not recapture the current root or
+repeat a claimed mutation. Corrupt published archives are preserved and reported;
+they are never silently regenerated or replaced. SIGKILL can leave private
+incomplete ciphertext, which is not a published checkpoint.
+
+The actual transfer integration can be run against a disposable Docker Engine:
+
+```sh
+pnpm --filter '@cantrip/worker^...' build
+pnpm --filter @cantrip/worker build
+CANTRIP_OS_SYSTEM_INTEGRATION=1 \
+CANTRIP_OS_SYSTEM_EVIDENCE=/absolute/private/evidence \
+  pnpm --filter @cantrip/worker exec vitest run \
+    test/os-system-checkpoints.integration.test.ts
+```
+
+The killed process uses the normal compiled Worker modules. This exercises a
+transfer-manager process, not the full Worker/client. Account
+grants, product replacement/rollback, restored identity fencing and the complete
+Phase 5 acceptance matrix still require their dependent product cycles.
 
 ## Administrative CLI
 
@@ -148,6 +212,6 @@ claim. See [the acceptance record](ACCEPTANCE.md#phase-5-private-system-checkpoi
 Installed Debian package upgrades already preserve configuration and workspace
 state through [external package repair](PACKAGE_RECOVERY.md). Generic root-disk
 replacement is not provided by an SSH login; physical/VM disk recovery needs its
-actual management path. Shared-system replacement, protected Worker/Server
+actual management path. Shared-system replacement, Server-owned product
 admissions, client controls, clone identities and final current distributions
 remain required for the full Phase 5 goal.
