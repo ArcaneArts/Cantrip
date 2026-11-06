@@ -14,6 +14,7 @@ impl Repository {
         attachment: &str,
         runtime: &str,
         container: &str,
+        expected_power_epoch: i32,
     ) -> Result<()> {
         let (owner, instance, attachment, runtime, container) = (
             owner.to_owned(),
@@ -23,7 +24,7 @@ impl Repository {
             container.to_owned(),
         );
         self.database.transaction(|tx|Box::pin(async move {
-            ensure!(!tx.query("SELECT id FROM cantrip_os_instances WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3 AND runtime_generation=$4 AND transport->>'kind'='docker' FOR UPDATE", &[&owner,&instance,&attachment,&runtime]).await?.is_empty(),"The verified Docker attachment changed before its power target was recorded.");
+            ensure!(!tx.query("SELECT id FROM cantrip_os_instances WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3 AND runtime_generation=$4 AND transport->>'kind'='docker' AND power_epoch=$5 FOR UPDATE", &[&owner,&instance,&attachment,&runtime,&expected_power_epoch]).await?.is_empty(),"The verified Docker attachment changed before its power target was recorded.");
             let old=decode(tx.query("SELECT to_jsonb(p)::text FROM cantrip_os_power_targets p WHERE instance_id=$1", &[&instance]).await?)?;
             let generation=old.first().filter(|p|p["attachment_generation"]==attachment && p["container_id"]==container).and_then(|p|p["generation"].as_str()).map(str::to_owned).unwrap_or_else(uuid);
             tx.query("INSERT INTO cantrip_os_power_targets(instance_id,generation,attachment_generation,runtime_generation,container_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT(instance_id) DO UPDATE SET generation=EXCLUDED.generation,attachment_generation=EXCLUDED.attachment_generation,runtime_generation=EXCLUDED.runtime_generation,container_id=EXCLUDED.container_id,verified_at=now()", &[&instance,&generation,&attachment,&runtime,&container]).await?;
@@ -62,7 +63,7 @@ impl Repository {
             let command=checked("cantripOsPowerWorkerCommandSchema",json!({"type":"cantrip-os.power.operation","mode":"execute","operationId":input["operationId"],"action":input["action"],"scope":{"ownerId":owner,"serverId":server,"workerId":i["worker_id"],"instanceId":instance,"guestInstanceId":i["guest_instance_id"],"attachmentGeneration":i["attachment_generation"],"runtimeGeneration":p["runtime_generation"]},"transport":i["transport"],"powerTarget":{"kind":"docker","generation":p["generation"],"containerId":p["container_id"]}}))?;
             let values=Json(json!({"owner":owner,"instance":instance,"worker":i["worker_id"],"input":input,"command":command}));
             let rows=decode(tx.query("INSERT INTO cantrip_os_power_operations(operation_id,owner_id,instance_id,worker_id,attachment_generation,target_generation,action,request,command) VALUES($1::jsonb->'input'->>'operationId',$1::jsonb->>'owner',$1::jsonb->>'instance',$1::jsonb->>'worker',$1::jsonb->'input'->>'attachmentGeneration',$1::jsonb->'input'->>'targetGeneration',$1::jsonb->'input'->>'action',$1::jsonb->'input',$1::jsonb->'command') RETURNING to_jsonb(cantrip_os_power_operations)::text", &[&values]).await?)?;
-            tx.query("UPDATE cantrip_os_instances SET status='unknown',updated_at=now() WHERE id=$1", &[&instance]).await?;
+            tx.query("UPDATE cantrip_os_instances SET status='unknown',power_epoch=power_epoch+1,updated_at=now() WHERE id=$1", &[&instance]).await?;
             Ok((rows[0].clone(),true))
         })).await
     }

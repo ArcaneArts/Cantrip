@@ -26,6 +26,15 @@ fn linux_source_contracts_match_the_actual_protocol() -> Result<()> {
         "cantripOsBackupPageSchema",
         "cantripOsBackupSourceSchema",
         "cantripOsInspectSchema",
+        "cantripOsPowerCreateSchema",
+        "cantripOsPowerTargetSummarySchema",
+        "cantripOsPowerStatusSchema",
+        "cantripOsPowerSummarySchema",
+        "cantripOsPowerListQuerySchema",
+        "cantripOsPowerPageSchema",
+        "cantripOsPowerReceiptSchema",
+        "cantripOsPowerOperationResultSchema",
+        "cantripOsPowerWorkerCommandSchema",
         "cantripOsRecoveryRequestSchema",
         "cantripOsRecoveryResultSchema",
         "cantripOsWorkspaceCreateSchema",
@@ -100,13 +109,22 @@ fn linux_source_contracts_match_the_actual_protocol() -> Result<()> {
 
 #[test]
 fn os_chat_placement_contracts_match_actual_protocol() -> Result<()> {
+    compare_cases("scripts/server-rust/cantrip-os-chat-vectors.mjs")
+}
+
+#[test]
+fn power_commands_match_actual_worker_envelopes() -> Result<()> {
+    compare_cases("scripts/server-rust/cantrip-os-power-vectors.mjs")
+}
+
+fn compare_cases(script: &str) -> Result<()> {
     let output = Command::new("node")
-        .arg("scripts/server-rust/cantrip-os-chat-vectors.mjs")
+        .arg(script)
         .current_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap())
         .output()?;
     anyhow::ensure!(
         output.status.success(),
-        "OS chat oracle: {}",
+        "OS oracle {script}: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let cases: Value = serde_json::from_slice(&output.stdout)?;

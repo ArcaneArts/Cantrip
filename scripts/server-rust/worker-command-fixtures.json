@@ -6189,6 +6189,65 @@
       }
     },
     {
+      "type": "cantrip-os.power.status",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "scope": {
+            "ownerId": "owner",
+            "serverId": "server",
+            "workerId": "worker",
+            "instanceId": "11111111-1111-4111-8111-111111111111",
+            "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+            "attachmentGeneration": "11111111-1111-4111-8111-111111111111",
+            "runtimeGeneration": "11111111-1111-4111-8111-111111111111"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "fixture"
+          },
+          "powerTarget": {
+            "kind": "docker",
+            "generation": "11111111-1111-4111-8111-111111111111",
+            "containerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "type": "cantrip-os.power.status"
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.power.operation",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "scope": {
+            "ownerId": "owner",
+            "serverId": "server",
+            "workerId": "worker",
+            "instanceId": "11111111-1111-4111-8111-111111111111",
+            "guestInstanceId": "11111111-1111-4111-8111-111111111111",
+            "attachmentGeneration": "11111111-1111-4111-8111-111111111111",
+            "runtimeGeneration": "11111111-1111-4111-8111-111111111111"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "fixture"
+          },
+          "powerTarget": {
+            "kind": "docker",
+            "generation": "11111111-1111-4111-8111-111111111111",
+            "containerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "type": "cantrip-os.power.operation",
+          "mode": "execute",
+          "operationId": "11111111-1111-4111-8111-111111111111",
+          "action": "stop"
+        }
+      }
+    },
+    {
       "type": "cantrip-os.backup.capture",
       "input": {
         "kind": "request",

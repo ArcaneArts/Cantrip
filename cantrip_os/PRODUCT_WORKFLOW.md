@@ -489,3 +489,18 @@ outstanding. Separate native Controller tests cover Git registration and a new
 secondary worktree in Docker and the installed VM; they do not substitute for
 full installed-system product or real remote/cloud acceptance. Phase 5 remains
 in progress.
+
+## Retained instance power backend
+
+The [lifecycle API](INSTANCE_LIFECYCLE.md#server-owned-power-admissions) now supports
+owned Docker start/stop/restart and retained operation history through Server and
+Worker. This is a backend checkpoint; Cantrip's start/stop/restart controls are not
+yet exposed by this cycle. Ordinary refresh and Check recovery cannot make an
+unresolved power operation executable. A delayed observation from before a power
+transition cannot restore availability after it completes either.
+
+Power observation can recover the original receipt without repeating an uncertain
+mutation. Running at the Docker carrier level does not imply the guest helper,
+project sources or desktop are ready. After restart, use the explicit recovery and
+source verification paths before opening fresh work; old chats keep their captured
+placement. SSH alone supplies no powered-off-machine control capability.

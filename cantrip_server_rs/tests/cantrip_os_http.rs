@@ -106,6 +106,9 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     let lose_power = lose_power_reply.clone();
     let lose_run_reply = Arc::new(AtomicBool::new(false));
     let lose_reply = lose_run_reply.clone();
+    let hold_inspection = Arc::new(AtomicBool::new(false));
+    let hold_next = hold_inspection.clone();
+    let (held_inspections, mut held_responses) = tokio::sync::mpsc::unbounded_channel();
     let recovery_mode = Arc::new(AtomicUsize::new(0));
     let observed_mode = recovery_mode.clone();
     let bridge = service.workers.bridge.clone();
@@ -269,6 +272,10 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
                     .clone(),
                 other => anyhow::bail!("Unexpected OS fixture command: {other}"),
             };
+            if command["type"] == "cantrip-os.inspect" && hold_next.swap(false, Ordering::SeqCst) {
+                held_inspections.send((peer, request["requestId"].clone(), result))?;
+                continue;
+            }
             bridge.receive(&target,&peer,&json!({"kind":"response","requestId":request["requestId"],"ok":true,"result":result}).to_string());
         }
         Ok::<_, anyhow::Error>(())
@@ -347,6 +354,20 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
         .json()
         .await?;
     assert_eq!(during["instance"]["status"], "unknown", "{during}");
+    // Recovery's independent compare-and-swap observation must preserve the
+    // same active-operation fence as ordinary refresh.
+    let during_recovery: Value = client
+        .post(format!("{base}/api/cantrip-os/{instance}/recovery"))
+        .json(&json!({"attachmentGeneration":attached["instance"]["attachmentGeneration"],"runtimeGeneration":attached["instance"]["runtimeGeneration"]}))
+        .send().await?.json().await?;
+    assert_eq!(
+        during_recovery["instance"]["status"], "unknown",
+        "{during_recovery}"
+    );
+    assert_eq!(
+        during_recovery["recovery"]["workerContinuity"],
+        "first-observation"
+    );
     let recovered: Value = client
         .post(&power_path)
         .json(&power_input)
@@ -402,6 +423,47 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
         .json()
         .await?;
     assert_eq!(next["items"][0]["operationId"], stop_id, "{next}");
+    for endpoint in ["refresh", "recovery"] {
+        hold_inspection.store(true, Ordering::SeqCst);
+        let request = client.post(format!("{base}/api/cantrip-os/{instance}/{endpoint}"))
+            .json(&if endpoint == "refresh" {json!({})}else{json!({"attachmentGeneration":attached["instance"]["attachmentGeneration"],"runtimeGeneration":attached["instance"]["runtimeGeneration"]})});
+        let delayed = tokio::spawn(async move { request.send().await });
+        let (peer, request_id, old_result) =
+            tokio::time::timeout(Duration::from_secs(10), held_responses.recv())
+                .await?
+                .context("Held guest observation")?;
+        let restart = json!({"operationId":id(),"action":"restart","attachmentGeneration":power_input["attachmentGeneration"],"targetGeneration":power_input["targetGeneration"]});
+        let settled: Value = client
+            .post(&power_path)
+            .json(&restart)
+            .send()
+            .await?
+            .json()
+            .await?;
+        assert_eq!(settled["state"], "ready", "{settled}");
+        service.workers.bridge.receive(
+            &worker,
+            &peer,
+            &json!({"kind":"response","requestId":request_id,"ok":true,"result":old_result})
+                .to_string(),
+        );
+        let delayed = delayed.await??;
+        assert_eq!(delayed.status(), 409, "{}", delayed.text().await?);
+        let state = database
+            .query(
+                "SELECT status FROM cantrip_os_instances WHERE id=$1",
+                &[&instance],
+            )
+            .await?;
+        assert_eq!(state[0].get::<String>(0)?, "unknown");
+    }
+    client
+        .post(format!("{base}/api/cantrip-os/{instance}/refresh"))
+        .json(&json!({}))
+        .send()
+        .await?
+        .error_for_status()?;
+
     let response = client
         .post(format!("{base}/api/cantrip-os/{instance}/workspaces"))
         .json(&json!({"guestWorkspaceId":"alpha","operationId":id(),"uid":0}))
@@ -571,7 +633,7 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     let mut expected = json!({"attachmentGeneration":attached["instance"]["attachmentGeneration"], "runtimeGeneration":attached["instance"]["runtimeGeneration"]});
     let invalid = client.post(&recovery_url).json(&json!({})).send().await?;
     assert_eq!(invalid.status(), 400);
-    for (index, (mode, kind)) in [
+    for (mode, kind) in [
         (0, "same-runtime"),
         (1, "unavailable"),
         (0, "same-runtime"),
@@ -579,24 +641,14 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
         (0, "same-runtime"),
         (3, "runtime-changed"),
         (0, "runtime-changed"),
-    ]
-    .into_iter()
-    .enumerate()
-    {
+    ] {
         recovery_mode.store(mode, Ordering::SeqCst);
         let response = client.post(&recovery_url).json(&expected).send().await?;
         let status = response.status();
         let result: Value = response.json().await?;
         assert_eq!(status, 200, "{result}");
         assert_eq!(result["recovery"]["kind"], kind);
-        assert_eq!(
-            result["recovery"]["workerContinuity"],
-            if index == 0 {
-                "first-observation"
-            } else {
-                "same-worker"
-            }
-        );
+        assert_eq!(result["recovery"]["workerContinuity"], "same-worker");
         assert_eq!(
             result["recovery"]["observedWorkerProcessGeneration"],
             worker_generation

@@ -86,6 +86,7 @@ export class CantripOsPowerRepository {
     attachmentGeneration: string,
     runtimeGeneration: string,
     containerId: string,
+    expectedPowerEpoch: number,
   ) {
     return this.database.transaction(async (tx) => {
       const [instance] = await tx
@@ -100,6 +101,7 @@ export class CantripOsPowerRepository {
               attachmentGeneration,
             ),
             eq(schema.cantripOsInstances.runtimeGeneration, runtimeGeneration),
+            eq(schema.cantripOsInstances.powerEpoch, expectedPowerEpoch),
           ),
         )
         .for("update");
@@ -269,7 +271,11 @@ export class CantripOsPowerRepository {
         .returning();
       await tx
         .update(schema.cantripOsInstances)
-        .set({ status: "unknown", updatedAt: new Date() })
+        .set({
+          status: "unknown",
+          powerEpoch: sql`${schema.cantripOsInstances.powerEpoch}+1`,
+          updatedAt: new Date(),
+        })
         .where(eq(schema.cantripOsInstances.id, instanceId));
       return { row: row!, created: true };
     });

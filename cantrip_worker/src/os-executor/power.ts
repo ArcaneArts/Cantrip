@@ -134,37 +134,45 @@ export class CantripOsPowerManager {
           throw new Error(
             "The saved power operation belongs to another admission.",
           );
-        record = await this.operations.reconcile(
-          command.scope,
-          command.operationId,
-          async (record) => {
-            if (!checkpoint.journalPath) {
-              record.error =
-                "No retained carrier admission is available. No operation was replayed.";
-              return;
-            }
-            const result = await observeRetainedContainer(await carrier(), {
-              operationId: command.operationId,
-              action: command.action,
-              container: command.transport.container,
-              expectedContainerId: command.powerTarget.containerId,
-              journalPath: checkpoint.journalPath,
-            });
-            if (!result) {
-              record.error =
-                "The retained carrier journal is unavailable. No operation was replayed.";
-              return;
-            }
-            if (result.operation.state === "ready") {
-              record.state = "ready";
-              record.receipt = receipt(command, result);
-              record.error = null;
-            } else if (result.operation.state === "failed") {
-              record.state = "failed";
-              record.error = result.operation.error;
-            } else record.error = result.operation.error;
-          },
-        );
+        if (!isDeepStrictEqual(saved.scope, command.scope))
+          throw new Error("The saved power admission scope changed.");
+        record =
+          saved.state === "failed"
+            ? saved
+            : await this.operations.reconcile(
+                command.scope,
+                command.operationId,
+                async (record) => {
+                  if (!checkpoint.journalPath) {
+                    record.error =
+                      "No retained carrier admission is available. No operation was replayed.";
+                    return;
+                  }
+                  const result = await observeRetainedContainer(
+                    await carrier(),
+                    {
+                      operationId: command.operationId,
+                      action: command.action,
+                      container: command.transport.container,
+                      expectedContainerId: command.powerTarget.containerId,
+                      journalPath: checkpoint.journalPath,
+                    },
+                  );
+                  if (!result) {
+                    record.error =
+                      "The retained carrier journal is unavailable. No operation was replayed.";
+                    return;
+                  }
+                  if (result.operation.state === "ready") {
+                    record.state = "ready";
+                    record.receipt = receipt(command, result);
+                    record.error = null;
+                  } else if (result.operation.state === "failed") {
+                    record.state = "failed";
+                    record.error = result.operation.error;
+                  } else record.error = result.operation.error;
+                },
+              );
       }
       if (!record) return null;
       let current: CantripOsPowerObservation | null = null,

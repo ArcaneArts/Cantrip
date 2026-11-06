@@ -36,6 +36,7 @@ import { CantripOsPowerRepository } from "./cantrip-os-power.js";
 
 const instance = ({
   workerProcessGeneration: _workerProcessGeneration,
+  powerEpoch: _powerEpoch,
   ...row
 }: typeof schema.cantripOsInstances.$inferSelect) =>
   cantripOsInstanceSummarySchema.parse({
@@ -187,6 +188,7 @@ export class CantripOsRepository {
           instance: instance(row),
           transport: cantripOsTransportSchema.parse(row.transport),
           workerProcessGeneration: row.workerProcessGeneration,
+          powerEpoch: row.powerEpoch,
         }
       : null;
   }
@@ -276,6 +278,7 @@ export class CantripOsRepository {
     },
     expectedRuntimeGeneration?: string | null,
     expectedWorkerProcessGeneration?: string | null,
+    expectedPowerEpoch?: number,
   ) {
     const [row] = await this.database
       .update(schema.cantripOsInstances)
@@ -293,6 +296,9 @@ export class CantripOsRepository {
         and(
           eq(schema.cantripOsInstances.id, instanceId),
           eq(schema.cantripOsInstances.ownerId, ownerId),
+          expectedPowerEpoch === undefined
+            ? undefined
+            : eq(schema.cantripOsInstances.powerEpoch, expectedPowerEpoch),
           expectedRuntimeGeneration === undefined
             ? undefined
             : expectedRuntimeGeneration === null

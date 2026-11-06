@@ -32,6 +32,8 @@ it(
       runtime = randomUUID(),
       carrier = "a".repeat(64),
       lose = true;
+    let inspectPause: Promise<void> | null = null;
+    let inspectStarted: (() => void) | null = null;
     const guest = randomUUID(),
       commands: WorkerCommand[] = [],
       jobs = new Map<string, unknown>();
@@ -54,14 +56,18 @@ it(
           request: async (_worker, command) => {
             workerCommandSchema.parse(command);
             commands.push(command);
-            if (command.type === "cantrip-os.inspect")
-              return {
+            if (command.type === "cantrip-os.inspect") {
+              const result = {
                 guestInstanceId: guest,
                 runtimeGeneration: runtime,
                 attachment: { ownerId: "owner", workerId: "worker" },
                 workspaces: [],
                 powerTarget: { kind: "docker", containerId: carrier },
               };
+              inspectStarted?.();
+              await inspectPause;
+              return result;
+            }
             if (command.type === "cantrip-os.power.status") return physical;
             if (command.type !== "cantrip-os.power.operation")
               throw new Error("Unexpected command");
@@ -173,7 +179,7 @@ it(
         action: "start",
       });
       expect(blocked.statusCode, blocked.body).toBe(409);
-      // Even an actual healthy guest observation cannot lift an active power fence.
+      // An owned guest observation arriving during a power operation cannot lift its fence.
       expect(
         (
           await app.inject({
@@ -183,6 +189,16 @@ it(
           })
         ).json().instance.status,
       ).toBe("unknown");
+      const duringRecovery = await app.inject({
+        method: "POST",
+        url: `${base}/recovery`,
+        payload: {
+          attachmentGeneration: instance.attachmentGeneration,
+          runtimeGeneration: runtime,
+        },
+      });
+      expect(duringRecovery.statusCode, duringRecovery.body).toBe(200);
+      expect(duringRecovery.json().instance.status).toBe("unknown");
       const admitted = (
         await database.query<{ command: unknown }>(
           "SELECT command FROM cantrip_os_power_operations",
@@ -222,6 +238,47 @@ it(
       expect((await post({ ...request, action: "restart" })).statusCode).toBe(
         409,
       );
+      // Delayed refresh/recovery results admitted before a settled power mutation
+      // cannot make its old runtime available after the active-operation fence ends.
+      for (const endpoint of ["refresh", "recovery"]) {
+        let release!: () => void;
+        inspectPause = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const started = new Promise<void>((resolve) => {
+          inspectStarted = resolve;
+        });
+        const delayed = app
+          .inject({
+            method: "POST",
+            url: `${base}/${endpoint}`,
+            payload:
+              endpoint === "refresh"
+                ? {}
+                : {
+                    attachmentGeneration: instance.attachmentGeneration,
+                    runtimeGeneration: runtime,
+                  },
+          })
+          .then((response) => response);
+        await started;
+        expect(
+          (
+            await post({
+              ...request,
+              operationId: randomUUID(),
+              action: "restart",
+            })
+          ).json().state,
+        ).toBe("ready");
+        release();
+        expect((await delayed).statusCode).toBe(409);
+        inspectPause = null;
+        inspectStarted = null;
+        expect(
+          (await repository.attachment(owner, instance.id))?.instance.status,
+        ).toBe("unknown");
+      }
       // The same retained container may have a fresh guest runtime; old admissions
       // retain their original runtime and no captured chat is rewritten.
       const oldRuntime = runtime;
@@ -273,8 +330,16 @@ it(
         })
       ).json();
       expect(history.items).toHaveLength(1);
-      expect(history.items[0].operationId).toBe(request.operationId);
       expect(history.items[0].state).toBe("ready");
+      expect(history.nextCursor).not.toBeNull();
+      const original = (
+        await app.inject({
+          method: "GET",
+          url: `${base}/power-operations/${request.operationId}`,
+        })
+      ).json();
+      expect(original.operationId).toBe(request.operationId);
+      expect(original.state).toBe("ready");
     } finally {
       await app.close();
       await database.close();

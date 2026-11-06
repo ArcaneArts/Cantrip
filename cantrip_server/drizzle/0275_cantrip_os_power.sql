@@ -1,3 +1,5 @@
+ALTER TABLE cantrip_os_instances ADD COLUMN power_epoch integer NOT NULL DEFAULT 0;
+--> statement-breakpoint
 CREATE TABLE cantrip_os_power_targets (
     instance_id text PRIMARY KEY REFERENCES cantrip_os_instances(id) ON DELETE CASCADE,
     generation text NOT NULL,
