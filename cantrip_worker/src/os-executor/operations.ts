@@ -9,12 +9,18 @@ import {
 } from "./connection.js";
 import { writeOsOperationRecord } from "./operation-files.js";
 
-export interface OsOperationRecord {
+type OsOperationScope = Pick<
+  CantripOsDispatchScope,
+  "ownerId" | "workerId" | "serverId" | "instanceId" | "guestInstanceId"
+>;
+export interface OsOperationRecord<
+  Scope extends OsOperationScope = CantripOsDispatchScope,
+> {
   version: 1;
   operationId: string;
   command: string;
   admissionFingerprint: string;
-  scope: CantripOsDispatchScope;
+  scope: Scope;
   state: "running" | "ready" | "failed" | "unknown";
   startedAt: string;
   updatedAt: string;
@@ -28,11 +34,13 @@ export interface OsOperationRecord {
 
 /** Private worker records survive lost command receipts and worker restarts.
  * Existing operations are observed, never re-executed by this store. */
-export class OsOperationStore {
+export class OsOperationStore<
+  Scope extends OsOperationScope = CantripOsDispatchScope,
+> {
   private readonly active = new Set<string>();
   constructor(private readonly directory: string) {}
 
-  private file(scope: CantripOsDispatchScope, operationId: string) {
+  private file(scope: Scope, operationId: string) {
     if (!/^[a-f0-9-]{36}$/i.test(operationId))
       throw new Error("Invalid OS operation ID.");
     const key = createHash("sha256")
@@ -55,14 +63,14 @@ export class OsOperationStore {
   }
 
   async inspect(
-    scope: CantripOsDispatchScope,
+    scope: Scope,
     operationId: string,
-  ): Promise<OsOperationRecord | null> {
+  ): Promise<OsOperationRecord<Scope> | null> {
     const file = this.file(scope, operationId);
     try {
       const record = JSON.parse(
         await readFile(file, "utf8"),
-      ) as OsOperationRecord;
+      ) as OsOperationRecord<Scope>;
       if (
         record.version !== 1 ||
         record.operationId !== operationId ||
@@ -83,23 +91,18 @@ export class OsOperationStore {
     }
   }
 
-  async execute(
-    scope: CantripOsDispatchScope,
+  async admit(
+    scope: Scope,
     operationId: string,
     command: string,
     admission: unknown,
-    run: (
-      record: OsOperationRecord,
-      save: () => Promise<void>,
-      journalPath: string,
-    ) => Promise<unknown>,
     initialCheckpoint?: unknown,
-  ): Promise<OsOperationRecord> {
+  ): Promise<{ record: OsOperationRecord<Scope>; fresh: boolean }> {
     const file = this.file(scope, operationId);
     const admissionFingerprint = createHash("sha256")
       .update(JSON.stringify([command, admission]))
       .digest("hex");
-    const record: OsOperationRecord = {
+    const record: OsOperationRecord<Scope> = {
       version: 1,
       operationId,
       command,
@@ -128,8 +131,32 @@ export class OsOperationStore {
         throw new Error(
           "The OS operation ID already belongs to a different admission.",
         );
-      return existing;
+      return { record: existing, fresh: false };
     }
+    return { record, fresh: true };
+  }
+
+  async execute(
+    scope: Scope,
+    operationId: string,
+    command: string,
+    admission: unknown,
+    run: (
+      record: OsOperationRecord<Scope>,
+      save: () => Promise<void>,
+      journalPath: string,
+    ) => Promise<unknown>,
+    initialCheckpoint?: unknown,
+  ): Promise<OsOperationRecord<Scope>> {
+    const { record, fresh } = await this.admit(
+      scope,
+      operationId,
+      command,
+      admission,
+      initialCheckpoint,
+    );
+    if (!fresh) return record;
+    const file = this.file(scope, operationId);
     const save = async () => {
       record.updatedAt = new Date().toISOString();
       await writeOsOperationRecord(file, record);
@@ -164,9 +191,39 @@ export class OsOperationStore {
     return record;
   }
 
+  /** Attach an immutable protected receipt to an already committed terminal
+   * fact. Never changes its state, timestamps, checkpoint or admission. */
+  async recordTerminalReceipt(
+    record: OsOperationRecord<Scope>,
+    receipt: unknown,
+  ) {
+    const file = this.file(record.scope, record.operationId);
+    const current = await this.inspect(record.scope, record.operationId);
+    if (
+      this.active.has(file) ||
+      !current ||
+      current.command !== record.command ||
+      current.admissionFingerprint !== record.admissionFingerprint ||
+      !isDeepStrictEqual(current.scope, record.scope) ||
+      current.state !== record.state ||
+      !["ready", "failed"].includes(current.state) ||
+      !isDeepStrictEqual(current.checkpoint, record.checkpoint)
+    )
+      throw new Error(
+        "The completed OS admission changed before its protected receipt was recorded",
+      );
+    if (current.receipt !== null) return current;
+    const saved = { ...current, receipt };
+    await writeOsOperationRecord(file, saved);
+    return saved;
+  }
+
   /** Save a conclusively observed completion of an existing admission. This
    * never admits or dispatches a replacement process. */
-  async recordObservedCompletion(record: OsOperationRecord, receipt: unknown) {
+  async recordObservedCompletion(
+    record: OsOperationRecord<Scope>,
+    receipt: unknown,
+  ) {
     const file = this.file(record.scope, record.operationId);
     if (this.active.has(file))
       throw new Error("The OS operation is still active.");
@@ -181,7 +238,7 @@ export class OsOperationStore {
     if (current.state === "ready") return current;
     if (current.state !== "unknown")
       throw new Error("Only an unknown admission can be recovered.");
-    const recovered: OsOperationRecord = {
+    const recovered: OsOperationRecord<Scope> = {
       ...current,
       receipt,
       state: "ready",
@@ -195,13 +252,13 @@ export class OsOperationStore {
   /** Continue observation of an existing admission only. The caller must not
    * dispatch an uncertain mutation. No record is created when it is missing. */
   async reconcile(
-    scope: CantripOsDispatchScope,
+    scope: Scope,
     operationId: string,
     observe: (
-      record: OsOperationRecord,
+      record: OsOperationRecord<Scope>,
       save: () => Promise<void>,
     ) => Promise<void>,
-  ): Promise<OsOperationRecord | null> {
+  ): Promise<OsOperationRecord<Scope> | null> {
     const file = this.file(scope, operationId);
     const record = await this.inspect(scope, operationId);
     if (!record) return null;

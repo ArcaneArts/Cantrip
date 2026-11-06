@@ -1,4 +1,24 @@
 import type { Readable } from "node:stream";
+export function registerBuiltPackage(
+  file: string,
+  metadata: {
+    name: string;
+    version: string;
+    architecture: string;
+  },
+  options?: { directory?: string },
+): Promise<{
+  format: "cantrip-os-package-artifact";
+  version: 1;
+  file: string;
+  artifact: {
+    name: string;
+    version: string;
+    architecture: string;
+    sha256: string;
+    bytes: number;
+  };
+}>;
 
 export type GuestTransport =
   | { kind: "docker"; container: string }

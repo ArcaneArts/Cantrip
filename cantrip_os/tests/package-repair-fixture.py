@@ -102,8 +102,9 @@ elif action == "build":
     stage = root / kind
     run("dpkg-deb", "-R", str(root / "good.deb"), str(stage))
     control = stage / "DEBIAN/control"
-    version = "0.4.1-testbad" if kind == "bad" else "0.4.2-test" + kind
-    control.write_text(control.read_text().replace("Version: 0.4.0", "Version: " + version))
+    original_version = package(root / "good.deb")["version"]
+    version = original_version + "-test" + kind
+    control.write_text(control.read_text().replace("Version: " + original_version, "Version: " + version))
     if kind == "bad":
         for name in ("main.py", "package_job.py"):
             (stage / "usr/lib/cantrip-os-recovery" / name).write_text("raise RuntimeError('deliberately broken installed helper')\n")
@@ -129,7 +130,7 @@ elif action == "probe":
     print(json.dumps({"helpers": [p.returncode for p in helpers], "naiveExit": naive.returncode, "naiveDiagnostic": naive.stderr.decode()[-4096:], "configSha256": sha(config)}))
 elif action == "inspect":
     print(json.dumps({**observe(root), "configSha256": sha(config), "customSha256": sha(root / "custom-config"), "defaultSha256": sha(root / "default-config"),
-                      "counters": {name: (root / (name + "-counter")).read_text().splitlines() if (root / (name + "-counter")).exists() else [] for name in ("bad", "slow", "orphan")}}))
+                      "counters": {name: (root / (name + "-counter")).read_text().splitlines() if (root / (name + "-counter")).exists() else [] for name in ("bad", "slow", "orphan", "staged", "abandoned")}}))
 elif action == "corrupt-config":
     config.write_bytes(b"invalid customized configuration\n")
     print(json.dumps({"sha256": sha(config)}))
@@ -164,6 +165,59 @@ elif action == "maintenance":
 elif action == "release":
     (root / "orphan-release").touch()
     print("{}")
+elif action == "identity-change":
+    path = Path(args[0])
+    shutil.copy2(path, root / "original-identity")
+    (root / "identity-path").write_text(str(path))
+    value = json.loads(path.read_bytes())
+    value["attachment"]["owner_id"] = "00000000-0000-4000-8000-999999999999"
+    temporary = path.with_name(path.name + "." + root.name)
+    temporary.write_text(json.dumps(value))
+    temporary.chmod(path.stat().st_mode & 0o777)
+    os.replace(temporary, path)
+    print("{}")
+elif action == "identity-restore":
+    path = Path((root / "identity-path").read_text())
+    temporary = path.with_name(path.name + "." + root.name)
+    shutil.copy2(root / "original-identity", temporary)
+    os.replace(temporary, path)
+    print("{}")
+elif action == "identity-relocate":
+    path = Path("/etc/cantrip-os/executor.json")
+    shutil.copy2(path, root / "original-executor-config")
+    settings = json.loads(path.read_bytes())
+    current = Path(settings["state_dir"])
+    relocated = root / "executor-state"
+    relocated.mkdir(mode=0o700)
+    shutil.copy2(current / "instance.json", relocated / "instance.json")
+    settings["state_dir"] = str(relocated)
+    temporary = path.with_name(path.name + "." + root.name)
+    temporary.write_text(json.dumps(settings))
+    temporary.chmod(path.stat().st_mode & 0o777)
+    os.replace(temporary, path)
+    print(json.dumps({"identityPath": str(relocated / "instance.json")}))
+elif action == "identity-unrelocate":
+    path = Path("/etc/cantrip-os/executor.json")
+    temporary = path.with_name(path.name + "." + root.name)
+    shutil.copy2(root / "original-executor-config", temporary)
+    os.replace(temporary, path)
+    print("{}")
+elif action == "executor-break":
+    path = Path("/usr/bin/cantrip-executor")
+    shutil.copy2(path, root / "original-executor")
+    temporary = path.with_name(".cantrip-executor-" + root.name)
+    temporary.write_text("#!/bin/sh\nexit 76\n")
+    temporary.chmod(0o755)
+    os.replace(temporary, path)
+    print(json.dumps({"exitCode": run(str(path), "status", check=False).returncode}))
+elif action == "executor-restore":
+    path = Path("/usr/bin/cantrip-executor")
+    temporary = path.with_name(".cantrip-executor-" + root.name)
+    shutil.copy2(root / "original-executor", temporary)
+    os.replace(temporary, path)
+    print(json.dumps({"exitCode": run(str(path), "status", check=False).returncode}))
+elif action == "record-exists":
+    print(json.dumps({"exists": (Path("/var/lib/cantrip-os-executor/package-operations") / args[0] / "record.json").exists()}))
 elif action == "cleanup":
     config.write_bytes((root / "original-config").read_bytes())
     print("{}")
