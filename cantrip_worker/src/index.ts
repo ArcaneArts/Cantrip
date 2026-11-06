@@ -351,6 +351,10 @@ import { WorkerConnection } from "./transport.js";
 import { WorkerEncryptionService } from "./worker-encryption.js";
 import { createNativeResourceProtection } from "./native-resource-protection.js";
 import { NativeSuspensionStore } from "./native-suspension-store.js";
+import {
+  openManagedSuspensionSource,
+  managedSuspensionNamespace,
+} from "./codex/managed-suspended-source.js";
 import { createManagedSuspensionCapture } from "./codex/managed-native-suspension.js";
 import { WorktreeManager } from "./worktrees.js";
 import { CantripOsController } from "./os-executor/controller.js";
@@ -622,6 +626,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         workerId: config.workerId,
       }),
     { workerId: config.workerId },
+  );
+  const nativeSuspensionStore = new NativeSuspensionStore(
+    config.dataDirectory,
+    () => ({
+      serverId: workerEncryption.serverIdentity(),
+      ownerId: workerEncryption.ownerId(),
+      workerId: config.workerId,
+    }),
+    workerEncryption,
   );
   let workerNotificationEmitter:
     ((notification: WorkerNotification) => boolean) | null = null;
@@ -1820,6 +1833,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       subagentDefaults?: RuntimeSubagentDefaults | null;
     },
     stagingOperationId?: string,
+    heldSource?: NonNullable<
+      Awaited<ReturnType<typeof openManagedSuspensionSource>>
+    > | null,
   ) => {
     inferenceAdmissionForWorker().configure({
       providerId: command.provider.id,
@@ -1830,8 +1846,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     });
     if (command.threadId && command.chatId && !stagingOperationId)
       projectGoalDelivery.watch(command.threadId, command.chatId);
-    const namespace =
-      stagingOperationId && command.threadId
+    const namespace = heldSource
+      ? managedSuspensionNamespace(heldSource)
+      : stagingOperationId && command.threadId
         ? {
             operationId: stagingOperationId,
             home: managedRuntimeNamespaces.destination(
@@ -1881,7 +1898,24 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     const runtimeId = namespace
       ? `${placementRuntimeId}:namespace:${namespace.operationId}`
       : placementRuntimeId;
-    let runtime = codexRuntimes.get(runtimeId);
+    const attached =
+      heldSource && command.chatId
+        ? managedCurrentRuntimes.get(command.chatId)
+        : undefined;
+    const attachedEntry =
+      attached && command.chatId && command.threadId
+        ? managedCommandSessions
+            .get(attached)
+            ?.get(command.chatId + ":" + command.threadId)
+        : undefined;
+    let runtime =
+      attached &&
+      heldSource &&
+      attachedEntry &&
+      attached.managedHistoryHome === heldSource.home &&
+      attached.transportGeneration === attachedEntry.generation
+        ? attached
+        : codexRuntimes.get(runtimeId);
     if (!runtime) {
       const directoryName = createHash("sha256")
         .update(runtimeId)
@@ -2530,13 +2564,24 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           }),
         }
       : null;
-    const runtime = runtimeFor({
-      ...options,
+    const heldSource = await openManagedSuspensionSource({
+      store: nativeSuspensionStore,
       session,
-      chatId: session.chatId,
-      executionProfile,
-      subagentDefaults,
+      threadId: options.threadId,
+      modelRouteId: options.model.routeId ?? null,
+      providerAccountId: options.provider.accountId ?? null,
     });
+    const runtime = runtimeFor(
+      {
+        ...options,
+        session,
+        chatId: session.chatId,
+        executionProfile,
+        subagentDefaults,
+      },
+      undefined,
+      heldSource,
+    );
     const preparationRuntime = withManagedSessionMcpServers(
       runtime,
       options.mcpServers,
@@ -2562,6 +2607,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         executionProfile,
         subagentDefaults,
         mcpServers: undefined,
+        ...(heldSource
+          ? { expectedSuspension: heldSource.evidence.suspension }
+          : {}),
         intent,
         ...(runner ? { executionGate: runner.configuration } : {}),
       },
@@ -2658,15 +2706,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       client: nativeCommands,
       captureSuspension: createManagedSuspensionCapture(
         runtime,
-        new NativeSuspensionStore(
-          config.dataDirectory,
-          () => ({
-            serverId: workerEncryption.serverIdentity(),
-            ownerId: workerEncryption.ownerId(),
-            workerId: config.workerId,
-          }),
-          workerEncryption,
-        ),
+        nativeSuspensionStore,
       ),
       settingsDelivery: nativeSettingsDelivery,
       settleDeferred: (input) => nativeDeferredSettlements.settle(input),

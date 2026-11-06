@@ -37,6 +37,7 @@ export interface WorkerLinkTerminalGrantRouteDependencies extends ManagedConsole
     ServerRepository,
     | "getChatExecutionContext"
     | "getTerminalExecutionContext"
+    | "nativeSuspensions"
     | "listEffectiveMcpServers"
     | "setChatModel"
     | "updateChatRuntime"

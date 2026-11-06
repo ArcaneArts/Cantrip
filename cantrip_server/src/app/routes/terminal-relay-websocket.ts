@@ -48,6 +48,7 @@ export interface TerminalRelayWebSocketRouteDependencies extends ManagedConsoleR
     ServerRepository,
     | "getChatExecutionContext"
     | "getTerminalExecutionContext"
+    | "nativeSuspensions"
     | "listEffectiveMcpServers"
     | "setChatModel"
     | "updateChatRuntime"

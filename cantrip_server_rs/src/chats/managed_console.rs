@@ -161,7 +161,23 @@ impl ManagedConsole {
             )
             .await?;
         let mut fields = json!({"model":root["model"],"provider":root["provider"],"subagentDefaults":subagent,"planMode":context["planMode"],"permissionProfileId":permission_profile(context)["effectiveId"],"mcpServers":mcp});
-        if let Some(session) = turn_session_context(context) {
+        if let Some(mut session) = turn_session_context(context) {
+            if truthy(context.get("threadId")) {
+                if let Some(suspension) = self
+                    .repository
+                    .native_suspension(owner, &text(context, "chatId")?)
+                    .await?
+                {
+                    if !suspension["checkpoint"].is_null()
+                        && !matches!(
+                            suspension["phase"].as_str(),
+                            Some("running" | "stopped" | "completed" | "failed" | "idle")
+                        )
+                    {
+                        session["heldSuspension"] = suspension["checkpoint"].clone();
+                    }
+                }
+            }
             fields["session"] = session;
         }
         Ok(fields)

@@ -12,6 +12,7 @@ import type {
 import { resolveModelRoutePairs } from "../src/models/subagent-routing.js";
 import {
   prepareManagedConsoleLaunch,
+  prepareManagedTurnLaunch,
   type ManagedConsoleRouting,
 } from "../src/terminals/managed-session.js";
 
@@ -94,6 +95,7 @@ function fixture() {
     getModelRuntimeByRoute: vi.fn(async (_ownerId, routeId) =>
       routeId === root.routeId ? root : null,
     ),
+    nativeSuspensions: { read: vi.fn().mockResolvedValue(null) },
     listEffectiveMcpServers: vi.fn().mockResolvedValue(mcpServers),
     setChatModel: vi.fn().mockResolvedValue(undefined),
     updateChatRuntime: vi.fn().mockResolvedValue(undefined),
@@ -116,6 +118,60 @@ function fixture() {
 }
 
 describe("managed console preparation", () => {
+  it.each(["project", "standalone"] as const)(
+    "forwards exact held checkpoint evidence through the %s launch without resuming",
+    async (kind) => {
+      const f = fixture();
+      const existing =
+        kind === "project"
+          ? { ...context, threadId: "native-thread" }
+          : {
+              ...context,
+              contextKind: "standalone" as const,
+              projectId: null,
+              worktreeId: null,
+              rootKind: null,
+              scratchRootId: "scratch",
+              threadId: "native-thread",
+            };
+      const checkpoint = {
+        suspension: {
+          threadId: "native-thread",
+          turnId: "held-turn",
+          checkpointId: "checkpoint",
+          revision: 1,
+        },
+        storageId: "00000000-0000-4000-8000-000000000001",
+        runtimeVersion: "fixture",
+        runtimeFingerprint: null,
+      };
+      f.repository.nativeSuspensions.read.mockResolvedValue({
+        phase: "paused",
+        checkpoint,
+      });
+      const launch = await prepareManagedTurnLaunch(existing, root, f);
+      expect(launch.session?.heldSuspension).toEqual(checkpoint);
+      expect(f.repository.nativeSuspensions.read).toHaveBeenCalledWith(
+        f.ownerId,
+        existing.chatId,
+      );
+      if (kind === "standalone")
+        expect(f.bridge.request.mock.calls[0]?.[1]).toMatchObject({
+          type: "chat.thread.ensure",
+          session: { heldSuspension: checkpoint },
+        });
+      else expect(f.bridge.request).not.toHaveBeenCalled();
+      f.repository.nativeSuspensions.read.mockResolvedValue({
+        phase: "running",
+        checkpoint,
+      });
+      expect(
+        (await prepareManagedTurnLaunch(existing, root, f)).session
+          ?.heldSuspension,
+      ).toBeUndefined();
+    },
+  );
+
   it("reads a bound custom-child thread after child execution routing becomes unavailable", async () => {
     const f = fixture();
     const existing = { ...context, threadId: "existing-thread" };
@@ -211,6 +267,7 @@ describe("managed console preparation", () => {
       root.routeId,
       "ready",
       null,
+      context.scratchRootId,
     );
   });
 

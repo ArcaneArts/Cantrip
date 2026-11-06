@@ -30,6 +30,7 @@ export interface ChatExecutionControlRouteDependencies {
     ServerRepository,
     | "getChatExecutionContext"
     | "nativeCommands"
+    | "nativeSuspensions"
     | "listEffectiveMcpServers"
     | "setChatModel"
     | "updateChatRuntime"
