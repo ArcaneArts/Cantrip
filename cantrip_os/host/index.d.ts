@@ -1,3 +1,30 @@
+import type { Readable } from "node:stream";
+
+export type GuestTransport =
+  | { kind: "docker"; container: string }
+  | {
+      kind: "ssh";
+      host: string;
+      port: number;
+      user: string;
+      identityFile: string;
+      knownHostsFile: string;
+    };
+export function rootGuestCommand(
+  transport: GuestTransport,
+  program: string,
+  args: string[],
+): { command: string; args: string[] };
+export function packageJobSource(): Promise<string>;
+export class PackageCarrierError extends Error {
+  readonly delivery: "unknown";
+}
+export function packageControl<T = unknown>(
+  transport: GuestTransport,
+  args: string[],
+  options?: { input?: Readable; signal?: AbortSignal },
+): Promise<T>;
+
 export class DockerDeliveryError extends Error {
   readonly delivery: "unknown";
 }

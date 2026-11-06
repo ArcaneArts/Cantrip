@@ -1,6 +1,12 @@
 export { LocalDocker, DockerApiError, DockerDeliveryError } from "./docker.mjs";
 export { withInstanceLock } from "./lock.mjs";
 export {
+  rootGuestCommand,
+  packageJobSource,
+  packageControl,
+  PackageCarrierError,
+} from "./package-operations.mjs";
+export {
   changeRetainedContainer,
   observeRetainedContainer,
 } from "./retained-lifecycle.mjs";
