@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { nativeSuspensionEvidenceSchema } from "./native-suspensions.js";
 import { cantripOsExecutionSchema } from "./worker-command-cantrip-os.js";
 
 import { projectRootKindSchema } from "./project-foundation.js";
@@ -10,6 +11,8 @@ import {
 const common = {
   chatId: z.string().min(1),
   computerUseEnabled: z.boolean(),
+  /** Attachment intent only; the worker opens this exact encrypted source. */
+  heldSuspension: nativeSuspensionEvidenceSchema.optional(),
 };
 
 /** Idle session placement/eligibility is not an execution-lane capability. */

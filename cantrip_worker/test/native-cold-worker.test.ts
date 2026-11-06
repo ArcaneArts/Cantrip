@@ -1,6 +1,7 @@
 import { fork, execFile, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import { once } from "node:events";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
@@ -230,6 +231,7 @@ describe.skipIf(!binary || process.platform === "win32")(
             if (cycle === 0) {
               const denied = launch({
                 storageId: paused.evidence.storageId,
+                heldSuspension: paused.evidence,
                 suspension: paused.evidence.suspension,
                 denyGrant: true,
               });
@@ -242,10 +244,34 @@ describe.skipIf(!binary || process.platform === "win32")(
                 ),
               ).toBe(false);
               await kill(denied);
+              const missing = launch({
+                storageId: paused.evidence.storageId,
+                heldSuspension: { ...paused.evidence, storageId: randomUUID() },
+                suspension: paused.evidence.suspension,
+                home: path.join(directory, "unsafe-fallback-home"),
+              });
+              expect((await wait(missing, "error")).error).toMatch(
+                /saved suspension source is missing/,
+              );
+              expect(
+                missing.messages.some(
+                  (message) => message.type === "native-process",
+                ),
+              ).toBe(false);
+              await kill(missing);
             }
             actor = launch({
               preparationIntent: cycle === 0 ? "preserve" : "configure",
               storageId: paused.evidence.storageId,
+              // These diagnostics cannot replace actual native compatibility.
+              heldSuspension:
+                cycle === 0
+                  ? {
+                      ...paused.evidence,
+                      runtimeVersion: "changed-diagnostic",
+                      runtimeFingerprint: "f".repeat(64),
+                    }
+                  : paused.evidence,
               suspension: paused.evidence.suspension,
               home: path.join(directory, `changed-default-home-${cycle}`),
             });

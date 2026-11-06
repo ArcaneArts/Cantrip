@@ -42,6 +42,7 @@ export interface TerminalDirectAttachmentRouteDependencies extends ManagedConsol
     | "getChatExecutionContext"
     | "getTerminalExecutionContext"
     | "getWorker"
+    | "nativeSuspensions"
     | "listEffectiveMcpServers"
     | "setChatModel"
     | "updateChatRuntime"

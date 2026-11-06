@@ -8,6 +8,10 @@ import { CodexAppServer } from "../src/codex/app-server.js";
 import { discoverCodexRuntime } from "../src/codex/discovery.js";
 import { createManagedSuspensionCapture } from "../src/codex/managed-native-suspension.js";
 import { NativeSuspensionStore } from "../src/native-suspension-store.js";
+import {
+  openManagedSuspensionSource,
+  managedSuspensionNamespace,
+} from "../src/codex/managed-suspended-source.js";
 import { resourceProtectionFixture } from "./native-resource-protection-fixture.js";
 
 const config = JSON.parse(process.argv[2]!);
@@ -68,10 +72,36 @@ const failure = (error: unknown) =>
     error: error instanceof Error ? error.stack : String(error),
   });
 try {
-  const opened = config.storageId
-    ? await store.open(config.storageId, source())
-    : null;
-  const home = opened?.home ?? config.home;
+  const managedSession =
+    executionProfile === "ide"
+      ? {
+          chatId: "chat",
+          contextKind: "project" as const,
+          projectId: "project",
+          worktreeId: "worktree",
+          rootKind: "git-worktree" as const,
+          scratchRootId: null,
+          computerUseEnabled: false,
+          heldSuspension: config.heldSuspension,
+        }
+      : {
+          chatId: "chat",
+          contextKind: "standalone" as const,
+          projectId: null,
+          worktreeId: null,
+          rootKind: null,
+          scratchRootId: "scratch",
+          computerUseEnabled: false,
+          heldSuspension: config.heldSuspension,
+        };
+  const opened = await openManagedSuspensionSource({
+    store,
+    session: managedSession,
+    threadId: threadId || null,
+    modelRouteId: "route",
+    providerAccountId: "account",
+  });
+  const home = opened ? managedSuspensionNamespace(opened).home : config.home;
   runtime = new CodexAppServer(
     config.binary,
     config.data,

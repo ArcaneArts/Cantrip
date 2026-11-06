@@ -98,6 +98,7 @@ export interface ChatGoalRouteDependencies {
     ServerRepository,
     | "getChatExecutionContext"
     | "tasks"
+    | "nativeSuspensions"
     | "listEffectiveMcpServers"
     | "setChatModel"
     | "updateChatRuntime"

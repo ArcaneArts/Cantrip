@@ -130,8 +130,31 @@ Worker restoration also carries the execution profile used to start the native
 process. A standalone chat must not be reopened as an IDE runtime. The
 process-isolated worker fixture covers both profiles, two whole-worker-tree
 terminations, missing and corrupt checkpoint contents during attachment, and
-subsequent same-turn restoration. Production source selection and the Resume
-control service still need to connect these preparation operations.
+subsequent same-turn restoration. Production managed preparation now selects
+the encrypted source as described below; the explicit cold Resume control
+service still needs to connect fresh admission and observer publication.
+
+## Selecting the original home during preparation
+
+The server's shared managed launch path reads its actual private suspension
+record and includes only the committed evidence as optional session attachment
+intent. This applies to GUI preparation and native terminal launch through
+Direct, relay and WorkerLink. Running and terminal records cannot turn their
+historical checkpoint evidence into new attachment intent.
+
+Before selecting or starting a native runtime, the worker opens that exact
+source locator with the current chat-content grant and verifies its chat,
+thread, placement, route and account. The original home remains inside its
+protected source record. A private runtime namespace identifies that home and
+chat; no filesystem path is added to the command protocol. An already attached
+managed owner of the same home/thread can keep the live preparation path.
+
+Missing source data or encryption authority produces a fixed error and never
+selects a default home. Runtime version/fingerprint diagnostics do not decide
+checkpoint compatibility; explicit native inspection remains authoritative.
+Preparation installs expected suspension before native attachment and does not
+create fresh execution admission, release automation or submit Resume. The
+complete cold Resume publication/control lifecycle remains a separate step.
 
 ## Fresh execution ownership for cold restoration
 
