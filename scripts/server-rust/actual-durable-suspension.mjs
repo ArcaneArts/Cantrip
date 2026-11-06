@@ -242,9 +242,12 @@ async function flow(kind, executable, cliBinary) {
         terminalId,
       );
     }
-    let active;
+    let active, postPausePrompt;
     for (let round = 1; round <= 2; round++) {
-      const steering = "DURABLE_ACCEPTED_PENDING_" + round;
+      const steering =
+        round === 2 && postPausePrompt
+          ? postPausePrompt.text
+          : "DURABLE_ACCEPTED_PENDING_" + round;
       const pausing = process.argv.includes("--mounted-ui")
         ? clickMountedSuspensionPause(page, chat.id)
         : page.evaluate(
@@ -279,11 +282,23 @@ async function flow(kind, executable, cliBinary) {
         );
         (result.pendingUi ??= []).push({ round, statuses });
       }
-      assert.equal(
-        (await steerSuspensionChat(page, chat.id, configuration, steering))
-          .steered,
-        true,
-      );
+      if (round === 2 && postPausePrompt) {
+        const accepted = await page.evaluate(
+          async ({ id, revision }) =>
+            (await import("/src/lib/api/queue.ts")).steerQueuedPrompt(
+              id,
+              revision,
+            ),
+          postPausePrompt,
+        );
+        assert.equal(accepted.steered, true);
+        result.postPausePrompt.steered = true;
+      } else
+        assert.equal(
+          (await steerSuspensionChat(page, chat.id, configuration, steering))
+            .steered,
+          true,
+        );
       boundary.release();
       assert.equal((await pausing).paused, true);
       const paused = await identity();
@@ -292,6 +307,44 @@ async function flow(kind, executable, cliBinary) {
       console.error(kind, "durable pause acknowledged", round);
       active ??= paused.nativeSuspension.active;
       assert.deepEqual(paused.nativeSuspension.active, active);
+      if (round === 1 && process.argv.includes("--post-pause-queue")) {
+        const count = inferences();
+        postPausePrompt = await page.evaluate(
+          async ({ id, configuration }) => {
+            const accepted = await (
+              await import("/src/lib/api/chats.ts")
+            ).startTurn(
+              id,
+              "DURABLE_POST_PAUSE_QUEUED_ORIGINAL",
+              configuration,
+            );
+            if (accepted.status !== "queued")
+              throw new Error("Paused input was not queued");
+            return (await import("/src/lib/api/queue.ts")).updateQueuedPrompt(
+              id,
+              accepted.prompt.id,
+              {
+                expectedItemRevision: accepted.prompt.revision,
+                text: "DURABLE_POST_PAUSE_QUEUED_REVISED",
+              },
+            );
+          },
+          { id: chat.id, configuration },
+        );
+        const held = await identity();
+        assert.equal(held.nativeSuspension.phase, "paused");
+        assert.deepEqual(held.nativeSuspension.active, active);
+        assert.equal(
+          inferences(),
+          count,
+          "Accepting and revising paused input starts no inference",
+        );
+        result.postPausePrompt = {
+          id: postPausePrompt.id,
+          revision: postPausePrompt.revision,
+          text: postPausePrompt.text,
+        };
+      }
       const killed = worker;
       worker = undefined;
       const terminated = await killOwnedWorkerTree(killed.child);
@@ -327,6 +380,18 @@ async function flow(kind, executable, cliBinary) {
       assert.equal(reopened.nativeSuspension.phase, "paused");
       assert.deepEqual(reopened.nativeSuspension.active, active);
       await messages();
+      if (round === 1 && postPausePrompt) {
+        const queue = await page.evaluate(
+          async (id) =>
+            (await import("/src/lib/api/queue.ts")).getQueuedPrompts(id),
+          chat.id,
+        );
+        const retained = queue.find((entry) => entry.id === postPausePrompt.id);
+        assert.ok(retained);
+        assert.equal(retained.revision, postPausePrompt.revision);
+        assert.equal(retained.text, postPausePrompt.text);
+        result.postPausePrompt.reopened = true;
+      }
       if (process.argv.includes("--mounted-ui")) {
         const opened = await openMountedSuspensionChat(
           page,
@@ -398,6 +463,14 @@ async function flow(kind, executable, cliBinary) {
       assert.ok(restoredInput.includes(prompt));
       assert.ok(restoredInput.includes("DURABLE_TOOL_RESULT"));
       assert.ok(restoredInput.includes(steering));
+      if (round === 1 && postPausePrompt) {
+        assert.equal(restoredInput.includes(postPausePrompt.text), false);
+      }
+      if (postPausePrompt)
+        assert.equal(
+          restoredInput.includes("DURABLE_POST_PAUSE_QUEUED_ORIGINAL"),
+          false,
+        );
       assert.ok(restoredInput.includes(await realpath(directory)));
       assert.equal(next.request.input.model, tool.request.input.model);
       assert.deepEqual(
@@ -446,6 +519,18 @@ async function flow(kind, executable, cliBinary) {
       result.terminalFinalVisible = true;
     }
     assert.equal(textItems.filter((item) => item.text === prompt).length, 1);
+    if (postPausePrompt) {
+      assert.equal(
+        textItems.filter((item) => item.text === postPausePrompt.text).length,
+        1,
+      );
+      assert.equal(
+        textItems.some(
+          (item) => item.text === "DURABLE_POST_PAUSE_QUEUED_ORIGINAL",
+        ),
+        false,
+      );
+    }
     const final = textItems.find(
       (item) => item.text === "DURABLE_RECOVERED_FINAL",
     );
@@ -487,7 +572,7 @@ async function flow(kind, executable, cliBinary) {
     for (const text of [
       prompt,
       "DURABLE_ACCEPTED_PENDING_1",
-      "DURABLE_ACCEPTED_PENDING_2",
+      postPausePrompt ? postPausePrompt.text : "DURABLE_ACCEPTED_PENDING_2",
     ])
       assert.equal(
         items.filter(
