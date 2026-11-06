@@ -5,6 +5,7 @@ mod dispatch_fence;
 mod edits;
 pub mod failure_kind;
 mod finish;
+mod goal_cycle_recovery;
 mod goal_inference_inputs;
 mod goal_input_history;
 pub(crate) mod goal_observations;

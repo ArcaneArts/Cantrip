@@ -1,7 +1,10 @@
 import type { ServerRepository } from "../../db/repository.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 import { WorkerUnavailableError } from "../../workers/bridge.js";
-import type { NativeGoalRecovery } from "@cantrip/protocol";
+import type {
+  NativeGoalRecovery,
+  TaskGoalCycleRecovery,
+} from "@cantrip/protocol";
 /** A durable revision cursor makes lost queue notices recoverable without replaying input. */
 export function createManagedQueueDelivery(options: {
   repository: ServerRepository["managedQueue"];
@@ -12,7 +15,7 @@ export function createManagedQueueDelivery(options: {
   recoverGoal?: (
     ownerId: string,
     chatId: string,
-    recovery: NativeGoalRecovery,
+    recovery: NativeGoalRecovery | TaskGoalCycleRecovery,
   ) => Promise<void>;
 }) {
   let stopped = false;
@@ -83,7 +86,8 @@ export function createManagedQueueDelivery(options: {
                   }
                 }),
               );
-              if (entry.goalRecovery) {
+              const recovery = entry.taskGoalRecovery ?? entry.goalRecovery;
+              if (recovery) {
                 if (!options.recoverGoal)
                   throw new Error(
                     "Managed Goal recovery delivery is unavailable.",
@@ -91,7 +95,7 @@ export function createManagedQueueDelivery(options: {
                 await options.recoverGoal(
                   entry.ownerId,
                   entry.chatId,
-                  entry.goalRecovery,
+                  recovery,
                 );
               }
               if (!stopped)

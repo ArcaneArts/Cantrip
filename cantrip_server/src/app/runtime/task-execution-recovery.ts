@@ -116,6 +116,13 @@ export function createTaskExecutionRecovery({
       await goals.reconcileTaskGoalDispatch(task, "complete");
       return true;
     }
+    const privateCycle =
+      await repository.tasks.inferenceInputs.goalCycles.pending(owner, chatId);
+    if (privateCycle) {
+      // Its durable revision delivery owns the unchanged native Goal wake.
+      // Do not create a synthetic Resume while that unused cycle is retained.
+      return true;
+    }
     if (!bridge.isConnected(context.workerId))
       throw new Error(
         "The project worker is offline. Reconnect it, then retry recovery.",

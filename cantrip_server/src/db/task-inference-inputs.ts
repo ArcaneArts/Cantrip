@@ -1,6 +1,7 @@
 import type { TaskFailureKind } from "@cantrip/protocol/tasks";
 import { randomUUID } from "node:crypto";
 import { TaskGoalInferenceInputRepository } from "./task-goal-inference-inputs.js";
+import { TaskGoalCycleRecoveryRepository } from "./task-goal-cycle-recovery.js";
 import {
   taskInferenceInputReceiptSchema,
   type InferenceFailureEvidence,
@@ -69,11 +70,13 @@ function stale(): never {
 
 export class TaskInferenceInputRepository {
   readonly goals: TaskGoalInferenceInputRepository;
+  readonly goalCycles: TaskGoalCycleRecoveryRepository;
   constructor(
     private readonly database: RepositoryDatabase,
     private readonly lanes?: ChatExecutionLaneRepository,
     messages?: MessageWriteRepository,
   ) {
+    this.goalCycles = new TaskGoalCycleRecoveryRepository(database);
     this.goals = new TaskGoalInferenceInputRepository(
       database,
       lanes,

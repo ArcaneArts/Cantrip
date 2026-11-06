@@ -4,6 +4,7 @@ export * from "./inference-recovery.js";
 export * from "./native-goal-recovery.js";
 export * from "./inference-failure.js";
 export * from "./task-inference-input.js";
+export * from "./task-goal-cycle.js";
 export * from "./task-inference-route.js";
 export * from "./task-goal-outcome.js";
 export * from "./provider-definitions.js";

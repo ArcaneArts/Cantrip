@@ -1,0 +1,298 @@
+diff --git a/codex-rs/ext/extension-api/src/inference_admission.rs b/codex-rs/ext/extension-api/src/inference_admission.rs
+--- a/codex-rs/ext/extension-api/src/inference_admission.rs
++++ b/codex-rs/ext/extension-api/src/inference_admission.rs
+@@ -19,3 +19,10 @@
+         self.0.load(Ordering::Acquire)
+     }
+ }
++
++/// Immutable native Goal identity captured by its turn-start contributor.
++/// This observes a cycle; it does not authorize input or provider admission.
++#[derive(Debug, Clone)]
++pub struct GoalInferenceIdentity {
++    pub epoch: String,
++}
+diff --git a/codex-rs/ext/extension-api/src/lib.rs b/codex-rs/ext/extension-api/src/lib.rs
+--- a/codex-rs/ext/extension-api/src/lib.rs
++++ b/codex-rs/ext/extension-api/src/lib.rs
+@@ -12 +12 @@
+-pub use inference_admission::InferenceQueueAdmission;
++pub use inference_admission::{GoalInferenceIdentity, InferenceQueueAdmission};
+diff --git a/codex-rs/ext/goal/src/extension.rs b/codex-rs/ext/goal/src/extension.rs
+--- a/codex-rs/ext/goal/src/extension.rs
++++ b/codex-rs/ext/goal/src/extension.rs
+@@ -290,3 +290,8 @@
+             {
++                if goal.status == codex_state::ThreadGoalStatus::Active {
++                    input.turn_store.insert(codex_extension_api::GoalInferenceIdentity {
++                        epoch: goal.epoch(),
++                    });
++                }
+                 accounting.mark_turn_goal_active(input.turn_id, goal.goal_id);
+             }
+diff --git a/codex-rs/core/src/managed_inference.rs b/codex-rs/core/src/managed_inference.rs
+--- a/codex-rs/core/src/managed_inference.rs
++++ b/codex-rs/core/src/managed_inference.rs
+@@ -29 +29,2 @@
+     queue_clock: Option<Arc<codex_extension_api::InferenceQueueClock>>,
++    goal_epoch: StdMutex<Option<String>>,
+@@ -145 +146,19 @@
++    /// A fresh native Goal cycle, before its first model or tool step. Restored
++    /// turns use the ordinary boundary and cannot acquire unused-cycle identity.
++    pub(crate) async fn begin_goal(
++        gate: Arc<ManagedExecutionGate>,
++        thread_id: ThreadId,
++        turn_id: String,
++        cancellation: CancellationToken,
++        queue_clock: Arc<codex_extension_api::InferenceQueueClock>,
++        goal_epoch: String,
++    ) -> CodexResult<InferenceLifetime> {
++        let turn = Self::new(Some(gate), thread_id, turn_id, cancellation, false, Some(queue_clock));
++        *turn.goal_epoch.lock().unwrap_or_else(PoisonError::into_inner) = Some(goal_epoch);
++        let lifetime = InferenceLifetime(turn);
++        lifetime.0.phase("begin").await?;
++        *lifetime.0.held.lock().await = true;
++        Ok(lifetime)
++    }
++
+     async fn begin_with_kind(
+@@ -192 +211,2 @@
+             queue_clock,
++            goal_epoch: StdMutex::new(None),
+@@ -224,2 +244,3 @@
++        let goal_epoch = self.goal_epoch.lock().unwrap_or_else(PoisonError::into_inner).clone();
+         tokio::select! {
+-            result = gate.request_inference(self.thread_id, &self.turn_id, &self.scope_id, phase) =>
++            result = gate.request_inference(self.thread_id, &self.turn_id, &self.scope_id, phase, goal_epoch.as_deref()) =>
+diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
+--- a/codex-rs/core/src/session/turn.rs
++++ b/codex-rs/core/src/session/turn.rs
+@@ -290,11 +290,17 @@
+-        let lifetime = crate::managed_inference::ManagedInferenceTurn::begin(
+-            gate,
+-            sess.thread_id,
+-            turn_context.sub_id.clone(),
+-            cancellation_token.clone(),
+-            sess.services.thread_extension_data
+-                .get_or_init::<codex_extension_api::InferenceQueueClock>(
+-                    codex_extension_api::InferenceQueueClock::default,
+-                ),
+-        )
+-        .await?;
++        let queue_clock = sess.services.thread_extension_data
++            .get_or_init::<codex_extension_api::InferenceQueueClock>(
++                codex_extension_api::InferenceQueueClock::default,
++            );
++        let goal_epoch = (turn_context.turn_metadata_state.current_turn_trigger().as_deref() == Some("goal"))
++            .then(|| turn_context.extension_data.get::<codex_extension_api::GoalInferenceIdentity>())
++            .flatten()
++            .map(|identity| identity.epoch.clone());
++        let lifetime = if let Some(epoch) = goal_epoch {
++            crate::managed_inference::ManagedInferenceTurn::begin_goal(
++                gate, sess.thread_id, turn_context.sub_id.clone(), cancellation_token.clone(), queue_clock, epoch,
++            ).await?
++        } else {
++            crate::managed_inference::ManagedInferenceTurn::begin(
++                gate, sess.thread_id, turn_context.sub_id.clone(), cancellation_token.clone(), queue_clock,
++            ).await?
++        };
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+--- a/codex-rs/core/src/managed_execution.rs
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -44 +44 @@
+-    inference_requests: HashMap<String, (ThreadId, String, String, oneshot::Sender<bool>)>,
++    inference_requests: HashMap<String, (ThreadId, String, String, Option<String>, oneshot::Sender<bool>)>,
+@@ -49 +49,9 @@
++/// A current connection-owned pending scope, never a cached admission grant.
++#[derive(Default)]
++pub struct ManagedInferenceClaim {
++    pub claimed: bool,
++    pub goal_epoch: Option<String>,
++    pub inference_only: bool,
++}
++
+ pub struct ManagedExecutionGate {
+@@ -162,3 +170,4 @@
+         scope_id: &str,
+         phase: &str,
++        goal_epoch: Option<&str>,
+     ) -> Result<(), String> {
+@@ -180 +189 @@
+-                (thread_id, turn_id.to_owned(), scope_id.to_owned(), reply),
++                (thread_id, turn_id.to_owned(), scope_id.to_owned(), goal_epoch.map(str::to_owned), reply),
+@@ -194 +203 @@
+-            input: serde_json::json!({"phase":phase,"scopeId":scope_id,"rootThreadId":self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner).thread_id.map(|id|id.to_string())}), goal_epoch: None,
++            input: serde_json::json!({"phase":phase,"scopeId":scope_id,"rootThreadId":self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner).thread_id.map(|id|id.to_string())}), goal_epoch: goal_epoch.map(str::to_owned),
+@@ -214,23 +223,25 @@
+         scope_id: &str,
+         attempt_id: &str,
+     ) -> Result<bool, String> {
+-        let state = self
+-            .state
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+-        if state.closed {
+-            return Ok(false);
+-        }
+-        let Some((expected_thread, expected_turn, expected_scope, reply)) =
+-            state.inference_requests.get(attempt_id)
+-        else {
+-            return Ok(false);
++        self.claim_inference_metadata(thread_id, turn_id, scope_id, attempt_id).map(|claim| claim.claimed)
++    }
++
++    /// Confirm Goal identity under the same lock as actual pending ownership.
++    pub fn claim_inference_metadata(
++        &self,
++        thread_id: ThreadId,
++        turn_id: &str,
++        scope_id: &str,
++        attempt_id: &str,
++    ) -> Result<ManagedInferenceClaim, String> {
++        let state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state.closed { return Ok(ManagedInferenceClaim::default()); }
++        let Some((expected_thread, expected_turn, expected_scope, goal_epoch, reply)) = state.inference_requests.get(attempt_id) else {
++            return Ok(ManagedInferenceClaim::default());
+         };
+-        if *expected_thread != thread_id
+-            || expected_turn.as_str() != turn_id
+-            || expected_scope.as_str() != scope_id
+-        {
++        if *expected_thread != thread_id || expected_turn.as_str() != turn_id || expected_scope.as_str() != scope_id {
+             return Err("inference request no longer owns this scope".into());
+         }
+-        Ok(!reply.is_closed())
++        if reply.is_closed() { return Ok(ManagedInferenceClaim::default()); }
++        Ok(ManagedInferenceClaim { claimed: true, goal_epoch: goal_epoch.clone(), inference_only: self.inference_only })
+     }
+@@ -264 +275 @@
+-        let (expected, _, scope_id, _) = state.inference_requests.get(attempt_id)?;
++        let (expected, _, scope_id, _, _) = state.inference_requests.get(attempt_id)?;
+@@ -282 +293 @@
+-        let (_, _, _, reply) = state.inference_requests.remove(attempt_id).unwrap();
++        let (_, _, _, _, reply) = state.inference_requests.remove(attempt_id).unwrap();
+@@ -520 +531 @@
+-        for (attempt_id, (thread_id, turn_id, scope_id, reply)) in inference_requests {
++        for (attempt_id, (thread_id, turn_id, scope_id, _, reply)) in inference_requests {
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs b/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
+--- a/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
+@@ -119,3 +119,7 @@
+ pub struct ManagedExecutionInferenceClaimResponse {
+     pub claimed: bool,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub goal_epoch: Option<String>,
++    #[serde(default)]
++    pub inference_only: bool,
+ }
+diff --git a/codex-rs/app-server/src/request_processors/managed_execution.rs b/codex-rs/app-server/src/request_processors/managed_execution.rs
+--- a/codex-rs/app-server/src/request_processors/managed_execution.rs
++++ b/codex-rs/app-server/src/request_processors/managed_execution.rs
+@@ -219,2 +219,2 @@
+-        let claimed = if let Some(gate) = gate {
+-            gate.claim_inference(
++        let claim = if let Some(gate) = gate {
++            gate.claim_inference_metadata(
+@@ -230,5 +230,9 @@
+         } else {
+-            false
++            Default::default()
+         };
+         Ok(Some(
+-            codex_app_server_protocol::ManagedExecutionInferenceClaimResponse { claimed }.into(),
++            codex_app_server_protocol::ManagedExecutionInferenceClaimResponse {
++                claimed: claim.claimed,
++                goal_epoch: claim.goal_epoch,
++                inference_only: claim.inference_only,
++            }.into(),
+diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/cantrip_inference_journal.rs
+--- a/codex-rs/cli/src/cantrip_inference_journal.rs
++++ b/codex-rs/cli/src/cantrip_inference_journal.rs
+@@ -42,2 +42,4 @@
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     autonomous_goal: Option<AutonomousGoal>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    task_goal_cycle: Option<TaskGoalCycle>,
+@@ -60 +62,14 @@
++struct TaskGoalCycle {
++    cycle_id: String,
++    goal_epoch: String,
++    scope_id: String,
++    gate_attempt_id: String,
++    runner_generation: String,
++    model_route_id: String,
++    provider_account_id: Option<String>,
++    order_epoch: u64,
++}
++
++#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
+ struct TaskInput {
+@@ -127 +142,4 @@
+     goal_input_not_dispatched: bool,
++    /// The actual private begin never received model permission.
++    #[serde(default)]
++    task_goal_cycle_not_dispatched: bool,
+@@ -209,3 +227,5 @@
+-                    && previous.native_execution.is_none()
++                    && (previous.native_execution.is_none()
++                        || previous.outcome.as_deref() == Some("never-started"))
+                     && previous.identity.recovery.as_ref()
+-                        .is_some_and(|recovery| recovery.autonomous_goal.is_some())),
++                        .is_some_and(|recovery| recovery.autonomous_goal.is_some()
++                            || recovery.task_goal_cycle.is_some())),
+@@ -426 +446,2 @@
+-                                && (p.worker_generation != generation || p.goal_input_not_dispatched)),
++                                && (p.worker_generation != generation || p.goal_input_not_dispatched
++                                    || p.task_goal_cycle_not_dispatched)),
+@@ -477,2 +498,32 @@
++                    let same_task_goal = identity.recovery.as_ref()
++                        .zip(old.identity.recovery.as_ref())
++                        .is_some_and(|(current, previous)| {
++                            current.command_id.is_none() && previous.command_id.is_none()
++                                && current.command_generation.is_none() && previous.command_generation.is_none()
++                                && current.message_id.is_none() && previous.message_id.is_none()
++                                && current.task_input.is_none() && previous.task_input.is_none()
++                                && current.autonomous_goal.is_none() && previous.autonomous_goal.is_none()
++                                && current.thread_id.as_ref().is_some_and(|id| !id.is_empty())
++                                && current.thread_id == previous.thread_id
++                                && current.turn_id.as_ref().is_some_and(|id| !id.is_empty())
++                                && previous.turn_id.as_ref().is_some_and(|id| !id.is_empty())
++                                && current.task_goal_cycle.as_ref().zip(previous.task_goal_cycle.as_ref())
++                                    .is_some_and(|(cycle, prior)| {
++                                        !cycle.cycle_id.is_empty() && cycle.cycle_id == prior.cycle_id
++                                            && !cycle.goal_epoch.is_empty() && cycle.goal_epoch == prior.goal_epoch
++                                            && cycle.order_epoch == prior.order_epoch
++                                            && !cycle.scope_id.is_empty() && !prior.scope_id.is_empty()
++                                            && !cycle.gate_attempt_id.is_empty() && !prior.gate_attempt_id.is_empty()
++                                            && !cycle.runner_generation.is_empty() && !prior.runner_generation.is_empty()
++                                            && identity.operation_id == format!("native-inference:{}:{}:{}:{}",
++                                                current.thread_id.as_deref().unwrap(), current.turn_id.as_deref().unwrap(), cycle.scope_id, cycle.gate_attempt_id)
++                                            && old.identity.operation_id == format!("native-inference:{}:{}:{}:{}",
++                                                previous.thread_id.as_deref().unwrap(), previous.turn_id.as_deref().unwrap(), prior.scope_id, prior.gate_attempt_id)
++                                    })
++                        });
++                    let task_goal_cycle_not_dispatched = reference.task_goal_cycle_not_dispatched
++                        && same_task_goal
++                        && (old.native_execution.is_none()
++                            || (old.state == State::Released && old.outcome.as_deref() == Some("never-started")));
+                     anyhow::ensure!(
+                         (!old.ever_granted && old.state != State::Granted)
+@@ -482 +533,2 @@
+-                            || goal_input_not_dispatched,
++                            || goal_input_not_dispatched
++                            || task_goal_cycle_not_dispatched,
+@@ -495,2 +547,4 @@
+                                 current.message_id.is_none()
+                                     && previous.message_id.is_none()
++                                    && current.task_goal_cycle.is_none()
++                                    && previous.task_goal_cycle.is_none()
+@@ -535 +589 @@
+-                            .is_some_and(|r| r.autonomous_goal.is_none())
++                            .is_some_and(|r| r.autonomous_goal.is_none() && r.task_goal_cycle.is_none())
+@@ -540 +594 @@
+-                            .is_some_and(|r| r.autonomous_goal.is_none());
++                            .is_some_and(|r| r.autonomous_goal.is_none() && r.task_goal_cycle.is_none());
+@@ -544 +598 @@
+-                            && (same_message || same_goal),
++                            && (same_message || same_goal || task_goal_cycle_not_dispatched),

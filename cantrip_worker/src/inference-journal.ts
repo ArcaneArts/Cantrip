@@ -41,6 +41,18 @@ export function recoveryIdentity(
       : null,
     value?.autonomousGoal?.goalEpoch ?? null,
     ...(value?.autonomousGoal ? [value.autonomousGoal.orderEpoch ?? 0] : []),
+    ...(value?.taskGoalCycle
+      ? [
+          value.taskGoalCycle.cycleId,
+          value.taskGoalCycle.goalEpoch,
+          value.taskGoalCycle.scopeId,
+          value.taskGoalCycle.gateAttemptId,
+          value.taskGoalCycle.runnerGeneration,
+          value.taskGoalCycle.modelRouteId,
+          value.taskGoalCycle.providerAccountId,
+          value.taskGoalCycle.orderEpoch,
+        ]
+      : []),
   ]);
 }
 
@@ -52,6 +64,26 @@ export function recoveryQueueIdentity(
   value: InferenceRecoveryIdentity | null | undefined,
 ): string | null {
   if (!chatId || !value) return null;
+  if (value.taskGoalCycle) {
+    if (
+      value.messageId ||
+      value.commandId ||
+      value.commandGeneration ||
+      value.taskInput ||
+      value.autonomousGoal ||
+      !value.threadId ||
+      !value.turnId
+    )
+      return null;
+    return JSON.stringify([
+      "task-goal",
+      chatId,
+      value.taskGoalCycle.cycleId,
+      value.threadId,
+      value.taskGoalCycle.goalEpoch,
+      value.taskGoalCycle.orderEpoch,
+    ]);
+  }
   if (value.autonomousGoal) {
     if (
       value.messageId ||
@@ -116,6 +148,7 @@ interface InferenceRecoveryReference {
   revision: number;
   taskInputNotDispatched?: boolean;
   goalInputNotDispatched?: boolean;
+  taskGoalCycleNotDispatched?: boolean;
 }
 
 /** Serial durable metadata operations travel over the existing lifetime keeper.
@@ -243,6 +276,7 @@ export class WorkerInferenceJournal {
     signal?: AbortSignal,
     taskInputNotDispatched: ReadonlySet<string> = new Set(),
     goalInputNotDispatched: ReadonlySet<string> = new Set(),
+    taskGoalCycleNotDispatched: ReadonlySet<string> = new Set(),
   ): Promise<InferenceJournalRecord> {
     const validatedIdentity = identitySchema.parse(identity);
     // Persist the oldest same-provider ordinal in the first chunk. Every later
@@ -274,6 +308,9 @@ export class WorkerInferenceJournal {
             : {}),
           ...(goalInputNotDispatched.has(item.key)
             ? { goalInputNotDispatched: true }
+            : {}),
+          ...(taskGoalCycleNotDispatched.has(item.key)
+            ? { taskGoalCycleNotDispatched: true }
             : {}),
         }),
         "utf8",
@@ -309,6 +346,9 @@ export class WorkerInferenceJournal {
             : {}),
           ...(goalInputNotDispatched.has(item.key)
             ? { goalInputNotDispatched: true }
+            : {}),
+          ...(taskGoalCycleNotDispatched.has(item.key)
+            ? { taskGoalCycleNotDispatched: true }
             : {}),
         })),
       });

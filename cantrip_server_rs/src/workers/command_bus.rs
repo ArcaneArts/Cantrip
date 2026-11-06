@@ -167,6 +167,7 @@ fn is_execution_control(command: &Value) -> bool {
             | "chat.queue.prepare"
             | "chat.automation.resume"
             | "chat.goal.recover"
+            | "task.goal.recover"
             | "agent.interaction.respond"
             | "agent.interaction.respond.protected"
             | "agent.interaction.cancel"

@@ -1,6 +1,8 @@
 import type {
   InferenceOperationStatus,
   InferenceFailureEvidence,
+  TaskGoalCycleIdentity,
+  TaskGoalCycleRecovery,
 } from "@cantrip/protocol";
 import {
   recoveryIdentity,
@@ -31,6 +33,8 @@ interface Operation {
   observedStart: boolean;
   nativeBoundary: boolean;
   nativeScopeId: string | null;
+  taskGoalCycle?: TaskGoalCycleIdentity;
+  queued: boolean;
   rejectedInput: boolean;
   nativeFailureBeforeOutput: boolean;
   settled: boolean;
@@ -71,6 +75,7 @@ export interface InferencePreparationScope {
 }
 
 interface Request {
+  onQueued?: () => Promise<void>;
   lifetime?: InferenceOperationLifetime;
   purpose?: InferenceOperationStatus["purpose"];
   operationId: string;
@@ -94,6 +99,9 @@ interface NativeEntry {
   independent: boolean;
   confirmed: boolean;
   gateAttemptId: string;
+  expectedGoalEpoch: string | null;
+  /** Supplied by the actual pending Core claim, never just its notification. */
+  goal?: { epoch: string; inferenceOnly: boolean };
   lifetime?: InferenceOperationLifetime;
   result: Promise<void>;
   /** The exact reservation selected before an asynchronous bind can fail. */
@@ -112,7 +120,31 @@ interface NativeRequest {
   /** The live Core gate request, distinct from its physical inference scope. */
   gateAttemptId: string;
   /** Resolves only when the actual connection-owned Core gate is still pending. */
-  confirmOwnership(): Promise<boolean>;
+  confirmOwnership(): Promise<
+    | boolean
+    | {
+        claimed: boolean;
+        goalEpoch?: string | null;
+        inferenceOnly?: boolean;
+      }
+  >;
+  goalEpoch?: string;
+  runnerGeneration?: string;
+  /** A configured root Task association, never inherited by a child/helper. */
+  taskGoalCycle?: Pick<
+    TaskGoalCycleIdentity,
+    "cycleId" | "modelRouteId" | "providerAccountId" | "orderEpoch"
+  >;
+  onTaskGoalCycleQueued?: (
+    cycle: TaskGoalCycleIdentity,
+    operationId: string,
+    runtimeGeneration: string,
+  ) => Promise<void>;
+  onTaskGoalCycleDispatch?: (
+    cycle: TaskGoalCycleIdentity,
+    operationId: string,
+    recovery: TaskGoalCycleRecovery,
+  ) => Promise<void>;
   threadId: string;
   turnId: string;
   scopeId: string;
@@ -121,6 +153,7 @@ interface NativeRequest {
   rootThreadId?: string | null;
   /** Thread-owned association survives the preceding cycle's ticket release. */
   chatId?: string | null;
+  projectId?: string | null;
   /** Concurrent helper work must never borrow a dispatched root's reservation. */
   independent?: boolean;
 }
@@ -330,6 +363,8 @@ export class CodexInferenceAdmission {
       observedStart: false,
       nativeBoundary: Boolean(input.nativeScopeId),
       nativeScopeId: input.nativeScopeId ?? null,
+      taskGoalCycle: input.recovery?.taskGoalCycle,
+      queued: false,
       rejectedInput: false,
       nativeFailureBeforeOutput: false,
       settled: false,
@@ -340,8 +375,16 @@ export class CodexInferenceAdmission {
     };
     this.operations.add(operation);
     this.lifetimeOperations.set(input.lifetime, operation);
+    const queued = ticket.queued.then(async () => {
+      input.signal?.throwIfAborted();
+      await input.onQueued?.();
+      input.signal?.throwIfAborted();
+      operation.queued = true;
+    });
+    void queued.catch((error) => ticket.cancel(error));
     try {
       operation.lease = await ticket.ready;
+      await queued;
       operation.lease.signal.throwIfAborted();
       if (this.exited || operation.settled)
         throw new Error("The native inference admission was cancelled.");
@@ -680,6 +723,10 @@ export class CodexInferenceAdmission {
       throw new Error(
         "Native inference changed admission kind during redelivery.",
       );
+    if (entering && entering.expectedGoalEpoch !== (input.goalEpoch ?? null))
+      throw new Error(
+        "Native inference changed Goal identity during redelivery.",
+      );
     if (!entering) {
       let resolve!: () => void;
       let reject!: (error: unknown) => void;
@@ -691,6 +738,7 @@ export class CodexInferenceAdmission {
         independent,
         confirmed: false,
         gateAttemptId: input.gateAttemptId,
+        expectedGoalEpoch: input.goalEpoch ?? null,
         result,
       };
       entering = entry;
@@ -720,7 +768,19 @@ export class CodexInferenceAdmission {
     const key = JSON.stringify([input.threadId, input.turnId, input.scopeId]);
     let confirmed: boolean;
     try {
-      confirmed = await input.confirmOwnership();
+      const claim = await input.confirmOwnership();
+      confirmed = typeof claim === "boolean" ? claim : claim.claimed;
+      if (
+        confirmed &&
+        (typeof claim === "boolean" ? null : (claim.goalEpoch ?? null)) !==
+          (input.goalEpoch ?? null)
+      )
+        throw new Error("The pending native scope has another Goal identity.");
+      if (confirmed && typeof claim !== "boolean" && claim.goalEpoch)
+        entry.goal = {
+          epoch: claim.goalEpoch,
+          inferenceOnly: claim.inferenceOnly === true,
+        };
     } catch (error) {
       // No private reservation exists yet. Dropping this failed confirmation
       // cannot free model execution; another attempt must query Core again.
@@ -832,6 +892,20 @@ export class CodexInferenceAdmission {
     if (this.exited)
       throw new Error("The native inference process has exited.");
     const operationId = `native-inference:${input.threadId}:${input.turnId}:${input.scopeId}:${input.gateAttemptId}`;
+    const taskGoalCycle: TaskGoalCycleIdentity | undefined =
+      !input.independent &&
+      input.rootThreadId === input.threadId &&
+      entry.goal?.inferenceOnly &&
+      input.taskGoalCycle &&
+      input.runnerGeneration
+        ? {
+            ...input.taskGoalCycle,
+            goalEpoch: entry.goal.epoch,
+            scopeId: input.scopeId,
+            gateAttemptId: input.gateAttemptId,
+            runnerGeneration: input.runnerGeneration,
+          }
+        : undefined;
     const lifetime = this.runtime.createOperationLifetime(operationId);
     entry.lifetime = lifetime;
     const root = input.rootThreadId
@@ -850,12 +924,24 @@ export class CodexInferenceAdmission {
           : "turn",
       provider: input.provider,
       chatId: scope?.chatId ?? input.chatId,
-      projectId: scope?.projectId,
+      projectId: scope?.projectId ?? input.projectId,
       threadId: input.threadId,
       expectedTurnId: input.turnId,
       nativeScopeId: input.scopeId,
       recoveryKey: `native-turn:${input.threadId}:${input.turnId}:${input.scopeId}`,
-      recovery: { threadId: input.threadId, turnId: input.turnId },
+      recovery: {
+        threadId: input.threadId,
+        turnId: input.turnId,
+        ...(taskGoalCycle ? { taskGoalCycle } : {}),
+      },
+      onQueued: taskGoalCycle
+        ? () =>
+            input.onTaskGoalCycleQueued?.(
+              taskGoalCycle,
+              operationId,
+              this.runtime.generation,
+            ) ?? Promise.resolve()
+        : undefined,
       signal: input.signal,
     });
     try {
@@ -869,12 +955,46 @@ export class CodexInferenceAdmission {
       entry.operation = operation;
       await operation.lease.bindNative(binding);
       input.signal.throwIfAborted();
+      const recovery = operation.lease.taskGoalRecovery();
+      if (taskGoalCycle && recovery) {
+        if (!input.onTaskGoalCycleDispatch)
+          throw new Error(
+            "Task Goal inference has no canonical dispatch check.",
+          );
+        await input.onTaskGoalCycleDispatch(
+          taskGoalCycle,
+          operationId,
+          recovery,
+        );
+        input.signal.throwIfAborted();
+      }
     } catch (error) {
       // This newly acquired operation has not forwarded model execution yet.
       execution.notDispatched();
       throw error;
     }
     execution.dispatched();
+  }
+
+  queuedTaskGoalCycle(
+    threadId: string,
+    cycleId: string,
+    goalEpoch: string,
+  ): { operationId: string; runtimeGeneration: string } | null {
+    const operation = [...this.operations].find(
+      (operation) =>
+        !operation.settled &&
+        operation.queued &&
+        operation.threadId === threadId &&
+        operation.taskGoalCycle?.cycleId === cycleId &&
+        operation.taskGoalCycle.goalEpoch === goalEpoch,
+    );
+    return operation
+      ? {
+          operationId: operation.operationId,
+          runtimeGeneration: this.runtime.generation,
+        }
+      : null;
   }
 
   /** Called only after Core establishes that no inference can run before resume. */
