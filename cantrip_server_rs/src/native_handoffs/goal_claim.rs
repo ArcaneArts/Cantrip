@@ -4,6 +4,7 @@ use crate::native_commands::goal_handoff;
 
 pub(super) fn retained(claim: &Value, expected: &Value) -> bool {
     goal_handoff::identity(claim).is_some_and(|v| deep_equal(&v, expected))
+        && !truthy(claim.get("goal_cancelled"))
         && matches!(claim["status"].as_str(), Some("dispatched" | "uncertain"))
         && !truthy(claim.get("native_turn_id"))
         && !truthy(claim.get("goal_operation_id"))
@@ -32,6 +33,7 @@ pub(super) async fn capture(
     let identity = goal_handoff::identity(claim);
     let attempt = &command["intent"]["autonomousAttempt"];
     if claims.len() != 1
+        || truthy(claim.get("goal_cancelled"))
         || identity.is_none()
         || !truthy(attempt.get("goalEpoch"))
         || claim.get("goal_epoch") != attempt.get("goalEpoch")
@@ -111,7 +113,12 @@ pub(super) async fn validate_withdrawal(
     }
     if matches!(claim["status"].as_str(), Some("dispatched" | "uncertain")) {
         assert_prompt(tx, &chat, expected).await?;
-    } else if !(claim["status"] == "rejected" && root["status"] == "rejected") {
+    } else if !((claim["status"] == "rejected" && root["status"] == "rejected")
+        || (already
+            && claim["goal_cancelled"] == true
+            && claim["status"] == "consumed"
+            && root["status"] == "rejected"))
+    {
         return reject("handoff-native-operation-pending");
     }
     Ok(())

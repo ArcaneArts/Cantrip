@@ -119,6 +119,7 @@ pub(super) fn claim_value(row: &Value) -> Result<Value> {
         ("promptId", "prompt_id"),
         ("promptRevision", "prompt_revision"),
         ("awaitingGoal", "awaiting_goal"),
+        ("goalCancelled", "goal_cancelled"),
         ("goalEpoch", "goal_epoch"),
         ("goalOperationId", "goal_operation_id"),
         ("goalOperationGeneration", "goal_operation_generation"),

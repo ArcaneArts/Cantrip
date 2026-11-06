@@ -31,6 +31,7 @@ export async function wakeManagedQueueAutonomy(options: {
   const awaitingGoal = options.snapshot.claims.some(
     (claim) =>
       claim.awaitingGoal &&
+      !claim.goalCancelled &&
       claim.goalEpoch &&
       claim.operationId &&
       claim.operationGeneration &&

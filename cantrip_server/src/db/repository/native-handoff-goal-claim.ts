@@ -24,6 +24,7 @@ export function retainedGoalClaimMatches(
 ): boolean {
   return (
     isDeepStrictEqual(goalClaimIdentity(claim), expected) &&
+    !claim.goalCancelled &&
     ["dispatched", "uncertain"].includes(claim.status) &&
     !claim.nativeTurnId &&
     !claim.goalOperationId &&
@@ -65,6 +66,7 @@ export async function captureHandoffGoalClaim(
     .autonomousAttempt;
   if (
     claims.length !== 1 ||
+    claim.goalCancelled ||
     !identity ||
     !attempt?.goalEpoch ||
     identity.goalEpoch !== attempt.goalEpoch ||
@@ -149,6 +151,12 @@ export async function validateWithdrawingGoalClaim(
   if (!child && !retired) fail();
   if (["dispatched", "uncertain"].includes(claim!.status)) {
     await assertGoalClaimPrompt(tx, root.chatId, expected);
-  } else if (!(claim!.status === "rejected" && root.status === "rejected"))
+  } else if (!(
+    (claim!.status === "rejected" && root.status === "rejected") ||
+    (alreadyDeferred &&
+      claim!.goalCancelled &&
+      claim!.status === "consumed" &&
+      root.status === "rejected")
+  ))
     fail();
 }

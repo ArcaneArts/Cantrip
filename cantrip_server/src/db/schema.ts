@@ -5945,6 +5945,7 @@ export const managedQueueClaims = pgTable(
       .notNull()
       .references(() => queuedPrompts.id, { onDelete: "cascade" }),
     awaitingGoal: boolean("awaiting_goal").notNull().default(false),
+    goalCancelled: boolean("goal_cancelled").notNull().default(false),
     goalEpoch: text("goal_epoch"),
     goalOperationId: text("goal_operation_id").references(
       () => nativeCommands.operationId,

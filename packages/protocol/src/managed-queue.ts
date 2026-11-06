@@ -18,6 +18,8 @@ export const managedQueueClaimSchema = z
     promptId: id,
     promptRevision: revision,
     awaitingGoal: z.boolean().default(false),
+    // Cancels the unused first cycle, never replays an already-applied setter.
+    goalCancelled: z.boolean().optional(),
     goalEpoch: id.nullable().default(null),
     goalOperationId: id.nullable().default(null),
     goalOperationGeneration: id.nullable().default(null),

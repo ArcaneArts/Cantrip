@@ -578,6 +578,7 @@ export class NativeCommandRepository {
           if (
             !goalClaim ||
             !goalClaim.awaitingGoal ||
+            goalClaim.goalCancelled ||
             goalClaim.goalOperationId ||
             goalClaim.chatId !== input.session.chatId ||
             goalClaim.operationId !== handoff.operationId ||
