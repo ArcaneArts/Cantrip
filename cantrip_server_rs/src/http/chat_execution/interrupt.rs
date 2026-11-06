@@ -53,7 +53,7 @@ impl Execution {
                         logging::server_logger()(LogCall::event(
                             "warn",
                             "Preparation cancellation committed but worker notification failed",
-                            json!({"event":"chat.preparation.cancel-notification-failed","chatId":chat,"workerId":cancelled["workerId"],"err":logging::error_details(&cause)}),
+                            json!({"event":"chat.preparation.cancel-notification-failed","chatId":chat,"workerId":cancelled["workerId"],"err":logging::error_details(&cause.into())}),
                         ));
                     }
                 }
