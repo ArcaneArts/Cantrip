@@ -1,14 +1,12 @@
 //! Protected WebDAV control plane. Paths and credentials stay at the endpoints.
+use crate::workers::transport::WorkerTransport;
 pub mod repository;
 use crate::{
     database::Database,
     live::LiveService,
     tunnels,
     wire::{Value, value::json},
-    workers::{
-        bridge::WorkerBridge,
-        command_bus::{CommandFailure, LimitedCommandBus},
-    },
+    workers::command_bus::{CommandFailure, LimitedCommandBus},
 };
 use anyhow::{Context, Result};
 use indexmap::IndexMap;
@@ -55,7 +53,7 @@ struct ActiveShare {
 pub struct Service {
     repository: tunnels::Repository,
     commands: Arc<LimitedCommandBus>,
-    bridge: Arc<WorkerBridge>,
+    bridge: Arc<dyn WorkerTransport>,
     live: Arc<LiveService>,
     worker_links: Arc<crate::worker_links::service::Service>,
     active: Mutex<IndexMap<String, ActiveShare>>,
@@ -64,7 +62,7 @@ impl Service {
     pub fn new(
         database: Arc<Database>,
         commands: Arc<LimitedCommandBus>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
         live: Arc<LiveService>,
         worker_links: Arc<crate::worker_links::service::Service>,
     ) -> Arc<Self> {

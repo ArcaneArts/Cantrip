@@ -3,8 +3,10 @@
 The native `coordination::RedisCoordinator` implements the existing Node
 coordinator's Redis directory and message envelopes. The native
 `workers::coordinated::CoordinatedBridge` implements shared worker routing.
-Production startup does not yet construct these components: worker service,
-WorkerLink authority and App Live integration still need product acceptance.
+The authenticated worker socket and resource services accept a local or shared
+`WorkerTransport`; production startup still selects the local implementation.
+Shared startup, WorkerLink authority and App Live still need integration and
+product acceptance.
 Setting `REDIS_URL` on the Rust server does not yet enable shared routing.
 Node remains the default server and the worker remains Node.
 
@@ -39,6 +41,14 @@ Node remains the default server and the worker remains Node.
   owner lookup. Superseded attachment cleanup releases only its exact claim.
   Missing timeout and explicit null remain distinct; reply TTL validation does
   not coerce malformed timeout values.
+- Resource services use the same transport interface for commands, connection
+  identity, notifications, disconnection and binary frames. Its shared adapter
+  starts attachment generation fencing before returning an awaitable future,
+  retains the operation if its caller drops that future, and owns asynchronous
+  shutdown cleanup. Credential revocation never waits behind Redis IO.
+- The worker WebSocket continues reading bounded early input, close frames and
+  shutdown while a shared claim is pending. A closed socket cannot subsequently
+  become ready when that Redis operation completes.
 
 The runtime uses the native Redis client with Tokio and native TLS support.
 There is no JavaScript database or coordination helper in this module. The
@@ -88,13 +98,25 @@ node scripts/server-rust/coordinated-bridge-compatibility.mjs \
   --report .qa/rust-coordinated/bridge.json
 ```
 
-Local macOS arm64 acceptance passed 156 scenarios across all four pairings.
+Local macOS arm64 acceptance passed 172 scenarios across all four pairings.
 These cover command results/errors, ordered protected terminal events, event
 handler failures, all three binary relays, reconnect continuity without input
 replay, repeated legacy reconnects, generation replacement, attachment races at
 real Redis claim/renew awaits, exact old-claim cleanup, grace expiry, missing/null
 and coerced timeout inputs, expired requests, remaining receiver budgets,
 sender clock skew and delayed offline publications.
+
+The native fixture now drives attachment, subscriptions, frames and shutdown
+through the runtime transport adapter. Additional cases exercise the command
+delegate on local and remote workers, reject a mismatched owner before dispatch,
+and drop an attachment future while its owner lookup is paused. The attachment
+still acquires a real Redis claim and routes a subsequent command after release.
+
+All native targets compile. The 72 local native tests include the database-backed
+credential-revocation race and the interface's eager lifetime/correlation cases.
+Real Node/Rust HTTP/WebSocket ingress with the unchanged worker enrollment,
+heartbeat and WorkerConnection also passes using PGlite. This HTTP acceptance
+uses local transport; it does not establish shared HTTP/SQL product behavior.
 
 The suite fills the 512-publication, 2,048-pending-command and 512-incoming-command
 bounds. It asserts overflow behavior, real socket delivery after publications

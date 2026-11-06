@@ -7,6 +7,7 @@ use cantrip_server::{
     workers::{
         bridge::{CommandError, Continuity, EventHandler, Outgoing, Peer},
         coordinated::{CoordinatedBridge, Options, RequestOptions},
+        transport::{CoordinatedTransport, WorkerTransport},
     },
 };
 use futures::FutureExt;
@@ -45,6 +46,7 @@ struct Socket {
 }
 struct Driver {
     bridge: Arc<CoordinatedBridge>,
+    transport: Arc<dyn WorkerTransport>,
     coordinator: Arc<RedisCoordinator>,
     control: Arc<Control>,
     events: Events,
@@ -149,6 +151,7 @@ impl Driver {
             Box::pin(async { Ok(()) })
         }));
         Ok(Arc::new(Self {
+            transport: CoordinatedTransport::new(bridge.clone()),
             bridge,
             coordinator,
             control,
@@ -167,7 +170,7 @@ impl Driver {
     }
     async fn dispatch(self: Arc<Self>, r: Value) -> Result<Value> {
         match r["op"].as_str().unwrap_or(""){
-            "attach"=>{
+            "attach"|"abandonAttach"=>{
                 let worker=text(&r,"workerId");let name=text(&r,"peer");let c=&r["continuity"];
                 let identity=Continuity{owner:c["ownerId"].as_str().or(r["ownerId"].as_str()).unwrap_or("owner").into(),credential:c["credentialId"].as_str().unwrap_or("legacy").into(),process_generation:c["workerProcessGeneration"].as_str().unwrap_or("legacy").into()};
                 let (peer,mut output)=if c.is_null(){Peer::legacy(identity)}else{Peer::new(identity)};
@@ -187,7 +190,8 @@ impl Driver {
                     }
                 });
                 self.peers.lock().unwrap().insert(name,Socket{worker:worker.clone(),peer:peer.clone(),writer:writer.abort_handle()});
-                Ok(Value::Bool(self.bridge.attach(&worker,peer,r["ownerId"].as_str().map(str::to_owned),r["ready"].as_str().map(str::to_owned)).await?))
+                let attaching=self.transport.attach_worker(worker,peer,r["ownerId"].as_str().map(str::to_owned),r["ready"].as_str().map(str::to_owned));
+                if r["op"]=="abandonAttach"{drop(attaching);Ok(Value::Null)}else{Ok(Value::Bool(attaching.await?))}
             },
             "interrupt"=>{let socket=self.socket(&r);socket.peer.open.store(false,Ordering::Release);socket.writer.abort();self.bridge.local.interrupted(&socket.worker,&socket.peer);Ok(Value::Null)},
             "receive"=>{
@@ -198,7 +202,7 @@ impl Driver {
                     else{self.bridge.local.receive_surface_frame(&socket.worker,&socket.peer,bytes);}
                 }else{self.bridge.local.receive(&socket.worker,&socket.peer,&r["message"].stringify());}Ok(Value::Null)
             },
-            "begin"=>{
+            "begin"|"delegateBegin"=>{
                 let worker=text(&r,"workerId");let name=text(&r,"name");let command=r["command"].clone();let kind=command["type"].as_str().unwrap_or("").to_owned();let input=&r["options"];
                 let mut options=RequestOptions{owner:input["ownerId"].as_str().map(str::to_owned),forward_inference:input["forwardInferenceTiming"].as_bool()==Some(true),..Default::default()};
                 if let Some(timeout)=input.get("timeoutMs"){options.timeout=if timeout.is_null(){None}else{Some(Duration::from_secs_f64(timeout.as_f64().unwrap()/1000.0))};}
@@ -213,27 +217,27 @@ impl Driver {
                 let events=self.events.clone();let n=name.clone();options.on_inference=Some(Arc::new(move|event|{
                     let mut out=j!({"kind":"inference","name":n});if let Value::Object(fields)=&event && let Value::Object(out)=&mut out{out.extend(fields.iter().map(|(k,v)|(k.clone(),v.clone())));}record(&events,out);
                 }));
-                let result=self.bridge.request(&worker,command,options);let events=self.events.clone();
+                let result=if r["op"]=="delegateBegin"{self.transport.clone().request(options.owner.unwrap_or_else(|| "owner".into()),worker.clone(),command,options.timeout,options.on_event)}else{self.bridge.request(&worker,command,options)};let events=self.events.clone();
                 tokio::spawn(async move{
                     let mut event=j!({"kind":"completion","name":name});match result.await{Ok(value)=>{event["ok"]=Value::Bool(true);if let Some(value)=value{event["result"]=value;}},Err(error)=>{event["ok"]=Value::Bool(false);event["error"]=failure(&error,&worker,&kind);}}record(&events,event);
                 });Ok(Value::Null)
             },
             "subscribe"=>{
                 let worker=text(&r,"workerId");let mut tokens:Vec<Box<dyn Send+Sync>>=Vec::new();
-                let events=self.events.clone();let w=worker.clone();tokens.push(Box::new(self.bridge.subscribe_worker_disconnect(&worker,Arc::new(move||record(&events,j!({"kind":"disconnect","workerId":w}))))));
-                let events=self.events.clone();let w=worker.clone();tokens.push(Box::new(self.bridge.subscribe_worker_offline(&worker,Arc::new(move||record(&events,j!({"kind":"offline","workerId":w}))))));
-                let events=self.events.clone();let w=worker.clone();tokens.push(Box::new(self.bridge.subscribe_notifications(&worker,Arc::new(move|value|{record(&events,j!({"kind":"notification","workerId":w,"value":value.as_ref()}));Box::pin(async{Ok(())})}))));
-                let events=self.events.clone();let w=worker.clone();tokens.push(Box::new(self.bridge.subscribe_surface_frames(&worker,Arc::new(move|frame|{record(&events,j!({"kind":"frame","workerId":w,"transport":"surface","header":frame.header(),"payloadBase64":STANDARD.encode(frame.payload())}));Ok(())}))));
-                let events=self.events.clone();let w=worker.clone();tokens.push(Box::new(self.bridge.subscribe_tunnel_frames(&worker,Arc::new(move|frame|{record(&events,j!({"kind":"frame","workerId":w,"transport":"tunnel","header":frame.header(),"payloadBase64":STANDARD.encode(frame.payload())}));Ok(())}))));
-                let events=self.events.clone();let w=worker.clone();tokens.push(Box::new(self.bridge.subscribe_worker_link_frames(&worker,Arc::new(move|frame|{record(&events,j!({"kind":"frame","workerId":w,"transport":"worker-link","header":frame.header(),"payloadBase64":STANDARD.encode(frame.payload()),"bytes":STANDARD.encode(frame.bytes())}));Ok(())}))));
+                let events=self.events.clone();let w=worker.clone();tokens.push(Box::new(self.transport.subscribe_worker_disconnect(&worker,Arc::new(move||record(&events,j!({"kind":"disconnect","workerId":w}))))));
+                let events=self.events.clone();let w=worker.clone();tokens.push(Box::new(self.transport.subscribe_worker_offline(&worker,Arc::new(move||record(&events,j!({"kind":"offline","workerId":w}))))));
+                let events=self.events.clone();let w=worker.clone();tokens.push(Box::new(self.transport.subscribe_notifications(&worker,Arc::new(move|value|{record(&events,j!({"kind":"notification","workerId":w,"value":value.as_ref()}));Box::pin(async{Ok(())})}))));
+                let events=self.events.clone();let w=worker.clone();tokens.push(Box::new(self.transport.subscribe_surface_frames(&worker,Arc::new(move|frame|{record(&events,j!({"kind":"frame","workerId":w,"transport":"surface","header":frame.header(),"payloadBase64":STANDARD.encode(frame.payload())}));Ok(())}))));
+                let events=self.events.clone();let w=worker.clone();tokens.push(Box::new(self.transport.subscribe_tunnel_frames(&worker,Arc::new(move|frame|{record(&events,j!({"kind":"frame","workerId":w,"transport":"tunnel","header":frame.header(),"payloadBase64":STANDARD.encode(frame.payload())}));Ok(())}))));
+                let events=self.events.clone();let w=worker.clone();tokens.push(Box::new(self.transport.subscribe_worker_link_frames(&worker,Arc::new(move|frame|{record(&events,j!({"kind":"frame","workerId":w,"transport":"worker-link","header":frame.header(),"payloadBase64":STANDARD.encode(frame.payload()),"bytes":STANDARD.encode(frame.bytes())}));Ok(())}))));
                 self.subscriptions.lock().unwrap().extend(tokens);Ok(Value::Null)
             },
-            "sendFrame"=>{let worker=text(&r,"workerId");let payload=STANDARD.decode(text(&r,"payloadBase64"))?;let h=r["header"].clone();let frame=if let Some(raw)=r["frameBytes"].as_str(){Some(cantrip_server::worker_links::frame::decode(STANDARD.decode(raw)?.into()).map_err(anyhow::Error::from)?)}else{None};Ok(Value::Bool(match r["transport"].as_str(){Some("surface")=>self.bridge.send_surface_frame(&worker,h,&payload),Some("tunnel")=>self.bridge.send_tunnel_frame(&worker,h,&payload),_=>self.bridge.send_worker_link_frame(&worker,match frame{Some(f)=>f,None=>cantrip_server::worker_links::frame::create(h,&payload).map_err(anyhow::Error::from)?})}))},
-            "disconnect"=>{self.bridge.disconnect(&text(&r,"workerId"),r["reason"].as_str().map(str::to_owned),r["code"].as_u64().map(|n|n as u16));Ok(Value::Null)},
-            "connected"=>Ok(Value::Bool(self.bridge.is_connected(&text(&r,"workerId")))),
-            "identity"=>Ok(self.bridge.connection_identity(&text(&r,"workerId")).map(|c|j!({"ownerId":c.owner,"credentialId":c.credential,"workerProcessGeneration":c.process_generation})).unwrap_or(Value::Null)),
+            "sendFrame"=>{let worker=text(&r,"workerId");let payload=STANDARD.decode(text(&r,"payloadBase64"))?;let h=r["header"].clone();let frame=if let Some(raw)=r["frameBytes"].as_str(){Some(cantrip_server::worker_links::frame::decode(STANDARD.decode(raw)?.into()).map_err(anyhow::Error::from)?)}else{None};Ok(Value::Bool(match r["transport"].as_str(){Some("surface")=>self.transport.send_surface_frame(&worker,h,&payload),Some("tunnel")=>self.transport.send_tunnel_frame(&worker,h,&payload),_=>self.transport.send_worker_link_frame(&worker,match frame{Some(f)=>f,None=>cantrip_server::worker_links::frame::create(h,&payload).map_err(anyhow::Error::from)?})}))},
+            "disconnect"=>{self.transport.disconnect(&text(&r,"workerId"),r["reason"].as_str().unwrap_or("Worker credential was revoked"),r["code"].as_u64().unwrap_or(1008) as u16);Ok(Value::Null)},
+            "connected"=>Ok(Value::Bool(self.transport.is_connected(&text(&r,"workerId")))),
+            "identity"=>Ok(self.transport.connection_identity(&text(&r,"workerId")).map(|c|j!({"ownerId":c.owner,"credentialId":c.credential,"workerProcessGeneration":c.process_generation})).unwrap_or(Value::Null)),
             "presence"=>Ok(self.coordinator.find_worker(&text(&r,"workerId").into()).await?.unwrap_or(Value::Null)),
-            "stats"=>Ok(Value::from_serialize(&self.bridge.stats())),
+            "stats"=>Ok(Value::from_serialize(&self.transport.stats())),
             "barrier"=>{self.coordinator.publish(j!({"kind":"fixture-barrier","targetInstanceId":r["target"],"name":r["name"]}),None).await?;Ok(Value::Null)},
             "coordinationStats"=>Ok(self.coordinator.stats()),
             "events"=>Ok(Value::Array(std::mem::take(&mut *self.events.lock().unwrap()))),
@@ -244,7 +248,7 @@ impl Driver {
             "releaseOwner"=>{release(&self.control.owner_gates,&text(&r,"workerId"));Ok(Value::Null)},
             "gateEvent"=>{gate(&self.control.event_gates,text(&r,"name"));Ok(Value::Null)},
             "releaseEvent"=>{release(&self.control.event_gates,&text(&r,"name"));Ok(Value::Null)},
-            "close"=>{self.bridge.close().await;self.coordinator.close().await?;for p in self.peers.lock().unwrap().values(){p.writer.abort();}Ok(Value::Null)},
+            "close"=>{self.transport.shutdown().await?;self.coordinator.close().await?;for p in self.peers.lock().unwrap().values(){p.writer.abort();}Ok(Value::Null)},
             _=>bail!("Unknown fixture operation"),
         }
     }
@@ -286,7 +290,7 @@ async fn main() -> Result<()> {
             tokio::spawn(response);
         }
     }
-    driver.bridge.close().await;
+    driver.transport.shutdown().await?;
     driver.coordinator.close().await?;
     drop(tx);
     output.await??;

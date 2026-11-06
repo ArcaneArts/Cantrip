@@ -9800,10 +9800,10 @@
       "referenceTests": [
         "cantrip_server/test/shared-relay-coordination.test.ts"
       ],
-      "runtimeFinding": "Rust implements the native Redis coordinator and coordinated worker bridge: remote command/event/response routing, phase deadlines, notifications, legacy and asserted reconnect continuity, attachment/owner fencing and opaque surface/tunnel/WorkerLink relays. Production Rust startup and WorkerService still use the local bridge. WorkerLink authority and App Live integration and SQL-backed mixed-instance product acceptance remain incomplete. REDIS_URL alone does not enable shared routing. The dedicated local oracle instantiates the actual production Node coordinated components.",
+      "runtimeFinding": "Rust implements the native Redis coordinator, coordinated worker bridge and WorkerTransport adapter. Resource services and authenticated sockets accept either local or coordinated transport; attachment generation fencing begins eagerly, IO does not hold the revocation lock, and socket close/shutdown is observed during pending claims. Production startup still constructs local transport. WorkerLink authority, App Live, instance-aware recovery and SQL-backed mixed product acceptance remain incomplete. REDIS_URL alone does not enable shared routing.",
       "remaining": [
         "Wire native Redis coordination into production startup, health and graceful shutdown without adding a JavaScript helper.",
-        "Integrate the coordinated worker bridge with production WorkerService and authenticated sockets, WorkerLink authority/revocation and App Live routing. Qualify malformed legacy relay payloads and listener error/lifecycle fidelity. Preserve consumer-level replay/deduplication; the reference coordinator itself delivers repeated message IDs.",
+        "Construct coordinated WorkerTransport from production startup; finish WorkerLink authority/revocation and App Live routing and use observed instance count before transient recovery. Qualify malformed legacy relay payloads and listener lifecycle/error fidelity. Preserve consumer-level replay/deduplication; the reference coordinator itself delivers repeated message IDs.",
         "Exercise real SQL-backed Rust/Rust and mixed Node/Rust product instances, interruption at execution boundaries, replacement, replay, backpressure and revocation; qualify TLS, supported platforms and packaged/deployment artifacts.",
         "Qualify fail-fast publish/readiness and offline command-queue timing against Source during production integration; the current functional outage checks assert results and recovery, not timing equivalence."
       ],
@@ -9813,7 +9813,8 @@
         "cantrip_server_rs/src/coordination/redis.rs",
         "cantrip_server_rs/src/coordination/service.rs",
         "cantrip_server_rs/src/workers/coordinated/",
-        "cantrip_server_rs/src/remote_surfaces/frame.rs"
+        "cantrip_server_rs/src/remote_surfaces/frame.rs",
+        "cantrip_server_rs/src/workers/transport.rs"
       ],
       "localAcceptance": {
         "platform": "darwin-arm64",
@@ -9835,16 +9836,25 @@
         "scripts/server-rust/coordinated-deadline-cases.mjs",
         "scripts/server-rust/coordinated-bound-cases.mjs",
         "scripts/server-rust/coordinated-interruption-cases.mjs",
-        "cantrip_server_rs/examples/coordinated-bridge-fixture.rs"
+        "cantrip_server_rs/examples/coordinated-bridge-fixture.rs",
+        "scripts/server-rust/coordinated-transport-cases.mjs",
+        "cantrip_server_rs/tests/worker_transport.rs",
+        "cantrip_server_rs/tests/worker_authentication.rs"
       ],
       "bridgeLocalAcceptance": {
         "platform": "darwin-arm64",
         "redisVersion": "8.10.3",
         "pairs": ["node/node", "node/rust", "rust/node", "rust/rust"],
-        "scenarioGroups": 156,
-        "scope": "Actual bridge classes with controlled sockets/owner lookups, real Redis claims and pub/sub, attachment awaits, deadlines and process interruption/restart. Not production HTTP/SQL services, full WorkerLink authority, App Live or mixed rolling product deployment.",
+        "scenarioGroups": 172,
+        "scope": "Actual bridge classes and native runtime transport adapter with controlled sockets/owner lookups, real Redis claims/pub-sub, attachment awaits, caller-drop lifetime, direct command delegation, deadlines, queue bounds and process interruption/restart. Not production shared HTTP/SQL, full WorkerLink authority, App Live or mixed rolling product deployment.",
         "command": "node scripts/server-rust/coordinated-bridge-compatibility.mjs --redis-bin /path/to/redis-server --report .qa/rust-coordinated/bridge.json",
         "report": "docs/RUST_SERVER_REDIS.md"
+      },
+      "transportLocalAcceptance": {
+        "platform": "darwin-arm64",
+        "nativeTests": 72,
+        "allTargetsCompile": true,
+        "scope": "Native interface lifetime/correlation plus library, worker bridge/link/tunnel/ingress and real database-backed credential-revocation tests. Actual Node/Rust HTTP/WS ingress on PGlite passes with local transport. Shared startup and multi-instance product behavior remain unqualified."
       }
     },
     "postgresConcurrencyAndTls": {

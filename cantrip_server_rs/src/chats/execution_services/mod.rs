@@ -1,5 +1,6 @@
 //! Production execution graph. Every turn, recovery, receipt and scheduler uses
 //! the same worker command bus, durable writers and owner-scoped Live service.
+use crate::workers::transport::WorkerTransport;
 mod inference_feedback;
 mod notifications;
 mod scheduling;
@@ -28,10 +29,7 @@ use crate::{
     operations::logging::Logger,
     task_scheduling::{operation_queue, project_pause, scheduler},
     wire::{Value, value::json},
-    workers::{
-        bridge::{NotificationSubscription, WorkerBridge},
-        command_bus::LimitedCommandBus,
-    },
+    workers::{bridge::NotificationSubscription, command_bus::LimitedCommandBus},
 };
 use std::{
     collections::HashMap,
@@ -41,7 +39,7 @@ use std::{
 pub struct Dependencies {
     pub database: Arc<Database>,
     pub commands: Arc<LimitedCommandBus>,
-    pub bridge: Arc<WorkerBridge>,
+    pub bridge: Arc<dyn WorkerTransport>,
     pub routing: Arc<ModelRouting>,
     pub console: Arc<ManagedConsole>,
     pub live: Arc<Live>,
@@ -70,7 +68,7 @@ pub struct Service {
     quota: Arc<runtime_quota::Service>,
     titles: Arc<MessageTitles>,
     usage: Arc<usage::Invalidations>,
-    bridge: Arc<WorkerBridge>,
+    bridge: Arc<dyn WorkerTransport>,
     logger: Logger,
     subscriptions: Mutex<HashMap<String, NotificationSubscription>>,
     inference_revisions: Mutex<HashMap<String, (String, u64)>>,

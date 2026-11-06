@@ -1,13 +1,11 @@
 //! Debounced worker observation configuration and fenced path reconciliation.
 use super::{coordinator::Coordinator, targets::TargetRepository};
+use crate::workers::transport::WorkerTransport;
 use crate::{
     database::Database,
     operations::logging::{self, LogCall},
     wire::{Value, value::json},
-    workers::{
-        bridge::WorkerBridge,
-        command_bus::{CommandFailure, LimitedCommandBus},
-    },
+    workers::command_bus::{CommandFailure, LimitedCommandBus},
 };
 use anyhow::{Context, Result};
 use std::{
@@ -33,7 +31,7 @@ struct State {
 pub struct Service {
     live: std::sync::Weak<crate::live::LiveService>,
     repository: TargetRepository,
-    bridge: Arc<WorkerBridge>,
+    bridge: Arc<dyn WorkerTransport>,
     commands: Arc<LimitedCommandBus>,
     tasks: Arc<Coordinator>,
     state: Mutex<State>,
@@ -41,7 +39,7 @@ pub struct Service {
 impl Service {
     pub fn new(
         database: Arc<Database>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
         commands: Arc<LimitedCommandBus>,
         live: &Arc<crate::live::LiveService>,
     ) -> Arc<Self> {

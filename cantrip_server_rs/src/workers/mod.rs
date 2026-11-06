@@ -15,6 +15,7 @@ pub mod request;
 pub(crate) mod resource_revocations;
 mod rows;
 pub mod service;
+pub mod transport;
 
 use std::fmt;
 

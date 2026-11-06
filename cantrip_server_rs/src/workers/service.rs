@@ -1,4 +1,5 @@
 use super::{bridge::WorkerBridge, limits::SlidingWindow, repository::WorkerRepository};
+use crate::workers::transport::WorkerTransport;
 use crate::{
     config::{DeploymentMode, ServerConfig},
     database::Database,
@@ -32,7 +33,7 @@ pub struct RequestLimiters {
 }
 pub struct WorkerService {
     pub repository: WorkerRepository,
-    pub bridge: Arc<WorkerBridge>,
+    pub bridge: Arc<dyn WorkerTransport>,
     pub commands: Arc<super::command_bus::LimitedCommandBus>,
     pub relay_quotas: Arc<crate::relay::RelayQuotas>,
     pub invalidations: broadcast::Sender<Invalidation>,
@@ -57,6 +58,13 @@ impl WorkerService {
         usage: Option<crate::live::UsageRecorder>,
     ) -> Arc<Self> {
         let bridge = WorkerBridge::with_usage(Duration::from_secs(15), usage);
+        Self::with_transport(database, config, bridge)
+    }
+    pub fn with_transport(
+        database: Arc<Database>,
+        config: &ServerConfig,
+        bridge: Arc<dyn WorkerTransport>,
+    ) -> Arc<Self> {
         let relay_quotas = crate::relay::RelayQuotas::new(config);
         let commands = super::command_bus::LimitedCommandBus::new(
             database.clone(),
@@ -203,12 +211,12 @@ impl WorkerService {
         // reference WebSocket plugin's preClose hook.
         self.shutdown.send_replace(true);
     }
-    pub fn close(&self) {
+    pub async fn close(&self) -> Result<()> {
         self.pre_close();
         for (_, timer) in self.offline.lock().unwrap().drain() {
             timer.abort();
         }
-        self.bridge.close();
+        self.bridge.shutdown().await
     }
     pub async fn drained(&self) -> Result<()> {
         // Pre-close is published before HTTP admission stops. A late upgraded

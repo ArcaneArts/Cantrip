@@ -198,7 +198,7 @@ pub struct Coordinator {
     workers: WorkerRequest,
     options: Options,
     state: Mutex<State>,
-    bridge: Option<Arc<crate::workers::bridge::WorkerBridge>>,
+    bridge: Option<Arc<dyn crate::workers::transport::WorkerTransport>>,
     changed: tokio::sync::Notify,
 }
 impl Coordinator {
@@ -208,7 +208,7 @@ impl Coordinator {
     fn construct(
         workers: WorkerRequest,
         options: Options,
-        bridge: Option<Arc<crate::workers::bridge::WorkerBridge>>,
+        bridge: Option<Arc<dyn crate::workers::transport::WorkerTransport>>,
     ) -> Arc<Self> {
         Arc::new(Self {
             workers,

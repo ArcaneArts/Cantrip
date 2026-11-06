@@ -1,8 +1,9 @@
 //! Bind authority to the production Rust command bus and its actual worker
 //! lifecycle. Admitted callbacks survive an HTTP/socket caller going away.
 use super::*;
+use crate::workers::transport::WorkerTransport;
 use crate::workers::{
-    bridge::{NotificationSubscription, OfflineSubscription, WorkerBridge},
+    bridge::{NotificationSubscription, OfflineSubscription},
     command_bus::LimitedCommandBus,
 };
 use anyhow::Context;
@@ -22,7 +23,7 @@ impl Drop for Admission {
 impl Coordinator {
     pub fn native(
         commands: Arc<LimitedCommandBus>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
         options: Options,
     ) -> Arc<Self> {
         let requests: WorkerRequest = Arc::new(move |worker, command, _owner| {

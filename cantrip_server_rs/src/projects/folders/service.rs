@@ -1,10 +1,8 @@
 use super::*;
+use crate::workers::transport::WorkerTransport;
 use crate::{
     live::LiveService,
-    workers::{
-        bridge::WorkerBridge,
-        command_bus::{CommandFailure, LimitedCommandBus},
-    },
+    workers::command_bus::{CommandFailure, LimitedCommandBus},
 };
 use std::{sync::Mutex, time::Duration};
 use tokio::sync::{Notify, watch};
@@ -20,7 +18,7 @@ struct State {
 pub struct FolderService {
     pub repository: FolderRepository,
     commands: Arc<LimitedCommandBus>,
-    bridge: Arc<WorkerBridge>,
+    bridge: Arc<dyn WorkerTransport>,
     live: Arc<LiveService>,
     state: Mutex<State>,
     changed: Notify,
@@ -61,7 +59,7 @@ impl FolderService {
     pub fn new(
         database: Arc<Database>,
         commands: Arc<LimitedCommandBus>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
         live: Arc<LiveService>,
     ) -> Arc<Self> {
         Arc::new(Self {

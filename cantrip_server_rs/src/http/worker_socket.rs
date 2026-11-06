@@ -259,27 +259,84 @@ async fn run(
             &state.control_generation,
         )
     });
-    // Owner lookup awaited database IO after the first revocation check. Fence
-    // the final cache check and synchronous attach together: a revoker either
-    // rejects this attach or disconnects the already attached peer afterward.
+    // Register the attachment generation under the final revocation check.
+    // Shared attachment begins eagerly, but Redis IO never holds this lock.
+    // A revoker either rejects it here or invalidates the in-flight generation.
     service
         .managed_preparation
         .subscribe(&state.bridge, &worker);
     service.worktree_observations.subscribe(&worker);
     service.run_configuration_observations.subscribe(&worker);
-    let accepted = {
+    let attaching = {
         let revoked = state.revoked.read().unwrap();
         if !authenticated.development && revoked.contains(&peer.identity.credential) {
-            Err((1008, "Worker credential was revoked"))
-        } else if state.bridge.attach(&worker, peer.clone(), ready) {
-            Ok(())
+            None
         } else {
-            Err((1012, "Worker connection was not accepted"))
+            Some(state.bridge.attach_worker(
+                worker.clone(),
+                peer.clone(),
+                Some(owner.clone()),
+                ready,
+            ))
         }
     };
-    if let Err((code, reason)) = accepted {
-        close(&mut socket, code, reason).await;
+    let Some(mut attaching) = attaching else {
+        close(&mut socket, 1008, "Worker credential was revoked").await;
         return;
+    };
+    let mut attaching_close = peer.closing.subscribe();
+    let accepted = if let Some(result) = attaching.as_mut().now_or_never() {
+        result
+    } else {
+        loop {
+            let closed = attaching_close.borrow().clone();
+            if let Some((code, reason)) = closed {
+                buffer.clear();
+                close(&mut socket, code, &reason).await;
+                return;
+            }
+            tokio::select! {biased;
+                _=attaching_close.changed()=>continue,
+                _=shutdown.changed()=>{
+                    peer.open.store(false, Ordering::Release);
+                    buffer.clear();close(&mut socket,1001,"Server shutting down").await;return;
+                },
+                input=socket.recv()=>match input {
+                    None=>{peer.open.store(false,Ordering::Release);return;},
+                    Some(Ok(Message::Close(_)))=>{peer.open.store(false,Ordering::Release);buffer.clear();let _=socket.flush().await;return;},
+                    Some(Err(error))=>{peer.open.store(false,Ordering::Release);buffer.clear();if let Some(code)=protocol_close(&error){close(&mut socket,code,"").await;}return;},
+                    Some(Ok(message))=>{if let Err((code,reason))=buffer.push(message){peer.open.store(false,Ordering::Release);buffer.clear();close(&mut socket,code,reason).await;return;}},
+                },
+                result=&mut attaching=>break result,
+            }
+        }
+    };
+    let closed = peer.closing.borrow().clone();
+    if let Some((code, reason)) = closed {
+        close(&mut socket, code, &reason).await;
+        return;
+    }
+    match accepted {
+        Ok(true) => {}
+        Ok(false) => {
+            peer.open.store(false, Ordering::Release);
+            close(&mut socket, 1012, "Worker connection was not accepted").await;
+            return;
+        }
+        Err(_) => {
+            peer.open.store(false, Ordering::Release);
+            eprintln!(
+                "{}",
+                serde_json::json!({"event":"worker.connection.claim-failed","subsystem":"worker-connection","operation":"connect","reasonCode":"coordination-unavailable","status":"failed","workerId":worker})
+            );
+            close(
+                &mut socket,
+                1013,
+                "Worker relay coordination is unavailable",
+            )
+            .await;
+            return;
+        }
     }
     state.invalidate(&owner, "worker-availability", &worker);
     // Keep the subscription for this socket's lifetime. Notifications only wake
@@ -348,7 +405,13 @@ async fn run(
     );
     drop(permit);
     for message in std::mem::take(&mut buffer.messages) {
-        receive(&state.bridge, &service.usage, &worker, &peer, message);
+        receive(
+            state.bridge.local(),
+            &service.usage,
+            &worker,
+            &peer,
+            message,
+        );
     }
     drop(buffer);
     let (mut sink, mut stream) = socket.split();
@@ -389,11 +452,11 @@ async fn run(
             Some(Ok(Message::Close(frame)))=>{input_closed=true;let (code,reason)=frame.map_or((1000,String::new()),|frame|(frame.code.into(),frame.reason.to_string()));peer.close(code,&reason);},
             Some(Err(error))=>{if let Some(code)=protocol_close(&error){input_closed=true;peer.close(code,"");}else{break}},
             None=>break,
-            Some(Ok(message))=>receive(&state.bridge,&service.usage,&worker,&peer,message)
+            Some(Ok(message))=>receive(state.bridge.local(),&service.usage,&worker,&peer,message)
         }}}
     }
     peer.open.store(false, Ordering::Release);
-    state.bridge.interrupted(&worker, &peer);
+    state.bridge.clone().local_arc().interrupted(&worker, &peer);
 }
 fn protocol_close(error: &tungstenite::Error) -> Option<u16> {
     match error {

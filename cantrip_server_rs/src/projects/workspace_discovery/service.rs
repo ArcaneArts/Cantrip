@@ -1,8 +1,6 @@
 use super::*;
-use crate::{
-    live::LiveService,
-    workers::{bridge::WorkerBridge, command_bus::LimitedCommandBus},
-};
+use crate::workers::transport::WorkerTransport;
+use crate::{live::LiveService, workers::command_bus::LimitedCommandBus};
 use std::{sync::Mutex, time::Duration};
 use tokio::sync::{Notify, watch};
 
@@ -16,7 +14,7 @@ struct State {
 pub struct DiscoveryService {
     pub repository: DiscoveryRepository,
     pub(super) commands: Arc<LimitedCommandBus>,
-    pub(super) bridge: Arc<WorkerBridge>,
+    pub(super) bridge: Arc<dyn WorkerTransport>,
     live: Arc<LiveService>,
     state: Mutex<State>,
     changed: Notify,
@@ -33,7 +31,7 @@ impl DiscoveryService {
     pub fn new(
         database: Arc<Database>,
         commands: Arc<LimitedCommandBus>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
         live: Arc<LiveService>,
     ) -> Arc<Self> {
         Arc::new(Self {

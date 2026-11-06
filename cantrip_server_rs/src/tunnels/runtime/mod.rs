@@ -1,4 +1,5 @@
 //! Desktop tunnel activation and socket lifetime, with owned database cleanup.
+use crate::workers::transport::WorkerTransport;
 mod activation;
 mod endpoint;
 mod lifecycle;
@@ -13,7 +14,7 @@ use crate::{
     live,
     operations::logging::{LogCall, Logger},
     wire::{Value, coercion, value::json},
-    workers::bridge::{OfflineSubscription, WorkerBridge},
+    workers::bridge::OfflineSubscription,
 };
 use anyhow::{Context, Result, bail};
 use indexmap::IndexMap;
@@ -80,7 +81,7 @@ pub struct Runtime {
     serial: ReentrantMutex<()>,
     state: Mutex<State>,
     repository: Repository,
-    bridge: Arc<WorkerBridge>,
+    bridge: Arc<dyn WorkerTransport>,
     broker: Arc<Broker>,
     changed: Changed,
     record: Option<Record>,
@@ -118,7 +119,7 @@ fn change(active: &Active) -> Value {
 impl Runtime {
     pub fn new(
         repository: Repository,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
         broker: Arc<Broker>,
         changed: Changed,
         record: Option<Record>,
@@ -161,6 +162,7 @@ impl Runtime {
         initialize: &Value,
     ) -> Result<Attachment> {
         self.bridge
+            .local()
             .synchronized(|| self.begin_inner(socket, authorization, initialize))
     }
     fn begin_inner(

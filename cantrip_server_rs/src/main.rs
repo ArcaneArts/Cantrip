@@ -390,7 +390,7 @@ async fn main() -> Result<()> {
             service.direct_attachments.close().await
         );
         shutdown_step!("worker-links-close", service.worker_links.close().await);
-        shutdown_step!("worker-bridge-close", service.workers.close());
+        shutdown_step!("worker-bridge-close", service.workers.close().await)?;
         shutdown_step!("execution", service.execution.drained().await);
         shutdown_step!(
             "logical-completions",

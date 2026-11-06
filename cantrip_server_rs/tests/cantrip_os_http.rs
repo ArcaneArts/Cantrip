@@ -83,7 +83,13 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
         credential: "fixture".into(),
         process_generation: worker_generation.clone(),
     });
-    assert!(service.workers.bridge.attach(&worker, peer.clone(), None));
+    assert!(
+        service
+            .workers
+            .bridge
+            .local()
+            .attach(&worker, peer.clone(), None)
+    );
     let response_peer = Arc::new(Mutex::new(peer));
     let active_peer = response_peer.clone();
     let (frames, mut output) = tokio::sync::mpsc::unbounded_channel();
@@ -111,7 +117,7 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     let (held_inspections, mut held_responses) = tokio::sync::mpsc::unbounded_channel();
     let recovery_mode = Arc::new(AtomicUsize::new(0));
     let observed_mode = recovery_mode.clone();
-    let bridge = service.workers.bridge.clone();
+    let bridge = service.workers.bridge.clone().local_arc();
     let target = worker.clone();
     let actual_owner = owner.clone();
     let responder = tokio::spawn(async move {
@@ -463,7 +469,7 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
             .json()
             .await?;
         assert_eq!(settled["state"], "ready", "{settled}");
-        service.workers.bridge.receive(
+        service.workers.bridge.local().receive(
             &worker,
             &peer,
             &json!({"kind":"response","requestId":request_id,"ok":true,"result":old_result})
@@ -699,7 +705,13 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
             credential: "fixture".into(),
             process_generation: generation,
         });
-        assert!(service.workers.bridge.attach(&worker, peer.clone(), None));
+        assert!(
+            service
+                .workers
+                .bridge
+                .local()
+                .attach(&worker, peer.clone(), None)
+        );
         *response_peer.lock().unwrap() = peer;
         let frames = frames.clone();
         tokio::spawn(async move {
@@ -853,7 +865,7 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
             )
             .await?
     );
-    service.workers.close();
+    service.workers.close().await.unwrap();
     drop(frames);
     let closed = tokio::time::timeout(Duration::from_secs(10), responder)
         .await

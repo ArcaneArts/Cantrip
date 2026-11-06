@@ -1,5 +1,6 @@
 //! Native relay sequencing, quotas and bounded per-lane output queues. The
 //! transport owns its connection handle and retires it after actual IO cleanup.
+use crate::workers::transport::WorkerTransport;
 mod channels;
 mod lifecycle;
 mod queue;
@@ -9,7 +10,7 @@ use super::{
 };
 use crate::{
     wire::{Value, value::json},
-    workers::bridge::{FrameSubscription, OfflineSubscription, WorkerBridge},
+    workers::bridge::{FrameSubscription, OfflineSubscription},
 };
 use indexmap::IndexMap;
 use std::{
@@ -101,7 +102,7 @@ struct State {
     connections: IndexMap<String, Arc<Connection>>,
 }
 pub struct Relay {
-    bridge: Arc<WorkerBridge>,
+    bridge: Arc<dyn WorkerTransport>,
     options: Options,
     state: Mutex<State>,
     attachment: Mutex<()>,
@@ -129,7 +130,7 @@ fn bandwidth(header: &Value) -> &'static str {
     }
 }
 impl Relay {
-    pub fn new(bridge: Arc<WorkerBridge>, options: Options) -> Arc<Self> {
+    pub fn new(bridge: Arc<dyn WorkerTransport>, options: Options) -> Arc<Self> {
         Arc::new(Self {
             bridge,
             options,
