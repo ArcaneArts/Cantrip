@@ -82,6 +82,10 @@ export async function createNativeSharedViewFixture(
   let cua: Awaited<ReturnType<typeof createNativeCuaWorkerFixture>> | undefined;
   const messages: string[] = [];
   const completed: string[] = [];
+  const publicationSources: Array<{
+    operationId: string;
+    operationGeneration: string;
+  }> = [];
   const frames: Record<string, any>[] = [];
   let terminalOutput = "";
   const display = new HeadlessTerminal({
@@ -287,7 +291,11 @@ export async function createNativeSharedViewFixture(
           security: nativePermissionPatch(permissionProfileId),
         },
         onError: (error) => errors.push(error),
-        beginExecution: async (grant, session) => {
+        beginExecution: async (grant, session, source = grant.receipt) => {
+          publicationSources.push({
+            operationId: source.operationId,
+            operationGeneration: source.operationGeneration,
+          });
           const release = cua?.activate(grant, session.threadId!);
           return {
             options: {
@@ -456,6 +464,7 @@ export async function createNativeSharedViewFixture(
       frames,
       messages,
       completed,
+      publicationSources,
       errors,
       children,
       historyClient,
@@ -466,7 +475,10 @@ export async function createNativeSharedViewFixture(
       interactionExpired,
       preparedMode,
       attachedMode,
-      async restartRuntime(afterExit?: () => Promise<void>) {
+      async restartRuntime(
+        afterExit?: () => Promise<void>,
+        heldSuspension?: NativeSuspensionEvidence,
+      ) {
         const oldGeneration = generation;
         const oldSession = { ...session };
         const oldAdapter = adapter;
@@ -482,7 +494,14 @@ export async function createNativeSharedViewFixture(
         await exited;
         await vi.waitFor(() => expect(r.transportGeneration).toBeNull());
         await afterExit?.();
-        const restored = await prepare("preserve");
+        const restored = heldSuspension
+          ? await r.prepareManagedThread({
+              ...configuration,
+              threadId,
+              intent: "preserve",
+              expectedSuspension: heldSuspension.suspension,
+            })
+          : await prepare("preserve");
         expect(restored.threadId).toBe(threadId);
         generation = r.transportGeneration!;
         expect(generation).not.toBe(oldGeneration);
@@ -492,34 +511,44 @@ export async function createNativeSharedViewFixture(
         r.setManagedNativeCommandDispatcher(threadId, (command) =>
           adapter.executeGuiCommand(session, command),
         );
-        gateway = await openGateway();
-        remoteUrl = gateway.url;
-        history = openHistory();
-        history.bind({ runtime: r, chatId, threadId });
-        terminalOutput = "";
-        display.reset();
-        terminalSettled = false;
-        attachment = openTerminal();
-        void attachment.catch((error) => errors.push(error));
-        await vi.waitFor(
-          () => {
-            const resumes = f.phases.filter(
-              (entry) =>
-                entry.phase === "admit" &&
-                entry.body.method === "thread/resume" &&
-                entry.body.session.runtimeGeneration === generation,
-            );
-            expect(resumes).toHaveLength(1);
-            expect(f.receipts.get(resumes[0]!.body.operationId)?.status).toBe(
-              "applied",
-            );
-            // A replayed question or approval covers the model status bar.
-            expect(terminalText()).toContain("OpenAI Codex");
-          },
-          { timeout: 15000 },
-        );
-        await history.flush();
-        return { oldGeneration, oldSession, oldAdapter };
+        if (!heldSuspension) {
+          gateway = await openGateway();
+          remoteUrl = gateway.url;
+          history = openHistory();
+          history.bind({ runtime: r, chatId, threadId });
+          terminalOutput = "";
+          display.reset();
+          terminalSettled = false;
+          attachment = openTerminal();
+          void attachment.catch((error) => errors.push(error));
+          await vi.waitFor(
+            () => {
+              const resumes = f.phases.filter(
+                (entry) =>
+                  entry.phase === "admit" &&
+                  entry.body.method === "thread/resume" &&
+                  entry.body.session.runtimeGeneration === generation,
+              );
+              expect(resumes).toHaveLength(1);
+              expect(f.receipts.get(resumes[0]!.body.operationId)?.status).toBe(
+                "applied",
+              );
+              // A replayed question or approval covers the model status bar.
+              expect(terminalText()).toContain("OpenAI Codex");
+            },
+            { timeout: 15000 },
+          );
+          await history.flush();
+        }
+        return {
+          oldGeneration,
+          oldSession,
+          oldAdapter,
+          adapter,
+          client,
+          session: { ...session },
+          encryption,
+        };
       },
       restartTerminal: async (startupInput = "") => {
         const resumes = f.phases.filter(

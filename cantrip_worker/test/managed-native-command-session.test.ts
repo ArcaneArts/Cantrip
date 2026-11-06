@@ -14,6 +14,7 @@ import {
   type AdmittedNativeExecution,
 } from "../src/codex/app-server.js";
 import type { NativeCommandClient } from "../src/native-command-client.js";
+import { workerTurnContinuationSchema } from "../src/codex/worker-turn-continuation.js";
 import type { ManagedNativeOperation } from "../src/codex/managed-native-gateway.js";
 
 function deferred<T>() {
@@ -77,6 +78,7 @@ function fixture(
     completion: done.promise,
     assertCurrent: vi.fn(),
     bindReceipt: vi.fn(),
+    bindRestoredSuspension: vi.fn(),
     fail: vi.fn((error) => done.reject(error)),
   };
   const client = {
@@ -127,6 +129,10 @@ function fixture(
       order.push("register");
       return handle;
     }),
+    prepareRestoredNativeExecution: vi.fn(async () => {
+      order.push("restore");
+      return handle;
+    }),
     awaitPendingAdmittedNativeReply: vi.fn(async () => ({ turnId: "turn" })),
     resolveAdmittedNativeReply: vi.fn(),
     resolveManagedExecution: vi.fn(async () => {
@@ -170,6 +176,7 @@ function fixture(
     attachments: [],
   };
   const retainDeferredInput = vi.fn(async () => retained as never);
+  const beginExecution = vi.fn(async () => publication);
   const adapter = new ManagedNativeCommandSession({
     identity,
     runtime: runtime as never,
@@ -189,7 +196,7 @@ function fixture(
       permissionProfileId: "profile",
       security: {},
     },
-    beginExecution: vi.fn(async () => publication),
+    beginExecution,
     beforeNativeDispatch: async (method) => {
       if (method === "turn/interrupt") order.push("invalidate-runner");
     },
@@ -216,6 +223,7 @@ function fixture(
   };
   return {
     adapter,
+    beginExecution,
     settingsDelivery,
     settingsHistory,
     client,
@@ -1573,5 +1581,372 @@ describe("managed native command session", () => {
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(f.runtime.resolveAdmittedNativeReply).not.toHaveBeenCalled();
     expect(f.order).toEqual(["dispatch", "native-reply", "receipt"]);
+  });
+});
+
+function restoredFixture(logical = true) {
+  const f = fixture();
+  const source = {
+    operationId: "original-input",
+    operationGeneration: "original-generation",
+  };
+  const logicalRoot = logical
+    ? {
+        operationId: "logical-input",
+        operationGeneration: "logical-generation",
+      }
+    : null;
+  const restoredReceipt = {
+    ...receipt,
+    method: "thread/resume",
+    operationId: "restored-observer",
+    logicalOperationId: logicalRoot?.operationId ?? null,
+  };
+  const controlId = "f57d812b-37d4-4d1e-b87a-3503b0d89b23";
+  const owner = {
+    workerGeneration: "current-worker-generation",
+    runtimeGeneration: "transport",
+    operationId: restoredReceipt.operationId,
+    operationGeneration: restoredReceipt.operationGeneration,
+  };
+  const grant: Awaited<
+    ReturnType<NativeCommandClient["admitSuspendedExecution"]>
+  > = {
+    receipt: restoredReceipt,
+    execution: null,
+    computerUseAuthority: null,
+    source,
+    logicalRoot,
+    suspension: {
+      version: 1,
+      controlId,
+      action: "resume",
+      phase: "resuming",
+      target: {
+        workerId: "worker",
+        contextKind: "project",
+        projectId: "project",
+        placementId: "placement",
+        placementRevision: 1,
+        cantripOsBindingId: null,
+        executionLaneId: "lane",
+        modelRouteId: "route",
+        providerAccountId: null,
+        threadId: "thread",
+        originalOperationId: source.operationId,
+      },
+      active: { threadId: "thread", turnId: "turn" },
+      checkpoint: {
+        suspension: durablePauseResult.suspension,
+        storageId: controlId,
+        runtimeVersion: "fixture",
+        runtimeFingerprint: null,
+      },
+      actor: owner,
+      executionOwner: owner,
+      actorControlId: controlId,
+      error: null,
+      requestedAt: receipt.createdAt,
+      updatedAt: receipt.updatedAt,
+      pausedAt: receipt.createdAt,
+      pausedMilliseconds: 0,
+    },
+  };
+  const continuation = workerTurnContinuationSchema.parse({
+    version: 1,
+    threadId: "thread",
+    turnId: "turn",
+    chatId: "chat",
+    cwd: "/tmp",
+    capturedAtMs: 1,
+    startedAtMs: 1,
+    providerId: "provider",
+    providerKind: "chatgpt",
+    executionKind: "chat",
+    baseline: [],
+    model: f.publication.options.model,
+    initialSettings: null,
+    nativeModelAttribution: null,
+    inheritThreadSettings: true,
+    collaborationMode: null,
+    latestUsage: null,
+    contextUsage: null,
+    contextUsageUpdatedAtMs: null,
+    delta: "",
+    finalText: null,
+    durationMs: null,
+    diffChanges: [],
+    commandTelemetry: [],
+    completedCommandIds: [],
+    fileStartedAtMs: [],
+    itemStartedAtMs: [],
+    liveAgentMessageFingerprints: [],
+    observedActivityFingerprints: [],
+    pendingActivities: [],
+    pendingAgentMessage: null,
+    streamingAgentMessage: null,
+    reasoningSummaries: [],
+    structuredChat: false,
+    structuredOutputSchema: null,
+    goalCompletion: null,
+  });
+  return { ...f, grant, continuation };
+}
+
+describe("restored managed execution publication", () => {
+  it.each([true, false])(
+    "restores an idle observer and preserves original provenance (GUI logical input: %s)",
+    async (logical) => {
+      const f = restoredFixture(logical);
+      const restored = await f.adapter.restoreSuspendedExecution(
+        f.grant,
+        session,
+        f.continuation,
+      );
+      expect(f.runtime.prepareAdmittedNativeExecution).not.toHaveBeenCalled();
+      expect(f.runtime.prepareRestoredNativeExecution).toHaveBeenCalledOnce();
+      expect(f.beginExecution).toHaveBeenCalledWith(
+        f.grant,
+        session,
+        f.grant.source,
+      );
+      expect(f.order).toEqual(["dispatch", "restore", "receipt"]);
+      const prepared = f.runtime.prepareRestoredNativeExecution.mock
+        .calls[0] as unknown as [Record<string, unknown>, unknown, unknown];
+      expect(prepared[0]).toMatchObject({
+        operationGeneration: receipt.operationGeneration,
+        expectedTurnId: "turn",
+        threadId: "thread",
+      });
+      expect(prepared.slice(1)).toEqual([
+        durablePauseResult.suspension,
+        f.continuation,
+      ]);
+      expect(f.client.settle.mock.calls[0]![0]).toMatchObject({
+        operationId: "restored-observer",
+        executionComplete: false,
+      });
+      restored.assertCurrent();
+      f.done.resolve(result);
+      await restored.completion;
+      expect(f.order).toEqual([
+        "dispatch",
+        "restore",
+        "receipt",
+        "complete",
+        "release",
+        "finish",
+      ]);
+      expect(f.client.settle.mock.lastCall![0]).toMatchObject({
+        operationId: "restored-observer",
+        executionComplete: true,
+        reconciliation: {
+          nativeTurnId: "turn",
+          runtimeGeneration: "transport",
+          terminalStatus: "completed",
+        },
+      });
+    },
+  );
+
+  it("joins concurrent restoration and a lost preparation acknowledgement without another dispatch", async () => {
+    const f = restoredFixture();
+    const [first, second] = await Promise.all([
+      f.adapter.restoreSuspendedExecution(f.grant, session, f.continuation),
+      f.adapter.restoreSuspendedExecution(f.grant, session, f.continuation),
+    ]);
+    expect(first).toBe(second);
+    const replayed = {
+      ...f.grant,
+      replayed: true,
+      receipt: { ...f.grant.receipt, status: "applied" as const },
+    };
+    expect(
+      await f.adapter.restoreSuspendedExecution(
+        replayed,
+        session,
+        f.continuation,
+      ),
+    ).toBe(first);
+    expect(f.client.dispatch).toHaveBeenCalledOnce();
+    expect(f.runtime.prepareRestoredNativeExecution).toHaveBeenCalledOnce();
+    const other = structuredClone(f.grant);
+    other.suspension.checkpoint!.suspension.revision++;
+    await expect(
+      f.adapter.restoreSuspendedExecution(other, session, f.continuation),
+    ).rejects.toThrow("Another restored observer");
+    f.done.resolve(result);
+    await first.completion;
+  });
+
+  it("retains an immutable comparison when caller bookkeeping changes after preparation", async () => {
+    const f = restoredFixture();
+    const restored = await f.adapter.restoreSuspendedExecution(
+      f.grant,
+      session,
+      f.continuation,
+    );
+    f.continuation.delta = "different saved bookkeeping";
+    await expect(
+      f.adapter.restoreSuspendedExecution(f.grant, session, f.continuation),
+    ).rejects.toThrow("Another restored observer");
+    f.done.resolve(result);
+    await restored.completion;
+  });
+
+  it("waits for protected publication before sending terminal evidence", async () => {
+    const f = restoredFixture();
+    const flushed = deferred<void>();
+    f.publication.complete.mockImplementation(async () => {
+      await flushed.promise;
+    });
+    const restored = await f.adapter.restoreSuspendedExecution(
+      f.grant,
+      session,
+      f.continuation,
+    );
+    f.done.resolve(result);
+    await vi.waitFor(() =>
+      expect(f.publication.complete).toHaveBeenCalledOnce(),
+    );
+    expect(f.client.settle).toHaveBeenCalledTimes(1);
+    flushed.resolve();
+    await restored.completion;
+    expect(f.client.settle.mock.lastCall![0].executionComplete).toBe(true);
+  });
+
+  it("keeps transport loss nonterminal and reports the observer failure", async () => {
+    const f = restoredFixture();
+    const restored = await f.adapter.restoreSuspendedExecution(
+      f.grant,
+      session,
+      f.continuation,
+    );
+    f.done.reject(new Error("transport lost"));
+    await expect(restored.completion).rejects.toThrow("transport lost");
+    expect(
+      f.client.settle.mock.calls.every(([input]) => !input.executionComplete),
+    ).toBe(true);
+    expect(f.client.settle.mock.lastCall![0]).toMatchObject({
+      status: "uncertain",
+      executionComplete: false,
+    });
+    expect(f.onError).toHaveBeenCalledOnce();
+    await f.adapter.awaitExecutionReleased();
+  });
+
+  it("settles an actual native Stop idle after publication", async () => {
+    const f = restoredFixture();
+    const restored = await f.adapter.restoreSuspendedExecution(
+      f.grant,
+      session,
+      f.continuation,
+    );
+    f.done.reject(
+      new CodexTurnFailureError(
+        "stopped",
+        null,
+        "thread",
+        "turn",
+        "interrupted",
+      ),
+    );
+    await restored.completion;
+    expect(f.client.settle.mock.lastCall![0]).toMatchObject({
+      executionComplete: true,
+      executionStatus: "idle",
+      reconciliation: {
+        nativeTurnId: "turn",
+        runtimeGeneration: "transport",
+        terminalStatus: "interrupted",
+      },
+    });
+    expect(f.publication.release).toHaveBeenCalledOnce();
+  });
+
+  it("releases a failed restoration without manufacturing a terminal receipt", async () => {
+    const f = restoredFixture();
+    f.runtime.prepareRestoredNativeExecution.mockRejectedValueOnce(
+      new Error("corrupt checkpoint"),
+    );
+    await expect(
+      f.adapter.restoreSuspendedExecution(f.grant, session, f.continuation),
+    ).rejects.toThrow("corrupt checkpoint");
+    expect(f.publication.release).toHaveBeenCalledOnce();
+    expect(f.client.settle).not.toHaveBeenCalled();
+    await f.adapter.awaitExecutionReleased();
+  });
+
+  it("does not publish or restore after actual dispatch rejection", async () => {
+    const f = restoredFixture();
+    f.client.dispatch.mockRejectedValueOnce(new Error("stale control"));
+    await expect(
+      f.adapter.restoreSuspendedExecution(f.grant, session, f.continuation),
+    ).rejects.toThrow("stale control");
+    expect(f.beginExecution).not.toHaveBeenCalled();
+    expect(f.runtime.prepareRestoredNativeExecution).not.toHaveBeenCalled();
+    expect(f.client.settle).not.toHaveBeenCalled();
+    await f.adapter.awaitExecutionReleased();
+  });
+
+  it("does not settle terminal success when publication fails", async () => {
+    const f = restoredFixture();
+    f.publication.complete.mockRejectedValueOnce(
+      new Error("publication unavailable"),
+    );
+    const restored = await f.adapter.restoreSuspendedExecution(
+      f.grant,
+      session,
+      f.continuation,
+    );
+    f.done.resolve(result);
+    await expect(restored.completion).rejects.toThrow(
+      "publication unavailable",
+    );
+    expect(
+      f.client.settle.mock.calls.every(([input]) => !input.executionComplete),
+    ).toBe(true);
+    expect(f.publication.release).toHaveBeenCalledOnce();
+  });
+
+  it("cancels a pending restoration with the worker lifetime without terminal evidence", async () => {
+    const f = restoredFixture();
+    const pending = deferred<AdmittedNativeExecution>();
+    const worker = new AbortController();
+    f.runtime.prepareRestoredNativeExecution.mockImplementationOnce(
+      () => pending.promise,
+    );
+    const restore = f.adapter.restoreSuspendedExecution(
+      f.grant,
+      session,
+      f.continuation,
+      worker.signal,
+    );
+    await vi.waitFor(() =>
+      expect(f.runtime.prepareRestoredNativeExecution).toHaveBeenCalledOnce(),
+    );
+    worker.abort(new Error("worker transport ended"));
+    pending.resolve(f.handle);
+    await expect(restore).rejects.toThrow("no longer owns inference");
+    expect(f.client.settle).not.toHaveBeenCalled();
+    expect(f.publication.release).toHaveBeenCalledOnce();
+    await f.adapter.awaitExecutionReleased();
+  });
+
+  it("rejects a replaced transport and does not accept another observer identity", async () => {
+    const f = restoredFixture();
+    await expect(
+      f.adapter.restoreSuspendedExecution(
+        f.grant,
+        { ...session, runtimeGeneration: "old" },
+        f.continuation,
+      ),
+    ).rejects.toThrow("transport was replaced");
+    const other = structuredClone(f.grant);
+    other.suspension.executionOwner!.operationGeneration = "different-owner";
+    await expect(
+      f.adapter.restoreSuspendedExecution(other, session, f.continuation),
+    ).rejects.toThrow("current suspension admission");
+    expect(f.client.dispatch).not.toHaveBeenCalled();
   });
 });
