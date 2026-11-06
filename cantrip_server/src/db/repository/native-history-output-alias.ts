@@ -55,6 +55,9 @@ async function observedOutputCommand(
         eq(schema.nativeCommands.ownerId, ownerId),
         eq(schema.nativeCommands.chatId, binding.chatId),
         eq(schema.nativeCommands.kind, "start"),
+        // Cold observers share the original canonical native turn. Their
+        // fresh transport observation is not another history provenance owner.
+        sql`${schema.nativeCommands.intent}->'restoredSuspension' IS NULL`,
         sql`${schema.nativeCommands.identity} ->> 'threadId' = ${root.threadId}`,
         or(
           eq(schema.nativeCommandTurns.turnId, root.turnId),

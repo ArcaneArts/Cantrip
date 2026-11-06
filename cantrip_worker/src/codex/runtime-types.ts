@@ -485,6 +485,8 @@ export type PrepareAdmittedNativeExecutionOptions = Pick<
   | "onNativeInteractionRequest"
 > & {
   operationGeneration: string;
+  /** Process bootstrap profile for an explicitly restored observer. */
+  executionProfile?: RunAgentTurnOptions["executionProfile"];
   recovery?: InferenceRecoveryIdentity;
   recoveryKey?: string;
   threadId: string;
@@ -494,6 +496,8 @@ export type PrepareAdmittedNativeExecutionOptions = Pick<
   inferenceSource?: InferenceOperationSource;
   /** Execution-owner cancellation while waiting for provider capacity. */
   inferenceSignal?: AbortSignal;
+  /** Observation only, after the worker journal acknowledges enqueue. */
+  onInferenceQueued?: () => Promise<void>;
 };
 
 export interface ManagedExecutionAttempt {
@@ -659,6 +663,9 @@ export interface NativeReplacementSettings {
 }
 
 export interface PrepareManagedThreadOptions extends GoalRuntimeOptions {
+  /** Hold attachment before recovery/prewarm, including with missing checkpoint
+   * contents. Explicit restoration inspects the actual continuation separately. */
+  expectedSuspension?: NativeTurnSuspension;
   /** Actual source Core settings, restored before replacement handoff. */
   replacementSettings?: NativeReplacementSettings;
   signal?: AbortSignal;

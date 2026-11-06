@@ -23,6 +23,7 @@ import { CantripOsController } from "../src/os-executor/controller.js";
 import { CantripOsBackupManager } from "../src/os-executor/backup-manager.js";
 import {
   executorControl,
+  executorCommand,
   workspaceControl,
   OsExecutorConnection,
   type OsExecutorTransport,
@@ -294,6 +295,96 @@ async function fixture() {
 }
 
 describe.skipIf(!enabled)("real Worker backup admissions", () => {
+  it("continues an already received archive after executor restart with explicit fresh runtime authority", async () => {
+    const f = await fixture();
+    try {
+      const source = await f.workspace(f.source, "mb-continue");
+      await f.files(
+        f.source,
+        source,
+        new Map([[".env", Buffer.from("DUMMY_CONTINUE=original\n")]]),
+      );
+      const captureId = randomUUID(),
+        backupScope = await f.scope(f.source);
+      expect(
+        (
+          await f.manager().handle({
+            type: "cantrip-os.backup.capture",
+            operationId: captureId,
+            scope: backupScope,
+            transport: f.source,
+            workspace: source,
+            sources: [],
+            protectedRequest: await f.request(captureId, {
+              action: "capture",
+              workspaceId: source.id,
+              label: "Continuation",
+              exclusions: [],
+            }),
+          })
+        ).state,
+      ).toBe("ready");
+      const target = await f.workspace(f.target, "mb-received");
+      const restoreId = randomUUID(),
+        original = await f.scope(f.target);
+      await f.killAt(
+        {
+          type: "cantrip-os.backup.restore",
+          operationId: restoreId,
+          scope: original,
+          transport: f.target,
+          workspace: target,
+          backupId: captureId,
+          backupScope,
+          replace: false,
+          protectedRequest: await f.request(restoreId, {
+            action: "restore",
+            workspaceId: target.id,
+            backupId: captureId,
+            replace: false,
+          }),
+        },
+        "receive",
+      );
+      const restart = executorCommand(f.target, ["service", "restart"]);
+      await execute(restart.command, restart.args);
+      const current = await f.scope(f.target);
+      expect(current.runtimeGeneration).not.toBe(original.runtimeGeneration);
+      const observe = {
+        type: "cantrip-os.backup.observe" as const,
+        operationId: restoreId,
+        scope: original,
+        action: "restore" as const,
+      };
+      expect(
+        (await f.manager().handle({ ...observe, mode: "observe" })).state,
+      ).toBe("unknown");
+      const before = f.calls.length;
+      expect(
+        (
+          await f.manager().handle({
+            ...observe,
+            mode: "continue",
+            continuationScope: { ...current, guestInstanceId: randomUUID() },
+          })
+        ).state,
+      ).toBe("unknown");
+      expect(f.calls).toHaveLength(before);
+      const restored = await f
+        .manager()
+        .handle({ ...observe, mode: "continue", continuationScope: current });
+      expect(restored.state).toBe("ready");
+      expect(f.calls.some((args) => args.includes("receive"))).toBe(false);
+      expect(f.calls.filter((args) => args.includes("restore"))).toHaveLength(
+        1,
+      );
+      expect(await f.files(f.target, target)).toEqual(
+        Buffer.from("DUMMY_CONTINUE=original\n"),
+      );
+    } finally {
+      await f.close();
+    }
+  }, 240000);
   it("persists capture once, restores into another instance/account and rolls back explicit replacement", async () => {
     const f = await fixture();
     try {

@@ -1,5 +1,8 @@
 import {
   nativeCommandAdmissionSchema,
+  nativeSuspensionExecutionAdmissionSchema,
+  nativeSuspensionExecutionAdmissionResultSchema,
+  type NativeSuspensionExecutionAdmission,
   nativePermissionTransitionResolveSchema,
   nativePermissionTransitionResolutionSchema,
   type NativeCommandSession,
@@ -48,6 +51,7 @@ import {
 import { z } from "zod";
 import { CantripServerRequestError } from "./cli-client.js";
 import { setTimeout as delay } from "node:timers/promises";
+import { isDeepStrictEqual } from "node:util";
 
 export interface NativeCommandClientOptions {
   serverUrl: string;
@@ -60,6 +64,65 @@ export interface NativeCommandClientOptions {
 /** Short admission transactions only; never hold a request open for a model turn. */
 export class NativeCommandClient {
   constructor(private readonly options: NativeCommandClientOptions) {}
+
+  async admitSuspendedExecution(
+    input: Omit<
+      NativeSuspensionExecutionAdmission,
+      "workerId" | "workerGeneration"
+    >,
+    signal?: AbortSignal,
+  ) {
+    const body = nativeSuspensionExecutionAdmissionSchema.parse({
+      ...input,
+      workerId: this.options.workerId,
+      workerGeneration: this.options.workerGeneration,
+    });
+    const result = await this.post(
+      "suspension-execution",
+      body,
+      nativeSuspensionExecutionAdmissionResultSchema,
+      signal,
+    );
+    const owner = result.suspension.executionOwner;
+    if (
+      result.suspension.controlId !== input.controlId ||
+      result.suspension.phase !== "resuming" ||
+      result.suspension.target.workerId !== body.workerId ||
+      result.suspension.target.contextKind !== input.session.contextKind ||
+      result.suspension.target.projectId !== input.session.projectId ||
+      result.suspension.target.placementId !== input.session.placementId ||
+      result.suspension.target.modelRouteId !== input.session.modelRouteId ||
+      result.suspension.target.providerAccountId !==
+        input.session.providerAccountId ||
+      result.suspension.active?.threadId !== input.session.threadId ||
+      result.receipt.chatId !== input.session.chatId ||
+      !isDeepStrictEqual(result.suspension.checkpoint, body.checkpoint) ||
+      result.suspension.active?.turnId !== input.checkpoint.suspension.turnId ||
+      result.suspension.target.originalOperationId !==
+        result.source.operationId ||
+      owner?.workerGeneration !== body.workerGeneration ||
+      owner.runtimeGeneration !== input.session.runtimeGeneration ||
+      owner.operationId !== result.receipt.operationId ||
+      owner.operationGeneration !== result.receipt.operationGeneration ||
+      result.receipt.threadId !== input.session.threadId ||
+      result.receipt.method !== "thread/resume" ||
+      !result.execution ||
+      result.execution.chatId !== input.session.chatId ||
+      result.execution.workerId !== body.workerId ||
+      result.execution.threadId !== input.session.threadId ||
+      result.execution.executionLaneId !== result.receipt.executionLaneId ||
+      result.suspension.target.executionLaneId !==
+        result.receipt.executionLaneId ||
+      !result.receipt.startsExecution ||
+      result.receipt.payloadDigest !== input.payloadDigest ||
+      (result.receipt.logicalOperationId ?? null) !==
+        (result.logicalRoot?.operationId ?? null)
+    )
+      throw new Error(
+        "Native suspension admission returned another observer owner.",
+      );
+    return result;
+  }
 
   async fenceGoalRecoveryAdmission(
     input: Omit<NativeGoalRecoveryFence, "workerId">,

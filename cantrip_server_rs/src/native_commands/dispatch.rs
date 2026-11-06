@@ -96,6 +96,7 @@ async fn dispatch(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Va
         return reject("thread-identity-mismatch");
     }
     let intent = &row["intent"];
+    super::suspension_admission::assert_dispatch(tx, owner, &row, input).await?;
     if let Some(binding) =
         wire::property(Some(intent), "settingsBindingId")?.filter(|v| truthy(Some(v)))
     {

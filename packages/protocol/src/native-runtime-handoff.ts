@@ -9,7 +9,7 @@ import {
 } from "./native-settings-state.js";
 
 const id = z.string().min(1).max(255);
-/** Actual native runner invalidation, distinct from an inference journal lease.
+/** Actual native root producer fencing, distinct from an inference journal lease.
  * The source was already retired under canonical no-dispatch authority. */
 export const nativeGoalRecoveryWithdrawalSchema = z
   .object({

@@ -7,6 +7,7 @@ import type {
 import type * as schema from "../schema.js";
 import { NativeCommandError } from "./native-command-errors.js";
 import { NativeSuspensionRepository } from "./native-suspensions.js";
+import { ownsNativeSuspensionExecution } from "./native-suspended-execution.js";
 
 type Command = typeof schema.nativeCommands.$inferSelect;
 
@@ -27,9 +28,7 @@ export async function assertSuspensionTerminalProof(
   const state = await repository.read(owner, row.chatId);
   if (
     state?.active &&
-    state.target.originalOperationId === row.operationId &&
-    state.actor?.runtimeGeneration ===
-      (row.identity as NativeCommandSession).runtimeGeneration &&
+    ownsNativeSuspensionExecution(state, row) &&
     !["stopped", "completed", "failed", "idle"].includes(state.phase)
   )
     throw new NativeCommandError("suspended-execution-not-terminal");
@@ -46,6 +45,11 @@ export async function dispatchNativeSuspension(
   if (!intent.durableSuspension && row.method !== "turn/interrupt")
     return false;
   const prior = await repository.read(owner, row.chatId);
+  if (
+    intent.expectedSuspensionControlId &&
+    prior?.controlId !== intent.expectedSuspensionControlId
+  )
+    throw new NativeCommandError("suspension-control-stale");
   const stopping =
     row.method === "turn/interrupt" &&
     prior !== null &&
@@ -171,7 +175,7 @@ export async function finishNativeSuspension(
     !state?.actor ||
     !state.active ||
     state.action === "stop" ||
-    state.target.originalOperationId !== row.operationId ||
+    !ownsNativeSuspensionExecution(state, row) ||
     state.active.turnId !== input.reconciliation.nativeTurnId ||
     state.actor.runtimeGeneration !== input.reconciliation.runtimeGeneration ||
     state.actor.runtimeGeneration !==

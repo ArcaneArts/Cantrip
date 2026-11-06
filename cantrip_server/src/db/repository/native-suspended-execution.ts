@@ -1,5 +1,8 @@
 import { eq } from "drizzle-orm";
-import type { NativeCommandSession } from "@cantrip/protocol";
+import type {
+  NativeCommandSession,
+  NativeSuspensionRecord,
+} from "@cantrip/protocol";
 import * as schema from "../schema.js";
 import type { RepositoryDatabase } from "./database.js";
 import { readNativeCommand } from "./native-command-context.js";
@@ -7,6 +10,44 @@ import { lockNativeCommandChat } from "./native-command-lock.js";
 import { NativeSuspensionRepository } from "./native-suspensions.js";
 
 type Command = typeof schema.nativeCommands.$inferSelect;
+
+/** A cold observer owns execution while the original command keeps history
+ * provenance. Neither identity can stand in for the other. */
+export function ownsNativeSuspensionExecution(
+  state: NativeSuspensionRecord,
+  row: Command,
+) {
+  const identity = row.identity as NativeCommandSession;
+  const owner = state.executionOwner;
+  return (
+    state.target.workerId === row.workerId &&
+    state.target.executionLaneId === row.executionLaneId &&
+    (owner
+      ? owner.operationId === row.operationId &&
+        owner.operationGeneration === row.operationGeneration &&
+        owner.runtimeGeneration === identity.runtimeGeneration
+      : state.target.originalOperationId === row.operationId &&
+        state.actor?.runtimeGeneration === identity.runtimeGeneration)
+  );
+}
+
+/** The old GUI submission cannot close work transferred to a cold observer,
+ * including after its explicit Resume has released the pause hold. */
+export function retainsRestoredLogicalInput(
+  state: NativeSuspensionRecord | null,
+  row: Command,
+) {
+  return (
+    !!state?.executionOwner &&
+    !!state.active &&
+    ownsNativeSuspensionExecution(state, row) &&
+    !["stopped", "completed", "failed", "idle"].includes(state.phase) &&
+    row.method === "thread/resume" &&
+    !!row.intent &&
+    typeof row.intent === "object" &&
+    "restoredSuspension" in row.intent
+  );
+}
 
 /** Actual committed recovery state retains an unfinished execution. A closed
  * transport is not native terminal evidence and cannot settle this root. */
@@ -32,11 +73,8 @@ export async function retainedNativeSuspension(
       state.phase,
     ) &&
     row.kind === "start" &&
-    state.target.workerId === row.workerId &&
-    state.target.originalOperationId === row.operationId &&
-    state.target.executionLaneId === row.executionLaneId &&
-    state.active.threadId === identity.threadId &&
-    state.actor.runtimeGeneration === identity.runtimeGeneration
+    ownsNativeSuspensionExecution(state, row) &&
+    state.active.threadId === identity.threadId
     ? state
     : null;
 }
@@ -94,11 +132,13 @@ export class NativeSuspendedExecutionRepository {
           ))
       )
         return null;
-      return retainedNativeSuspension(
-        new NativeSuspensionRepository(this.database).inTransaction(tx),
-        ownerId,
-        head,
-      );
+      const repository = new NativeSuspensionRepository(
+        this.database,
+      ).inTransaction(tx);
+      const held = await retainedNativeSuspension(repository, ownerId, head);
+      if (held || row.operationId === head.operationId) return held;
+      const state = await repository.read(ownerId, row.chatId);
+      return retainsRestoredLogicalInput(state, head) ? state : null;
     });
   }
 }

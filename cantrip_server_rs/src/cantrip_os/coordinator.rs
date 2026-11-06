@@ -1,3 +1,5 @@
+#[path = "backup_coordinator.rs"]
+mod backups;
 use super::{InstanceObservation, Repository, checked, text};
 use crate::auth::service::AuthService;
 use anyhow::{Context, Result, ensure};

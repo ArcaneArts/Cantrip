@@ -105,6 +105,7 @@ export const cantripOsBackupObserveCommandSchema = z
     operationId: z.uuid(),
     action: z.enum(["capture", "restore", "rollback"]),
     mode: z.enum(["observe", "recover", "continue"]),
+    continuationScope: cantripOsDispatchScopeSchema.optional(),
   })
   .strict();
 export const workerCantripOsBackupCommandSchemas = [

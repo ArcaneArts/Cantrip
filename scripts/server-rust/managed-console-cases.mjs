@@ -1,6 +1,7 @@
 // Reference helper vectors plus real repository/service composition scenarios.
 import assert from "node:assert/strict";
 import { projectLabel } from "./security-fixtures.mjs";
+import { record as suspensionRecord } from "./native-suspension-oracle.mjs";
 export async function managedConsoleCases({
   seed,
   observe,
@@ -11,9 +12,27 @@ export async function managedConsoleCases({
   json,
   standalone,
   stamp,
+  heldOnly = false,
 }) {
   const check = async (label, fields, options) =>
     (await observe(label, fields, options))?.result;
+  if (heldOnly) {
+    await seed("DELETE FROM native_runtime_handoffs WHERE chat_id='chat'");
+    await seed("DELETE FROM native_settings_states WHERE chat_id='chat'");
+    await seed("UPDATE chats SET experience='agent' WHERE id='chat'");
+    await seed(
+      "UPDATE model_providers SET weekly_usage_reserve_percent=20 WHERE id='console-provider'",
+    );
+    await seed(
+      "UPDATE model_provider_accounts SET credential_state='signed-in',weekly_usage_used_basis_points=NULL,credits=NULL WHERE provider_id='console-provider'",
+    );
+    const launch = await check(
+      "held console selects its actual configured root",
+      { op: "console-launch" },
+    );
+    await heldConsoleCases({ seed, check, snapshot, json, launch, stamp });
+    return;
+  }
   for (const balance of [
     null,
     "",
@@ -619,6 +638,7 @@ export async function managedConsoleCases({
     await snapshot("existing thread launch performs no binding writes"),
     before,
   );
+  await heldConsoleCases({ seed, check, snapshot, json, launch, stamp });
   await seed(
     "UPDATE chat_runtime_sessions SET codex_thread_id=NULL WHERE chat_id='chat';",
   );
@@ -721,4 +741,72 @@ export async function managedConsoleCases({
   await check("canonical binding succeeds after conflict removed", {
     op: "console-launch",
   });
+}
+
+async function heldConsoleCases({
+  seed,
+  check,
+  snapshot,
+  json,
+  launch,
+  stamp,
+}) {
+  const held = structuredClone(suspensionRecord);
+  held.requestedAt = held.updatedAt = held.pausedAt = stamp;
+  held.target = {
+    ...held.target,
+    workerId: "alpha",
+    projectId: "github",
+    placementId: "github-alpha-main",
+    threadId: launch.threadId,
+    modelRouteId: launch.model.routeId ?? null,
+    providerAccountId: launch.provider.accountId ?? null,
+  };
+  held.active = { ...held.active, threadId: launch.threadId };
+  held.checkpoint.suspension = {
+    ...held.checkpoint.suspension,
+    threadId: launch.threadId,
+  };
+  for (const phase of ["pausing", "paused", "resuming", "stopping", "error"]) {
+    held.phase = phase;
+    held.action =
+      phase === "stopping"
+        ? "stop"
+        : phase === "paused" || phase === "pausing"
+          ? "pause"
+          : "resume";
+    held.error =
+      phase === "error"
+        ? { code: "restore-failed", protectedDetails: null }
+        : null;
+    await seed(
+      `UPDATE chats SET native_suspension_state=${json(held)},automation_paused=true WHERE id='chat'`,
+    );
+    const captured = await snapshot("before held console " + phase);
+    const attached = await check(
+      "held console forwards exact checkpoint in " + phase,
+      { op: "console-launch" },
+    );
+    assert.deepEqual(attached.session.heldSuspension, held.checkpoint);
+    assert.deepEqual(
+      await snapshot("held console performs no execution writes " + phase),
+      captured,
+    );
+  }
+  held.phase = "running";
+  held.error = null;
+  await seed(
+    `UPDATE chats SET native_suspension_state=${json(held)},automation_paused=false WHERE id='chat'`,
+  );
+  assert.equal(
+    (
+      await check("running evidence cannot become cold attachment intent", {
+        op: "console-launch",
+      })
+    ).session.heldSuspension,
+    undefined,
+  );
+  await seed(
+    "UPDATE chats SET native_suspension_state=NULL,automation_paused=false WHERE id='chat'",
+  );
 }

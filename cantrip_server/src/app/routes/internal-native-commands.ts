@@ -1,4 +1,5 @@
 import { notifyManagedQueueReceipt } from "../runtime/managed-queue-receipts.js";
+import { installInternalNativeSuspensionExecutionRoutes } from "./internal-native-suspension-execution.js";
 import { clearAgentInteraction } from "../runtime/clear-agent-interaction.js";
 import { applyComputerUseAgentEvent } from "../runtime/computer-use-agent-events.js";
 import { nativeCommandEventSchema } from "@cantrip/protocol";
@@ -145,6 +146,10 @@ export function installInternalNativeCommandRoutes(
             executionLaneId: result.receipt.executionLaneId,
           }
         : null,
+  });
+  installInternalNativeSuspensionExecutionRoutes(app, {
+    ...dependencies,
+    authority,
   });
   app.post(
     "/api/internal/native-commands/task-goal-outcome",

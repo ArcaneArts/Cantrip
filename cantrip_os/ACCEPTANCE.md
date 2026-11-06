@@ -2953,3 +2953,148 @@ canonical fixture was added while regenerating exhaustive union/enum coverage.
 Root validation on this newer base reports unchanged Server budgets of
 1524/1500 and 2249/1999. The preceding counts describe their recorded revisions,
 rather than claiming these unrelated baseline failures were repaired.
+
+## Phase 5: Server backup admissions and catalogue (2026-11-05)
+
+Both Servers now persist owned, immutable backup admissions, protected intent
+and outcomes, and a paginated catalogue/history. Canonical accounts, transport
+and source roots come from Server records. Linux source verification also
+retains its actual Git common path for explicit backup metadata. An existing
+admission observes its original Worker scope after restart; restore retains the
+capture's historical scope while selecting fresh destination authority.
+
+Explicit continuation records a separate runtime grant before dispatch. It
+cannot change the original attachment, instance, account or Worker. The Worker
+keeps the immutable intent and passes only the authorized runtime to actual
+guest checks. Health flags are informational; exact ownership/generation pins
+and the actual Worker/guest operation determine admission. Historical completion
+is distinct from current storage availability. Delayed observations cannot
+downgrade completed evidence.
+
+The real Node HTTP/PGlite test closes and reopens the database, then observes a
+lost completed operation without dispatching another capture. It exercises
+wrong-owner rejection, injected account fields, stale generations, opaque
+summaries, canonical source/Git roots, cross-instance restore, fresh continuation
+authorization, original-scope preservation, wrong-workspace rollback rejection,
+pagination, offline storage status and late-result ordering. The two focused
+Node suites passed (6.10s). Their Worker endpoint is a deterministic fixture;
+this is not real Server encryption-grant or full Worker acceptance.
+
+Actual native HTTP/PostgreSQL coverage reinitializes AuthService and the HTTP
+router against persisted state, reconnects the authenticated Worker fixture and
+observes its existing admission. It covers the same identity/routing principles,
+including continuation after a runtime change and operation pagination. The
+backup case passed (3.55s), and existing CantripOS source/recovery HTTP coverage
+passed (2.40s). Native contracts matched 33,682 actual protocol vectors (44.33s).
+
+The real Worker-manager test kills its process after guest receive, restarts
+the actual executor service, observes the received archive, rejects a changed
+guest identity and explicitly continues with the fresh runtime. It activates
+once without another upload and verifies restored bytes. This passed in Docker
+(5.04s body initially) and against the installed AMD64 strict-SSH target (31.87s
+body / 33.90s total). The final full five-case Docker suite passed (28.55s),
+including the earlier capture/activation SIGKILL and stopped-source cases.
+These carrier tests still use ephemeral fixture grants, not product grant
+delivery. Guest recovery remains 0.2.0; no guest package or native executor
+binary changed in this cycle.
+
+Initial validation caught a Rust module declaration before its inner doc
+comment and a fixture import through an undeclared Server dependency; both were
+corrected before the passing runs. Server type checking reports the same
+`native-command-queue.ts:184` overload error on the feature and clean Primary.
+Required root-check results and final rebased checks are recorded below.
+Cantrip controls, actual Server grants/full Worker workflow, real remote
+acceptance, lifecycle/upgrade preservation and final recorded OCI/ISO artifacts
+remain required for the full Phase 5 goal.
+
+After rebasing, the backup migration is `0272`; Main owns the intervening Goal
+migration. Feature `3b3990d12` keeps the tested backup implementation unchanged.
+The two Node suites passed again (11.29s), all 30 focused Worker cases passed
+(9.02s), and Worker/fixture type checks passed. Server type checking also passes
+on this newer Main without a feature-side repair to the earlier overload error.
+Native backup HTTP passed (6.00s), existing source/recovery HTTP passed (6.36s),
+and all 33,682 protocol vectors matched again (66.91s). Root `pnpm check` still
+stops at unchanged Server budgets, now 1527/1500 and 2249/1999. No hosted ordinary
+validation or new distribution artifact is claimed by this checkpoint.
+
+The additional exhaustive Worker-command inventory check fails because Main
+declares `chat.goal.claim-recover` without its fixture. Base `db40fc16d` contains
+that declaration and lacks the fixture before this change; the failure is
+recorded without adding an unrelated Goal repair. Backup HTTP and dedicated OS
+wire validation above passed. This cycle adds no new Worker command type.
+
+Final review reproduced a Node keyset-pagination bug: JavaScript Date conversion
+truncated PostgreSQL microseconds and skipped two of three captures created
+within one millisecond. Cursor comparison now reads the exact timestamp in SQL.
+The regression and existing Node HTTP suites passed (17.22s), Server type
+checking passed, and native HTTP passed the equivalent precision case (6.87s).
+
+## Phase 5: Cantrip private backup controls (2026-11-05)
+
+Project CantripOS settings now expose capture, paginated history, private details,
+default new-workspace restore, explicit replacement, rollback and explicit
+observe/recover/continue. Requests and results use existing account encryption;
+Server never receives plaintext labels or profile contents. Worker refresh loads
+all active historical component revisions. Client decoding checks the operation,
+action, workspace and referenced backup/restore identities. A protected error is
+not rendered as a successful backup.
+
+The client saves an opaque immutable admission before submission. New-workspace
+restore also saves its account-creation operation before sending it and requires
+that operation's actual receipt. The same-name account alone is insufficient.
+Client reload/lost-response tests retain both identities and do not prepare a
+second request. Replacement requires its separate explicit checkbox. Mutation
+retries for connection/CSRF or query defaults are disabled.
+
+Actual browser acceptance used Codex IAB against the real Node Server, full
+Worker and production Server grants, with a fresh ARM64 Docker container limited
+to 4 GiB/2 CPUs. Packages were workspaces 0.3.0, executor/remote 0.9.0 and recovery
+0.2.0. No ephemeral key facade or mocked Worker handled these product operations.
+The profile was unlocked with its existing disposable recovery artifact outside
+the guest. Source attachment, account creation and source provisioning also used
+the product's normal routes.
+
+- Capture `ee268ff0-a8bd-4ec5-b6bb-d3cbd2948e14` produced a 4,249,600-byte
+  archive with an explicit `.cache` exclusion. Its encrypted Worker file is
+  5,670,017 bytes, SHA-256
+  `a1d00ba7cc377cd409381a8d87713ee4f02e9e664e530839317f627784c847b3`.
+  Its mode is 0600 beneath a 0700 directory. Neither its bytes nor Server's public
+  request record contains the private fixture label; archive bytes also contain
+  no plaintext ignored-file secret.
+- Default restore created another account, UID 20001, and returned an authenticated
+  successful outcome in Cantrip. Actual filesystem assertions verified dirty and
+  untracked files, ignored `.env` and dependency binary bytes, Unicode filenames,
+  mode 0751, remapped ownership and Git metadata. A real Chromium History database
+  retained its fixture page. This does not promise portable browser authentication.
+  A post-capture edit in the source remained unchanged by restore.
+- The actual full Worker process was SIGKILLed. History still displayed the saved
+  completion while separately reporting its storage Worker offline. Restart with
+  retained data created a distinct authenticated Worker generation; UI observation
+  recovered the original result without rewriting the published archive.
+- Reloading the client retained Server history and decrypted labels. Explicit
+  replacement into an existing account and rollback were also run through the UI.
+  Rollback returned the original sentinel and original home; the restored checkout
+  was no longer active. Five product admissions were recorded: one capture, two
+  restores and two rollbacks. Observation did not create a second capture.
+
+All 24 focused client checks passed across five suites, including real AEAD,
+historical component revisions, wrong identity/operation/direction, locked keys,
+account change during decryption, routing, pinned continuation, offline history,
+lost-response reload, default restore and rapid duplicate submission. App type
+checking and production build passed. Initial validation exposed a malformed test
+frame, missing built workspace dependencies, a test-render notification race and
+inferred request/response union types; these were corrected before passing runs.
+Root `pnpm check` still stops at unchanged Server line budgets: 1527/1500 in
+`build-app.ts` and 2249/1999 in `chat-turn-runtime.ts`. No hosted validation ran.
+
+The private QA session records scenario instructions, events, browser screenshot,
+archive proof and logs. The ordinary Host native cache predates newer Main
+inference-metadata arguments; historical Phase 4 chats also reference a stopped
+container. Those startup warnings were retained, and no new model-agent or
+computer-use acceptance is inferred here. Neither the guest packages nor native
+executor source changed in this cycle; no refreshed OCI/ISO artifact is claimed.
+
+Restored-source adoption, installed-system product controls, broader admitted
+operation and agent/viewer/service recovery, lifecycle/reset/customization and
+failed-upgrade preservation, real remote acceptance and final recorded
+Docker/ISO artifacts remain required for the full Phase 5 goal.

@@ -26,9 +26,12 @@ const databaseMode = option("--database") ?? "pglite",
   reportPath = option("--report"),
   started = Date.now();
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-chat-runtime-"));
+// Each fixture owns its extracted runtime; concurrent tests cannot retire it.
+process.env.PGLITE_RUNTIME_DIR = path.join(root, "native-runtime");
 const report = {
   suite: "chat-runtime-repository",
   databaseMode,
+  scope: option("--scope") ?? "all",
   completeReplacement: false,
   cases: [],
   snapshots: [],
@@ -377,6 +380,7 @@ try {
     json,
     standalone,
     stamp,
+    heldOnly: option("--scope") === "held-console",
   });
   if (databaseMode === "postgres")
     await chatRuntimeLocks({ pair, urls, owner, report, standalone });
@@ -417,6 +421,7 @@ console.log(
   JSON.stringify({
     suite: report.suite,
     databaseMode,
+    scope: report.scope,
     cases: report.cases.length,
     snapshots: report.snapshots.length,
     error: report.error?.message,

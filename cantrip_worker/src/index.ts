@@ -46,7 +46,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
   nativeGoalRecoveryReceiptSchema,
+  nativeGoalClaimRecoveryReceiptSchema,
   type NativeGoalRecoveryReceipt,
+  type NativeGoalClaimRecoveryReceipt,
 } from "@cantrip/protocol";
 import { lstat, mkdtemp, realpath, rm, readFile } from "node:fs/promises";
 import os from "node:os";
@@ -349,6 +351,10 @@ import { WorkerConnection } from "./transport.js";
 import { WorkerEncryptionService } from "./worker-encryption.js";
 import { createNativeResourceProtection } from "./native-resource-protection.js";
 import { NativeSuspensionStore } from "./native-suspension-store.js";
+import {
+  openManagedSuspensionSource,
+  managedSuspensionNamespace,
+} from "./codex/managed-suspended-source.js";
 import { createManagedSuspensionCapture } from "./codex/managed-native-suspension.js";
 import { WorktreeManager } from "./worktrees.js";
 import { CantripOsController } from "./os-executor/controller.js";
@@ -620,6 +626,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         workerId: config.workerId,
       }),
     { workerId: config.workerId },
+  );
+  const nativeSuspensionStore = new NativeSuspensionStore(
+    config.dataDirectory,
+    () => ({
+      serverId: workerEncryption.serverIdentity(),
+      ownerId: workerEncryption.ownerId(),
+      workerId: config.workerId,
+    }),
+    workerEncryption,
   );
   let workerNotificationEmitter:
     ((notification: WorkerNotification) => boolean) | null = null;
@@ -1818,6 +1833,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       subagentDefaults?: RuntimeSubagentDefaults | null;
     },
     stagingOperationId?: string,
+    heldSource?: NonNullable<
+      Awaited<ReturnType<typeof openManagedSuspensionSource>>
+    > | null,
   ) => {
     inferenceAdmissionForWorker().configure({
       providerId: command.provider.id,
@@ -1828,8 +1846,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     });
     if (command.threadId && command.chatId && !stagingOperationId)
       projectGoalDelivery.watch(command.threadId, command.chatId);
-    const namespace =
-      stagingOperationId && command.threadId
+    const namespace = heldSource
+      ? managedSuspensionNamespace(heldSource)
+      : stagingOperationId && command.threadId
         ? {
             operationId: stagingOperationId,
             home: managedRuntimeNamespaces.destination(
@@ -1879,7 +1898,24 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     const runtimeId = namespace
       ? `${placementRuntimeId}:namespace:${namespace.operationId}`
       : placementRuntimeId;
-    let runtime = codexRuntimes.get(runtimeId);
+    const attached =
+      heldSource && command.chatId
+        ? managedCurrentRuntimes.get(command.chatId)
+        : undefined;
+    const attachedEntry =
+      attached && command.chatId && command.threadId
+        ? managedCommandSessions
+            .get(attached)
+            ?.get(command.chatId + ":" + command.threadId)
+        : undefined;
+    let runtime =
+      attached &&
+      heldSource &&
+      attachedEntry &&
+      attached.managedHistoryHome === heldSource.home &&
+      attached.transportGeneration === attachedEntry.generation
+        ? attached
+        : codexRuntimes.get(runtimeId);
     if (!runtime) {
       const directoryName = createHash("sha256")
         .update(runtimeId)
@@ -2528,13 +2564,24 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           }),
         }
       : null;
-    const runtime = runtimeFor({
-      ...options,
+    const heldSource = await openManagedSuspensionSource({
+      store: nativeSuspensionStore,
       session,
-      chatId: session.chatId,
-      executionProfile,
-      subagentDefaults,
+      threadId: options.threadId,
+      modelRouteId: options.model.routeId ?? null,
+      providerAccountId: options.provider.accountId ?? null,
     });
+    const runtime = runtimeFor(
+      {
+        ...options,
+        session,
+        chatId: session.chatId,
+        executionProfile,
+        subagentDefaults,
+      },
+      undefined,
+      heldSource,
+    );
     const preparationRuntime = withManagedSessionMcpServers(
       runtime,
       options.mcpServers,
@@ -2560,6 +2607,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         executionProfile,
         subagentDefaults,
         mcpServers: undefined,
+        ...(heldSource
+          ? { expectedSuspension: heldSource.evidence.suspension }
+          : {}),
         intent,
         ...(runner ? { executionGate: runner.configuration } : {}),
       },
@@ -2656,15 +2706,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       client: nativeCommands,
       captureSuspension: createManagedSuspensionCapture(
         runtime,
-        new NativeSuspensionStore(
-          config.dataDirectory,
-          () => ({
-            serverId: workerEncryption.serverIdentity(),
-            ownerId: workerEncryption.ownerId(),
-            workerId: config.workerId,
-          }),
-          workerEncryption,
-        ),
+        nativeSuspensionStore,
       ),
       settingsDelivery: nativeSettingsDelivery,
       settleDeferred: (input) => nativeDeferredSettlements.settle(input),
@@ -3335,23 +3377,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           ?.get(`${state.chatId}:${state.source.threadId}`);
         if (!entry)
           throw new Error("Published handoff has no managed command session.");
-        if (
-          state.phase === "cancelled" &&
-          state.queuedSource?.autonomousAttempt
-        ) {
-          const snapshot = await nativeQueueClient.read(
-            { session: entry.queueSession() },
-            managedGuiBridgeLifetime.signal,
-          );
-          if (!snapshot.paused)
-            await managedExecutionRunners
-              .get(runtime)
-              ?.get(state.chatId)
-              ?.resumeAfterProviderTransfer(
-                state.operationId,
-                state.source.threadId,
-                runtime.transportGeneration!,
-              );
+        if (state.phase === "cancelled") {
+          // Release only this transfer hold, including when the canonical queue
+          // is paused. Actual Stop/Pause invalidation remains closed; ordinary
+          // admission still reads current queue/Goal eligibility before a turn.
+          await managedExecutionRunners
+            .get(runtime)
+            ?.get(state.chatId)
+            ?.resumeAfterProviderTransfer(
+              state.operationId,
+              state.source.threadId,
+              runtime.transportGeneration!,
+            );
         }
         await entry.wakeQueue();
       },
@@ -3416,6 +3453,28 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       client: handoffClient,
       namespaces: managedRuntimeNamespaces,
       journal,
+      holdSource: async (state, prepared, signal) => {
+        signal.throwIfAborted();
+        if (JSON.stringify(nativeNamespaceScope()) !== identity)
+          throw new Error("The handoff's worker owner binding changed.");
+        const runtime = handoffRuntimes.get(prepared);
+        const runner =
+          runtime && managedExecutionRunners.get(runtime)?.get(state.chatId);
+        const binding = state.binding ?? state.source;
+        if (
+          !runtime ||
+          !runner ||
+          runtime.transportGeneration !== binding.runtimeGeneration
+        )
+          throw new Error("The prepared source lost its actual native runner.");
+        await runner.holdForProviderTransfer(
+          state.operationId,
+          runner.configuration.runnerGeneration,
+          state.source.threadId,
+          binding.runtimeGeneration,
+        );
+        signal.throwIfAborted();
+      },
       withdrawGoalRecovery: async (state, prepared, signal) => {
         signal.throwIfAborted();
         if (
@@ -3438,7 +3497,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             "The recovered Goal handoff lost its prepared native runner.",
           );
         const runnerGeneration = runner.configuration.runnerGeneration;
-        await runner.invalidateForProviderTransfer(
+        await runner.holdForProviderTransfer(
           state.operationId,
           runnerGeneration,
           state.source.threadId,
@@ -3497,9 +3556,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               ?.get(state.chatId);
             if (!runner)
               throw new Error("The queued Goal has no owning native runner.");
-            // Do not persist withdrawal.json until this actual native fence
-            // acknowledges. A lost response retries the same gate invalidation.
-            await runner.invalidateForProviderTransfer(
+            // Do not persist withdrawal.json until the root hold acknowledges.
+            // Existing children retain their independent inference lifetimes.
+            await runner.holdForProviderTransfer(
               state.operationId,
               queued.autonomousAttempt.runnerGeneration,
               state.source.threadId,
@@ -3746,6 +3805,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const managedGoalRecoveries = new Map<
     string,
     Promise<NativeGoalRecoveryReceipt>
+  >();
+  const managedGoalClaimRecoveries = new Map<
+    string,
+    Promise<NativeGoalClaimRecoveryReceipt>
   >();
   const handleCommand = async (
     command: WorkerCommand,
@@ -7092,6 +7155,171 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           },
           rollback,
         );
+      }
+      case "chat.goal.claim-recover": {
+        if (
+          command.claim.threadId !== command.threadId ||
+          command.session.chatId !== command.chatId
+        )
+          throw new Error(
+            "Goal claim recovery belongs to another managed session.",
+          );
+        const key = JSON.stringify([
+          nativeNamespaceScope(),
+          command.chatId,
+          command.claim,
+        ]);
+        const pending = managedGoalClaimRecoveries.get(key);
+        if (pending) return pending;
+        const recovery = (async (): Promise<NativeGoalClaimRecoveryReceipt> => {
+          const signal = inferenceCommandSignal();
+          const admission = inferenceAdmissionForWorker();
+          // This reads/takes over the actual keeper. A surviving former worker
+          // must be fenced before a new native Goal is allowed to request work.
+          await admission.confirmNativeOwnership();
+          signal?.throwIfAborted();
+          const prepared = await prepareManagedMutation(command, provider());
+          if (!prepared)
+            throw new Error("Goal claim recovery has no prepared session.");
+          const { runtime, threadId } = prepared;
+          const entry = managedCommandSessions
+            .get(runtime)
+            ?.get(`${command.chatId}:${threadId}`);
+          if (!entry || entry.generation !== runtime.transportGeneration)
+            throw new Error("Goal claim recovery lost its native transport.");
+          const queued = (value: {
+            operationId: string;
+            operationGeneration: string;
+          }): NativeGoalClaimRecoveryReceipt => ({
+            status: "queued",
+            claim: command.claim,
+            admission: { ...value, workerGeneration: workerProcessGeneration },
+          });
+          const existing = entry.adapter.goalClaimAdmission(command.claim);
+          if (existing) return queued(existing);
+          const snapshot = await nativeQueueClient.read(
+            { session: entry.queueSession() },
+            signal,
+          );
+          const claim = snapshot.claims.find(
+            (claim) => claim.id === command.claim.claimId,
+          );
+          const deferred = (): NativeGoalClaimRecoveryReceipt => ({
+            status: "deferred",
+            claim: command.claim,
+            workerGeneration: workerProcessGeneration,
+          });
+          if (
+            snapshot.paused ||
+            snapshot.goalRecovery ||
+            !claim ||
+            claim.goalCancelled ||
+            !claim.awaitingGoal ||
+            claim.operationId !== command.claim.operationId ||
+            claim.operationGeneration !== command.claim.operationGeneration ||
+            claim.goalEpoch !== command.claim.goalEpoch ||
+            claim.promptId !== command.claim.promptId ||
+            claim.promptRevision !== command.claim.promptRevision ||
+            claim.nativeTurnId ||
+            !["dispatched", "uncertain"].includes(claim.status)
+          )
+            return deferred();
+          const old = command.claim.admission;
+          if (old && old.workerGeneration !== workerProcessGeneration) {
+            if (
+              claim.goalOperationId !== old.operationId ||
+              claim.goalOperationGeneration !== old.operationGeneration
+            )
+              return deferred();
+            const source = {
+              operationId: old.operationId,
+              operationGeneration: old.operationGeneration,
+              threadId,
+              goalEpoch: command.claim.goalEpoch,
+            };
+            const result = await nativeCommands.fenceGoalRecoveryAdmission(
+              {
+                serverId: entry.queueScope.identity.serverId,
+                workerGeneration: workerProcessGeneration,
+                source,
+                admission: old,
+                firstClaim: command.claim,
+              },
+              signal,
+            );
+            if (!isDeepStrictEqual(result.recovery?.source, source))
+              return deferred();
+            admission.wakeRecovery(command.chatId);
+            return {
+              status: "recovering",
+              claim: command.claim,
+              workerGeneration: workerProcessGeneration,
+            };
+          }
+          const observed = await runtime.readManagedGoalRecovery(
+            threadId,
+            entry.generation,
+          );
+          if (
+            observed.goalEpoch !== command.claim.goalEpoch ||
+            observed.goal?.status !== "active"
+          ) {
+            // A claimed child retains its own settlement authority. This read
+            // can retire only the applied setter with no admitted child yet.
+            if (claim.goalOperationId || claim.goalOperationGeneration)
+              return deferred();
+            const session = entry.queueSession();
+            return {
+              status: "ineligible",
+              claim: command.claim,
+              workerGeneration: workerProcessGeneration,
+              observation: {
+                chatId: command.chatId,
+                workerId: config.workerId,
+                threadId,
+                contextKind: session.contextKind,
+                projectId: session.projectId,
+                placementId: session.placementId,
+                modelRouteId: session.modelRouteId,
+                providerAccountId: session.providerAccountId,
+                runtimeGeneration: entry.generation,
+                nativeEpoch: observed.nativeEpoch,
+                goalEpoch: observed.goalEpoch,
+                goalStatus: observed.goal?.status ?? null,
+              },
+            };
+          }
+          const runner = managedExecutionRunners
+            .get(runtime)
+            ?.get(command.chatId);
+          if (!runner)
+            throw new Error("Goal claim recovery has no native runner.");
+          const observation = new AbortController();
+          const wait = entry.adapter.waitForGoalClaimAdmission(
+            command.claim,
+            signal
+              ? AbortSignal.any([signal, observation.signal])
+              : observation.signal,
+          );
+          void wait.catch(() => {});
+          try {
+            await runtime.wakeManagedExecution(
+              { threadId, ...runner.configuration },
+              entry.generation,
+            );
+            return queued(await wait);
+          } finally {
+            observation.abort(new Error("Goal claim observation ended."));
+          }
+        })().then((value) => nativeGoalClaimRecoveryReceiptSchema.parse(value));
+        managedGoalClaimRecoveries.set(key, recovery);
+        void recovery
+          .finally(() => {
+            if (managedGoalClaimRecoveries.get(key) === recovery)
+              managedGoalClaimRecoveries.delete(key);
+          })
+          .catch(() => {});
+        return recovery;
       }
       case "chat.goal.recover": {
         if (

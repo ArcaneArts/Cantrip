@@ -5,7 +5,7 @@ mod queue;
 use super::{CommandError, Repository, admission, context, receipt};
 use crate::{
     database::Transaction,
-    wire::{Value, value::json},
+    wire::{Value, coercion::truthy, value::json},
 };
 use anyhow::{Context, Result};
 use futures::FutureExt;
@@ -58,6 +58,9 @@ pub(super) async fn admit(
     input: &Value,
     options: &Value,
 ) -> Result<Value> {
+    if truthy(input["intent"].get("restoredSuspension")) {
+        return reject("suspension-admission-required");
+    }
     let chat = text(&input["session"]["chatId"])?;
     context::lock_chat(tx, owner, &chat).await?;
     if let Some(existing) = admission::existing(tx, owner, input).await? {

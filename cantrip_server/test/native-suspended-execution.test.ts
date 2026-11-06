@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import Fastify from "fastify";
+import { and, eq, sql } from "drizzle-orm";
 import {
   afterAll,
   beforeAll,
@@ -12,6 +13,8 @@ import {
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
 import { retainSuspendedChatTurn } from "../src/app/runtime/retain-suspended-chat-turn.js";
+import { installInternalNativeCommandRoutes } from "../src/app/routes/internal-native-commands.js";
+import { NativeCommandClient } from "../../cantrip_worker/src/native-command-client.js";
 import {
   createNativeSettingsFixture,
   settingsEnvelope,
@@ -122,6 +125,338 @@ async function capture(origin: "gui" | "terminal") {
 }
 
 describe("committed native suspension retains execution across transport loss", () => {
+  it("requires the current authenticated worker incarnation and correlates canonical admission through the actual HTTP handler", async () => {
+    const { root, active, evidence } = await capture("gui");
+    const resume = await fixture.repository.nativeSuspensions.request(
+      owner,
+      fixture.chatId,
+      "resume",
+    );
+    const base = await fixture.input("gui");
+    const workerGeneration = randomUUID();
+    const session = {
+      ...base.session,
+      runtimeGeneration: "http-cold-runtime",
+      connectionId: "http-cold-owner",
+    };
+    const app = Fastify();
+    installInternalNativeCommandRoutes(app, {
+      config: fixture.config,
+      serverId: "fixture-server",
+      repository: fixture.repository,
+      runAsOwner: async (_owner, run) => run(),
+      dispatchNextQueuedPrompt: async () => {},
+      bridge: {
+        connectionIdentity: () => ({
+          ownerId: owner,
+          workerProcessGeneration: workerGeneration,
+        }),
+        isConnected: () => true,
+      } as never,
+      live: {
+        publishEncryptedChatMessage() {},
+        publishTaskMessage() {},
+        publishChatSummary() {},
+        publishChatTurnBoundary() {},
+        publishChatInvalidation() {},
+      },
+    });
+    const request = {
+      workerId: fixture.workerId,
+      workerGeneration,
+      operationId: randomUUID(),
+      session,
+      controlId: resume.state.controlId,
+      checkpoint: evidence,
+      payloadDigest: "e".repeat(64),
+      protectedPayload: settingsEnvelope,
+    };
+    const post = (body: unknown, authorized = true) =>
+      app.inject({
+        method: "POST",
+        url: "/api/internal/native-commands/suspension-execution",
+        headers: authorized
+          ? { authorization: `Bearer ${fixture.config.workerToken}` }
+          : {},
+        payload: body as never,
+      });
+    try {
+      expect((await post(request, false)).statusCode).toBe(401);
+      expect(
+        (await post({ ...request, workerGeneration: randomUUID() })).statusCode,
+      ).toBe(409);
+      expect(
+        (await fixture.repository.nativeSuspensions.read(owner, fixture.chatId))
+          ?.executionOwner,
+      ).toBeUndefined();
+      let corruptScope: "receipt" | "execution" | "suspension" | null = null;
+      const client = new NativeCommandClient({
+        workerId: fixture.workerId,
+        workerGeneration,
+        serverUrl: "http://fixture.invalid",
+        token: () => fixture.config.workerToken,
+        fetch: async (url, init) => {
+          const response = await app.inject({
+            method: "POST",
+            url: new URL(String(url)).pathname,
+            headers: init?.headers as never,
+            payload: init?.body as string,
+          });
+          const result = response.json();
+          if (corruptScope === "suspension")
+            result.suspension.target.placementId = "foreign";
+          else if (corruptScope) result[corruptScope].chatId = "foreign";
+          return new Response(JSON.stringify(result), {
+            status: response.statusCode,
+            headers: { "content-type": "application/json" },
+          });
+        },
+      });
+      const {
+        workerId: _worker,
+        workerGeneration: _generation,
+        ...input
+      } = request;
+      const admitted = await client.admitSuspendedExecution(input);
+      expect(
+        (
+          await client.admitSuspendedExecution({
+            ...input,
+            operationId: randomUUID(),
+          })
+        ).receipt.operationId,
+      ).toBe(admitted.receipt.operationId);
+      for (const scope of ["receipt", "execution", "suspension"] as const) {
+        corruptScope = scope;
+        await expect(client.admitSuspendedExecution(input)).rejects.toThrow(
+          "another observer owner",
+        );
+      }
+      corruptScope = null;
+      const stopping = await fixture.repository.nativeSuspensions.request(
+        owner,
+        fixture.chatId,
+        "stop",
+      );
+      await fixture.repository.nativeSuspensions.claim(
+        owner,
+        fixture.chatId,
+        stopping.state.controlId,
+        stopping.state.actor,
+        admitted.suspension.executionOwner!,
+        active,
+      );
+      await fixture.repository.nativeSuspensions.stopped(
+        owner,
+        fixture.chatId,
+        stopping.state.controlId,
+        admitted.suspension.executionOwner!,
+      );
+      await fixture.commands.finishLogicalGui(
+        owner,
+        fixture.workerId,
+        root.operationId,
+        root.operationGeneration,
+        "idle",
+      );
+    } finally {
+      await app.close();
+    }
+  });
+  it("admits a fresh physical observer without replacing input, turn or canonical history ownership", async () => {
+    const { root, active, evidence } = await capture("gui");
+    const resumed = await fixture.repository.nativeSuspensions.request(
+      owner,
+      fixture.chatId,
+      "resume",
+    );
+    const base = await fixture.input("gui");
+    const workerGeneration = randomUUID();
+    const session = {
+      ...base.session,
+      runtimeGeneration: "fresh-cold-runtime",
+      connectionId: "fresh-cold-owner",
+    };
+    const request = {
+      workerId: fixture.workerId,
+      workerGeneration,
+      session,
+      operationId: randomUUID(),
+      controlId: resumed.state.controlId,
+      checkpoint: evidence,
+      payloadDigest: "e".repeat(64),
+      protectedPayload: settingsEnvelope,
+    };
+    const admitted = await fixture.commands.admitSuspendedExecution(
+      owner,
+      request,
+    );
+    expect(admitted.receipt).toMatchObject({
+      startsExecution: true,
+      method: "thread/resume",
+      status: "accepted",
+      logicalOperationId: root.operationId,
+      previousOperationId: root.operationId,
+      executionLaneId: root.executionLaneId,
+    });
+    expect(admitted.source).toEqual({
+      operationId: root.operationId,
+      operationGeneration: root.operationGeneration,
+    });
+    expect(admitted.logicalRoot).toEqual(admitted.source);
+    expect(admitted.suspension.executionOwner).toMatchObject({
+      workerGeneration,
+      runtimeGeneration: session.runtimeGeneration,
+      operationId: admitted.receipt.operationId,
+      operationGeneration: admitted.receipt.operationGeneration,
+    });
+    const duplicate = await fixture.commands.admitSuspendedExecution(owner, {
+      ...request,
+      operationId: randomUUID(),
+    });
+    expect(duplicate.replayed).toBe(true);
+    expect(duplicate.receipt.operationId).toBe(admitted.receipt.operationId);
+    expect(
+      (
+        await fixture.commands.suspendedExecution(
+          owner,
+          fixture.workerId,
+          root.operationId,
+          root.operationGeneration,
+        )
+      )?.checkpoint,
+    ).toEqual(evidence);
+    await fixture.commands.dispatch(owner, {
+      workerId: fixture.workerId,
+      workerGeneration,
+      session,
+      operationId: admitted.receipt.operationId,
+      operationGeneration: admitted.receipt.operationGeneration,
+      payloadDigest: request.payloadDigest,
+    });
+    const acknowledgement = {
+      workerId: fixture.workerId,
+      workerGeneration,
+      operationId: admitted.receipt.operationId,
+      operationGeneration: admitted.receipt.operationGeneration,
+      status: "applied" as const,
+      resultDigest: "f".repeat(64),
+      protectedResult: settingsEnvelope,
+      rejectionCode: null,
+      executionComplete: false,
+      reconciliation: {
+        nativeTurnId: active.turnId,
+        runtimeGeneration: session.runtimeGeneration,
+      },
+    };
+    await fixture.commands.settle(owner, acknowledgement);
+    const child = {
+      ...base,
+      operationId: randomUUID(),
+      method: "turn/pause",
+      session,
+      expectedActivationGeneration: admitted.receipt.activationGeneration,
+      intent: {
+        scope: "thread" as const,
+        settingKeys: [],
+        expectedTurnId: active.turnId,
+        durableSuspension: true as const,
+        workerGeneration,
+        paused: false,
+        resumeAutonomy: true,
+        expectedSuspensionControlId: resumed.state.controlId,
+      },
+    };
+    const childReceipt = (await fixture.commands.admit(owner, child)).receipt;
+    expect(childReceipt.status).toBe("accepted");
+    await fixture.commands.dispatch(owner, {
+      workerId: fixture.workerId,
+      workerGeneration,
+      session,
+      operationId: childReceipt.operationId,
+      operationGeneration: childReceipt.operationGeneration,
+      payloadDigest: child.payloadDigest,
+    });
+    await fixture.commands.settle(owner, {
+      workerId: fixture.workerId,
+      workerGeneration,
+      durableSuspension: true,
+      operationId: childReceipt.operationId,
+      operationGeneration: childReceipt.operationGeneration,
+      status: "applied",
+      resultDigest: "1".repeat(64),
+      protectedResult: settingsEnvelope,
+      rejectionCode: null,
+      executionComplete: false,
+    });
+    expect(
+      (await fixture.repository.nativeSuspensions.read(owner, fixture.chatId))
+        ?.phase,
+    ).toBe("running");
+    // The superseded GUI transport cannot close the newly running observer.
+    expect(
+      await fixture.commands.finishLogicalGui(
+        owner,
+        fixture.workerId,
+        root.operationId,
+        root.operationGeneration,
+        "failed",
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      (
+        await fixture.commands.suspendedExecution(
+          owner,
+          fixture.workerId,
+          root.operationId,
+          root.operationGeneration,
+        )
+      )?.phase,
+    ).toBe("running");
+    expect(
+      await fixture.db
+        .select()
+        .from(schema.nativeCommandTurns)
+        .where(
+          and(
+            eq(schema.nativeCommandTurns.chatId, fixture.chatId),
+            eq(schema.nativeCommandTurns.threadId, active.threadId),
+            eq(schema.nativeCommandTurns.turnId, active.turnId),
+          ),
+        ),
+    ).toHaveLength(1);
+    await fixture.commands.settle(owner, {
+      ...acknowledgement,
+      resultDigest: null,
+      protectedResult: null,
+      executionComplete: true,
+      executionStatus: "idle",
+      terminalResult: {
+        resultDigest: "2".repeat(64),
+        protectedResult: settingsEnvelope,
+      },
+      reconciliation: {
+        ...acknowledgement.reconciliation,
+        terminalStatus: "completed",
+      },
+    });
+    await fixture.commands.finishLogicalGui(
+      owner,
+      fixture.workerId,
+      root.operationId,
+      root.operationGeneration,
+      "idle",
+    );
+    expect(
+      (await fixture.repository.nativeSuspensions.read(owner, fixture.chatId))
+        ?.checkpoint,
+    ).toBeNull();
+    expect(
+      (await fixture.repository.getChatExecutionContext(owner, fixture.chatId))
+        ?.status,
+    ).toBe("idle");
+  });
   it.each(["gui", "terminal"] as const)(
     "keeps the %s root and original checkpoint through administrative cleanup and database reopen",
     async (origin) => {

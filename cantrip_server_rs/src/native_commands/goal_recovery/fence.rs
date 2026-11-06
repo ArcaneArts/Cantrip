@@ -13,7 +13,14 @@ impl Repository {
             let captured = context::read(Executor::Transaction(tx), &owner, &worker, &operation, &generation).await?;
             let chat = text(&captured["chat_id"])?;
             context::lock_chat(tx, &owner, &chat).await?;
-            let marker = read(tx, &chat).await?;
+            let mut marker = read(tx, &chat).await?;
+            if marker.is_none() && truthy(input.get("firstClaim")) && input["admission"].get("workerGeneration") != input.get("workerGeneration") &&
+              let Some(claim) = crate::native_commands::goal_claim_recovery::read(tx,&owner,&chat).await? &&
+              deep_equal(&claim,&input["firstClaim"]) && deep_equal(&claim["admission"],&input["admission"]) &&
+              input["source"].get("threadId") == claim.get("threadId") && input["source"].get("goalEpoch") == claim.get("goalEpoch") &&
+              input["source"].get("operationId") == input["admission"].get("operationId") && input["source"].get("operationGeneration") == input["admission"].get("operationGeneration") {
+                marker = Some(json!({"source":input["source"],"admission":input["admission"]}));
+            }
             let Some(marker) = marker.filter(|m| deep_equal(&m["source"], &input["source"]) && deep_equal(&m["admission"], &input["admission"]) &&
                 m["admission"].get("workerGeneration") != input.get("workerGeneration")) else {
                 return Ok(json!({"recovery":read(tx, &chat).await?}));

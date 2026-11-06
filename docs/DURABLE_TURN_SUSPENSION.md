@@ -15,7 +15,9 @@ CodeMode data through both gRPC and the default framed-stdio transport. Patch
 The managed worker now captures a native checkpoint and commits its encrypted
 source locator before confirming Pause through either shared control path.
 Native command receipts now commit server suspension ownership and status.
-Cold execution adoption and client recovery are still being integrated. Do not
+Both server implementations can now admit a fresh physical observer for an
+explicit Resume while retaining the original input and native turn. Production
+worker orchestration and client recovery are still being integrated. Do not
 treat the current product acknowledgement as
 the complete process-termination/resumption guarantee yet.
 
@@ -100,10 +102,9 @@ strict recovery reads reject them without replacing their bytes. Rust uses
 the generated source contracts, explicit semantic validation, strict recovery
 reads, and the same public projection.
 
-This is a persistence and protocol foundation. Production control orchestration,
-Rust mutation-service integration, worker reconciliation and client controls
-still need to adopt it. It does not change the current product pause guarantee
-or establish whole-worker termination acceptance.
+Production cold control orchestration, worker reconciliation and client controls
+still need to adopt these services. These server transitions do not establish
+whole-worker termination acceptance by themselves.
 
 The server foundation is checked by 15 real migrated-database state tests,
 62 existing native-command cases, and seven settings-persistence cases. All
@@ -116,6 +117,85 @@ claiming native Codex or whole-worker resumption. Server typecheck and focused
 format checks pass. The standard check still stops at the existing application
 decomposition limits; the separate repository guard reports the existing
 `native-commands.ts` limit. Later standard-check stages did not run.
+
+## Held managed attachment
+
+Managed thread preparation can carry the server's expected suspension into
+both preserving and configuring native attachment. This hold is installed
+before native recovery or prewarm. Attachment may succeed while the checkpoint
+file is missing or damaged; it must remain idle. Explicit restoration separately
+inspects the actual checkpoint and reports compatibility or storage errors.
+
+Worker restoration also carries the execution profile used to start the native
+process. A standalone chat must not be reopened as an IDE runtime. The
+process-isolated worker fixture covers both profiles, two whole-worker-tree
+terminations, missing and corrupt checkpoint contents during attachment, and
+subsequent same-turn restoration. Production managed preparation now selects
+the encrypted source as described below; the explicit cold Resume control
+service still needs to connect fresh admission and observer publication.
+
+## Selecting the original home during preparation
+
+The server's shared managed launch path reads its actual private suspension
+record and includes only the committed evidence as optional session attachment
+intent. This applies to GUI preparation and native terminal launch through
+Direct, relay and WorkerLink. Running and terminal records cannot turn their
+historical checkpoint evidence into new attachment intent.
+
+Before selecting or starting a native runtime, the worker opens that exact
+source locator with the current chat-content grant and verifies its chat,
+thread, placement, route and account. The original home remains inside its
+protected source record. A private runtime namespace identifies that home and
+chat; no filesystem path is added to the command protocol. An already attached
+managed owner of the same home/thread can keep the live preparation path.
+
+Missing source data or encryption authority produces a fixed error and never
+selects a default home. Runtime version/fingerprint diagnostics do not decide
+checkpoint compatibility; explicit native inspection remains authoritative.
+Preparation installs expected suspension before native attachment and does not
+create fresh execution admission, release automation or submit Resume. The
+complete cold Resume publication/control lifecycle remains a separate step.
+
+## Fresh execution ownership for cold restoration
+
+`POST /api/internal/native-commands/suspension-execution` admits an observer
+under an existing suspended execution lane. It requires the authenticated
+worker's current process generation, an explicit current Resume control epoch,
+the exact committed checkpoint descriptor and unchanged placement, native
+thread and provider route. Worker identity is checked before and after the
+transaction against the actual registered connection identity. The operation
+neither forwards native IPC nor releases the automation hold.
+
+The locked transaction retains `target.originalOperationId` and the original
+command generation as native input/history provenance. It creates a new
+physical `thread/resume` execution with fresh operation and activation
+generations, links its predecessor, and records `executionOwner` separately
+from the current control actor. The original GUI logical input and execution
+lane remain open. Old GUI transport cleanup cannot finish a replacement
+observer, including after its explicit Resume acknowledgement. Terminal native
+evidence and Stop still permit canonical cleanup.
+
+The original `(chat, thread, turn)` history association remains unique. A
+restored observer's native-turn observation is derived from its server-stamped
+source and checkpoint; it never inserts another canonical input owner. The
+admission result returns the original source and GUI logical root so worker
+publication can retain those anchors while using fresh execution authority.
+
+Retries by the same worker/runtime and control join the canonical physical
+admission, even if the retry proposes a different operation ID. Changed
+payloads or ownership conflict explicitly. The ordinary admission endpoint
+rejects caller-supplied restoration markers. Dispatch checks the current
+control epoch, checkpoint and execution owner again, so a later Pause or Stop
+fences an older pending restoration. Resume controls can also carry the exact
+expected control ID. Write failures roll back observer creation, predecessor
+retirement and activation changes together; the prior checkpoint remains
+available.
+
+The optional `executionOwner` field is backward-compatible with existing
+version-1 suspension records. It contains correlation IDs, not credentials or
+reusable execution grants. Restoring native state and obtaining fresh runtime
+capacity remain worker responsibilities; this endpoint alone does not prove
+that a checkpoint is readable or that native resumption succeeded.
 
 ## Managed worker capture and source locator
 

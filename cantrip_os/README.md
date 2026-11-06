@@ -53,9 +53,11 @@ Phase 5's optional [recovery package](packages/recovery/README.md) supplies loca
 workspace capture, staged restore, interruption recovery and rollback commands.
 Docker/ISO scripts include it with the executor edition;
 `CANTRIP_OS_RECOVERY=0` omits it independently. The package is an administrative
-foundation. [Private Worker archive encryption/transfer helpers](BACKUPS.md) are
-tested separately; durable backup admissions and Cantrip's backup controls remain
-pending. Guest transfer staging is root-private plaintext.
+foundation. [Private Worker archive encryption/transfer and Server admissions](BACKUPS.md)
+now back the capture, history, restore and rollback controls in project CantripOS
+settings. The real Worker/grant/browser Docker checkpoint is recorded in
+[acceptance](ACCEPTANCE.md). Restored-source adoption and broader remote/lifecycle
+acceptance remain Phase 5 work. Guest transfer staging is root-private plaintext.
 
 From the repository root, with Node 22.13+ (or Node 24) and a running Docker engine:
 

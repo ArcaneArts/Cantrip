@@ -1764,7 +1764,8 @@ export class WorkerInferenceAdmission {
     for (const record of this.journal.recoverySnapshot())
       if (
         this.recoverable(record) &&
-        record.identity.recovery?.autonomousGoal &&
+        (record.identity.recovery?.autonomousGoal ||
+          record.identity.recovery?.taskGoalCycle) &&
         (!chatId || record.identity.chatId === chatId)
       )
         this.recoveryPending.set(record.key, record.identity.providerId);

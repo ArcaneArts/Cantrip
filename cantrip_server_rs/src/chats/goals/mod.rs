@@ -1,6 +1,7 @@
 //! Interactive and scheduled Goal execution. Task bodies remain opaque; the
 //! existing worker observes, activates and protects their actual objectives.
 mod automation;
+mod claim_recovery;
 mod continuation;
 mod cycle_recovery;
 mod leases;

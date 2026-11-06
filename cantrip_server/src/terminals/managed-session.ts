@@ -90,7 +90,10 @@ export async function prepareManagedTurnLaunch(
     bridge: Pick<WorkerCommandBus, "request">;
     repository: Pick<
       ServerRepository,
-      "listEffectiveMcpServers" | "setChatModel" | "updateChatRuntime"
+      | "listEffectiveMcpServers"
+      | "setChatModel"
+      | "updateChatRuntime"
+      | "nativeSuspensions"
     >;
   },
 ): Promise<
@@ -108,6 +111,19 @@ export async function prepareManagedTurnLaunch(
       routePairsForConfiguration,
     );
   const session = managedTurnSessionContext(context);
+  if (session && context.threadId) {
+    const suspension = await repository.nativeSuspensions.read(
+      ownerId,
+      context.chatId,
+    );
+    if (
+      suspension?.checkpoint &&
+      !["running", "stopped", "completed", "failed", "idle"].includes(
+        suspension.phase,
+      )
+    )
+      session.heldSuspension = suspension.checkpoint;
+  }
   const configurationFields = {
     model: root.model,
     provider: root.provider,

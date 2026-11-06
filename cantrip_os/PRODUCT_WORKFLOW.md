@@ -63,11 +63,10 @@ computer use and Cantrip's integrated desktop viewer.
 
 ## Local recovery administration
 
-For local root administration while the Phase 5 product backup controls are being
-implemented, the optional [recovery package](packages/recovery/README.md) provides
+For local root administration, the optional [recovery package](packages/recovery/README.md) provides
 capture, inspect, staged restore and rollback commands. Capture interrupts all
-managed workspaces, and its guest spool is root-private plaintext. This is not
-yet the encrypted backup/restore workflow through Cantrip.
+managed workspaces, and its guest spool is root-private plaintext. Use the
+[Cantrip controls](#private-workspace-backups) for encrypted Worker storage.
 
 ## Agent computer use
 
@@ -410,3 +409,66 @@ bridge alive. Losing it retires the bridge; start again explicitly. Saved source
 captures do not follow an OS replacement automatically. Stop attachments before
 editing a route; the server checks again while holding its mutation lock, so
 an attachment admitted concurrently cannot be silently changed or deleted.
+
+## Private backup backend checkpoint
+
+Both Server implementations provide owned backup admissions and a paginated
+catalogue through the [backup API](BACKUPS.md#server-admissions-and-catalogue).
+Requests retain immutable operation identities and opaque intent. Repeating an
+admission observes its original Worker job, including after Server restart.
+Restore uses the original backup scope and a freshly selected destination;
+rollback targets the original restore workspace.
+
+Explicit continuation can activate an already received archive after executor
+restart, using a separately recorded runtime authorization. It cannot change
+the instance, attachment, account or Worker. File restoration leaves source
+rebinding and captured chats deliberate. The following controls build on this API.
+
+## Private workspace backups
+
+Open **Project settings → CantripOS**, select an instance/workspace and use
+**Private backups**. Unlock the account's encryption first. **Capture workspace**
+uses an optional private label and explicit home-relative exclusions, one per
+line. Ignored files are otherwise included. Capture, restore and rollback
+interrupt managed work across the instance's workspaces; they do not back up
+running processes or open windows. The ordinary personal desktop is independent.
+
+**Backups and operation history** is an owned, paginated list across destinations.
+Each item identifies its instance, workspace and Worker. Private labels, manifests,
+exclusions, diagnostics and restore receipts are authenticated/decrypted only in
+the unlocked client. Completion is historical: an offline storage Worker or an
+unchecked archive is displayed separately from the saved result.
+
+**Restore backup** defaults to a new empty workspace. Its account-creation
+operation is retained before sending and the actual creation receipt is required;
+an existing account with a matching name is not adopted. The destination must
+use the same storage Worker. Replacing an existing workspace requires selecting
+it and checking the explicit replacement choice. Data is fully authenticated and
+staged before activation. **Roll back restore** uses its retained original and
+requires a separate confirmation. Browser data may require signing in again.
+
+An encrypted immutable admission is saved in this tab before submission. After a
+lost response or reload, **Resume saved request** submits that same admission;
+Server observes its original job. **Discard local draft** only clears the tab's
+copy and does not cancel admitted work. Closing the tab can lose that local draft,
+but already admitted operations remain in Server history. No automatic mutation
+retry is used for connection or CSRF recovery.
+
+**Observe outcome** reads the original job. **Recover interrupted operation**
+reconciles durable guest/archive evidence. **Continue staged operation** explicitly
+authorizes the freshly observed runtime to finish known staging on the same
+attachment/account. It does not recapture, repeat uncertain uploads or replay an
+unknown directory exchange. Existing chats and handles retain their placement;
+refreshing an instance does not redirect them.
+
+Authorization uses the existing repository-content grants. Actual Worker refresh
+loads all still-active historical revisions; an archive's revision is read from
+its authenticated file, never inferred from the response envelope. Revoked
+historical grants are not silently recreated. Missing keys or a corrupt archive
+fail the actual restore rather than falling back to plaintext or the Host.
+
+Restoring files does not yet register their fresh project source bindings. Keep
+that distinction explicit: using the restored checkout from a new Cantrip agent
+requires the subsequent restored-source adoption milestone. The current browser
+acceptance covers the real Docker/Server/Worker backup workflow; it does not
+establish real remote/cloud or complete Phase 5 acceptance.

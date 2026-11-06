@@ -7,6 +7,7 @@ import { goalHandoffSessionMatches } from "./native-goal-handoff-affinity.js";
 import { reconcileNativeThreadObservation } from "./native-thread-observation.js";
 import { NativeCommandRecoveryRepository } from "./native-command-recovery.js";
 import { NativeSuspensionRepository } from "./native-suspensions.js";
+import { NativeSuspensionExecutionAdmissionRepository } from "./native-suspension-execution-admission.js";
 import {
   NativeSuspendedExecutionRepository,
   retainedNativeSuspension,
@@ -406,6 +407,8 @@ export class NativeCommandRepository {
       };
     } = {},
   ): Promise<NativeCommandAdmissionResult> {
+    if (input.intent.restoredSuspension)
+      throw new NativeCommandError("suspension-admission-required");
     const queueClaim = executionOptions.queueClaim ?? input.queueClaim;
     return this.database.transaction(async (tx) => {
       await this.lock(tx, ownerId, input.session.chatId);
@@ -1185,6 +1188,27 @@ export class NativeCommandRepository {
       if (context.threadId && context.threadId !== input.session.threadId)
         throw new NativeCommandError("thread-identity-mismatch");
       const intent = row.intent as NativeCommandAdmission["intent"];
+      if (intent.restoredSuspension) {
+        const state = await new NativeSuspensionRepository(this.database)
+          .inTransaction(tx)
+          .read(ownerId, row.chatId);
+        const current = state?.executionOwner;
+        if (
+          !state ||
+          state.phase !== "resuming" ||
+          state.action !== "resume" ||
+          state.controlId !== intent.restoredSuspension.controlId ||
+          !isDeepStrictEqual(
+            state.checkpoint?.suspension,
+            intent.restoredSuspension.checkpoint,
+          ) ||
+          current?.operationId !== row.operationId ||
+          current.operationGeneration !== row.operationGeneration ||
+          current.workerGeneration !== input.workerGeneration ||
+          current.runtimeGeneration !== input.session.runtimeGeneration
+        )
+          throw new NativeCommandError("suspension-control-stale");
+      }
       if (intent.settingsBindingId)
         await assertNativeSettingsWriteBinding(
           tx,
@@ -1593,6 +1617,13 @@ export class NativeCommandRepository {
     ...args: Parameters<NativeSuspendedExecutionRepository["read"]>
   ) {
     return new NativeSuspendedExecutionRepository(this.database).read(...args);
+  }
+  admitSuspendedExecution(
+    ...args: Parameters<NativeSuspensionExecutionAdmissionRepository["admit"]>
+  ) {
+    return new NativeSuspensionExecutionAdmissionRepository(
+      this.database,
+    ).admit(...args);
   }
   recoverExecution(
     ...args: Parameters<NativeCommandRecoveryRepository["recoverExecution"]>
@@ -2175,6 +2206,10 @@ export class NativeCommandRepository {
           input.reconciliation?.nativeTurnId ?? null,
           input.goalEpoch,
         );
+      if (goalEvidence && current.status !== "applied")
+        // The applied setter is durable before Core requests a first cycle.
+        // Repeated receipts must not create perpetual queue notices.
+        await queueStateChanged(tx, row.chatId);
       return {
         ...receipt(updated),
         ...(input.deferred

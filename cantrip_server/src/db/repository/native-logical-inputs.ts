@@ -21,7 +21,10 @@ import { lockNativeCommandChat } from "./native-command-lock.js";
 import { nativeCommandReceipt as receipt } from "./native-command-receipt.js";
 import { settleQueueClaim } from "./native-command-queue.js";
 import { rememberNativeCommandTurn } from "./native-command-turns.js";
-import { retainedNativeSuspension } from "./native-suspended-execution.js";
+import {
+  retainedNativeSuspension,
+  retainsRestoredLogicalInput,
+} from "./native-suspended-execution.js";
 import { NativeSuspensionRepository } from "./native-suspensions.js";
 import type { NativeCommandAdmissionResult } from "./native-commands.js";
 
@@ -446,6 +449,15 @@ export class NativeLogicalInputRepository {
         await retainedNativeSuspension(
           new NativeSuspensionRepository(this.database).inTransaction(tx),
           ownerId,
+          head,
+        )
+      )
+        return false;
+      if (
+        retainsRestoredLogicalInput(
+          await new NativeSuspensionRepository(this.database)
+            .inTransaction(tx)
+            .read(ownerId, root.chatId),
           head,
         )
       )

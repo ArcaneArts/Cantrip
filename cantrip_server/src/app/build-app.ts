@@ -823,6 +823,7 @@ export async function buildApp({
     resumeChatAutomation,
     scheduledTaskGoalTurnOptions,
     recoverManagedGoal,
+    recoverManagedGoalClaim,
     recoverTaskGoalCycle,
     startGoalTurn,
     taskContentFromSummary,
@@ -1318,7 +1319,9 @@ export async function buildApp({
       runAsOwner(ownerId, () =>
         "cycle" in recovery
           ? recoverTaskGoalCycle(chatId, recovery)
-          : recoverManagedGoal(chatId, recovery),
+          : "claimId" in recovery
+            ? recoverManagedGoalClaim(chatId, recovery)
+            : recoverManagedGoal(chatId, recovery),
       ),
     publish: (ownerId, chatId) =>
       runAsOwner(ownerId, () => publishChatInvalidation(chatId, "chat-queue")),

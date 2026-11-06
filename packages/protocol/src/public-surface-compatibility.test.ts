@@ -156,6 +156,8 @@ const nativeSuspensionExports = [
   "nativeSuspensionActorSchema",
   "nativeSuspensionErrorSchema",
   "nativeSuspensionEvidenceSchema",
+  "nativeSuspensionExecutionAdmissionResultSchema",
+  "nativeSuspensionExecutionAdmissionSchema",
   "nativeSuspensionPhaseSchema",
   "nativeSuspensionRecordSchema",
   "nativeSuspensionTargetSchema",

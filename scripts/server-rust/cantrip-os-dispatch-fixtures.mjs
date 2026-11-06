@@ -205,6 +205,21 @@ export function osDispatchFixtures() {
   };
   const { serverId: _server, ...executionScope } = osSourceScope;
   const { serverId: _linkedServer, ...linkedExecutionScope } = linked;
+  const backupSummary = {
+    operationId: id,
+    action: "capture",
+    instanceId: id,
+    workspaceId: id,
+    workerId: "worker",
+    backupId: null,
+    restoreOperationId: null,
+    protectedRequest: backupRequest,
+    result: null,
+    workerConnected: true,
+    archiveAvailability: "not-checked",
+    createdAt: "2026-11-05T00:00:00.000Z",
+    updatedAt: "2026-11-05T00:00:00.000Z",
+  };
   const fixtures = {
     cantripOsRunSelectionSchema: [
       {
@@ -329,6 +344,29 @@ export function osDispatchFixtures() {
       { kind: "cantrip-os", scope: linkedExecutionScope, transport },
     ],
     cantripOsDispatchScopeSchema: [osScope],
+    cantripOsBackupAdmissionSchema: [
+      ...["capture", "restore", "rollback"].map((action) => ({
+        action,
+        operationId: id,
+        workspaceId: id,
+        attachmentGeneration: id,
+        runtimeGeneration: id,
+        protectedRequest: backupRequest,
+        ...(action === "restore"
+          ? { backupId: id, replace: false }
+          : action === "rollback"
+            ? { restoreOperationId: id }
+            : {}),
+      })),
+    ],
+    cantripOsBackupRecoverySchema: [
+      { mode: "observe" },
+      { mode: "recover" },
+      { mode: "continue", attachmentGeneration: id, runtimeGeneration: id },
+    ],
+    cantripOsBackupListQuerySchema: [{}, { limit: "1", cursor: id }],
+    cantripOsBackupSummarySchema: [backupSummary],
+    cantripOsBackupPageSchema: [{ items: [backupSummary], nextCursor: null }],
     cantripOsBackupWorkspaceSchema: [backupWorkspace],
     cantripOsBackupSourceSchema: [
       {

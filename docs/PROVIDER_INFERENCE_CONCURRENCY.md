@@ -1864,6 +1864,53 @@ same encrypted prompt to the canonical queue and acknowledge withdrawal in one
 transaction. Source export and destination preparation start only after the
 original command's physical and logical cleanup completes.
 
+Patch `0081` also makes the actual native export acquire the existing tree
+execution coordinator. It refuses export while a registered child or auxiliary
+producer still owns an execution lease, while final hooks are settling, while
+native security settings are pending, or while an attached tree member retains
+a durable suspension hold. An empty root `active_turn` and a released provider
+ticket are not sufficient evidence that these native lifetimes ended.
+The coordinator lock remains held through the native history flush, last-turn
+comparison and portable history/settings capture. New tree execution cannot
+race between an idle observation and that capture. The existing root-turn and
+last-turn checks still run against the actual source. A refusal leaves the
+transfer reserved for retry or cancellation; it does not export partial state,
+reclaim a running ticket or replay input. This does not add portable child
+continuation support or enable Task-private Goal route transfers.
+
+Patch `0082` installs a native root producer hold on every prepared source,
+including after worker recovery, before export. For a withdrawn Goal, that hold
+acknowledges before its source withdrawal is persisted. New root Goal/queue
+cycles wait without creating another turn; existing children and already-started
+Goal resumptions keep their own inference lifetimes and can finish. Holding a
+root does not drain child requests or grant provider capacity.
+
+When actual export establishes tree quiescence under `0081`'s coordinator lock,
+it seals further execution admission for that held tree. This prevents idle
+children from starting fresh work between the snapshot and route publication.
+Input remains unconsumed at native admission. The seal persists on the old
+source after commit. Transfer cancellation releases only its own hold and seal,
+using the same native gate and mode, and wakes retained tree inputs. Explicit
+Stop/Pause invalidation is stronger and is never reopened by this release.
+
+The worker-private control RPC uses the actual connection owner, native root,
+runner/transport generation, operation ID and monotonic revision. Releasing an
+unused revision also fences a delayed hold request, so a lost acknowledgement
+cannot reapply a cancelled hold. It adds one bounded record per native root,
+with no completed-operation cache, prompt queue or server semaphore.
+
+For `0082`, validation was source review, direct Prettier/rustfmt formatting of
+the changed sources/fragments and `git diff --check`. The existing runner mock
+was updated for its new control method but was not executed. No native patch
+application/check, tests, builds, typechecks, benchmarks, native/helper runtime,
+hosted validation or computer-use testing ran. Runtime/platform behavior and
+Task-private Goal route transfer remain unverified and unfinished respectively.
+
+The patch was authored from the tracked source fragments and source-reviewed.
+`git diff --check` ran; the native patch was not applied, compiled or executed.
+No tests, builds, typechecks, benchmarks, native/helper validation, hosted checks
+or computer-use testing ran for this change.
+
 The old command waits for that acknowledgement instead of racing ordinary failed
 turn cleanup. A lost reply retains the handoff reservation and exact withdrawal
 metadata in the existing worker journal. Recovery reads actual keeper metadata or
@@ -2117,9 +2164,9 @@ and have no outstanding canonical queue claim. Older commands without this
 observed identity remain ineligible for this transition.
 
 The worker synchronously seals the exact unforwarded inference source. It then
-invalidates that actual native runner on the matching transport and waits for
+holds that actual native root producer on the matching transport and waits for
 the native acknowledgement before persisting the handoff's withdrawal record.
-An uncertain invalidation retries the same native gate. It does not create a
+An uncertain hold retries the same operation and native gate. It does not create a
 replacement turn or treat quiet output as settlement. Dispatch that wins first
 causes withdrawal to refuse and leaves the started operation running.
 
@@ -2139,11 +2186,13 @@ or input. The imported Goal schedules a fresh cycle through normal FIFO
 admission after publication; neither the old provider's slot nor a future
 destination slot is retained across the handoff.
 
-Cancelling a withdrawn transfer may rearm only the runner invalidated by that
-transfer. Explicit Stop, Pause, resource removal or a newer rebind cannot be
-undone by its completion wake. The cancellation path also reads the canonical
-queue's paused/stopped state before rearming. Ordinary wakes remain unable to
-reopen explicitly invalidated runners.
+Cancelling a withdrawn transfer releases only its own root hold, preserving the
+same native gate. Explicit Stop, Pause, resource removal or a newer rebind cannot
+be undone by its completion wake. Cancellation also releases holds for retired
+Goal markers and idle/GUI sources. A canonical queue pause does not retain an
+orphaned transfer hold; normal admission still reads current queue/Goal
+eligibility before starting work. Ordinary wakes cannot reopen explicitly
+invalidated runners.
 
 This milestone covers claimless managed native Goal continuations. A first
 cycle retaining an `awaitingGoal` queue claim needs its own parent-affinity
@@ -2501,6 +2550,28 @@ capacity. Ordinary fresh native cycles continue using the worker's existing
 private gate without a server round trip per cycle. They release and rejoin FIFO
 at their normal native boundaries.
 
+An unused Task-private cycle released in the current worker generation also
+enters the journal's existing recovery list. The list retains its actual keeper
+receipt and original ordinal, replacing duplicate keys. A bound Task scope is
+eligible only with a positive `never-started` receipt; potentially executed
+bound scopes are excluded. Queue/control notifications reinstall its provider
+reconciliation barrier before the existing canonical read, just as for managed
+Goal sources. No new acquisition or provider grant is made by that read.
+
+Previously, release installed this barrier for Task cycles while the live
+journal list and notification wake only handled managed Goal sources. The Task
+receipt could never reach reconciliation, so unrelated work on the same
+provider stayed blocked. Retaining and waking the actual Task receipt lets the
+existing canonical result requeue, retire or keep it unresolved and remove the
+temporary reconciliation barrier. Paused/stopped work does not gain eligibility;
+its existing Task controls and native ownership checks remain authoritative.
+
+This live recovery correction was source-reviewed and directly formatted;
+`git diff --check` ran. No tests, builds, typechecks, benchmarks, native patch
+application/checks, native/helper execution, hosted validation or computer-use
+testing ran. Runtime/platform behavior remains unverified. Task-private Goal
+provider transfer is still unfinished.
+
 A completed negative Goal read retires only the exact marker whose scope is
 still current. The marker retains bounded Source/replacement provenance so a
 late unused record cannot recreate a consumed cycle. Incoming scopes with a
@@ -2551,3 +2622,47 @@ patch execution, hosted validation, or computer-use testing ran. The migration
 was not applied; runtime and platform behavior remain unverified. Recovery of an
 applied setter whose first child was never admitted and Task-private provider
 transfers remain subsequent milestones of the active concurrency goal.
+
+## Applied setters before the first native cycle
+
+An applied Goal setter can survive a worker exit before Core requests its first
+cycle. That pending first claim now uses the existing durable queue notice to
+prepare the current managed runtime, read its actual Goal, and wake the existing
+native Goal. The original input remains on its canonical claim and is never
+resubmitted to `thread/goal/set`. A distinct claim identity names the parent,
+prompt revision and Goal epoch; it does not pretend that a child or journal
+Source already exists. The applied receipt schedules this notice atomically,
+and repeated receipts do not continually rearm it.
+
+The worker confirms actual keeper ownership before preparing the runtime. An
+active matching Goal schedules its first cycle through ordinary native managed
+admission and worker FIFO. The acknowledgement observes the real journal enqueue,
+not a provider grant, so a saturated pool remains queued past the short control
+deadline. The observer has an eight-second deadline and releases its listeners
+when it ends; it neither cancels the native cycle nor releases its ticket.
+Unconfirmed delivery retains the existing durable notice for retry.
+
+If a real first child was accepted before a crash but has no journal write yet,
+the canonical claim carries that actual child admission. Only a replacement
+worker after actual keeper takeover may fence it. The server validates the
+unchanged claim, applied parent, exact child/generation, native attempt and lack
+of contradictory dispatch evidence under the existing lock, then transitions
+the positively unused child into ordinary Goal Source recovery. It invents no
+journal ordinal. If an old journal actor does exist, its normal reconciliation
+still preserves the actual ordinal before replacement capacity is granted.
+
+A negative actual Goal read can consume only the unchanged applied first claim
+with no admitted child. The worker brackets that read with native settings reads;
+the servers compare the complete current placement, route, account, transport
+and Core epoch. Stop/Pause, an edited input, a replaced binding, a different child,
+or a deadline alone cannot retire another source. Existing permission and handoff
+eligibility transitions also rearm these pending claims and retained Task Goal
+markers through the same queue cursor. No model invocation is moved to the server.
+
+Validation: source review, direct Prettier/rustfmt, mechanical protocol source
+export (660 roots, 10,970 nodes; Run export 11 roots, 453 nodes), and
+`git diff --check`. No tests, builds, typechecks, benchmarks, native/helper or
+patch execution, hosted validation, or computer-use testing ran. The migration
+was not applied. Runtime and platform behavior remain unverified. Task-private
+provider transfers and the remaining full lifecycle audit are still part of the
+active concurrency goal.

@@ -5,8 +5,11 @@ Worker owns transport, encryption and storage. `cantrip-os-recovery` remains an
 optional package without a Worker, network listener or model credentials.
 
 Worker private archive helpers, durable jobs and real Docker/SSH roundtrips are implemented.
-Durable Server backup admissions, a product catalogue and Cantrip backup/restore
-controls are still pending. These helpers are not a completed user workflow.
+Both Server implementations now own durable admissions and a paginated private
+catalogue. Cantrip's project settings now expose capture, history, restore,
+rollback and explicit recovery. The browser/full Worker Docker checkpoint uses
+production Server grants; restored-source adoption, installed-system controls
+and broader remote/lifecycle acceptance remain required.
 See [the guest command guide](packages/recovery/README.md) for local administration.
 
 ## Format and keys
@@ -97,14 +100,54 @@ cleanup is reported as a warning. Explicit recovery may release a dead guest
 operation's maintenance, and explicit continuation may finish pre-receive
 verification or activate a known received archive while its admitted runtime
 remains valid. An uncertain receive is never uploaded again automatically.
-Changed mutation authority fails; it requires the product recovery path rather
-than substituting a fresh runtime into the old admission.
+Explicit Server continuation can authorize a newly observed runtime for the
+same attachment, instance, account and Worker. It persists that grant separately
+and leaves the original scope and intent unchanged. The Worker allows only the
+runtime to differ, and the guest checks it under its actual lock.
 
 Restore requires a fully authenticated backup and saves its exact archive digest
 before upload. Its guest receipt must match that digest and the admitted target
 account. Replacement retains the original home, and rollback uses a separate
 admission and actual directory identities. Guest spool cleanup preserves the
 restore outcome and rollback evidence, including older retained receipts.
+
+## Server admissions and catalogue
+
+Client admissions contain operation/workspace IDs, expected attachment/runtime
+generations, opaque private intent, and an owned backup/restore reference where
+relevant. The Server resolves transport, UID/GID/home and source roots in its
+admission transaction. The last verified Linux Git common path supplies explicit
+metadata roots; linked Host bindings remain references. Existing home/Git
+discovery and recorded external-reference rules still apply.
+
+| Method | Endpoint                                                  | Behavior                                           |
+| ------ | --------------------------------------------------------- | -------------------------------------------------- |
+| POST   | `/api/cantrip-os/:instanceId/backup-operations`           | Admit capture, restore or rollback once            |
+| GET    | `/api/cantrip-os/backups`                                 | Paginated capture catalogue                        |
+| GET    | `/api/cantrip-os/backup-operations`                       | Paginated history including restores and rollbacks |
+| GET    | `/api/cantrip-os/backup-operations/:operationId`          | Read the saved owned operation                     |
+| POST   | `/api/cantrip-os/backup-operations/:operationId/recovery` | Explicit observe, recover or continue              |
+
+Lists accept `limit` (1–100, default 30) and an owned operation-ID `cursor`.
+Labels, private intent, results and diagnostics remain opaque. Public summaries
+omit command/transport/account details. Capture completion is historical
+evidence, not a claim that an archive still exists: `archiveAvailability` is
+`not-checked` or `worker-offline`, independently of its saved outcome. Actual
+restore authenticates the stored file before guest activation.
+
+Admissions survive Server restart. An identical request observes its original
+Worker admission even after runtime changes; changed intent under the same ID
+is rejected. Restore references the capture's saved scope, rather than the
+source instance's latest runtime. Results are identity-checked; out-of-order
+observations cannot downgrade completed evidence. A lost response is unknown
+and does not authorize another mutation.
+
+Continue additionally requires the selected attachment and current runtime.
+The Server checks owned identities and records the runtime grant atomically
+before dispatch. Reattachment, another instance or changed account cannot be
+substituted. A stale health flag alone does not prevent the actual pinned
+operation: the Worker/guest verify its exact runtime and identities. Restoring
+files does not recreate source bindings or retarget old chats.
 
 ## Evidence and remaining work
 
@@ -118,7 +161,12 @@ filesystem executor. The fixture uses ephemeral key material through the same
 grant interface; it is not acceptance of actual Server grant delivery or product
 controls. See [acceptance](ACCEPTANCE.md) for exact results.
 
-Still required: Server-authorized backup admissions/catalogue and UI, full
-product/agent/remote acceptance, instance
+The client checkpoint additionally exercises actual Server grant delivery through
+the full Worker and Cantrip's browser controls, including a full Worker SIGKILL
+and historical capture observation. It is separate from the earlier ephemeral-key
+fixtures. See [the product workflow](PRODUCT_WORKFLOW.md#private-workspace-backups).
+
+Still required: restored-source adoption, installed-system product controls,
+full product/agent/remote acceptance, instance
 lifecycle and upgrade/customization preservation, and final recorded Docker/ISO
 distribution artifacts. A local VM reached over SSH is not cloud acceptance.

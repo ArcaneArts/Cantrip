@@ -13,6 +13,8 @@ import {
   taskDispatchWorkerLeaseSchema,
   nativeGoalRecoveryReceiptSchema,
   type NativeGoalRecovery,
+  type NativeGoalClaimRecovery,
+  nativeGoalClaimRecoveryReceiptSchema,
   type TaskGoalCycleRecovery,
   taskGoalCycleRecoveryReceiptSchema,
   type AgentTurnResult,
@@ -1245,6 +1247,79 @@ export function createTaskGoalRuntime({
     }
   };
 
+  const recoverManagedGoalClaim = async (
+    chatId: string,
+    claim: NativeGoalClaimRecovery,
+  ): Promise<void> => {
+    const ownerId = applicationOwnerId();
+    const current = await repository.managedQueue.goalClaimRecovery(
+      ownerId,
+      chatId,
+    );
+    if (!isDeepStrictEqual(current, claim)) return;
+    const context = await repository.getChatExecutionContext(ownerId, chatId);
+    if (
+      !context ||
+      context.experience !== "agent" ||
+      context.threadId !== claim.threadId
+    )
+      throw new Error("The Goal first-cycle recovery placement changed.");
+    const runtime = await runtimeForContext(context);
+    if (!runtime)
+      throw new Error("Selected Goal recovery model was not found.");
+    const managed = await prepareManagedConsoleLaunch(context, runtime, {
+      ownerId,
+      bridge,
+      repository,
+      routePairsForConfiguration,
+    });
+    const result = nativeGoalClaimRecoveryReceiptSchema.parse(
+      await bridge.request(
+        context.workerId,
+        {
+          ...managed,
+          type: "chat.goal.claim-recover",
+          claim,
+          chatId,
+          cwd: context.cwd,
+          threadId: managed.threadId!,
+          session: managed.session!,
+          subagentDefaults: managed.subagentDefaults ?? null,
+          mcpServers: managed.mcpServers ?? [],
+          planMode: managed.planMode ?? "default",
+          permissionProfileId: effectivePermissionProfile(context).effectiveId,
+        },
+        { ownerId, timeoutMs: 10_000 },
+      ),
+    );
+    const generation =
+      result.status === "queued"
+        ? result.admission.workerGeneration
+        : result.workerGeneration;
+    const connection = bridge.connectionIdentity(context.workerId);
+    if (
+      !isDeepStrictEqual(result.claim, claim) ||
+      connection?.ownerId !== ownerId ||
+      connection.workerProcessGeneration !== generation
+    )
+      throw new Error(
+        "Goal claim recovery belongs to a replaced worker connection.",
+      );
+    await repository.managedQueue.confirmGoalClaimRecovery(
+      ownerId,
+      chatId,
+      result,
+    );
+    if (
+      (result.status === "deferred" || result.status === "ineligible") &&
+      isDeepStrictEqual(
+        await repository.managedQueue.goalClaimRecovery(ownerId, chatId),
+        claim,
+      )
+    )
+      throw new Error("The applied Goal's first cycle remains unconfirmed.");
+  };
+
   const recoverManagedGoal = async (
     chatId: string,
     recovery: NativeGoalRecovery,
@@ -1616,6 +1691,7 @@ export function createTaskGoalRuntime({
     retainTaskGoalLease,
     resumeChatAutomation,
     recoverManagedGoal,
+    recoverManagedGoalClaim,
     recoverTaskGoalCycle,
     scheduledTaskGoalTurnOptions,
     synchronizeScheduledTaskGoal,

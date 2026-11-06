@@ -267,6 +267,11 @@ export async function nativeCommandFixture(repository, input) {
       generation,
       input.status,
     );
+  if (input.op === "native-command-suspension-execution")
+    return repository.nativeCommands.admitSuspendedExecution(
+      owner,
+      input.input,
+    );
   if (input.op === "native-command-suspended-execution")
     return repository.nativeCommands.suspendedExecution(
       owner,

@@ -10,10 +10,20 @@ import { cuaAgentAuthoritySchema } from "./computer-use-agent.js";
 import { z } from "zod";
 import { nativeGoalRecoverySourceSchema } from "./native-goal-recovery.js";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
-import { nativeSuspensionEvidenceSchema } from "./native-suspensions.js";
+import {
+  nativeSuspensionEvidenceSchema,
+  nativeSuspensionRecordSchema,
+  nativeTurnSuspensionSchema,
+} from "./native-suspensions.js";
 
 const id = z.string().min(1).max(255);
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
+const nativeOperationIdentitySchema = z
+  .object({
+    operationId: id,
+    operationGeneration: id,
+  })
+  .strict();
 /** Identity of an actual worker-observed native Goal admission, not a prompt. */
 export const nativeAutonomousAttemptSchema = z
   .object({
@@ -51,6 +61,16 @@ export const nativeCommandIntentSchema = z
     resumeAutonomy: z.boolean().optional(),
     paused: z.boolean().optional(),
     durableSuspension: z.literal(true).optional(),
+    expectedSuspensionControlId: z.uuid().optional(),
+    /** Stamped only by the dedicated suspension observer admission. */
+    restoredSuspension: z
+      .object({
+        controlId: z.uuid(),
+        checkpoint: nativeTurnSuspensionSchema,
+        source: nativeOperationIdentitySchema,
+      })
+      .strict()
+      .optional(),
     goalStatus: z.enum(["active", "paused"]).optional(),
     settingKeys: z.array(z.string().min(1).max(120)).max(64).default([]),
     expectedTurnId: id.nullable().default(null),
@@ -323,6 +343,31 @@ export const nativeCommandAdmissionResultSchema = z
     replayed: z.boolean().optional(),
   })
   .strict();
+/** Fresh observer admission for an explicitly requested, still-held native
+ * continuation. It contains no input replay, worker paths or old grants. */
+export const nativeSuspensionExecutionAdmissionSchema = z
+  .object({
+    workerId: id,
+    workerGeneration: z.uuid(),
+    operationId: id,
+    controlId: z.uuid(),
+    checkpoint: nativeSuspensionEvidenceSchema,
+    session: nativeCommandSessionSchema,
+    payloadDigest: digest,
+    protectedPayload: encryptedPayloadEnvelopeSchema,
+  })
+  .strict();
+export const nativeSuspensionExecutionAdmissionResultSchema =
+  nativeCommandAdmissionResultSchema
+    .extend({
+      suspension: nativeSuspensionRecordSchema,
+      source: nativeOperationIdentitySchema,
+      logicalRoot: nativeOperationIdentitySchema.nullable(),
+    })
+    .strict();
+export type NativeSuspensionExecutionAdmission = z.infer<
+  typeof nativeSuspensionExecutionAdmissionSchema
+>;
 export const nativeCommandSettlementResultSchema = z
   .object({ receipt: nativeCommandReceiptSchema })
   .strict();

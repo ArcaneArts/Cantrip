@@ -156,6 +156,9 @@ async fn settle(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Valu
     if !goal_before_dispatch {
         queue::settle(tx, &updated, turn.as_deref(), input.get("goalEpoch")).await?;
     }
+    if goal && state.current["status"] != "applied" {
+        queue::changed(tx, &chat).await?;
+    }
     response(tx, owner, input, &updated, &chat).await
 }
 impl Repository {
