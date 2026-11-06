@@ -5,6 +5,7 @@ import {
 } from "../src/codex/managed-native-suspension.js";
 import type { NativeSuspensionStore } from "../src/native-suspension-store.js";
 import type { CodexAppServer } from "../src/codex/app-server.js";
+import { workerContinuation } from "../src/codex/worker-turn-continuation.test-fixture.js";
 
 const frame = {
   method: "turn/pause",
@@ -75,6 +76,7 @@ describe("admitted durable Pause", () => {
       inspectTurnSuspension: vi.fn(async () => ({ paused: true, suspension })),
       managedHistoryHome: "/original-home",
       compatibility: { version: { raw: "0.166.0" } },
+      captureWorkerTurnContinuation: workerContinuation,
     };
     const evidence = { suspension, storageId: "id" };
     const store = {

@@ -4,9 +4,16 @@ import { setTimeout as retryDelay } from "node:timers/promises";
 import type { NativeResourceProtection } from "../native-resource-protection.js";
 import { handleNativeResourceProtection } from "./native-resource-control.js";
 import {
+  captureWorkerTurn,
+  restoreWorkerTurn,
+  workerTurnContinuationSchema,
+  type WorkerTurnContinuation,
+} from "./worker-turn-continuation.js";
+import {
   providerUsesChatCompletions,
   nativeTurnSuspensionSchema,
   nativeSettingsVersionSchema,
+  type NativeTurnSuspension,
   isWorkerEndpointProviderKind,
 } from "@cantrip/protocol";
 import {
@@ -1780,6 +1787,13 @@ export class CodexAppServer implements CodexRuntime {
   >();
 
   readonly #pausedChats = new Set<string>();
+  readonly #restoredTurns = new Map<
+    string,
+    {
+      signature: string;
+      pending: Promise<AdmittedNativeExecution>;
+    }
+  >();
   readonly #runtimeDiagnostics: CodexRuntimeDiagnostic[] = [];
   #skillRoots: string[] = [];
   #appServerSessionId = randomUUID();
@@ -2245,6 +2259,142 @@ export class CodexAppServer implements CodexRuntime {
         "Native suspension inspection belongs to another thread.",
       );
     return { paused: record.paused, suspension };
+  }
+
+  captureWorkerTurnContinuation(threadId: string, turnId: string) {
+    const active = this.#executions.activeTurns.get(turnId);
+    if (!active || active.threadId !== threadId)
+      throw new Error(
+        "The native worker continuation no longer owns this turn.",
+      );
+    return captureWorkerTurn(active, turnId);
+  }
+
+  /** Attach only the exact stored continuation. Expected suspension intent
+   * keeps native held even if checkpoint bytes disappear during attachment. */
+  async restoreHeldTurn(
+    input: NativeTurnSuspension,
+    startup: Pick<PrepareAdmittedNativeExecutionOptions, "model" | "provider">,
+  ) {
+    const suspension = nativeTurnSuspensionSchema.parse(input);
+    await this.ensureStarted(startup.model, startup.provider);
+    const generation = this.transportGeneration;
+    const inspect = async () => {
+      const observed = await this.inspectTurnSuspension(suspension.threadId);
+      if (
+        !observed.paused ||
+        JSON.stringify(observed.suspension) !== JSON.stringify(suspension)
+      )
+        throw new Error("The stored native suspension changed identity.");
+      return observed;
+    };
+    await inspect();
+    const result = await this.request("thread/resume", {
+      threadId: suspension.threadId,
+      expectedSuspension: suspension,
+    });
+    if (objectRecord(objectRecord(result)?.thread)?.id !== suspension.threadId)
+      throw new Error("Native attachment returned another suspended thread.");
+    const observed = await inspect();
+    if (this.transportGeneration !== generation)
+      throw new Error("Native suspension attachment changed transport.");
+    return observed;
+  }
+
+  /** Explicit Resume preparation. The caller supplies fresh execution authority;
+   * restoring this observer does not forward native Resume or any user input. */
+  async prepareRestoredNativeExecution(
+    options: PrepareAdmittedNativeExecutionOptions,
+    suspension: NativeTurnSuspension,
+    input: WorkerTurnContinuation,
+  ): Promise<AdmittedNativeExecution> {
+    const saved = workerTurnContinuationSchema.parse(input);
+    suspension = nativeTurnSuspensionSchema.parse(suspension);
+    options.inferenceSource?.assertCurrent();
+    const signature = createHash("sha256")
+      .update(
+        JSON.stringify([
+          suspension,
+          saved,
+          options.operationGeneration,
+          options.chatId,
+          options.cwd,
+          options.provider.id,
+          options.provider.kind,
+          options.provider.accountId ?? null,
+        ]),
+      )
+      .digest("hex");
+    const existing = this.#restoredTurns.get(options.threadId);
+    if (existing) {
+      if (existing.signature !== signature)
+        throw new Error(
+          "Another admitted observer owns this suspended native turn.",
+        );
+      const handle = await existing.pending;
+      options.inferenceSource?.assertCurrent();
+      handle.assertCurrent();
+      return handle;
+    }
+    const entry = {
+      signature,
+      pending: this.prepareRestoredNativeExecutionOwned(
+        options,
+        suspension,
+        saved,
+      ),
+    };
+    this.#restoredTurns.set(options.threadId, entry);
+    const cleanup = () => {
+      if (this.#restoredTurns.get(options.threadId) === entry)
+        this.#restoredTurns.delete(options.threadId);
+    };
+    void entry.pending.then((handle) => {
+      void handle.completion.then(cleanup, cleanup);
+    }, cleanup);
+    return entry.pending;
+  }
+
+  private async prepareRestoredNativeExecutionOwned(
+    options: PrepareAdmittedNativeExecutionOptions,
+    suspension: NativeTurnSuspension,
+    saved: WorkerTurnContinuation,
+  ): Promise<AdmittedNativeExecution> {
+    if (
+      saved.threadId !== suspension.threadId ||
+      saved.turnId !== suspension.turnId ||
+      saved.threadId !== options.threadId ||
+      saved.chatId !== options.chatId ||
+      saved.cwd !== options.cwd ||
+      saved.providerId !== options.provider.id ||
+      saved.providerKind !== options.provider.kind ||
+      saved.executionKind !== "chat"
+    )
+      throw new Error(
+        "Worker continuation belongs to another suspended execution.",
+      );
+    const observed = await this.restoreHeldTurn(suspension, {
+      model: saved.model,
+      provider: options.provider,
+    });
+    const handle = await this.prepareAdmittedNativeExecution({
+      ...options,
+      model: saved.model,
+      expectedTurnId: suspension.turnId,
+    });
+    try {
+      handle.assertCurrent();
+      handle.bindRestoredSuspension(observed.suspension!);
+      const active = this.#executions.activeTurnsByThread.get(options.threadId);
+      if (!active)
+        throw new Error("The restored native observer is no longer current.");
+      restoreWorkerTurn(active, saved);
+      if (saved.chatId) this.setChatPaused(saved.chatId, true);
+      return handle;
+    } catch (error) {
+      handle.fail(error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
   }
 
   /** Latest requested automation state, regardless of older RPC acknowledgements. */
@@ -2972,6 +3122,20 @@ export class CodexAppServer implements CodexRuntime {
       fail,
       dispatchInference: () => inference?.dispatched(),
       rejectInference: () => inference?.rejected(),
+      bindRestoredSuspension: (input) => {
+        const suspension = nativeTurnSuspensionSchema.parse(input);
+        assertCurrent();
+        if (
+          suspension.threadId !== options.threadId ||
+          suspension.turnId !== options.expectedTurnId
+        )
+          throw new Error(
+            "The inspected suspension does not match this admitted observer.",
+          );
+        inference?.bindTurn(suspension.turnId);
+        active.admission!.initialTurnId = suspension.turnId;
+        this.bindTurnStartResponse(suspension.turnId, active);
+      },
       bindReceipt: (receipt) => {
         const value = receipt as { turn?: { id?: unknown } } | null;
         const turnId = value?.turn?.id;

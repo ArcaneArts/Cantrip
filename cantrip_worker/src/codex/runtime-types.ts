@@ -15,6 +15,7 @@ import type {
   CodexEventCorrelation,
   McpServerConfiguration,
   NativeInitialTurnSettings,
+  NativeTurnSuspension,
   NormalizedAgentMessage,
   PendingPlanQuestion,
   PermissionTransition,
@@ -584,6 +585,8 @@ export interface AdmittedNativeExecution {
   assertCurrent(): void;
   /** Actual native receipt, never fabricated to create a turn identity. */
   bindReceipt(receipt: unknown): void;
+  /** Bind an actually inspected held continuation without a new TurnStarted. */
+  bindRestoredSuspension(suspension: NativeTurnSuspension): void;
   fail(error: Error): void;
   /** Grant has reached the exact native forwarding boundary. */
   dispatchInference?(): void;
