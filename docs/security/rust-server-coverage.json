@@ -5182,7 +5182,10 @@
           "scripts/server-rust/agent-worktree-http-fixtures.mjs",
           "scripts/server-rust/agent-worktree-http-boundaries.mjs",
           "scripts/server-rust/agent-worktree-http-disconnect.mjs",
-          "scripts/server-rust/mcp-worktree-query-manifest.mjs"
+          "scripts/server-rust/mcp-worktree-query-manifest.mjs",
+          "scripts/server-rust/mcp-worker-local-http-compatibility.mjs",
+          "scripts/server-rust/mcp-worker-local-broker.mjs",
+          "cantrip_server_rs/tests/mcp_run_bindings.rs"
         ],
         "remaining": [
           "All55 canonical Source MCP operations are advertised. Nine worker-owned help/web operations retain the unchanged worker implementation; native server authority and direct errors match Source. Legacy CLI transport, including worktree.acquire, and native product/platform/full replacement acceptance remain unfinished.",
@@ -5210,7 +5213,10 @@
           "scripts/server-rust/agent-worktree-http-fixtures.mjs",
           "scripts/server-rust/agent-worktree-http-boundaries.mjs",
           "scripts/server-rust/agent-worktree-http-disconnect.mjs",
-          "scripts/server-rust/mcp-worktree-query-manifest.mjs"
+          "scripts/server-rust/mcp-worktree-query-manifest.mjs",
+          "scripts/server-rust/mcp-worker-local-http-compatibility.mjs",
+          "scripts/server-rust/mcp-worker-local-broker.mjs",
+          "cantrip_server_rs/tests/mcp_run_bindings.rs"
         ],
         "remaining": [
           "All55 canonical Source MCP operations are advertised. Nine worker-owned help/web operations retain the unchanged worker implementation; native server authority and direct errors match Source. Legacy CLI transport, including worktree.acquire, and native product/platform/full replacement acceptance remain unfinished.",
@@ -12822,7 +12828,7 @@
       ],
       "scope": "All55 Source MCP capabilities retain exact order; help and8 web operations execute in the unchanged worker. Native binding authority retains Source grants, owner/time/lane/status and read-only rules. Direct server calls preserve Source project unsupported-operation and standalone unsupported-capability errors. Worktree.acquire remains MCP-forbidden.",
       "localQualification": {
-        "base": "6aa19c82d86ed9fa163f01d5018d84a757c5ff28",
+        "base": "3dd9362552515101a2d2de2d1fe1b8c92b5af65e",
         "platform": "darwin-arm64",
         "actualHttp": true,
         "actualWorkerConnection": true,
@@ -12849,7 +12855,10 @@
         "sourceWorkerTests": 34,
         "sourceServerTests": 23,
         "typechecks": ["server", "worker", "app"],
-        "broadRootCheck": "Fails on two byte-identical Main6aa Node decomposition budgets (1519/1500 and2249/1999); reproduced against clean Primary checker and source."
+        "broadRootCheck": "Fails on two byte-identical Main3dd Node decomposition budgets (1524/1500 and2249/1999); actual clean git-archive Source checker reproduces both. Initial6aa results and their1519/1500 failure remain archived separately.",
+        "earlierFrozenBase": "6aa19c82d86ed9fa163f01d5018d84a757c5ff28",
+        "integratedCandidate": "264ebb05fbde08d5a5faed1466a2c172ced2eebd",
+        "allTargetsClippy": "PASS -Dwarnings on integrated3dd;251.02189591620117seconds. Frozen6aa also passed333seconds."
       },
       "remaining": [
         "Actual full worker and native browser/product flows across supported platforms.",

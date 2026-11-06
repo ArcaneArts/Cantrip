@@ -29,15 +29,16 @@ with controlled search/fetch/browser boundaries. This establishes negotiation
 and routing compatibility; full worker/native/browser product acceptance and
 legacy CLI transport remain required.
 
-On macOS arm64, the worker-local comparison passes all three stores and all
+Integrated with Main `3dd936255`, the macOS arm64 comparison passes all three stores and all
 three authentication modes: 657 paired direct cases, 1,314 responses/audit rows,
 54 actual MCP tool catalogs and 540 MCP calls. The full ordered registry,
 mutation classification and 8,360 authority/readiness cases match Source.
 Fifty-one Rust library tests, two contract tests, 34 worker tests, 23 server
-tests and all three application typechecks pass locally. The broad `pnpm check`
-still stops at Main-identical Node decomposition limits: 1,519/1,500 lines in
-`build-app.ts` and 2,249/1,999 in `chat-turn-runtime.ts`. The clean Primary checker
-reproduces both failures; the broad check is not green.
+tests, strict all-target Clippy and all three application typechecks pass locally.
+The broad `pnpm check`
+still stops at Main-identical Node decomposition limits: 1,524/1,500 lines in
+`build-app.ts` and 2,249/1,999 in `chat-turn-runtime.ts`. A clean Main source
+snapshot reproduces both failures; the broad check is not green.
 
 The Task/Goal integration repair restores server, worker and app typechecks and
 builds against base `1579245e9`. Retirement now reads the failure-evidence discriminator while retaining
