@@ -48,7 +48,7 @@ remain opaque to the server.
 The paired HTTP suite exercises both server implementations with isolated data,
 the production WorkerConnection and the unchanged worker CLI client. All 35
 commands have successful coverage. The nine storage/authentication profiles
-pass 106 ordinary calls per peer: 954 paired cases and 1,908 responses. The
+pass 108 ordinary calls per peer: 972 paired cases and 1,944 responses. The
 unchanged worker CLI client also makes five calls per peer (90 total), including
 status, worktree/Run reads, encrypted Terminal input and typed rejection. Each peer
 also completes a real admitted-write socket disconnect and a real server
@@ -64,16 +64,28 @@ failure. A 2,523-character worker error is preserved in full. Narrow target
 lookups also succeed with a malformed unrelated Chat, while full catalog reads
 retain that record's validation diagnostics before validating the kind filter.
 
+The integrated Unicode-worker test also checks that status returns the stored
+worker ID after SQL replaces an unpaired input character, while connection
+lookup retains the original input identity.
+
 The controlled worker sends real authenticated HTTP heartbeats as well as
 maintaining its command socket. These are separate production worker duties.
 The fixture does not extend presence timeouts or make stored last-seen times
 permanently current. It records the heartbeat responses.
 
+The unmodified Node PGlite reference also hit a 15-second shutdown deadline in
+the integrated restart suite. That failure is retained. The passing PGlite run
+uses the existing reference-oracle notification drain: it tracks and awaits the
+real repository/notification promises before closing the database. PostgreSQL
+reference runs use the ordinary fixture. Rust uses its production drain. The
+shutdown deadline and protocol assertions are unchanged; this is not evidence
+that the original Node shutdown race has been fixed.
+
 The Rust library passes 54 tests, including 7,149 independent CLI wire
 comparisons and 24 exact selector-query comparisons with variable worker lists
 and Unicode identities. The separate Run MCP oracle passes 2,617 comparisons.
 Strict all-target Clippy passes. The repository-wide `pnpm check` fails on the
-unchanged baseline TypeScript budgets: `build-app.ts` has 1,524 lines against
+unchanged baseline TypeScript budgets: `build-app.ts` has 1,527 lines against
 1,500 and `chat-turn-runtime.ts` has 2,249 against 1,999. That check is not green.
 
 Run the HTTP suite locally with an already-built fixture binary, or let it build

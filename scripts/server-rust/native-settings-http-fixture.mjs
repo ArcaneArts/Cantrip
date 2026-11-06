@@ -67,6 +67,7 @@ export async function settingsHttpFixture({
   onCommand,
   observeCompletions = false,
   liveSqlFixture = false,
+  providerAuthDrain = false,
   environment = {},
 }) {
   const fixture = new HttpFixture({
@@ -76,6 +77,7 @@ export async function settingsHttpFixture({
     name: profile,
     databaseMode,
     liveSqlFixture,
+    providerAuthDrain,
     environment: {
       CANTRIP_AUTH_MODE: profile,
       CANTRIP_REGISTRATION_ENABLED: "true",

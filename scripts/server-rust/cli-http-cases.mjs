@@ -1,5 +1,6 @@
 // Production HTTP/SDK scenarios. Only the endpoint replies and setup state are controlled.
 import assert from "node:assert/strict";
+import { hashSecret } from "../../cantrip_server/src/auth/service.ts";
 import {
   invokeCantripCliCommand,
   CantripServerRequestError,
@@ -452,4 +453,29 @@ export async function cliHttpCases({
     acquired.data.lane.purpose,
     "Continue in CLI acquired from the Cantrip CLI",
   );
+  const unicodeCredential = "ctwk_" + "u".repeat(43);
+  await h.fixture.sql([
+    `INSERT INTO workers(id,owner_id,name,platform,architecture,started_at,last_seen_at) VALUES('�',${literal(h.owner)},'Unicode CLI worker','linux','x64',now(),now())`,
+    `INSERT INTO worker_credentials(id,owner_id,worker_id,secret_hash,scopes) SELECT 'eeeeeeee-eeee-4eee-8eee-000000000997',owner_id,'�',${literal(hashSecret(unicodeCredential))},scopes FROM worker_credentials WHERE worker_id=${literal(worker)} AND revoked_at IS NULL LIMIT 1`,
+  ]);
+  for (const workerId of ["\ufffd", "\ud800"]) {
+    const status = await call(
+      "CLI status worker identity " + JSON.stringify(workerId),
+      "status",
+      {},
+      200,
+      {
+        workerId,
+        chatContext: null,
+        context: { cwd: null, terminalId: null, codexThreadId: null },
+      },
+      unicodeCredential,
+    );
+    assert.equal(
+      status.data.worker.id,
+      "\ufffd",
+      "Status identifies the stored worker after the SQL UTF-8 boundary",
+    );
+    assert.equal(status.data.worker.online, false);
+  }
 }

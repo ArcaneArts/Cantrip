@@ -86,6 +86,7 @@ try {
         passwordHash,
         result,
         liveSqlFixture: true,
+        providerAuthDrain: databaseMode === "pglite",
         url:
           postgres && (kind === "node" || databaseMode === "postgres")
             ? await postgres.database()

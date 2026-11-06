@@ -141,7 +141,7 @@ pub(super) async fn execute(
                     "The connected worker is no longer registered.",
                 )
             })?;
-        let mut result = json!({"summary":concat(&[json!("Connected through "),worker["name"].clone(),json!(if context.is_some() {"; project context is ready."} else {"; no project context was inferred."})]),"data":json!({"worker":json!({"id":worker_id,"name":worker["name"],"online":worker_id.as_str().is_some_and(|id|service.workers.bridge.is_connected(id))}),"context":context})});
+        let mut result = json!({"summary":concat(&[json!("Connected through "),worker["name"].clone(),json!(if context.is_some() {"; project context is ready."} else {"; no project context was inferred."})]),"data":json!({"worker":json!({"id":worker["workerId"],"name":worker["name"],"online":worker_id.as_str().is_some_and(|id|service.workers.bridge.is_connected(id))}),"context":context})});
         if let Some(context) = &context {
             result["worktreeId"] = context["worktreeId"].clone();
         }
