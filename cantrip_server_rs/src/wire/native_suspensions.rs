@@ -13,6 +13,17 @@ pub(super) fn refine(
     let phase = value["phase"].as_str().unwrap_or_default();
     let checkpoint = !value["checkpoint"].is_null();
     let active = !value["active"].is_null();
+    let task = &value["target"]["taskRound"];
+    if !task.is_null()
+        && (value["target"]["contextKind"] != "project"
+            || !super::coercion::truthy(value["target"].get("projectId"))
+            || !super::coercion::truthy(value["target"].get("executionLaneId"))
+            || value["target"]["originalOperationId"] != task["inputOperationId"])
+    {
+        let mut at = path.to_vec();
+        at.extend([json!("target"), json!("taskRound")]);
+        result.issues.push(json!({"code":"custom","path":at,"message":"A Task suspension must retain its canonical input and project lane."}));
+    }
     for (invalid, field, message) in [
         (
             !value["actorControlId"].is_null()

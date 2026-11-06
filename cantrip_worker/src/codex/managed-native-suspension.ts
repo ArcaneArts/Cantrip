@@ -2,9 +2,75 @@ import {
   nativeTurnSuspensionSchema,
   type NativeCommandSession,
   type NativeTurnSuspension,
+  type TaskInferenceInputReceipt,
+  type TaskOperationRelayRequest,
 } from "@cantrip/protocol";
 import type { NativeSuspensionStore } from "../native-suspension-store.js";
+import type { TaskEventSealerState } from "../task-event-sealer-state.js";
 import type { CodexAppServer } from "./app-server.js";
+
+/** Task has its own canonical input and content grant. Capturing it must not
+ * create a GUI command activation or attach an unfinished generic chat thread. */
+export function createTaskSuspensionCapture(
+  runtime: Pick<
+    CodexAppServer,
+    | "captureTurnSuspension"
+    | "inspectTurnSuspension"
+    | "managedHistoryHome"
+    | "compatibility"
+    | "captureWorkerTurnContinuation"
+  >,
+  store: NativeSuspensionStore,
+  input: {
+    receipt: TaskInferenceInputReceipt;
+    projectId: string;
+    request: TaskOperationRelayRequest;
+    events: () => Promise<TaskEventSealerState>;
+  },
+) {
+  return async (active: { threadId: string; turnId: string }) => {
+    const suspension = await runtime.captureTurnSuspension(
+      active.threadId,
+      active.turnId,
+    );
+    if (
+      suspension.threadId !== active.threadId ||
+      suspension.turnId !== active.turnId
+    )
+      throw new Error("The Task checkpoint belongs to another native turn.");
+    const events = await input.events();
+    const evidence = await store.commit({
+      source: {
+        chatId: input.receipt.chatId,
+        threadId: active.threadId,
+        contextKind: "project",
+        projectId: input.projectId,
+        placementId: input.receipt.worktreeId,
+        modelRouteId: input.receipt.modelRouteId,
+        providerAccountId: input.receipt.providerAccountId,
+        taskInput: input.receipt,
+      },
+      home: runtime.managedHistoryHome,
+      suspension,
+      runtimeVersion: runtime.compatibility.version?.raw ?? "unknown",
+      runtimeFingerprint: null,
+      continuation: runtime.captureWorkerTurnContinuation(
+        active.threadId,
+        active.turnId,
+      ),
+      taskContinuation: { version: 1, request: input.request, events },
+    });
+    const observed = await runtime.inspectTurnSuspension(active.threadId);
+    if (
+      !observed.paused ||
+      JSON.stringify(observed.suspension) !== JSON.stringify(suspension)
+    )
+      throw new Error(
+        "The native Task changed while its continuation was committed.",
+      );
+    return evidence;
+  };
+}
 
 /** Shared by GUI and terminal settlement. It captures only the admitted native
  * turn and does not release inference, queues, or the native execution hold. */

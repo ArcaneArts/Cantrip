@@ -177,7 +177,7 @@ pub(super) async fn assert(
             let round=one(Executor::Transaction(tx),"SELECT to_jsonb(r)::text FROM task_planning_rounds r WHERE r.id=$1 AND r.chat_id=$2 LIMIT 1 FOR UPDATE",&[&operation,&chat]).await?;
             let valid = round.as_ref().is_some_and(|round| {
                 let input = &round["inference_input"];
-                let receipt = &input["receipt"];
+                let receipt = &super::resumption::physical(input)["receipt"];
                 !input.is_null()
                     && input["deferred"] != true
                     && receipt["kind"] != "goal"
@@ -268,7 +268,7 @@ pub(super) async fn assert(
         } else {
             !input.is_null()
                 && input["deferred"] != true
-                && input["receipt"]["operationId"] == *attempt
+                && super::resumption::physical(input)["receipt"]["operationId"] == *attempt
         };
         if !matches {
             return Err(crate::task_dispatch::Conflict::stale().into());

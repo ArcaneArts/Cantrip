@@ -2,17 +2,50 @@ use super::*;
 use crate::chats::{live_mutations::MessageOptions, message_queries::MessageKind};
 impl Runtime {
     pub(super) async fn retain_suspension(&self, turn: &PreparedTurn) -> Result<bool> {
-        let Some(receipt) = &turn.native_receipt else {
-            return Ok(false);
-        };
-        let state = Commands::new(self.dependencies.events.database.clone())
-            .suspended_execution(
+        let commands = Commands::new(self.dependencies.events.database.clone());
+        if turn.task_relay.is_some()
+            && truthy(turn.options.get("taskDispatchLease"))
+            && commands
+                .cancelled_task_execution(
+                    &turn.owner,
+                    &events::text(&turn.execution["workerId"])?,
+                    &events::text(&turn.execution["chatId"])?,
+                    &turn.options["taskDispatchLease"],
+                    &turn.execution["executionLaneId"],
+                    &turn.user_message["id"],
+                )
+                .await?
+        {
+            self.dependencies.events.live.publish_summary(
                 &turn.owner,
-                &events::text(&turn.execution["workerId"])?,
-                &events::text(&receipt["operationId"])?,
-                &events::text(&receipt["operationGeneration"])?,
-            )
-            .await?;
+                &turn.execution["chatId"],
+                &turn.execution["projectId"],
+            );
+            return Ok(true);
+        }
+        let state = if let Some(receipt) = &turn.native_receipt {
+            commands
+                .suspended_execution(
+                    &turn.owner,
+                    &events::text(&turn.execution["workerId"])?,
+                    &events::text(&receipt["operationId"])?,
+                    &events::text(&receipt["operationGeneration"])?,
+                )
+                .await?
+        } else if turn.task_relay.is_some() && truthy(turn.options.get("taskDispatchLease")) {
+            commands
+                .retain_task_suspension(
+                    &turn.owner,
+                    &events::text(&turn.execution["workerId"])?,
+                    &events::text(&turn.execution["chatId"])?,
+                    &turn.options["taskDispatchLease"],
+                    &turn.execution["executionLaneId"],
+                    &turn.user_message["id"],
+                )
+                .await?
+        } else {
+            None
+        };
         let Some(state) = state else {
             return Ok(false);
         };
@@ -27,7 +60,7 @@ impl Runtime {
             json!({"event":"chat.turn.suspended","subsystem":"chat-execution",
                 "operation":"retain-suspended-turn","status":state["phase"],
                 "chatId":turn.execution["chatId"],"workerId":turn.execution["workerId"],
-                "operationId":receipt["operationId"],"turnId":state["active"]["turnId"]}),
+                "operationId":state["target"]["originalOperationId"],"turnId":state["active"]["turnId"]}),
         );
         Ok(true)
     }

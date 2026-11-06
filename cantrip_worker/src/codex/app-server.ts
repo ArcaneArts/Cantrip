@@ -1,3 +1,4 @@
+import { TaskRestorationError } from "../task-restoration-error.js";
 import type { TaskPauseScope } from "@cantrip/protocol";
 import { CodexInteractions } from "./interactions.js";
 import { ManagedExecutionGates } from "./managed-execution-gates.js";
@@ -2829,6 +2830,209 @@ export class CodexAppServer implements CodexRuntime {
       handle.fail(error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
+  }
+
+  /** Restore a Task observer and its inference-only channel without sending any
+   * user input or a turn/start. Its caller has claimed a fresh Task receipt. */
+  async runRestoredTaskTurn(
+    options: RunAgentTurnOptions,
+    suspension: NativeTurnSuspension,
+    saved: WorkerTurnContinuation,
+    resumeAllowed: () => boolean,
+  ): Promise<AgentTurnResult> {
+    let stage: "attach" | "admit" | "dispatch" | "resume" | "complete" =
+      "attach";
+    let handle: AdmittedNativeExecution | undefined;
+    let attachedGeneration: string | null = null;
+    let attached = false;
+    try {
+      if (
+        !options.taskOwned ||
+        !options.operationGeneration ||
+        options.threadId !== suspension.threadId ||
+        !options.inferenceSource
+      )
+        throw new Error(
+          "Task restoration requires its fresh canonical execution owner.",
+        );
+      options.preparationSignal?.throwIfAborted();
+      await this.ensureStarted(
+        saved.model,
+        options.provider,
+        options.subagentDefaults,
+        options.executionProfile,
+      );
+      attachedGeneration = this.transportGeneration;
+      await this.loadThread(
+        this.taskInferenceOptions({
+          ...options,
+          model: saved.model,
+          expectedSuspension: suspension,
+        }),
+        false,
+        "preserve",
+      );
+      attached = true;
+      stage = "admit";
+      handle = await this.prepareRestoredNativeExecution(
+        {
+          ...options,
+          model: saved.model,
+          threadId: suspension.threadId,
+          operationGeneration: options.operationGeneration,
+          inferenceSignal: options.preparationSignal,
+          recovery: options.inferenceRecovery?.(),
+        },
+        suspension,
+        saved,
+      );
+      stage = "dispatch";
+      await handle.prepareInputDispatch?.();
+      await options.onBeforeNativeDispatch?.(suspension.threadId);
+      handle.assertCurrent();
+      options.preparationSignal?.throwIfAborted();
+      if (!resumeAllowed())
+        throw new Error("The Task was paused during restoration.");
+      this.setTaskChatPaused(options.chatId!, false);
+      handle.dispatchInference?.();
+      stage = "resume";
+      await this.request(
+        "turn/suspension",
+        {
+          threadId: suspension.threadId,
+          operation: { type: "resume", suspension },
+        },
+        CODEX_PAUSE_BOUNDARY_TIMEOUT_MS,
+      );
+      stage = "complete";
+      return await handle.completion;
+    } catch (error) {
+      handle?.fail(error instanceof Error ? error : new Error(String(error)));
+      // A failed held attachment is not a live Task owner. Unsubscribe it before
+      // retry, so the next control does not wait for a nonexistent live loop.
+      // Native teardown preserves the durable checkpoint, including bad bytes.
+      if (
+        attached &&
+        !handle &&
+        attachedGeneration === this.transportGeneration
+      ) {
+        try {
+          await this.request("thread/unsubscribe", {
+            threadId: suspension.threadId,
+          });
+          if (attachedGeneration === this.transportGeneration)
+            this.forgetThread(suspension.threadId);
+        } catch (cleanup) {
+          throw new TaskRestorationError(
+            "attach",
+            cleanup,
+            cleanup instanceof CodexNativeRpcError
+              ? cleanup.nativeError.code
+              : undefined,
+          );
+        }
+      }
+      throw new TaskRestorationError(
+        stage,
+        error,
+        error instanceof CodexNativeRpcError
+          ? error.nativeError.code
+          : undefined,
+      );
+    }
+  }
+
+  /** Stop a named Task turn using actual native terminal history. Attaching a
+   * cold root always retains its saved hold; no turn/start or Resume is sent. */
+  async stopTaskSuspension(
+    chatId: string,
+    active: { threadId: string; turnId: string },
+    checkpoint: NativeTurnSuspension | null,
+    isCurrent: () => boolean,
+    configuration?: GoalRuntimeOptions & {
+      executionProfile?: RunAgentTurnOptions["executionProfile"];
+    },
+  ) {
+    if (!isCurrent()) throw new Error("The Task Stop control was superseded.");
+    this.#inference?.cancelWaiting(chatId);
+    const retained = this.#managedThreadOverlays.get(active.threadId);
+    const attached =
+      retained?.epoch === this.#preparationEpoch &&
+      retained.chatId === chatId &&
+      retained.options.executionGate?.inferenceOnly === true &&
+      this.#loadedThreads.has(active.threadId) &&
+      this.transportGeneration !== null;
+    if (!attached) {
+      if (!configuration || !checkpoint)
+        throw new Error(
+          "This Task has no attached runtime. Restore its saved provider and retry Stop.",
+        );
+      await this.ensureStarted(
+        configuration.model,
+        configuration.provider,
+        undefined,
+        configuration.executionProfile,
+      );
+      const options = {
+        ...configuration,
+        chatId,
+        threadId: active.threadId,
+        expectedSuspension: checkpoint,
+      };
+      await this.loadThread(
+        this.taskInferenceOptions(options),
+        false,
+        "preserve",
+      );
+    }
+    const generation = this.transportGeneration;
+    if (!generation)
+      throw new Error("The Task native transport is unavailable.");
+    const current = () => {
+      if (!isCurrent() || generation !== this.transportGeneration)
+        throw new Error(
+          "The Task Stop control or native transport was replaced.",
+        );
+    };
+    current();
+    const before = await this.readNativeHistory(active.threadId);
+    current();
+    const terminal = (history: CodexNativeHistorySnapshot) => {
+      if (history.thread.id !== active.threadId)
+        throw new Error("Task Stop observed another native thread.");
+      const turn = history.thread.turns.find(
+        (turn) => turn.id === active.turnId,
+      );
+      if (!turn)
+        throw new Error("The named Task turn is absent from native history.");
+      return turn.status === "interrupted"
+        ? ("stopped" as const)
+        : turn.status === "completed"
+          ? ("completed" as const)
+          : turn.status === "failed"
+            ? ("failed" as const)
+            : null;
+    };
+    let outcome = terminal(before);
+    if (!outcome) {
+      await this.request(
+        "turn/suspension",
+        {
+          threadId: active.threadId,
+          operation: { type: "discard", turnId: active.turnId },
+        },
+        CODEX_PAUSE_BOUNDARY_TIMEOUT_MS,
+      );
+      // The cold operation commits terminal history itself. A live interrupt
+      // may finish asynchronously; observe actual terminal persistence before ACK.
+      while (!outcome) {
+        current();
+        outcome = terminal(await this.readNativeHistory(active.threadId));
+        if (!outcome) await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    }
+    current();
+    return { runtimeGeneration: generation, outcome };
   }
 
   /** Latest requested automation state, regardless of older RPC acknowledgements. */
@@ -8334,7 +8538,16 @@ export class CodexAppServer implements CodexRuntime {
         const runner =
           overlay?.options.executionGate?.runnerGeneration ??
           this.#inference?.generation;
-        return transport && runner ? { transport, runner } : null;
+        return transport && runner
+          ? {
+              transport,
+              runner,
+              component:
+                overlay?.options.executionGate?.inferenceOnly === true
+                  ? "task-content"
+                  : "chat-content",
+            }
+          : null;
       },
       protection: this.resourceProtection,
       resolve: (params) =>

@@ -30,12 +30,16 @@ impl Repository {
             let goal_startup=result.is_some() && round["kind"]=="finalize";
             let mut guard=json!({"kind":"outcome","cycleId":f["cycleId"],"operationId":f["operationId"],
                 "leaseOwner":f["leaseOwner"],"fencingToken":f["fencingToken"],"inferenceInputOperationId":n["taskInferenceInputOperationId"]});
-            let input=&round["inference_input"];let r=&input["receipt"];
+            let input=&round["inference_input"];let physical=super::resumption::physical(input);let r=&physical["receipt"];
             if input.is_null()
-                || (n["outcome"]["ok"]==true && (input["accepted"]!=true || input["dispatched"]!=true || input["failedBeforeDispatch"]==true)) || r["kind"]=="goal" || r["operationId"]!=n["taskInferenceInputOperationId"]
+                || (n["outcome"]["ok"]==true && (physical["accepted"]!=true || physical["dispatched"]!=true || physical["failedBeforeDispatch"]==true)) || r["kind"]=="goal" || r["operationId"]!=n["taskInferenceInputOperationId"]
                 || r["workerId"]!=worker.as_str() || r["clientMessageId"]!=n["clientMessageId"] || r["executionLaneId"]!=n["executionLaneId"]
                 || r["worktreeId"]!=n["worktreeId"] || r["dispatch"]["cycleId"]!=f["cycleId"] || r["dispatch"]["operationId"]!=f["operationId"]
                 || r["dispatch"]["fencingToken"]!=f["fencingToken"] || r["dispatch"]["leaseOwner"]!=f["leaseOwner"] {return stale();}
+            if n["outcome"]["ok"] != true && let Some(stopped) = crate::native_commands::task_suspension::stopped_input_locked(tx, &owner, &worker, r, input).await? {
+                return Ok(Some(json!({"state":"owned","message":Value::Null,
+                    "chat":json!({"projectId":stopped["target"]["projectId"],"experience":"task"})})));
+            }
             let failure=if result.is_some() {Value::Null} else {let e=if n["outcome"]["ok"]==true {json!({"message":"Recovered Task result was invalid."})}else{json!({"message":n["outcome"]["error"]})}; json!(super::failure_kind::classify(&e))};
             let normalized=parse("workerChatTurnOutcomeNotificationSchema",&n)?;
             let outcome_digest=crate::native_history::payload_digest(&normalized["outcome"]);
@@ -72,6 +76,13 @@ impl Repository {
             if lane["worker_id"]!=worker.as_str() || lane["worktree_id"]!=r["worktreeId"]
                 || lane["activated_at"].as_js_string().and_then(crate::wire::date_milliseconds)!=r["executionLaneActivatedAt"].as_js_string().and_then(crate::wire::date_milliseconds)
                 || placement["chat"]["active_worker_id"]!=worker.as_str() || placement["chat"]["active_worktree_id"]!=r["worktreeId"] {return stale();}
+            if n["outcome"]["ok"] != true && !input["resumption"].is_null() && physical["nativeExecution"].is_null() {
+                if let Some(saved) = crate::native_commands::task_suspension::retain_locked(tx, &owner, &worker, &chat,
+                    &r["dispatch"], &r["executionLaneId"], &r["clientMessageId"]).await? {
+                    crate::native_commands::task_suspension::fail_restore_locked(tx, &owner, &chat, saved).await?;
+                    return Ok(Some(json!({"state":"owned","message":Value::Null,"chat":routing})));
+                }
+            }
             let mut message=Value::Null;
             if let Some(result)=&result {
                 super::finish::complete_operation_in(tx,&owner,&chat,&operation,result,n["outcome"]["result"]["turnId"].as_str(),Some(&guard)).await?;
@@ -96,6 +107,13 @@ impl Repository {
             let terminal=json!({"ok":result.is_some(),"failureKind":failure,"outcomeDigest":outcome_digest,"observedAt":observed,"projectedAt":now.to_rfc3339_opts(chrono::SecondsFormat::Millis,true),
                 "threadId":n["outcome"]["result"].get("threadId").filter(|v|!v.is_null()).unwrap_or(&c["codex_thread_id"]),
                 "turnId":n["outcome"]["result"].get("turnId").filter(|v|!v.is_null()).unwrap_or(&c["turn_id"])});
+            if n["outcome"]["ok"] == true && !physical["nativeExecution"].is_null()
+                && physical["nativeExecution"]["threadId"] == n["outcome"]["result"]["threadId"]
+                && physical["nativeExecution"]["turnId"] == n["outcome"]["result"]["turnId"] {
+                crate::native_commands::task_suspension::retire_locked(tx, &owner, &input["receipt"], physical,
+                    &json!({"threadId":n["outcome"]["result"]["threadId"],"turnId":n["outcome"]["result"]["turnId"]}),
+                    if result.is_some() {"completed"} else {"failed"}).await?;
+            }
             let mut recorded=input.clone();recorded["terminal"]=terminal.clone();
             let recorded=postgres_types::Json(recorded);
             tx.query("UPDATE task_planning_rounds SET inference_input=$2 WHERE id=$1",&[&operation,&recorded]).await?;

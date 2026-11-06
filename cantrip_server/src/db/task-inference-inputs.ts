@@ -16,6 +16,8 @@ import {
   modelConfigurationSchema,
   inferenceNativeExecutionSchema,
   type InferenceNativeExecution,
+  type TaskTurnResumption,
+  type TaskDispatchFence,
 } from "@cantrip/protocol";
 import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import * as schema from "./schema.js";
@@ -32,11 +34,20 @@ import {
   assertTaskOperationDispatchFence,
   type TaskOperationDispatchFence,
 } from "./task-operation-fence.js";
+import { NativeSuspensionRepository } from "./repository/native-suspensions.js";
+import { isDeepStrictEqual } from "node:util";
+import {
+  currentTaskInputExecution,
+  taskCheckpointExecution,
+} from "./task-input-execution-state.js";
 
 /** Metadata on the canonical round, never another copy/queue of its input.
  * Sticky dispatch evidence survives route retries: a later unstarted attempt
  * cannot authorize replay of an earlier possibly executed attempt. */
 export interface TaskInferenceInputState {
+  /** Only the current physical Resume attempt may produce native admission or
+   * terminal projection. The original receipt remains the checkpoint source. */
+  resumption?: TaskInferenceResumption;
   nativeExecution?: InferenceNativeExecution;
   claimWorkerGeneration?: string;
   nativeOwner?: { workerGeneration: string; runtimeGeneration: string };
@@ -66,6 +77,23 @@ export interface TaskInferenceInputState {
     turnId: string | null;
   };
 }
+
+export type TaskInferenceResumption = Pick<
+  TaskInferenceInputState,
+  | "receipt"
+  | "accepted"
+  | "dispatched"
+  | "claimWorkerGeneration"
+  | "nativeExecution"
+  | "nativeOwner"
+> & {
+  controlId: string;
+  checkpointOwner?: {
+    receipt: TaskInferenceInputReceipt;
+    nativeExecution: InferenceNativeExecution;
+    nativeOwner: { workerGeneration: string; runtimeGeneration: string };
+  };
+};
 
 function stale(): never {
   throw new TaskDispatchConflictError(
@@ -862,6 +890,115 @@ export class TaskInferenceInputRepository {
     return prepared;
   }
 
+  async prepareResumption(
+    ownerId: string,
+    input: {
+      resumption: TaskTurnResumption;
+      lease: TaskDispatchFence;
+      expectedInputRevision?: number;
+    },
+  ): Promise<TaskInferenceInputReceipt> {
+    return this.database.transaction(async (tx) => {
+      const original = taskInferenceInputReceiptSchema.parse(
+        input.resumption.source,
+      );
+      if (original.kind) stale();
+      await assertTaskOperationDispatchFence(
+        tx,
+        ownerId,
+        original.chatId,
+        original.dispatch.operationId,
+        { kind: "leased", lease: input.lease },
+      );
+      const { round, chat, project } = await this.context(
+        tx,
+        ownerId,
+        original,
+      );
+      const state = round.inferenceInput;
+      const checkpointOwner = state ? taskCheckpointExecution(state) : null;
+      const suspension = await new NativeSuspensionRepository(
+        this.database,
+        tx,
+      ).read(ownerId, original.chatId);
+      if (
+        !state ||
+        !state.nativeExecution ||
+        !state.nativeOwner ||
+        !checkpointOwner?.nativeExecution ||
+        !checkpointOwner.nativeOwner ||
+        state.terminal ||
+        !isDeepStrictEqual(state.receipt, original) ||
+        !state.dispatched ||
+        !state.accepted ||
+        (input.expectedInputRevision !== undefined &&
+          chat.managedInputRevision !== input.expectedInputRevision) ||
+        project.taskSchedulingPaused ||
+        suspension?.phase !== "resuming" ||
+        suspension.action !== "resume" ||
+        suspension.controlId !== input.resumption.controlId ||
+        !isDeepStrictEqual(
+          suspension.checkpoint,
+          input.resumption.checkpoint,
+        ) ||
+        suspension.target.taskRound?.inputOperationId !==
+          original.operationId ||
+        suspension.target.taskRound.operationId !==
+          original.dispatch.operationId ||
+        suspension.target.taskRound.cycleId !== input.lease.cycleId ||
+        suspension.active?.threadId !== state.nativeExecution.threadId ||
+        suspension.active.turnId !== state.nativeExecution.turnId
+      )
+        stale();
+      if (
+        suspension.actor?.operationId !== checkpointOwner.receipt.operationId ||
+        suspension.actor.operationGeneration !==
+          checkpointOwner.receipt.operationId ||
+        suspension.actor.workerGeneration !==
+          checkpointOwner.nativeOwner.workerGeneration ||
+        suspension.actor.runtimeGeneration !==
+          checkpointOwner.nativeOwner.runtimeGeneration
+      )
+        stale();
+      const dispatch = {
+        cycleId: input.lease.cycleId,
+        operationId: input.lease.operationId,
+        leaseOwner: input.lease.leaseOwner,
+        fencingToken: input.lease.fencingToken,
+      };
+      if (
+        state.resumption?.controlId === suspension.controlId &&
+        isDeepStrictEqual(state.resumption.receipt.dispatch, dispatch)
+      )
+        return state.resumption.receipt;
+      const receipt = taskInferenceInputReceiptSchema.parse({
+        ...original,
+        operationId: randomUUID(),
+        dispatch,
+      });
+      await tx
+        .update(schema.taskPlanningRounds)
+        .set({
+          inferenceInput: {
+            ...state,
+            resumption: {
+              controlId: suspension.controlId,
+              receipt,
+              accepted: false,
+              dispatched: false,
+              checkpointOwner: {
+                receipt: checkpointOwner.receipt,
+                nativeExecution: checkpointOwner.nativeExecution,
+                nativeOwner: checkpointOwner.nativeOwner,
+              },
+            },
+          },
+        })
+        .where(eq(schema.taskPlanningRounds.id, round.id));
+      return receipt;
+    });
+  }
+
   /** This acknowledgement is required BEFORE the worker sends turn/start.
    * It authorizes this canonical input, and never grants a provider ticket. */
   async dispatch(
@@ -898,18 +1035,39 @@ export class TaskInferenceInputRepository {
         receipt,
       );
       const state = round.inferenceInput;
+      const execution = state ? currentTaskInputExecution(state) : null;
+      if (execution && !isDeepStrictEqual(execution.receipt, receipt)) stale();
+      let resumed = false;
+      if (state?.resumption) {
+        const suspension = await new NativeSuspensionRepository(
+          this.database,
+          tx,
+        ).read(ownerId, receipt.chatId);
+        resumed =
+          suspension?.controlId === state.resumption.controlId &&
+          suspension.action === "resume" &&
+          (suspension.phase === "resuming" ||
+            (phase === "native" && suspension.phase === "running"));
+        if (!resumed) stale();
+      }
+      const updatedExecution = (
+        update: Partial<TaskInferenceResumption>,
+      ): TaskInferenceInputState =>
+        state!.resumption
+          ? { ...state!, resumption: { ...state!.resumption, ...update } }
+          : { ...state!, ...update };
       if (phase === "native") {
         if (
           !state ||
           state.deferred ||
           state.failedBeforeDispatch ||
-          !state.accepted ||
-          !state.dispatched ||
+          !execution?.accepted ||
+          !execution.dispatched ||
           state.terminal ||
           !metadata?.nativeRuntimeGeneration ||
-          state.claimWorkerGeneration !== metadata.workerGeneration ||
+          execution.claimWorkerGeneration !== metadata.workerGeneration ||
           JSON.stringify(
-            taskInferenceInputReceiptSchema.parse(state.receipt),
+            taskInferenceInputReceiptSchema.parse(execution.receipt),
           ) !==
             JSON.stringify(taskInferenceInputReceiptSchema.parse(receipt)) ||
           lane.state !== "active"
@@ -925,59 +1083,63 @@ export class TaskInferenceInputRepository {
             workerGeneration: metadata!.workerGeneration,
             runtimeGeneration: metadata!.nativeRuntimeGeneration!,
           },
+          new NativeSuspensionRepository(this.database, tx),
         );
       }
       if (
         !state ||
         state.deferred ||
         state.failedBeforeDispatch ||
-        state.dispatched ||
-        JSON.stringify(taskInferenceInputReceiptSchema.parse(state.receipt)) !==
-          JSON.stringify(taskInferenceInputReceiptSchema.parse(receipt)) ||
+        execution?.dispatched ||
+        !execution ||
+        JSON.stringify(
+          taskInferenceInputReceiptSchema.parse(execution.receipt),
+        ) !== JSON.stringify(taskInferenceInputReceiptSchema.parse(receipt)) ||
         lane.state !== "active" ||
-        chat.automationPaused ||
+        (chat.automationPaused && !resumed) ||
         project.taskSchedulingPaused ||
         task.state === "paused"
       )
         stale();
       if (
-        state.claimWorkerGeneration &&
-        state.claimWorkerGeneration !== metadata?.workerGeneration
+        execution.claimWorkerGeneration &&
+        execution.claimWorkerGeneration !== metadata?.workerGeneration
       )
         stale();
       if (phase === "accepted" || phase === "claim") {
         // A canonical source may be created only by the first actual claim.
         // Legacy accepted acknowledgements remain idempotent, but cannot be
         // upgraded to a fresh source after their original worker lost it.
-        if (phase === "claim" && state.accepted) stale();
+        if (phase === "claim" && execution.accepted) stale();
         await tx
           .update(schema.taskPlanningRounds)
           .set({
-            inferenceInput: {
-              ...state,
+            inferenceInput: updatedExecution({
               accepted: true,
               ...(phase === "claim" && metadata
                 ? { claimWorkerGeneration: metadata.workerGeneration }
                 : {}),
-            },
+            }),
           })
           .where(eq(schema.taskPlanningRounds.id, round.id));
         return { receipt };
       }
-      if (!state.accepted) stale();
+      if (!execution.accepted) stale();
       await tx
         .update(schema.taskPlanningRounds)
         .set({
-          inferenceInput: {
-            ...state,
-            dispatched: true,
-            firstDispatchedOperationId:
-              state.firstDispatchedOperationId ?? receipt.operationId,
-            multipleDispatched:
-              state.multipleDispatched ||
-              (state.firstDispatchedOperationId !== null &&
-                state.firstDispatchedOperationId !== receipt.operationId),
-          },
+          inferenceInput: resumed
+            ? updatedExecution({ dispatched: true })
+            : {
+                ...state,
+                dispatched: true,
+                firstDispatchedOperationId:
+                  state.firstDispatchedOperationId ?? receipt.operationId,
+                multipleDispatched:
+                  state.multipleDispatched ||
+                  (state.firstDispatchedOperationId !== null &&
+                    state.firstDispatchedOperationId !== receipt.operationId),
+              },
         })
         .where(eq(schema.taskPlanningRounds.id, round.id));
       return { receipt };

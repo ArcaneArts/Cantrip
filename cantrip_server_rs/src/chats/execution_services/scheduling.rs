@@ -25,6 +25,21 @@ pub(super) fn build(
         queue_tick: tick.clone(),
         limits: Default::default(),
     });
+    let eligibility =
+        eligibility::Service::new(d.database.clone(), d.routing.clone(), d.bridge.clone());
+    let (resume_task, stop_task) = crate::task_scheduling::suspension_resume::Service::handlers(
+        crate::task_scheduling::suspension_resume::Dependencies {
+            database: d.database.clone(),
+            routing: d.routing.clone(),
+            claimed: Arc::downgrade(&claimed),
+            eligibility: eligibility.clone(),
+            commands: d.commands.clone(),
+            live: d.live.clone(),
+            lease_owner: format!("{}:{}", d.server_id, d.instance_id),
+        },
+    );
+    turns.pause.set_task_resumption(resume_task);
+    turns.pause.set_task_stop(stop_task);
     let resumed = resumed_execution::Service::new(resumed_execution::Dependencies {
         database: d.database.clone(),
         pause: turns.pause.clone(),
@@ -48,11 +63,7 @@ pub(super) fn build(
             database: d.database.clone(),
             retries,
             recovery: turns.task_recovery.clone(),
-            eligibility: eligibility::Service::new(
-                d.database.clone(),
-                d.routing.clone(),
-                d.bridge.clone(),
-            ),
+            eligibility,
             claimed,
             resumed,
             live: d.live.clone(),

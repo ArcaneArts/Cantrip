@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { taskInferenceInputReceiptSchema } from "@cantrip/protocol";
+import { taskOperationRelayRequestSchema } from "@cantrip/protocol/tasks";
 import { wrapComponentKeyForWorker } from "@cantrip/crypto";
 import {
   mkdtemp,
@@ -42,7 +45,11 @@ const suspension = {
 const key = new Uint8Array(32).fill(37);
 const timestamp = "2026-11-05T12:00:00.000Z";
 const dirs: string[] = [];
-async function worker(directory?: string, grant = true) {
+async function worker(
+  directory?: string,
+  grant = true,
+  component: "chat-content" | "task-content" = "chat-content",
+) {
   const dataDirectory =
     directory ??
     (await mkdtemp(path.join(tmpdir(), "cantrip-suspension-registry-")));
@@ -56,7 +63,7 @@ async function worker(directory?: string, grant = true) {
   const wrapped = await wrapComponentKeyForWorker({
     ownerId: scope.ownerId,
     workerId: scope.workerId,
-    component: "chat-content",
+    component,
     componentKey: key,
     keyRevision: 1,
     workerPublicKey: registration.publicKey,
@@ -85,7 +92,7 @@ async function worker(directory?: string, grant = true) {
             id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
             ownerId: scope.ownerId,
             principalId: registration.principalId,
-            component: "chat-content",
+            component,
             keyRevision: 1,
             wrappedKey: wrapped,
             state: "active",
@@ -122,6 +129,129 @@ afterEach(async () => {
 });
 
 describe("native suspension source registry with actual worker encryption", () => {
+  it("persists the original Task round and event identities with only a Task grant", async () => {
+    const w = await worker(undefined, true, "task-content");
+    const fixtures = JSON.parse(
+      await readFile(
+        new URL(
+          "../../scripts/server-rust/worker-command-alternatives.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ) as {
+      cases: Array<{
+        input: {
+          command: { resultMode?: { kind: string; operation?: unknown } };
+        };
+      }>;
+    };
+    const original = taskOperationRelayRequestSchema.parse(
+      fixtures.cases.find(
+        (item) => item.input.command.resultMode?.kind === "task-encrypted",
+      )!.input.command.resultMode!.operation,
+    );
+    const request = {
+      ...original,
+      chatId: source.chatId,
+      operationId: randomUUID(),
+    };
+    const receipt = taskInferenceInputReceiptSchema.parse({
+      operationId: randomUUID(),
+      chatId: source.chatId,
+      clientMessageId: request.userMessage.id,
+      workerId: scope.workerId,
+      worktreeId: source.placementId,
+      executionLaneId: randomUUID(),
+      executionLaneActivatedAt: timestamp,
+      providerId: "provider",
+      modelRouteId: source.modelRouteId,
+      providerAccountId: source.providerAccountId,
+      dispatch: {
+        operationId: request.operationId,
+        cycleId: randomUUID(),
+        leaseOwner: "original-owner",
+        fencingToken: 1,
+      },
+    });
+    const taskSource = { ...source, taskInput: receipt };
+    const continuation = captureWorkerTurn(
+      workerTurnState(),
+      suspension.turnId,
+    );
+    const taskContinuation = {
+      version: 1 as const,
+      request,
+      events: {
+        version: 1 as const,
+        mode:
+          request.classification.kind === "direct"
+            ? ("default" as const)
+            : ("plan" as const),
+        ids: [],
+        completedRootMessage: null,
+      },
+    };
+    const evidence = await w.store.commit({
+      ...input,
+      source: taskSource,
+      continuation,
+      taskContinuation,
+    });
+    const bytes = await readFile(
+      await file(w.dataDirectory, evidence.storageId),
+      "utf8",
+    );
+    expect(JSON.parse(bytes)).toMatchObject({
+      version: 3,
+      protectedSource: { formatVersion: 2, component: "task-content" },
+    });
+    for (const privateValue of [
+      receipt.operationId,
+      request.operationId,
+      request.fingerprint,
+      input.home,
+      "SAVED_ASSISTANT",
+    ])
+      expect(bytes).not.toContain(privateValue);
+    const denied = await worker(w.dataDirectory, false, "task-content");
+    await expect(
+      denied.store.open(evidence.storageId, taskSource),
+    ).rejects.toThrow("active task-content encryption grant");
+    const fresh = await worker(w.dataDirectory, true, "task-content");
+    const opened = await fresh.store.open(evidence.storageId, taskSource);
+    expect(opened.taskContinuation).toEqual(taskContinuation);
+    await expect(
+      createNativeResourceProtection(fresh.service).open(
+        {
+          threadId: suspension.threadId,
+          turnId: suspension.turnId,
+          checkpointId: suspension.checkpointId,
+        },
+        JSON.parse(bytes).protectedSource,
+        "task-content",
+      ),
+    ).rejects.toThrow("authenticated");
+    expect(opened.continuation).toEqual(continuation);
+    await expect(
+      fresh.store.commit({ ...input, source: taskSource, continuation }),
+    ).rejects.toThrow("original round");
+    await expect(
+      fresh.store.commit({
+        ...input,
+        source: taskSource,
+        continuation,
+        taskContinuation: {
+          ...taskContinuation,
+          request: { ...request, operationId: randomUUID() },
+        },
+      }),
+    ).rejects.toThrow("another canonical input");
+    expect(
+      await readFile(await file(w.dataDirectory, evidence.storageId), "utf8"),
+    ).toBe(bytes);
+  });
+
   it("keeps legacy evidence inspectable and protects worker bookkeeping under a distinct immutable locator", async () => {
     const w = await worker();
     const legacy = await w.store.commit(input);

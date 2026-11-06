@@ -99,16 +99,28 @@ export async function acquireChatTurnExecution({
     : null;
   if (nativeAdmission?.replayed)
     throw new Error("This chat input already has a native operation receipt.");
-  const execution = nativeAdmission
-    ? nativeAdmission.execution
-    : await observeTaskTurnBootstrapStage("acquire-execution-lane", () =>
-        repository.startChatExecutionLane(
-          ownerId,
-          context.chatId,
-          options.acquiringActor ?? "user",
-          options.purpose ?? "Chat turn",
-        ),
-      );
+  let execution: ChatExecutionContext | null;
+  if (options.taskResumption) {
+    if (!options.taskDispatchLease)
+      throw new Error("Task restoration requires a fresh dispatch lease.");
+    execution = await repository.nativeSuspensions.restoredTaskContext(
+      ownerId,
+      context.chatId,
+      options.taskResumption,
+      options.taskDispatchLease,
+    );
+  } else {
+    execution = nativeAdmission
+      ? nativeAdmission.execution
+      : await observeTaskTurnBootstrapStage("acquire-execution-lane", () =>
+          repository.startChatExecutionLane(
+            ownerId,
+            context.chatId,
+            options.acquiringActor ?? "user",
+            options.purpose ?? "Chat turn",
+          ),
+        );
+  }
   const nativeCommandReceipt = nativeAdmission?.receipt;
   if (
     (nativeCommandReceipt && nativeCommandReceipt.status !== "accepted") ||

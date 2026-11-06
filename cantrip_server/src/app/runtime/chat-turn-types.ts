@@ -5,6 +5,7 @@ import type {
   ChatTurnCreate,
   ReasoningEffort,
   TaskDispatchWorkerLease,
+  TaskTurnResumption,
 } from "@cantrip/protocol";
 import type {
   TaskMessageOpaqueContent,
@@ -34,6 +35,9 @@ export type ChatTurnInput = Omit<ChatTurnCreate, "attachmentIds" | "mode"> & {
 };
 
 export interface ChatTurnOptions {
+  taskResumption?: TaskTurnResumption;
+  onTaskResumed?(): void | Promise<void>;
+  onTaskRestoreFailed?(error: unknown): void;
   expectedInputRevision?: number;
   managedQueueClaim?: { id: string; promptRevision: number };
   protectedNativeInput?: import("@cantrip/protocol").EncryptedPayloadEnvelope;

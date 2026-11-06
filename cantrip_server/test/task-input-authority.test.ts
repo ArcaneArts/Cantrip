@@ -648,6 +648,324 @@ describe("canonical Task native execution binding", () => {
     return { ...f, metadata, dispatch, snapshot };
   }
 
+  it("fences stopped Task callbacks and requires the current cancellation proof", async () => {
+    const f = await active();
+    await f.dispatch("claim");
+    await f.dispatch("dispatch");
+    await f.dispatch("native");
+    const pending = (await repository.nativeSuspensions.prepareTaskStop(
+      owner,
+      f.chat,
+    ))!;
+    expect(pending.stop).not.toBeNull();
+    const intent = (await repository.taskAutomationPause.request(
+      owner,
+      f.chat,
+      true,
+    ))!;
+    const current = (await repository.taskAutomationPause.fenceInterrupt(
+      owner,
+      f.chat,
+      intent.scope.revision,
+    ))!;
+    const stopped = (await repository.nativeSuspensions.prepareTaskStop(
+      owner,
+      f.chat,
+    ))!;
+    expect(stopped.state.controlId).toBe(pending.state.controlId);
+    expect(
+      await repository.nativeSuspensions.taskExecutionStopped(
+        owner,
+        worker,
+        f.receipt,
+      ),
+    ).toMatchObject({ phase: "stopping" });
+    expect(
+      await repository.nativeSuspensions.taskExecutionStopped(
+        owner,
+        "another-worker",
+        f.receipt,
+      ),
+    ).toBeNull();
+    expect(
+      await repository.nativeSuspensions.taskExecutionStopped(owner, worker, {
+        ...f.receipt,
+        operationId: randomUUID(),
+      }),
+    ).toBeNull();
+    let attempted = false;
+    expect(
+      await repository.taskDispatch.resumeNextPaused(
+        owner,
+        "ordinary-scheduler",
+        async () => {
+          attempted = true;
+          return { eligible: true };
+        },
+      ),
+    ).toBeNull();
+    expect(attempted).toBe(false);
+    const proof = {
+      controlId: stopped.state.controlId,
+      interrupted: true as const,
+      active: stopped.stop!.active,
+      outcome: "stopped" as const,
+      actor: {
+        operationId: stopped.state.controlId,
+        operationGeneration: stopped.state.controlId,
+        workerGeneration: randomUUID(),
+        runtimeGeneration: randomUUID(),
+      },
+    };
+    const before = await f.snapshot();
+    await expect(
+      repository.nativeSuspensions.acknowledgeTaskStop(
+        owner,
+        f.chat,
+        stopped.stop!,
+        current.scope,
+        { ...proof, active: { ...proof.active, turnId: randomUUID() } },
+        repository.chatExecutionLanes,
+      ),
+    ).rejects.toThrow("suspension-turn-mismatch");
+    await expect(
+      repository.nativeSuspensions.acknowledgeTaskStop(
+        owner,
+        f.chat,
+        stopped.stop!,
+        current.scope,
+        { ...proof, actor: { ...proof.actor, operationId: randomUUID() } },
+        repository.chatExecutionLanes,
+      ),
+    ).rejects.toThrow("suspension-actor-stale");
+    expect(await f.snapshot()).toEqual(before);
+    await repository.nativeSuspensions.acknowledgeTaskStop(
+      owner,
+      f.chat,
+      stopped.stop!,
+      current.scope,
+      proof,
+      repository.chatExecutionLanes,
+    );
+    expect(
+      await repository.nativeSuspensions.taskExecutionStopped(
+        owner,
+        worker,
+        f.receipt,
+      ),
+    ).toMatchObject({ phase: "stopped", checkpoint: null });
+    expect((await f.snapshot()).round).toMatchObject({
+      status: "running",
+      relayResult: null,
+    });
+    expect((await f.snapshot()).cycle).toMatchObject({
+      state: "paused",
+      attemptCount: before.cycle!.attemptCount,
+    });
+    expect(
+      (await repository.nativeSuspensions.prepareTaskStop(owner, f.chat))!.stop,
+    ).toBeNull();
+  });
+
+  it.each(["completed", "failed"] as const)(
+    "retires actual native %s while Stop awaits its cancellation receipt",
+    async (outcome) => {
+      const f = await active();
+      await f.dispatch("claim");
+      await f.dispatch("dispatch");
+      await f.dispatch("native");
+      const pending = (await repository.nativeSuspensions.prepareTaskStop(
+        owner,
+        f.chat,
+      ))!;
+      const activeTurn = {
+        threadId: f.metadata.nativeExecution.threadId,
+        turnId: f.metadata.nativeExecution.turnId,
+      };
+      const nativeOwner = {
+        workerGeneration: f.metadata.workerGeneration,
+        runtimeGeneration: f.metadata.nativeRuntimeGeneration,
+      };
+      await repository.nativeSuspensions.retireTaskExecution(
+        owner,
+        f.receipt,
+        f.receipt,
+        { ...nativeOwner, runtimeGeneration: randomUUID() },
+        activeTurn,
+        outcome,
+      );
+      expect(await repository.nativeSuspensions.read(owner, f.chat)).toEqual(
+        pending.state,
+      );
+      await repository.nativeSuspensions.retireTaskExecution(
+        owner,
+        f.receipt,
+        f.receipt,
+        nativeOwner,
+        activeTurn,
+        outcome,
+      );
+      expect(
+        await repository.nativeSuspensions.read(owner, f.chat),
+      ).toMatchObject({
+        phase: outcome,
+        action: "stop",
+        checkpoint: null,
+        active: activeTurn,
+      });
+      expect(
+        (await repository.nativeSuspensions.prepareTaskStop(owner, f.chat))!
+          .stop,
+      ).toBeNull();
+    },
+  );
+
+  it("admits a fresh physical Resume while keeping the original canonical input immutable", async () => {
+    const f = await active();
+    await f.dispatch("claim");
+    await f.dispatch("dispatch");
+    await f.dispatch("native");
+    const activeTurn = {
+      threadId: f.metadata.nativeExecution.threadId,
+      turnId: f.metadata.nativeExecution.turnId,
+    };
+    const actor = {
+      workerGeneration: f.metadata.workerGeneration,
+      runtimeGeneration: f.metadata.nativeRuntimeGeneration,
+      operationId: f.receipt.operationId,
+      operationGeneration: f.receipt.operationId,
+    };
+    const requested = (
+      await repository.nativeSuspensions.request(
+        owner,
+        f.chat,
+        "pause",
+        activeTurn,
+      )
+    ).state;
+    await repository.nativeSuspensions.claim(
+      owner,
+      f.chat,
+      requested.controlId,
+      null,
+      actor,
+      activeTurn,
+    );
+    const checkpoint = {
+      storageId: randomUUID(),
+      runtimeVersion: "0.166.0",
+      runtimeFingerprint: null,
+      suspension: { ...activeTurn, checkpointId: randomUUID(), revision: 1 },
+    };
+    await repository.nativeSuspensions.paused(
+      owner,
+      f.chat,
+      requested.controlId,
+      actor,
+      checkpoint,
+    );
+    await repository.nativeSuspensions.retainTaskExecution(
+      owner,
+      worker,
+      f.receipt,
+    );
+    const intent = (await repository.taskAutomationPause.request(
+      owner,
+      f.chat,
+      false,
+    ))!;
+    const saved = (await repository.nativeSuspensions.read(owner, f.chat))!;
+    const original = await f.snapshot();
+    const claim = await repository.taskDispatch.resumeNextPaused(
+      owner,
+      "fresh-resume-owner",
+      async () => ({ eligible: true }),
+      { nativeSuspension: { chatId: f.chat, controlId: saved.controlId } },
+    );
+    expect(claim).not.toBeNull();
+    expect(claim!.lease.fencingToken).toBe(f.receipt.dispatch.fencingToken + 1);
+    expect(claim!.cycle.attemptCount).toBe(original.cycle!.attemptCount);
+    const input = {
+      resumption: { controlId: saved.controlId, checkpoint, source: f.receipt },
+      lease: claim!.lease,
+      expectedInputRevision: intent.scope.revision,
+    };
+    await expect(
+      tasks.inferenceInputs.prepareResumption(owner, {
+        ...input,
+        expectedInputRevision: intent.scope.revision + 1,
+      }),
+    ).rejects.toMatchObject({ code: "stale-lease" });
+    const receipt = await tasks.inferenceInputs.prepareResumption(owner, input);
+    expect(await tasks.inferenceInputs.prepareResumption(owner, input)).toEqual(
+      receipt,
+    );
+    expect(receipt.operationId).not.toBe(f.receipt.operationId);
+    expect(receipt.executionLaneId).toBe(f.receipt.executionLaneId);
+    const fresh = {
+      workerGeneration: randomUUID(),
+      nativeRuntimeGeneration: randomUUID(),
+      nativeExecution: { ...f.metadata.nativeExecution, scopeId: randomUUID() },
+    };
+    const dispatch = (
+      phase: "claim" | "dispatch" | "native",
+      metadata = fresh,
+    ) =>
+      tasks.inferenceInputs.dispatch(owner, worker, receipt, phase, metadata);
+    await expect(f.dispatch("native")).rejects.toMatchObject({
+      code: "stale-lease",
+    });
+    await expect(dispatch("native")).rejects.toMatchObject({
+      code: "stale-lease",
+    });
+    await dispatch("claim");
+    await expect(dispatch("claim")).rejects.toMatchObject({
+      code: "stale-lease",
+    });
+    await dispatch("dispatch");
+    await expect(
+      dispatch("native", {
+        ...fresh,
+        nativeExecution: { ...fresh.nativeExecution, turnId: randomUUID() },
+      }),
+    ).rejects.toMatchObject({ code: "stale-lease" });
+    await dispatch("native");
+    const snapshot = await f.snapshot();
+    expect(snapshot.round!.inferenceInput).toMatchObject({
+      receipt: f.receipt,
+      nativeExecution: f.metadata.nativeExecution,
+      nativeOwner: {
+        workerGeneration: f.metadata.workerGeneration,
+        runtimeGeneration: f.metadata.nativeRuntimeGeneration,
+      },
+      firstDispatchedOperationId: f.receipt.operationId,
+      multipleDispatched: false,
+      resumption: {
+        receipt,
+        nativeExecution: fresh.nativeExecution,
+        nativeOwner: {
+          workerGeneration: fresh.workerGeneration,
+          runtimeGeneration: fresh.nativeRuntimeGeneration,
+        },
+      },
+    });
+    const running = (await repository.nativeSuspensions.read(owner, f.chat))!;
+    expect(running).toMatchObject({
+      phase: "running",
+      active: activeTurn,
+      target: { originalOperationId: f.receipt.operationId },
+      actor: {
+        operationId: receipt.operationId,
+        workerGeneration: fresh.workerGeneration,
+        runtimeGeneration: fresh.nativeRuntimeGeneration,
+      },
+    });
+    expect(
+      (await repository.getChatExecutionContext(owner, f.chat))!
+        .automationPaused,
+    ).toBe(false);
+  });
+
   it("binds exact native identity atomically while preserving final-result and runtime authority", async () => {
     const f = await active();
     await f.dispatch("claim");
@@ -684,6 +1002,132 @@ describe("canonical Task native execution binding", () => {
       .set({ automationPaused: true })
       .where(eq(schema.chats.id, f.chat));
     expect(await f.dispatch("native")).toEqual(result);
+  });
+
+  it("binds suspension metadata to the canonical Task input and its actual native actor", async () => {
+    const f = await active();
+    await f.dispatch("claim");
+    await f.dispatch("dispatch");
+    await f.dispatch("native");
+    const execution = f.metadata.nativeExecution;
+    const nativeTurn = {
+      threadId: execution.threadId,
+      turnId: execution.turnId,
+    };
+    const requested = await repository.nativeSuspensions.request(
+      owner,
+      f.chat,
+      "pause",
+      nativeTurn,
+    );
+    expect(requested.state.target).toMatchObject({
+      threadId: execution.threadId,
+      originalOperationId: f.receipt.operationId,
+      taskRound: {
+        operationId: f.receipt.dispatch.operationId,
+        inputOperationId: f.receipt.operationId,
+        cycleId: f.receipt.dispatch.cycleId,
+      },
+    });
+    const actor = {
+      workerGeneration: f.metadata.workerGeneration,
+      runtimeGeneration: f.metadata.nativeRuntimeGeneration,
+      operationId: f.receipt.operationId,
+      operationGeneration: f.receipt.operationId,
+    };
+    await expect(
+      repository.nativeSuspensions.claim(
+        owner,
+        f.chat,
+        requested.state.controlId,
+        null,
+        { ...actor, operationId: randomUUID() },
+        nativeTurn,
+      ),
+    ).rejects.toThrow("suspension-authority-changed");
+    await repository.nativeSuspensions.claim(
+      owner,
+      f.chat,
+      requested.state.controlId,
+      null,
+      actor,
+      nativeTurn,
+    );
+    const evidence = {
+      storageId: randomUUID(),
+      runtimeVersion: "0.166.0",
+      runtimeFingerprint: null,
+      suspension: {
+        threadId: execution.threadId,
+        turnId: execution.turnId,
+        checkpointId: randomUUID(),
+        revision: 1,
+      },
+    };
+    const paused = await repository.nativeSuspensions.paused(
+      owner,
+      f.chat,
+      requested.state.controlId,
+      actor,
+      evidence,
+    );
+    expect(paused.state.phase).toBe("paused");
+    expect(paused.state.checkpoint).toEqual(evidence);
+    expect(
+      await repository.nativeSuspensions.retainTaskExecution(owner, worker, {
+        ...f.receipt,
+        operationId: randomUUID(),
+      }),
+    ).toBeNull();
+    expect(
+      await repository.nativeSuspensions.retainTaskExecution(
+        owner,
+        worker,
+        f.receipt,
+      ),
+    ).toEqual(paused.state);
+    const [retained] = await database
+      .select()
+      .from(schema.taskDispatchCycles)
+      .where(eq(schema.taskDispatchCycles.id, f.receipt.dispatch.cycleId));
+    expect(retained).toMatchObject({
+      state: "paused",
+      codexThreadId: nativeTurn.threadId,
+      turnId: nativeTurn.turnId,
+    });
+    const [round] = await database
+      .select()
+      .from(schema.taskPlanningRounds)
+      .where(eq(schema.taskPlanningRounds.id, f.receipt.dispatch.operationId));
+    expect(round).toMatchObject({
+      status: "running",
+      relayResult: null,
+      turnId: null,
+    });
+    let admissionAttempted = false;
+    expect(
+      await repository.taskDispatch.resumeNextPaused(
+        owner,
+        "scheduler",
+        async () => {
+          admissionAttempted = true;
+          throw new Error("A saved Task needs explicit restoration authority.");
+        },
+      ),
+    ).toBeNull();
+    expect(admissionAttempted).toBe(false);
+    expect(
+      await database
+        .select()
+        .from(schema.nativeCommandActivations)
+        .where(eq(schema.nativeCommandActivations.chatId, f.chat)),
+    ).toEqual([]);
+    expect(
+      await database
+        .select()
+        .from(schema.chatRuntimeSessions)
+        .where(eq(schema.chatRuntimeSessions.chatId, f.chat)),
+    ).toEqual([]);
   });
 
   it("requires actual dispatch and the original physical worker generation", async () => {

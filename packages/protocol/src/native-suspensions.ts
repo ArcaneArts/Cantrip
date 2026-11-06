@@ -13,6 +13,18 @@ export const nativeTurnSuspensionSchema = z
   })
   .strict();
 
+/** Canonical Task round correlation, never another input or execution grant. */
+export const nativeSuspensionTaskRoundSchema = z
+  .object({
+    operationId: z.uuid(),
+    inputOperationId: z.uuid(),
+    cycleId: z.uuid(),
+  })
+  .strict();
+export type NativeSuspensionTaskRound = z.infer<
+  typeof nativeSuspensionTaskRoundSchema
+>;
+
 /** Server-owned source identity. Worker-local paths and credentials stay on the worker. */
 export const nativeSuspensionTargetSchema = z
   .object({
@@ -27,6 +39,7 @@ export const nativeSuspensionTargetSchema = z
     providerAccountId: id.nullable(),
     threadId: id.nullable(),
     originalOperationId: id.nullable(),
+    taskRound: nativeSuspensionTaskRoundSchema.optional(),
   })
   .strict();
 
@@ -119,6 +132,20 @@ export const nativeSuspensionRecordSchema = z
   })
   .strict()
   .superRefine((value, context) => {
+    const task = value.target.taskRound;
+    if (
+      task &&
+      (value.target.contextKind !== "project" ||
+        !value.target.projectId ||
+        !value.target.executionLaneId ||
+        value.target.originalOperationId !== task.inputOperationId)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["target", "taskRound"],
+        message:
+          "A Task suspension must retain its canonical input and project lane.",
+      });
     if (
       value.actorControlId !== null &&
       (value.actorControlId !== value.controlId || value.actor === null)

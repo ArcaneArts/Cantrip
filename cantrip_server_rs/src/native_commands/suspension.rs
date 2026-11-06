@@ -113,13 +113,13 @@ pub(super) async fn retained_logical_input(
     }))
 }
 
-fn terminal(state: &Value) -> bool {
+pub(super) fn terminal(state: &Value) -> bool {
     matches!(
         state["phase"].as_str(),
         Some("stopped" | "completed" | "failed" | "idle")
     )
 }
-pub(super) async fn chat(tx: &Transaction<'_>, owner: &str, id: &str) -> Result<Value> {
+pub(crate) async fn chat(tx: &Transaction<'_>, owner: &str, id: &str) -> Result<Value> {
     raw_one(
         tx,
         "SELECT to_jsonb(c)::text FROM chats c WHERE owner_id=$1 AND id=$2",
@@ -128,7 +128,7 @@ pub(super) async fn chat(tx: &Transaction<'_>, owner: &str, id: &str) -> Result<
     .await?
     .context("Suspension chat not found")
 }
-pub(super) fn read(chat: &Value) -> Result<Option<Value>> {
+pub(crate) fn read(chat: &Value) -> Result<Option<Value>> {
     if chat["native_suspension_state"].is_null() {
         return Ok(None);
     }
@@ -174,7 +174,7 @@ pub(super) async fn save(
     tx.query("UPDATE chats SET native_suspension_state=$1::text::jsonb,automation_paused=$2,managed_autonomy_stopped=CASE WHEN $3::boolean THEN true ELSE managed_autonomy_stopped END,updated_at=$4 WHERE owner_id=$5 AND id=$6", &[&parsed.stringify(), &paused, &stopping, &now, &owner, &id]).await?;
     queue::changed(tx, id).await
 }
-fn finish_time(state: &mut Value) -> Result<()> {
+pub(super) fn finish_time(state: &mut Value) -> Result<()> {
     let elapsed = if let Some(at) = state["pausedAt"].as_str() {
         (crate::auth::now().timestamp_millis()
             - chrono::DateTime::parse_from_rfc3339(at)?.timestamp_millis())

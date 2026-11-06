@@ -17,6 +17,7 @@ pub mod policy;
 mod query_error;
 mod reads;
 pub mod relay;
+pub(crate) mod resumption;
 pub mod retries;
 mod round_input_history;
 mod round_outcomes;

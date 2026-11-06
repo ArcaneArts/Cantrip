@@ -11,16 +11,17 @@ pub(super) async fn bind(
 ) -> Result<Value> {
     let stale = || crate::task_dispatch::Conflict::stale();
     let state = &row["round"]["inference_input"];
+    let physical = super::resumption::physical(state);
     if state.is_null()
         || state["deferred"] == true
         || state["failedBeforeDispatch"] == true
-        || state["accepted"] != true
-        || state["dispatched"] != true
+        || physical["accepted"] != true
+        || physical["dispatched"] != true
         || !state["terminal"].is_null()
         || metadata["workerGeneration"].is_null()
         || metadata["nativeRuntimeGeneration"].is_null()
-        || state["claimWorkerGeneration"] != metadata["workerGeneration"]
-        || state["receipt"] != *receipt
+        || physical["claimWorkerGeneration"] != metadata["workerGeneration"]
+        || physical["receipt"] != *receipt
         || row["lane"]["state"] != "active"
     {
         return Err(stale().into());
@@ -32,8 +33,11 @@ pub(super) async fn bind(
     )
     .map_err(crate::settings::response_error)?;
     let native_owner = json!({"workerGeneration":metadata["workerGeneration"],"runtimeGeneration":metadata["nativeRuntimeGeneration"]});
-    if (!state["nativeExecution"].is_null() && state["nativeExecution"] != execution)
-        || (!state["nativeOwner"].is_null() && state["nativeOwner"] != native_owner)
+    if (!physical["nativeExecution"].is_null() && physical["nativeExecution"] != execution)
+        || (!physical["nativeOwner"].is_null() && physical["nativeOwner"] != native_owner)
+        || (!state["resumption"].is_null()
+            && (execution["threadId"] != state["nativeExecution"]["threadId"]
+                || execution["turnId"] != state["nativeExecution"]["turnId"]))
     {
         return Err(stale().into());
     }
@@ -55,8 +59,14 @@ pub(super) async fn bind(
         return Err(stale().into());
     }
     let mut state = state.clone();
-    state["nativeExecution"] = execution.clone();
-    state["nativeOwner"] = native_owner;
+    let resumed = !state["resumption"].is_null();
+    let physical = if resumed {
+        &mut state["resumption"]
+    } else {
+        &mut state
+    };
+    physical["nativeExecution"] = execution.clone();
+    physical["nativeOwner"] = native_owner;
     update(
         tx,
         Table::Round,
@@ -65,6 +75,15 @@ pub(super) async fn bind(
         None,
     )
     .await?;
+    if resumed {
+        crate::native_commands::task_suspension::bind_running(
+            tx,
+            owner,
+            receipt,
+            &state["resumption"],
+        )
+        .await?;
+    }
     Ok(
         json!({"receipt":receipt,"nativeExecution":execution,"nativeRuntimeGeneration":metadata["nativeRuntimeGeneration"]}),
     )

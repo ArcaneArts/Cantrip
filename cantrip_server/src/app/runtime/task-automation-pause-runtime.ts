@@ -1,6 +1,8 @@
 import { isDeepStrictEqual } from "node:util";
 import {
-  chatPauseRuntimeStateSchema,
+  taskPauseRuntimeStateSchema,
+  chatNativeSuspension,
+  type NativeSuspensionRecord,
   type ChatPauseRuntimeState,
   type TaskPauseIntent,
 } from "@cantrip/protocol";
@@ -8,10 +10,15 @@ import { settleTaskGoalHandoffForControl } from "../../terminals/task-goal-hando
 import type { ChatAutomationPauseRouteDependencies } from "./chat-automation-pause-runtime.js";
 import { ChatAutomationPauseError } from "./chat-automation-pause-error.js";
 import { errorMessage } from "../../http/request-helpers.js";
+import { NativeCommandError } from "../../db/repository/native-command-errors.js";
 
 type Dependencies = Pick<
   ChatAutomationPauseRouteDependencies,
-  "repository" | "bridge" | "publishChatSummary" | "resumeChatAutomation"
+  | "repository"
+  | "bridge"
+  | "publishChatSummary"
+  | "resumeChatAutomation"
+  | "resumeTaskSuspension"
 >;
 
 /** Persist intent once. Every reply observes current canonical intent rather
@@ -62,6 +69,7 @@ export async function setTaskAutomationPause(
   };
   let intent = original;
   let active: ChatPauseRuntimeState["active"] = null;
+  let suspension: NativeSuspensionRecord | null = null;
   for (;;) {
     try {
       // The durable pause closes new handoff admission before this second read.
@@ -75,7 +83,39 @@ export async function setTaskAutomationPause(
       if (!current)
         throw new ChatAutomationPauseError(404, "Task source not found.");
       intent = current;
-      const receipt = chatPauseRuntimeStateSchema.parse(await send(intent));
+      suspension = null;
+      const previous = intent.scope.taskRound
+        ? await repository.nativeSuspensions.read(ownerId, chatId)
+        : null;
+      if (!intent.paused && previous?.phase === "running") {
+        suspension = previous;
+      } else if (
+        intent.scope.taskRound &&
+        (intent.paused || previous?.checkpoint)
+      ) {
+        suspension = (
+          await repository.nativeSuspensions.request(
+            ownerId,
+            chatId,
+            intent.paused ? "pause" : "resume",
+            undefined,
+            intent.scope.revision,
+          )
+        ).state;
+        publish(intent);
+      }
+      if (
+        !intent.paused &&
+        suspension?.checkpoint &&
+        dependencies.resumeTaskSuspension
+      )
+        return await dependencies.resumeTaskSuspension(
+          ownerId,
+          chatId,
+          suspension,
+          intent,
+        );
+      const receipt = taskPauseRuntimeStateSchema.parse(await send(intent));
       const latest = await repository.taskAutomationPause.read(ownerId, chatId);
       if (!latest)
         throw new ChatAutomationPauseError(404, "Task source not found.");
@@ -88,8 +128,94 @@ export async function setTaskAutomationPause(
           "The current native Task pause intent was not acknowledged.",
         );
       active = receipt.active;
+      if (suspension) {
+        if (!active || !receipt.execution)
+          throw new Error(
+            "The saved Task continuation has no live native owner. It remains paused for recovery.",
+          );
+        const actor = receipt.execution.actor;
+        if (suspension.phase === "running" && !intent.paused) {
+          if (
+            !isDeepStrictEqual(suspension.actor, receipt.execution.actor) ||
+            !isDeepStrictEqual(suspension.active, active)
+          )
+            throw new Error(
+              "The running Task changed its native execution owner.",
+            );
+        } else if (suspension.phase === "paused" && intent.paused) {
+          if (
+            !isDeepStrictEqual(
+              suspension.checkpoint,
+              receipt.execution.checkpoint,
+            )
+          )
+            throw new Error(
+              "The Task pause checkpoint changed after acknowledgement.",
+            );
+        } else {
+          suspension = (
+            await repository.nativeSuspensions.claim(
+              ownerId,
+              chatId,
+              suspension.controlId,
+              suspension.actor,
+              actor,
+              active,
+            )
+          ).state;
+          if (intent.paused) {
+            if (!receipt.execution.checkpoint)
+              throw new Error("The Task durable checkpoint is missing.");
+            suspension = (
+              await repository.nativeSuspensions.paused(
+                ownerId,
+                chatId,
+                suspension.controlId,
+                actor,
+                receipt.execution.checkpoint,
+              )
+            ).state;
+          } else {
+            suspension = (
+              await repository.nativeSuspensions.running(
+                ownerId,
+                chatId,
+                suspension.controlId,
+                actor,
+              )
+            ).state;
+          }
+        }
+      }
       break;
     } catch (error) {
+      if (
+        error instanceof NativeCommandError &&
+        error.code === "suspension-control-stale"
+      ) {
+        const latest = await repository.taskAutomationPause.read(
+          ownerId,
+          chatId,
+        );
+        if (latest && !isDeepStrictEqual(latest, intent)) {
+          intent = latest;
+          continue;
+        }
+      }
+      if (suspension && ["pausing", "resuming"].includes(suspension.phase)) {
+        await repository.nativeSuspensions
+          .failedControl(
+            ownerId,
+            chatId,
+            suspension.controlId,
+            suspension.actor,
+            {
+              code: intent.paused ? "pause-failed" : "restore-failed",
+              protectedDetails: null,
+            },
+          )
+          .catch(() => undefined);
+      }
       await rollbackResume(intent);
       publish(intent);
       if (error instanceof ChatAutomationPauseError) throw error;
@@ -118,5 +244,11 @@ export async function setTaskAutomationPause(
   }
   // A later device may have changed intent while the continuation was checked.
   const latest = await repository.taskAutomationPause.read(ownerId, chatId);
-  return { paused: latest?.paused ?? intent.paused, active };
+  return {
+    paused: latest?.paused ?? intent.paused,
+    active,
+    ...(suspension
+      ? { nativeSuspension: chatNativeSuspension(suspension) }
+      : {}),
+  };
 }

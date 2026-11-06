@@ -38,13 +38,14 @@ async function open(directory?: string, workerId = "resource-worker") {
 async function authorize(
   input: Awaited<ReturnType<typeof open>>,
   key?: Uint8Array,
+  component: "chat-content" | "task-content" = "chat-content",
 ) {
   const registration = input.service.registration();
   const wrapped = key
     ? await wrapComponentKeyForWorker({
         ownerId,
         workerId: input.workerId,
-        component: "chat-content",
+        component,
         componentKey: key,
         keyRevision: 1,
         workerPublicKey: registration.publicKey,
@@ -74,7 +75,7 @@ async function authorize(
             id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
             ownerId,
             principalId: registration.principalId,
-            component: "chat-content",
+            component,
             keyRevision: 1,
             wrappedKey: wrapped,
             state: "active",
@@ -187,6 +188,49 @@ describe("native resource protection", () => {
     const protection = createNativeResourceProtection(worker.service);
     const opaque = await protection.seal(binding, state);
     expect(await protection.open(binding, opaque)).toEqual(state);
+  });
+
+  it("protects Task resources with only a Task grant and requires a fresh Task grant after restart", async () => {
+    const worker = await open();
+    await authorize(worker, componentKey, "task-content");
+    const protection = createNativeResourceProtection(worker.service);
+    await expect(protection.seal(binding, state)).rejects.toThrow(
+      "active chat-content encryption grant",
+    );
+    const opaque = await protection.seal(binding, state, "task-content");
+    expect(opaque).toMatchObject({
+      formatVersion: 2,
+      component: "task-content",
+    });
+    expect(JSON.stringify(opaque)).not.toContain(secret);
+    expect(await protection.open(binding, opaque, "task-content")).toEqual(
+      state,
+    );
+    await expect(protection.open(binding, opaque)).rejects.toThrow(
+      "another component",
+    );
+    const fresh = await open(worker.dataDirectory);
+    await authorize(fresh);
+    const reopened = createNativeResourceProtection(fresh.service);
+    await expect(
+      reopened.open(binding, opaque, "task-content"),
+    ).rejects.toThrow("active task-content encryption grant");
+    await authorize(fresh, componentKey, "task-content");
+    expect(await reopened.open(binding, opaque, "task-content")).toEqual(state);
+    await expect(
+      reopened.open(
+        { ...binding, turnId: "foreign-turn" },
+        opaque,
+        "task-content",
+      ),
+    ).rejects.toThrow("authenticated");
+    await expect(
+      reopened.open(
+        binding,
+        { ...opaque, component: "chat-content" },
+        "task-content",
+      ),
+    ).rejects.toThrow("invalid or unsupported");
   });
 
   it("rejects unsupported protection data without echoing private state", async () => {

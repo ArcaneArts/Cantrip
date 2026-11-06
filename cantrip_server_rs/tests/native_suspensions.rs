@@ -29,7 +29,7 @@ fn oracle() -> Result<Value> {
 fn suspension_contracts_and_private_projection_match_source() -> Result<()> {
     let corpus = oracle()?;
     let cases = corpus["cases"].as_array().context("oracle cases")?;
-    assert_eq!(cases.len(), 103, "oracle corpus changed");
+    assert_eq!(cases.len(), 139, "oracle corpus changed");
     for case in cases {
         let outcome = match wire::parse(case["schema"].as_str().unwrap(), Some(&case["input"])) {
             Ok(value) => Value::object([("ok", value)]),
@@ -41,6 +41,12 @@ fn suspension_contracts_and_private_projection_match_source() -> Result<()> {
             }
         };
         assert_eq!(outcome, case["outcome"], "{case:?}");
+        if let Some(message) = case.get("errorMessage") {
+            assert_eq!(
+                Value::String(outcome["issues"].stringify_pretty().into()),
+                *message
+            );
+        }
     }
     for case in corpus["projections"].as_array().unwrap() {
         assert_eq!(stored_summary(&case["input"]), case["output"]);

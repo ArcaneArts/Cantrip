@@ -44,7 +44,11 @@ fn wrapped(status: u16, prefix: &str, error: &anyhow::Error) -> anyhow::Error {
 }
 type StopControlRegistry =
     std::collections::HashMap<(String, String), std::sync::Weak<tokio::sync::Mutex<()>>>;
+pub type ResumeTaskSuspension =
+    Arc<dyn Fn(String, String, Value, Value) -> BoxFuture<'static, Result<Value>> + Send + Sync>;
 pub struct Service {
+    task_resume: std::sync::Mutex<Option<ResumeTaskSuspension>>,
+    task_stop: std::sync::Mutex<Option<ResumeTaskSuspension>>,
     chats: Repository,
     native: native_commands::Repository,
     prompts: PromptRepository,
@@ -93,7 +97,15 @@ impl Service {
             logger,
             operations: Arc::default(),
             stop_controls: Default::default(),
+            task_resume: Default::default(),
+            task_stop: Default::default(),
         })
+    }
+    pub(crate) fn set_task_resumption(&self, handler: ResumeTaskSuspension) {
+        *self.task_resume.lock().unwrap() = Some(handler);
+    }
+    pub(crate) fn set_task_stop(&self, handler: ResumeTaskSuspension) {
+        *self.task_stop.lock().unwrap() = Some(handler);
     }
     pub fn set(
         self: &Arc<Self>,

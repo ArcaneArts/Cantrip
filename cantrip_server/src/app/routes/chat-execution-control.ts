@@ -37,6 +37,7 @@ export interface ChatExecutionControlRouteDependencies {
     | "getChatExecutionContext"
     | "nativeCommands"
     | "nativeSuspensions"
+    | "chatExecutionLanes"
     | "taskAutomationPause"
     | "nativeRuntimeHandoffs"
     | "listEffectiveMcpServers"
@@ -172,6 +173,7 @@ export function installChatExecutionControlRoutes(
               repository,
               bridge,
               publishChatSummary,
+              runtimeForContext,
             }),
           );
         } catch (error) {

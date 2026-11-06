@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
   nativeCommandSessionSchema,
+  taskInferenceInputReceiptSchema,
   nativeSuspensionEvidenceSchema,
   nativeTurnSuspensionSchema,
   type NativeSuspensionEvidence,
@@ -16,6 +17,10 @@ import {
   type NativeResourceProtection,
 } from "./native-resource-protection.js";
 import type { WorkerEncryptionService } from "./worker-encryption.js";
+import {
+  taskWorkerContinuationSchema,
+  type TaskWorkerContinuation,
+} from "./task-worker-continuation.js";
 import {
   workerTurnContinuationSchema,
   type WorkerTurnContinuation,
@@ -35,7 +40,27 @@ const scopeSchema = z
 // fresh authority for this source, not a serialized old runtime or socket.
 export const nativeSuspensionSourceSchema = nativeCommandSessionSchema
   .omit({ runtimeGeneration: true, connectionId: true })
-  .strict();
+  .extend({ taskInput: taskInferenceInputReceiptSchema.optional() })
+  .strict()
+  .superRefine((value, context) => {
+    const task = value.taskInput;
+    if (
+      task &&
+      (task.kind ||
+        value.contextKind !== "project" ||
+        !value.projectId ||
+        task.chatId !== value.chatId ||
+        task.worktreeId !== value.placementId ||
+        task.modelRouteId !== value.modelRouteId ||
+        task.providerAccountId !== value.providerAccountId)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["taskInput"],
+        message:
+          "Task checkpoint source changed its canonical round or placement.",
+      });
+  });
 export type NativeSuspensionSource = z.infer<
   typeof nativeSuspensionSourceSchema
 >;
@@ -49,24 +74,61 @@ const legacySnapshotSchema = z
     home: z.string().min(1),
   })
   .strict();
-const snapshotSchema = z.discriminatedUnion("version", [
-  legacySnapshotSchema,
-  legacySnapshotSchema
-    .extend({
-      version: z.literal(2),
-      continuation: workerTurnContinuationSchema,
-    })
-    .strict(),
-]);
+const snapshotSchema = z
+  .discriminatedUnion("version", [
+    legacySnapshotSchema,
+    legacySnapshotSchema
+      .extend({
+        version: z.literal(2),
+        continuation: workerTurnContinuationSchema,
+      })
+      .strict(),
+    legacySnapshotSchema
+      .extend({
+        version: z.literal(3),
+        continuation: workerTurnContinuationSchema,
+        task: taskWorkerContinuationSchema,
+      })
+      .strict(),
+  ])
+  .superRefine((value, context) => {
+    const receipt = value.source.taskInput;
+    if ((value.version === 3) !== Boolean(receipt))
+      context.addIssue({
+        code: "custom",
+        path: ["source", "taskInput"],
+        message: "Task checkpoints require their protected Task continuation.",
+      });
+    if (
+      value.version === 3 &&
+      receipt &&
+      (value.task.request.chatId !== receipt.chatId ||
+        value.task.request.operationId !== receipt.dispatch.operationId ||
+        value.task.request.userMessage.id !== receipt.clientMessageId)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["task"],
+        message: "Task continuation belongs to another canonical input.",
+      });
+  });
 const recordSchema = z
   .object({
-    version: z.union([z.literal(1), z.literal(2)]),
+    version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
     scope: scopeSchema,
     chatId: id,
     evidence: nativeSuspensionEvidenceSchema,
     protectedSource: protectedNativeResourcesSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.version === 3 && value.protectedSource.formatVersion !== 2)
+      context.addIssue({
+        code: "custom",
+        path: ["protectedSource"],
+        message: "Task checkpoints require Task-content protection.",
+      });
+  });
 const digest = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const resourceBinding = (s: NativeTurnSuspension) => ({
@@ -107,7 +169,7 @@ export class NativeSuspensionStore {
     scope: NativeSuspensionStoreScope,
     chatId: string,
     suspension: NativeTurnSuspension,
-    version: 1 | 2 = 1,
+    version: 1 | 2 | 3 = 1,
   ): string {
     const hex = digest([
       "cantrip-native-suspension",
@@ -158,6 +220,7 @@ export class NativeSuspensionStore {
       await this.protection.open(
         resourceBinding(record.evidence.suspension),
         record.protectedSource,
+        source.taskInput ? "task-content" : "chat-content",
       ),
     );
     if (
@@ -171,7 +234,8 @@ export class NativeSuspensionStore {
       evidence: record.evidence,
       source: snapshot.source,
       home: snapshot.home,
-      continuation: snapshot.version === 2 ? snapshot.continuation : null,
+      continuation: snapshot.version !== 1 ? snapshot.continuation : null,
+      ...(snapshot.version === 3 ? { taskContinuation: snapshot.task } : {}),
     };
   }
 
@@ -193,6 +257,7 @@ export class NativeSuspensionStore {
     runtimeVersion: string;
     runtimeFingerprint: string | null;
     continuation?: WorkerTurnContinuation;
+    taskContinuation?: TaskWorkerContinuation;
   }): Promise<NativeSuspensionEvidence> {
     const source = nativeSuspensionSourceSchema.parse(input.source);
     const scope = scopeSchema.parse(this.currentScope());
@@ -214,7 +279,25 @@ export class NativeSuspensionStore {
       throw new Error(
         "Worker bookkeeping belongs to another native suspension.",
       );
-    const version = continuation ? 2 : 1;
+    const task = input.taskContinuation
+      ? taskWorkerContinuationSchema.parse(input.taskContinuation)
+      : null;
+    if (Boolean(source.taskInput) !== Boolean(task) || (task && !continuation))
+      throw new Error(
+        "Task checkpoints require their original round and worker continuation.",
+      );
+    if (source.taskInput && source.taskInput.workerId !== scope.workerId)
+      throw new Error("Task checkpoint belongs to another worker.");
+    const version = task ? 3 : continuation ? 2 : 1;
+    const snapshot = snapshotSchema.parse({
+      version,
+      scope,
+      source,
+      suspension,
+      home,
+      ...(continuation ? { continuation } : {}),
+      ...(task ? { task } : {}),
+    });
     const storageId = this.storageId(scope, source.chatId, suspension, version);
     const root = this.root(scope, source.chatId);
     return serializeHistoryOperation(root, async () => {
@@ -243,14 +326,8 @@ export class NativeSuspensionStore {
       });
       const protectedSource = await this.protection.seal(
         resourceBinding(suspension),
-        {
-          version,
-          scope,
-          source,
-          suspension,
-          home,
-          ...(continuation ? { continuation } : {}),
-        },
+        snapshot,
+        task ? "task-content" : "chat-content",
       );
       this.assertScope(scope);
       await ensureHistoryDirectory(root);

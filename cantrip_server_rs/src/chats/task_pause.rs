@@ -6,6 +6,19 @@ use crate::{
 };
 use anyhow::Result;
 
+fn saved_suspension(raw: Option<String>) -> Result<Option<Value>> {
+    raw.map(|raw| {
+        let state: Value = serde_json::from_str(&raw)?;
+        crate::settings::parse_response("nativeSuspensionRecordSchema", Some(&state)).map_err(
+            |_| {
+                super::guard::NativeCommandError::new("suspension-state-unreadable", None, 409)
+                    .into()
+            },
+        )
+    })
+    .transpose()
+}
+
 async fn intent(tx: &Transaction<'_>, owner: &str, chat: &str) -> Result<Option<Value>> {
     let Some(context) =
         Repository::execution_context_with(Executor::Transaction(tx), owner, chat).await?
@@ -20,13 +33,36 @@ async fn intent(tx: &Transaction<'_>, owner: &str, chat: &str) -> Result<Option<
     }
     let cycles = tx.query("SELECT id,goal_order_epoch FROM task_dispatch_cycles WHERE owner_id=$1 AND chat_id=$2 ORDER BY created_at DESC,id DESC LIMIT 1", &[&owner,&chat]).await?;
     let cycle = cycles.first().map(|row| row.get::<String>(0)).transpose()?;
-    let value = json!({"paused":context["automationPaused"],"scope":json!({
+    let source = super::native_task_suspension::source(tx, &context).await?;
+    let bound = source
+        .as_ref()
+        .map(|source| &source.context)
+        .unwrap_or(&context);
+    let rows = tx
+        .query(
+            "SELECT native_suspension_state::text FROM chats WHERE owner_id=$1 AND id=$2",
+            &[&owner, &chat],
+        )
+        .await?;
+    let saved = saved_suspension(
+        rows.first()
+            .map(|row| row.get::<Option<String>>(0))
+            .transpose()?
+            .flatten(),
+    )?;
+    let resuming = saved.as_ref().is_some_and(|state| {
+        !state["target"]["taskRound"].is_null() && state["phase"] == "resuming"
+    });
+    let mut value = json!({"paused":if resuming {json!(false)} else {context["automationPaused"].clone()},"scope":json!({
         "revision":context["managedInputRevision"],"workerId":context["workerId"],
         "projectId":context["projectId"],"worktreeId":context["worktreeId"],
-        "threadId":context["threadId"],"modelRouteId":context["modelRouteId"],
-        "providerAccountId":context["providerAccountId"],"cycleId":cycle,
+        "threadId":bound["threadId"],"modelRouteId":bound["modelRouteId"],
+        "providerAccountId":bound["providerAccountId"],"cycleId":cycle,
         "orderEpoch":cycles.first().map(|row|row.get::<i64>(1)).transpose()?.unwrap_or(0)
     })});
+    if let Some(source) = source {
+        value["scope"]["taskRound"] = source.task_round;
+    }
     Ok(Some(crate::settings::parse_response(
         "taskPauseIntentSchema",
         Some(&value),
@@ -88,7 +124,17 @@ impl Repository {
         let (owner, chat) = (owner.to_owned(), chat.to_owned());
         self.database.transaction(|tx| Box::pin(async move {
             lock_chat(tx, &owner, &chat).await?;
-            let updated = tx.query("UPDATE chats SET automation_paused=$3,managed_input_revision=managed_input_revision+1,updated_at=now() WHERE owner_id=$1 AND id=$2 AND experience='task' AND ($4::integer IS NULL OR managed_input_revision=$4) RETURNING id", &[&owner,&chat,&paused,&expected]).await?;
+            let rows = tx.query("SELECT managed_input_revision,native_suspension_state::text FROM chats WHERE owner_id=$1 AND id=$2 AND experience='task'", &[&owner,&chat]).await?;
+            let Some(current) = rows.first() else {return Ok(None);};
+            if expected.is_some_and(|expected| current.get::<i32>(0).ok() != Some(expected)) {return Ok(None);}
+            let saved = saved_suspension(current.get::<Option<String>>(1)?)?;
+            let held = saved.as_ref().is_some_and(|state| !state["target"]["taskRound"].is_null() && !state["checkpoint"].is_null() &&
+                matches!(state["phase"].as_str(),Some("paused"|"pausing"|"resuming"|"error")));
+            if held && saved.as_ref().is_none_or(|state|state["action"] != "stop") && !(paused && saved.as_ref().is_some_and(|state|state["phase"] == "error" && state["action"] == "resume")) {
+                crate::native_commands::task_suspension::request_locked(tx, &owner, &chat, if paused {"pause"} else {"resume"}, None).await?;
+            }
+            let hold = held || paused;
+            let updated = tx.query("UPDATE chats SET automation_paused=$3,managed_input_revision=managed_input_revision+1,updated_at=now() WHERE owner_id=$1 AND id=$2 AND experience='task' AND ($4::integer IS NULL OR managed_input_revision=$4) RETURNING id", &[&owner,&chat,&hold,&expected]).await?;
             if updated.is_empty() { return Ok(None); }
             tx.query("INSERT INTO managed_queue_states(chat_id,revision) VALUES($1,1) ON CONFLICT(chat_id) DO UPDATE SET revision=managed_queue_states.revision+1,notification_due_at=now()", &[&chat]).await?;
             intent(tx, &owner, &chat).await
