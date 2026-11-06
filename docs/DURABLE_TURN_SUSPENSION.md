@@ -234,8 +234,9 @@ model HTTP responses are controlled. It performs two durable Pause/SIGKILL/
 restart/explicit Resume cycles on a GUI-originated project chat with a completed
 native command and accepted pending steering.
 
-The test records the owned process tree, including separately grouped native
-helpers and the shared TUI, and verifies that those processes stopped. Startup
+The test freezes supervisors, records descendants and owned process groups,
+including native helpers and the shared TUI, then sends SIGKILL and verifies
+that no live member remains. Startup
 and chat reads must produce no model request. Repeated concurrent Resume calls
 must join one execution. The resumed requests must retain model/reasoning
 settings, cwd, original input, accepted steering and exactly one completed

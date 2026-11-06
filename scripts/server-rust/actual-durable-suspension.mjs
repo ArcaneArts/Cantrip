@@ -2,7 +2,6 @@
 // Only the public model HTTP boundary is controlled. Every storage directory
 // and every process terminated by this fixture belongs to this run.
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import {
   glob,
@@ -15,7 +14,6 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright-core";
@@ -23,7 +21,7 @@ import { buildRustServer, buildWorkerCli, repositoryRoot } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { eventually, launchActualWorker } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
-import { killNativeTree } from "../../cantrip_worker/test/native-process-tree-fixture.ts";
+import { killOwnedWorkerTree } from "./owned-worker-tree.mjs";
 import { verifyBuiltRuntime } from "../cantrip-codex/verify-built-runtime.mjs";
 import {
   enrollSuspensionBrowser,
@@ -32,7 +30,6 @@ import {
   steerSuspensionChat,
 } from "./durable-suspension-browser.mjs";
 
-const execute = promisify(execFile);
 const option = (name) => {
   const i = process.argv.indexOf(name);
   return i < 0 ? undefined : process.argv[i + 1];
@@ -51,29 +48,6 @@ const report = {
 };
 const nativeBinary = process.env.CANTRIP_CODEX_BIN;
 let browser, vite, failure;
-
-async function processTree(pid) {
-  const { stdout } = await execute("ps", ["-axo", "pid=,ppid=,stat=,comm="]);
-  const rows = stdout
-    .trim()
-    .split("\n")
-    .map((line) => {
-      const [id, parent, state, ...command] = line.trim().split(/\s+/);
-      return {
-        pid: Number(id),
-        parent: Number(parent),
-        state,
-        command: command.join(" "),
-      };
-    });
-  const owned = new Set([pid]);
-  for (;;) {
-    const before = owned.size;
-    for (const row of rows) if (owned.has(row.parent)) owned.add(row.pid);
-    if (before === owned.size) break;
-  }
-  return rows.filter((row) => owned.has(row.pid));
-}
 
 function modelFunctions(tools, namespace) {
   return (tools ?? []).flatMap((tool) =>
@@ -135,6 +109,7 @@ async function flow(kind, executable, cliBinary) {
       enrollmentCode,
       workerId,
       homeDirectory: home,
+      isolatedProcessGroup: true,
     });
     await worker.ready();
   };
@@ -254,33 +229,18 @@ async function flow(kind, executable, cliBinary) {
       console.error(kind, "durable pause acknowledged", round);
       active ??= paused.nativeSuspension.active;
       assert.deepEqual(paused.nativeSuspension.active, active);
-      const owned = await processTree(worker.child.pid);
+      const killed = worker;
+      worker = undefined;
+      const terminated = await killOwnedWorkerTree(killed.child);
+      const owned = terminated.processes;
       assert.ok(
         owned.some((p) => p.command.includes("codex")),
         "The killed worker tree includes the actual native runtime",
       );
-      const killed = worker;
-      worker = undefined;
-      await killNativeTree(killed.child);
-      await eventually(
-        async () => {
-          const { stdout } = await execute("ps", ["-axo", "pid=,stat="]);
-          const states = new Map(
-            stdout
-              .trim()
-              .split("\n")
-              .map((line) => line.trim().split(/\s+/))
-              .map(([pid, state]) => [Number(pid), state]),
-          );
-          return owned.filter(
-            (p) => states.has(p.pid) && !states.get(p.pid).startsWith("Z"),
-          );
-        },
-        (live) => assert.deepEqual(live, []),
-      );
       result.kills.push({
         round,
         processes: owned,
+        groups: terminated.groups,
         native: active,
         signal: killed.child.signalCode,
       });
@@ -439,7 +399,7 @@ async function flow(kind, executable, cliBinary) {
   } finally {
     if (worker) {
       result.workerDiagnostics = worker.diagnostics();
-      await killNativeTree(worker.child);
+      await killOwnedWorkerTree(worker.child);
     }
     result.providerFailures = model.failures;
     result.providerRequests = model.requests.map((request) => ({
@@ -506,8 +466,14 @@ try {
   await browser?.close();
   await vite?.close();
   if (report.passed && !process.argv.includes("--retain")) {
-    await rm(root, { recursive: true });
-    report.cleaned = true;
+    try {
+      await rm(root, { recursive: true });
+      report.cleaned = true;
+    } catch (error) {
+      report.cleanupError = error.stack;
+      report.passed = false;
+      failure ??= error;
+    }
   }
   await mkdir(path.dirname(reportPath), { recursive: true });
   await writeFile(reportPath, JSON.stringify(report, null, 2));
