@@ -7,6 +7,7 @@ import { createModelRoutingRuntime } from "../../cantrip_server/src/app/runtime/
 import { turnLiveEnvironment } from "./turn-live-node-fixture.mjs";
 import { createRequire } from "node:module";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { durableResumePeer } from "./durable-resume-node-peer.mjs";
 import { taskAutomaticFixture } from "./task-automatic-node-fixture.mjs";
 import {
   automationPauseFixture,
@@ -129,6 +130,8 @@ export async function taskGoalFixture(original, input) {
           input.holdGoalChats?.includes(command.chatId))
       )
         await held;
+      if (command.type === "chat.suspension.resume")
+        return durableResumePeer(repository, input, worker, command);
       if (input.failCommand === command.type)
         throw new Error("Controlled recovery worker failure");
       if (command.type === "chat.thread.ensure")
@@ -301,6 +304,7 @@ export async function taskGoalFixture(original, input) {
           trace,
           release,
           track,
+          routing,
         });
         break;
       case "automatic":

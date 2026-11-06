@@ -7,6 +7,7 @@ mod cycle_recovery;
 mod leases;
 mod observe;
 mod start;
+mod suspension;
 mod synchronize;
 use super::{
     Repository, RuntimeUpdate,

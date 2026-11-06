@@ -872,6 +872,12 @@ describe("protocol public surface compatibility", () => {
     const advertisedCommandTypes = workerCommandSchema.options.map(
       (option) => option.shape.type.value,
     );
+    // Reviewed explicit cold recovery preserves every previous discriminator.
+    expect(
+      advertisedCommandTypes.filter(
+        (type) => type === "chat.suspension.resume",
+      ),
+    ).toEqual(["chat.suspension.resume"]);
     // Reviewed additive OS preparation leaves every legacy order/fingerprint intact.
     expect(
       advertisedCommandTypes.filter(
@@ -899,7 +905,8 @@ describe("protocol public surface compatibility", () => {
         type !== "surface.desktop.os-prepare" &&
         type !== "surface.tunnel.os-prepare" &&
         type !== "inference.revoke" &&
-        type !== "inference.task-revoke",
+        type !== "inference.task-revoke" &&
+        type !== "chat.suspension.resume",
     );
     expect(inferenceStatusCommandTypes).toHaveLength(296);
     expect(inferenceStatusCommandTypes[6]).toBe("inference.status");

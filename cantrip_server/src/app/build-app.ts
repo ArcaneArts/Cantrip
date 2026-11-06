@@ -1158,6 +1158,8 @@ export async function buildApp({
     publishChatSummary,
     repository,
     resumeChatAutomation,
+    runtimeForContext,
+    routePairsForConfiguration,
   });
 
   installChatPlanRoutes(app, {

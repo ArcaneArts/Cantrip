@@ -23,6 +23,8 @@ mod chat_messages;
 mod conversions;
 #[path = "support/discovery.rs"]
 mod discovery;
+#[path = "support/durable_resume.rs"]
+mod durable_resume;
 #[path = "support/execution_lane_rest.rs"]
 mod execution_lane_rest;
 #[path = "support/execution_lanes.rs"]

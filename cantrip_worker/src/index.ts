@@ -357,6 +357,10 @@ import {
   managedSuspensionNamespace,
 } from "./codex/managed-suspended-source.js";
 import { createManagedSuspensionCapture } from "./codex/managed-native-suspension.js";
+import {
+  ManagedSuspensionResumes,
+  type ManagedSuspensionResumeCommand,
+} from "./codex/managed-suspension-resume.js";
 import { WorktreeManager } from "./worktrees.js";
 import { CantripOsController } from "./os-executor/controller.js";
 import { CantripOsBackupManager } from "./os-executor/backup-manager.js";
@@ -2940,6 +2944,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
         return {
           options: {
+            executionProfile:
+              session.contextKind === "standalone" ? "standalone-chat" : "ide",
             chatId: session.chatId,
             cwd: options.cwd,
             executionLaneId: grant.receipt.executionLaneId ?? undefined,
@@ -3302,6 +3308,101 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerId: config.workerId,
     token: () => config.token,
   });
+  const suspensionResumeTarget = (
+    command: ManagedSuspensionResumeCommand,
+    runtime: CodexAppServer,
+    entry: { generation: string; adapter: ManagedNativeCommandSession },
+  ) => {
+    const identity = managedSessionIdentity(command.session);
+    return {
+      runtime,
+      adapter: entry.adapter,
+      session: {
+        chatId: command.chatId,
+        threadId: command.threadId,
+        contextKind: command.session.contextKind,
+        projectId: command.session.projectId,
+        placementId: identity.placementId,
+        runtimeGeneration: entry.generation,
+        connectionId: `suspension:${command.controlId}:${entry.generation}`,
+        modelRouteId: command.model.routeId ?? null,
+        providerAccountId: command.provider.accountId ?? null,
+      },
+    };
+  };
+  const suspensionResumes = new ManagedSuspensionResumes({
+    client: nativeCommands,
+    encryption: workerEncryption,
+    signal: () => managedGuiBridgeLifetime.signal,
+    active: (command) => {
+      if (!command.nativeActivationGeneration) return null;
+      const matches = [...codexRuntimes.values()].flatMap((runtime) =>
+        [...(managedCommandSessions.get(runtime)?.values() ?? [])]
+          .filter(
+            (entry) =>
+              entry.chatId === command.chatId &&
+              entry.threadId === command.threadId &&
+              entry.generation === runtime.transportGeneration &&
+              (command.nativeRuntimeGeneration === null
+                ? managedCurrentRuntimes.get(command.chatId) === runtime
+                : entry.generation === command.nativeRuntimeGeneration) &&
+              entry.adapter.currentActivationGeneration ===
+                command.nativeActivationGeneration &&
+              (entry.model.routeId ?? null) ===
+                (command.model.routeId ?? null) &&
+              (entry.provider.accountId ?? null) ===
+                (command.provider.accountId ?? null),
+          )
+          .map((entry) => suspensionResumeTarget(command, runtime, entry)),
+      );
+      if (matches.length > 1)
+        throw new Error(
+          "The suspension identifies multiple connected managed owners.",
+        );
+      return matches[0] ?? null;
+    },
+    prepare: async (command) => {
+      const session = {
+        ...command.session,
+        heldSuspension: command.checkpoint,
+      };
+      const provider = await openRuntimeProvider({
+        provider: command.provider,
+        service: workerEncryption,
+      });
+      const prepared = await prepareManagedSession(
+        session,
+        {
+          cwd: command.cwd,
+          threadId: command.threadId,
+          model: command.model,
+          provider,
+          permissionProfileId: command.permissionProfileId,
+          subagentDefaults: command.subagentDefaults,
+          mcpServers: command.mcpServers,
+          planMode: command.planMode,
+        },
+        "preserve",
+      );
+      const entry = managedCommandSessionFor(prepared.runtime, session, {
+        cwd: command.cwd,
+        threadId: prepared.threadId,
+        model: command.model,
+        provider,
+        permissionProfileId: command.permissionProfileId,
+      });
+      return suspensionResumeTarget(command, prepared.runtime, entry);
+    },
+    openSource: (command) =>
+      openManagedSuspensionSource({
+        store: nativeSuspensionStore,
+        session: { ...command.session, heldSuspension: command.checkpoint },
+        threadId: command.threadId,
+        modelRouteId: command.model.routeId ?? null,
+        providerAccountId: command.provider.accountId ?? null,
+      }),
+  });
+
   const handoffConfigurations = new WeakMap<
     HandoffRuntime,
     NativeRuntimeHandoffConfiguration["configuration"]
@@ -7241,6 +7342,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             );
           },
         );
+      }
+      case "chat.suspension.resume": {
+        const result = await suspensionResumes.run(command);
+        if (result.paused) pausedChats.add(command.chatId);
+        else pausedChats.delete(command.chatId);
+        return result;
       }
       case "chat.pause.set": {
         const previouslyPaused = pausedChats.has(command.chatId);

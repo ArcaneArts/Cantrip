@@ -133,6 +133,7 @@ impl CommandDelegate for Control {
             let failure=|message:String,code:Option<String>,unavailable:bool|CommandError {message:message.into(),code,unavailable,request_id:None,encoding_error:None,inference:None};
             if self.input.get("failCommand")==command.get("type") {return Err(failure("Controlled recovery worker failure".into(),None,false));}
             match command["type"].as_str().unwrap_or("") {
+                "chat.suspension.resume"=>super::durable_resume::reply(self.database.clone(),&self.input,&owner,&worker,&command).await.map(Some).map_err(|error| failure(error.to_string(),self.input["coldResumeError"].as_str().map(str::to_owned),false)),
                 "chat.pause.set"|"chat.native-control"=>super::automation_pause::reply(self.database.clone(),&self.input,&owner,&worker,&command,super::automation_pause::Peer{index:pause_index,trace:self.peer_trace.clone(),gate:self.gate.clone()}).await.map(Some).map_err(|error| {
                     let message=error.downcast_ref::<super::automation_pause::PeerMessage>().map(|e|e.0.clone()).unwrap_or_else(||error.to_string().into());
                     CommandError{message,code:None,unavailable:false,request_id:None,encoding_error:None,inference:None}
