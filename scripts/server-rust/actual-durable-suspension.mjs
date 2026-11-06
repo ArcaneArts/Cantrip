@@ -24,6 +24,11 @@ import { taskModelProvider } from "./task-model-provider.mjs";
 import { killOwnedWorkerTree } from "./owned-worker-tree.mjs";
 import { openSuspensionTerminal } from "./suspension-terminal-browser.mjs";
 import {
+  answerSuspensionInteraction,
+  qualifySuspensionPlanRoutes,
+  readHeldSuspensionPlan,
+} from "./suspension-interaction-browser.mjs";
+import {
   coldSuspensionStop,
   damageColdStopCheckpoint,
 } from "./cold-suspension-stop.mjs";
@@ -157,6 +162,16 @@ async function flow(kind, executable, cliBinary) {
         assert.equal(preparation?.phase, "ready", JSON.stringify(preparation)),
       60000,
     );
+    if (process.argv.includes("--pending-question")) {
+      result.planRoutes = await qualifySuspensionPlanRoutes(page, chat.id);
+      await page.evaluate(
+        async (id) =>
+          (await import("/src/lib/api/chats.ts")).updateChatPlan(id, {
+            mode: "plan",
+          }),
+        chat.id,
+      );
+    }
     const tool = model.reply({ text: "DURABLE_TOOL_REQUEST", hold: true });
     let boundary = model.reply({ text: "DURABLE_BOUNDARY_ONE", hold: true });
     const prompt = "DURABLE_ORIGINAL_PROMPT";
@@ -211,11 +226,66 @@ async function flow(kind, executable, cliBinary) {
         },
       },
     ];
+    if (process.argv.includes("--pending-approval")) {
+      tool.calls[0].arguments.sandbox_permissions = "require_escalated";
+      tool.calls[0].arguments.justification =
+        "Controlled suspension acceptance command in the disposable project.";
+    }
+    if (process.argv.includes("--pending-question")) {
+      const question = functions.find(
+        (entry) => entry.name === "request_user_input",
+      );
+      assert.ok(question);
+      tool.calls.push({
+        ...question,
+        arguments: {
+          isBlocking: true,
+          questions: [
+            {
+              id: "choice",
+              header: "Choice",
+              question: "DURABLE_QUESTION",
+              options: [
+                {
+                  label: "DURABLE_ANSWER",
+                  description: "Retain this accepted answer.",
+                },
+                { label: "Another", description: "Unused fixture choice." },
+              ],
+            },
+          ],
+        },
+      });
+    }
     tool.release();
+    if (
+      process.argv.includes("--pending-question") ||
+      process.argv.includes("--pending-approval")
+    ) {
+      const interaction = await answerSuspensionInteraction({
+        page,
+        chatId: chat.id,
+        projectId,
+        origin: vite.resolvedUrls.local[0],
+        mounted: process.argv.includes("--mounted-ui"),
+        inferences,
+        kind: process.argv.includes("--pending-question")
+          ? "userInput"
+          : "commandExecution",
+      });
+      if (interaction.kind === "userInput") result.question = interaction;
+      else result.approval = interaction;
+    }
     await eventually(
       () => boundary.entered,
       (value) => assert.equal(value, true),
     );
+    if (result.question)
+      result.question.activeModeChange = await qualifySuspensionPlanRoutes(
+        page,
+        chat.id,
+        true,
+      );
     assert.equal(
       await readFile(path.join(directory, "durable-cold-marker"), "utf8"),
       "DURABLE_TOOL_RESULT\n",
@@ -307,6 +377,8 @@ async function flow(kind, executable, cliBinary) {
       console.error(kind, "durable pause acknowledged", round);
       active ??= paused.nativeSuspension.active;
       assert.deepEqual(paused.nativeSuspension.active, active);
+      if (result.question) assert.deepEqual(active, result.question.native);
+      if (result.approval) assert.deepEqual(active, result.approval.native);
       if (round === 1 && process.argv.includes("--post-pause-queue")) {
         const count = inferences();
         postPausePrompt = await page.evaluate(
@@ -347,7 +419,9 @@ async function flow(kind, executable, cliBinary) {
       }
       const killed = worker;
       worker = undefined;
-      const terminated = await killOwnedWorkerTree(killed.child);
+      const terminated = await killOwnedWorkerTree(killed.child, {
+        executableRoots: [workerData],
+      });
       const owned = terminated.processes;
       assert.ok(
         owned.some((p) => p.command.includes("codex")),
@@ -362,6 +436,10 @@ async function flow(kind, executable, cliBinary) {
       });
       console.error(kind, "worker tree terminated", round, owned.length);
       result.workerDiagnostics = killed.diagnostics();
+      if (result.question)
+        (result.offlinePlans ??= []).push(
+          await readHeldSuspensionPlan(page, chat.id),
+        );
       if (
         process.argv.includes("--cold-stop") &&
         option("--checkpoint-damage")
@@ -380,6 +458,10 @@ async function flow(kind, executable, cliBinary) {
       assert.equal(reopened.nativeSuspension.phase, "paused");
       assert.deepEqual(reopened.nativeSuspension.active, active);
       await messages();
+      if (result.question)
+        (result.heldPlans ??= []).push(
+          await readHeldSuspensionPlan(page, chat.id),
+        );
       if (round === 1 && postPausePrompt) {
         const queue = await page.evaluate(
           async (id) =>
@@ -462,6 +544,21 @@ async function flow(kind, executable, cliBinary) {
       const restoredInput = JSON.stringify(next.request.input.input);
       assert.ok(restoredInput.includes(prompt));
       assert.ok(restoredInput.includes("DURABLE_TOOL_RESULT"));
+      if (result.question) {
+        const answers = next.request.input.input.filter(
+          (item) =>
+            item.type === "function_call_output" &&
+            item.call_id === "task-fixture-response-0-call-1",
+        );
+        assert.equal(
+          answers.length,
+          1,
+          "The accepted native question result occurs once",
+        );
+        assert.ok(
+          JSON.stringify(answers[0].output).includes(result.question.answer),
+        );
+      }
       assert.ok(restoredInput.includes(steering));
       if (round === 1 && postPausePrompt) {
         assert.equal(restoredInput.includes(postPausePrompt.text), false);
@@ -569,6 +666,29 @@ async function flow(kind, executable, cliBinary) {
     const items = history
       .filter((row) => row.type === "response_item")
       .map((row) => row.payload);
+    if (result.question) {
+      assert.equal(
+        items.filter(
+          (item) =>
+            item.type === "function_call_output" &&
+            item.call_id === "task-fixture-response-0-call-1",
+        ).length,
+        1,
+      );
+    }
+    const interaction = result.question ?? result.approval;
+    if (interaction) {
+      const requests = await page.evaluate(
+        async (chatId) =>
+          (await import("/src/lib/api/chats.ts")).getAgentInteractionRequests({
+            chatId,
+          }),
+        chat.id,
+      );
+      assert.equal(requests.length, 1);
+      assert.equal(requests[0].id, interaction.requestId);
+      assert.equal(requests[0].status, "resolved");
+    }
     for (const text of [
       prompt,
       "DURABLE_ACCEPTED_PENDING_1",
@@ -605,6 +725,7 @@ async function flow(kind, executable, cliBinary) {
       commandResults: 1,
     };
   } catch (error) {
+    result.serverDiagnostics = fixture.server?.diagnostics();
     if (process.argv.includes("--mounted-ui"))
       result.uiText = await page
         .locator("body")
@@ -621,7 +742,9 @@ async function flow(kind, executable, cliBinary) {
     terminal?.dispose();
     if (worker) {
       result.workerDiagnostics = worker.diagnostics();
-      await killOwnedWorkerTree(worker.child);
+      await killOwnedWorkerTree(worker.child, {
+        executableRoots: [workerData],
+      });
     }
     result.providerFailures = model.failures;
     result.providerRequests = model.requests.map((request) => ({
