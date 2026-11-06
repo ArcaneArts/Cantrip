@@ -64,9 +64,12 @@ The installed-VM product checkpoint kills the full Worker during real dpkg,
 reloads the browser offline and observes the same installer after reconnect.
 The [private system checkpoint carrier](SYSTEM_CHECKPOINTS.md) now preserves and
 exports Docker root customization separately from mounted data, with durable
-observation after a lost commit/start reply. Its product integration and explicit
-system replacement/rollback remain separate Phase 5 work.
-Docker/ISO scripts include it with the executor edition;
+observation after a lost commit/start reply. The host
+[retained replacement/rollback carrier](SYSTEM_REPLACEMENT.md) can now activate a
+verified checkpoint or explicitly reset the root image while retaining the old
+writable layer and mounted data. Server/WorkerLink/client integration and fresh
+authority remain dependent Phase 5 work.
+Docker/ISO scripts include the recovery package with the executor edition;
 `CANTRIP_OS_RECOVERY=0` omits it independently. The package is an administrative
 foundation. [Private Worker archive encryption/transfer and Server admissions](BACKUPS.md)
 now back the capture, history, restore and rollback controls in project CantripOS

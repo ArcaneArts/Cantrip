@@ -5,7 +5,9 @@ system layer: installed software, its package database, `/etc`, and other root
 customization outside mounted data. It is the foundation for Phase 5 shared-system
 replacement and private Worker transfer. The Worker now has a durable encrypted
 archive pipeline; Server admissions, replacement/rollback controls and the client
-workflow remain subsequent work.
+workflow remain subsequent work. The [retained system replacement
+carrier](SYSTEM_REPLACEMENT.md) now provides the separate host activation and
+rollback foundation.
 
 The external Worker remains the orchestrator. Nothing installs a Worker or model
 credentials in the guest. No guest executor or recovery helper is required for
@@ -94,7 +96,7 @@ EOF. Missing, duplicated, reordered, altered, cross-stream and trailing frames
 are rejected. Restore preparation writes only a private partial tar until the
 complete archive and expected immutable receipt match, then publishes without
 overwriting an existing destination. Loaded-image verification and activation
-remain responsibilities of the forthcoming replacement carrier.
+are performed by the [retained replacement carrier](SYSTEM_REPLACEMENT.md).
 
 Archives and restored staging files are mode 0600 in mode-0700 directories.
 Publication syncs the file and directory and never overwrites a prior archive.

@@ -1,5 +1,11 @@
 export { LocalDocker, DockerApiError, DockerDeliveryError } from "./docker.mjs";
 export { withInstanceLock } from "./lock.mjs";
+export { replacementRequest } from "./system-replacement-state.mjs";
+export {
+  replaceSystem,
+  observeSystemReplacement,
+  continueSystemReplacement,
+} from "./system-replacement.mjs";
 export {
   systemCheckpointRequest,
   captureSystemCheckpoint,

@@ -3,9 +3,9 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, posix } from "node:path";
 import { withInstanceLock } from "./lock.mjs";
 import { DockerApiError } from "./docker.mjs";
-import { isDeepStrictEqual } from "node:util";
+import { imageDefaults, sourceMountsLabel } from "./image-defaults.mjs";
 
-export const sourceMountsLabel = "io.cantrip.os.source-mounts";
+export { sourceMountsLabel };
 const volumeName = (instance, binding, path) =>
   "cantrip-os-deps-" +
   createHash("sha256")
@@ -186,39 +186,7 @@ async function recreate(
       request("GET", `/images/${encodeURIComponent(original.Image)}/json`),
       request("GET", `/images/${encodeURIComponent(image)}/json`),
     ]);
-    const config = structuredClone(original.Config);
-    for (const key of new Set([
-      ...Object.keys(oldImage.Config),
-      ...Object.keys(newImage.Config),
-    ]))
-      if (isDeepStrictEqual(config[key], oldImage.Config[key]))
-        config[key] = newImage.Config[key];
-    const envMap = (values) =>
-      new Map(
-        (values ?? []).map((entry) => {
-          const at = entry.indexOf("=");
-          return at < 0
-            ? [entry, undefined]
-            : [entry.slice(0, at), entry.slice(at + 1)];
-        }),
-      );
-    const oldDefaults = envMap(oldImage.Config.Env),
-      env = envMap(newImage.Config.Env);
-    for (const [key, value] of envMap(original.Config.Env))
-      if (!oldDefaults.has(key) || value !== oldDefaults.get(key))
-        env.set(key, value);
-    config.Env = [...env].map(([key, value]) =>
-      value === undefined ? key : `${key}=${value}`,
-    );
-    config.Labels = { ...newImage.Config.Labels };
-    for (const [key, value] of Object.entries(original.Config.Labels ?? {}))
-      if (value !== oldImage.Config.Labels?.[key]) config.Labels[key] = value;
-    config.Labels["io.cantrip.os"] = "foundation";
-    // This metadata belongs to the live instance, including when a prior system
-    // snapshot also happened to contain it as image defaults.
-    config.Labels[sourceMountsLabel] =
-      original.Config.Labels?.[sourceMountsLabel];
-    configured = { ...original, Config: config };
+    configured = imageDefaults(original, oldImage, newImage);
   }
   const configuration = mountedConfiguration(configured, instanceId, bindings, {
     image,

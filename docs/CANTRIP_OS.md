@@ -778,6 +778,18 @@ same captured image after an unpublished interruption. Terminal protected receip
 remain immutable across Manager restarts. This is the internal transfer foundation,
 not Server routing, shared-system replacement/rollback or full product acceptance.
 
+The host [retained replacement/rollback carrier](../cantrip_os/SYSTEM_REPLACEMENT.md)
+now loads an authenticated staged image, fences automatic restart, stops the exact
+original and activates a verified candidate with the current mounts and explicit
+runtime overrides. The original writable layer remains available under a retained
+name. A separate rollback admission fences/stops the candidate and returns the
+original without deleting either root or mounted data. Durable per-step claims
+recover lost create/start/rename/policy replies without replay. Definite startup
+failure retains an explicit rollback path; an uncertain pending start cannot be
+bypassed by admitting both identities. This is the management foundation, not
+Server/WorkerLink/client routing, fresh runtime authority, clone provisioning or
+completion of Phase 5.
+
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output
 recovery, and worker-offline behavior. Deliver workspace backups/restores,

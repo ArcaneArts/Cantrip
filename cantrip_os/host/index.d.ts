@@ -117,7 +117,83 @@ export class LocalDocker {
     path: string,
     options?: { timeout?: number; signal?: AbortSignal },
   ): Promise<Readable>;
+  loadImage(
+    source: Readable,
+    options?: { timeout?: number; signal?: AbortSignal },
+  ): Promise<unknown[]>;
 }
+
+export type SystemReplacementRequest = {
+  operationId: string;
+  container: string;
+  instanceId: string;
+  scopeKey: string;
+  startTarget: boolean;
+} & (
+  | {
+      action: "replace";
+      expectedContainerId: string;
+      source:
+        | { kind: "base"; imageId: string }
+        | {
+            kind: "checkpoint";
+            imageId: string;
+            operationId: string;
+            requestSha256: string;
+            containerId: string;
+          };
+      archive: { path: string; bytes: number; sha256: string } | null;
+    }
+  | {
+      action: "rollback";
+      replacementOperationId: string;
+      replacementRequestSha256: string;
+      expectedOriginalId: string;
+    }
+);
+export interface SystemReplacementInput {
+  request: SystemReplacementRequest;
+  journalPath: string;
+  replacementJournalPath?: string;
+  signal?: AbortSignal;
+}
+export interface SystemReplacementResult {
+  operation: {
+    format: "cantrip-os-retained-system-replacement";
+    version: 1;
+    request: SystemReplacementRequest;
+    requestSha256: string;
+    state: "running" | "ready" | "failed" | "unknown";
+    phase: string;
+    startedAt: string;
+    updatedAt: string;
+    originalContainerId: string | null;
+    retainedContainerId: string | null;
+    targetContainerId: string | null;
+    retainedName: string;
+    desiredRestartPolicy: unknown;
+    runtimeHandlesRestored: false;
+    error: string | null;
+    lastError: string | null;
+  };
+  observation: unknown;
+  observationError: string | null;
+}
+export function replacementRequest(
+  input: SystemReplacementInput,
+): SystemReplacementRequest;
+export function replaceSystem(
+  engine: Pick<LocalDocker, "request" | "inspect" | "loadImage">,
+  input: SystemReplacementInput,
+): Promise<SystemReplacementResult>;
+export function observeSystemReplacement(
+  engine: Pick<LocalDocker, "request" | "inspect" | "loadImage">,
+  input: SystemReplacementInput,
+): Promise<SystemReplacementResult | null>;
+export function continueSystemReplacement(
+  engine: Pick<LocalDocker, "request" | "inspect" | "loadImage">,
+  input: SystemReplacementInput,
+): Promise<SystemReplacementResult>;
 
 export interface SystemCheckpointRequest {
   operationId: string;
