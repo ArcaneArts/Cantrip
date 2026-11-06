@@ -1,3 +1,5 @@
+import { CantripOsWorkspaceOperationCoordinator } from "../../cantrip-os/workspace-operations.js";
+import { workspaceOperationSummary } from "../../db/repository/cantrip-os-workspace-operations.js";
 import { installCantripOsBackupRoutes } from "./cantrip-os-backups.js";
 import { installCantripOsDesktopRoutes } from "./cantrip-os-desktop.js";
 import { installCantripOsPowerRoutes } from "./cantrip-os-power.js";
@@ -8,6 +10,7 @@ import {
   cantripOsInspectSchema,
   cantripOsProvisionSchema,
   cantripOsWorkspaceCreateSchema,
+  cantripOsWorkspaceOperationListQuerySchema,
   cantripOsRecoveryRequestSchema,
 } from "@cantrip/protocol";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
@@ -141,6 +144,50 @@ export function installCantripOsRoutes(
     "/api/cantrip-os/:instanceId/workspaces",
     parsed(cantripOsWorkspaceCreateSchema, (request, input) =>
       coordinator.createWorkspace(owner(), request.params.instanceId!, input),
+    ),
+  );
+  app.get<Params>(
+    "/api/cantrip-os/:instanceId/workspace-operations",
+    async (request, reply) => {
+      const input = cantripOsWorkspaceOperationListQuerySchema.safeParse(
+        request.query,
+      );
+      if (!input.success)
+        return reply.code(400).send(invalidBody(input.error.issues));
+      return route((request) =>
+        repository.cantripOs.workspaceOperations.list(
+          owner(),
+          request.params.instanceId!,
+          input.data,
+        ),
+      )(request, reply);
+    },
+  );
+  app.get<Params>(
+    "/api/cantrip-os/:instanceId/workspace-operations/:operationId",
+    route(async (request) => {
+      const row = await repository.cantripOs.workspaceOperations.get(
+        owner(),
+        request.params.instanceId!,
+        request.params.operationId!,
+      );
+      if (!row)
+        throw new CantripOsPlacementError("Workspace operation not found.");
+      return workspaceOperationSummary(row);
+    }),
+  );
+  app.post<Params>(
+    "/api/cantrip-os/:instanceId/workspace-operations/:operationId/observe",
+    route((request) =>
+      new CantripOsWorkspaceOperationCoordinator(
+        repository,
+        dependencies.bridge,
+        dependencies.serverId,
+      ).observe(
+        owner(),
+        request.params.instanceId!,
+        request.params.operationId!,
+      ),
     ),
   );
   app.get<Params>(

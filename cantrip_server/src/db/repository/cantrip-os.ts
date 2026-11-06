@@ -1,3 +1,4 @@
+import { CantripOsWorkspaceOperationRepository } from "./cantrip-os-workspace-operations.js";
 import { CantripOsBackupRepository } from "./cantrip-os-backups.js";
 import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
@@ -107,10 +108,14 @@ function createdLinuxSource(
  * filesystem or retries guest mutations. Observations must come from the owning
  * authenticated worker; clients cannot supply UID/path or success receipts. */
 export class CantripOsRepository {
+  readonly workspaceOperations: CantripOsWorkspaceOperationRepository;
   readonly backups: CantripOsBackupRepository;
   readonly power: CantripOsPowerRepository;
   readonly desktop: CantripOsDesktopRepository;
   constructor(private readonly database: RepositoryDatabase) {
+    this.workspaceOperations = new CantripOsWorkspaceOperationRepository(
+      database,
+    );
     this.backups = new CantripOsBackupRepository(database);
     this.power = new CantripOsPowerRepository(database);
     this.desktop = new CantripOsDesktopRepository(database);

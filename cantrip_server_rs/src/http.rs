@@ -31,6 +31,7 @@ mod cantrip_os;
 mod cantrip_os_backups;
 mod cantrip_os_desktop;
 mod cantrip_os_power;
+mod cantrip_os_workspace_operations;
 mod chat_catalogs;
 mod chat_configuration;
 mod chat_console;

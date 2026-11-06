@@ -551,6 +551,9 @@ const cantripOsExports = [
   "cantripOsDesktopSummarySchema",
   "cantripOsDesktopListQuerySchema",
   "cantripOsDesktopPageSchema",
+  "cantripOsWorkspaceOperationSummarySchema",
+  "cantripOsWorkspaceOperationListQuerySchema",
+  "cantripOsWorkspaceOperationPageSchema",
 
   "cantripOsDockerCarrierSchema",
   "cantripOsPowerActionSchema",

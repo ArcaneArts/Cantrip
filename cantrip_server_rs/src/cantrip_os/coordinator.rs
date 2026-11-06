@@ -4,6 +4,8 @@ mod backups;
 mod desktop;
 #[path = "power_coordinator.rs"]
 mod power;
+#[path = "workspace_operation_coordinator.rs"]
+mod workspace_operations;
 use super::{InstanceObservation, Repository, checked, text};
 use crate::auth::service::AuthService;
 use anyhow::{Context, Result, ensure};
@@ -313,22 +315,7 @@ impl Coordinator {
         }
         result
     }
-    pub async fn create_workspace(&self, owner: &str, id: &str, input: &Value) -> Result<Value> {
-        let attachment = self.repository.attachment(owner, id).await?;
-        let i = &attachment["instance"];
-        let result=self.request(text(i,"workerId")?,json!({"type":"cantrip-os.workspaces.create","scope":self.scope(owner,i)?,"transport":attachment["transport"],"guestWorkspaceId":input["guestWorkspaceId"],"operationId":input["operationId"]}),"cantripOsOperationResultSchema").await?;
-        if result["state"] == "ready" && result["receipt"]["kind"] == "workspace" {
-            self.repository
-                .record_workspace(
-                    owner,
-                    id,
-                    text(i, "attachmentGeneration")?,
-                    &result["receipt"]["workspace"],
-                )
-                .await?;
-        }
-        Ok(result)
-    }
+
     pub async fn provision(
         &self,
         owner: &str,
