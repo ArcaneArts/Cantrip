@@ -120,3 +120,25 @@ Rust formatting pass. Six related Node unit files retain eight failures and 58
 passes, reproduced exactly on the unchanged baseline with source/test byte
 proofs. The broad repository check remains red at its existing application line
 budgets; no broad success or complete replacement is claimed.
+
+After integrating `77f5cf763`, all three storage modes also pass the remembered
+backend/local/hosted restart checks and the full profile transfer/fault suite
+against 130 tables and four sequences. Reverse transfer retains accepted Rust
+writes and the real Node session. The integrated candidate passes 54 Rust
+library tests, strict Clippy, worker/dependency builds, server typechecking and
+the 102-case/44-race PostgreSQL repository suite. Five failures in four related
+Node unit files reproduce exactly on unchanged `77f5cf763`; the project-pause
+fixture lacks its new request dependency. Those unit checks remain red.
+
+The controlled queue-delivery backend now models the Source's await of an
+absent optional Task pause reader. Production Rust already performs the actual
+asynchronous lookup. All original oracle traces and assertions are retained.
+PR #2655 separately delivered the incoming compilation repairs; this candidate
+retains its type-inferred worker declaration. The worker remains in Node.
+
+The subsequent `2a2d63fb4` integration passes the 54 library tests, strict Clippy,
+worker/dependency builds and server typechecking. Explicitly typing the throwing
+handoff helper restores TypeScript narrowing; its emitted JavaScript is
+identical to the incoming version. The 86 native patch inputs match the local
+build in progress. Current native execution remains unqualified until that
+artifact is built and exercised.
