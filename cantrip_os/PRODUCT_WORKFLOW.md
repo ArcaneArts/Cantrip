@@ -514,16 +514,33 @@ saved reminder does not cancel the operation. Current carrier state and Linux
 readiness are shown separately, including when a historical operation completed.
 
 After explicit recovery, verify the intended source and open fresh work. Old
-terminals, Run configurations and chats retain their captured runtime. The file
+terminals, Run generations and chats retain their captured runtime. The file
 sidebar follows a selected Linux desktop's source, including while its old runtime
 is unavailable. It never treats a missing desktop query as a Host selection.
 
-## Workspace desktop administration backend
+## Workspace desktop lifecycle
 
 Server-owned [desktop lifecycle APIs](INSTANCE_LIFECYCLE.md#server-owned-desktop-admissions)
-now admit an individual workspace desktop transition and retain its history.
-These are available in both Server implementations, with Worker/native routing;
-the corresponding Cantrip desktop controls remain a following milestone.
+admit an individual workspace desktop transition and retain its history in both
+Server implementations, with Worker/native routing. In **Project Settings →
+CantripOS**, select the instance and Linux workspace. **Workspace desktop** shows
+its observed state and offers **Refresh desktop**, **Start desktop**, **Stop
+desktop** and **Restart desktop**. Confirm the selected action and destination.
+
+Stopping or restarting a desktop closes its graphical applications. Retained
+files, independent terminals/Run processes and other workspace desktops remain
+available. The operation does not replace the executor runtime or redirect the
+source. Existing desktop views and computer-use handles retire with that desktop;
+use **Open desktop** on the intended source to obtain fresh viewing authority.
+SSH/TCP services remain independent. A VNC connection belongs to its captured
+desktop and must reconnect with fresh authority after replacement.
+
+If a response is lost, use **Observe saved request**. The original request is
+saved before submission and survives a reload in this browser session. Observation
+reads the same operation instead of issuing another transition. **Desktop history**
+shows earlier operations and supports pagination and observation. Dismissing a
+saved reminder does not cancel the operation. Historical completion and the
+currently observed desktop state are separate.
 
 Observe the intended workspace desktop to obtain an opaque current target, then
 retain the entire create request before submitting it. Recover the same operation
@@ -531,3 +548,20 @@ through its observe endpoint after an uncertain response. Repeating create obser
 the original admission; it does not restart a desktop again. Changed actual targets
 need an explicit new observation and a distinct admission. Historical completion
 does not imply a current viewer or fresh computer-use authority.
+
+## Terminal recovery after Worker loss
+
+When the Worker or its transport disconnects, an interactive Linux terminal may
+show an unknown outcome. **Reconnect to Linux** resumes its recorded native
+session during the executor's configured recovery window; it does not repeat the
+shell startup or typed commands. Run reconciliation likewise observes its
+recorded process. Explicit terminal close and Run cancellation still terminate
+their intended work.
+
+Executor 0.11.0 defaults to a 24-hour detached-session window, configurable by
+root in `/etc/cantrip-os/executor.json`. Output retention is bounded separately;
+the terminal or Run output reports known missing history. See the
+[executor guide](packages/executor/README.md) for configuration and expiration.
+Guest/executor restart ends those processes and creates a fresh runtime. Use
+**Check recovery**, verify the intended source and open fresh work after that
+transition. Existing chats retain their original placement.

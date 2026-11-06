@@ -5770,7 +5770,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "terminal.close": {
         const live = terminals.hasLiveSession(command.terminalId);
         terminals.close(command.terminalId);
-        if (!live) await osTerminals.close(command.terminalId);
+        // Windows PTYs cannot deliver the Unix carrier's SIGTERM handler.
+        if (!live || process.platform === "win32")
+          await osTerminals.close(command.terminalId);
         return { accepted: true };
       }
       case "terminal.snapshot": {

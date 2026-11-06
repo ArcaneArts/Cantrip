@@ -658,9 +658,23 @@ native executor and observes original guest receipts without replay, including
 when its local journal is missing. Observation epochs reject stale target replies;
 desktop-only results do not invalidate independent source/shell authority. Actual
 Worker/native Docker acceptance retains a separate process across desktop stop/start
-and recovers a lost restart reply without another transition. Product desktop
-controls, native input/service recovery and installed-system acceptance remain
-required for that workflow.
+and recovers a lost restart reply without another transition. Cantrip now exposes
+desktop confirmation, saved-request observation and paginated history. Actual
+Docker product acceptance covers stop/start with independent terminal/Run
+processes, and a lost restart reply recovered after full Worker death and client
+reload without a second restart.
+
+Executor 0.11.0 adds a root-configured detached-session recovery window, 24 hours
+by default, while ordinary native executor startup retains its 30-second default.
+PTY hangup detaches a terminal; explicit close still cancels it. Actual product
+acceptance resumes the same terminal and Run after an outage exceeding three
+minutes, retaining their process start times and exactly-once terminal startup.
+It verifies physical held-input release after Worker death, fresh human control,
+and ordered retained terminal output. Remote 0.10.0 ends a retired VNC carrier
+without waiting for client stdin EOF; actual SSH/TCP streams remain independent
+of desktop stop/start. Installed-system lifecycle, wider model/remote acceptance,
+resets/upgrades and final distributions remain required. These checkpoints do not
+complete Phase 5.
 
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output

@@ -191,10 +191,11 @@ def connect(store, workspace, expected, connection_id, service=False, public_key
             raise RuntimeError(result.get("failure", "Remote connection failed"))
         if notify_ready:
             print("CANTRIP_OS_SERVICE_READY " + connection_id, file=sys.stderr, flush=True)
-        if service and expected.get("service", {}).get("kind") == "listen":
-            # The listener multiplex carries per-client FIN frames. Its outer
-            # carrier has no valid half-open state: Docker cannot propagate an
-            # individual stdout EOF until this process exits.
+        if service and expected.get("service", {}).get("kind") in ("listen", "vnc"):
+            # Listener multiplexes carry per-client FIN frames; a retired VNC
+            # desktop ends its whole connection. Neither outer carrier has a
+            # valid half-open state. Docker cannot propagate a stdout-only EOF
+            # until this process exits, so do not wait for idle client input.
             pump(sys.stdin.fileno(), sys.stdout.fileno(), connection.fileno(), connection.fileno())
         elif service:
             stream_pump(sys.stdin.fileno(), sys.stdout.fileno(), connection.fileno(), connection.fileno(),

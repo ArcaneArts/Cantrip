@@ -13,7 +13,7 @@ export async function prepareExecutor(architecture, options = {}) {
   const context = resolve(
     root,
     ".build/executor-packages",
-    "0.10.0",
+    "0.11.0",
     architecture,
   );
   await mkdir(output, { recursive: true });
@@ -42,7 +42,7 @@ export async function prepareExecutor(architecture, options = {}) {
     ],
     options,
   );
-  const name = `cantrip-os-executor_0.10.0_${architecture}.deb`;
+  const name = `cantrip-os-executor_0.11.0_${architecture}.deb`;
   await cp(resolve(output, name), resolve(context, name));
   console.log(`Executor package: ${output}/${name}`);
   return context;

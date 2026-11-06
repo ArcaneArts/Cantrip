@@ -219,8 +219,30 @@ describe.skipIf(!enabled)("actual Linux terminal carrier", () => {
       const admitted = JSON.parse(
         await readFile(path.join(recovery.cwd, "native.json"), "utf8"),
       );
-      process.kill(first.pid, "SIGKILL");
+      first.kill("SIGHUP"); // A killed Worker closes its Host PTY master.
       await firstExit;
+      expect(osTerminalOutcome(recovery.launch)).toBe("unknown");
+      // A real Worker restart can outlast the native executor's ordinary
+      // 30-second detached-session timeout. The OS package owns a longer policy.
+      await new Promise((resolve) => setTimeout(resolve, 45_000));
+      let hardLossOutput = "";
+      const hardLoss = spawn();
+      hardLoss.onData((data) => {
+        hardLossOutput += data;
+      });
+      const hardLossExit = new Promise<void>((resolve) =>
+        hardLoss.onExit(() => resolve()),
+      );
+      await expect
+        .poll(() => hardLossOutput, { timeout: 30_000 })
+        .toContain("CT_ONCE");
+      expect(
+        JSON.parse(
+          await readFile(path.join(recovery.cwd, "native.json"), "utf8"),
+        ),
+      ).toEqual(admitted);
+      process.kill(hardLoss.pid, "SIGKILL");
+      await hardLossExit;
       expect(osTerminalOutcome(recovery.launch)).toBe("unknown");
       const descriptorBefore = JSON.parse(
         await readFile(recovery.launch.configurationFile, "utf8"),
@@ -451,6 +473,37 @@ describe.skipIf(!enabled)("actual Linux terminal carrier", () => {
       await restartedLauncher.close(orphanId);
       expect(osTerminalOutcome(orphan.launch)).toBe("interrupted");
       await restartedLauncher.close(orphanId); // already completed, no new process
+      // User close retains explicit guest cancellation after HUP becomes a
+      // recoverable carrier failure. Exercise the real TerminalManager path.
+      const closeId = randomUUID();
+      const closePrepared = await launcher.prepare(
+        closeId,
+        execution,
+        scope.guestPath,
+        90,
+        28,
+        core.serverId,
+      );
+      let closeOutput = "";
+      const closed = manager.open(
+        closeId,
+        randomUUID(),
+        closePrepared.cwd,
+        90,
+        28,
+        closePrepared.launch,
+        (event) => {
+          if (event.type === "terminal.output") closeOutput += event.data;
+        },
+      );
+      await expect.poll(() => closeOutput, { timeout: 30_000 }).toMatch(/\$ /);
+      manager.input(closeId, "sleep 300\r");
+      manager.close(closeId);
+      expect(await closed).toMatchObject({
+        status: "exited",
+        executionOutcome: "interrupted",
+      });
+      expect(osTerminalOutcome(closePrepared.launch)).toBe("interrupted");
       await expect(
         launcher.prepare(
           terminalId,

@@ -116,8 +116,18 @@ A new Worker reconstructs its output buffer from retained native output and
 reapplies the original secret redaction. Confirmed completed processes are not
 reported as running during replay. If the native output/session is gone, a prior
 conclusive completion is retained and incomplete output recovery is reported.
-Stopping a Run remains an explicit lifecycle operation; reconnect itself no
-longer kills the admitted process. This checkpoint does not yet expose an
-authoritative native output-retention boundary, which requires a separate native
-protocol change. Sequence gaps alone are insufficient evidence of lost output
-because native lifecycle events share that sequence space.
+Stopping a Run remains an explicit lifecycle operation; reconnect itself does
+not kill the admitted process. Executor 0.10.0 added the native
+`outputEvictedThroughSeq` boundary. Workers use it to report actual missing
+history and retain Run truncation state; older executors report unavailable
+coverage. Sequence gaps alone are insufficient evidence of lost output because
+native lifecycle events share that sequence space.
+
+Executor 0.11.0 gives detached sessions a package-configured recovery window,
+24 hours by default. The native startup option preserves its ordinary 30-second
+default when omitted. The root-owned `session_retention_seconds` conffile setting
+is described in the [executor guide](packages/executor/README.md). It applies to
+disconnected sessions while the executor remains running. Completed process
+output still expires separately; guest/executor restarts create fresh authority
+and cannot resurrect old processes. PTY hangup and EOF detach terminal carriers;
+explicit close and cancellation terminate their selected guest process trees.
