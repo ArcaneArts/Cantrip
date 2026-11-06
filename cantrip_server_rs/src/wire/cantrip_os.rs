@@ -12,6 +12,8 @@ pub(super) fn refine(
         "cantrip-os-guest-path"
             | "cantrip-os-overlay-path"
             | "cantrip-os-unique-overlays"
+            | "cantrip-os-unique-packages"
+            | "cantrip-os-package-repair"
             | "cantrip-os-file-placement"
             | "cantrip-os-reset-path"
             | "cantrip-os-reset-paths"
@@ -72,12 +74,20 @@ pub(super) fn refine(
                     })
                 })
         }
-        "cantrip-os-unique-overlays" => {
+        "cantrip-os-package-repair" => {
+            value["action"] == "repair" || value["configuration"] == "preserve"
+        }
+        "cantrip-os-unique-overlays" | "cantrip-os-unique-packages" => {
             let entries = value.as_array().ok_or(ValidationError::Operation)?;
             let mut seen = HashSet::new();
+            let key = if tag == "cantrip-os-unique-packages" {
+                "name"
+            } else {
+                "path"
+            };
             entries
                 .iter()
-                .all(|entry| seen.insert(entry["path"].as_js_string().cloned()))
+                .all(|entry| seen.insert(entry[key].as_js_string().cloned()))
         }
         _ => return Ok(false),
     };

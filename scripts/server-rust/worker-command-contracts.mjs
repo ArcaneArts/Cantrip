@@ -26,6 +26,12 @@ function at(schema, path) {
   return schema;
 }
 export function registerWorkerCommandContracts(register) {
+  register(p.cantripOsPackageArtifactsSchema, 0, "cantrip-os-unique-packages");
+  register(
+    p.cantripOsPackageOperationCommandSchema,
+    0,
+    "cantrip-os-package-repair",
+  );
   register(
     p.protectedSecretEnvelopeSchema,
     0,
