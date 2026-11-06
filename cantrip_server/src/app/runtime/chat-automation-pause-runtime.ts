@@ -4,7 +4,18 @@ import {
   chatNativeSuspension,
   type ChatPauseRuntimeState,
 } from "@cantrip/protocol";
-import { managedTurnSessionContext } from "../../terminals/managed-session.js";
+import {
+  managedTurnSessionContext,
+  type ManagedConsoleRouting,
+} from "../../terminals/managed-session.js";
+import type {
+  ChatExecutionContext,
+  ModelRuntime,
+} from "../../db/repository.js";
+import {
+  createDurableChatResumeRuntime,
+  DurableChatResumeError,
+} from "./durable-chat-resume.js";
 import type { ServerRepository } from "../../db/repository.js";
 import { errorMessage } from "../../http/request-helpers.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
@@ -23,8 +34,15 @@ export interface ChatAutomationPauseRouteDependencies {
     | "nativeCommands"
     | "nativeSuspensions"
     | "nativeRuntimeHandoffs"
+    | "listEffectiveMcpServers"
+    | "setChatModel"
+    | "updateChatRuntime"
   >;
   resumeChatAutomation: (chatId: string) => Promise<void>;
+  runtimeForContext: (
+    context: ChatExecutionContext,
+  ) => Promise<ModelRuntime | null>;
+  routePairsForConfiguration: ManagedConsoleRouting["routePairsForConfiguration"];
 }
 
 export class ChatAutomationPauseError extends Error {
@@ -43,9 +61,22 @@ export function createChatAutomationPauseRuntime(
     publishChatSummary,
     repository,
     resumeChatAutomation,
+    runtimeForContext,
+    routePairsForConfiguration,
   }: Omit<ChatAutomationPauseRouteDependencies, "applicationOwnerId">,
   app: Pick<FastifyInstance, "log">,
 ) {
+  const resumeDurable = createDurableChatResumeRuntime(
+    {
+      bridge,
+      publishChatSummary,
+      repository,
+      resumeChatAutomation,
+      runtimeForContext,
+      routePairsForConfiguration,
+    },
+    app,
+  );
   return async function setChatAutomationPause(
     ownerId: string,
     chatId: string,
@@ -94,6 +125,21 @@ export function createChatAutomationPauseRuntime(
       };
     const durableResume =
       managedNative && !paused && Boolean(suspension?.checkpoint);
+    if (durableResume && suspension) {
+      try {
+        return await resumeDurable(
+          ownerId,
+          context,
+          control,
+          suspension,
+          resumeAutomation,
+        );
+      } catch (error) {
+        if (error instanceof DurableChatResumeError)
+          throw new ChatAutomationPauseError(error.statusCode, error.message);
+        throw error;
+      }
+    }
     // Native goal/queue resume may start execution, so admission must observe
     // the user's durable unpause before the worker forwards that mutation.
     const resumed =

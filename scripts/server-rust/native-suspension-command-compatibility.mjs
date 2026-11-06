@@ -8,6 +8,7 @@ import { buildRustExample } from "./build.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { command } from "./native-command-admission-cases.mjs";
 import { coldSuspensionAdmissionCases } from "./native-suspension-cold-admission-cases.mjs";
+import { durableChatResumeCases } from "./durable-chat-resume-cases.mjs";
 import {
   targetStateSql,
   localOwner as owner,
@@ -315,6 +316,7 @@ try {
       assert.equal(finished.status, "idle");
     }
     await coldSuspensionAdmissionCases({ fixture, call, query, run });
+    await durableChatResumeCases({ fixture, call, query, run });
     await fixture.close();
     fixture = undefined;
   }

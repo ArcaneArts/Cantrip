@@ -111,6 +111,7 @@ export async function automationPauseFixture({
   trace,
   release,
   track,
+  routing,
 }) {
   const set = createChatAutomationPauseRuntime(
     {
@@ -118,6 +119,8 @@ export async function automationPauseFixture({
       bridge,
       publishChatSummary: environment.runtime.publishChatSummary,
       resumeChatAutomation: runtime.resumeChatAutomation,
+      runtimeForContext: routing.runtimeForContext,
+      routePairsForConfiguration: routing.routePairsForConfiguration,
     },
     app,
   );

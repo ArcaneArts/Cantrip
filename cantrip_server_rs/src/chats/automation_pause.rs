@@ -1,6 +1,7 @@
 //! Durable pause/resume and worker acknowledgements shared by Chat and Tasks.
 //! Native controls persist authorized intent at dispatch; late acknowledgements
 //! must observe that intent instead of writing an older request a second time.
+mod durable_resume;
 use super::{
     Repository, goals, live_mutations::Service as Live, managed_console,
     turn_runtime::stages::Operations,
@@ -159,6 +160,11 @@ impl Service {
             && suspension
                 .as_ref()
                 .is_some_and(|s| !s["checkpoint"].is_null());
+        if durable_resume {
+            return self
+                .durable_resume(owner, context, &control, resume_automation)
+                .await;
+        }
         let resumed = if native && !paused && !durable_resume {
             self.chats
                 .set_automation_paused(owner, &chat, false)
