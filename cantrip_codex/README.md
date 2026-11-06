@@ -79,6 +79,14 @@ even when the root has cleared its active turn. The actual flush, turn-boundary
 check and snapshot run under that guard. A provider ticket's release is not
 native tree settlement. This patch was source-reviewed without native patch
 application, compilation or execution; runtime/platform behavior is unverified.
+Patch `0082` gives provider transfers a revisioned root producer hold. Existing
+children can finish with their own tickets; actual export seals subsequent tree
+admission while holding the quiescence guard. Cancellation releases that exact
+hold and seal on the same gate, including its inference-only mode. It never
+rearms an explicit Stop/Pause. The worker-private RPC is consumed by the existing
+handoff coordinator and managed execution runner. Source review, direct source
+formatting and `git diff --check` were used; native patch application, builds,
+tests and runtime execution were not performed.
 The new item payload wrapper retains lifecycle timestamps, and history replay
 keeps upstream's bounded, cancellable projection pipeline. Cold resume keeps
 acknowledged owned settings and upstream's current permission constraints.

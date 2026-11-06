@@ -187,7 +187,7 @@ export class ManagedRuntimeHandoffJournal {
         receipt.operationId !== state.operationId ||
         !isDeepStrictEqual(receipt.source, source.goalRecovery)
       )
-        throw new Error("Native Goal invalidation returned another source.");
+        throw new Error("Native Goal transfer fence returned another source.");
       const value = goalWithdrawalSchema.parse({ ...identity, receipt });
       await ensureHistoryDirectory(root);
       await this.publish(filename, value);

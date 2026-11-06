@@ -2012,6 +2012,32 @@ export class CodexAppServer implements CodexRuntime {
     return z.object({ invalidated: z.literal(true) }).parse(result);
   }
 
+  /** Transfer control seals only new root producers. It neither cancels child
+   * execution nor grants model permission or provider capacity. */
+  async controlManagedRootProducer(
+    params: {
+      threadId: string;
+      runnerGeneration: string;
+      action: "read" | "hold" | "release";
+      operationId?: string;
+      expectedRevision?: string;
+    },
+    expectedTransportGeneration: string,
+  ): Promise<{ revision: string; heldBy: string | null }> {
+    this.assertManagedExecutionTransport(expectedTransportGeneration);
+    const result = await this.request(
+      "thread/managedExecution/handoff",
+      params,
+    );
+    this.assertManagedExecutionTransport(expectedTransportGeneration);
+    return z
+      .object({
+        revision: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u),
+        heldBy: z.string().min(1).max(255).nullable(),
+      })
+      .parse(result);
+  }
+
   async wakeManagedExecution(
     params: { threadId: string; runnerGeneration: string },
     expectedTransportGeneration: string,

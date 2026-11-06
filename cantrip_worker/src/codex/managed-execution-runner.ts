@@ -9,6 +9,7 @@ type RunnerRuntime = Pick<
   | "transportGeneration"
   | "setManagedExecutionGateHandler"
   | "invalidateManagedExecution"
+  | "controlManagedRootProducer"
   | "bindManagedExecution"
 >;
 
@@ -22,8 +23,11 @@ export class ManagedExecutionRunner {
   private invalidated = false;
   private revoked = false;
   private pendingBind: { previous: string; next: string } | null = null;
-  private providerTransfer: { operationId: string; generation: string } | null =
-    null;
+  private providerTransfer: {
+    operationId: string;
+    generation: string;
+    revision: string | null;
+  } | null = null;
   private mutations: Promise<void> = Promise.resolve();
 
   constructor(
@@ -94,9 +98,9 @@ export class ManagedExecutionRunner {
     return pending;
   }
 
-  /** Seal the actual native pre-start gate after its exact inference source was
-   * withdrawn. An uncertain acknowledgement retries this same invalidation. */
-  invalidateForProviderTransfer(
+  /** Hold new root cycles after withdrawing their exact unused source. Existing
+   * children keep their gates and may finish before actual history export. */
+  holdForProviderTransfer(
     operationId: string,
     runnerGeneration: string,
     threadId: string,
@@ -114,20 +118,49 @@ export class ManagedExecutionRunner {
         throw new Error(
           "The provider transfer belongs to another native runner.",
         );
-      // An explicit Stop/Pause must keep its stronger invalidation. Do not
-      // abort a live source here: it still owns the canonical ACK barrier.
-      if (!this.controller.signal.aborted)
-        this.providerTransfer = { operationId, generation: runnerGeneration };
-      this.invalidated = true;
-      await this.runtime.invalidateManagedExecution(
-        { threadId, runnerGeneration },
+      // A Stop/Pause already revoked the runner. Confirm that stronger fence;
+      // transfer cancellation must never revive it or release its children.
+      if (this.controller.signal.aborted) {
+        await this.runtime.invalidateManagedExecution(
+          { threadId, runnerGeneration },
+          transport,
+        );
+        return;
+      }
+      const transfer = (this.providerTransfer ??= {
+        operationId,
+        generation: runnerGeneration,
+        revision: null,
+      });
+      if (transfer.revision === null) {
+        const observed = await this.runtime.controlManagedRootProducer(
+          { threadId, runnerGeneration, action: "read" },
+          transport,
+        );
+        if (observed.heldBy && observed.heldBy !== operationId)
+          throw new Error("Another provider transfer holds this native root.");
+        transfer.revision = observed.revision;
+      }
+      const held = await this.runtime.controlManagedRootProducer(
+        {
+          threadId,
+          runnerGeneration,
+          action: "hold",
+          operationId,
+          expectedRevision: transfer.revision,
+        },
         transport,
       );
+      if (held.heldBy !== operationId)
+        throw new Error(
+          "The native root did not acknowledge its transfer hold.",
+        );
+      transfer.revision = held.revision;
     });
   }
 
-  /** Only cancellation of this transfer may rearm its source. A later explicit
-   * Stop/Pause/rebind clears that ownership and cannot be undone by a wake. */
+  /** Release only this transfer's root hold. Keep the same native gate and
+   * inference-only mode; an explicit Stop/Pause remains closed. */
   resumeAfterProviderTransfer(
     operationId: string,
     threadId: string,
@@ -140,14 +173,37 @@ export class ManagedExecutionRunner {
       this.prepared(threadId);
       if (
         this.transport !== transport ||
-        !this.invalidated ||
-        (this.pendingBind
-          ? this.pendingBind.previous !== transfer.generation
-          : this.generation !== transfer.generation ||
-            this.controller.signal.aborted)
+        this.pendingBind ||
+        this.generation !== transfer.generation ||
+        this.controller.signal.aborted
       )
         return;
-      await this.rebind(threadId, transport);
+      const observed = await this.runtime.controlManagedRootProducer(
+        {
+          threadId,
+          runnerGeneration: transfer.generation,
+          action: "read",
+        },
+        transport,
+      );
+      if (observed.heldBy && observed.heldBy !== operationId)
+        throw new Error("Another provider transfer holds this native root.");
+      // Even a hold whose response was lost has an exact native revision. If
+      // it has not arrived yet, release seals the old revision against it.
+      const released = await this.runtime.controlManagedRootProducer(
+        {
+          threadId,
+          runnerGeneration: transfer.generation,
+          action: "release",
+          operationId,
+          expectedRevision: observed.heldBy
+            ? observed.revision
+            : (transfer.revision ?? observed.revision),
+        },
+        transport,
+      );
+      if (released.heldBy !== null)
+        throw new Error("The native root still holds a provider transfer.");
       this.providerTransfer = null;
     });
   }
