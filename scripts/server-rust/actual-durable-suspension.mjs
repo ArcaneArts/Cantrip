@@ -32,6 +32,10 @@ import {
   assertCompletedSessionResult,
 } from "./suspension-terminal-resource.mjs";
 import { refuseActiveSuspensionSession } from "./suspension-resource-refusal.mjs";
+import {
+  updatePausedSuspensionSettings,
+  readSuspensionSettings,
+} from "./suspension-settings-browser.mjs";
 import { verifyPendingSuspensionStop } from "./pending-suspension-stop.mjs";
 import {
   answerSuspensionInteraction,
@@ -525,6 +529,30 @@ async function flow(kind, executable, cliBinary) {
       assert.deepEqual(paused.nativeSuspension.active, active);
       if (result.question) assert.deepEqual(active, result.question.native);
       if (result.approval) assert.deepEqual(active, result.approval.native);
+      let changedSettings;
+      if (process.argv.includes("--post-pause-settings")) {
+        const before = inferences();
+        changedSettings = await updatePausedSuspensionSettings(
+          page,
+          chat.id,
+          round === 1 ? "high" : "low",
+        );
+        changedSettings.confirmed = await eventually(
+          () => readSuspensionSettings(page, chat.id),
+          (value) => assert.equal(value?.effort, changedSettings.effort),
+        );
+        assert.equal(changedSettings.threadId, active.threadId);
+        const held = await identity();
+        assert.equal(held.nativeSuspension.phase, "paused");
+        assert.equal(held.nativeSuspension.resumable, true);
+        assert.deepEqual(held.nativeSuspension.active, active);
+        assert.equal(
+          inferences(),
+          before,
+          "Changing held settings starts no inference",
+        );
+        (result.postPauseSettings ??= []).push({ round, ...changedSettings });
+      }
       if (round === 1 && process.argv.includes("--post-pause-queue")) {
         const count = inferences();
         postPausePrompt = await page.evaluate(
@@ -645,6 +673,11 @@ async function flow(kind, executable, cliBinary) {
         );
         (result.terminalReattachments ??= []).push({ round, text: state.text });
       }
+      if (changedSettings)
+        result.postPauseSettings.at(-1).held = await eventually(
+          () => readSuspensionSettings(page, chat.id, false),
+          (value) => assert.equal(value?.effort, changedSettings.effort),
+        );
       await delay(300);
       assert.equal(
         inferences(),
@@ -728,6 +761,13 @@ async function flow(kind, executable, cliBinary) {
         next.request.input.reasoning,
         tool.request.input.reasoning,
       );
+      if (changedSettings) {
+        const settings = await eventually(
+          () => readSuspensionSettings(page, chat.id),
+          (value) => assert.equal(value?.effort, changedSettings.effort),
+        );
+        result.postPauseSettings.at(-1).restored = settings;
+      }
       assert.equal(
         next.request.input.input.filter(
           (item) =>

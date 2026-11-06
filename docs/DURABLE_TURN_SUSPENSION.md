@@ -313,6 +313,17 @@ worker checkpoint locator. They enter the native continuation only through an
 explicit steer with current execution admission after Resume. Queue acceptance
 does not release the pause or authorize inference.
 
+Add `--post-pause-settings` to change future thread reasoning effort after each
+durable Pause acknowledgement, first to High and then to Low. The fixture uses
+the composer's bound, encrypted native-settings operation and reads confirmed
+native selections before termination and after explicit Resume. While the fresh
+attachment is held, it opens the saved encrypted confirmed selection through the
+normal read API. A live refresh retains the existing execution-owner fence until
+Resume establishes the new owner. Neither editing nor reading settings starts inference.
+The original turn keeps its captured settings in both resumed provider requests;
+the thread's future selection retains each accepted edit through the worker-tree
+restart. Settings observation epochs can change with the new runtime.
+
 Add `--completed-session` to retain an actual yielded command session. A controlled
 release lets the command finish before capture, leaving unread terminal output.
 After the first worker-tree kill and cold Resume, the model polls the original
