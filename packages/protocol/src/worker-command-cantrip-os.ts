@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { repositoryOperationOpaqueSchema } from "./repository-operation.js";
 import { gitBranchNameInputSchema } from "./git-contracts.js";
+import { cantripOsDockerCarrierSchema } from "./cantrip-os-power-state.js";
 import {
   cantripOsDependencyOverlaysSchema,
   cantripOsGuestPathSchema,
@@ -216,6 +217,7 @@ export const cantripOsObservedInstanceSchema = z
     runtimeGeneration: z.uuid(),
     attachment: z.object({ ownerId: id, workerId: id }).strict().nullable(),
     workspaces: z.array(cantripOsWorkspaceObservationSchema),
+    powerTarget: cantripOsDockerCarrierSchema.optional(),
   })
   .strict();
 

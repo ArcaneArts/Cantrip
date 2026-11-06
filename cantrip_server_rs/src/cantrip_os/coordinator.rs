@@ -1,5 +1,7 @@
 #[path = "backup_coordinator.rs"]
 mod backups;
+#[path = "power_coordinator.rs"]
+mod power;
 use super::{InstanceObservation, Repository, checked, text};
 use crate::auth::service::AuthService;
 use anyhow::{Context, Result, ensure};
@@ -282,7 +284,12 @@ impl Coordinator {
             for workspace in actual["workspaces"].as_array().context("OS workspace observation")? {
                 self.repository.record_workspace(owner,id,text(i,"attachmentGeneration")?,workspace).await?;
             }
-            let instance=self.repository.observe_current(owner,id,text(i,"attachmentGeneration")?,InstanceObservation { status: "connected", runtime: Some(text(&actual,"runtimeGeneration")?), error: None },i["runtimeGeneration"].as_str()).await?;
+            let epoch=i32::try_from(attachment["powerEpoch"].as_i64().context("OS power observation epoch")?)?;
+            let mut instance=self.repository.observe_current_fenced(owner,id,text(i,"attachmentGeneration")?,InstanceObservation { status: "connected", runtime: Some(text(&actual,"runtimeGeneration")?), error: None },i["runtimeGeneration"].as_str(),Some(epoch)).await?;
+            if actual["powerTarget"].is_object() && attachment["transport"]["kind"]=="docker" {
+                self.repository.record_power_target(owner,id,text(i,"attachmentGeneration")?,text(&actual,"runtimeGeneration")?,text(&actual["powerTarget"],"containerId")?,epoch).await?;
+                instance=self.repository.attachment(owner,id).await?["instance"].clone();
+            }
             Ok(json!({"instance":instance,"workspaces":self.repository.workspaces(owner,id).await?}))
         }.await;
         if result.is_err() {

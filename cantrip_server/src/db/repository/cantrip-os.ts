@@ -20,7 +20,7 @@ import {
   type CantripOsTransport,
   type ProjectSourceKind,
 } from "@cantrip/protocol";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import * as schema from "../schema.js";
 import type { RepositoryDatabase } from "./database.js";
 import { requireWorkerLocalPath } from "./worker-local-source-path.js";
@@ -32,9 +32,11 @@ import {
 } from "./cantrip-os-worktrees.js";
 import { resolveOsRunPrimary } from "./cantrip-os-run.js";
 import { existingLinuxSourcePath } from "./cantrip-os-existing-path.js";
+import { CantripOsPowerRepository } from "./cantrip-os-power.js";
 
 const instance = ({
   workerProcessGeneration: _workerProcessGeneration,
+  powerEpoch: _powerEpoch,
   ...row
 }: typeof schema.cantripOsInstances.$inferSelect) =>
   cantripOsInstanceSummarySchema.parse({
@@ -102,8 +104,10 @@ function createdLinuxSource(
  * authenticated worker; clients cannot supply UID/path or success receipts. */
 export class CantripOsRepository {
   readonly backups: CantripOsBackupRepository;
+  readonly power: CantripOsPowerRepository;
   constructor(private readonly database: RepositoryDatabase) {
     this.backups = new CantripOsBackupRepository(database);
+    this.power = new CantripOsPowerRepository(database);
   }
 
   runPrimary(
@@ -184,6 +188,7 @@ export class CantripOsRepository {
           instance: instance(row),
           transport: cantripOsTransportSchema.parse(row.transport),
           workerProcessGeneration: row.workerProcessGeneration,
+          powerEpoch: row.powerEpoch,
         }
       : null;
   }
@@ -273,11 +278,17 @@ export class CantripOsRepository {
     },
     expectedRuntimeGeneration?: string | null,
     expectedWorkerProcessGeneration?: string | null,
+    expectedPowerEpoch?: number,
   ) {
     const [row] = await this.database
       .update(schema.cantripOsInstances)
       .set({
         ...observation,
+        ...(observation.status === "connected"
+          ? {
+              status: sql`CASE WHEN EXISTS (SELECT 1 FROM cantrip_os_power_operations o JOIN cantrip_os_power_targets p ON p.instance_id=o.instance_id AND p.generation=o.target_generation WHERE o.instance_id=${instanceId} AND o.attachment_generation=${expectedAttachmentGeneration} AND o.state IN ('admitted','running','unknown')) THEN 'unknown' ELSE 'connected' END`,
+            }
+          : {}),
         lastObservedAt: new Date(),
         updatedAt: new Date(),
       })
@@ -285,6 +296,9 @@ export class CantripOsRepository {
         and(
           eq(schema.cantripOsInstances.id, instanceId),
           eq(schema.cantripOsInstances.ownerId, ownerId),
+          expectedPowerEpoch === undefined
+            ? undefined
+            : eq(schema.cantripOsInstances.powerEpoch, expectedPowerEpoch),
           expectedRuntimeGeneration === undefined
             ? undefined
             : expectedRuntimeGeneration === null

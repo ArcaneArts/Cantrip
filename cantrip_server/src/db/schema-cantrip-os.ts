@@ -71,6 +71,8 @@ export const cantripOsInstances = pgTable(
     runtimeGeneration: text("runtime_generation"),
     /** Last explicit recovery observation, scoped to this attachment. */
     workerProcessGeneration: text("worker_process_generation"),
+    /** Invalidates observations admitted before a retained power operation. */
+    powerEpoch: integer("power_epoch").notNull().default(0),
     lastError: text("last_error"),
     lastObservedAt: timestamp("last_observed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })

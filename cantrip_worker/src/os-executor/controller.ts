@@ -106,10 +106,39 @@ export class CantripOsController {
   }
 
   private async observed(transport: OsExecutorTransport) {
-    const status = await this.status(transport);
-    const records = await workspaceControl<GuestWorkspace[]>(transport, [
+    let carrier: { engine: LocalDocker; id: string; startedAt: string } | null =
+      null;
+    if (transport.kind === "docker") {
+      try {
+        const engine = await LocalDocker.current();
+        const actual = await engine.inspect<{
+          Id: string;
+          State: { StartedAt: string };
+        }>(transport.container);
+        carrier = { engine, id: actual.Id, startedAt: actual.State.StartedAt };
+      } catch {
+        // A working Docker CLI transport need not provide a local Engine API.
+        // Failed power discovery must not prevent an actual guest observation.
+      }
+    }
+    const selected: OsExecutorTransport = carrier
+      ? { kind: "docker", container: carrier.id }
+      : transport;
+    const status = await this.status(selected);
+    const records = await workspaceControl<GuestWorkspace[]>(selected, [
       "list",
     ]);
+    if (carrier && transport.kind === "docker") {
+      const actual = await carrier.engine.inspect<{
+        Id: string;
+        State: { StartedAt: string };
+      }>(transport.container);
+      if (
+        actual.Id !== carrier.id ||
+        actual.State.StartedAt !== carrier.startedAt
+      )
+        throw new Error("The Docker carrier changed during guest observation.");
+    }
     return cantripOsObservedInstanceSchema.parse({
       guestInstanceId: status.instance_id,
       runtimeGeneration: status.generation,
@@ -120,6 +149,9 @@ export class CantripOsController {
           }
         : null,
       workspaces: records.map(workspace),
+      ...(carrier
+        ? { powerTarget: { kind: "docker", containerId: carrier.id } }
+        : {}),
     });
   }
 

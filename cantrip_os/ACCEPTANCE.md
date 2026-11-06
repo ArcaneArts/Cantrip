@@ -3236,3 +3236,81 @@ This is host-carrier acceptance, not full Worker SIGKILL or product acceptance.
 Server-owned power-target admission, operation history and client controls are
 still required. So are desktop/reset/image/upgrade semantics and the rest of the
 full Phase 5 acceptance matrix. No guest package, OCI image or ISO changed here.
+
+## Phase 5: Server and Worker retained power admissions (2026-11-06)
+
+Both Servers now persist owner-scoped Docker power targets and immutable lifecycle
+admissions. Actual owned guest observation discovers the immutable Engine ID;
+clients receive an opaque target generation. Start/stop/restart and history APIs
+use the original Worker, attachment, target and runtime scope. Repeating the same
+request observes it, while changed content under the same ID is rejected. A
+missing Worker journal remains unknown and never authorizes another mutation.
+SSH attachment alone advertises no power-on path.
+
+Admission fences instance execution before dispatch. Ordinary refresh and the
+independent recovery path retain that fence while power remains active/uncertain.
+A private power epoch also rejects refresh/recovery replies admitted before a
+subsequently completed mutation. Both actual HTTP suites hold those old replies,
+settle a newer power operation, then deliver the old results and verify rejection.
+Historical terminal results remain separate from current carrier observation.
+
+The Node HTTP/PGlite test reopens its persistent database after a lost reply,
+observes the original immutable command, verifies only one execute dispatch,
+rejects changed/foreign admissions, rotates a replaced physical target, and keeps
+its target stable across a retained container's runtime change. The final focused
+Server matrix passed five checks across four suites after rebasing onto Main
+`0dcc5ddc4`. Full Server and Worker type checks passed at that revision.
+
+The actual Docker Worker Manager test passed in 7.13 seconds against disposable
+`cantrip-os-phase5-backups`. It verifies root-file bytes and mode 0640 after actual
+stop/start, observes a fresh guest runtime, drops a completed restart's response,
+and recovers it through a new Manager without a second mutation. Saved completion
+remains readable with the Engine unavailable. Worker units cover missing and
+interrupted journals, wrong Worker/scope/action, definite failure history,
+replacement IDs and unavailable current observation. All 15 focused Worker checks
+passed. This is Manager acceptance, not full Worker SIGKILL or Cantrip UI evidence.
+
+Native source contracts passed all 38,014 cases; the three OS contract tests
+also exercise the new commands through the complete Worker request envelope.
+Actual native PostgreSQL HTTP passed in 3.69 seconds. Repository admission and
+generation tests passed against PostgreSQL and native PGlite. The first PGlite run
+failed because its shared temporary runtime lacked `postgres.bki`; rerunning with
+a private fresh temporary directory passed. No repository workaround was added.
+
+The wider checks retain explicit failures. Protocol passed 1,110 tests and failed
+four duplicate public-surface assertions; reviewed additions preserve legacy
+fingerprints. The pre-rebase comparison against unchanged Primary reproduces the
+same remaining 32-export and seven-command discrepancies. The global native Worker
+command oracle still fails its fixture-inventory assertion for existing Goal and
+suspension commands before producing cases. The two new power command fixtures
+are registered, and their dedicated envelope comparison passes; the wider oracle
+is not described as passing. Worker placement coverage passed 81 checks and failed
+two existing app-server capacity cases, with two related unhandled errors. Server
+placement passed 59 checks and failed the existing standalone-Chat assertion
+expecting started instead of queued. Its historical source-migration fixture also
+fails on a missing Git source column, reproduced on unchanged Primary; its new
+power migration is applied when invoking today's repository. These unrelated
+fixtures were not repaired in this cycle.
+
+All 56 focused app/worktree checks and the production app build passed. Root
+`pnpm check` stopped at existing Server line budgets (1527/1500 and 2249/1999
+before the final Main update; 1531/1500 and 2249/1999 afterward).
+Formatting and diff checks passed. No hosted validation ran.
+
+A normal Host native build completed with all 85 patches at `15ffe6a7a`, four
+binaries and no cached-runtime input override. Its packaged hashes, executable
+version and protocol extensions were verified through the `0dcc5ddc4` input and
+preserved as historical evidence. Main then advanced to `f578965af` with changed
+native inputs. A normal build of its complete 86-patch input is running with the
+existing Cargo cache; no current artifact or model acceptance is claimed yet.
+
+After that final rebase, unchanged Main files prevent fresh Server compilation:
+Node reports a possibly undefined `managedInputRevision` in
+`task-automation-pause.ts`; Worker reports a promise-result mismatch and possibly
+undefined `journalEnqueued` in `inference-admission.ts`; Rust reports the unresolved
+`hex` crate in `tasks/goal_cycle_recovery.rs`. The final Node lifecycle HTTP matrix
+and all 15 focused Worker checks still pass. Earlier native passes belong to the recorded
+`0dcc5ddc4` base. These unrelated compilation failures were not repaired here.
+No guest package, OCI image or ISO changed in this checkpoint. Client lifecycle
+controls, full Worker failure, desktop/reset/upgrade semantics, real remote
+acceptance and final current distribution artifacts remain required for Phase 5.

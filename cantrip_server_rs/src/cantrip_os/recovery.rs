@@ -106,6 +106,7 @@ impl Coordinator {
                     "error": if matches { None } else { Some(message.as_str()) },
                     "expectedRuntime": instance["runtimeGeneration"],
                     "expectedWorker": previous_worker,
+                    "expectedPowerEpoch": attachment["powerEpoch"],
                     "observedWorker": observed_worker,
                 }),
             )
@@ -133,7 +134,7 @@ impl Repository {
     /// overwrite a newer Worker recovery on an unchanged guest runtime.
     async fn observe_recovery(&self, owner: &str, id: &str, observation: &Value) -> Result<Value> {
         let observation = Json(observation);
-        let rows = self.rows("UPDATE cantrip_os_instances SET status=$3::jsonb->>'status', runtime_generation=$3::jsonb->>'runtime', last_error=$3::jsonb->>'error', worker_process_generation=COALESCE($3::jsonb->>'observedWorker',worker_process_generation), last_observed_at=now(), updated_at=now() WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3::jsonb->>'attachment' AND runtime_generation IS NOT DISTINCT FROM ($3::jsonb->>'expectedRuntime') AND worker_process_generation IS NOT DISTINCT FROM ($3::jsonb->>'expectedWorker') RETURNING to_jsonb(cantrip_os_instances)::text", &[&owner, &id, &observation]).await?;
+        let rows = self.rows("UPDATE cantrip_os_instances SET status=CASE WHEN $3::jsonb->>'status'='connected' AND EXISTS(SELECT 1 FROM cantrip_os_power_operations o JOIN cantrip_os_power_targets p ON p.instance_id=o.instance_id AND p.generation=o.target_generation WHERE o.instance_id=$2 AND o.attachment_generation=$3::jsonb->>'attachment' AND o.state IN ('admitted','running','unknown')) THEN 'unknown' ELSE $3::jsonb->>'status' END, runtime_generation=$3::jsonb->>'runtime', last_error=$3::jsonb->>'error', worker_process_generation=COALESCE($3::jsonb->>'observedWorker',worker_process_generation), last_observed_at=now(), updated_at=now() WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3::jsonb->>'attachment' AND runtime_generation IS NOT DISTINCT FROM ($3::jsonb->>'expectedRuntime') AND worker_process_generation IS NOT DISTINCT FROM ($3::jsonb->>'expectedWorker') AND power_epoch=($3::jsonb->>'expectedPowerEpoch')::integer RETURNING to_jsonb(cantrip_os_instances)::text", &[&owner, &id, &observation]).await?;
         summary(
             rows.first()
                 .context("OS attachment changed before observation arrived.")?,

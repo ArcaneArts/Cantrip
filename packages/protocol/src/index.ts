@@ -15,6 +15,7 @@ export * from "./conversations.js";
 export * from "./file-documents.js";
 export * from "./workspace-ownership.js";
 export * from "./cantrip-os.js";
+export * from "./cantrip-os-power.js";
 export * from "./cantrip-os-backup.js";
 export * from "./cantrip-os-backup-operations.js";
 export * from "./worker-command-cantrip-os.js";

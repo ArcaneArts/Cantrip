@@ -280,7 +280,10 @@ export class CantripOsCoordinator {
   }
 
   async refresh(ownerId: string, instanceId: string) {
-    const { instance, transport } = await this.attachment(ownerId, instanceId);
+    const { instance, transport, powerEpoch } = await this.attachment(
+      ownerId,
+      instanceId,
+    );
     try {
       const actual = await this.inspect(ownerId, {
         workerId: instance.workerId,
@@ -309,9 +312,22 @@ export class CantripOsCoordinator {
           lastError: null,
         },
         instance.runtimeGeneration,
+        undefined,
+        powerEpoch,
       );
+      if (actual.powerTarget && transport.kind === "docker")
+        await this.repository.cantripOs.power.recordTarget(
+          ownerId,
+          instanceId,
+          instance.attachmentGeneration,
+          actual.runtimeGeneration,
+          actual.powerTarget.containerId,
+          powerEpoch,
+        );
       return {
-        instance: observed,
+        instance: actual.powerTarget
+          ? (await this.attachment(ownerId, instanceId)).instance
+          : observed,
         workspaces: await this.repository.cantripOs.listWorkspaces(
           ownerId,
           instanceId,

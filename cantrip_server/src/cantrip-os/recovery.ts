@@ -116,6 +116,7 @@ export async function recoverCantripOsInstance(input: {
     },
     instance.runtimeGeneration,
     previousWorker,
+    attachment.powerEpoch,
   );
   return cantripOsRecoveryResultSchema.parse({
     instance: observed,
