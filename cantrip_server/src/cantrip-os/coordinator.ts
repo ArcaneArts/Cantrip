@@ -310,8 +310,18 @@ export class CantripOsCoordinator {
         },
         instance.runtimeGeneration,
       );
+      if (actual.powerTarget && transport.kind === "docker")
+        await this.repository.cantripOs.power.recordTarget(
+          ownerId,
+          instanceId,
+          instance.attachmentGeneration,
+          actual.runtimeGeneration,
+          actual.powerTarget.containerId,
+        );
       return {
-        instance: observed,
+        instance: actual.powerTarget
+          ? (await this.attachment(ownerId, instanceId)).instance
+          : observed,
         workspaces: await this.repository.cantripOs.listWorkspaces(
           ownerId,
           instanceId,

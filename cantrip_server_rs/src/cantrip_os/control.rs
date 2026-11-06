@@ -30,7 +30,7 @@ impl Repository {
         runtime: Option<&str>,
         error: Option<&str>,
     ) -> Result<Value> {
-        let rows=self.rows("UPDATE cantrip_os_instances SET status=$4,runtime_generation=$5,last_error=$6,last_observed_at=now(),updated_at=now() WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3 RETURNING to_jsonb(cantrip_os_instances)::text", &[&owner,&id,&generation,&status,&runtime,&error]).await?;
+        let rows=self.rows("UPDATE cantrip_os_instances SET status=CASE WHEN $4='connected' AND EXISTS(SELECT 1 FROM cantrip_os_power_operations o JOIN cantrip_os_power_targets p ON p.instance_id=o.instance_id AND p.generation=o.target_generation WHERE o.instance_id=$2 AND o.attachment_generation=$3 AND o.state IN ('admitted','running','unknown')) THEN 'unknown' ELSE $4 END,runtime_generation=$5,last_error=$6,last_observed_at=now(),updated_at=now() WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3 RETURNING to_jsonb(cantrip_os_instances)::text", &[&owner,&id,&generation,&status,&runtime,&error]).await?;
         summary(
             rows.first()
                 .context("OS attachment changed before observation arrived.")?,
@@ -52,7 +52,7 @@ impl Repository {
             runtime,
             error,
         } = observation;
-        let rows=self.rows("UPDATE cantrip_os_instances SET status=$4,runtime_generation=$5,last_error=$6,last_observed_at=now(),updated_at=now() WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3 AND runtime_generation IS NOT DISTINCT FROM $7 RETURNING to_jsonb(cantrip_os_instances)::text", &[&owner,&id,&generation,&status,&runtime,&error,&expected_runtime]).await?;
+        let rows=self.rows("UPDATE cantrip_os_instances SET status=CASE WHEN $4='connected' AND EXISTS(SELECT 1 FROM cantrip_os_power_operations o JOIN cantrip_os_power_targets p ON p.instance_id=o.instance_id AND p.generation=o.target_generation WHERE o.instance_id=$2 AND o.attachment_generation=$3 AND o.state IN ('admitted','running','unknown')) THEN 'unknown' ELSE $4 END,runtime_generation=$5,last_error=$6,last_observed_at=now(),updated_at=now() WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3 AND runtime_generation IS NOT DISTINCT FROM $7 RETURNING to_jsonb(cantrip_os_instances)::text", &[&owner,&id,&generation,&status,&runtime,&error,&expected_runtime]).await?;
         summary(
             rows.first()
                 .context("OS attachment changed before observation arrived.")?,

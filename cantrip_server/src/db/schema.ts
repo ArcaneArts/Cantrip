@@ -8,6 +8,10 @@ import type {
 } from "@cantrip/protocol";
 import type { TaskInferenceInputState } from "./task-inference-inputs.js";
 export { projectAlerts, chatGoalObservations } from "./schema-alerts.js";
+export {
+  cantripOsPowerTargets,
+  cantripOsPowerOperations,
+} from "./schema-cantrip-os-power.js";
 export { inferenceResourceRevocations } from "./schema-inference-resource-revocations.js";
 export {
   projectSourceIdentities,

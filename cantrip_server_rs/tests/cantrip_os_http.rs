@@ -41,6 +41,9 @@ impl ResponseJson for reqwest::Response {
 fn id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
+fn text_power<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
+    value[key].as_str().context("Power fixture identity")
+}
 
 #[tokio::test]
 async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()> {
@@ -97,6 +100,10 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     });
     let provisions = Arc::new(AtomicUsize::new(0));
     let count = provisions.clone();
+    let power_mutations = Arc::new(AtomicUsize::new(0));
+    let power_count = power_mutations.clone();
+    let lose_power_reply = Arc::new(AtomicBool::new(true));
+    let lose_power = lose_power_reply.clone();
     let lose_run_reply = Arc::new(AtomicBool::new(false));
     let lose_reply = lose_run_reply.clone();
     let recovery_mode = Arc::new(AtomicUsize::new(0));
@@ -113,6 +120,9 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
         let mut profiles = Vec::new();
         let mut operations = HashMap::new();
         let mut runs = HashMap::<String, Value>::new();
+        let mut power_jobs = HashMap::<String, Value>::new();
+        let mut power_running = true;
+        let mut power_started = "2026-11-06T00:00:00Z".to_owned();
         while let Some(frame) = output.recv().await {
             let Outgoing::Text(encoded) = frame else {
                 continue;
@@ -125,8 +135,35 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
                 bridge.receive(&target, &peer, &json!({"kind":"response","requestId":request["requestId"],"ok":false,"error":{"message":"Fixture transport unavailable"}}).to_string());
                 continue;
             }
-            let observed = |attached: bool, profiles: &Vec<Value>| json!({"guestInstanceId":if mode == 2 {&replacement_guest} else {&guest},"runtimeGeneration":if mode == 3 {&replacement_generation} else {&generation},"attachment":if attached {json!({"ownerId":actual_owner,"workerId":target})}else{Value::Null},"workspaces":profiles});
+            let observed = |attached: bool, profiles: &Vec<Value>| json!({"guestInstanceId":if mode == 2 {&replacement_guest} else {&guest},"runtimeGeneration":if mode == 3 {&replacement_generation} else {&generation},"attachment":if attached {json!({"ownerId":actual_owner,"workerId":target})}else{Value::Null},"workspaces":profiles,"powerTarget":{"kind":"docker","containerId":"a".repeat(64)}});
+            let power_observation = |running: bool, started: &str| json!({"containerId":"a".repeat(64),"running":running,"status":if running{"running"}else{"exited"},"startedAt":started,"finishedAt":"0001-01-01T00:00:00Z"});
             let result = match command["type"].as_str().context("OS fixture command")? {
+                "cantrip-os.power.status" => power_observation(power_running, &power_started),
+                "cantrip-os.power.operation" => {
+                    let operation = text_power(command, "operationId")?;
+                    if command["mode"] == "observe" {
+                        power_jobs.get(operation).cloned().unwrap_or(Value::Null)
+                    } else {
+                        let before = power_observation(power_running, &power_started);
+                        let serial = power_count.fetch_add(1, Ordering::SeqCst) + 1;
+                        power_running = command["action"] != "stop";
+                        if power_running {
+                            power_started = format!("2026-11-06T00:00:{serial:02}Z");
+                        }
+                        let after = power_observation(power_running, &power_started);
+                        let now =
+                            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                        let result = json!({"operationId":operation,"action":command["action"],"state":"ready","startedAt":now,"updatedAt":now,"error":null,
+                            "receipt":{"targetGeneration":command["powerTarget"]["generation"],"containerId":"a".repeat(64),"before":before,"after":after,"completionEvidence":"acknowledged-and-observed"},
+                            "observation":after,"observationError":null});
+                        power_jobs.insert(operation.to_owned(), result.clone());
+                        if lose_power.swap(false, Ordering::SeqCst) {
+                            bridge.receive(&target,&peer,&json!({"kind":"response","requestId":request["requestId"],"ok":false,"error":{"message":"Fixture lost admitted power reply"}}).to_string());
+                            continue;
+                        }
+                        result
+                    }
+                }
                 "chat.files.references" => {
                     assert_eq!(command["root"]["kind"], "cantrip-os");
                     assert!(
@@ -271,6 +308,100 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     let attached: Value = response.json().await?;
     assert_eq!(status, 200, "{attached}");
     let instance = attached["instance"]["id"].as_str().unwrap();
+    let power_path = format!("{base}/api/cantrip-os/{instance}/power-operations");
+    let power: Value = client
+        .get(format!("{base}/api/cantrip-os/{instance}/power"))
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(power["target"]["kind"], "docker", "{power}");
+    assert_eq!(power["observation"]["running"], true);
+    assert!(!power.to_string().contains(&"a".repeat(64)));
+    let stop_id = id();
+    let power_input = json!({"operationId":stop_id,"action":"stop","attachmentGeneration":attached["instance"]["attachmentGeneration"],"targetGeneration":power["target"]["generation"]});
+    let mut forged = power_input.clone();
+    forged["containerId"] = json!("forged");
+    assert_eq!(
+        client
+            .post(&power_path)
+            .json(&forged)
+            .send()
+            .await?
+            .status(),
+        400
+    );
+    let first: Value = client
+        .post(&power_path)
+        .json(&power_input)
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(first["state"], "unknown", "{first}");
+    let during: Value = client
+        .post(format!("{base}/api/cantrip-os/{instance}/refresh"))
+        .json(&json!({}))
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(during["instance"]["status"], "unknown", "{during}");
+    let recovered: Value = client
+        .post(&power_path)
+        .json(&power_input)
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(recovered["state"], "ready", "{recovered}");
+    assert_eq!(power_mutations.load(Ordering::SeqCst), 1);
+    let mut changed = power_input.clone();
+    changed["action"] = json!("restart");
+    assert_eq!(
+        client
+            .post(&power_path)
+            .json(&changed)
+            .send()
+            .await?
+            .status(),
+        409
+    );
+    let start_id = id();
+    let start = json!({"operationId":start_id,"action":"start","attachmentGeneration":power_input["attachmentGeneration"],"targetGeneration":power_input["targetGeneration"]});
+    let started: Value = client
+        .post(&power_path)
+        .json(&start)
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(started["state"], "ready", "{started}");
+    assert_eq!(power_mutations.load(Ordering::SeqCst), 2);
+    let refreshed: Value = client
+        .post(format!("{base}/api/cantrip-os/{instance}/refresh"))
+        .json(&json!({}))
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(refreshed["instance"]["status"], "connected", "{refreshed}");
+    database.query("UPDATE cantrip_os_power_operations SET created_at='2026-11-06T01:00:00.123101Z' WHERE operation_id=$1", &[&stop_id]).await?;
+    database.query("UPDATE cantrip_os_power_operations SET created_at='2026-11-06T01:00:00.123202Z' WHERE operation_id=$1", &[&start_id]).await?;
+    let page: Value = client
+        .get(format!("{power_path}?limit=1"))
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(page["items"][0]["operationId"], start_id, "{page}");
+    let next: Value = client
+        .get(format!("{power_path}?limit=1&cursor={start_id}"))
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(next["items"][0]["operationId"], stop_id, "{next}");
     let response = client
         .post(format!("{base}/api/cantrip-os/{instance}/workspaces"))
         .json(&json!({"guestWorkspaceId":"alpha","operationId":id(),"uid":0}))
