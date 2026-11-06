@@ -12,18 +12,25 @@ import {
   type OsTerminalDescriptor,
 } from "./terminal-launcher.js";
 import { guestFileUri } from "./paths.js";
+import {
+  evictedOutputAfter,
+  outputCoverageUnavailableNotice,
+  outputEvictionNotice,
+  type NativeOutputHistory,
+} from "./output-history.js";
 
 interface NativeAdmission {
   identity: string;
   sessionId: string;
   processId: string;
   executorGeneration: string;
+  outputTruncated?: boolean;
   exited?: {
     code: number | null;
     outcome?: "exited" | "interrupted" | "unknown";
   };
 }
-interface NativeRead {
+interface NativeRead extends NativeOutputHistory {
   chunks: { seq: number; stream: string; chunk: string }[];
   nextSeq: number;
   exited: boolean;
@@ -99,6 +106,7 @@ try {
   } catch (cause) {
     if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
   }
+  const recovering = Boolean(saved);
   if (
     saved &&
     (saved.identity !== descriptor.identity ||
@@ -172,6 +180,9 @@ try {
     process.stdin.on("end", terminate);
     process.stdin.resume();
     let afterSeq: number | null = null;
+    const writeOutput = async (data: string | Buffer) => {
+      if (!process.stdout.write(data)) await once(process.stdout, "drain");
+    };
     for (;;) {
       const read: NativeRead = await connection.request("process/read", {
         processId: saved.processId,
@@ -179,10 +190,23 @@ try {
         maxBytes: 65536,
         waitMs: 200,
       });
+      const evicted = evictedOutputAfter(read, afterSeq);
+      if (evicted !== null) {
+        await writeOutput(outputEvictionNotice(evicted));
+        if (!saved.outputTruncated) {
+          saved.outputTruncated = true;
+          await durableTerminalJson(savedFile, saved);
+        }
+      } else if (
+        afterSeq === null &&
+        recovering &&
+        read.outputEvictedThroughSeq == null
+      ) {
+        await writeOutput(outputCoverageUnavailableNotice);
+      }
       afterSeq = Math.max(0, read.nextSeq - 1);
       for (const chunk of read.chunks) {
-        if (!process.stdout.write(Buffer.from(chunk.chunk, "base64")))
-          await once(process.stdout, "drain");
+        await writeOutput(Buffer.from(chunk.chunk, "base64"));
       }
       if (read.exited && read.closed && !read.chunks.length) {
         outputFinished = true;

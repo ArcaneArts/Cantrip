@@ -179,6 +179,7 @@ interface ProcessExit {
 
 interface RuntimeSession extends RunConfigurationRuntimeLaunchIdentity {
   buffer: string;
+  outputTruncated: boolean;
   endedAt: string | null;
   exitCode: number | null;
   failure: RunConfigurationRuntimeWorkerObservation["failure"];
@@ -506,6 +507,7 @@ export class RunConfigurationRuntimeSupervisor {
       ...command.identity,
       terminalId,
       buffer: "",
+      outputTruncated: false,
       endedAt: null,
       exitCode: null,
       failure: null,
@@ -756,7 +758,7 @@ export class RunConfigurationRuntimeSupervisor {
       requestOperationId: command.requestOperationId,
       identity: command.identity,
       data,
-      truncated: session.buffer.length > data.length,
+      truncated: session.outputTruncated || session.buffer.length > data.length,
     });
   }
 
@@ -928,6 +930,10 @@ export class RunConfigurationRuntimeSupervisor {
     command: CantripOsRunCapture,
   ): OsRunCallbacks {
     return {
+      truncated: () => {
+        if (generationIdentityMatches(session, command.identity))
+          session.outputTruncated = true;
+      },
       output: (data) => {
         if (generationIdentityMatches(session, command.identity))
           this.#appendOutput(session, data);

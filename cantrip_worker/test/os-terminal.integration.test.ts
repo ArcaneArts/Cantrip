@@ -244,6 +244,45 @@ describe.skipIf(!enabled)("actual Linux terminal carrier", () => {
         arg0: null,
         sandbox: null,
       });
+      const offline = new OsExecutorConnection(
+        transport,
+        descriptorBefore.binding,
+      );
+      try {
+        await offline.request("initialize", {
+          clientName: "terminal-offline-output",
+          resumeSessionId: admitted.sessionId,
+        });
+        offline.notify("initialized");
+        await offline.request("process/write", {
+          processId: admitted.processId,
+          writeId: randomUUID(),
+          chunk: Buffer.from(
+            `python -c 'import pathlib;print("x"*(2*1024*1024),flush=True);print("CT_"+"FLOOD_END",flush=True);pathlib.Path("flood-done").write_text("done")'\r`,
+          ).toString("base64"),
+        });
+        await expect
+          .poll(
+            async () => {
+              try {
+                const file = await offline.request<{ dataBase64: string }>(
+                  "fs/readFile",
+                  {
+                    path: `file://${scope.guestPath}/flood-done`,
+                    sandbox: null,
+                  },
+                );
+                return Buffer.from(file.dataBase64, "base64").toString();
+              } catch {
+                return "";
+              }
+            },
+            { timeout: 30000 },
+          )
+          .toBe("done");
+      } finally {
+        await offline.close();
+      }
       const second = spawn();
       let resumedOutput = "";
       second.onData((data) => {
@@ -255,12 +294,15 @@ describe.skipIf(!enabled)("actual Linux terminal carrier", () => {
       try {
         await expect
           .poll(() => resumedOutput, { timeout: 30_000 })
-          .toContain("CT_ONCE");
+          .toContain("CT_FLOOD_END");
+        expect(resumedOutput).toContain(
+          "was evicted; the command was not repeated",
+        );
         expect(
           JSON.parse(
             await readFile(path.join(recovery.cwd, "native.json"), "utf8"),
           ),
-        ).toEqual(admitted);
+        ).toEqual({ ...admitted, outputTruncated: true });
         second.write(
           `python -c 'import pathlib; print("CT_"+"COUNT:"+str(pathlib.Path("terminal-once.txt").read_text().count("once")))'\r`,
         );

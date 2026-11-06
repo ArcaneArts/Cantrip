@@ -5,8 +5,12 @@ import {
   type OsExecutorConnection,
 } from "./connection.js";
 import { guestFileUri } from "./paths.js";
+import {
+  evictedOutputAfter,
+  type NativeOutputHistory,
+} from "./output-history.js";
 
-interface ProcessRead {
+interface ProcessRead extends NativeOutputHistory {
   chunks: Array<{ seq: number; stream: string; chunk: string }>;
   nextSeq: number;
   exited: boolean;
@@ -35,6 +39,7 @@ export interface GuestProcessResult {
   stderr: string;
   output: string;
   outputTruncated: boolean;
+  outputCoverage: "reported" | "unavailable";
   terminationRequested: "cancelled" | "timeout" | "output-limit" | null;
   failure: string | null;
 }
@@ -69,6 +74,8 @@ async function finiteGuestProcess(
     afterSeq: number | null = null;
   let terminationRequested: GuestProcessResult["terminationRequested"] = null;
   let outputTruncated = false;
+  let outputLimitExceeded = false;
+  let coverageReported = true;
   let knownExited = false;
   let terminationDeadline: number | null = null;
   try {
@@ -106,9 +113,13 @@ async function finiteGuestProcess(
         ? "cancelled"
         : Date.now() >= deadline
           ? "timeout"
-          : outputTruncated
+          : outputLimitExceeded
             ? "output-limit"
             : null;
+      if (observeOnly && reason)
+        throw new Error(
+          "Linux process observation reached its bound; the process was left running.",
+        );
       if (
         reason &&
         terminationRequested === null &&
@@ -125,9 +136,14 @@ async function finiteGuestProcess(
         waitMs: 200,
       });
       knownExited = result.exited;
+      coverageReported &&= result.outputEvictedThroughSeq != null;
+      if (evictedOutputAfter(result, afterSeq) !== null) outputTruncated = true;
       for (const chunk of result.chunks) {
         const data = Buffer.from(chunk.chunk, "base64");
-        if (bytes + data.length > limit) outputTruncated = true;
+        if (bytes + data.length > limit) {
+          outputTruncated = true;
+          outputLimitExceeded = true;
+        }
         const retained = data.subarray(0, Math.max(0, limit - bytes));
         bytes += retained.length;
         if (retained.length)
@@ -162,6 +178,7 @@ async function finiteGuestProcess(
           stderr: text("stderr"),
           output,
           outputTruncated,
+          outputCoverage: coverageReported ? "reported" : "unavailable",
           terminationRequested,
           failure: result.failure,
         };

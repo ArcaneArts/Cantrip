@@ -94,6 +94,7 @@ function controlledDriver() {
     finish: (result: OsRunResult) => finish(result),
     started: () => callbacks.started(1),
     output: (data: string) => callbacks.output(data),
+    truncated: () => callbacks.truncated?.(),
   };
 }
 
@@ -127,6 +128,16 @@ describe("Linux Run common lifecycle", () => {
     expect(driver.stopRecorded).not.toHaveBeenCalled();
     driver.started();
     driver.output("retained output\n");
+    driver.truncated();
+    expect(
+      supervisor.output({
+        type: "cantrip-os.run-runtime.output",
+        ...capture,
+        serverId: "fixture",
+        requestOperationId: randomUUID(),
+        tail: 65536,
+      }),
+    ).toMatchObject({ data: "retained output\n", truncated: true });
     await supervisor.reconcileLinux([capture]);
     expect(supervisor.status(input.identity, capture)).toMatchObject({
       found: true,

@@ -14,12 +14,11 @@ import {
 
 type Command = Extract<WorkerCommand, { type: "cantrip-os.run-definition" }>;
 const response = (result: GuestProcessResult) => {
-  if (
-    result.exitCode !== 0 ||
-    result.outputTruncated ||
-    result.terminationRequested ||
-    result.failure
-  )
+  if (result.outputTruncated)
+    throw new OsExecutorDeliveryError(
+      "The Linux Run definition output is incomplete; its mutation was not repeated.",
+    );
+  if (result.exitCode !== 0 || result.terminationRequested || result.failure)
     throw new OsExecutorDeliveryError(
       `The Linux Run definition helper did not complete successfully: ${result.stderr.slice(-4000)}`,
     );

@@ -2826,3 +2826,57 @@ Protocol/Crypto builds, Worker type checking and strict checking of the real
 fixture import graph passed. Required `pnpm check` still stops at unchanged
 Server budgets (1519/1500 and 2230/1999). No guest package/native binary changed
 in this cycle and no new ISO is claimed.
+
+## Phase 5: output retention recovery (2026-11-05)
+
+Executor 0.10.0 reports the last actually evicted output sequence. Lifecycle
+sequence gaps do not imply lost output. Older executors omit this capability;
+the Worker reports unavailable coverage instead of claiming complete history.
+Run/terminal recovery retains the original process admission, marks actual loss,
+and continues observation. Read-only observation never kills work because its
+own output/time bound was reached. A lost successful source-command receipt is
+an unknown outcome, not a definite failure that can safely be repeated.
+
+Actual upgraded ARM64 Docker tests passed all three cases (21.05s total): native
+
+> 2 MiB output after carrier loss, Run recovery after a separate Worker SIGKILL,
+> and terminal recovery including nano, Unicode, resize, root descendants and an
+> independent process. Run/terminal floods caused real native eviction; they
+> retained their original process/admission and truncation state. Commands/input
+> were not replayed; explicit Stop performed cleanup. The installed AMD64
+> Debian/QEMU native eviction case passed over strict SSH (11.66s body / 13.01s
+> total). Earlier actual executor 0.9.0 installed compatibility also passed: its
+> stdout/exit result was usable while output coverage remained unavailable.
+
+Normal source builds produced both architecture packages without a cached
+runtime override. Their SHA-256 values are:
+
+- AMD64: `49200086f4cabf3cd328759f88c188dbb73568952ab3f9a1d3ea5b725f2f1336`
+- ARM64: `6373974698190b59d61499b962939b6d57f6193629f224721059a9a6d8b94f92`
+
+These package tests used the pre-rebase 78-patch native input, including this
+retention change. Later Main adds two separate Goal CLI journal patches; final
+Phase 5 distributions must rebuild the current complete input and record their
+source/checksums. These are not claimed as the final Docker/ISO artifacts.
+
+Sixteen native local-process unit cases passed (1.00s test bodies), and native
+core tests compiled. The cold Host build and shared-cache waits are not counted
+as test runtime. Forty-four focused Worker cases, Worker type checking and strict
+fixture-import checking passed on the feature source. Final rebased validation
+and patch verification are recorded below. The required root check on the
+original feature base reports unchanged Server budgets (1516/1500 and
+2230/1999). No hosted ordinary validation was run.
+
+Actual remote/product Worker restart acceptance, other admitted operations,
+private backup product controls, lifecycle/upgrade preservation and final
+recorded distribution acceptance remain Phase 5 requirements.
+
+After rebasing onto `413630b7e`, the retention change is patch `0079`; Main owns
+the intervening `0077`/`0078` CLI journal patches. The full upstream verifier
+actually applied all 80 patches and verified 9,191 pristine source files. The
+retention patch and affected Worker recovery source are unchanged by that
+rebase. The three focused Worker suites passed again (44 cases / 5.48s), and
+Worker/fixture type checking passed. Root validation reports the current
+unchanged budgets (1519/1500 and 2230/1999). The actual guest package tests above
+remain explicitly tied to their earlier native build input; final complete
+distribution builds are still pending.

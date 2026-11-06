@@ -23,6 +23,12 @@ import {
   type OsRunPlan,
 } from "./run-plan-contract.js";
 import { RunConfigurationOutputRedactor } from "../run-configuration-output-redactor.js";
+import {
+  evictedOutputAfter,
+  outputCoverageUnavailableNotice,
+  outputEvictionNotice,
+  type NativeOutputHistory,
+} from "./output-history.js";
 
 export const osRunLaunchSchema = cantripOsRunLaunchSchema;
 export type OsRunLaunch = CantripOsRunLaunch;
@@ -41,6 +47,7 @@ export type OsRunResult =
 export interface OsRunCallbacks {
   output(data: string): void;
   started(stopGracePeriodMs: number): void;
+  truncated?(): void;
 }
 type ProcessRecord = {
   id: string;
@@ -62,8 +69,9 @@ interface RunJournal {
   stopRequested?: boolean;
   gracefulWriteId?: string;
   stopGracePeriodMs?: number;
+  outputTruncated?: boolean;
 }
-interface Read {
+interface Read extends NativeOutputHistory {
   chunks: { seq: number; stream: string; chunk: string }[];
   nextSeq: number;
   exited: boolean;
@@ -439,6 +447,13 @@ export class OsRunGeneration {
     const value = this.redactor.write(data);
     if (value) this.callbacks.output(value);
   }
+  private async markOutputTruncated() {
+    this.callbacks.truncated?.();
+    if (!this.record.outputTruncated) {
+      this.record.outputTruncated = true;
+      await this.save();
+    }
+  }
   private async connect(resume: boolean) {
     if (!this.binding) throw new Error("Linux Run capability is unavailable.");
     await this.connection?.close();
@@ -514,6 +529,22 @@ export class OsRunGeneration {
           maxBytes: 65536,
           waitMs: 200,
         });
+      }
+      const evicted = evictedOutputAfter(value, sequence);
+      if (evicted !== null) {
+        await this.markOutputTruncated();
+        if (capture)
+          throw new OsExecutorDeliveryError(
+            "Linux preparation output was evicted; preparation was not repeated.",
+          );
+        for (const decoder of Object.values(decoders)) this.emit(decoder.end());
+        this.emit(outputEvictionNotice(evicted));
+      } else if (
+        !known &&
+        this.resumeOnly &&
+        value.outputEvictedThroughSeq == null
+      ) {
+        this.emit(outputCoverageUnavailableNotice);
       }
       sequence = Math.max(0, value.nextSeq - 1);
       if (
@@ -717,6 +748,7 @@ export class OsRunGeneration {
         admission = true;
       }
       this.journalReady = true;
+      if (this.record.outputTruncated) this.callbacks.truncated?.();
       const secrets = [];
       for (const secret of this.input.protectedSecrets)
         secrets.push({
@@ -733,6 +765,7 @@ export class OsRunGeneration {
         const last = saved.processes.at(-1);
         if (!saved.native || last?.phase !== "runtime") {
           if (saved.result && saved.result.outcome !== "unknown") {
+            await this.markOutputTruncated();
             this.callbacks.output(
               "\r\n[Earlier Linux preparation output was not recovered; preparation was not repeated.]\r\n",
             );
@@ -836,6 +869,7 @@ export class OsRunGeneration {
         this.record.result &&
         this.record.result.outcome !== "unknown"
       ) {
+        await this.markOutputTruncated();
         this.callbacks.output(
           "\r\n[The prior Run completion was retained; its output could not be fully recovered.]\r\n",
         );
