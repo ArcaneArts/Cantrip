@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./cantrip-os-backup": {
+      "types": "./src/cantrip-os-backup.ts",
+      "import": "./dist/cantrip-os-backup.js"
+    },
     "./computer-use-preferences": {
       "types": "./src/computer-use-preferences.ts",
       "import": "./dist/computer-use-preferences.js"

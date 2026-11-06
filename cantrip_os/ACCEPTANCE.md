@@ -2788,3 +2788,41 @@ shell syntax checks passed. Required `pnpm check` stops at unchanged baseline
 Server budgets: `build-app.ts` 1519/1500 and `chat-turn-runtime.ts` 2230/1999.
 No hosted ordinary validation was run. A fresh ISO is still required for final
 Phase 5 distribution acceptance; script wiring alone is not ISO boot evidence.
+
+## Phase 5: private Worker archive primitives (2026-11-05)
+
+The Worker now has versioned private archive framing using existing account
+component keys, HKDF and authenticated encryption with a backup-specific domain.
+Its files contain encrypted manifest/profile/path metadata and bounded archive
+chunks plus a mandatory authenticated end record. Sequence, account, Server,
+backup and revision binding prevent frame substitution. Complete data checks
+precede publication; existing destinations are never overwritten.
+
+The crypto identity/domain case passed, and four Worker file cases passed
+(2.76s bodies / 3.74s total). They verify historical grants after rotation,
+0600/0700 permissions, arbitrary input fragmentation, missing/reordered/duplicate/
+corrupt/trailing frames, preserved destinations, receipt mismatches, missing
+historical keys and an injected input-stream failure after a delivered prefix. Failed
+authentication/transfer leaves no published plaintext or partial file.
+
+Actual package roundtrips passed on ARM64 Docker with executor 0.9.0 (5.13s body /
+6.13s total), and installed AMD64 Debian/QEMU over strict SSH with executor 0.10.0
+(26.31s / 27.26s). Each wrote real ignored, Unicode and >2 MiB binary files using
+the native filesystem executor, captured through the optional package, streamed
+and sealed the archive outside native output retention, authenticated it on the
+Worker side, then received/restored into a new workspace account and read back
+identical bytes. Captured guest transfer staging was explicitly forgotten after
+success; Worker test plaintext/encrypted artifacts were removed. Proof JSON
+contains IDs/hashes/results rather than backup content or keys.
+
+These fixtures use ephemeral component key material through the Worker grant
+interface. They do not establish actual Server grant delivery, Server backup
+admissions/catalogue/UI, a real remote target or full product acceptance. Those
+remain required alongside Worker-failure recovery, lifecycle/upgrade preservation
+and final fresh distribution artifacts. The ordinary package command is still
+usable independently. See [the format and boundaries](BACKUPS.md).
+
+Protocol/Crypto builds, Worker type checking and strict checking of the real
+fixture import graph passed. Required `pnpm check` still stops at unchanged
+Server budgets (1519/1500 and 2230/1999). No guest package/native binary changed
+in this cycle and no new ISO is claimed.

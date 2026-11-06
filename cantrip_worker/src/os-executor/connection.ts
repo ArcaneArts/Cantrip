@@ -54,10 +54,21 @@ export function remoteCommand(transport: OsExecutorTransport, args: string[]) {
   return programCommand(transport, args, "cantrip-remote");
 }
 
+export function recoveryCommand(
+  transport: OsExecutorTransport,
+  args: string[],
+) {
+  return programCommand(transport, args, "cantrip-recovery");
+}
+
 function programCommand(
   transport: OsExecutorTransport,
   args: string[],
-  program: "cantrip-executor" | "cantrip-workspaces" | "cantrip-remote",
+  program:
+    | "cantrip-executor"
+    | "cantrip-workspaces"
+    | "cantrip-remote"
+    | "cantrip-recovery",
 ): { command: string; args: string[] } {
   if (transport.kind === "docker")
     return {
