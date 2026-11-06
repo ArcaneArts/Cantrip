@@ -116,7 +116,15 @@ export interface InferenceTicket {
   resumeWaiting(): void;
   /** Seal this exact unused reservation before returning durable no-start
    * evidence. This is not permission to replay its canonical input. */
-  withdrawUnstarted(reason?: Error): Promise<InferenceJournalRecord>;
+  withdrawUnstarted(
+    reason?: Error,
+    expectedQueueRevision?: number,
+  ): Promise<InferenceJournalRecord>;
+  /** Read this actual unused, unbound reservation without granting it. */
+  unstartedSource(): Promise<{
+    record: InferenceJournalRecord;
+    queueRevision: number;
+  }>;
   /** Actual keeper metadata for a fresh private Task Goal begin which has not
    * received model permission. Reading this does not reserve or withdraw it. */
   privateTaskGoalSource(): Promise<InferenceJournalRecord>;
@@ -567,12 +575,15 @@ export class WorkerInferenceAdmission {
   ): Promise<InferenceJournalRecord | null> {
     const recovery = source.identity.recovery;
     const cycle = recovery?.taskGoalCycle;
+    const input = recovery?.taskInput;
     if (
       !this.journal ||
-      !cycle ||
+      (!cycle && input?.kind !== "goal") ||
       !recoveryQueueIdentity(source.identity.chatId, recovery) ||
-      source.identity.operationId !==
-        `native-inference:${recovery?.threadId}:${recovery?.turnId}:${cycle.scopeId}:${cycle.gateAttemptId}`
+      (cycle
+        ? source.identity.operationId !==
+          `native-inference:${recovery?.threadId}:${recovery?.turnId}:${cycle.scopeId}:${cycle.gateAttemptId}`
+        : source.identity.operationId !== input!.operationId)
     )
       return null;
     const record = (await this.journal.snapshot()).find(
@@ -592,7 +603,8 @@ export class WorkerInferenceAdmission {
       record.state !== "released" ||
       record.outcome !== "never-started" ||
       (record.nativeExecution &&
-        (record.nativeExecution.threadId !== recovery?.threadId ||
+        (!cycle ||
+          record.nativeExecution.threadId !== recovery?.threadId ||
           record.nativeExecution.turnId !== recovery?.turnId ||
           record.nativeExecution.scopeId !== cycle.scopeId))
     )
@@ -1156,7 +1168,9 @@ export class WorkerInferenceAdmission {
         cancel: (reason) => this.cancel(ticket, reason),
         pauseWaiting: () => this.pauseWaiting(ticket),
         resumeWaiting: () => this.resumeWaiting(ticket),
-        withdrawUnstarted: (reason) => this.withdrawUnstarted(ticket, reason),
+        withdrawUnstarted: (reason, expectedQueueRevision) =>
+          this.withdrawUnstarted(ticket, reason, false, expectedQueueRevision),
+        unstartedSource: () => this.unstartedSource(ticket),
         privateTaskGoalSource: () => this.privateTaskGoalSource(ticket),
         withdrawTaskGoalBeforeAllow: (reason) => {
           if (ticket.withdrawal) return ticket.withdrawal;
@@ -1402,10 +1416,58 @@ export class WorkerInferenceAdmission {
     return record;
   }
 
+  private async unstartedSource(ticket: Ticket) {
+    const queueRevision = ticket.queueRevision;
+    const assertUnused = () => {
+      if (
+        !this.journal ||
+        !ticket.journalKey ||
+        !ticket.durableQueueReady ||
+        !["waiting", "granted"].includes(ticket.state) ||
+        ticket.startedAt !== null ||
+        ticket.nativeExecution ||
+        ticket.controller.signal.aborted ||
+        ticket.runtime.retired ||
+        ticket.runtime.retiring ||
+        this.closing ||
+        ticket.recoveryPending ||
+        ticket.queueRevision !== queueRevision
+      )
+        throw new UnstartedInferenceUnavailableError(
+          "The input no longer owns an unused unbound reservation.",
+        );
+    };
+    assertUnused();
+    const record = (await this.journal!.snapshot()).find(
+      (record) => record.key === ticket.journalKey,
+    );
+    assertUnused();
+    if (
+      !record ||
+      record.workerGeneration !== this.scope.workerGeneration ||
+      record.identity.runtimeGeneration !== ticket.runtime.generation ||
+      record.identity.operationId !== ticket.input.operationId ||
+      record.identity.providerId !== ticket.input.providerId ||
+      record.identity.chatId !== (ticket.input.chatId ?? null) ||
+      record.identity.projectId !== (ticket.input.projectId ?? null) ||
+      record.identity.recoveryKey !== (ticket.input.recoveryKey ?? null) ||
+      recoveryIdentity(record.identity.recovery) !==
+        recoveryIdentity(ticket.input.recovery) ||
+      !["waiting", "granted"].includes(record.state) ||
+      record.outcome !== null ||
+      record.nativeExecution
+    )
+      throw new UnstartedInferenceUnavailableError(
+        "The keeper no longer observes this unused input source.",
+      );
+    return { record, queueRevision };
+  }
+
   private withdrawUnstarted(
     ticket: Ticket,
     reason = new Error("Unstarted inference reservation withdrawn."),
     privateTaskGoal = false,
+    expectedQueueRevision?: number,
   ): Promise<InferenceJournalRecord> {
     if (ticket.withdrawal) return ticket.withdrawal;
     if (
@@ -1414,7 +1476,9 @@ export class WorkerInferenceAdmission {
       !["waiting", "granted"].includes(ticket.state) ||
       ticket.startedAt !== null ||
       (ticket.nativeExecution && !privateTaskGoal) ||
-      ticket.recoveryPending
+      ticket.recoveryPending ||
+      (expectedQueueRevision !== undefined &&
+        ticket.queueRevision !== expectedQueueRevision)
     )
       throw new UnstartedInferenceUnavailableError(
         "Only an unused, durably owned inference reservation can be withdrawn.",

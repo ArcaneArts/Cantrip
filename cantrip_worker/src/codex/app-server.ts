@@ -12,6 +12,10 @@ import {
   type WorkerTurnContinuation,
 } from "./worker-turn-continuation.js";
 import {
+  taskGoalHandoffCycle,
+  taskGoalInputCaptureSchema,
+  type TaskGoalInputTransferContext,
+  type TaskInferenceInputReceipt,
   providerUsesChatCompletions,
   nativeTurnSuspensionSchema,
   nativeSettingsVersionSchema,
@@ -1848,6 +1852,7 @@ export class CodexAppServer implements CodexRuntime {
       attemptId: string;
       scopeId: string;
       rootThreadId: string;
+      goalEpoch: string | null;
       phase: "begin" | "begin-independent" | "suspend" | "resume";
       denied: Promise<void>;
       confirmDenial(): void;
@@ -4853,6 +4858,7 @@ export class CodexAppServer implements CodexRuntime {
   taskGoalCaptureTarget(
     scope: NativeSettingsReadScope,
     cycleId: string,
+    input?: TaskInferenceInputReceipt,
   ): boolean {
     const overlay = this.#managedThreadOverlays.get(scope.threadId);
     return Boolean(
@@ -4864,7 +4870,17 @@ export class CodexAppServer implements CodexRuntime {
       overlay.taskGoalCycle?.cycleId === cycleId &&
       overlay.taskGoalCycle.modelRouteId === scope.modelRouteId &&
       overlay.taskGoalCycle.providerAccountId === scope.providerAccountId &&
-      this.#inference?.hasTaskGoalScope(scope.chatId, scope.threadId, cycleId),
+      (input
+        ? this.#inference?.hasTaskGoalInputScope(
+            scope.chatId,
+            scope.threadId,
+            input,
+          )
+        : this.#inference?.hasTaskGoalScope(
+            scope.chatId,
+            scope.threadId,
+            cycleId,
+          )),
     );
   }
 
@@ -4872,16 +4888,41 @@ export class CodexAppServer implements CodexRuntime {
     scope: NativeSettingsReadScope,
     cycleId: string,
     readSnapshot: () => Promise<ProtectedNativeSettingsSnapshot>,
+    input?: TaskInferenceInputReceipt,
   ) {
     const transport = this.transportGeneration;
     const inference = this.#inference;
-    if (!transport || !inference || !this.taskGoalCaptureTarget(scope, cycleId))
+    if (
+      !transport ||
+      !inference ||
+      !this.taskGoalCaptureTarget(scope, cycleId, input)
+    )
       throw new UnstartedInferenceUnavailableError(
         "The Task has no current private Goal source on this runtime.",
       );
-    const input = { chatId: scope.chatId, threadId: scope.threadId, cycleId };
-    const first = await inference.captureTaskGoalSource(input);
-    const cycle = first.identity.recovery!.taskGoalCycle!;
+    if (
+      input &&
+      (input.kind !== "goal" ||
+        input.chatId !== scope.chatId ||
+        input.workerId !== scope.workerId ||
+        input.worktreeId !== scope.placementId ||
+        input.dispatch.cycleId !== cycleId ||
+        input.modelRouteId !== scope.modelRouteId ||
+        input.providerAccountId !== scope.providerAccountId)
+    )
+      throw new UnstartedInferenceUnavailableError(
+        "The Task Goal input does not match its current root.",
+      );
+    const target = { chatId: scope.chatId, threadId: scope.threadId, cycleId };
+    let sourceQueueRevision: number | undefined;
+    const capture = async () => {
+      if (!input) return inference.captureTaskGoalSource(target);
+      const value = await inference.captureTaskGoalInputSource(input);
+      sourceQueueRevision = value.queueRevision;
+      return value.record;
+    };
+    const first = await capture();
+    const cycle = first.identity.recovery?.taskGoalCycle;
     const snapshot = await readSnapshot();
     const observation = await this.readManagedGoalRecovery(
       scope.threadId,
@@ -4891,40 +4932,53 @@ export class CodexAppServer implements CodexRuntime {
       snapshot.context.runtimeGeneration !== transport ||
       snapshot.context.settingsVersion.epoch !== observation.nativeEpoch ||
       observation.goal?.status !== "active" ||
-      observation.goalEpoch !== cycle.goalEpoch
+      !observation.goalEpoch ||
+      (cycle && observation.goalEpoch !== cycle.goalEpoch)
     )
       throw new UnstartedInferenceUnavailableError(
         "The native Task Goal changed during source capture.",
       );
-    z.object({
-      claimed: z.literal(true),
-      inferenceOnly: z.literal(true),
-      goalEpoch: z.literal(cycle.goalEpoch),
-    }).parse(
-      await this.#rpcRequests.request(
-        "thread/managedExecution/inferenceClaim",
-        {
-          threadId: scope.threadId,
-          turnId: first.identity.recovery!.turnId,
-          scopeId: cycle.scopeId,
-          runnerGeneration: cycle.runnerGeneration,
-          attemptId: cycle.gateAttemptId,
-        },
-        CODEX_RPC_TIMEOUT_MS,
-      ),
-    );
+    if (cycle)
+      z.object({
+        claimed: z.literal(true),
+        inferenceOnly: z.literal(true),
+        goalEpoch: z.literal(cycle.goalEpoch),
+      }).parse(
+        await this.#rpcRequests.request(
+          "thread/managedExecution/inferenceClaim",
+          {
+            threadId: scope.threadId,
+            turnId: first.identity.recovery!.turnId,
+            scopeId: cycle.scopeId,
+            runnerGeneration: cycle.runnerGeneration,
+            attemptId: cycle.gateAttemptId,
+          },
+          CODEX_RPC_TIMEOUT_MS,
+        ),
+      );
     this.assertManagedExecutionTransport(transport);
-    const record = await inference.captureTaskGoalSource(input);
+    const record = await capture();
     this.assertManagedExecutionTransport(transport);
     if (
       record.key !== first.key ||
       this.#inference !== inference ||
-      !this.taskGoalCaptureTarget(scope, cycleId)
+      !this.taskGoalCaptureTarget(scope, cycleId, input)
     )
       throw new UnstartedInferenceUnavailableError(
         "The private Task Goal changed during its Core ownership read.",
       );
-    return taskGoalCycleCaptureSchema.parse({ record, snapshot });
+    if (!input) return taskGoalCycleCaptureSchema.parse({ record, snapshot });
+    const overlay = this.#managedThreadOverlays.get(scope.threadId)!;
+    return taskGoalInputCaptureSchema.parse({
+      record,
+      snapshot,
+      taskGoalInput: {
+        goalEpoch: observation.goalEpoch,
+        runnerGeneration: overlay.options.executionGate!.runnerGeneration,
+        orderEpoch: overlay.taskGoalCycle!.orderEpoch,
+        sourceQueueRevision,
+      },
+    });
   }
 
   /** This checks an actual configured Task root, including its current FIFO
@@ -4958,6 +5012,7 @@ export class CodexAppServer implements CodexRuntime {
     operationId: string,
     scope: TaskGoalRootScope,
     transport: string,
+    pendingInputGoalEpoch?: string,
   ): Promise<void> {
     const overlay = this.taskGoalRoot(scope, transport);
     const hold = (overlay.rootHold ??= new ManagedRootProducerHold(this));
@@ -4969,6 +5024,68 @@ export class CodexAppServer implements CodexRuntime {
       current.options.executionGate?.runnerGeneration !== runner
     )
       throw new Error("The Task Goal root changed during its transfer hold.");
+    if (pendingInputGoalEpoch)
+      await this.settleTaskGoalInputProducer(
+        operationId,
+        scope,
+        transport,
+        pendingInputGoalEpoch,
+      );
+  }
+
+  /** The real root hold has already fenced allow for fresh autonomous begins.
+   * Deny only exact still-pending Core requests for this same Goal. Children,
+   * independent helpers, resumed turns and already-allowed work settle normally. */
+  private async settleTaskGoalInputProducer(
+    operationId: string,
+    scope: TaskGoalRootScope,
+    transport: string,
+    goalEpoch: string,
+  ) {
+    const overlay = this.taskGoalRoot(scope, transport);
+    const runner = overlay.options.executionGate!.runnerGeneration;
+    for (const pending of this.#nativeInferenceWaits.values()) {
+      if (
+        pending.phase !== "begin" ||
+        pending.threadId !== scope.threadId ||
+        pending.rootThreadId !== scope.threadId ||
+        pending.runnerGeneration !== runner ||
+        pending.goalEpoch !== goalEpoch ||
+        pending.controller.signal.aborted
+      )
+        continue;
+      const claim = z
+        .object({
+          claimed: z.boolean(),
+          inferenceOnly: z.boolean().optional(),
+          goalEpoch: z.string().nullable().optional(),
+        })
+        .parse(
+          await this.request("thread/managedExecution/inferenceClaim", {
+            threadId: pending.threadId,
+            turnId: pending.turnId,
+            scopeId: pending.scopeId,
+            runnerGeneration: runner,
+            attemptId: pending.attemptId,
+          }),
+        );
+      const current = this.taskGoalRoot(scope, transport);
+      if (current.rootHold?.confirmedBy !== operationId)
+        throw new Error("The Task input producer lost its actual native hold.");
+      if (
+        !claim.claimed ||
+        !claim.inferenceOnly ||
+        claim.goalEpoch !== goalEpoch ||
+        this.#nativeInferenceWaits.get(pending.attemptId) !== pending
+      )
+        continue;
+      pending.controller.abort(
+        new Error(
+          "The unused autonomous Goal begin yields to its first-input transfer.",
+        ),
+      );
+      await pending.denied;
+    }
   }
 
   /** Cancellation releases only this hold on the same inference-only gate.
@@ -5040,9 +5157,13 @@ export class CodexAppServer implements CodexRuntime {
     operationId: string,
     source: InferenceJournalRecord,
     existingOnly = false,
+    inputContext?: TaskGoalInputTransferContext,
   ): Promise<InferenceJournalRecord> {
     const recovery = source.identity.recovery;
-    const cycle = recovery?.taskGoalCycle;
+    const cycle = taskGoalHandoffCycle({
+      taskGoal: source,
+      taskGoalInput: inputContext,
+    });
     const transport = this.transportGeneration;
     if (!cycle || !source.identity.chatId || !recovery?.threadId || !transport)
       throw new UnstartedInferenceUnavailableError(
@@ -5065,12 +5186,33 @@ export class CodexAppServer implements CodexRuntime {
       throw new UnstartedInferenceUnavailableError(
         "This handoff has not withdrawn the Task Goal source.",
       );
-    const pending = this.#nativeInferenceWaits.get(cycle.gateAttemptId);
+    if (inputContext) {
+      const reason = new InferenceWithdrawalError();
+      const proof = this.#inference!.withdrawTaskGoalInputSource(
+        source,
+        reason,
+        inputContext.sourceQueueRevision,
+      );
+      overlay.taskGoalWithdrawal = {
+        operationId,
+        sourceKey: source.key,
+        reason,
+        proof,
+        denied: Promise.resolve(),
+      };
+      return proof;
+    }
+    const privateCycle = recovery?.taskGoalCycle;
+    if (!privateCycle)
+      throw new UnstartedInferenceUnavailableError(
+        "The Task transfer has no private cycle.",
+      );
+    const pending = this.#nativeInferenceWaits.get(privateCycle.gateAttemptId);
     if (
       !this.#inference ||
       pending?.threadId !== recovery.threadId ||
       pending.turnId !== recovery.turnId ||
-      pending.scopeId !== cycle.scopeId ||
+      pending.scopeId !== privateCycle.scopeId ||
       pending.runnerGeneration !== cycle.runnerGeneration ||
       overlay.options.executionGate!.runnerGeneration !== cycle.runnerGeneration
     )
@@ -5092,6 +5234,7 @@ export class CodexAppServer implements CodexRuntime {
   async acknowledgeTaskGoalProviderWithdrawal(
     operationId: string,
     source: InferenceJournalRecord,
+    proof: InferenceJournalRecord,
   ): Promise<void> {
     const threadId = source.identity.recovery?.threadId;
     const withdrawal = threadId
@@ -5108,7 +5251,17 @@ export class CodexAppServer implements CodexRuntime {
       operationId
     )
       throw new Error("The Task Goal root has not acknowledged its hold.");
-    await withdrawal.proof;
+    if (
+      proof.key !== source.key ||
+      proof.workerGeneration !== source.workerGeneration ||
+      !isDeepStrictEqual(proof.identity, source.identity) ||
+      proof.order !== source.order ||
+      proof.state !== "released" ||
+      proof.outcome !== "never-started"
+    )
+      throw new Error("The Task withdrawal has no exact keeper settlement.");
+    // The caller re-reads the actual keeper after canonical confirmation. A
+    // lost earlier journal ACK must not strand the old command's deny barrier.
     withdrawal.reason.acknowledge();
     // This proves negative Core resolution, not whole-tree quiescence. The
     // actual export still owns and checks its tree admission/Goal locks.
@@ -8093,6 +8246,7 @@ export class CodexAppServer implements CodexRuntime {
       ...base,
       scopeId,
       rootThreadId: rootThreadId ?? base.threadId,
+      goalEpoch: payload.data.goalEpoch ?? null,
       phase,
       controller: new AbortController(),
       denied,

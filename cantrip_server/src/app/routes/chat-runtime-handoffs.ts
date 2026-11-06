@@ -1,6 +1,6 @@
 import {
   nativeRuntimeHandoffRequestSchema,
-  taskGoalCycleCaptureSchema,
+  taskGoalHandoffCaptureSchema,
   type NativeRuntimeHandoffRequest,
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
@@ -24,12 +24,17 @@ export function installChatRuntimeHandoffRoutes(
   const { repository, bridge } = dependencies;
   const taskCapture =
     (ownerId: string): TaskGoalCaptureReader =>
-    async (scope, cycleId) => {
+    async (scope, cycleId, input) => {
       // Attempt the actual read. A cached availability flag is not a gate.
-      const captured = taskGoalCycleCaptureSchema.parse(
+      const captured = taskGoalHandoffCaptureSchema.parse(
         await bridge.request(
           scope.workerId,
-          { type: "task.goal.source", scope, cycleId },
+          {
+            type: "task.goal.source",
+            scope,
+            cycleId,
+            ...(input ? { input } : {}),
+          },
           { ownerId, timeoutMs: 10_000 },
         ),
       );

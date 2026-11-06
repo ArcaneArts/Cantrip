@@ -75,21 +75,25 @@ pub struct Service {
 impl Service {
     fn task_reader(&self, owner: &str) -> task_goal_capture::TaskGoalCaptureReader {
         let (commands, owner) = (self.commands.clone(), owner.to_owned());
-        Arc::new(move |scope, cycle| {
+        Arc::new(move |scope, cycle, input| {
             let (commands, owner) = (commands.clone(), owner.clone());
             async move {
                 let worker = text(&scope["workerId"])?;
+                let mut command = json!({"type":"task.goal.source","scope":scope,"cycleId":cycle});
+                if let Some(input) = input {
+                    command["input"] = input;
+                }
                 // Attempt the actual capture before checking connection identity.
                 let response = commands
                     .request_with_timeout(
                         &worker,
-                        json!({"type":"task.goal.source","scope":scope,"cycleId":cycle}),
+                        command,
                         RequestTimeout::After(std::time::Duration::from_secs(10)),
                         None,
                     )
                     .await?;
                 let captured = crate::settings::parse_response(
-                    "taskGoalCycleCaptureSchema",
+                    "taskGoalHandoffCaptureSchema",
                     response.as_ref(),
                 )?;
                 let actual = commands.connection_identity(&worker);

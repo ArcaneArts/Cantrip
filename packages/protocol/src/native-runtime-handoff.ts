@@ -3,7 +3,11 @@ import { modelProviderAccountWireSummarySchema } from "./providers.js";
 import { inferenceJournalRecordSchema } from "./inference-recovery.js";
 import { nativeAutonomousAttemptSchema } from "./native-commands.js";
 import { nativeGoalRecoverySourceSchema } from "./native-goal-recovery.js";
-import { taskGoalCycleSourceRecordSchema } from "./task-goal-transfer.js";
+import {
+  taskGoalCycleSourceRecordSchema,
+  taskGoalInputSourceRecordSchema,
+  taskGoalInputTransferContextSchema,
+} from "./task-goal-transfer.js";
 import { modelConfigurationSchema } from "./model-configuration.js";
 import {
   nativeSettingsBindingSchema,
@@ -37,7 +41,10 @@ export const nativeRuntimeHandoffQueuedSourceSchema = z
     goalWithdrawal: nativeGoalRecoveryWithdrawalSchema.optional(),
     // A private Task scope comes from the worker's actual keeper/Core capture;
     // it has no managed command or user-input claim to manufacture.
-    taskGoal: taskGoalCycleSourceRecordSchema.optional(),
+    taskGoal: z
+      .union([taskGoalCycleSourceRecordSchema, taskGoalInputSourceRecordSchema])
+      .optional(),
+    taskGoalInput: taskGoalInputTransferContextSchema.optional(),
     taskGoalControl: z
       .object({
         taskConfiguration: modelConfigurationSchema,
@@ -65,7 +72,17 @@ export const nativeRuntimeHandoffQueuedSourceSchema = z
       .strict()
       .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (
+      Boolean(value.taskGoalInput) !==
+      (value.taskGoal?.identity.recovery?.taskInput?.kind === "goal")
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: "Task Goal input context must match its actual receipt source",
+      });
+  });
 export type NativeRuntimeHandoffQueuedSource = z.infer<
   typeof nativeRuntimeHandoffQueuedSourceSchema
 >;

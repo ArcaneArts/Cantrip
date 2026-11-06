@@ -27,6 +27,7 @@
       "cantrip_server/src/app/routes/browser-management.ts",
       "cantrip_server/src/app/routes/browser-service-discovery.ts",
       "cantrip_server/src/app/routes/cantrip-os-backups.ts",
+      "cantrip_server/src/app/routes/cantrip-os-power.ts",
       "cantrip_server/src/app/routes/cantrip-os.ts",
       "cantrip_server/src/app/routes/chat-archive-lifecycle.ts",
       "cantrip_server/src/app/routes/chat-attachments.ts",
@@ -216,20 +217,20 @@
     "workerCommands": "packages/protocol/src/index.ts"
   },
   "summary": {
-    "application-principal": 499,
+    "application-principal": 504,
     "external-credential": 1,
     "public-authentication": 3,
     "public-bootstrap": 3,
     "worker-control": 46,
-    "http": 545,
+    "http": 550,
     "legacyLocalOwnerRoutes": 0,
     "requestPrincipalRoutes": 430,
-    "total": 552,
+    "total": 557,
     "websocket": 7,
     "workerCredentialRoutes": 46,
     "durableTables": 116,
     "agentOperations": 56,
-    "workerCommands": 308,
+    "workerCommands": 310,
     "liveResources": 47,
     "clientControlCommands": 4,
     "cliCommands": 35,
@@ -245,11 +246,11 @@
   },
   "contractSetDigests": {
     "agentOperations": "c01cedeb5ad07aa7eeee81033073509e4be8826ed45621e68200d85a2c5c61b9",
-    "applicationRoutes": "80275783889fa50d9562a615c4cc2bd79effbd471ba2953cd89a02dd5261f6b1",
+    "applicationRoutes": "b485aacdeea18de4574f3374759e8084ca36c7d03fe9726a0f8ec1be92be0ddd",
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
-    "workerCommands": "e61aa36d3e6ad4cf3793235764a7d726c13c7e113d7416ef15617d981f78a888",
+    "workerCommands": "e8dd67a75bc5f7847b5ed242e22d87f5a870f06daa9c1c31f6fef02c7060969c",
     "tunnelFrameKinds": "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8"
   },
   "durableTables": [
@@ -1301,6 +1302,71 @@
       "contentBoundary": {
         "classification": "endpoint-protected",
         "rationale": "owner-resolved backup operations carry endpoint-encrypted request/result envelopes; instance, operation, revision and phase are routing metadata, and archives remain on authorized endpoints"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "ownerEvidence": "delegated-or-missing-review",
+      "file": "cantrip_server/src/app/routes/cantrip-os-power.ts",
+      "line": 42,
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/power",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "owner-resolved retained Docker power target, operation identity, action and observed lifecycle metadata; no prompt or private file content is carried"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "ownerEvidence": "delegated-or-missing-review",
+      "file": "cantrip_server/src/app/routes/cantrip-os-power.ts",
+      "line": 46,
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/power-operations",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "owner-resolved retained Docker power target, operation identity, action and observed lifecycle metadata; no prompt or private file content is carried"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "ownerEvidence": "delegated-or-missing-review",
+      "file": "cantrip_server/src/app/routes/cantrip-os-power.ts",
+      "line": 59,
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/power-operations",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "owner-resolved retained Docker power target, operation identity, action and observed lifecycle metadata; no prompt or private file content is carried"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "ownerEvidence": "delegated-or-missing-review",
+      "file": "cantrip_server/src/app/routes/cantrip-os-power.ts",
+      "line": 76,
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/power-operations/:operationId",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "owner-resolved retained Docker power target, operation identity, action and observed lifecycle metadata; no prompt or private file content is carried"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "ownerEvidence": "delegated-or-missing-review",
+      "file": "cantrip_server/src/app/routes/cantrip-os-power.ts",
+      "line": 86,
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/power-operations/:operationId/observe",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "owner-resolved retained Docker power target, operation identity, action and observed lifecycle metadata; no prompt or private file content is carried"
       }
     },
     {
@@ -8312,6 +8378,8 @@
     "cantrip-os.backup.rollback",
     "cantrip-os.inspect",
     "cantrip-os.operation.inspect",
+    "cantrip-os.power.operation",
+    "cantrip-os.power.status",
     "cantrip-os.run-definition",
     "cantrip-os.run-runtime.output",
     "cantrip-os.run-runtime.reconcile",
@@ -8689,6 +8757,16 @@
       "command": "cantrip-os.operation.inspect",
       "classification": "intentionally-public-control-plane",
       "rationale": "authorized OS transport and workspace routing, canonical source scopes, lifecycle generations and receipts; source provision content uses a separate protected request"
+    },
+    {
+      "command": "cantrip-os.power.operation",
+      "classification": "intentionally-public-control-plane",
+      "rationale": "server-derived owner/worker/guest scope, retained Docker carrier generation and operation/action identity; actual container lifecycle remains worker-owned"
+    },
+    {
+      "command": "cantrip-os.power.status",
+      "classification": "intentionally-public-control-plane",
+      "rationale": "server-derived owner/worker/guest scope, retained Docker carrier generation and operation/action identity; actual container lifecycle remains worker-owned"
     },
     {
       "command": "cantrip-os.run-definition",
@@ -9948,7 +10026,7 @@
     {
       "command": "task.goal.source",
       "classification": "endpoint-protected",
-      "rationale": "owned chat/project/thread, provider route and canonical Task cycle identities only; the actual worker captures private-scope journal metadata and endpoint-encrypted native settings without preparing or granting inference"
+      "rationale": "owned chat/project/thread, provider route, canonical Task cycle and optional unused first-input receipt identities only; the worker captures actual keeper metadata and endpoint-encrypted native settings without granting inference or replaying the applied Goal setter"
     },
     {
       "command": "task.message.protect",

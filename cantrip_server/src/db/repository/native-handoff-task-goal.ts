@@ -5,6 +5,9 @@ import {
   nativeSettingsReadScopeSchema,
   taskGoalCycleSourceRecordSchema,
   taskGoalCycleRecoverySchema,
+  taskGoalHandoffCycle,
+  taskGoalInputSourceRecordSchema,
+  type TaskGoalInputTransferContext,
   type InferenceJournalRecord,
   type NativeRuntimeHandoffQueuedSource,
   type NativeSettingsBinding,
@@ -15,6 +18,10 @@ import * as schema from "../schema.js";
 import type { RepositoryTransaction } from "./database.js";
 import { nativeCommandContext } from "./native-command-context.js";
 import { NativeCommandError } from "./native-command-errors.js";
+import {
+  confirmTaskGoalInputHandoff,
+  type TaskGoalInputTransfer,
+} from "./native-handoff-task-goal-input.js";
 
 const fail = (): never => {
   throw new NativeCommandError(
@@ -79,6 +86,13 @@ export async function readTaskGoalHandoff(
         .limit(1)
     : [];
   const input = cycle?.goalInput;
+  const inputSource = Boolean(
+    input?.receipt.kind === "goal" &&
+    input.accepted &&
+    input.allAttemptsEnforced &&
+    !input.failedBeforeDispatch &&
+    input.firstDispatchedOperationId === null,
+  );
   if (
     !task ||
     !cycle ||
@@ -100,7 +114,7 @@ export async function readTaskGoalHandoff(
         chat.managedAutonomyStopped ||
         project.taskSchedulingPaused)) ||
     cycle.operationKind !== "finalize" ||
-    !cycle.startedAt ||
+    (!cycle.startedAt && !inputSource) ||
     (!allowInactive && ["paused", "cancelled"].includes(cycle.state)) ||
     cycle.physicalWorkerId !== context.workerId ||
     cycle.codexThreadId !== context.threadId ||
@@ -109,6 +123,7 @@ export async function readTaskGoalHandoff(
     cycle.providerAccountId !== context.providerAccountId ||
     (!allowInactive &&
       input &&
+      !inputSource &&
       !input.deferred &&
       !input.failedBeforeDispatch &&
       input.firstDispatchedOperationId === null)
@@ -124,19 +139,49 @@ export async function readTaskGoalHandoff(
     modelRouteId: context.modelRouteId,
     providerAccountId: context.providerAccountId,
   });
-  return { context, task: task!, cycle: cycle!, route: route!, scope };
+  return {
+    context,
+    task: task!,
+    cycle: cycle!,
+    route: route!,
+    scope,
+    inputSource,
+    paused: Boolean(
+      chat!.automationPaused ||
+      project!.taskSchedulingPaused ||
+      task!.state === "paused",
+    ),
+  };
 }
 
-type Current = NonNullable<Awaited<ReturnType<typeof readTaskGoalHandoff>>>;
+export type CurrentTaskGoalHandoff = NonNullable<
+  Awaited<ReturnType<typeof readTaskGoalHandoff>>
+>;
+type Current = CurrentTaskGoalHandoff;
 
 export function assertTaskGoalRecord(
   row: Current,
   scope: NativeSettingsReadScope,
   value: InferenceJournalRecord,
   original?: InferenceJournalRecord,
+  inputContext?: TaskGoalInputTransferContext,
 ) {
-  const record = taskGoalCycleSourceRecordSchema.parse(value);
-  const cycle = record.identity.recovery!.taskGoalCycle!;
+  const record = inputContext
+    ? taskGoalInputSourceRecordSchema.parse(value)
+    : taskGoalCycleSourceRecordSchema.parse(value);
+  const cycle = taskGoalHandoffCycle({
+    taskGoal: record,
+    taskGoalInput: inputContext,
+  });
+  if (!cycle || row.inputSource !== Boolean(inputContext)) fail();
+  if (
+    inputContext &&
+    !isDeepStrictEqual(
+      row.cycle.goalInput!.receipt,
+      record.identity.recovery!.taskInput,
+    )
+  )
+    fail();
   const key = createHash("sha256")
     .update(
       JSON.stringify([
@@ -170,8 +215,9 @@ export function reserveTaskGoalHandoff(
   row: Current,
   scope: NativeSettingsReadScope,
   record: InferenceJournalRecord,
+  inputContext?: TaskGoalInputTransferContext,
 ): NativeRuntimeHandoffQueuedSource {
-  assertTaskGoalRecord(row, scope, record);
+  assertTaskGoalRecord(row, scope, record, undefined, inputContext);
   if (!["waiting", "granted"].includes(record.state) || record.outcome !== null)
     fail();
   return {
@@ -179,6 +225,7 @@ export function reserveTaskGoalHandoff(
     operationGeneration: record.identity.runtimeGeneration,
     withdrawn: false,
     taskGoal: record,
+    ...(inputContext ? { taskGoalInput: inputContext } : {}),
     taskGoalControl: {
       taskConfiguration: row.task.modelConfiguration,
       cycleConfiguration: row.cycle.modelConfiguration,
@@ -218,7 +265,13 @@ export async function assertTaskGoalHandoff(
     nativeEpoch: _epoch,
     ...scope
   } = binding;
-  assertTaskGoalRecord(row!, scope, queued.taskGoal!, queued.taskGoal!);
+  assertTaskGoalRecord(
+    row!,
+    scope,
+    queued.taskGoal!,
+    queued.taskGoal!,
+    queued.taskGoalInput,
+  );
   if (
     queued.operationId !== queued.taskGoal!.identity.operationId ||
     queued.operationGeneration !==
@@ -242,8 +295,11 @@ export async function confirmTaskGoalHandoff(
   binding: NativeSettingsBinding,
   queued: NativeRuntimeHandoffQueuedSource,
   proof: InferenceJournalRecord | null,
+  inputTransfer?: TaskGoalInputTransfer,
 ) {
-  const row = await assertTaskGoalHandoff(tx, ownerId, binding, queued);
+  // Record positive no-start proof even if controls paused this exact source.
+  // This retires ownership; it does not authorize fresh inference.
+  const row = await assertTaskGoalHandoff(tx, ownerId, binding, queued, true);
   const source = queued.taskGoal!;
   const cycle = source.identity.recovery!.taskGoalCycle!;
   if (
@@ -255,11 +311,17 @@ export async function confirmTaskGoalHandoff(
     proof.state !== "released" ||
     proof.outcome !== "never-started" ||
     (proof.nativeExecution &&
-      (proof.nativeExecution.threadId !== binding.threadId ||
+      (!cycle ||
+        proof.nativeExecution.threadId !== binding.threadId ||
         proof.nativeExecution.turnId !== source.identity.recovery!.turnId ||
         proof.nativeExecution.scopeId !== cycle.scopeId))
   )
     fail();
+  if (queued.taskGoalInput) {
+    if (!inputTransfer) fail();
+    await confirmTaskGoalInputHandoff(tx, row, queued, inputTransfer!);
+    return;
+  }
   const previous = row.cycle.goalCycleRecovery;
   const same =
     previous &&
@@ -324,6 +386,63 @@ export async function commitTaskGoalHandoff(
     row.cycle.modelConfiguration ?? row.task.modelConfiguration,
   );
   const marker = row.cycle.goalCycleRecovery;
+  if (queued.taskGoalInput) {
+    const input = row.cycle.goalInput;
+    const change = input?.routeChange;
+    if (
+      !input?.deferred ||
+      !change ||
+      change.phase !== "draining" ||
+      change.inputOperationId !== queued.taskGoal.identity.operationId ||
+      change.targetModelRouteId !== target.routeId ||
+      change.targetProviderAccountId !== target.accountId
+    )
+      fail();
+    await tx
+      .update(schema.tasks)
+      .set({
+        modelConfiguration: taskConfiguration,
+        rowVersion: sql`${schema.tasks.rowVersion}+1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.tasks.chatId, binding.chatId));
+    await tx
+      .update(schema.taskDispatchCycles)
+      .set({
+        modelConfiguration: cycleConfiguration,
+        modelRouteId: target.routeId,
+        providerAccountId: target.accountId,
+        goalOrderEpoch: epoch,
+        goalInput: {
+          ...input!,
+          routeChange: {
+            ...change!,
+            phase: "completed",
+            completedAt: new Date().toISOString(),
+          },
+        },
+        ...(marker
+          ? {
+              goalCycleRecovery: {
+                ...marker,
+                admission: null,
+                settled: {
+                  reason: "transferred" as const,
+                  turnId: marker.turnId,
+                  operationId: null,
+                },
+              },
+            }
+          : {}),
+        eligibilityCode: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.taskDispatchCycles.id, row.cycle.id));
+    return {
+      ...queued,
+      taskGoalControl: { taskConfiguration, cycleConfiguration },
+    };
+  }
   if (
     !marker ||
     marker.settled ||

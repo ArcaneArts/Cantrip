@@ -17,8 +17,8 @@ import {
 } from "@/lib/client-session";
 import { readTaskGoalRuntimeSource } from "@/lib/native-runtime-handoff";
 
-/** Transfer only the actual unused private cycle. The server captures its
- * keeper Source again at begin; this view never submits or replays Goal input. */
+/** Transfer an actual unused Goal response or private cycle. The server captures
+ * its keeper Source again at begin; this view never submits or replays input. */
 export function TaskGoalProviderTransfer({
   chatId,
   queued,
@@ -104,19 +104,19 @@ export function TaskGoalProviderTransfer({
       >
         {controller.active
           ? "Provider transfer in progress"
-          : "Change queued cycle provider"}
+          : "Change queued Goal provider"}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Goal provider</DialogTitle>
             <DialogDescription>
-              Move a queued Goal cycle to another provider, account, or model.
-              The Goal and its history are retained.
+              Move a queued Goal response or cycle to another provider, account,
+              or model. The Goal and its history are retained.
             </DialogDescription>
           </DialogHeader>
           {source.isFetching ? (
-            <p role="status">Reading the queued Goal cycle…</p>
+            <p role="status">Reading the queued Goal…</p>
           ) : null}
           {source.error && !controller.active ? (
             <div role="alert" className="space-y-2 text-sm">
@@ -129,7 +129,7 @@ export function TaskGoalProviderTransfer({
               disabled={!queued || source.isFetching || controller.busy}
               onClick={() => void source.refetch()}
             >
-              Refresh queued cycle
+              Refresh queued Goal
             </Button>
           ) : null}
           {controller.query.error ? (
@@ -152,7 +152,7 @@ export function TaskGoalProviderTransfer({
                 Boolean(source.error)
               }
               allowSameProviderModelChange
-              description="The queued cycle continues automatically after transfer. Changing accounts or models within one provider keeps its queue position. A different provider places it at the end of that provider’s queue."
+              description="The queued Goal continues automatically after transfer. Changing accounts or models within one provider keeps its queue position. A different provider places it at the end of that provider’s queue."
             />
           ) : null}
         </DialogContent>

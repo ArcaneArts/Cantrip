@@ -124,9 +124,16 @@ pub(super) async fn confirm(
         .get("binding")
         .filter(|v| !v.is_null())
         .unwrap_or(&row["source"]);
-    guards::assert_source(tx, owner, source, &row["queued_source"], false).await?;
+    guards::assert_source(
+        tx,
+        owner,
+        source,
+        &row["queued_source"],
+        truthy(queued.get("taskGoal")),
+    )
+    .await?;
     if truthy(queued.get("taskGoal")) {
-        task_goal::confirm(tx, owner, source, queued, record).await?;
+        task_goal::confirm(tx, owner, source, queued, record, &row).await?;
         guards::assert_idle(tx, &text(&row["chat_id"])?, queued).await?;
         let mut confirmed = queued.clone();
         confirmed["withdrawn"] = json!(true);
