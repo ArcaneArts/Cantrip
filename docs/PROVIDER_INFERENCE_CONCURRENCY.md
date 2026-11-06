@@ -1864,6 +1864,25 @@ same encrypted prompt to the canonical queue and acknowledge withdrawal in one
 transaction. Source export and destination preparation start only after the
 original command's physical and logical cleanup completes.
 
+Patch `0081` also makes the actual native export acquire the existing tree
+execution coordinator. It refuses export while a registered child or auxiliary
+producer still owns an execution lease, while final hooks are settling, while
+native security settings are pending, or while an attached tree member retains
+a durable suspension hold. An empty root `active_turn` and a released provider
+ticket are not sufficient evidence that these native lifetimes ended.
+The coordinator lock remains held through the native history flush, last-turn
+comparison and portable history/settings capture. New tree execution cannot
+race between an idle observation and that capture. The existing root-turn and
+last-turn checks still run against the actual source. A refusal leaves the
+transfer reserved for retry or cancellation; it does not export partial state,
+reclaim a running ticket or replay input. This does not add portable child
+continuation support or enable Task-private Goal route transfers.
+
+The patch was authored from the tracked source fragments and source-reviewed.
+`git diff --check` ran; the native patch was not applied, compiled or executed.
+No tests, builds, typechecks, benchmarks, native/helper validation, hosted checks
+or computer-use testing ran for this change.
+
 The old command waits for that acknowledgement instead of racing ordinary failed
 turn cleanup. A lost reply retains the handoff reservation and exact withdrawal
 metadata in the existing worker journal. Recovery reads actual keeper metadata or
