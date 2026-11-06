@@ -688,6 +688,16 @@ after account creation with a withheld reply, reloads the client, and recovers
 the same receipt and UID without another create. Optional request generations
 also fence a destination change before the initial Server admission.
 
+Recovery 0.3.0 adds explicit selected-path and full-home reset commands, with
+verified staging and retained-original undo. The account and shared OS state
+survive; maintenance explicitly interrupts managed work across the instance.
+Actual Docker and installed-VM tests cover original data, ignored/Git files,
+metadata, interrupted staging/exchange, old-helper rejection and package removal.
+The VM also exercises a real nested mount; ordinary Docker reports its actual
+mount permission failure. This is the guest administration foundation. Server/
+Worker reset authority and Cantrip reset controls remain required, alongside the
+remaining system-preservation, upgrade, clone and distribution work.
+
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output
 recovery, and worker-offline behavior. Deliver workspace backups/restores,

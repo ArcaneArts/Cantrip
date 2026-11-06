@@ -11,7 +11,7 @@ import tempfile
 import time
 import uuid
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 BOOT_ID = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
 
 
@@ -106,8 +106,13 @@ class Store:
 
     def read(self, operation_id):
         record = json.loads((self.directory(operation_id) / "record.json").read_text())
-        if record.get("version") != 1 or record.get("operation_id") != operation_id:
+        if record.get("version") not in (1, 2) or record.get("operation_id") != operation_id:
             raise ValueError("Unsupported recovery record; state was preserved")
+        allowed = {"capture", "restore", "rollback"} if record["version"] == 1 else {"reset"}
+        if record.get("action") not in allowed:
+            raise ValueError("Unsupported recovery action version; state was preserved")
+        if record["version"] == 2 and record.get("state") not in ("admitted", "restoring", "reset", "failed"):
+            raise ValueError("Unsupported reset record state; state was preserved")
         return record
 
     def save(self, record):
@@ -115,6 +120,8 @@ class Store:
         write_json(self.directory(record["operation_id"]) / "record.json", record)
 
     def admit(self, operation_id, action, request):
+        if action not in ("capture", "restore", "rollback", "reset"):
+            raise ValueError("Unsupported recovery action")
         directory = self.directory(operation_id)
         active = self.root / "active.json"
         if active.exists():
@@ -134,7 +141,7 @@ class Store:
             if previous["fingerprint"] != fingerprint or previous["action"] != action:
                 raise ValueError("Operation ID belongs to another recovery admission")
             return previous, False
-        record = {"version": 1, "operation_id": operation_id, "action": action,
+        record = {"version": 2 if action == "reset" else 1, "operation_id": operation_id, "action": action,
                   "fingerprint": fingerprint, "request": request, "state": "admitted",
                   "pid": os.getpid(), "process_identity": process_identity(os.getpid()),
                   "created_at": time.time(), "receipt": None, "maintenance": None}

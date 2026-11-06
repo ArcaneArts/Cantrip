@@ -331,8 +331,9 @@ with store.lock():
         marker = home(source) / "writer"
         process = subprocess.Popen(["runuser", "-u", source["user"], "--", "python3", "-c",
             "import os,time,sys; from pathlib import Path; p=Path(sys.argv[1]); "
-            "p.write_text(str(os.getpid())); "
-            "exec('while True:\\n p.write_text(str(os.getpid()))\\n time.sleep(.01)')", str(marker)],
+            "ready=p.with_name('writer-ready.tmp'); ready.write_text(str(os.getpid())); "
+            "os.replace(ready,p); output=p.with_name('writer-output'); "
+            "exec('while True:\\n output.write_text(str(os.getpid()))\\n time.sleep(.01)')", str(marker)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             deadline = time.monotonic() + 10
