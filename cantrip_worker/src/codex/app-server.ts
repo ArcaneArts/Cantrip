@@ -8301,9 +8301,15 @@ export class CodexAppServer implements CodexRuntime {
 
   private async handleNativeResourceProtection(raw: unknown): Promise<void> {
     await handleNativeResourceProtection(raw, {
-      owner: () => {
+      owner: ({ threadId }) => {
         const transport = this.transportGeneration;
-        const runner = this.#inference?.generation;
+        const overlay = this.#managedThreadOverlays.get(threadId);
+        if (overlay && overlay.epoch !== this.#preparationEpoch) return null;
+        // Input-managed chats and Task inference gates have their own native
+        // runner. The process-wide inference channel is only the fallback.
+        const runner =
+          overlay?.options.executionGate?.runnerGeneration ??
+          this.#inference?.generation;
         return transport && runner ? { transport, runner } : null;
       },
       protection: this.resourceProtection,

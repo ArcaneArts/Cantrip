@@ -23,6 +23,13 @@ import { eventually, launchActualWorker } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
 import { killOwnedWorkerTree } from "./owned-worker-tree.mjs";
 import { openSuspensionTerminal } from "./suspension-terminal-browser.mjs";
+import {
+  completedSessionCommand,
+  completedSuspensionSession,
+  completedSessionPoll,
+  observeCompletedSessionPoll,
+  assertCompletedSessionResult,
+} from "./suspension-terminal-resource.mjs";
 import { verifyPendingSuspensionStop } from "./pending-suspension-stop.mjs";
 import {
   answerSuspensionInteraction,
@@ -227,6 +234,8 @@ async function flow(kind, executable, cliBinary) {
         },
       },
     ];
+    if (process.argv.includes("--completed-session"))
+      tool.calls[0].arguments = completedSessionCommand();
     if (process.argv.includes("--pending-approval")) {
       tool.calls[0].arguments.sandbox_permissions = "require_escalated";
       tool.calls[0].arguments.justification =
@@ -355,6 +364,8 @@ async function flow(kind, executable, cliBinary) {
       () => boundary.entered,
       (value) => assert.equal(value, true),
     );
+    if (process.argv.includes("--completed-session"))
+      result.session = await completedSuspensionSession(boundary, directory);
     if (result.question)
       result.question.activeModeChange = await qualifySuspensionPlanRoutes(
         page,
@@ -596,11 +607,17 @@ async function flow(kind, executable, cliBinary) {
         });
         return;
       }
-      const next = model.reply(
-        round === 1
-          ? { text: "DURABLE_BOUNDARY_TWO", hold: true }
-          : { text: "DURABLE_RECOVERED_FINAL" },
-      );
+      const polling =
+        round === 1 && result.session
+          ? completedSessionPoll(model, functions, result.session)
+          : null;
+      const next =
+        polling?.next ??
+        model.reply(
+          round === 1
+            ? { text: "DURABLE_BOUNDARY_TWO", hold: true }
+            : { text: "DURABLE_RECOVERED_FINAL" },
+        );
       const resumed = process.argv.includes("--mounted-ui")
         ? await clickMountedSuspensionResume(page, chat.id)
         : await page.evaluate(async (id) => {
@@ -617,6 +634,8 @@ async function flow(kind, executable, cliBinary) {
         (value) => assert.equal(value, true),
       );
       const restoredInput = JSON.stringify(next.request.input.input);
+      if (round === 2 && result.session)
+        assertCompletedSessionResult(next.request.input.input, result.session);
       assert.ok(restoredInput.includes(prompt));
       assert.ok(restoredInput.includes("DURABLE_TOOL_RESULT"));
       if (result.question) {
@@ -664,7 +683,9 @@ async function flow(kind, executable, cliBinary) {
         providerRequests: inferences(),
         native: active,
       });
-      boundary = next;
+      if (polling)
+        await observeCompletedSessionPoll(polling.afterPoll, result.session);
+      boundary = polling?.afterPoll ?? next;
     }
     const completed = await eventually(identity, (value) => {
       assert.equal(value.status, "idle");
@@ -741,6 +762,7 @@ async function flow(kind, executable, cliBinary) {
     const items = history
       .filter((row) => row.type === "response_item")
       .map((row) => row.payload);
+    if (result.session) assertCompletedSessionResult(items, result.session);
     if (result.question) {
       assert.equal(
         items.filter(
