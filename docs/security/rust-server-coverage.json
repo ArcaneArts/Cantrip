@@ -5262,6 +5262,20 @@
           "Wire-parser and build qualification does not establish actual Goal recovery fencing, runtime ownership, successful native Task/Goal completion or supported-platform acceptance.",
           "Complete current full-worker and multi-instance failure/recovery acceptance before default cutover."
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/cli",
+        "implementation": "cantrip_server_rs/src/http/cli.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/cli-http-compatibility.mjs",
+          "scripts/server-rust/cli-http-cases.mjs",
+          "scripts/server-rust/cli-http-recovery.mjs",
+          "scripts/server-rust/cli-context-oracle.mjs",
+          "cantrip_server_rs/src/cli/tests.rs",
+          "docs/RUST_SERVER_CLI.md"
+        ]
       }
     ]
   },
@@ -12863,6 +12877,57 @@
       "remaining": [
         "Actual full worker and native browser/product flows across supported platforms.",
         "Legacy CLI transport, migration/post-write rollback, coordination, packaging/default cutover and complete replacement acceptance."
+      ]
+    },
+    "legacyWorkerCli": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/cli",
+        "cantrip_server_rs/src/http/cli.rs",
+        "cantrip_server_rs/src/http/cli_commands.rs",
+        "cantrip_server_rs/src/http/cli_runs.rs",
+        "cantrip_server_rs/src/projects/targets/selectors.rs",
+        "cantrip_server_rs/src/projects/targets/selector_queries.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/cli-http-compatibility.mjs",
+        "scripts/server-rust/cli-http-cases.mjs",
+        "scripts/server-rust/cli-http-recovery.mjs",
+        "scripts/server-rust/cli-worker-heartbeat.mjs",
+        "scripts/server-rust/cli-context-oracle.mjs",
+        "scripts/server-rust/cli-wire-manifest.mjs",
+        "scripts/server-rust/cli-context-query-manifest.mjs",
+        "scripts/server-rust/cli-target-query-manifest.mjs",
+        "docs/RUST_SERVER_CLI.md"
+      ],
+      "scope": "All35 legacy CLI commands execute through native server services. Nine-field public contexts, explicit/automatic placement, exact/focused selectors, UTF16/full diagnostics,20argument limit, Run caller operation IDs/guard ordering, command-classified audits and admitted operation lifetime retain Source behavior. Worktree acquire is CLI-only and remains forbidden through MCP. Narrow lookup behavior with malformed unrelated Chat data and full stored-record validation diagnostics are compared over HTTP. Unchanged SDK reads, encrypted input and typed errors are exercised.",
+      "localQualification": {
+        "platform": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "authenticationModes": ["none", "password", "accounts"],
+        "callsPerPeerPerProfile": 108,
+        "pairedCases": 972,
+        "responses": 1944,
+        "successfulCommands": 35,
+        "socketDisconnects": 18,
+        "serverRestarts": 18,
+        "actualWorkerConnection": true,
+        "actualWorkerCliClient": true,
+        "fullWorkerProcess": false,
+        "rustLibraryTests": 54,
+        "cliWireComparisons": 7149,
+        "selectorQueryComparisons": 24,
+        "runMcpComparisons": 2617,
+        "strictAllTargetClippy": "pass",
+        "rootCheck": "Fails current Main-identical TypeScript budgets1527/1500 and2249/1999; not green.",
+        "actualWorkerCliClientCalls": 90,
+        "base": "293c3deded65f0840ea1da1d3e0e5cd8a0e351f4",
+        "referencePgliteShutdown": "Unmodified Node fixture hit15s deadline before Rust peer. Failure retained. Passing PGlite oracle explicitly tracks and drains actual Source repository/notification promises; original deadline/assertions unchanged. PostgreSQL uses ordinary reference fixture; Rust uses production drain.",
+        "unicodeWorkerIdentity": "Actual before/after HTTP proof: after SQL UTF8 replacement, status returns stored workerId; connection predicate retains original lookup identity."
+      },
+      "remaining": [
+        "Current integrated Main and supported-platform/product acceptance. Controlled endpoint/Git/Run replies do not prove full native-turn execution.",
+        "Full replacement migration/post-write rollback, coordination, performance, packaging/Winterhold rehearsal, default Rust cutover and production Node server removal."
       ]
     }
   },

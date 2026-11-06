@@ -84,11 +84,11 @@ fn summary(row: &Row, workspaces: i64, projects: i64, detail: bool) -> Result<Va
 }
 fn output(schema: &str, value: Value) -> Result<Value> {
     let parsed = crate::wire::parse(schema, Some(&crate::wire::Value::from_serialize(&value)))
-        .map_err(|_| StoredPolicyValidationError)?;
+        .map_err(|error| StoredPolicyValidationError(crate::settings::response_error(error)))?;
     Ok(serde_json::from_str(&parsed.stringify())?)
 }
 #[derive(Debug)]
-pub struct StoredPolicyValidationError;
+pub struct StoredPolicyValidationError(pub(crate) anyhow::Error);
 impl std::fmt::Display for StoredPolicyValidationError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str("Stored policy record violates its protocol contract.")

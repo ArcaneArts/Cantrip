@@ -5,6 +5,8 @@ pub(crate) mod mcp_queries;
 mod observations;
 mod reads;
 mod resolve;
+mod selector_queries;
+mod selectors;
 mod worktree_context;
 mod worktree_state;
 

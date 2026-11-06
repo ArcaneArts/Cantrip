@@ -119,9 +119,22 @@ impl Repository {
             .await
     }
     pub async fn context(&self, owner: &str, terminal: &str) -> Result<Option<Value>> {
+        self.context_with_raw_identity(owner, terminal, None).await
+    }
+    pub(crate) async fn context_for_cli(&self, owner: &str, id: &Value) -> Result<Option<Value>> {
+        let terminal = id.as_js_string().context("CLI Terminal identity")?.lossy();
+        self.context_with_raw_identity(owner, &terminal, Some(id))
+            .await
+    }
+    async fn context_with_raw_identity(
+        &self,
+        owner: &str,
+        terminal: &str,
+        raw: Option<&Value>,
+    ) -> Result<Option<Value>> {
         let rows=query_error::context(self.database.query(
             "SELECT to_jsonb(t)::text,to_jsonb(w)::text FROM terminals t INNER JOIN projects p ON p.id=t.project_id AND p.owner_id=$1 INNER JOIN project_worktrees w ON w.id=t.worktree_id WHERE t.id=$2 LIMIT 1",&[&owner,&terminal]).await,
-            &queries().context,&[Value::String(owner.into()),Value::String(terminal.into()),Value::Number(1.0)])?;
+            &queries().context,&[Value::String(owner.into()),raw.cloned().unwrap_or_else(||Value::String(terminal.into())),Value::Number(1.0)])?;
         let Some(row) = rows.first() else {
             return Ok(None);
         };

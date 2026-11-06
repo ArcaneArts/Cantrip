@@ -141,6 +141,14 @@ export async function surfaceContext(h, state, result) {
       assert.match(body.data.correlationId, uuid);
       aliases.set(body.data.correlationId, "<control:" + name + ">");
     }
+    result.lastResponse = {
+      name,
+      operation,
+      args,
+      status: response.status,
+      body,
+      httpRequestId,
+    };
     const after = await audits(),
       fresh = after.filter((row) => !before.some((old) => old.id === row.id));
     assert.equal(fresh.length, 1, JSON.stringify({ name, fresh }));

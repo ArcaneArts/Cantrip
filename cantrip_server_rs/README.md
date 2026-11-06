@@ -18,7 +18,10 @@ The registry advertises all 55 reference MCP operations in their original order.
 Help and web operations retain the unchanged worker's implementation; native
 binding authority preserves their grants, permissions and execution-lane rules.
 Direct server calls to these worker-owned tools retain the reference errors.
-Legacy CLI transport and full native product acceptance remain required.
+The legacy worker CLI relay now implements all 35 commands in Rust, including
+its independent context selection, full diagnostics and mutation audits. See
+[`docs/RUST_SERVER_CLI.md`](../docs/RUST_SERVER_CLI.md) for local qualification
+and its boundaries. Full native product acceptance remains required.
 The surface port preserves opaque endpoint data, exact owned target placement,
 permission/lane guards, browser revision conflicts and client acknowledgments.
 

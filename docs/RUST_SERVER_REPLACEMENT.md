@@ -7409,3 +7409,14 @@ export and `git diff --check` only. The native patch was not applied or executed
 no tests, builds, typechecks, benchmarks, native/helper execution,
 patch-application checks, hosted validation or computer-use checks ran. It adds
 no route or worker-command surface and establishes no runtime/platform acceptance.
+
+## Native legacy worker CLI relay
+
+The native server now implements all 35 legacy CLI commands through its existing
+repositories and domain services, preserving the separate CLI context, error,
+selector and audit contracts. Local all-three-store/all-three-authentication
+qualification includes real HTTP, unchanged worker transport/client, admitted
+write disconnects and server restarts. See [the CLI qualification](RUST_SERVER_CLI.md)
+for exact counts, commands and the controlled-worker/platform boundaries. This
+adds no worker rewrite or default-server cutover; complete product, packaging,
+migration/rollback and replacement acceptance remain required.

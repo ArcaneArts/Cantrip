@@ -11,11 +11,33 @@ import { literal, stamp } from "./project-target-state.mjs";
 import {
   settingsChat as chat,
   settingsProject as project,
+  settingsWorker as worker,
 } from "./native-settings-http-fixture.mjs";
 import { securityFixtures } from "./security-fixtures.mjs";
 
 export async function surfaceBoundaryCases(c) {
   const { h, call, binding, state, result } = c;
+  // A connected command socket does not replace the worker HTTP heartbeat.
+  // Exercise the same real 30-second presence expiry that can occur in a long
+  // controlled-worker run, then restore a present-worker setup for other cases.
+  await h.fixture.sql([
+    `UPDATE workers SET last_seen_at=now()-interval '31 seconds' WHERE id=${literal(worker)}`,
+  ]);
+  try {
+    await call(
+      "connected worker with expired heartbeat",
+      "explorer.write",
+      argumentsFor("explorer.write"),
+      503,
+    );
+    assert.equal(result.calls.at(-1).commands.length, 0);
+    assert.equal(result.calls.at(-1).body.code, "unavailable");
+  } finally {
+    await h.fixture.sql([
+      `UPDATE workers SET last_seen_at=now() WHERE id=${literal(worker)}`,
+    ]);
+  }
+
   const args = (op) =>
     op === "client.notify"
       ? securityFixtures.protectedClientNotificationSchema[0]

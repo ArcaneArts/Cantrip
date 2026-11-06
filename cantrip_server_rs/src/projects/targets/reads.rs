@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use std::sync::Arc;
 
 #[derive(Debug)]
-pub(crate) struct StoredTargetValidationError;
+pub(crate) struct StoredTargetValidationError(pub(crate) anyhow::Error);
 impl std::fmt::Display for StoredTargetValidationError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str("Invalid stored chat wire summary")
@@ -318,8 +318,11 @@ pub(super) fn resource(kind: Kind, raw: &Value) -> Result<Value> {
     }
     dates(&mut result, raw)?;
     if matches!(kind, Kind::Chat) {
-        return wire::parse("chatWireSummarySchema", Some(&result))
-            .map_err(|_| anyhow::Error::new(StoredTargetValidationError));
+        return wire::parse("chatWireSummarySchema", Some(&result)).map_err(|error| {
+            anyhow::Error::new(StoredTargetValidationError(
+                crate::settings::response_error(error),
+            ))
+        });
     }
     Ok(result)
 }
