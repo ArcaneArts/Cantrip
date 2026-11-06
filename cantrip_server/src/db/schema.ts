@@ -6311,3 +6311,5 @@ export const nativeHistoryItems = pgTable(
 );
 
 export { cantripOsBackupOperations } from "./schema-cantrip-os-backups.js";
+
+export { cantripOsWorkspaceOperations } from "./schema-cantrip-os-workspace-operations.js";

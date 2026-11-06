@@ -279,7 +279,10 @@ export class CantripOsController {
             command.scope,
             command.operationId,
             command.type,
-            { guestWorkspaceId: command.guestWorkspaceId },
+            {
+              guestWorkspaceId: command.guestWorkspaceId,
+              transport: command.transport,
+            },
             async () => ({
               kind: "workspace",
               workspace: workspace(
@@ -297,6 +300,14 @@ export class CantripOsController {
           command.scope,
           command.operationId,
         );
+        if (
+          record &&
+          Object.entries(command.scope).some(
+            ([key, value]) =>
+              record.scope[key as keyof typeof command.scope] !== value,
+          )
+        )
+          throw new Error("The recorded OS operation scope changed.");
         return record ? this.result(record) : null;
       }
       case "cantrip-os.source.provision": {

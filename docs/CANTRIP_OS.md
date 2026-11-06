@@ -676,6 +676,14 @@ of desktop stop/start. Installed-system lifecycle, wider model/remote acceptance
 resets/upgrades and final distributions remain required. These checkpoints do not
 complete Phase 5.
 
+Both Servers now persist immutable workspace-create admissions and expose owned
+history and observation. Retries inspect the original Worker journal without
+creating again. Lost-reply recovery is exercised against the real Docker guest;
+Server restart, changed-attachment registration and stale-observation fencing
+have matching Node/native HTTP acceptance. A missing Worker receipt stays
+unknown rather than inferring success from an account name. Persistent client
+creation recovery/history remains a separate checkpoint.
+
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output
 recovery, and worker-offline behavior. Deliver workspace backups/restores,

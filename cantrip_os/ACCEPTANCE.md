@@ -3616,3 +3616,46 @@ proofs are retained under ignored `cantrip_os/artifacts/phase5-desktop-controls/
 One Codex test tab crashed before Worker fault injection; its replacement kept
 the original admitted guest work, and the subsequent outage scenario passed.
 No hosted validation ran. Phase 5 remains in progress.
+
+## Phase 5: immutable workspace-create admissions (2026-11-06)
+
+Both Servers now persist the original workspace-create command before dispatch,
+with owned history and an explicit observation endpoint. Repeating the original
+request observes its original Worker operation and never dispatches create again.
+Receipt checks reject changed operation IDs or workspace names. Registration and
+receipt persistence share a transaction fenced by the original instance authority;
+a late completion for a replaced attachment remains historical. Observation
+revisions reject stale concurrent replies, and terminal results cannot be downgraded.
+
+Node HTTP acceptance uses a persistent PGlite database, closes and reopens the
+Server, recovers a deliberately lost reply, changes the attachment/transport,
+and checks ownership, mismatched intent/receipts, pagination and missing receipts.
+Native HTTP acceptance exercises the same cases through authenticated routes and
+a real managed PostgreSQL database. All four native CantripOS contract suites
+pass against the actual protocol definitions, including the new history schemas.
+An initial oracle run failed because two intentionally invalid query samples had
+been supplied as valid seed fixtures; corrected seeds pass the negative mutations.
+
+Actual Docker acceptance uses the installed executor 0.11.0 and workspace 0.4.0
+with the Server and real Worker Controller. The guest account is created once;
+the reply is withheld after its private Worker receipt is durable. Fresh Server
+and Controller objects, using their retained stores, recover the same receipt,
+UID/GID/home and operation start time without a second create command. This is
+Controller recovery acceptance, not full Worker-process or live-model acceptance.
+No guest package, OCI image or ISO changed in this checkpoint.
+
+Worker types and 17 focused operation/desktop/power tests pass, as do Server
+types and five Node HTTP tests. The real Server/Controller test passes in 3.21
+seconds; the existing actual Controller/source integration passes in 2.18 seconds.
+Both native HTTP suites pass (3.77 and 1.61 seconds), and focused native Clippy
+passes with warnings denied. Root `pnpm check` stops at the existing Server
+line budgets (1531/1500 and 2286/1999). The public protocol inventory has two
+existing failures, reproduced on clean Primary: 39 uncounted exports and eight
+additional Worker discriminators. The three new exports are included in its
+reviewed CantripOS list. No unrelated inventory repair or hosted validation ran.
+
+The existing creation form still keeps its request ID only while mounted;
+persistent client recovery/history is the next dependent checkpoint. Resets,
+system customization and failed-upgrade recovery, installed-system lifecycle,
+clone identity handling, actual remote/model acceptance and final current
+Docker/ISO artifacts remain required. Phase 5 is not complete.

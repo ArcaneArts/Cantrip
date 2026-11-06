@@ -10,6 +10,7 @@ mod recovery;
 pub(crate) mod run;
 mod run_selection;
 mod sources;
+mod workspace_operations;
 mod worktrees;
 use crate::database::{Database, Parameters, Row};
 use anyhow::{Context, Result};

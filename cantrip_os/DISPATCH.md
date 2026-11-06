@@ -31,6 +31,9 @@ transport references are scoped to its authenticated owner.
    `GET /api/cantrip-os/:instanceId/workspaces` lists recorded profiles. Create one
    with `POST` to the latter using `guestWorkspaceId` and a fresh UUID
    `operationId`. The guest supplies UID/GID/home; the client cannot choose them.
+   Both Servers persist the original create command before dispatch. Repeating
+   the same request observes its original Worker journal; it never sends create
+   again or changes its captured attachment, runtime or transport.
 4. Admit a binding with `POST /api/projects/:projectId/cantrip-os/bindings`:
    - Linked: `mode: "linked"`, `workspaceId`, the exact existing `worktreeId`, and
      explicit `dependencyOverlays`, such as `[{"path":"node_modules"}]`.
@@ -152,3 +155,32 @@ Worker and guest runtime changes can therefore be reported separately, including
 a new Worker with an unchanged guest runtime. Both historical generations fence
 the recovery update, so a late response cannot overwrite a newer Worker
 observation. This metadata does not grant execution authority or retarget chats.
+
+## Durable workspace creation
+
+Workspace creation retains the first Server admission's owner, logical Server,
+Worker, instance and guest identity, attachment/runtime generations, transport,
+workspace name and operation ID. Reusing an ID with different intent is rejected.
+Both Servers store this admission before sending a Worker command.
+
+`GET /api/cantrip-os/:instanceId/workspace-operations` lists owned history with
+`limit` (default 20, maximum 100) and an optional operation-ID `cursor`.
+`GET /api/cantrip-os/:instanceId/workspace-operations/:operationId` reads one
+summary. These summaries omit the private transport.
+`POST .../workspace-operations/:operationId/observe` observes the original Worker
+journal. Repeating the original create request also takes this observation path;
+it never sends create a second time. Terminal receipts remain available while
+the Worker or guest is offline.
+
+A missing Worker record or uncertain delivery remains unknown. The existence of
+an account with the same name does not prove that an admitted operation created
+it. Observation does not create an account or reconstruct a missing receipt.
+Worker inspection checks every original dispatch-scope field, while continuing
+to support core inspection of source operations with additional source fields.
+
+The Server validates the operation ID and workspace receipt. It records the
+historical outcome even if the attachment changed, but atomically registers the
+workspace only against the original current Worker/guest/attachment/runtime.
+Observation revisions prevent a late reply from overwriting a newer observation.
+The existing settings form still retains its creation ID only while mounted;
+persistent client recovery/history controls are a separate product checkpoint.

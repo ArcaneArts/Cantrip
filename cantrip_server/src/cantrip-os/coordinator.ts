@@ -1,3 +1,4 @@
+import { CantripOsWorkspaceOperationCoordinator } from "./workspace-operations.js";
 import {
   cantripOsRunDefinitionResponseSchema,
   type cantripOsRunDefinitionApiSchema,
@@ -355,27 +356,11 @@ export class CantripOsCoordinator {
     instanceId: string,
     input: ReturnType<typeof cantripOsWorkspaceCreateSchema.parse>,
   ) {
-    const { instance, transport } = await this.attachment(ownerId, instanceId);
-    const result = cantripOsOperationResultSchema.parse(
-      await this.bridge.request(
-        instance.workerId,
-        {
-          type: "cantrip-os.workspaces.create",
-          scope: this.scope(ownerId, instance),
-          transport,
-          ...input,
-        },
-        { ownerId },
-      ),
-    );
-    if (result.state === "ready" && result.receipt.kind === "workspace")
-      await this.repository.cantripOs.recordWorkspace(
-        ownerId,
-        instanceId,
-        instance.attachmentGeneration,
-        result.receipt.workspace,
-      );
-    return result;
+    return new CantripOsWorkspaceOperationCoordinator(
+      this.repository,
+      this.bridge,
+      this.serverId,
+    ).create(ownerId, instanceId, input);
   }
 
   async createBinding(
