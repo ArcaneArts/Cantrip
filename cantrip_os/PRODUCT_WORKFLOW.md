@@ -42,6 +42,15 @@ rewritten or made usable by mounting unrelated repositories.
 
 ## Uncertain operations and restarts
 
+**Create workspace** retains its exact request before sending it, including the
+selected instance's attachment and runtime. A changed destination is rejected
+before admission. A lost reply or page reload exposes **Observe saved request**;
+this reads the original operation without creating again. **Workspace creation
+history** retains its outcomes on the Server, independently of this browser.
+**Dismiss saved request** removes only browser recovery metadata and leaves the
+account and history intact. Missing receipts remain unknown. Account or Server
+changes do not redirect the saved request.
+
 Provisioning retains one prepared operation identity across manual retries.
 **Observe outcome** asks for the existing admitted operation; it does not clone
 or mount again. A saved completion is distinct from current availability.

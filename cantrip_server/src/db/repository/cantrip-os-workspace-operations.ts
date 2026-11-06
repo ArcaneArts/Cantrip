@@ -103,6 +103,15 @@ export class CantripOsWorkspaceOperationRepository {
         return { row: old, created: false };
       }
       const i = owned.instance;
+      if (
+        (input.attachmentGeneration !== undefined &&
+          input.attachmentGeneration !== i.attachmentGeneration) ||
+        (input.runtimeGeneration !== undefined &&
+          input.runtimeGeneration !== i.runtimeGeneration)
+      )
+        return fail(
+          "The selected OS attachment or runtime changed before workspace admission.",
+        );
       const scope = cantripOsDispatchScopeSchema.parse({
         ownerId,
         serverId,
@@ -116,7 +125,8 @@ export class CantripOsWorkspaceOperationRepository {
         type: "cantrip-os.workspaces.create",
         scope,
         transport: i.transport,
-        ...input,
+        operationId: input.operationId,
+        guestWorkspaceId: input.guestWorkspaceId,
       };
       const [row] = await tx
         .insert(operations)

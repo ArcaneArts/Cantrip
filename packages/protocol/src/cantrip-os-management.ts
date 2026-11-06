@@ -55,6 +55,8 @@ export const cantripOsWorkspaceCreateSchema = z
   .object({
     guestWorkspaceId: z.string().regex(/^[a-z][a-z0-9-]{0,23}$/),
     operationId: z.uuid(),
+    attachmentGeneration: z.uuid().optional(),
+    runtimeGeneration: z.uuid().optional(),
   })
   .strict();
 

@@ -182,5 +182,9 @@ The Server validates the operation ID and workspace receipt. It records the
 historical outcome even if the attachment changed, but atomically registers the
 workspace only against the original current Worker/guest/attachment/runtime.
 Observation revisions prevent a late reply from overwriting a newer observation.
-The existing settings form still retains its creation ID only while mounted;
-persistent client recovery/history controls are a separate product checkpoint.
+The settings form now retains the exact request before its first HTTP send,
+scoped to its account, logical Server and instance. Reloading exposes observation
+of that request. The form supplies its captured attachment/runtime generations;
+both Servers reject a changed destination before the first admission. Existing
+administrative callers may omit these optional fields and capture authority at
+Server admission. They are not forwarded as extra Worker command fields.
