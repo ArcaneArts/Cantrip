@@ -143,6 +143,14 @@ export const osCommands = [
     protectedRequest: backupRequest,
   },
   {
+    type: "cantrip-os.backup.reset",
+    scope: osScope,
+    operationId: id,
+    transport,
+    workspace: backupWorkspace,
+    protectedRequest: backupRequest,
+  },
+  {
     type: "cantrip-os.backup.restore",
     scope: osScope,
     operationId: id,
@@ -345,7 +353,7 @@ export function osDispatchFixtures() {
     ],
     cantripOsDispatchScopeSchema: [osScope],
     cantripOsBackupAdmissionSchema: [
-      ...["capture", "restore", "rollback"].map((action) => ({
+      ...["capture", "restore", "rollback", "reset"].map((action) => ({
         action,
         operationId: id,
         workspaceId: id,
@@ -379,7 +387,21 @@ export function osDispatchFixtures() {
         gitCommonGuestPath: null,
       },
     ],
+    cantripOsBackupResetCommandSchema: osCommands.filter(
+      (command) => command.type === "cantrip-os.backup.reset",
+    ),
+    cantripOsResetPathsSchema: [
+      ["."],
+      [".config/chromium", "Documents"],
+      ["日本語", "a\\b", "surrogate\ud800"],
+      ["a/b", "a/b-c"],
+    ],
     cantripOsBackupPrivateRequestSchema: [
+      {
+        action: "reset",
+        workspaceId: id,
+        paths: [".config/chromium", "Documents"],
+      },
       {
         action: "capture",
         workspaceId: id,
@@ -390,6 +412,7 @@ export function osDispatchFixtures() {
       { action: "rollback", workspaceId: id, restoreOperationId: id },
     ],
     cantripOsBackupPrivateResultSchema: [
+      { action: "reset", receipt: {}, interruption: null, cleanupWarnings: [] },
       {
         action: "error",
         operationAction: "restore",

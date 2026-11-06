@@ -43,7 +43,7 @@ export type BackupCheckpoint = z.infer<typeof backupCheckpointSchema>;
 export const backupReceiptSchema = z
   .object({
     kind: z.literal("backup-result"),
-    action: z.enum(["capture", "restore", "rollback"]),
+    action: z.enum(["capture", "restore", "rollback", "reset"]),
     protectedResult: cantripOsBackupResponseEnvelopeSchema,
   })
   .strict();

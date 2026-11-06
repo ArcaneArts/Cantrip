@@ -3756,3 +3756,59 @@ The guest reset CLI is implemented; Worker/Server admissions and product reset
 controls remain the next dependent work. Broader system-image preservation,
 failed-upgrade recovery, clone identity handling, live-model/real-remote
 acceptance and final current distributions still prevent Phase 5 completion.
+
+## Phase 5: private workspace reset admissions (2026-11-06)
+
+Recovery 0.3.0's reset is now routed through the existing private operation
+framework. Migration 0279 adds reset admissions without rewriting prior rows;
+the archive catalogue still contains captures only. Both Servers persist the
+original operation before dispatch, resolve numeric account/home/transport
+through the owned instance, and preserve original requests for observation.
+Rollback accepts a retained reset or restore on its original guest attachment
+and workspace. A reset is distinct from shared system replacement.
+
+The Worker decrypts canonical relative selections before admission, records the
+full immutable command and checkpoints before its single guest mutation. Receipt
+verification checks operation/action, exact selections, UID/GID/home and released
+maintenance. Successful receipts and actual failure details are encrypted using
+the account's existing repository-content grant. Public summaries do not expose
+paths or retained-directory locations. Reset records use guest journal version 2;
+existing capture/restore/rollback records retain version 1.
+
+Actual Docker and strict-SSH installed-VM Worker integration each pass selected
+reset/undo and whole-home lost-reply cases. The selected reset retains an ignored
+`.env`, removes the requested file and restores its original Unicode contents on
+undo. A subsequent write is read back from the retained replaced home after undo
+on both platforms. The whole-home case kills the dedicated Worker-process fixture
+after the actual guest reset, reopens its private operation store, observes the
+same guest receipt without another exchange and undoes it to recover `.env`.
+These tests use ephemeral key material through the grant interface; they are not
+full Cantrip Worker/client or cloud acceptance.
+
+Focused unit tests cover encrypted receipts/diagnostics, invalid/overlapping
+selections before effects, canonical workspace mismatch, lost replies, changed
+receipt account/path fields, observation versus explicit maintenance recovery,
+conclusive guest failure and supported journal versions. Node HTTP/PGlite and
+native HTTP/managed PostgreSQL acceptance cover reset generations, immutable
+admission/observation, hidden private selections, capture-only catalogue and
+original-target undo. Native contract comparisons additionally exercise canonical
+selections and invalid path matrices against the authoritative protocol.
+
+No guest package payload or distribution image changed in this backend cycle;
+Docker and the installed AMD64 VM use the normal recovery 0.3.0 artifact recorded
+above. Dedicated Cantrip reset controls, full product failure/reload acceptance,
+shared system replacement/failed-upgrade repair, clone identity handling,
+real remote/model acceptance and final current distributions remain required.
+
+Local checks: 15 Worker unit/regression cases across three files, eight existing
+client backup cases, Node HTTP/PGlite acceptance, four native contract suites and
+native HTTP/managed PostgreSQL acceptance pass. The full Docker Worker recovery
+suite passes all seven cases, including existing capture/restore/continuation
+and process-loss cases. Both installed-VM reset cases pass, with a separate
+retained-write assertion also passing over strict SSH. Worker/Server/client
+TypeScript checks and native all-target Clippy with warnings denied pass.
+`pnpm check` stops at the existing decomposition budgets (`build-app.ts`
+1531/1500 and `chat-turn-runtime.ts` 2286/1999). The first native HTTP launch
+omitted its PostgreSQL fixture environment, and the initial path matrix was
+placed in the oracle's positive fixture list; both harness failures were corrected
+and their logs retained. No hosted ordinary-PR validation was used.

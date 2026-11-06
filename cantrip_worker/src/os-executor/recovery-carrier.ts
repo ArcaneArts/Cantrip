@@ -10,9 +10,9 @@ import {
 
 export const recoveryGuestRecordSchema = z
   .object({
-    version: z.literal(1),
+    version: z.union([z.literal(1), z.literal(2)]),
     operation_id: z.string().uuid(),
-    action: z.enum(["capture", "restore", "rollback"]),
+    action: z.enum(["capture", "restore", "rollback", "reset"]),
     state: z.enum([
       "admitted",
       "capturing",
@@ -21,6 +21,7 @@ export const recoveryGuestRecordSchema = z
       "received",
       "restoring",
       "restored",
+      "reset",
       "rolled-back",
       "failed",
       "forgotten",
@@ -31,7 +32,17 @@ export const recoveryGuestRecordSchema = z
     maintenance: z.record(z.string(), z.unknown()).nullable(),
     active: z.boolean(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) =>
+      value.version === 2
+        ? value.action === "reset" &&
+          ["admitted", "restoring", "reset", "failed", "unknown"].includes(
+            value.state,
+          )
+        : value.action !== "reset",
+    "Unsupported recovery action version; state was preserved",
+  );
 
 export type RecoveryGuestRecord = z.infer<typeof recoveryGuestRecordSchema>;
 

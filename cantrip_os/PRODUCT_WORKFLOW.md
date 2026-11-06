@@ -433,6 +433,17 @@ restart, using a separately recorded runtime authorization. It cannot change
 the instance, attachment, account or Worker. File restoration leaves source
 rebinding and captured chats deliberate. The following controls build on this API.
 
+## Workspace reset backend checkpoint
+
+The private recovery API now admits selected-path and whole-home reset through
+both Servers and the Worker. It retains an original home for undo, journals the
+original destination before dispatch and recovers guest receipts without another
+reset. The private backup catalogue still lists captures only. See
+[reset admissions](BACKUPS.md#workspace-reset-admissions) for request and recovery
+semantics and the [optional recovery package](packages/recovery/README.md) for
+administration commands. Dedicated reset confirmation/history controls and full
+product acceptance follow this backend checkpoint.
+
 ## Private workspace backups
 
 Open **Project settings → CantripOS**, select an instance/workspace and use

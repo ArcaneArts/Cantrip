@@ -109,6 +109,11 @@ export async function backupCommand(
       })),
     });
   }
+  if (input.action === "reset")
+    return cantripOsBackupWorkerCommandSchema.parse({
+      ...base,
+      type: "cantrip-os.backup.reset",
+    });
   const referenceId =
     input.action === "restore" ? input.backupId : input.restoreOperationId;
   const [reference] = await tx
@@ -123,7 +128,9 @@ export async function backupCommand(
   if (
     !reference ||
     reference.workerId !== i.workerId ||
-    reference.action !== (input.action === "restore" ? "capture" : "restore")
+    (input.action === "restore"
+      ? reference.action !== "capture"
+      : !["restore", "reset"].includes(reference.action))
   )
     throw new CantripOsPlacementError(
       "The referenced backup operation belongs to another target or storage Worker.",
@@ -136,7 +143,12 @@ export async function backupCommand(
       backupScope: reference.command.scope,
       replace: input.replace,
     });
-  if (reference.instanceId !== i.id || reference.workspaceId !== w.id)
+  if (
+    reference.instanceId !== i.id ||
+    reference.workspaceId !== w.id ||
+    reference.command.scope.guestInstanceId !== i.guestInstanceId ||
+    reference.command.scope.attachmentGeneration !== i.attachmentGeneration
+  )
     throw new CantripOsPlacementError(
       "Rollback must target the original restore workspace.",
     );

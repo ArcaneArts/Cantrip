@@ -17,6 +17,8 @@ fn linux_source_contracts_match_the_actual_protocol() -> Result<()> {
         "cantripOsOperationResultSchema",
         "cantripOsBackupOperationResultSchema",
         "cantripOsBackupPrivateRequestSchema",
+        "cantripOsResetPathsSchema",
+        "cantripOsBackupResetCommandSchema",
         "cantripOsBackupPrivateResultSchema",
         "cantripOsBackupWorkspaceSchema",
         "cantripOsBackupAdmissionSchema",

@@ -149,6 +149,46 @@ substituted. A stale health flag alone does not prevent the actual pinned
 operation: the Worker/guest verify its exact runtime and identities. Restoring
 files does not recreate source bindings or retarget old chats.
 
+## Workspace reset admissions
+
+The recovery-operation API also admits `action: "reset"`. This is a filesystem
+reset with a retained original, not an encrypted archive capture; the backup
+catalogue continues to contain capture rows only. Migration 0279 extends the
+existing action constraint and preserves existing admissions and references.
+
+The public admission pins the selected workspace, attachment and runtime, using
+the same immutable operation UUID and protected-request envelope as backups.
+Only the encrypted private intent contains `paths`: a nonempty list of canonical
+home-relative paths, or `["."]` for the complete home. Duplicate, overlapping,
+absolute and traversal selections are rejected before Worker admission. Shared
+packages, `/etc`, account identity and machine identity are outside this reset.
+
+The Worker decrypts and verifies the intent, records the complete original
+command privately, and dispatches `cantrip-recovery reset` once with expected
+instance, runtime and numeric account identity. Reset receipts must match the
+original workspace ID, UID/GID, home and exact path list, and confirm that
+maintenance was released. Paths, retained-directory locations, interruption
+information and actual diagnostics stay in the encrypted response.
+
+Observation reconciles the existing operation, including after Worker restart.
+Explicit recovery can release interrupted maintenance and reconcile the actual
+home exchange. Neither recovery nor continuation repeats a reset, even if the
+saved checkpoint never received a guest reply. Missing Worker journals remain
+unknown; an account name does not prove a reset happened.
+
+Undo uses the existing `rollback` action; its historical `restoreOperationId`
+field can reference a reset or restore. Admission requires the original instance,
+workspace, guest identity and attachment. A new runtime on that same attachment
+can be selected deliberately. The guest verifies the actual retained directories
+before exchanging them, retaining the replaced home and subsequent writes.
+
+Reset currently interrupts all managed Cantrip workspace services through the
+shared maintenance mechanism. Other workspace files remain unchanged. Old live
+processes, windows and runtime handles are not restored; after maintenance,
+explicitly check recovery and verify affected sources against the fresh runtime.
+The package CLI and backend are implemented; dedicated Cantrip reset controls
+and full product acceptance are the next checkpoint.
+
 ## Evidence and remaining work
 
 Unit tests cover identity/key/position authentication, historical grants,

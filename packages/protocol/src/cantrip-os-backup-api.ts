@@ -13,6 +13,7 @@ const admission = z.object({
 });
 export const cantripOsBackupAdmissionSchema = z.discriminatedUnion("action", [
   admission.extend({ action: z.literal("capture") }).strict(),
+  admission.extend({ action: z.literal("reset") }).strict(),
   admission
     .extend({
       action: z.literal("restore"),
@@ -43,7 +44,7 @@ export const cantripOsBackupListQuerySchema = z
 export const cantripOsBackupSummarySchema = z
   .object({
     operationId: z.uuid(),
-    action: z.enum(["capture", "restore", "rollback"]),
+    action: z.enum(["capture", "restore", "rollback", "reset"]),
     instanceId: z.uuid(),
     workspaceId: z.uuid(),
     workerId: z.string().min(1),

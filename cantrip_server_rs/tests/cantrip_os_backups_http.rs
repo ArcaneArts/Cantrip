@@ -357,6 +357,64 @@ async fn backup_http_keeps_owned_admissions_across_native_server_restart() -> Re
         .0,
         400
     );
+    let reset_id = id();
+    let reset = json!({"action":"reset","operationId":reset_id,"workspaceId":workspace["id"],"attachmentGeneration":instance["attachmentGeneration"],"runtimeGeneration":changed,"protectedRequest":frame(1)});
+    let before_reset = commands.lock().unwrap().len();
+    let mut stale = reset.clone();
+    stale["runtimeGeneration"] = json!(original_runtime);
+    assert_eq!(post(&client, &running.base, &route, &stale).await?.0, 409);
+    assert_eq!(commands.lock().unwrap().len(), before_reset);
+    let (status, reset_result) = post(&client, &running.base, &route, &reset).await?;
+    assert_eq!(status, 200, "{reset_result}");
+    assert_eq!(reset_result["result"]["state"], "ready");
+    let (status, observed_reset) = post(&client, &running.base, &route, &reset).await?;
+    assert_eq!(status, 200, "{observed_reset}");
+    assert_eq!(
+        commands
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c["type"] == "cantrip-os.backup.reset")
+            .count(),
+        1
+    );
+    let (_, archives) = get(&client, &running.base, "/api/cantrip-os/backups").await?;
+    assert!(
+        !archives["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["operationId"] == reset_id)
+    );
+    let undo = json!({"action":"rollback","operationId":id(),"workspaceId":workspace["id"],"attachmentGeneration":instance["attachmentGeneration"],"runtimeGeneration":changed,"restoreOperationId":reset_id,"protectedRequest":frame(1)});
+    let (status, undone) = post(&client, &running.base, &route, &undo).await?;
+    assert_eq!(status, 200, "{undone}");
+    assert_eq!(undone["result"]["state"], "ready");
+    assert_eq!(
+        commands.lock().unwrap().last().unwrap()["restoreOperationId"],
+        reset_id
+    );
+    let before_wrong_undo = commands.lock().unwrap().len();
+    let mut wrong_undo = undo.clone();
+    wrong_undo["operationId"] = json!(id());
+    wrong_undo["workspaceId"] = target_workspace["id"].clone();
+    wrong_undo["attachmentGeneration"] = destination["attachmentGeneration"].clone();
+    wrong_undo["runtimeGeneration"] = json!(target_runtime);
+    assert_eq!(
+        post(
+            &client,
+            &running.base,
+            &format!(
+                "/api/cantrip-os/{}/backup-operations",
+                destination["id"].as_str().unwrap()
+            ),
+            &wrong_undo
+        )
+        .await?
+        .0,
+        409
+    );
+    assert_eq!(commands.lock().unwrap().len(), before_wrong_undo);
     running.stop.send(()).ok();
     running.server.await??;
     running.responder.abort();

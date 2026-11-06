@@ -68,11 +68,12 @@ it(
             if (
               command.type !== "cantrip-os.backup.capture" &&
               command.type !== "cantrip-os.backup.restore" &&
-              command.type !== "cantrip-os.backup.rollback"
+              command.type !== "cantrip-os.backup.rollback" &&
+              command.type !== "cantrip-os.backup.reset"
             )
               throw new Error("Unexpected mutation");
             const action = command.type.slice("cantrip-os.backup.".length) as
-              "capture" | "restore" | "rollback";
+              "capture" | "restore" | "rollback" | "reset";
             const at = new Date().toISOString();
             const result = {
               operationId: command.operationId,
@@ -457,6 +458,84 @@ it(
         if (!cursor) break;
       }
       expect(ordered).toEqual([thirdId, secondId, captureId]);
+      // Reset is an immutable private recovery admission, not an archive entry.
+      const resetId = randomUUID();
+      const reset = {
+        action: "reset",
+        operationId: resetId,
+        workspaceId: source.id,
+        attachmentGeneration: instance.attachmentGeneration,
+        runtimeGeneration: changedRuntime,
+        protectedRequest: cantripOsBackupRequestEnvelopeSchema.parse(
+          await frame(resetId, "request", {
+            action: "reset",
+            workspaceId: source.id,
+            paths: [".config/chromium"],
+          }),
+        ),
+      };
+      const beforeReset = sent.length;
+      expect(
+        (await post(url, { ...reset, runtimeGeneration: runtime })).statusCode,
+      ).toBe(409);
+      expect(sent).toHaveLength(beforeReset);
+      loseReply = true;
+      expect((await post(url, reset)).json().result.state).toBe("unknown");
+      expect((await post(url, reset)).json().result.state).toBe("ready");
+      expect(
+        sent.filter((c) => c.type === "cantrip-os.backup.reset"),
+      ).toHaveLength(1);
+      const savedReset = (await repository.backups.get("owner", resetId))!;
+      expect(savedReset.command).toMatchObject({
+        type: "cantrip-os.backup.reset",
+        workspace: { uid: 20000, homeGuestPath: "/private/source-home" },
+      });
+      expect(
+        JSON.stringify(
+          (
+            await app.inject(`/api/cantrip-os/backup-operations/${resetId}`)
+          ).json(),
+        ),
+      ).not.toContain(".config/chromium");
+      expect(
+        (await app.inject("/api/cantrip-os/backups"))
+          .json()
+          .items.map((item: { operationId: string }) => item.operationId),
+      ).not.toContain(resetId);
+      const undoId = randomUUID();
+      const undo = {
+        action: "rollback",
+        operationId: undoId,
+        workspaceId: source.id,
+        attachmentGeneration: instance.attachmentGeneration,
+        runtimeGeneration: changedRuntime,
+        restoreOperationId: resetId,
+        protectedRequest: cantripOsBackupRequestEnvelopeSchema.parse(
+          await frame(undoId, "request", {
+            action: "rollback",
+            workspaceId: source.id,
+            restoreOperationId: resetId,
+          }),
+        ),
+      };
+      expect((await post(url, undo)).json().result.state).toBe("ready");
+      expect(sent.at(-1)).toMatchObject({
+        type: "cantrip-os.backup.rollback",
+        restoreOperationId: resetId,
+      });
+      const beforeWrongUndo = sent.length;
+      expect(
+        (
+          await post(`/api/cantrip-os/${targetInstance.id}/backup-operations`, {
+            ...undo,
+            operationId: randomUUID(),
+            workspaceId: destination.id,
+            attachmentGeneration: targetInstance.attachmentGeneration,
+            runtimeGeneration: targetRuntime,
+          })
+        ).statusCode,
+      ).toBe(409);
+      expect(sent).toHaveLength(beforeWrongUndo);
       online = false;
       const offline = await post(
         `/api/cantrip-os/backup-operations/${captureId}/recovery`,
