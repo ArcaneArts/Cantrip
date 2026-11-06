@@ -11,6 +11,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { WorkerEncryptionService } from "./worker-encryption.js";
+import { captureWorkerTurn } from "./codex/worker-turn-continuation.js";
+import { workerTurnState } from "./codex/worker-turn-continuation.test-fixture.js";
 import { createNativeResourceProtection } from "./native-resource-protection.js";
 import {
   NativeSuspensionStore,
@@ -120,6 +122,64 @@ afterEach(async () => {
 });
 
 describe("native suspension source registry with actual worker encryption", () => {
+  it("keeps legacy evidence inspectable and protects worker bookkeeping under a distinct immutable locator", async () => {
+    const w = await worker();
+    const legacy = await w.store.commit(input);
+    const continuation = captureWorkerTurn(
+      workerTurnState(),
+      suspension.turnId,
+    );
+    const evidence = await w.store.commit({ ...input, continuation });
+    expect(evidence.storageId).not.toBe(legacy.storageId);
+    const filename = await file(w.dataDirectory, evidence.storageId);
+    const bytes = await readFile(filename, "utf8");
+    expect(JSON.parse(bytes).version).toBe(2);
+    for (const value of [
+      "SAVED_ASSISTANT",
+      "before.txt",
+      "completed-command",
+      input.home,
+    ])
+      expect(bytes).not.toContain(value);
+    const fresh = await worker(w.dataDirectory);
+    expect(
+      (await fresh.store.open(evidence.storageId, source)).continuation,
+    ).toEqual(continuation);
+    expect(
+      (await fresh.store.open(legacy.storageId, source)).continuation,
+    ).toBeNull();
+    expect(
+      await fresh.store.commit({
+        ...input,
+        continuation: {
+          ...continuation,
+          capturedAtMs: continuation.capturedAtMs + 1,
+        },
+      }),
+    ).toEqual(evidence);
+    expect(await readFile(filename, "utf8")).toBe(bytes);
+    const denied = await worker(w.dataDirectory, false);
+    await expect(denied.store.open(evidence.storageId, source)).rejects.toThrow(
+      /chat-content encryption grant/,
+    );
+    expect(await readFile(filename, "utf8")).toBe(bytes);
+  });
+  it("does not return an old source if authenticated scope changes during decryption", async () => {
+    const w = await worker();
+    const evidence = await w.store.commit(input);
+    let current = { ...scope };
+    const changing = new NativeSuspensionStore(
+      w.dataDirectory,
+      () => current,
+      w.service,
+    );
+    const pending = changing.open(evidence.storageId, source);
+    current = { ...scope, ownerId: "replaced-owner" };
+    await expect(pending).rejects.toThrow(/ownership changed/);
+    expect((await w.store.open(evidence.storageId, source)).home).toBe(
+      input.home,
+    );
+  });
   it("retains prior recovery bytes when authenticated scope changes during a new commit", async () => {
     const w = await worker();
     const first = await w.store.commit(input);
@@ -196,6 +256,7 @@ describe("native suspension source registry with actual worker encryption", () =
       evidence,
       source,
       home: input.home,
+      continuation: null,
     });
     expect(await fresh.store.list(source.chatId)).toEqual([evidence]);
     expect(

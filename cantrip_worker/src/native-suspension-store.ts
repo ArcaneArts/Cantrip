@@ -17,6 +17,10 @@ import {
 } from "./native-resource-protection.js";
 import type { WorkerEncryptionService } from "./worker-encryption.js";
 import {
+  workerTurnContinuationSchema,
+  type WorkerTurnContinuation,
+} from "./codex/worker-turn-continuation.js";
+import {
   ensureHistoryDirectory,
   flushHistoryDirectory,
   serializeHistoryOperation,
@@ -36,7 +40,7 @@ export type NativeSuspensionSource = z.infer<
   typeof nativeSuspensionSourceSchema
 >;
 export type NativeSuspensionStoreScope = z.infer<typeof scopeSchema>;
-const snapshotSchema = z
+const legacySnapshotSchema = z
   .object({
     version: z.literal(1),
     scope: scopeSchema,
@@ -45,9 +49,18 @@ const snapshotSchema = z
     home: z.string().min(1),
   })
   .strict();
+const snapshotSchema = z.discriminatedUnion("version", [
+  legacySnapshotSchema,
+  legacySnapshotSchema
+    .extend({
+      version: z.literal(2),
+      continuation: workerTurnContinuationSchema,
+    })
+    .strict(),
+]);
 const recordSchema = z
   .object({
-    version: z.literal(1),
+    version: z.union([z.literal(1), z.literal(2)]),
     scope: scopeSchema,
     chatId: id,
     evidence: nativeSuspensionEvidenceSchema,
@@ -94,10 +107,11 @@ export class NativeSuspensionStore {
     scope: NativeSuspensionStoreScope,
     chatId: string,
     suspension: NativeTurnSuspension,
+    version: 1 | 2 = 1,
   ): string {
     const hex = digest([
       "cantrip-native-suspension",
-      1,
+      version,
       scope,
       chatId,
       suspension,
@@ -125,7 +139,12 @@ export class NativeSuspensionStore {
       !isDeepStrictEqual(record.scope, scope) ||
       record.chatId !== chatId ||
       record.evidence.storageId !== storageId ||
-      this.storageId(scope, chatId, record.evidence.suspension) !== storageId
+      this.storageId(
+        scope,
+        chatId,
+        record.evidence.suspension,
+        record.version,
+      ) !== storageId
     )
       throw new Error("Native suspension storage identity mismatch.");
     return record;
@@ -143,6 +162,7 @@ export class NativeSuspensionStore {
     );
     if (
       !isDeepStrictEqual(snapshot.scope, record.scope) ||
+      snapshot.version !== record.version ||
       !isDeepStrictEqual(snapshot.source, source) ||
       !isDeepStrictEqual(snapshot.suspension, record.evidence.suspension)
     )
@@ -151,16 +171,19 @@ export class NativeSuspensionStore {
       evidence: record.evidence,
       source: snapshot.source,
       home: snapshot.home,
+      continuation: snapshot.version === 2 ? snapshot.continuation : null,
     };
   }
 
   async open(storageId: string, source: NativeSuspensionSource) {
     source = nativeSuspensionSourceSchema.parse(source);
     const scope = scopeSchema.parse(this.currentScope());
-    return this.openRecord(
+    const opened = await this.openRecord(
       await this.record(scope, source.chatId, storageId),
       source,
     );
+    this.assertScope(scope);
+    return opened;
   }
 
   async commit(input: {
@@ -169,6 +192,7 @@ export class NativeSuspensionStore {
     suspension: NativeTurnSuspension;
     runtimeVersion: string;
     runtimeFingerprint: string | null;
+    continuation?: WorkerTurnContinuation;
   }): Promise<NativeSuspensionEvidence> {
     const source = nativeSuspensionSourceSchema.parse(input.source);
     const scope = scopeSchema.parse(this.currentScope());
@@ -178,7 +202,20 @@ export class NativeSuspensionStore {
         "Native suspension belongs to a different native thread.",
       );
     const home = path.resolve(input.home);
-    const storageId = this.storageId(scope, source.chatId, suspension);
+    const continuation = input.continuation
+      ? workerTurnContinuationSchema.parse(input.continuation)
+      : null;
+    if (
+      continuation &&
+      (continuation.threadId !== suspension.threadId ||
+        continuation.turnId !== suspension.turnId ||
+        continuation.chatId !== source.chatId)
+    )
+      throw new Error(
+        "Worker bookkeeping belongs to another native suspension.",
+      );
+    const version = continuation ? 2 : 1;
+    const storageId = this.storageId(scope, source.chatId, suspension, version);
     const root = this.root(scope, source.chatId);
     return serializeHistoryOperation(root, async () => {
       this.assertScope(scope);
@@ -207,11 +244,12 @@ export class NativeSuspensionStore {
       const protectedSource = await this.protection.seal(
         resourceBinding(suspension),
         {
-          version: 1,
+          version,
           scope,
           source,
           suspension,
           home,
+          ...(continuation ? { continuation } : {}),
         },
       );
       this.assertScope(scope);
@@ -219,7 +257,7 @@ export class NativeSuspensionStore {
       await writeImmutableHistoryFile(
         path.join(root, `${storageId}.json`),
         JSON.stringify({
-          version: 1,
+          version,
           scope,
           chatId: source.chatId,
           evidence,

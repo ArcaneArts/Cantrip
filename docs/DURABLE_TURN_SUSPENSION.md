@@ -213,6 +213,54 @@ All 40 native cases in the shared-control, durable-Goal and durable-suspension
 suites passed against that binary. Whole worker-tree cold product Resume
 acceptance remains required; these results do not claim that path is delivered.
 
+## Cold worker observer preparation
+
+New managed captures use source-locator format 2. Its encrypted payload adds
+versioned worker observer bookkeeping: the original workspace baseline,
+effective model and settings, token context, publication deduplication, pending
+messages and activity, and Goal checkpoint
+publication state. Native history remains the only conversation record. Old
+execution grants, controllers, capacity tickets, callbacks and timers are never
+serialized. Resolved reply RPC IDs are transport-local and are not restored:
+a new process can reuse an old numeric ID for an unrelated question. Native
+continuation owns accepted input. Restoration keeps fresh authority, reply
+tracking and callbacks and reconstructs
+maps and sets. Observer fallback timing excludes time spent offline.
+
+Format 1 source locators remain readable and inspectable. They lack the worker
+bookkeeping required for cold observer reconstruction; callers must report that
+limitation while retaining the saved bytes. They must not create a replacement
+turn. Format 2 has a distinct immutable locator even for the same native
+checkpoint, and retries retain the original published bookkeeping.
+
+The worker API can open an exact locator with a fresh component grant and select
+its original native home despite changed credential-derived defaults. It reads
+the actual stored native suspension, attaches with `expectedSuspension`, reads
+again, and binds the original turn into a fresh admitted observer. Attachment
+and observer preparation do not send Resume or input and do not emit another
+TurnStarted. Matching concurrent preparations join one observer; another owner
+is rejected. Attachment failures retain the native hold and allow retry.
+
+The isolated worker API acceptance fixture kills the entire worker/Codex tree
+immediately after durable capture, restores in fresh processes, and repeats the
+cycle. It checks the original thread and turn, one completed command side effect,
+one original input and tool result in restored context, accepted pending steering,
+effective settings, workspace baseline and token bookkeeping, fresh encryption
+grants, held startup, and explicit Resume. A missing grant fails before native
+startup. This is worker API acceptance, not full server-owned product acceptance.
+The production cold-control handler, fresh server execution adoption and client
+recovery controls remain required before the end-to-end guarantee is available.
+
+The current normal 80-patch macOS arm64 development build and runtime verifier
+passed with `patchesSha256`
+`72e03cab144f69f706bdc8f96749d017e65e19fe77a2ca5cc5843e39b93986ce`.
+All 41 native cases across cold worker restoration, shared GUI/TUI controls,
+durable Goals and native suspension passed. The focused worker checks pass;
+the broader app-server/admission run has five retry failures reproduced on
+the pristine merged baseline. `pnpm check` still stops at the existing
+application decomposition limits, leaving its later stages unrun. Full
+server/worker/client cold acceptance and other platforms remain outstanding.
+
 ## Checkpoint store foundation
 
 `codex-turn-checkpoint` is a small native workspace crate applied only to the
