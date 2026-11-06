@@ -20,6 +20,10 @@ function fixture(transport: string | null = "runtime-1") {
     invalidateManagedExecution: vi.fn(async () => ({
       invalidated: true as const,
     })),
+    controlManagedRootProducer: vi.fn(async () => ({
+      revision: "0",
+      heldBy: null,
+    })),
     bindManagedExecution: vi.fn(async () => ({ bound: true as const })),
   };
   const handler = {

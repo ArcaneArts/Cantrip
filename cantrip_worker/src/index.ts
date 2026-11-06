@@ -3337,23 +3337,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           ?.get(`${state.chatId}:${state.source.threadId}`);
         if (!entry)
           throw new Error("Published handoff has no managed command session.");
-        if (
-          state.phase === "cancelled" &&
-          state.queuedSource?.autonomousAttempt
-        ) {
-          const snapshot = await nativeQueueClient.read(
-            { session: entry.queueSession() },
-            managedGuiBridgeLifetime.signal,
-          );
-          if (!snapshot.paused)
-            await managedExecutionRunners
-              .get(runtime)
-              ?.get(state.chatId)
-              ?.resumeAfterProviderTransfer(
-                state.operationId,
-                state.source.threadId,
-                runtime.transportGeneration!,
-              );
+        if (state.phase === "cancelled") {
+          // Release only this transfer hold, including when the canonical queue
+          // is paused. Actual Stop/Pause invalidation remains closed; ordinary
+          // admission still reads current queue/Goal eligibility before a turn.
+          await managedExecutionRunners
+            .get(runtime)
+            ?.get(state.chatId)
+            ?.resumeAfterProviderTransfer(
+              state.operationId,
+              state.source.threadId,
+              runtime.transportGeneration!,
+            );
         }
         await entry.wakeQueue();
       },
@@ -3418,6 +3413,28 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       client: handoffClient,
       namespaces: managedRuntimeNamespaces,
       journal,
+      holdSource: async (state, prepared, signal) => {
+        signal.throwIfAborted();
+        if (JSON.stringify(nativeNamespaceScope()) !== identity)
+          throw new Error("The handoff's worker owner binding changed.");
+        const runtime = handoffRuntimes.get(prepared);
+        const runner =
+          runtime && managedExecutionRunners.get(runtime)?.get(state.chatId);
+        const binding = state.binding ?? state.source;
+        if (
+          !runtime ||
+          !runner ||
+          runtime.transportGeneration !== binding.runtimeGeneration
+        )
+          throw new Error("The prepared source lost its actual native runner.");
+        await runner.holdForProviderTransfer(
+          state.operationId,
+          runner.configuration.runnerGeneration,
+          state.source.threadId,
+          binding.runtimeGeneration,
+        );
+        signal.throwIfAborted();
+      },
       withdrawGoalRecovery: async (state, prepared, signal) => {
         signal.throwIfAborted();
         if (
@@ -3440,7 +3457,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             "The recovered Goal handoff lost its prepared native runner.",
           );
         const runnerGeneration = runner.configuration.runnerGeneration;
-        await runner.invalidateForProviderTransfer(
+        await runner.holdForProviderTransfer(
           state.operationId,
           runnerGeneration,
           state.source.threadId,
@@ -3499,9 +3516,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               ?.get(state.chatId);
             if (!runner)
               throw new Error("The queued Goal has no owning native runner.");
-            // Do not persist withdrawal.json until this actual native fence
-            // acknowledges. A lost response retries the same gate invalidation.
-            await runner.invalidateForProviderTransfer(
+            // Do not persist withdrawal.json until the root hold acknowledges.
+            // Existing children retain their independent inference lifetimes.
+            await runner.holdForProviderTransfer(
               state.operationId,
               queued.autonomousAttempt.runnerGeneration,
               state.source.threadId,

@@ -41,6 +41,13 @@ export interface ManagedRuntimeHandoffDependencies {
   journal: ManagedRuntimeHandoffJournal;
   namespaces: ManagedRuntimeNamespaces;
   scope: ManagedRuntimeNamespaceScope;
+  /** Hold the actual prepared source root on every attempt, including recovery
+   * of a previously persisted export. This never grants inference. */
+  holdSource(
+    state: NativeRuntimeHandoffState,
+    source: HandoffRuntime,
+    signal: AbortSignal,
+  ): Promise<void>;
   withdrawQueuedSource?(
     state: NativeRuntimeHandoffState,
     signal: AbortSignal,
@@ -265,13 +272,14 @@ export class ManagedRuntimeHandoffCoordinator {
             },
             signal,
           );
+        await d.holdSource(state, source, signal);
         return source;
       };
       if (state.queuedSource?.goalRecovery && !state.queuedSource.withdrawn) {
         if (!d.withdrawGoalRecovery || !d.acknowledgeQueuedSource)
           throw new Error("Recovered Goal handoff withdrawal is unavailable.");
         // Resolve a lost native ACK even when cancellation is requested: the
-        // actual runner may already be invalidated. This retired Goal has no
+        // actual root may already be held. This retired Goal has no
         // live lease to withdraw. A confirmed fence can safely restore the
         // source through the existing cancellation path, preserving Stop/Pause.
         const receipt = await d.journal.goalWithdrawal(state, async () => {

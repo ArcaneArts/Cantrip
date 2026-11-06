@@ -1878,6 +1878,34 @@ transfer reserved for retry or cancellation; it does not export partial state,
 reclaim a running ticket or replay input. This does not add portable child
 continuation support or enable Task-private Goal route transfers.
 
+Patch `0082` installs a native root producer hold on every prepared source,
+including after worker recovery, before export. For a withdrawn Goal, that hold
+acknowledges before its source withdrawal is persisted. New root Goal/queue
+cycles wait without creating another turn; existing children and already-started
+Goal resumptions keep their own inference lifetimes and can finish. Holding a
+root does not drain child requests or grant provider capacity.
+
+When actual export establishes tree quiescence under `0081`'s coordinator lock,
+it seals further execution admission for that held tree. This prevents idle
+children from starting fresh work between the snapshot and route publication.
+Input remains unconsumed at native admission. The seal persists on the old
+source after commit. Transfer cancellation releases only its own hold and seal,
+using the same native gate and mode, and wakes retained tree inputs. Explicit
+Stop/Pause invalidation is stronger and is never reopened by this release.
+
+The worker-private control RPC uses the actual connection owner, native root,
+runner/transport generation, operation ID and monotonic revision. Releasing an
+unused revision also fences a delayed hold request, so a lost acknowledgement
+cannot reapply a cancelled hold. It adds one bounded record per native root,
+with no completed-operation cache, prompt queue or server semaphore.
+
+For `0082`, validation was source review, direct Prettier/rustfmt formatting of
+the changed sources/fragments and `git diff --check`. The existing runner mock
+was updated for its new control method but was not executed. No native patch
+application/check, tests, builds, typechecks, benchmarks, native/helper runtime,
+hosted validation or computer-use testing ran. Runtime/platform behavior and
+Task-private Goal route transfer remain unverified and unfinished respectively.
+
 The patch was authored from the tracked source fragments and source-reviewed.
 `git diff --check` ran; the native patch was not applied, compiled or executed.
 No tests, builds, typechecks, benchmarks, native/helper validation, hosted checks
@@ -2136,9 +2164,9 @@ and have no outstanding canonical queue claim. Older commands without this
 observed identity remain ineligible for this transition.
 
 The worker synchronously seals the exact unforwarded inference source. It then
-invalidates that actual native runner on the matching transport and waits for
+holds that actual native root producer on the matching transport and waits for
 the native acknowledgement before persisting the handoff's withdrawal record.
-An uncertain invalidation retries the same native gate. It does not create a
+An uncertain hold retries the same operation and native gate. It does not create a
 replacement turn or treat quiet output as settlement. Dispatch that wins first
 causes withdrawal to refuse and leaves the started operation running.
 
@@ -2158,11 +2186,13 @@ or input. The imported Goal schedules a fresh cycle through normal FIFO
 admission after publication; neither the old provider's slot nor a future
 destination slot is retained across the handoff.
 
-Cancelling a withdrawn transfer may rearm only the runner invalidated by that
-transfer. Explicit Stop, Pause, resource removal or a newer rebind cannot be
-undone by its completion wake. The cancellation path also reads the canonical
-queue's paused/stopped state before rearming. Ordinary wakes remain unable to
-reopen explicitly invalidated runners.
+Cancelling a withdrawn transfer releases only its own root hold, preserving the
+same native gate. Explicit Stop, Pause, resource removal or a newer rebind cannot
+be undone by its completion wake. Cancellation also releases holds for retired
+Goal markers and idle/GUI sources. A canonical queue pause does not retain an
+orphaned transfer hold; normal admission still reads current queue/Goal
+eligibility before starting work. Ordinary wakes cannot reopen explicitly
+invalidated runners.
 
 This milestone covers claimless managed native Goal continuations. A first
 cycle retaining an `awaitingGoal` queue claim needs its own parent-affinity
