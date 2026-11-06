@@ -28,6 +28,7 @@ import { CantripOsWorktreeForm } from "./cantrip-os-worktree-form";
 import { CantripOsBackupControls } from "./cantrip-os-backup-controls";
 import { CantripOsDesktopControls } from "./cantrip-os-desktop-controls";
 import { CantripOsPowerControls } from "./cantrip-os-power-controls";
+import { CantripOsPackageControls } from "./cantrip-os-package-controls";
 
 export function CantripOsSettings({
   project,
@@ -231,6 +232,11 @@ export function CantripOsSettings({
           ) : null}
           <CantripOsPowerControls
             key={`power:${selected.id}`}
+            instance={selected}
+            onChanged={refreshLists}
+          />
+          <CantripOsPackageControls
+            key={`packages:${selected.id}`}
             instance={selected}
             onChanged={refreshLists}
           />
