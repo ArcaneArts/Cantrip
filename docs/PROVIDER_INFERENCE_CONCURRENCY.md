@@ -3038,3 +3038,31 @@ Validation was direct formatting and `git diff --check`. No tests, typechecks,
 builds, benchmarks, native/helper execution, hosted validation or computer-use
 testing ran. Runtime behavior remains unverified; the full lifecycle and final
 acceptance audit continue.
+
+### Paused Goal projection uses acknowledged native closure
+
+Stop can fence a Goal input's original dispatch lease before its terminal result
+arrives. Reconciliation persists that physical result independently, then projects
+it under the current Task control. For a paused Task, both servers retire the
+captured logical lane only after the worker reports an acknowledged pause on the
+exact native root and an actual loaded Core read reports idle. This does not
+release a provider ticket or change the Task's paused state.
+
+The worker captures the applied pause before the read and revalidates the same
+owner namespace, control object, cycle/order epoch, native transport and root
+generation afterward. Pending/failed pause controls, replaced roots and unloaded
+saved history cannot provide that proof. A paused receipt without it remains
+unprojected for later reconciliation. Closing the old lane does not mark an unread
+completion or consume a retry.
+
+Both servers also compare the observed pause revision to the current canonical
+Chat control revision under the projection transaction. A Pause/Resume/Pause race
+cannot reuse proof from the earlier pause even if the current Boolean matches.
+
+The optional `pausedAndIdleRevision` field is private Task execution observation metadata.
+It is emitted only with positive evidence; it is never inferred from the absence
+of activity. Deploy the worker and strict protocol readers together. Node and Rust
+servers use the same proof requirement. Validation was source review, direct
+formatting, mechanical source protocol export and `git diff --check`; no tests,
+typechecks, builds, benchmarks, native/helper execution, hosted validation or
+computer-use testing ran. Runtime behavior remains unverified.

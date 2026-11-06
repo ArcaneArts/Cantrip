@@ -2393,8 +2393,14 @@ export class CodexAppServer implements CodexRuntime {
     return matching.length ? matching : roots;
   }
 
-  matchesTaskPauseScope(chatId: string, scope: TaskPauseScope): boolean {
-    return this.taskPauseRoots(chatId, scope).length > 0;
+  matchesTaskPauseScope(
+    chatId: string,
+    scope: TaskPauseScope,
+    threadId?: string,
+  ): boolean {
+    return this.taskPauseRoots(chatId, scope).some(
+      ([id]) => !threadId || id === threadId,
+    );
   }
 
   /** Canonical control metadata changes only the next private begin's episode.
@@ -5435,6 +5441,8 @@ export class CodexAppServer implements CodexRuntime {
     return {
       threadId,
       status: observedCodexThreadStatus({ ...response.thread, turns: [] }),
+      // A saved, unloaded thread is not evidence that its native owner is idle.
+      nativeIdle: response.thread.status.type === "idle",
     };
   }
 

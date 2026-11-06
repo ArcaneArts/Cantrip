@@ -1239,7 +1239,11 @@ export class TaskGoalInferenceInputRepository {
     receipt: TaskInferenceInputReceipt,
     rowVersion: number,
     projection: TaskGoalProjectionFence,
-    execution?: { threadId: string; status: "running" | "idle" | "failed" },
+    execution?: {
+      threadId: string;
+      status: "running" | "idle" | "failed";
+      pausedAndIdleRevision?: number;
+    },
   ) {
     return this.database.transaction(async (tx) => {
       const guard = outcomeGuard(receipt);
@@ -1281,6 +1285,14 @@ export class TaskGoalInferenceInputRepository {
           c.lane?.codexThreadId !== state.terminal.threadId)
       )
         stale();
+      // An in-flight pause or an unloaded history read is not a native idle
+      // observation. Leave this receipt unprojected so reconciliation can retry.
+      if (
+        c.task.state === "paused" &&
+        (execution?.status !== "idle" ||
+          execution.pausedAndIdleRevision !== c.chat.managedInputRevision)
+      )
+        stale();
       if (c.task.state === "failed") {
         await new TaskRetryRepository(tx).noteFailure(
           owner,
@@ -1299,7 +1311,8 @@ export class TaskGoalInferenceInputRepository {
       }
       if (
         execution?.status !== "running" &&
-        ["complete", "blocked", "failed"].includes(c.task.state)
+        (["complete", "blocked", "failed"].includes(c.task.state) ||
+          (c.task.state === "paused" && execution?.status === "idle"))
       ) {
         if (!this.lanes)
           throw new Error("Task Goal projection requires lane ownership.");
@@ -1309,7 +1322,12 @@ export class TaskGoalInferenceInputRepository {
             receipt.chatId,
             receipt.executionLaneId,
             c.task.state === "failed" ? "failed" : "idle",
-            { expectedActivatedAt: receipt.executionLaneActivatedAt },
+            {
+              expectedActivatedAt: receipt.executionLaneActivatedAt,
+              ...(c.task.state === "paused"
+                ? { markUnreadCompletion: false }
+                : {}),
+            },
           );
       }
       const now = new Date();

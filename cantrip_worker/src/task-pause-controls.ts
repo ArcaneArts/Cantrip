@@ -10,6 +10,7 @@ interface Control {
     target: string;
   }[];
   applied: Promise<void>;
+  nativeApplied: boolean;
   settled: Promise<ChatPauseRuntimeState>;
   failed?: boolean;
   interruption?: Promise<{ interrupted: boolean }>;
@@ -45,6 +46,41 @@ export class TaskPauseControls {
   seedRuntime(chat: string, runtime: CodexAppServer) {
     const control = this.#controls.get(this.key(chat));
     if (control) runtime.setTaskChatPaused(chat, control.intent.paused);
+  }
+
+  /** Capture acknowledged admission closure without waiting for an in-flight
+   * control. Revalidate this exact native target after the lifecycle read. */
+  captureAppliedPause(
+    chat: string,
+    thread: string,
+    runtime: CodexAppServer,
+    cycle?: { cycleId: string; orderEpoch: number },
+  ): (() => number | undefined) | undefined {
+    const key = this.key(chat);
+    const control = this.#controls.get(key);
+    if (
+      !cycle ||
+      !control?.intent.paused ||
+      !control.nativeApplied ||
+      control.failed ||
+      control.intent.scope.cycleId !== cycle.cycleId ||
+      control.intent.scope.orderEpoch !== cycle.orderEpoch
+    )
+      return;
+    const target = control.runtimes.find((entry) => entry.runtime === runtime);
+    if (!target?.generation) return;
+    const current = () =>
+      this.key(chat) === key &&
+      this.#controls.get(key) === control &&
+      control.nativeApplied &&
+      !control.failed &&
+      control.intent.paused &&
+      runtime.transportGeneration === target.generation &&
+      runtime.matchesTaskPauseScope(chat, control.intent.scope, thread) &&
+      runtime.taskPauseTargetKey(chat, control.intent.scope) === target.target;
+    return current()
+      ? () => (current() ? control.intent.scope.revision : undefined)
+      : undefined;
   }
 
   /** A raw Task Stop first closes future admission through the existing durable
@@ -133,11 +169,16 @@ export class TaskPauseControls {
     const control: Control = {
       intent: structuredClone(intent),
       runtimes,
+      nativeApplied: false,
       applied: new Promise<void>((resolve, reject) => {
         apply = resolve;
         rejectApply = reject;
       }),
       settled: undefined as never,
+    };
+    const appliedToNative = () => {
+      control.nativeApplied = true;
+      apply();
     };
     // Install the high-water mark before any native RPC or async history read.
     this.#controls.set(key, control);
@@ -149,7 +190,7 @@ export class TaskPauseControls {
       runtime.setTaskChatPaused(chat, intent.paused);
     control.settled = (async () => {
       let applied = 0;
-      if (!runtimes.length) apply(); // A not-yet-prepared root inherits the latch.
+      if (!runtimes.length) apply(); // A not-yet-prepared root inherits only the latch.
       const active = await Promise.all(
         runtimes.map(({ runtime }) =>
           runtime.setTaskPauseIntent(
@@ -158,7 +199,7 @@ export class TaskPauseControls {
             intent.scope,
             current,
             () => {
-              if (++applied === runtimes.length) apply();
+              if (++applied === runtimes.length) appliedToNative();
             },
           ),
         ),
