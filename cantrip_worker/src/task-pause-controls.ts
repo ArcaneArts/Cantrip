@@ -12,6 +12,7 @@ interface Control {
   applied: Promise<void>;
   settled: Promise<ChatPauseRuntimeState>;
   failed?: boolean;
+  interruption?: Promise<{ interrupted: boolean }>;
 }
 
 /** One retained control per live Task, scoped to this worker's server owner.
@@ -46,6 +47,37 @@ export class TaskPauseControls {
     if (control) runtime.setTaskChatPaused(chat, control.intent.paused);
   }
 
+  /** A raw Task Stop first closes future admission through the existing durable
+   * pause intent, then interrupts actual native turns. It grants no capacity. */
+  async interrupt(chat: string, intent: TaskPauseIntent) {
+    if (!intent.paused)
+      throw new Error("Task interruption requires paused intent.");
+    const key = this.key(chat);
+    const namespace = this.options.scope();
+    const control = this.request(chat, intent);
+    const current = () =>
+      this.#controls.get(key) === control &&
+      control.intent.paused &&
+      control.intent.scope.revision === intent.scope.revision &&
+      isDeepStrictEqual(this.options.scope(), namespace);
+    await control.applied;
+    if (!current()) return { interrupted: false };
+    return (control.interruption ??= (async () => {
+      // Stop cleans up actual owners even after canonical model/account routing
+      // disappeared. Pause/Resume keeps its narrower current-source selection.
+      const results = await Promise.all(
+        [...this.options.runtimes()].map((runtime) =>
+          runtime.interruptTaskChat(chat, intent.scope, current),
+        ),
+      );
+      return { interrupted: results.some((result) => result.interrupted) };
+    })().catch((error) => {
+      delete control.interruption;
+      if (!current()) return { interrupted: false };
+      throw error;
+    }));
+  }
+
   request(chat: string, intent: TaskPauseIntent) {
     const namespace = this.options.scope();
     if (intent.scope.workerId !== namespace.workerId)
@@ -56,10 +88,17 @@ export class TaskPauseControls {
       return prior;
     if (
       prior?.intent.scope.revision === intent.scope.revision &&
+      (prior.intent.scope.orderEpoch ?? -1) > (intent.scope.orderEpoch ?? -1)
+    )
+      return prior;
+    if (
+      prior?.intent.scope.revision === intent.scope.revision &&
       prior.intent.paused !== intent.paused
     )
       throw new Error("The Task pause revision changed its intent.");
     const available = [...this.options.runtimes()];
+    for (const runtime of available)
+      runtime.adoptTaskGoalOrder(chat, intent.scope);
     const selected = this.options.selected(chat);
     // A published transfer owns the current root. If that publication refers
     // to an older Task continuation, match the actual canonical thread instead.

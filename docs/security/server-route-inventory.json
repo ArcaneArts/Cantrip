@@ -2016,7 +2016,7 @@
       "transport": "http",
       "contentBoundary": {
         "classification": "endpoint-protected",
-        "rationale": "opaque or endpoint-protected route contract"
+        "rationale": "owner-scoped Chat/Task control without prompt content; canonical pause revision and actual native settlement govern Task interruption, while existing protected runtime metadata stays endpoint-owned"
       }
     },
     {
@@ -8876,7 +8876,7 @@
     {
       "command": "chat.interrupt",
       "classification": "intentionally-public-control-plane",
-      "rationale": "reviewed worker lifecycle or capability contract"
+      "rationale": "owned Chat interruption and optional canonical Task pause/order revision; no model credentials are required and legacy provider payloads are ignored rather than decrypted"
     },
     {
       "command": "chat.message.protect",

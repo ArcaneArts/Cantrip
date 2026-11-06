@@ -94,7 +94,7 @@ impl Coordinator {
                     .await?;
             }
         }
-        let observed = self
+        let mut observed = self
             .repository
             .observe_recovery(
                 owner,
@@ -111,6 +111,27 @@ impl Coordinator {
                 }),
             )
             .await?;
+        if let Some(actual) = actual.as_ref().filter(|actual| {
+            matches
+                && actual["powerTarget"].is_object()
+                && attachment["transport"]["kind"] == "docker"
+        }) {
+            self.repository
+                .record_power_target(
+                    owner,
+                    id,
+                    text(instance, "attachmentGeneration")?,
+                    text(actual, "runtimeGeneration")?,
+                    text(&actual["powerTarget"], "containerId")?,
+                    i32::try_from(
+                        attachment["powerEpoch"]
+                            .as_i64()
+                            .context("OS power observation epoch")?,
+                    )?,
+                )
+                .await?;
+            observed = self.repository.attachment(owner, id).await?["instance"].clone();
+        }
         checked(
             "cantripOsRecoveryResultSchema",
             json!({

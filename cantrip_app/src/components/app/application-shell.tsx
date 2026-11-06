@@ -799,11 +799,22 @@ export function App() {
   });
   const newTerminal = useTerminalCreationOperation({
     ownedPlacement: true,
-    defaultPlacement: () => ({
-      ...surfaceOsFilePlacement(selectedSurface),
-      projectId: selectedSurface?.projectId,
-      worktreeId: surfaceWorktreeId(selectedSurface) ?? undefined,
-    }),
+    defaultPlacement: () => {
+      const placement = surfaceOsFilePlacement(
+        selectedSurface,
+        remoteDesktop.data,
+      );
+      if (placement === null)
+        throw new Error(
+          "The selected surface's file destination is unavailable.",
+        );
+      return {
+        ...placement,
+        projectId: selectedSurface?.projectId,
+        worktreeId:
+          surfaceWorktreeId(selectedSurface, remoteDesktop.data) ?? undefined,
+      };
+    },
     openCreatedTab,
     queryClient,
     setPendingTerminalInputs,
@@ -1170,6 +1181,7 @@ export function App() {
     },
   );
   const sidebarExplorerModel = useSidebarExplorerModel({
+    remoteDesktop: remoteDesktop.data,
     revealedWorktreeId: sidebarFileReveal?.worktreeId,
     unavailablePaneIds: unavailableDetachedPaneIds,
     environment: {
@@ -1191,6 +1203,7 @@ export function App() {
     selectedProjectIdRef,
     sidebarDesiredWorktreeId,
     sidebarExplorer,
+    sidebarFileDestinationError,
   } = sidebarExplorerModel;
   const {
     onlineWorkerIds,
@@ -2270,7 +2283,7 @@ export function App() {
     setStandaloneFilesOpen, setTerminalCommandPaletteTerminalId, setTerminalServiceTerminalId, setWorkspaceDragError, setWorktreeCreateTarget,
     settings, settingsPolicyId, settingsSection, showAppToast, showArchivedStandaloneChats,
     showChatConsole, showContentTitlebar, showCustomizations, showImporter, showProjectSettings,
-    showServerAdmin, showSettings, sidebarCollapsed, sidebarExplorer,
+    showServerAdmin, showSettings, sidebarCollapsed, sidebarExplorer, sidebarFileDestinationError,
     sidebarFileWorkerId, sidebarFileWorkerOnline,
     sidebarRef, sidebarResizing, sidebarWidth,
     standaloneChatCreationAvailable, standaloneChatCreationUnavailableReason, standaloneChatWorkerAvailable, standaloneChats, standaloneFilePath,

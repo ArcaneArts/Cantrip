@@ -4,11 +4,15 @@ import * as schema from "../schema.js";
 import type { RepositoryDatabase, RepositoryTransaction } from "./database.js";
 import { projectChatExecutionLock } from "./chat-execution-lock.js";
 import { nativeCommandContext } from "./native-command-context.js";
+import type { TaskGoalInferenceInputRepository } from "../task-goal-inference-inputs.js";
 
 /** Durable Task control order shares the canonical chat lock and revision.
  * It neither schedules work nor owns a provider semaphore. */
 export class TaskAutomationPauseRepository {
-  constructor(private readonly database: RepositoryDatabase) {}
+  constructor(
+    private readonly database: RepositoryDatabase,
+    private readonly goalInputs: TaskGoalInferenceInputRepository,
+  ) {}
 
   private async scope(
     tx: RepositoryTransaction,
@@ -24,7 +28,10 @@ export class TaskAutomationPauseRepository {
     )
       return null;
     const [cycle] = await tx
-      .select({ id: schema.taskDispatchCycles.id })
+      .select({
+        id: schema.taskDispatchCycles.id,
+        orderEpoch: schema.taskDispatchCycles.goalOrderEpoch,
+      })
       .from(schema.taskDispatchCycles)
       .where(
         and(
@@ -48,6 +55,7 @@ export class TaskAutomationPauseRepository {
         modelRouteId: context.modelRouteId,
         providerAccountId: context.providerAccountId,
         cycleId: cycle?.id ?? null,
+        orderEpoch: cycle?.orderEpoch ?? 0,
       }),
     };
   }
@@ -55,6 +63,64 @@ export class TaskAutomationPauseRepository {
   async read(owner: string, chat: string) {
     return this.database.transaction(async (tx) => {
       await tx.execute(projectChatExecutionLock(owner, chat));
+      return this.scope(tx, owner, chat);
+    });
+  }
+
+  /** Called after the actual transfer settles and only for the original Stop.
+   * A resumed Goal cannot adopt an unused pre-Stop cycle's old FIFO ordinal. */
+  async fenceInterrupt(owner: string, chat: string, revision: number) {
+    return this.database.transaction(async (tx) => {
+      await tx
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, owner))
+        .for("update")
+        .limit(1);
+      await tx.execute(projectChatExecutionLock(owner, chat));
+      const current = await this.scope(tx, owner, chat);
+      if (!current?.paused || current.scope.revision !== revision) return null;
+      const [cycle] = await tx
+        .select()
+        .from(schema.taskDispatchCycles)
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.ownerId, owner),
+            eq(schema.taskDispatchCycles.chatId, chat),
+          ),
+        )
+        .orderBy(
+          desc(schema.taskDispatchCycles.createdAt),
+          desc(schema.taskDispatchCycles.id),
+        )
+        .for("update")
+        .limit(1);
+      if (cycle?.operationKind === "finalize") {
+        // Seal unused canonical input before the worker cancels its SDK wait.
+        // A dispatch that already won this same owner/cycle lock stays physical
+        // work and must settle through the native Stop path instead.
+        await this.goalInputs.deferForInterrupt(tx, owner, cycle);
+        const marker = cycle.goalCycleRecovery;
+        await tx
+          .update(schema.taskDispatchCycles)
+          .set({
+            goalOrderEpoch: sql`${schema.taskDispatchCycles.goalOrderEpoch}+1`,
+            ...(marker && !marker.settled
+              ? {
+                  goalCycleRecovery: {
+                    ...marker,
+                    admission: null,
+                    settled: {
+                      reason: "ineligible" as const,
+                      turnId: marker.turnId,
+                      operationId: null,
+                    },
+                  },
+                }
+              : {}),
+          })
+          .where(eq(schema.taskDispatchCycles.id, cycle.id));
+      }
       return this.scope(tx, owner, chat);
     });
   }

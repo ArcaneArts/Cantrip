@@ -842,3 +842,20 @@ Native counters are decimal strings on the wire to avoid JavaScript JSON number
 rounding. Earlier formats require their matching runtime and remain preserved
 for inspection or Stop. Full worker/server/client recovery and optimized product
 acceptance remain outstanding; see [the suspension contract](../docs/DURABLE_TURN_SUSPENSION.md).
+
+## Revisioned native Task interruption
+
+Patch `0086` adds the connection-owned `thread/managedExecution/taskInterrupt`
+control for an actual inference-only root. It verifies the current paused Task
+revision and exact native turn before taking that turn. The native Stop lifecycle
+runs in an owned task, so losing its RPC observer does not cancel it. A later
+Task Resume waits for that lifecycle operation; it cannot race old abort hooks.
+Cold held turns use the existing validated native suspension Stop path.
+
+The control does not release provider tickets. Existing native scope and keeper
+settlement remain authoritative for execution that may still be tearing down.
+The worker/server use the canonical Task pause revision and a new Goal FIFO
+episode after Stop; no Goal setter or prompt is replayed. The native runtime,
+worker and server need the matching update. This patch was mechanically authored
+from reviewed tracked fragments and formatted only. It was not applied, checked,
+built, tested or executed; runtime/platform behavior remains unverified.

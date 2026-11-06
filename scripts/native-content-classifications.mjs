@@ -34,6 +34,10 @@ const control = (rationale) =>
   classified("intentionally-public-control-plane", rationale);
 
 export function nativeRouteContentClassification({ path }) {
+  if (path === "/api/chats/:chatId/interrupt")
+    return protectedContract(
+      "owner-scoped Chat/Task control without prompt content; canonical pause revision and actual native settlement govern Task interruption, while existing protected runtime metadata stays endpoint-owned",
+    );
   if (
     /^\/api\/cantrip-os\/:instanceId\/(?:power|power-operations(?:\/:operationId(?:\/observe)?)?)$/u.test(
       path,
@@ -170,6 +174,10 @@ export function nativeRouteContentClassification({ path }) {
 }
 
 export function nativeWorkerCommandContentClassification(command) {
+  if (command === "chat.interrupt")
+    return control(
+      "owned Chat interruption and optional canonical Task pause/order revision; no model credentials are required and legacy provider payloads are ignored rather than decrypted",
+    );
   if (
     ["cantrip-os.power.status", "cantrip-os.power.operation"].includes(command)
   )

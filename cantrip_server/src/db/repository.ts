@@ -739,7 +739,10 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
       listProjectReplicas: (ownerId, projectId) =>
         this.listProjectReplicas(ownerId, projectId),
     });
-    this.taskAutomationPause = new TaskAutomationPauseRepository(database);
+    this.taskAutomationPause = new TaskAutomationPauseRepository(
+      database,
+      this.tasks.inferenceInputs.goals,
+    );
     this.tabLayouts = new ProjectTabLayoutRepository(database);
     this.workspaceLayouts = new WorkspaceLayoutRepository(database);
   }

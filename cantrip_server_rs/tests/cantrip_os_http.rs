@@ -315,6 +315,28 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     let attached: Value = response.json().await?;
     assert_eq!(status, 200, "{attached}");
     let instance = attached["instance"]["id"].as_str().unwrap();
+    // Existing attachments predate the power catalogue. Their explicit recovery
+    // observation must discover a target without requiring source provisioning.
+    database
+        .query(
+            "DELETE FROM cantrip_os_power_targets WHERE instance_id=$1",
+            &[&instance],
+        )
+        .await?;
+    let unrecorded: Value = client
+        .get(format!("{base}/api/cantrip-os/{instance}/power"))
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert!(unrecorded["target"].is_null());
+    let discovery: Value = client.post(format!("{base}/api/cantrip-os/{instance}/recovery"))
+        .json(&json!({"attachmentGeneration":attached["instance"]["attachmentGeneration"],"runtimeGeneration":attached["instance"]["runtimeGeneration"]}))
+        .send().await?.json().await?;
+    assert_eq!(
+        discovery["recovery"]["workerContinuity"], "first-observation",
+        "{discovery}"
+    );
     let power_path = format!("{base}/api/cantrip-os/{instance}/power-operations");
     let power: Value = client
         .get(format!("{base}/api/cantrip-os/{instance}/power"))
@@ -366,7 +388,7 @@ async fn native_http_owns_attachment_source_and_recovery_dispatch() -> Result<()
     );
     assert_eq!(
         during_recovery["recovery"]["workerContinuity"],
-        "first-observation"
+        "same-worker"
     );
     let recovered: Value = client
         .post(&power_path)

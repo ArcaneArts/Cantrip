@@ -11,8 +11,8 @@ The shared `@cantrip/os-host` library exposes `changeRetainedContainer` and
 `observeRetainedContainer`. The owning Worker must supply an already authorized
 immutable Docker container ID; a transport name alone is not sufficient admission.
 This library does not authorize an owner, attach a guest or imply SSH power-on.
-Server and Worker now own lifecycle admissions and observation; client controls
-remain a subsequent step.
+Server and Worker own lifecycle admissions and observation. Cantrip exposes the
+same operations in Project Settings → CantripOS → Instance power.
 
 An input contains `operationId`, `action` (`start`, `stop` or `restart`),
 `container`, `expectedContainerId` and a private Worker-owned `journalPath`.
@@ -115,4 +115,45 @@ This interrupts that instance. It exercises actual stop/start, a completed resta
 with a dropped response, a fresh Manager reading saved jobs, unchanged root bytes
 and mode, fresh guest runtime observation, and no second restart POST. It does not
 establish full Worker-process failure or client acceptance. Client lifecycle
-controls, service/viewer/input cleanup and the broader Phase 5 matrix remain next.
+acceptance is recorded below. Service/viewer/input cleanup and the broader Phase 5
+matrix remain required.
+
+## Client controls and full Worker recovery
+
+Choose an instance in Project Settings → CantripOS. `Check recovery` performs an
+owned guest observation and discovers its actual supported Docker carrier, including
+existing attachments created before power control was installed. The same private
+power epoch and active-operation fence protect discovery and ordinary refresh.
+
+Instance power shows current carrier state separately from Linux readiness. Start,
+stop and restart require explicit confirmation that shared workspaces are affected.
+SSH-only attachments expose no fabricated power capability. An unknown current
+Engine observation is shown as unverified; a known pinned carrier may still receive
+an actual operation and return its actual error.
+
+Before submission the client freezes the instance, Worker, attachment, target and
+operation ID. It retains the request in session storage scoped to the authenticated
+Server/account and instance. Reloading a submitted request never sends another
+power mutation. `Observe saved request` reconciles its original Server admission;
+missing records or journals remain uncertain. Dismissing a reminder does not cancel
+an admitted operation. Paginated history supports observing older admissions.
+Changing accounts cannot publish an old response into the new account or clear its
+saved request.
+
+Actual Docker product acceptance includes retained root bytes/modes and package
+inventory after stop/start. A real Engine restart completed while its response was
+held; the full Worker was then killed. After client reload and a new Worker process,
+explicit observation recovered the original admission with exactly one restart POST.
+The receipt reports observed state rather than claiming acknowledgement. Explicit
+guest recovery then distinguished both OS-runtime and Worker-process changes.
+
+Fresh source verification and desktop opening do not retarget old terminals, Runs,
+documents or chats. Focusing a Linux desktop uses its captured source for the file
+sidebar and new-terminal defaults; a missing/mismatched desktop query leaves that
+destination unavailable instead of selecting Host. A stale capture is retained
+and fails through the normal source authorization path. Actual editor acceptance
+verified guest bytes and the absence of a Host copy after recovery.
+
+Independent desktop controls, held-input and service cleanup, reset/image/upgrade
+semantics, current-runtime model acceptance and real remote acceptance remain
+separate Phase 5 requirements. These client checks do not claim them complete.

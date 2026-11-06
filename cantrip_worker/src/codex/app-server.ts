@@ -2385,6 +2385,22 @@ export class CodexAppServer implements CodexRuntime {
     return this.taskPauseRoots(chatId, scope).length > 0;
   }
 
+  /** Canonical control metadata changes only the next private begin's episode.
+   * Existing physical requests keep their immutable keeper identities. */
+  adoptTaskGoalOrder(chatId: string, scope: TaskPauseScope): void {
+    if (scope.orderEpoch === undefined) return;
+    for (const [, overlay] of this.taskPauseRoots(chatId, scope)) {
+      if (
+        overlay.taskGoalCycle &&
+        overlay.taskGoalCycle.orderEpoch < scope.orderEpoch
+      )
+        overlay.taskGoalCycle = {
+          ...overlay.taskGoalCycle,
+          orderEpoch: scope.orderEpoch,
+        };
+    }
+  }
+
   taskPauseTargetKey(chatId: string, scope: TaskPauseScope): string {
     return JSON.stringify(
       this.taskPauseRoots(chatId, scope)
@@ -2470,7 +2486,11 @@ export class CodexAppServer implements CodexRuntime {
               paused,
               waitBoundary,
             },
-            waitBoundary ? CODEX_PAUSE_BOUNDARY_TIMEOUT_MS : undefined,
+            // Resume may await actual interrupt teardown before its intent can
+            // apply. This is a native boundary wait, not a model deadline.
+            waitBoundary || !paused
+              ? CODEX_PAUSE_BOUNDARY_TIMEOUT_MS
+              : undefined,
           ),
         );
       assertCurrent();
@@ -6238,6 +6258,90 @@ export class CodexAppServer implements CodexRuntime {
     reason: string,
   ): Promise<{ accepted: true }> {
     return this.#interactions.cancelAgentInteraction(requestKey, reason);
+  }
+
+  async interruptTaskChat(
+    chatId: string,
+    scope: TaskPauseScope,
+    isCurrent: () => boolean,
+  ): Promise<{ interrupted: boolean }> {
+    if (!isCurrent()) return { interrupted: false };
+    // The server fenced any unused canonical Goal input before this command.
+    // Cancel SDK preparation/waiters as well as autonomous native turns; the
+    // ticket still stays held until its actual operation settles.
+    const cancelledInference = this.#inference?.cancelWaiting(chatId) ?? false;
+    const roots = this.privateTaskRoot(chatId);
+    if (!roots.length) {
+      // A Task input can still be in SDK preparation or retain an existing
+      // managed-input owner. Keep that owner's normal admitted Stop path.
+      const result = await this.interruptChat(chatId, scope.threadId);
+      return { interrupted: cancelledInference || result.interrupted };
+    }
+    const transport = this.transportGeneration;
+    if (!transport) throw new Error("The native Task owner is disconnected.");
+    const results = await Promise.all(
+      roots.map(async ([threadId, overlay]) => {
+        const runnerGeneration =
+          overlay.options.executionGate!.runnerGeneration;
+        const current = () => {
+          this.assertManagedExecutionTransport(transport);
+          if (
+            !isCurrent() ||
+            this.#managedThreadOverlays.get(threadId) !== overlay ||
+            overlay.inferenceRevocation.signal.aborted
+          )
+            throw new Error(
+              "The Task interrupt was superseded or its root replaced.",
+            );
+        };
+        current();
+        const paused = z
+          .object({
+            revision: z.number().int().positive(),
+            paused: z.boolean(),
+          })
+          .parse(
+            await this.request("thread/managedExecution/taskPause", {
+              threadId,
+              runnerGeneration,
+              revision: scope.revision,
+              paused: true,
+              waitBoundary: false,
+            }),
+          );
+        current();
+        if (paused.revision !== scope.revision || !paused.paused) return false;
+        const history = await this.readNativeHistory(threadId);
+        current();
+        if (history.thread.id !== threadId)
+          throw new Error("Task interruption observed another native thread.");
+        const turns = history.thread.turns.filter(
+          (turn) => turn.status === "inProgress",
+        );
+        if (turns.length > 1)
+          throw new Error(
+            "Task interruption observed multiple current native turns.",
+          );
+        const active = turns[0];
+        if (!active) return false;
+        const result = z.object({ interrupted: z.boolean() }).parse(
+          await this.request(
+            "thread/managedExecution/taskInterrupt",
+            {
+              threadId,
+              runnerGeneration,
+              revision: scope.revision,
+              turnId: active.id,
+            },
+            CODEX_PAUSE_BOUNDARY_TIMEOUT_MS,
+          ),
+        );
+        // No local release follows this control. Native finish/keeper settlement
+        // remains authoritative even if a newer control supersedes this observer.
+        return result.interrupted;
+      }),
+    );
+    return { interrupted: cancelledInference || results.some(Boolean) };
   }
 
   async interruptChat(

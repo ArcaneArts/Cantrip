@@ -490,12 +490,14 @@ secondary worktree in Docker and the installed VM; they do not substitute for
 full installed-system product or real remote/cloud acceptance. Phase 5 remains
 in progress.
 
-## Retained instance power backend
+## Retained instance power
 
 The [lifecycle API](INSTANCE_LIFECYCLE.md#server-owned-power-admissions) now supports
 owned Docker start/stop/restart and retained operation history through Server and
-Worker. This is a backend checkpoint; Cantrip's start/stop/restart controls are not
-yet exposed by this cycle. Ordinary refresh and Check recovery cannot make an
+Worker. In Project Settings → CantripOS, select the instance and use Instance
+power. Existing attachments can discover their supported carrier with Check
+recovery. Confirm start, stop or restart explicitly; these affect every workspace
+in the shared OS. Ordinary refresh and Check recovery cannot make an
 unresolved power operation executable. A delayed observation from before a power
 transition cannot restore availability after it completes either.
 
@@ -504,3 +506,14 @@ mutation. Running at the Docker carrier level does not imply the guest helper,
 project sources or desktop are ready. After restart, use the explicit recovery and
 source verification paths before opening fresh work; old chats keep their captured
 placement. SSH alone supplies no powered-off-machine control capability.
+
+If a reply is lost, retain the saved request and use Observe saved request. Reload
+preserves the original admission in this browser session; it does not repeat the
+mutation. Power history supports older admissions and pagination. Dismissing a
+saved reminder does not cancel the operation. Current carrier state and Linux
+readiness are shown separately, including when a historical operation completed.
+
+After explicit recovery, verify the intended source and open fresh work. Old
+terminals, Run configurations and chats retain their captured runtime. The file
+sidebar follows a selected Linux desktop's source, including while its old runtime
+is unavailable. It never treats a missing desktop query as a Host selection.

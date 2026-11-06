@@ -2,6 +2,7 @@
 //! canonical queue authority. Admitted mutations survive a lost HTTP waiter.
 mod changes;
 mod controls;
+mod interrupt;
 mod queue;
 mod retry;
 mod steer;
@@ -233,6 +234,9 @@ async fn execute(
         };
     }
     let chat = params.get("chatId").context("Execution route chat")?;
+    if path.ends_with("/interrupt") {
+        return execution.interrupt(chat).await;
+    }
     if path.ends_with("/pause") {
         return execution.pause(chat, input).await;
     }
@@ -317,6 +321,7 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
         .route("/api/chats/{chatId}/turns", post(handle))
         .route("/api/chats/{chatId}/pause", patch(handle))
+        .route("/api/chats/{chatId}/interrupt", post(handle))
         .route(
             "/api/projects/{projectId}/tasks/pause",
             get(handle).patch(handle),

@@ -2825,7 +2825,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             commandSession.runtimeGeneration,
             intent?.resumeAutonomy === true,
             method === "thread/goal/clear" ||
-              (method === "turn/pause" && intent?.paused === true) ||
               (method === "thread/goal/set" && intent?.goalStatus === "paused"),
           );
       },
@@ -4191,11 +4190,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     emit: (event: WorkerEvent) => void,
   ): Promise<unknown> => {
     const protectedRuntimeProvider =
-      "provider" in command
-        ? command["provider"]
-        : command.type === "terminal.open" && command.launch.type === "codex"
-          ? command.launch.provider
-          : null;
+      command.type === "chat.interrupt"
+        ? null
+        : "provider" in command
+          ? command["provider"]
+          : command.type === "terminal.open" && command.launch.type === "codex"
+            ? command.launch.provider
+            : null;
     const runtimeProvider = protectedRuntimeProvider
       ? await openRuntimeProvider({
           provider: protectedRuntimeProvider,
@@ -7486,6 +7487,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         computerUsePreviews.cancelChat(command.chatId);
         computerUseApprovals.revokeChat(command.chatId);
         osComputerUseServices.cancelChat(command.chatId, command.threadId);
+        if (command.task)
+          return taskPauseControls.interrupt(command.chatId, {
+            paused: true,
+            scope: command.task,
+          });
         return interruptChatAcrossRuntimes(
           codexRuntimes.values(),
           command.chatId,

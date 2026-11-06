@@ -3314,3 +3314,78 @@ and all 15 focused Worker checks still pass. Earlier native passes belong to the
 No guest package, OCI image or ISO changed in this checkpoint. Client lifecycle
 controls, full Worker failure, desktop/reset/upgrade semantics, real remote
 acceptance and final current distribution artifacts remain required for Phase 5.
+
+## Phase 5: client power and full Worker recovery (2026-11-06)
+
+Project Settings → CantripOS now exposes retained-instance start/stop/restart,
+explicit confirmation, current carrier state, saved requests and paginated power
+history. The client freezes the original admission before dispatch and scopes its
+browser-session reminder to the authenticated Server/account and instance. Reply
+loss, reload and explicit observation never create a second mutation. Historical
+completion remains distinct from current power and Linux readiness.
+
+Existing attachments can discover a power pin through the actual Check recovery
+observation. Both Servers preserve the same active-admission and private power-epoch
+fences used by refresh. Two browser-found defects were fixed: sibling duplicate
+React keys accumulated 121 power panels, and recovery previously verified an old
+attachment without recording its supported carrier. Their original failing QA
+events are retained alongside successful regression and product evidence.
+
+Actual full-product acceptance used disposable ARM64 Docker instance
+`cantrip-os-phase5-product-backups`, its full owning Worker and a dedicated
+PostgreSQL Server. All browser interaction used Codex's own browser.
+
+- Actual UI stop/start retained exact root/workspace file bytes, ownership and
+  modes, Debian package inventory, container ID, image and mounts.
+- A QA-only transport hook forwarded a real Engine restart and withheld its real
+  successful reply. The full Worker process was then killed. The client displayed
+  an unknown outcome and retained the original request across reload.
+- A newly started full Worker used the same private data directory. Observe saved
+  request recovered the original admission from durable Worker/carrier journals.
+  Server request and command scope were unchanged. Exactly one Engine restart POST
+  occurred across mutation, reload, Worker restart and observation. Completion
+  correctly reported observed state rather than acknowledgement.
+- Explicit Check recovery distinguished both the changed OS runtime and restarted
+  Worker. Explicit source verification admitted the fresh runtime. Old terminal and
+  Run surfaces retained their previous runtime and remained unavailable.
+- A freshly opened source-bound desktop streamed native frames. Focusing it exposed
+  a further file-routing defect: the sidebar selected the project's Host folder.
+  It now uses the desktop's captured binding/runtime/worktree, rejects a mismatched
+  or missing desktop query and retains stale authority without Host substitution.
+  An actual editor save changed the intended Linux checkout; no Host copy existed.
+
+Private operation journals, Engine events, unchanged-admission comparisons,
+before/after file proofs and screenshots are retained in ignored
+`cantrip_os/artifacts/phase5-instance-power/client-controls/`. Original failing
+events are preserved rather than rewritten as passes.
+
+After rebasing onto Main `2968898eb`, 140 focused client tests across 17 suites and
+the production app build passed. All 15 focused Worker power/operation/source/Run
+tests passed. Node power and management HTTP checks passed. Native OS contracts
+passed three tests, including 38,014 Linux source cases and complete power Worker
+envelopes; actual native PostgreSQL HTTP passed in 3.82 seconds. Server and Worker
+type checks passed; the app build includes its complete type check. Changed-file
+Prettier, Rust formatting and diff checks passed.
+
+The wider checks are not fully green. Protocol passed 1,110 and failed four
+duplicated public-surface assertions (39 export and seven command discrepancies).
+Worker placement passed 122 and failed two existing model-capacity cases, with two
+related unhandled errors. Server placement passed 67 and failed the existing
+standalone-Chat queued/started assertion and one replica-job timeout under concurrent
+load; the separate replica-job/management run passed all three tests. The protocol,
+Worker capacity and standalone-Chat failures reproduce on unchanged Primary.
+Root `pnpm check` stops at unchanged Server line budgets, 1531/1500 and 2249/1999,
+also reproduced on Primary. These baselines were not repaired. No hosted validation
+was run.
+
+A normal full Host native build completed in 45m22s with all 86 patches, all four
+binaries and no cached-runtime input override. Artifact hashes, executable versions
+and upstream/Cantrip protocol extensions passed verification against the rebased
+source. The complete executable bundle and source/patch manifest are retained in
+ignored `cantrip_os/artifacts/phase5-native-runtime/verified-host-86patches-3e69bde1d/`.
+The bounded power product test used the earlier verified 85-patch runtime; it did
+not exercise model execution. Current-runtime model/CUA acceptance, independent
+desktop lifecycle, held-input/service cleanup, resets, image/customization and
+failed-upgrade recovery, optional-package lifecycle, real remote acceptance and
+final current Docker/ISO distribution acceptance remain required. No guest package,
+OCI image or ISO changed in this cycle. Phase 5 is not complete.
