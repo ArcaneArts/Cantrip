@@ -334,6 +334,32 @@ Only that explicit Resume dispatches the accepted input. The fixture then runs
 the usual two durable suspension/cold-resumption cycles under its single native
 thread and turn, checking unique history and completed tool results.
 
+Add `--prestart-preparation --mounted-ui` to pause after capacity is granted
+while the production Git workspace snapshot is still preparing the input.
+The fixture blocks the actual Git fsmonitor hook, rather than inserting a worker
+delay. Pause parks the unused grant, frees its provider slot, and waits for the
+native keeper's durable `never-started` receipt. The original input cannot cross
+canonical dispatch while parked. A fresh worker recovers the accepted encrypted
+input from this positive no-start evidence. Add `--live-preparation` to release
+Git while the original worker remains alive: completing preparation must stay
+idle until explicit Resume obtains fresh permission.
+
+The macOS ARM64 90-patch development runtime passed all eight granted-preparation
+cases: GUI/terminal origins, Node/Rust servers, and live/cold initial Resume.
+Each case then passed two cold native suspension cycles with its original thread
+and turn, one user input, one native start/completion, and one completed command.
+Waiting-capacity recovery and pending-question Stop also passed on both servers;
+all twelve runtime cases left no owned processes behind. The 118 focused worker
+tests include actual keeper settlement/refusal cases and delayed-write races.
+The standard check still stops at the existing server decomposition limits;
+later standard stages and optimized product qualification remain outstanding.
+
+This boundary applies only before input dispatch and provider inference begin.
+If dispatch, provider preparation, or an earlier unregistered source is in
+progress without a native suspension boundary, Pause reports an actionable
+retry/Stop error instead of confirming a durable hold. Active native execution
+continues to use its safe-boundary checkpoint path.
+
 There is no native turn identity or native checkpoint at the initial queue hold;
 the first native turn starts only when the retained input is explicitly resumed.
 Both GUI and native-terminal pre-start recovery are qualified on both servers.
@@ -352,7 +378,8 @@ same claim to pending without creating another encrypted prompt.
 The original worker keeps using its accepted source while it survives. A fresh
 worker must fence the old native scope and correlate actual no-start journal
 evidence with the command, generation, message and thread before returning its
-claim to pending. Previously granted or consumed input cannot use this path.
+claim to pending. A previous unused grant requires the committed `never-started`
+receipt; a grant alone is insufficient. Consumed native input cannot use this path.
 Legacy terminal commands admitted without the retained-input contract do not
 gain replay authority from missing history or a stale session. This extends
 pending-input recovery without manufacturing a native continuation.

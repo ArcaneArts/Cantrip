@@ -1,0 +1,25 @@
+diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/cantrip_inference_journal.rs
+--- a/codex-rs/cli/src/cantrip_inference_journal.rs
++++ b/codex-rs/cli/src/cantrip_inference_journal.rs
+@@ -717,12 +717,19 @@
+             Command::Requeue { key } => {
+                 let revision = self.next()?;
+                 let operation = self.operation(&key, generation)?;
+-                anyhow::ensure!(
+-                    operation.state != State::Released,
++                // Only the same live worker may rearm an unused reservation
++                // it parked before native dispatch. Consumed native scopes,
++                // unrequested seals, and terminal outcomes remain settled.
++                let parked_input = operation.ever_granted
++                    && operation.native_execution.is_none()
++                    && operation.outcome.as_deref() == Some("never-started");
++                anyhow::ensure!(
++                    operation.state != State::Released || parked_input,
+                     "admission operation was settled"
+                 );
+                 if operation.state != State::Waiting {
+                     operation.state = State::Waiting;
++                    operation.outcome = None;
+                     operation.order = revision;
+                     operation.revision = revision;
+                 }
