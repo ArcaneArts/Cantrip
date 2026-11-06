@@ -533,6 +533,14 @@ const agentChatExports = [
 ].sort();
 
 const cantripOsExports = [
+  "CANTRIP_OS_BACKUP_CHUNK_BYTES",
+  "CANTRIP_OS_BACKUP_METADATA_BYTES",
+  "CANTRIP_OS_BACKUP_END_BYTES",
+  "cantripOsBackupCryptoContextSchema",
+  "cantripOsBackupFrameSchema",
+  "cantripOsBackupFileHeaderSchema",
+  "cantripOsBackupArchiveMetadataSchema",
+  "cantripOsBackupEndSchema",
   "cantripOsRecoveryRequestSchema",
   "cantripOsRecoveryResultSchema",
   "tunnelOsPrepareResultSchema",

@@ -118,3 +118,29 @@ export const inferenceLiveMessages =
     payload: status,
     occurredAt: "2026-11-04T00:00:00.000Z",
   }));
+const recovering = {
+  ...detailedStatus,
+  pools: detailedStatus.pools.map((pool) => ({
+    ...pool,
+    activeCount: 0,
+    queuedCount: 0,
+    operations: [
+      {
+        ...pool.operations[0],
+        state: "recovering",
+        queuePosition: null,
+        grantedAt: null,
+        startedAt: null,
+      },
+    ],
+  })),
+};
+inferenceWireFixtures.workerInferenceStatusSchema.push(recovering);
+inferenceNotifications.push({
+  kind: "notification",
+  notification: { type: "inference.status", status: recovering },
+});
+inferenceLiveMessages.push({
+  ...inferenceLiveMessages[0],
+  payload: recovering,
+});

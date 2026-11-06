@@ -1,0 +1,319 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "protectedClientNotificationSchema": 0,
+    "cantripMcpClientFocusProjectInputSchema": 14,
+    "cantripMcpClientFocusSurfaceInputSchema": 16,
+    "cantripMcpClientShowInteractionInputSchema": 49
+  },
+  "nodes": [
+    {
+      "type": "object",
+      "name": "protectedClientNotificationSchema",
+      "shape": { "operationId": 1, "protectedContent": 2 },
+      "catchall": 13,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "clientNotificationOpaqueSchema",
+      "shape": {
+        "formatVersion": 3,
+        "domain": 4,
+        "keyRevision": 5,
+        "envelope": 6
+      },
+      "catchall": 12,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "endpoint-protected-bytes",
+          "messageAfterPath": true,
+          "message": "Protected endpoint content exceeds its byte limit."
+        },
+        {
+          "check": "refinement",
+          "tag": "live-notification-domain",
+          "messageAfterPath": true,
+          "message": "Client notifications require client-control-content ciphertext."
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "enum",
+      "name": "endpointContentDomainSchema",
+      "values": [
+        "alert-content",
+        "run-content",
+        "customization-content",
+        "tunnel-content",
+        "client-control-content"
+      ],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "name": "encryptionKeyRevisionSchema",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 2147483647, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "encryptedPayloadEnvelopeSchema",
+      "shape": {
+        "version": 7,
+        "algorithm": 8,
+        "keyRevision": 5,
+        "nonce": 9,
+        "ciphertext": 10
+      },
+      "catchall": 11,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "name": "encryptionEnvelopeVersionSchema",
+      "values": [1],
+      "checks": []
+    },
+    { "type": "literal", "values": ["AES-256-GCM"], "checks": [] },
+    {
+      "type": "string",
+      "name": "encryptionNonceSchema",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "length_equals", "length": 16, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "max_length", "maximum": 22369643, "when": "length" },
+        { "check": "min_length", "minimum": 22, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpClientFocusProjectInputSchema",
+      "shape": {},
+      "catchall": 15,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpClientFocusSurfaceInputSchema",
+      "shape": { "target": 17 },
+      "catchall": 48,
+      "checks": []
+    },
+    {
+      "type": "union",
+      "name": "cantripMcpClientSurfaceTargetSchema",
+      "options": [18, 24, 30, 36, 42],
+      "discriminator": "surfaceKind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 19,
+        "projectId": 20,
+        "surfaceKind": 21,
+        "surfaceId": 22
+      },
+      "catchall": 23,
+      "checks": []
+    },
+    { "type": "literal", "values": ["surface"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "literal", "values": ["chat"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 25,
+        "projectId": 26,
+        "surfaceKind": 27,
+        "surfaceId": 28
+      },
+      "catchall": 29,
+      "checks": []
+    },
+    { "type": "literal", "values": ["surface"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "literal", "values": ["terminal"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 31,
+        "projectId": 32,
+        "surfaceKind": 33,
+        "surfaceId": 34
+      },
+      "catchall": 35,
+      "checks": []
+    },
+    { "type": "literal", "values": ["surface"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "literal", "values": ["explorer"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 37,
+        "projectId": 38,
+        "surfaceKind": 39,
+        "surfaceId": 40
+      },
+      "catchall": 41,
+      "checks": []
+    },
+    { "type": "literal", "values": ["surface"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "literal", "values": ["code"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 43,
+        "projectId": 44,
+        "surfaceKind": 45,
+        "surfaceId": 46
+      },
+      "catchall": 47,
+      "checks": []
+    },
+    { "type": "literal", "values": ["surface"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "literal", "values": ["browser"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpClientShowInteractionInputSchema",
+      "shape": { "interactionId": 50 },
+      "catchall": 51,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] }
+  ]
+}

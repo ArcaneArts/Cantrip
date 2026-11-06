@@ -688,6 +688,13 @@ export const runMcpContractRoots = [
   "cantripMcpRunConfigurationReadOutputInputSchema",
 ];
 
+export const surfaceMcpContractRoots = [
+  "protectedClientNotificationSchema",
+  "cantripMcpClientFocusProjectInputSchema",
+  "cantripMcpClientFocusSurfaceInputSchema",
+  "cantripMcpClientShowInteractionInputSchema",
+];
+
 // Resolve the actual source schemas, including their separate protocol modules.
 // Compatibility oracles use this registry, never the generated native manifest.
 export function sourceContractSchema(name) {
@@ -1432,6 +1439,18 @@ if (
     await format(JSON.stringify(runManifest), {
       ...(await resolveConfig(fileURLToPath(runDestination))),
       filepath: fileURLToPath(runDestination),
+    }),
+  );
+  const surfaceManifest = buildContractManifest(surfaceMcpContractRoots);
+  const surfaceDestination = new URL(
+    "../../cantrip_server_rs/contracts/mcp-surface.json",
+    import.meta.url,
+  );
+  await writeFile(
+    surfaceDestination,
+    await format(JSON.stringify(surfaceManifest), {
+      ...(await resolveConfig(fileURLToPath(surfaceDestination))),
+      filepath: fileURLToPath(surfaceDestination),
     }),
   );
   // Zod's strict object checks enumerate inherited Buffer properties as well

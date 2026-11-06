@@ -236,5 +236,26 @@ export function nativeCommandWireFixtures(timestamp) {
     ...fixtures.nativeCommandDispatchSchema[0],
     workerGeneration,
   });
+  for (const goalRecoveryOrderEpoch of [0, 1, Number.MAX_SAFE_INTEGER]) {
+    const intent = { ...goalIntent, goalRecoveryOrderEpoch };
+    fixtures.nativeCommandIntentSchema.push(intent);
+    fixtures.nativeCommandAdmissionSchema.push({
+      ...fixtures.nativeCommandAdmissionSchema.at(-1),
+      intent,
+    });
+  }
+  const suspensionIntent = {
+    scope: "thread",
+    paused: true,
+    durableSuspension: true,
+    workerGeneration,
+    expectedTurnId: "turn",
+  };
+  fixtures.nativeCommandIntentSchema.push(suspensionIntent);
+  fixtures.nativeCommandAdmissionSchema.push({
+    ...fixtures.nativeCommandAdmissionSchema[0],
+    method: "turn/pause",
+    intent: suspensionIntent,
+  });
   return fixtures;
 }

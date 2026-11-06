@@ -12,6 +12,13 @@ worker pairing, credentials, heartbeat storage and foundational control sockets.
 Storage supports native PGlite, private managed PostgreSQL and external
 PostgreSQL. The worker remains Node.
 
+Native MCP now includes Explorer reads/writes, terminal snapshots/input/service
+restart, browser discovery/navigation and all four client-control operations.
+The current registry advertises 46 of the reference server's 55 MCP operations;
+the remaining web/help operations and legacy CLI transport remain required.
+The surface port preserves opaque endpoint data, exact owned target placement,
+permission/lane guards, browser revision conflicts and client acknowledgments.
+
 The native command kernel now owns admission, immutable receipts, execution
 lanes, logical continuations, encrypted prompts, managed queue claims/imports,
 settings evidence, permission policies and interaction requests. Internal HTTP
