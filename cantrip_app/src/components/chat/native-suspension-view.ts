@@ -68,6 +68,13 @@ export function nativeSuspensionView(
           ...view("Resume unavailable", "Stop failed", false),
           blocked: true,
         };
+      if (state.action === "resume" && !state.resumable && state.active)
+        return {
+          ...view("Retry pause", "Live Resume failed", true),
+          error:
+            "No durable pause was saved. Retry live Resume with the original worker, or Stop this turn.",
+          resumeAlso: true,
+        };
       if (state.action === "pause")
         return {
           ...view("Retry pause", "Pause could not be saved", true),

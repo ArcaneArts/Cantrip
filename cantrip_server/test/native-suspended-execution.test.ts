@@ -35,7 +35,7 @@ afterAll(async () => {
   await fixture?.close();
 });
 
-async function capture(origin: "gui" | "terminal") {
+async function capture(origin: "gui" | "terminal", fail = false) {
   const base = await fixture.input(origin);
   const session = base.session;
   const workerGeneration = randomUUID();
@@ -118,34 +118,79 @@ async function capture(origin: "gui" | "terminal") {
     runtimeVersion: "fixture",
     runtimeFingerprint: null,
   };
-  await fixture.commands.settle(owner, {
-    ...pause,
-    suspensionEvidence: evidence,
-  });
+  await fixture.commands.settle(
+    owner,
+    fail
+      ? {
+          ...pause,
+          status: "uncertain",
+          resultDigest: null,
+          protectedResult: null,
+          rejectionCode: "native-resources-active",
+        }
+      : { ...pause, suspensionEvidence: evidence },
+  );
   return { root, rootAck, active, evidence, control };
 }
 
 describe("committed native suspension retains execution across transport loss", () => {
-  it("uses a surviving Stop owner without resolving an unavailable model route", async () => {
-    const captured = await capture("gui");
+  it.each([false, true])(
+    "uses a surviving Stop owner without resolving an unavailable model route (capture failed: %s)",
+    async (fail) => {
+      const captured = await capture("gui", fail);
+      const saved = await fixture.repository.nativeSuspensions.read(
+        owner,
+        fixture.chatId,
+      );
+      const context = await fixture.commands.controlContext(
+        owner,
+        fixture.chatId,
+      );
+      await fixture.commands.stopAutonomy(
+        owner,
+        fixture.chatId,
+        context.activationGeneration,
+      );
+      const request = vi.fn(async (_worker, command) => {
+        expect(command.type).toBe("chat.native-control");
+        expect(command.control).toEqual({ kind: "interrupt" });
+        await fixture.commands.settle(owner, await captured.control(true));
+        return { interrupted: true };
+      });
+      const runtimeForContext = vi.fn(async () => null);
+      const stop = createDurableChatStopRuntime({
+        repository: fixture.repository,
+        bridge: { request, isConnected: () => true } as never,
+        runtimeForContext,
+        routePairsForConfiguration: vi.fn() as never,
+        publishChatSummary: vi.fn(),
+      });
+      await expect(
+        stop(owner, context.context!, context, saved!),
+      ).resolves.toEqual({ interrupted: true });
+      expect(request).toHaveBeenCalledOnce();
+      expect(runtimeForContext).not.toHaveBeenCalled();
+      await fixture.commands.finishLogicalGui(
+        owner,
+        fixture.workerId,
+        captured.root.operationId,
+        captured.root.operationGeneration,
+        "idle",
+      );
+    },
+  );
+  it("retains a failed live Stop without attempting a fresh attachment when no checkpoint exists", async () => {
+    const captured = await capture("gui", true);
     const saved = await fixture.repository.nativeSuspensions.read(
       owner,
       fixture.chatId,
     );
-    const context = await fixture.commands.controlContext(
+    const control = await fixture.commands.controlContext(
       owner,
       fixture.chatId,
     );
-    await fixture.commands.stopAutonomy(
-      owner,
-      fixture.chatId,
-      context.activationGeneration,
-    );
-    const request = vi.fn(async (_worker, command) => {
-      expect(command.type).toBe("chat.native-control");
-      expect(command.control).toEqual({ kind: "interrupt" });
-      await fixture.commands.settle(owner, await captured.control(true));
-      return { interrupted: true };
+    const request = vi.fn(async () => {
+      throw new Error("Original worker is unavailable");
     });
     const runtimeForContext = vi.fn(async () => null);
     const stop = createDurableChatStopRuntime({
@@ -156,10 +201,24 @@ describe("committed native suspension retains execution across transport loss", 
       publishChatSummary: vi.fn(),
     });
     await expect(
-      stop(owner, context.context!, context, saved!),
-    ).resolves.toEqual({ interrupted: true });
+      stop(owner, control.context!, control, saved!),
+    ).rejects.toThrow("No durable pause was saved");
     expect(request).toHaveBeenCalledOnce();
     expect(runtimeForContext).not.toHaveBeenCalled();
+    expect(
+      await fixture.repository.nativeSuspensions.read(owner, fixture.chatId),
+    ).toMatchObject({
+      phase: "error",
+      action: "stop",
+      checkpoint: null,
+      error: { code: "stop-failed" },
+    });
+    const [chat] = await fixture.db
+      .select({ paused: schema.chats.automationPaused })
+      .from(schema.chats)
+      .where(eq(schema.chats.id, fixture.chatId));
+    expect(chat.paused).toBe(true);
+    await fixture.commands.settle(owner, await captured.control(true));
     await fixture.commands.finishLogicalGui(
       owner,
       fixture.workerId,

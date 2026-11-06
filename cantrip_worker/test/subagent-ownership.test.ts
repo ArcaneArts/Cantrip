@@ -405,6 +405,14 @@ describe("native subagent execution ownership", () => {
     expect(reconciledRootTurnStatus("failed", true, false)).toBe("completed");
     expect(reconciledRootTurnStatus("failed", false, true)).toBe("interrupted");
     expect(reconciledRootTurnStatus("failed", false, false)).toBe("failed");
+    expect(reconciledRootTurnStatus("interrupted", true, false)).toBe(
+      "interrupted",
+    );
+    expect(reconciledRootTurnStatus("interrupted", true, true)).toBe(
+      "interrupted",
+    );
+    expect(reconciledRootTurnStatus("failed", true, true)).toBe("interrupted");
+    expect(reconciledRootTurnStatus("completed", true, true)).toBe("completed");
   });
 
   it("parses native thread metadata without trusting missing parents", () => {

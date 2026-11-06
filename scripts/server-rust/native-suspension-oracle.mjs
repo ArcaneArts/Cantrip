@@ -94,6 +94,18 @@ for (const phase of protocol.nativeSuspensionPhaseSchema.options) {
   add("nativeSuspensionRecordSchema", { ...record, phase, checkpoint: null });
 }
 for (const patch of [
+  { action: "resume", phase: "resuming", checkpoint: null, pausedAt: null },
+  { action: "resume", phase: "resuming", checkpoint: null, active: null },
+  { action: "pause", phase: "resuming", checkpoint: null },
+  {
+    action: "resume",
+    phase: "resuming",
+    checkpoint: null,
+    active: { ...active, threadId: "foreign" },
+  },
+])
+  add("nativeSuspensionRecordSchema", { ...record, ...patch });
+for (const patch of [
   { version: 99 },
   { actorControlId: "6f2b4be5-491a-4bea-b950-0b41ec38081e" },
   { actor: null },
@@ -123,6 +135,21 @@ for (const patch of [
 
 export const projections = [
   record,
+  {
+    ...record,
+    action: "resume",
+    phase: "resuming",
+    checkpoint: null,
+    pausedAt: null,
+  },
+  {
+    ...record,
+    action: "resume",
+    phase: "error",
+    checkpoint: null,
+    pausedAt: null,
+    error: { code: "restore-failed", protectedDetails: null },
+  },
   {
     ...record,
     phase: "error",

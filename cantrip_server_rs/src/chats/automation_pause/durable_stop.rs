@@ -16,16 +16,32 @@ impl Service {
         control: &Value,
     ) -> Result<Value> {
         let chat = text(&context["chatId"])?;
+        // Concurrent HTTP Stop requests must not replace one another's native
+        // actor claim while the first acknowledgement is still in flight.
+        let lock = {
+            let mut controls = self.stop_controls.lock().unwrap();
+            controls.retain(|_, lock| lock.strong_count() > 0);
+            let entry = controls
+                .entry((owner.to_owned(), chat.clone()))
+                .or_default();
+            entry.upgrade().unwrap_or_else(|| {
+                let lock = Arc::new(tokio::sync::Mutex::new(()));
+                *entry = Arc::downgrade(&lock);
+                lock
+            })
+        };
+        let _stop = lock.lock().await;
         let requested = self.native.request_suspension_stop(owner, &chat).await?;
         if terminal(&requested) {
             return Ok(json!({"interrupted":true}));
         }
         let attempt: Result<Value> = async {
+            let mut live_failure = None;
             if truthy(control.get("activationGeneration")) {
                 let packet = json!({"type":"chat.native-control","chatId":context["chatId"],"threadId":context["threadId"],
                     "nativeActivationGeneration":control["activationGeneration"],"nativeRuntimeGeneration":control["runtimeGeneration"],
                     "modelRouteId":context["modelRouteId"],"providerAccountId":context["providerAccountId"],"control":json!({"kind":"interrupt"})});
-                let _ = self.commands.request_with_timeout(&text(&context["workerId"])?, packet, RequestTimeout::Disabled, None).await;
+                live_failure = self.commands.request_with_timeout(&text(&context["workerId"])?, packet, RequestTimeout::Disabled, None).await.err();
                 let observed = self.chats.native_suspension(owner, &chat).await?.unwrap_or(Value::Null);
                 if observed["controlId"] != requested["controlId"] {
                     return Err(failure(409, "This Stop was superseded by a newer control."));
@@ -34,6 +50,12 @@ impl Service {
                 if observed["actorControlId"] == observed["controlId"] {
                     return Err(failure(409, "The native Stop has not received a committed acknowledgement. Retry Stop."));
                 }
+            }
+            if requested["checkpoint"].is_null() {
+                if let Some(cause) = live_failure {
+                    return Err(wrapped(409, "The live turn could not be stopped: ", &cause.into()));
+                }
+                return Err(failure(409, "The live turn could not be stopped. No durable pause was saved. Reconnect the original worker and retry Stop."));
             }
             let Some(launch) = self.goals.suspended_launch(owner, context).await? else {
                 return Err(failure(409, "The saved runtime is unavailable. Restore it and retry Stop."));
@@ -56,7 +78,7 @@ impl Service {
         }.await;
         let result = match attempt {
             Ok(result) => Ok(result),
-            Err(_) => {
+            Err(cause) => {
                 let current = self
                     .chats
                     .native_suspension(owner, &chat)
@@ -75,10 +97,14 @@ impl Service {
                             )
                             .await?;
                     }
-                    Err(failure(
-                        409,
-                        "The suspended turn could not be stopped. Its saved state is retained; retry Stop.",
-                    ))
+                    if cause.is::<PauseError>() {
+                        Err(cause)
+                    } else {
+                        Err(failure(
+                            409,
+                            "The suspended turn could not be stopped. Its saved state is retained; retry Stop.",
+                        ))
+                    }
                 }
             }
         };

@@ -89,6 +89,10 @@ export function createDurableChatStopRuntime(dependencies: Dependencies) {
               "The native Stop has not received a committed acknowledgement. Retry Stop.",
             );
         }
+        if (!requested.state.checkpoint)
+          throw new DurableChatStopError(
+            "The live turn could not be stopped. No durable pause was saved. Reconnect the original worker and retry Stop.",
+          );
         const runtime = await runtimeForContext(context);
         if (!runtime)
           throw new DurableChatStopError(

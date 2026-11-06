@@ -128,11 +128,22 @@ export const nativeSuspensionRecordSchema = z
         path: ["actorControlId"],
         message: "An actor claim must belong to the current control.",
       });
-    if (["paused", "resuming"].includes(value.phase) && !value.checkpoint)
+    if (value.phase === "paused" && !value.checkpoint)
       context.addIssue({
         code: "custom",
         path: ["checkpoint"],
         message: "A durable paused turn requires its committed checkpoint.",
+      });
+    if (
+      value.phase === "resuming" &&
+      !value.checkpoint &&
+      (value.action !== "resume" || !value.active)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["active"],
+        message:
+          "A live Resume requires its original active turn and resume intent.",
       });
     if (
       value.checkpoint &&

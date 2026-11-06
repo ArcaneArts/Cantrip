@@ -33,7 +33,6 @@ impl Execution {
         };
         if managed(context)
             && let Some(state) = self.chats.native_suspension(&self.owner, chat).await?
-            && !state["checkpoint"].is_null()
             && !state["active"].is_null()
             && !matches!(
                 state["phase"].as_str(),

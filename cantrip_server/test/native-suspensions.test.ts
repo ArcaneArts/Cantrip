@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   nativeSuspensionRecordSchema,
+  chatNativeSuspension,
   type NativeSuspensionActor,
   type NativeSuspensionEvidence,
 } from "@cantrip/protocol";
@@ -59,6 +60,26 @@ async function paused() {
   );
   return { ...result, actor: a, checkpoint, controlId: result.state.controlId };
 }
+async function failedCapture() {
+  const request = await repo().request(owner, fixture.chatId, "pause");
+  const original = actor();
+  await repo().claim(
+    owner,
+    fixture.chatId,
+    request.state.controlId,
+    request.state.actor,
+    original,
+    active,
+  );
+  const failed = await repo().failedControl(
+    owner,
+    fixture.chatId,
+    request.state.controlId,
+    original,
+    { code: "pause-failed", protectedDetails: null },
+  );
+  return { ...failed, actor: original };
+}
 beforeAll(async () => {
   fixture = await createNativeSettingsFixture();
 }, 120_000);
@@ -77,6 +98,137 @@ afterAll(async () => {
 });
 
 describe("durable native suspension repository (real migrated database)", () => {
+  it("releases a failed-capture hold only after the surviving native owner acknowledges live Resume", async () => {
+    const failed = await failedCapture();
+    expect(chatNativeSuspension(failed.state).resumable).toBe(false);
+    const resume = await repo().request(
+      owner,
+      fixture.chatId,
+      "resume",
+      active,
+    );
+    expect(resume.state).toMatchObject({
+      phase: "resuming",
+      checkpoint: null,
+      active,
+    });
+    expect((await row()).automationPaused).toBe(true);
+    await expect(
+      repo().running(
+        owner,
+        fixture.chatId,
+        resume.state.controlId,
+        failed.actor,
+      ),
+    ).rejects.toMatchObject({ code: "suspension-actor-unclaimed" });
+    const current = {
+      ...failed.actor,
+      operationId: randomUUID(),
+      operationGeneration: randomUUID(),
+    };
+    await repo().claim(
+      owner,
+      fixture.chatId,
+      resume.state.controlId,
+      failed.actor,
+      current,
+      active,
+    );
+    await repo().running(
+      owner,
+      fixture.chatId,
+      resume.state.controlId,
+      current,
+    );
+    expect(await state()).toMatchObject({
+      phase: "running",
+      checkpoint: null,
+      active,
+      actor: current,
+    });
+    expect((await row()).automationPaused).toBe(false);
+  });
+
+  it("cannot adopt a live-only Resume into a fresh worker or native runtime", async () => {
+    const failed = await failedCapture();
+    const resume = await repo().request(
+      owner,
+      fixture.chatId,
+      "resume",
+      active,
+    );
+    for (const changed of [
+      { workerGeneration: randomUUID() },
+      { runtimeGeneration: randomUUID() },
+    ]) {
+      await expect(
+        repo().claim(
+          owner,
+          fixture.chatId,
+          resume.state.controlId,
+          failed.actor,
+          {
+            ...failed.actor,
+            ...changed,
+            operationId: randomUUID(),
+            operationGeneration: randomUUID(),
+          },
+          active,
+        ),
+      ).rejects.toMatchObject({ code: "suspension-live-owner-unavailable" });
+    }
+    expect((await row()).automationPaused).toBe(true);
+    expect(await state()).toMatchObject({
+      phase: "resuming",
+      checkpoint: null,
+      actor: failed.actor,
+      actorControlId: null,
+    });
+  });
+
+  it("keeps live Resume retryable after a failure and lets Stop supersede its next attempt", async () => {
+    const failed = await failedCapture();
+    const first = await repo().request(owner, fixture.chatId, "resume", active);
+    await repo().failedControl(
+      owner,
+      fixture.chatId,
+      first.state.controlId,
+      failed.actor,
+      { code: "restore-failed", protectedDetails: null },
+    );
+    const retry = await repo().request(owner, fixture.chatId, "resume", active);
+    const current = {
+      ...failed.actor,
+      operationId: randomUUID(),
+      operationGeneration: randomUUID(),
+    };
+    await repo().claim(
+      owner,
+      fixture.chatId,
+      retry.state.controlId,
+      failed.actor,
+      current,
+      active,
+    );
+    const stop = await repo().request(owner, fixture.chatId, "stop", active);
+    await expect(
+      repo().running(owner, fixture.chatId, retry.state.controlId, current),
+    ).rejects.toMatchObject({ code: "suspension-control-stale" });
+    await repo().claim(
+      owner,
+      fixture.chatId,
+      stop.state.controlId,
+      current,
+      current,
+      active,
+    );
+    await repo().stopped(owner, fixture.chatId, stop.state.controlId, current);
+    await expect(
+      repo().request(owner, fixture.chatId, "resume", active),
+    ).rejects.toMatchObject({ code: "suspension-not-resumable" });
+    expect((await row()).automationPaused).toBe(true);
+  });
+
   it("does not offer a previous running checkpoint after a new Pause fails", async () => {
     const p = await paused();
     const resume = await repo().request(owner, fixture.chatId, "resume");

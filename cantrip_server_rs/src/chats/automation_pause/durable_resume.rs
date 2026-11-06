@@ -90,6 +90,7 @@ impl Service {
         if observed.state["controlId"] == requested["controlId"]
             && observed.state["phase"] == "resuming"
             && observed.state["actorControlId"] != observed.state["controlId"]
+            && !requested["checkpoint"].is_null()
         {
             let attempt: Result<()> = async {
                 let Some(launch) = self.goals.suspended_launch(owner, context).await? else {
@@ -181,7 +182,9 @@ impl Service {
         let (status, _, message) = known_failure.unwrap_or((
             502,
             "restore-failed",
-            "The worker could not resume this saved turn. Its checkpoint has been retained.",
+            if requested["checkpoint"].is_null() {
+                "The live turn could not be resumed. No durable pause was saved. Reconnect the original worker and retry, or Stop this turn."
+            } else { "The worker could not resume this saved turn. Its checkpoint has been retained." },
         ));
         Err(failure(status, message))
     }

@@ -5,7 +5,7 @@ import { eventually } from "./full-worker.mjs";
 
 export function completedSessionCommand() {
   return {
-    cmd: "printf 'DURABLE_TOOL_RESULT\\n' | tee -a durable-cold-marker; while [ ! -e durable-session-release ]; do sleep 0.05; done; printf 'DURABLE_SESSION_TAIL\\n'; printf 'done\\n' > durable-session-complete",
+    cmd: "printf '%s\\n' $$ > durable-session-pid; printf 'DURABLE_TOOL_RESULT\\n' | tee -a durable-cold-marker; while [ ! -e durable-session-release ]; do sleep 0.05; done; printf 'DURABLE_SESSION_TAIL\\n'; printf 'done\\n' > durable-session-complete",
     yield_time_ms: 1000,
     max_output_tokens: 1000,
   };
@@ -68,6 +68,18 @@ export function completedSessionPoll(model, tools, session) {
 }
 
 export function assertCompletedSessionResult(items, session) {
+  if (session.refusal)
+    assert.equal(
+      items.filter(
+        (item) =>
+          item.type === "message" &&
+          item.role === "user" &&
+          item.content.some(
+            (part) => part.text === session.refusal.pendingInput,
+          ),
+      ).length,
+      1,
+    );
   const outputs = items.filter(
     (item) =>
       item.type === "function_call_output" &&

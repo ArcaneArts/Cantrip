@@ -29,7 +29,7 @@ fn oracle() -> Result<Value> {
 fn suspension_contracts_and_private_projection_match_source() -> Result<()> {
     let corpus = oracle()?;
     let cases = corpus["cases"].as_array().context("oracle cases")?;
-    assert_eq!(cases.len(), 99, "oracle corpus changed");
+    assert_eq!(cases.len(), 103, "oracle corpus changed");
     for case in cases {
         let outcome = match wire::parse(case["schema"].as_str().unwrap(), Some(&case["input"])) {
             Ok(value) => Value::object([("ok", value)]),

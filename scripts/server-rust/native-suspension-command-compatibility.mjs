@@ -91,11 +91,16 @@ try {
       ["terminal", "complete"],
       ["gui", "stop"],
       ["terminal", "stop"],
+      ["gui", "live-complete"],
+      ["terminal", "live-complete"],
+      ["gui", "live-stop"],
+      ["terminal", "live-stop"],
     ]) {
       await fixture.seed(
         "UPDATE chats SET automation_paused=false,managed_autonomy_stopped=false WHERE id='chat'",
       );
       const key = origin + "-" + ending;
+      const live = ending.startsWith("live-");
       const rootId = "root-" + key;
       const active = { threadId: "thread", turnId: "turn-" + key };
       const start = command({
@@ -172,23 +177,33 @@ try {
           durableSuspension: true,
         };
       };
-      const evidence = {
-        suspension: {
-          ...active,
-          checkpointId: "checkpoint-" + key,
-          revision: 1,
-        },
-        storageId: "00000000-0000-4000-8000-000000000001",
-        runtimeVersion: "fixture",
-        runtimeFingerprint: null,
-      };
+      const evidence = live
+        ? null
+        : {
+            suspension: {
+              ...active,
+              checkpointId: "checkpoint-" + key,
+              revision: 1,
+            },
+            storageId: "00000000-0000-4000-8000-000000000001",
+            runtimeVersion: "fixture",
+            runtimeFingerprint: null,
+          };
       const pause = await control("pause", "turn/pause");
       await snapshot("pausing", active, null);
-      await call("settle", pause, "suspension-evidence-required");
-      const pauseAck = { ...pause, suspensionEvidence: evidence };
+      const pauseAck = live
+        ? {
+            ...pause,
+            status: "uncertain",
+            resultDigest: null,
+            protectedResult: null,
+            rejectionCode: "native-resources-active",
+          }
+        : { ...pause, suspensionEvidence: evidence };
+      if (!live) await call("settle", pause, "suspension-evidence-required");
       await call("settle", pauseAck);
       await call("settle", pauseAck);
-      await snapshot("paused", active, evidence);
+      await snapshot(live ? "error" : "paused", active, evidence);
       const observe = async (op, expected) => {
         const result = await fixture.request({
           op: "native-command-" + op,
@@ -204,13 +219,16 @@ try {
         if (expected !== undefined) assert.deepEqual(result.value, expected);
         return result.value;
       };
-      assert.deepEqual(
-        (await observe("suspended-execution")).checkpoint,
-        evidence,
-      );
-      await observe("finish-execution", false);
-      if (origin === "gui") await observe("logical-finish", false);
-      await snapshot("paused", active, evidence);
+      if (!live)
+        assert.deepEqual(
+          (await observe("suspended-execution")).checkpoint,
+          evidence,
+        );
+      if (!live) {
+        await observe("finish-execution", false);
+        if (origin === "gui") await observe("logical-finish", false);
+      }
+      await snapshot(live ? "error" : "paused", active, evidence);
       const rootState = await query(
         `SELECT jsonb_build_object('completed',execution_completed_at,'logical',logical_completed_at) result FROM native_commands WHERE operation_id='${rootId}'`,
       );
@@ -227,14 +245,44 @@ try {
         executionStatus: "idle",
       };
       await call("settle", terminal, "suspended-execution-not-terminal");
+      if (live) {
+        const attempt = await fixture.request({
+          op: "native-command-automation-pause",
+          owner,
+          chat: "chat",
+          action: "pause",
+          paused: false,
+          resumeAutomation: false,
+          pausePrefix: "unavailable-live-" + key,
+          pauseProtectedPayload: envelope,
+          pauseErrors: ["Original owner exited"],
+        });
+        run.steps++;
+        assert.equal(attempt.rejected, false, JSON.stringify(attempt));
+        assert.equal(
+          attempt.value.error.statusCode,
+          502,
+          JSON.stringify(attempt),
+        );
+        assert.deepEqual(
+          attempt.value.commands.map((entry) => entry.command.type),
+          ["chat.native-control"],
+          "An unavailable live owner cannot cause cold restoration without a checkpoint",
+        );
+        const failedLive = await snapshot("error", active, null);
+        assert.equal(failedLive.action, "resume");
+      }
       const resume = await control("resume", "turn/pause", false);
       await snapshot("resuming", active, evidence);
-      assert.deepEqual(
-        (await observe("suspended-execution")).checkpoint,
-        evidence,
-      );
-      await observe("finish-execution", false);
-      if (origin === "gui") await observe("logical-finish", false);
+      if (!live)
+        assert.deepEqual(
+          (await observe("suspended-execution")).checkpoint,
+          evidence,
+        );
+      if (!live) {
+        await observe("finish-execution", false);
+        if (origin === "gui") await observe("logical-finish", false);
+      }
       await call("settle", pauseAck, "suspension-actor-stale");
       await call(
         "settle",
@@ -270,7 +318,7 @@ try {
       // Running retains historical evidence, without extending the durable
       // pause guarantee to unconfirmed termination of active inference.
       await observe("suspended-execution", null);
-      if (ending === "complete") {
+      if (ending.endsWith("complete")) {
         await call("settle", {
           ...terminal,
           reconciliation: {
@@ -282,12 +330,15 @@ try {
       } else {
         const stop = await control("stop", "turn/interrupt");
         await snapshot("stopping", active, evidence);
-        assert.deepEqual(
-          (await observe("suspended-execution")).checkpoint,
-          evidence,
-        );
-        await observe("finish-execution", false);
-        if (origin === "gui") await observe("logical-finish", false);
+        if (!live)
+          assert.deepEqual(
+            (await observe("suspended-execution")).checkpoint,
+            evidence,
+          );
+        if (!live) {
+          await observe("finish-execution", false);
+          if (origin === "gui") await observe("logical-finish", false);
+        }
         await call("settle", {
           ...terminal,
           reconciliation: {

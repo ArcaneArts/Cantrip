@@ -330,10 +330,33 @@ or new plaintext resource file is introduced.
 
 Completed-session cold recovery is qualified through both input origins and both
 servers. Active commands correctly refuse durable capture and show their concrete
-reason with live controls. Production validation has exposed a separate server
-failure when using live Resume after that refusal; that recovery transition is
-still being integrated. Do not treat the enabled control as a qualified recovery
-path until its actual request succeeds.
+reason with live controls. Add `--active-session` to attempt capture while the
+controlled command is still running. The fixture checks the actual refusal,
+absence of a checkpoint, and visible Retry Pause, live Resume and Stop controls.
+It then finishes the command, explicitly resumes the surviving native turn and
+performs two acknowledged cold recovery cycles, including the original session
+poll and unique history assertions. Both input origins and both servers pass.
+
+An unsuccessful capture can leave a live, paused native turn without a durable
+checkpoint. Resume uses the coordinated control transaction for this state,
+keeping queued work held until native acknowledgement. The original worker and
+runtime generations must still match; the control operation receives fresh
+correlation. This live-only path never prepares a replacement attachment or
+attempts cold restoration without a checkpoint. An unavailable original owner
+produces an explicit error, retains the hold and allows retry or Stop. Public
+`resumable` remains false: this state does not grant recovery after process death.
+
+Stop also commits coordinated intent before interrupting the original native
+turn, including after capture failed. Duplicate Stop requests share or serialize
+the native control attempt so concurrent requests cannot replace its pending
+acknowledgement owner. A native interruption remains interrupted even when the
+turn has earlier assistant text. A yielded command is owned by its native
+thread and can remain alive after the turn is stopped. Stop does not represent
+that command as durably suspended or reconstruct it after restart. The
+`--active-session --stop-active-session` fixture records its actual process state,
+then terminates the whole worker tree and verifies that reopening retains
+Stopped, rejects late Resume and starts no inference. It does not claim Stop
+alone terminates yielded background commands.
 
 Both composer and linked console controls use authoritative suspension phases.
 Restoration errors preserve the chat and expose an explicit retry; Stop intent
