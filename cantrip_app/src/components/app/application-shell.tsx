@@ -800,13 +800,19 @@ export function App() {
   const newTerminal = useTerminalCreationOperation({
     ownedPlacement: true,
     defaultPlacement: () => {
-      const placement = surfaceOsFilePlacement(selectedSurface, remoteDesktop.data);
+      const placement = surfaceOsFilePlacement(
+        selectedSurface,
+        remoteDesktop.data,
+      );
       if (placement === null)
-        throw new Error("The selected surface's file destination is unavailable.");
+        throw new Error(
+          "The selected surface's file destination is unavailable.",
+        );
       return {
         ...placement,
         projectId: selectedSurface?.projectId,
-        worktreeId: surfaceWorktreeId(selectedSurface, remoteDesktop.data) ?? undefined,
+        worktreeId:
+          surfaceWorktreeId(selectedSurface, remoteDesktop.data) ?? undefined,
       };
     },
     openCreatedTab,
