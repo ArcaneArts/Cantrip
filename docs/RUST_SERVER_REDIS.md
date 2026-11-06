@@ -63,7 +63,8 @@ WorkerLink election, 16 real read/EVAL interleavings preserving intervening writ
 listener mutation/failure/reentrancy, exact maximum-size
 messages, instance limits, expiry and real Redis process interruption/restart.
 This does not prove full coordinated worker execution, mixed rolling product
-deployment, TLS operation, Linux/Windows artifacts or packaging acceptance.
+deployment, outage-response timing/backlog, TLS operation, Linux/Windows
+artifacts or packaging acceptance.
 
 All development validation runs locally. GitHub Actions remains reserved for
 releases and deployments.

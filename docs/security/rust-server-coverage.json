@@ -9804,7 +9804,8 @@
       "remaining": [
         "Wire native Redis coordination into production startup, health and graceful shutdown without adding a JavaScript helper.",
         "Integrate remote worker commands/events/responses, deadlines, notifications and opaque binary frames, WorkerLink authority/revocation and App Live publication routing. Preserve consumer-level replay/deduplication; the reference coordinator itself delivers repeated message IDs.",
-        "Exercise real SQL-backed Rust/Rust and mixed Node/Rust product instances, interruption at execution boundaries, replacement, replay, backpressure and revocation; qualify TLS, supported platforms and packaged/deployment artifacts."
+        "Exercise real SQL-backed Rust/Rust and mixed Node/Rust product instances, interruption at execution boundaries, replacement, replay, backpressure and revocation; qualify TLS, supported platforms and packaged/deployment artifacts.",
+        "Qualify fail-fast publish/readiness and offline command-queue timing against Source during production integration; the current functional outage checks assert results and recovery, not timing equivalence."
       ],
       "rustImplementation": [
         "cantrip_server_rs/src/coordination/mod.rs",
