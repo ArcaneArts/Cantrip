@@ -800,6 +800,18 @@ outstanding.
 
 ## Withdrawing a response before alternate-provider naming finishes
 
+Patch `0089` permits the current worker to requeue a previously granted input
+that it parked before native dispatch and durably released as `never-started`.
+Requeue clears that outcome before another grant. Native-bound scopes, other
+terminal outcomes, never-granted unrequested seals, and old worker generations
+remain rejected. The worker replaces resolved input permission when parking and
+awaits fresh permission before committing canonical dispatch. This preserves
+both live Resume and cold recovery at the granted preparation boundary.
+The normal 90-patch macOS ARM64 development build and runtime verification passed.
+Actual keeper tests retain terminal/native-binding/generation refusals, and eight
+full-worker GUI/TUI cases passed across the Node and Rust servers. Optimized
+product qualification remains part of the broader suspension acceptance.
+
 Patch `0071` adds the keeper's atomic `sealUnstarted` mutation. An actual canonical
 response source can be sealed before requesting any provider capacity, while its
 private title operation uses another provider's ticket. The mutation records only

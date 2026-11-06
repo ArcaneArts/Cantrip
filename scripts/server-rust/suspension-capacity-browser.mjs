@@ -79,6 +79,7 @@ export async function pauseWaitingSuspension({
   workerData,
   model,
   blocker,
+  expectedState = "waiting",
 }) {
   const status = await eventually(
     () => suspensionCapacityStatus(page, workerId),
@@ -86,7 +87,7 @@ export async function pauseWaitingSuspension({
       const waiting = value.pools
         .flatMap((pool) => pool.operations)
         .find((operation) => operation.chatId === chatId);
-      assert.equal(waiting?.state, "waiting");
+      assert.equal(waiting?.state, expectedState);
       assert.equal(waiting.startedAt, null);
     },
   );
@@ -141,24 +142,38 @@ export async function pauseWaitingSuspension({
     null,
     "A request with no native turn cannot receive a fabricated active turn identity",
   );
-  const stopped = await page.evaluate(
-    async (id) => (await import("/src/lib/api/chats.ts")).interruptChat(id),
-    blocker.chatId,
-  );
-  assert.equal(stopped.interrupted, true);
-  await eventually(
-    () => suspensionCapacityStatus(page, workerId),
-    (value) => {
-      assert.equal(
-        value.pools.reduce((total, pool) => total + pool.activeCount, 0),
-        0,
-      );
-    },
-  );
+  const stopped = blocker
+    ? await page.evaluate(
+        async (id) => (await import("/src/lib/api/chats.ts")).interruptChat(id),
+        blocker.chatId,
+      )
+    : null;
+  if (stopped) assert.equal(stopped.interrupted, true);
+  if (blocker)
+    await eventually(
+      () => suspensionCapacityStatus(page, workerId),
+      (value) => {
+        assert.equal(
+          value.pools.reduce((total, pool) => total + pool.activeCount, 0),
+          0,
+        );
+      },
+    );
   assert.equal(
     model.requests.filter((request) => request.method === "POST").length,
     count,
     "Freeing capacity cannot start the paused request",
   );
-  return { status, threadId, history, paused, stopped };
+  const capacityAfterPause = await suspensionCapacityStatus(page, workerId);
+  if (expectedState === "granted") {
+    assert.equal(
+      capacityAfterPause.pools.reduce(
+        (total, pool) => total + pool.activeCount,
+        0,
+      ),
+      0,
+      "An acknowledged hold releases unused provider capacity",
+    );
+  }
+  return { status, threadId, history, paused, stopped, capacityAfterPause };
 }

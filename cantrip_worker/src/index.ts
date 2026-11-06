@@ -7399,6 +7399,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               const active = await runtime.setActiveChatPaused(
                 command.chatId,
                 control.paused,
+                command.nativeActivationGeneration !== null,
               );
               const paused = runtime.isChatPaused(command.chatId);
               if (paused) pausedChats.add(command.chatId);

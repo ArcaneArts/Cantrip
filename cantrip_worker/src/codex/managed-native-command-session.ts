@@ -1854,6 +1854,7 @@ export class ManagedNativeCommandSession {
           }
         }
         try {
+          if (start) await execution.handle?.prepareInputDispatch?.();
           await this.options.client.dispatch({
             operationId: operation.operationId,
             operationGeneration: grant.receipt.operationGeneration,
