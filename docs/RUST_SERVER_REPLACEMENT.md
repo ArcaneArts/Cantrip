@@ -1,5 +1,13 @@
 # Rust server replacement
 
+Actual single-server crash comparisons now pass Task, Agent and active Goal
+continuity across all three database modes with the full native worker. The
+paired startup repair retains unfinished GUI authority; a bounded worker
+metadata repair prevents a transient server outage from failing protected
+publication. See [single-server recovery](RUST_SERVER_SINGLE_RECOVERY.md) for
+the reproduced defects, executed matrix and remaining interruption scope.
+Node remains the default server and full replacement remains incomplete.
+
 Current source reconciliation finds paired Rust implementations for recent model,
 catalog, Task/Goal recovery and CantripOS changes. The refreshed inventory covers
 584 routes, 323 worker commands and 135 declared tables. Real HTTP comparison also

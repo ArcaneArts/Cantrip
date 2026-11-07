@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { NativeCommandClient } from "../src/native-command-client.js";
 
 const session = {
@@ -35,6 +35,7 @@ const request = {
 };
 
 describe("native command admission transport", () => {
+  afterEach(() => vi.useRealTimers());
   it("uses current worker credentials and preserves exact dispatch identity", async () => {
     const bodies: Array<{ url: string; init: RequestInit }> = [];
     const fetcher = vi.fn(
@@ -81,6 +82,117 @@ describe("native command admission transport", () => {
       fetch: fetcher,
     });
     await expect(client.dispatch(request)).rejects.toThrow("connection reset");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries only the exact native receipt after an uncertain transport commit", async () => {
+    vi.useFakeTimers();
+    let token = "first-token";
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementationOnce(async () => {
+        token = "rotated-token";
+        throw new TypeError("fetch failed");
+      })
+      .mockResolvedValueOnce(Response.json({ receipt }));
+    const client = new NativeCommandClient({
+      serverUrl: "https://cantrip.example",
+      workerId: "worker-1",
+      token: () => token,
+      fetch: fetcher,
+    });
+    const input = {
+      operationId: receipt.operationId,
+      operationGeneration: receipt.operationGeneration,
+      status: "applied" as const,
+      resultDigest: null,
+      protectedResult: null,
+      rejectionCode: null,
+      executionComplete: false,
+    };
+    const settled = client.settle(input);
+    await vi.advanceTimersByTimeAsync(250);
+    expect((await settled).receipt.operationGeneration).toBe(
+      receipt.operationGeneration,
+    );
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual(
+      Array(2).fill(
+        "https://cantrip.example/api/internal/native-commands/receipt",
+      ),
+    );
+    expect(fetcher.mock.calls[0]![1]!.body).toBe(
+      fetcher.mock.calls[1]![1]!.body,
+    );
+    expect(JSON.parse(String(fetcher.mock.calls[1]![1]!.body))).toEqual({
+      ...input,
+      workerId: "worker-1",
+    });
+    expect(fetcher.mock.calls[1]![1]!.headers).toMatchObject({
+      authorization: "Bearer rotated-token",
+    });
+  });
+
+  it.each([401, 403, 404, 409, 422])(
+    "preserves HTTP %s rejection without retrying its receipt",
+    async (status) => {
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json(
+          {
+            error: "Rejected current authority.",
+            code: "stale-native-generation",
+          },
+          { status },
+        ),
+      );
+      const client = new NativeCommandClient({
+        serverUrl: "https://cantrip.example",
+        workerId: "worker-1",
+        token: () => "token",
+        fetch: fetcher,
+      });
+      await expect(
+        client.settle({
+          operationId: receipt.operationId,
+          operationGeneration: receipt.operationGeneration,
+          status: "applied",
+          resultDigest: null,
+          protectedResult: null,
+          rejectionCode: null,
+          executionComplete: false,
+        }),
+      ).rejects.toMatchObject({ status, code: "stale-native-generation" });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("cancels a pending metadata retry when its worker transport lifetime ends", async () => {
+    vi.useFakeTimers();
+    const lifetime = new AbortController();
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockRejectedValue(new TypeError("fetch failed"));
+    const client = new NativeCommandClient({
+      serverUrl: "https://cantrip.example",
+      workerId: "worker-1",
+      token: () => "token",
+      fetch: fetcher,
+      metadataSignal: () => lifetime.signal,
+    });
+    const pending = client.settle({
+      operationId: receipt.operationId,
+      operationGeneration: receipt.operationGeneration,
+      status: "applied",
+      resultDigest: null,
+      protectedResult: null,
+      rejectionCode: null,
+      executionComplete: false,
+    });
+    const rejected = expect(pending).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(0);
+    lifetime.abort();
+    await rejected;
+    await vi.advanceTimersByTimeAsync(5000);
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 

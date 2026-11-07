@@ -55,6 +55,9 @@ import { SharedProductFixture } from "./shared-product-fixture.mjs";
 import { verifySharedProductRolling } from "./shared-product-rolling.mjs";
 import { verifySharedProductOfflineShutdown } from "./shared-product-offline-shutdown.mjs";
 import { actualNativeInflightClient } from "./actual-native-inflight-client.mjs";
+import { SingleProductFixture } from "./single-product-fixture.mjs";
+import { actualSingleInflightClient } from "./actual-single-inflight-client.mjs";
+import { singleAgentInterruption } from "./single-agent-interruption.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { password } from "./security-fixtures.mjs";
 import { actualTerminalServices } from "./actual-terminal-services.mjs";
@@ -92,6 +95,11 @@ const option = (name) => {
 };
 const databaseMode = option("--database") ?? "pglite";
 const sharedPair = option("--server-pair");
+const singleProduct =
+  process.argv.includes("--native-single-recovery") ||
+  process.argv.includes("--native-single-agent-recovery");
+const selectedRuntime = option("--runtime");
+assert.ok(!selectedRuntime || ["node", "rust"].includes(selectedRuntime));
 const runtimeCases = sharedPair
   ? (sharedPair === "all"
       ? ["node/node", "node/rust", "rust/node", "rust/rust"]
@@ -109,7 +117,9 @@ const runtimeCases = sharedPair
       );
       return pair;
     })
-  : [["node"], ["rust"]];
+  : selectedRuntime
+    ? [[selectedRuntime]]
+    : [["node"], ["rust"]];
 const workerLinkRoute = option("--worker-link-route") ?? "relay";
 const reportPath = option("--report");
 const liveTaskDiagnostics =
@@ -688,6 +698,7 @@ async function flow(
       process.argv.includes("--replicas") ||
       process.argv.includes("--github-conversion") ||
       process.argv.includes("--tasks") ||
+      singleProduct ||
       process.argv.includes("--project-chats") ||
       process.argv.includes("--workspace-discovery")
         ? Number(new URL(fixture.server.origin).port)
@@ -880,6 +891,19 @@ async function flow(
         stopWorker,
         result,
       });
+    if (process.argv.includes("--native-single-recovery")) {
+      if (!worker) await startWorker();
+      await actualSingleInflightClient({
+        fixture,
+        page,
+        projectId: first.id,
+        workerId,
+        worker,
+        dataDirectory,
+        requests,
+        result,
+      });
+    }
     if (process.argv.includes("--native-inflight-recovery")) {
       if (!worker) await startWorker();
       await actualNativeInflightClient({
@@ -904,7 +928,11 @@ async function flow(
         result,
         requests,
       });
-    if (process.argv.includes("--project-chats"))
+    if (
+      process.argv.includes("--project-chats") ||
+      process.argv.includes("--native-single-agent-recovery")
+    ) {
+      if (worker) await stopWorker();
       await actualProjectChatClient({
         page,
         fixture,
@@ -917,7 +945,21 @@ async function flow(
         result,
         requests,
         providerBoundary,
+        ...(process.argv.includes("--native-single-agent-recovery")
+          ? {
+              interruptNativeStream: singleAgentInterruption({
+                fixture,
+                page,
+                projectId: first.id,
+                workerId,
+                getWorker: () => worker,
+                dataDirectory,
+                result,
+              }),
+            }
+          : {}),
       });
+    }
     if (process.argv.includes("--rolling-servers")) {
       if (!worker) await startWorker();
       await verifySharedProductRolling({
@@ -1072,7 +1114,9 @@ try {
           workerKind: kinds[1],
           databaseUrl: await postgres.database(),
         })
-      : new HttpFixture(fixtureOptions);
+      : singleProduct
+        ? new SingleProductFixture(fixtureOptions)
+        : new HttpFixture(fixtureOptions);
     if (postgres && !sharedPair) {
       if (kind === "node" || databaseMode === "postgres")
         fixture.environment.DATABASE_URL = await postgres.database();
@@ -1143,12 +1187,24 @@ try {
         } finally {
           result.sharedServerGenerations = fixture.generations;
         }
-      } else await fixture.close();
+      } else {
+        try {
+          await fixture.close();
+        } finally {
+          if (fixture.generations)
+            result.singleServerGenerations = fixture.generations;
+        }
+      }
     }
   }
   for (const runtime of report.runtimes.slice(1)) {
     assert.deepEqual(runtime.steps, report.runtimes[0].steps);
     assert.deepEqual(runtime.projects, report.runtimes[0].projects);
+    if (process.argv.includes("--native-single-recovery"))
+      assert.deepEqual(
+        runtime.singleInflight.summary,
+        report.runtimes[0].singleInflight.summary,
+      );
     if (process.argv.includes("--native-inflight-recovery"))
       assert.deepEqual(
         runtime.nativeInflight.summary,

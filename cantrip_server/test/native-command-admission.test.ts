@@ -205,6 +205,90 @@ async function finish(
 }
 
 describe("durable native command admission", () => {
+  it.each(["accepted", "dispatched", "applied"] as const)(
+    "retains an unfinished GUI %s input through repeated server restart recovery",
+    async (state) => {
+      const repository = database.repository;
+      const input = admission(
+        await repository.getChatExecutionContext(LOCAL_USER_ID, chatId),
+        { origin: "gui" },
+      );
+      const root = await repository.nativeCommands.admit(LOCAL_USER_ID, input);
+      if (state !== "accepted") await dispatch(input, root.receipt);
+      if (state === "applied")
+        await repository.nativeCommands.settle(LOCAL_USER_ID, {
+          workerId,
+          operationId: input.operationId,
+          operationGeneration: root.receipt.operationGeneration,
+          status: "applied",
+          resultDigest: null,
+          protectedResult: null,
+          rejectionCode: null,
+          executionComplete: false,
+          reconciliation: {
+            nativeTurnId: "restart-turn",
+            runtimeGeneration: input.session.runtimeGeneration!,
+          },
+        });
+      const before = (await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        chatId,
+      ))!;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await repository.resetInterruptedChatExecutions();
+        const current = (await repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          chatId,
+        ))!;
+        expect(current.status).toBe("offline");
+        expect(current.executionLaneId).toBe(root.receipt.executionLaneId);
+        expect(current.threadId).toBe(before.threadId);
+        expect(
+          (
+            await repository.nativeCommands.controlContext(
+              LOCAL_USER_ID,
+              chatId,
+            )
+          ).activationGeneration,
+        ).toBe(root.receipt.activationGeneration);
+      }
+      expect(
+        await repository.nativeCommands.finishLogicalGui(
+          LOCAL_USER_ID,
+          workerId,
+          input.operationId,
+          root.receipt.operationGeneration,
+          "idle",
+        ),
+      ).toBe(true);
+      expect(
+        (await repository.getChatExecutionContext(LOCAL_USER_ID, chatId))
+          ?.status,
+      ).toBe("idle");
+      expect(
+        await repository.nativeCommands.finishLogicalGui(
+          LOCAL_USER_ID,
+          workerId,
+          input.operationId,
+          root.receipt.operationGeneration,
+          "idle",
+        ),
+      ).toBe(false);
+    },
+  );
+  it("retains existing interrupted-execution behavior for a non-GUI native input", async () => {
+    const repository = database.repository;
+    const input = admission(
+      await repository.getChatExecutionContext(LOCAL_USER_ID, chatId),
+    );
+    const root = await repository.nativeCommands.admit(LOCAL_USER_ID, input);
+    await dispatch(input, root.receipt);
+    await repository.resetInterruptedChatExecutions();
+    expect(
+      (await repository.getChatExecutionContext(LOCAL_USER_ID, chatId))?.status,
+    ).toBe("failed");
+    await finish(input, root.receipt);
+  });
   it.each(["skills/list", "hooks/list", "thread/resume", "thread/unsubscribe"])(
     "keeps %s discovery admitted across a first-turn activation",
     async (method) => {
@@ -3774,7 +3858,7 @@ describe("canonical managed queue and completion outbox", () => {
     );
     await clearQueueFixtures();
   });
-  it("explicit goal clear cancels an unstarted handoff and rejects the late exact epoch", async () => {
+  it("explicit goal clear consumes the applied setter and rejects its unstarted handoff epoch", async () => {
     const repository = database.repository;
     const context = (await repository.getChatExecutionContext(
       LOCAL_USER_ID,
@@ -3826,7 +3910,14 @@ describe("canonical managed queue and completion outbox", () => {
     await finish(clear, clearGrant.receipt);
     expect(
       await repository.getEncryptedQueuedPrompt(LOCAL_USER_ID, prompt.id),
-    ).toMatchObject({ state: "pending" });
+    ).toMatchObject({
+      // The setter already mutated the native Goal. Retain its original
+      // ciphertext as consumed so Clear cannot requeue/reapply that input.
+      state: "consumed",
+      id: prompt.id,
+      protectedContent: prompt.protectedContent,
+      idempotencyKey: prompt.idempotencyKey,
+    });
     const late = await repository.nativeCommands.admit(
       LOCAL_USER_ID,
       admission(context, {

@@ -15841,6 +15841,43 @@
         "scope": "Validation, owner/worker isolation, configuration failures, unavailable-worker cancellation and exact response headers/bodies; no successful inference claim.",
         "rustExecutableSha256": "12fe4ca248e1aedd6eeea0a6934487a81ff74dc4ffab9cfb18d59359bb7c2fc1"
       }
+    },
+    "singleServerNativeRecovery": {
+      "status": "partial",
+      "sourceBaseline": "bfbfa6b906ca59784c8a44b3d966489ff9fb3e04",
+      "evidence": [
+        "docs/RUST_SERVER_SINGLE_RECOVERY.md",
+        "scripts/server-rust/single-product-fixture.mjs",
+        "scripts/server-rust/actual-single-inflight-client.mjs",
+        "scripts/server-rust/single-agent-interruption.mjs",
+        "scripts/server-rust/actual-project-chat-client.mjs",
+        "cantrip_server/test/native-command-admission.test.ts",
+        "cantrip_worker/test/native-command-client.test.ts",
+        "cantrip_worker/test/native-history-client-recovery.test.ts"
+      ],
+      "localQualification": {
+        "platform": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "peers": ["node", "rust"],
+        "productSteps": 102,
+        "intentionalServerSigkills": 24,
+        "cleanWorkerExits": 30,
+        "cleanServerExits": 30,
+        "modelInferenceRequests": 36,
+        "repositoryTests": 69,
+        "workerTests": 89,
+        "rustExecutableSha256": "20bb778bd097862de7be6e51ee9d2c90c57dce27700c14e856b53ce36054b985",
+        "repeatedCurrentSourceMatrix": "passed after PR2760; counts describe one complete matrix"
+      },
+      "behavior": [
+        "Exact unfinished native GUI activation retains lane/runtime/branch authority through startup; authenticated completion settles it once.",
+        "Bounded idempotent receipt/history metadata recovery does not replay native/model input.",
+        "Existing full-worker Task lost-202, Agent and active Goal assertions retained across all storage modes."
+      ],
+      "remaining": [
+        "Worker/native-process and database interruption, longer outages, mixed-peer GUI transfer and already-suspended legacy lanes remain unqualified.",
+        "Requalify current packaged artifacts on supported platforms; final default cutover and production Node removal remain required."
+      ]
     }
   },
   "remainingAcceptance": [
