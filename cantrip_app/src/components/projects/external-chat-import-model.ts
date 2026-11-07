@@ -1,5 +1,5 @@
 import {
-  modelProfileOperation,
+  isLanguageModelProfile,
   type ChatImportJobSummary,
   type ExternalChatImportReference,
   type ExternalChatSource,
@@ -165,7 +165,7 @@ export function mergeChatImportJobs(
 export function readyChatImportModels(settings: SettingsBundle | undefined) {
   return (settings?.models ?? []).filter(
     (model) =>
-      modelProfileOperation(model) === "language" &&
+      isLanguageModelProfile(model) &&
       model.routes.some(({ enabled }) => enabled),
   );
 }

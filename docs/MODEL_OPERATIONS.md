@@ -20,6 +20,18 @@ profiles only. A saved configuration whose profile is no longer a language model
 shows a configuration-needed state; opening its picker does not select a
 replacement or request its reasoning options.
 
+An edited legacy language profile is retained when discovery identifies its
+routes as non-language. Both servers report a presentation conflict only when
+every observed scope for a route explicitly excludes language and supports
+embeddings or decisions. An unknown scope, an unavailable language-capable scope,
+or an unclassified route prevents that conclusion. A language profile whose
+enabled routes all have that conflict stays in settings with a recovery note,
+but is omitted from new chat, agent, task, title, and import language selections.
+Edit its routes or add a profile in the matching operation section; saved IDs,
+defaults, and historical references are not silently rewritten or cleared.
+This is presentation metadata, not an inference gate: an explicitly configured
+request still reaches the actual endpoint regardless of catalog observations.
+
 Deleting a profile clears defaults through its database foreign keys. Deleting a
 provider also clears defaults whose profiles lose their last enabled route,
 including embedding and decision defaults. Profiles remain available for manual
@@ -390,11 +402,39 @@ attempt execution without a successful capability refresh.
 
 `state` accepts bounded JSON or a string, with an optional ordered `media` list:
 
-| Adapter              | Media envelope                                                                                                         |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| OpenAI Decisions     | Text/JSON input parts followed by images; HTTP(S) or inline image data URLs                                            |
-| System One           | Shared state plus an ordered raw-base64 `images` array; image inputs and WAV clips where the served model accepts them |
-| OpenRouter Decisions | Shared state followed by native top-level image/audio/video parts; inline base64 data URLs                             |
+| Adapter / connection           | Media envelope                                                                             |
+| ------------------------------ | ------------------------------------------------------------------------------------------ |
+| OpenAI Decisions               | Text/JSON input parts followed by images; HTTP(S) or inline image data URLs                |
+| System One / Ollama            | Shared state plus raw-base64 `images`; image acceptance remains model-specific             |
+| System One / llama.cpp         | Ordered `files` with inline image/audio data URLs; no video conversion                     |
+| System One / LM Studio         | Inline data URLs in the compatible `images` field                                          |
+| System One / vLLM              | Separate `images`, `audio`, and `videos` URL/data-URL arrays                               |
+| LiteLLM Decisions / System One | Native image envelope plus separate inline `audio` and `videos` arrays                     |
+| OpenRouter Decisions           | Shared state followed by native top-level image/audio/video parts; inline base64 data URLs |
+
+System One's media format defaults to the selected backend's native contract.
+Explicit `mediaFormat` overrides support custom deployments: `base64-images` for
+raw base64, `data-url-files` for ordered inline files, and `media-urls` for typed
+media arrays. Within each native media array, caller order is retained. llama.cpp
+and LM Studio do not gain video support through the file encoding. vLLM receives
+media URLs without the worker downloading them; the served model decides which
+modalities it accepts. See the [llama.cpp API](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md#post-v1systemone-typesafe-compatible-system-one-api),
+[LM Studio System One](https://lmstudio.ai/docs/developer/jev-compat/systemone),
+and [vLLM decision contract](https://docs.vllm.ai/en/latest/models/structured_decisions_models/).
+
+LiteLLM's default OpenAI Decisions adapter supports its documented inline audio
+and video fields. For a custom compatible gateway, `mediaFormat: "media-urls"`
+explicitly selects that extension; the ordinary OpenAI API contract remains
+text/JSON/images. The optional `typesafeImages` setting adds only the fixed
+`TypeSafe-Danger-Zone-Images: true` header. On the System One gateway path it also
+creates PNG/JPEG assets with opaque references included in state, rather than
+mistaking TypeSafe assets for a raw-base64 image list. It does not allow arbitrary
+headers or change authorization. On the OpenAI gateway path images remain native
+`input_image` parts. The [LiteLLM contract](https://docs.litellm.ai/docs/decisions/)
+documents these formats and deployment restrictions. Configure gateway routes to
+reject unsupported media: a gateway configured with `drop_params` may discard it
+upstream, which Cantrip cannot prove from a successful response. Cantrip itself
+does not remove those media parts or add a text fallback.
 
 No remote media is downloaded by the worker. No transcription, transcoding, video
 frame extraction or captioning is performed. Model-specific media/question limits

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNonLanguageRoutes } from "./use-language-model-routes";
 import type { NativeSettingsBinding } from "@cantrip/protocol";
 import type { ClientSessionIdentitySnapshot } from "@/lib/client-session";
 import { clientSessionIdentityMatches } from "@/lib/client-session";
@@ -27,9 +28,21 @@ export function NativeRuntimeHandoffEditor({
   const [routeId, setRouteId] = useState("");
   const [accountId, setAccountId] = useState("");
   const [labels, setLabels] = useState<Record<string, string>>({});
-  const providers = query.data?.providers ?? [];
+  const nonLanguageRoutes = useNonLanguageRoutes();
+  const providers = useMemo(
+    () =>
+      (query.data?.providers ?? [])
+        .map((provider) => ({
+          ...provider,
+          models: provider.models.filter(
+            (model) => !nonLanguageRoutes.has(model.routeId),
+          ),
+        }))
+        .filter((provider) => provider.models.length > 0),
+    [query.data?.providers, nonLanguageRoutes],
+  );
   const provider = providers.find((entry) => entry.id === providerId);
-  const sourceProvider = providers.find((entry) =>
+  const sourceProvider = query.data?.providers.find((entry) =>
     entry.models.some((model) => model.routeId === binding.modelRouteId),
   );
   const sourceAccount = binding.providerAccountId;
@@ -84,7 +97,7 @@ export function NativeRuntimeHandoffEditor({
     Boolean(unconfirmed) ||
     Boolean(query.error) ||
     query.data?.binding?.bindingId !== binding.bindingId;
-  const destination = providers.find((entry) =>
+  const destination = query.data?.providers.find((entry) =>
     entry.models.some((model) => model.routeId === latest?.targetModelRouteId),
   );
   return (

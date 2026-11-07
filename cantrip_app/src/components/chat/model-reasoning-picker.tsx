@@ -1,6 +1,6 @@
 import {
   modelConfigurationSchema,
-  modelProfileOperation,
+  isLanguageModelProfile,
   type ChatReasoningState,
   type ModelConfiguration,
   type ModelProfileSummary,
@@ -383,10 +383,7 @@ export function ModelReasoningPicker({
   subagents = true,
 }: ModelReasoningPickerProps) {
   const models = useMemo(
-    () =>
-      configuredModels.filter(
-        (model) => modelProfileOperation(model) === "language",
-      ),
+    () => configuredModels.filter(isLanguageModelProfile),
     [configuredModels],
   );
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);

@@ -1,4 +1,5 @@
 import {
+  isLanguageModelProfile,
   modelProfileOperation,
   type ModelOperation,
   type ModelProfileSummary,
@@ -191,7 +192,12 @@ export function ModelCombobox({
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const operationModels = useMemo(
-    () => models.filter((model) => modelProfileOperation(model) === operation),
+    () =>
+      models.filter((model) =>
+        operation === "language"
+          ? isLanguageModelProfile(model)
+          : modelProfileOperation(model) === operation,
+      ),
     [models, operation],
   );
   const selectedModel = operationModels.find((model) => model.id === value);
