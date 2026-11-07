@@ -243,6 +243,7 @@ export class OllamaCatalogService {
       const transferId = randomUUID();
       let snapshotId: string | undefined;
       let observedAt: string | undefined;
+      let metadataIncomplete = false;
       let total: number | undefined;
       let offset = 0;
       let bytes = 0;
@@ -267,15 +268,17 @@ export class OllamaCatalogService {
             throw new Error("Model catalog pagination disappeared.");
           // Older workers strip the optional request field and return a full
           // legacy inventory. Never treat that as a continuation of a page.
-          models.push(
-            ...(provider.kind === "ollama"
-              ? ollamaModelInventorySchema
-                  .parse(result)
-                  .models.map(normalizeOllamaModel)
-              : endpointModelInventorySchema
-                  .parse(result)
-                  .models.map(normalizeEndpointCatalogModel)),
-          );
+          if (provider.kind === "ollama") {
+            models.push(
+              ...ollamaModelInventorySchema
+                .parse(result)
+                .models.map(normalizeOllamaModel),
+            );
+          } else {
+            const inventory = endpointModelInventorySchema.parse(result);
+            models.push(...inventory.models.map(normalizeEndpointCatalogModel));
+            metadataIncomplete = inventory.metadataIncomplete === true;
+          }
           break;
         }
         const page = modelCatalogPageSchema.parse(result);
@@ -286,11 +289,15 @@ export class OllamaCatalogService {
           (snapshotId !== undefined &&
             (snapshotId !== page.snapshotId ||
               observedAt !== page.observedAt ||
-              total !== page.total))
+              total !== page.total ||
+              metadataIncomplete !==
+                (page.kind === "endpoint" && page.metadataIncomplete === true)))
         )
           throw new Error("Model catalog page belongs to another snapshot.");
         snapshotId = page.snapshotId;
         observedAt = page.observedAt;
+        metadataIncomplete =
+          page.kind === "endpoint" && page.metadataIncomplete === true;
         total = page.total;
         const pageBytes = Buffer.byteLength(JSON.stringify(page));
         if (pageBytes > MODEL_CATALOG_PAGE_BYTES)
@@ -329,6 +336,7 @@ export class OllamaCatalogService {
         {
           connectionRevision: provider.connectionRevision,
           models,
+          preserveMissingModels: metadataIncomplete,
           availabilityScope: scopeKey,
           availabilityWorkerId: workerId,
           availableNativeModelIds: new Set(
@@ -343,11 +351,17 @@ export class OllamaCatalogService {
         connection,
         scopeKey,
         workerId,
-        status: "current",
-        errorCode: null,
-        lastSuccessAt: new Date(),
+        status: metadataIncomplete ? "stale" : "current",
+        errorCode: metadataIncomplete
+          ? "endpoint-native-metadata-unavailable"
+          : null,
+        ...(metadataIncomplete ? {} : { lastSuccessAt: new Date() }),
       });
-      return this.#repository.getProviderModelCatalog(ownerId, providerId);
+      return this.#repository.getProviderModelCatalog(
+        ownerId,
+        providerId,
+        metadataIncomplete,
+      );
     } catch (error) {
       const accepted = await this.#repository.setProviderCatalogSyncState(
         providerId,

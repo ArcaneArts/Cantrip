@@ -29,6 +29,7 @@ export function normalizeEndpointModel(
   raw: unknown,
   providerKind?: string,
   baseUrl = "",
+  observedAt = new Date().toISOString(),
 ): EndpointModelInventoryItem | null {
   const model = object(raw);
   const id = text(model.id) ?? text(model.key);
@@ -85,6 +86,8 @@ export function normalizeEndpointModel(
     operations.operationCapabilities.embedding?.status === "supported"
   )
     operations.operationCapabilities.embedding.adapter = "vllm-embeddings";
+  for (const capability of Object.values(operations.operationCapabilities))
+    if (capability) capability.observedAt = observedAt;
   const capabilities = object(model.capabilities);
   const metadata = object(model.meta);
   const instances = Array.isArray(model.loaded_instances)
@@ -118,7 +121,9 @@ export function normalizeEndpointModel(
       ? operations.inputModalities
       : vision
         ? ["text", "image"]
-        : ["text"],
+        : vision === false
+          ? ["text"]
+          : [],
     outputModalities: operations.outputModalities,
     supportsTools:
       boolean(capabilities.trained_for_tool_use) ??
@@ -151,6 +156,8 @@ export async function discoverEndpointModels(
   signal?: AbortSignal,
 ): Promise<EndpointModelInventory> {
   const base = normalizeResponsesBaseUrl(provider.baseUrl);
+  const observedAt = new Date().toISOString();
+  let metadataIncomplete = false;
   const models = new Map<string, EndpointModelInventoryItem>();
   let bytes = 0;
   const save = (raw: EndpointModelInventoryItem) => {
@@ -188,8 +195,11 @@ export async function discoverEndpointModels(
         raw,
         provider.kind,
         provider.baseUrl,
+        observedAt,
       );
-      if (model) save(model);
+      if (!model)
+        throw new Error("Model catalog contains a model without an ID.");
+      save(model);
     }
     const continuation = text(object(catalog.links).next) ?? text(catalog.next);
     if (!continuation) {
@@ -213,66 +223,79 @@ export async function discoverEndpointModels(
     const nativeBase = base.endsWith("/api/v1")
       ? base
       : `${base.replace(/\/v1$/, "")}/api/v1`;
+    const standardModels = new Map(models);
+    const standardBytes = bytes;
     try {
       const rich = object(
         await catalogJson(
           `${nativeBase}/models`,
           provider.apiKey,
           fetcher,
-          2_000,
+          20_000,
           signal,
         ),
       );
-      if (Array.isArray(rich.models))
-        for (const raw of rich.models) {
-          const model = normalizeEndpointModel(
-            raw,
-            provider.kind,
-            provider.baseUrl,
+      if (!Array.isArray(rich.models))
+        throw new Error("Native model catalog did not contain a model list.");
+      for (const raw of rich.models) {
+        const model = normalizeEndpointModel(
+          raw,
+          provider.kind,
+          provider.baseUrl,
+          observedAt,
+        );
+        if (!model)
+          throw new Error(
+            "Native model catalog contains a model without an ID.",
           );
-          if (!model) continue;
-          const standard = models.get(model.nativeModelId);
-          if (!standard) {
-            save(model);
-            continue;
-          }
-          // Native discovery can be partial. Missing fields must not erase
-          // capabilities or context supplied by the standard catalog.
-          save({
-            ...standard,
-            ...Object.fromEntries(
-              Object.entries(model).filter(
-                ([, value]) =>
-                  value !== null && (!Array.isArray(value) || value.length > 0),
-              ),
-            ),
-            displayName:
-              model.displayName === model.nativeModelId
-                ? standard.displayName
-                : model.displayName,
-            operationCapabilities: {
-              ...standard.operationCapabilities,
-              ...model.operationCapabilities,
-            },
-            inputModalities:
-              model.supportsVision === null
-                ? [
-                    ...new Set([
-                      ...standard.inputModalities,
-                      ...model.inputModalities,
-                    ]),
-                  ]
-                : model.inputModalities,
-          });
+        const standard = models.get(model.nativeModelId);
+        if (!standard) {
+          save(model);
+          continue;
         }
+        // Native discovery can be partial. Missing fields must not erase
+        // capabilities or context supplied by the standard catalog.
+        save({
+          ...standard,
+          ...Object.fromEntries(
+            Object.entries(model).filter(
+              ([, value]) =>
+                value !== null && (!Array.isArray(value) || value.length > 0),
+            ),
+          ),
+          displayName:
+            model.displayName === model.nativeModelId
+              ? standard.displayName
+              : model.displayName,
+          operationCapabilities: {
+            ...standard.operationCapabilities,
+            ...model.operationCapabilities,
+          },
+          inputModalities:
+            model.supportsVision === null
+              ? [
+                  ...new Set([
+                    ...standard.inputModalities,
+                    ...model.inputModalities,
+                  ]),
+                ]
+              : model.inputModalities,
+        });
+      }
     } catch {
       signal?.throwIfAborted();
-      // Rich metadata availability cannot invalidate a working standard catalog.
+      // Do not publish half an overlay if normalization or bounds fail partway
+      // through it. Both servers retain prior observations from this scope.
+      models.clear();
+      for (const [id, model] of standardModels) models.set(id, model);
+      bytes = standardBytes;
+      metadataIncomplete = true;
     }
   }
   // The dispatcher validates the full worker-local snapshot and pages it.
   return {
     models: [...models.values()],
-    observedAt: new Date().toISOString(),
+    observedAt,
+    ...(metadataIncomplete ? { metadataIncomplete: true as const } : {}),
   };
 }

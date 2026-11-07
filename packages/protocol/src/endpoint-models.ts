@@ -22,6 +22,9 @@ export const endpointModelInventoryItemSchema = providerModelCatalogEntrySchema
 export const endpointModelInventorySchema = z.object({
   models: z.array(endpointModelInventoryItemSchema).max(1_000),
   observedAt: z.string().datetime(),
+  // A usable standard catalog with unavailable native metadata is not an
+  // authoritative observation that previously known native models disappeared.
+  metadataIncomplete: z.literal(true).optional(),
 });
 
 export type EndpointModelInventory = z.infer<

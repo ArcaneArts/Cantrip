@@ -35,6 +35,7 @@ export const modelCatalogPageSchema = z.discriminatedUnion("kind", [
   z.object({
     ...page,
     kind: z.literal("endpoint"),
+    metadataIncomplete: z.literal(true).optional(),
     models: z
       .array(endpointModelInventoryItemSchema)
       .max(MODEL_CATALOG_PAGE_ITEMS),
@@ -54,6 +55,7 @@ export const modelCatalogSnapshotSchema = z.discriminatedUnion("kind", [
   z.object({
     ...observation,
     kind: z.literal("endpoint"),
+    metadataIncomplete: z.literal(true).optional(),
     models: z
       .array(endpointModelInventoryItemSchema)
       .max(MODEL_CATALOG_MODEL_LIMIT),
