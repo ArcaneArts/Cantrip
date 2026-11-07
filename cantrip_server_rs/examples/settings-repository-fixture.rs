@@ -782,6 +782,9 @@ async fn operation(
                             .into_owned(),
                         available: ids("availableNativeModelIds")?,
                         auto_create: input["autoCreateLogicalModels"].as_bool().unwrap_or(false),
+                        preserve_missing_models: input["preserveMissingModels"]
+                            .as_bool()
+                            .unwrap_or(false),
                         auto_create_native_ids: if input.get("autoCreateNativeModelIds").is_some() {
                             Some(ids("autoCreateNativeModelIds")?)
                         } else {

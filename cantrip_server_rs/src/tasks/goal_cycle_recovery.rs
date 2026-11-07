@@ -353,8 +353,8 @@ impl Repository {
                     (marker["settled"].get("operationId") != input.get("operationId") ||
                         marker["settled"].get("turnId") != input.get("turnId"))) { return stale(); }
             let mut suspension_source = marker["suspension"]["source"].clone();
-            if let Some(runtime) = input.get("nativeRuntimeGeneration").filter(|value| !value.is_null()) {
-                if !row["cycle"]["goal_input"].is_null() {
+            if let Some(runtime) = input.get("nativeRuntimeGeneration").filter(|value| !value.is_null())
+                && !row["cycle"]["goal_input"].is_null() {
                     if input.get("freshRuntimeGeneration").is_some_and(|fresh| !fresh.is_null() && fresh != runtime) { return stale(); }
                     let publication = if suspension_source.is_null() {
                         json!({"id":uuid::Uuid::new_v4().to_string(),"idempotencyKey":format!("assistant:goal-cycle:{}", text(&marker["sourceKey"])?)})
@@ -367,7 +367,6 @@ impl Repository {
                     }))?;
                     if !suspension_source.is_null() && suspension_source != actual { return stale(); }
                     suspension_source = actual;
-                }
             }
             if !truthy(marker.get("settled")) || (!suspension_source.is_null() && marker["suspension"].is_null()) {
                 if !suspension_source.is_null() { marker["suspension"] = json!({"source":suspension_source}); }
