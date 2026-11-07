@@ -72,6 +72,26 @@ pub(super) fn apply(
         .as_ref()
         .ok_or(ValidationError::Operation)?
         .clone();
+    if tag == "project-export-chat-ids" {
+        let ids = value["chatIds"]
+            .as_array()
+            .ok_or(ValidationError::Operation)?;
+        let unique = ids
+            .iter()
+            .map(Value::stringify)
+            .collect::<std::collections::HashSet<_>>();
+        if unique.len() != ids.len() {
+            result.issue(
+                json!({"code":"custom"}),
+                path,
+                message
+                    .unwrap_or("Project export chat ids must be unique.")
+                    .into(),
+                false,
+            );
+        }
+        return Ok(());
+    }
     if tag == "project-goal-observation" {
         if !value["snapshot"]["goal"].is_null()
             && value["snapshot"]["goal"]["threadId"] != value["threadId"]

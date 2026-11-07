@@ -277,8 +277,8 @@ impl SettingsRepository {
                     let name=route.get::<String>(0)?;
                     let profile=route.get::<String>(1)?;
                     let mut operation=route.get::<String>(2)?;
-                    if route.get::<bool>(3)? && operation=="language" {
-                        if let Some(metadata) = observed_by_name.get(name.as_str()) {
+                    if route.get::<bool>(3)? && operation=="language"
+                        && let Some(metadata) = observed_by_name.get(name.as_str()) {
                             let ops=operations(metadata);
                             if !ops.is_empty() && !ops.contains(&"language") {
                                 operation=ops[0].to_owned();
@@ -288,7 +288,6 @@ impl SettingsRepository {
                                     tx.query(&format!("UPDATE user_settings SET {column}=NULL,updated_at=$3{reset} WHERE user_id=$1 AND {column}=$2"), &[&owner,&profile,&at]).await?;
                                 }
                             }
-                        }
                     }
                     profile_operations.insert(profile,operation.clone());
                     routed.insert((name,operation));

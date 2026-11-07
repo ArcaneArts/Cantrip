@@ -167,13 +167,11 @@ impl Service {
                     if error
                         .downcast_ref::<crate::native_commands::CommandError>()
                         .is_some_and(|error| error.code == "suspension-control-stale")
+                        && let Some(latest) = self.chats.task_pause_intent(owner, chat).await?
+                        && latest != intent
                     {
-                        if let Some(latest) = self.chats.task_pause_intent(owner, chat).await? {
-                            if latest != intent {
-                                intent = latest;
-                                continue;
-                            }
-                        }
+                        intent = latest;
+                        continue;
                     }
                     if let Some(state) = suspension.as_ref().filter(|state| {
                         matches!(state["phase"].as_str(), Some("pausing" | "resuming"))

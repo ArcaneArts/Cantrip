@@ -1,4 +1,5 @@
 pub mod coordinator;
+pub mod exports;
 pub mod observations;
 pub mod placement;
 pub mod replicas;

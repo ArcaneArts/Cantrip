@@ -329,7 +329,6 @@ pub(super) fn account_sign_out_params(
     ]
 }
 pub(super) const ACCOUNT_BINDINGS_SIGN_OUT: &str = "update \"model_provider_account_workers\" set \"auth_state\" = $1, \"weekly_usage_used_basis_points\" = $2, \"weekly_usage_resets_at\" = $3, \"last_synced_at\" = $4, \"updated_at\" = $5 where \"model_provider_account_workers\".\"account_id\" = $6";
-pub(super) const PROFILE_INSERT: &str = "insert into \"model_profiles\" (\"id\", \"owner_id\", \"name\", \"canonical_model_id\", \"default_reasoning_effort\", \"discovery_managed\", \"routing_policy\", \"created_at\", \"updated_at\") values ($1, $2, $3, default, default, default, default, default, default)";
 pub(super) fn routes_insert(
     rows: &[serde_json::Value],
     original: &[Value],

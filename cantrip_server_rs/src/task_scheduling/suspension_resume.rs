@@ -182,8 +182,8 @@ impl Service {
             Ok(json!({"paused":intent.as_ref().map(|v|v["paused"].clone()).unwrap_or(json!(true)),
                 "active":state["active"],"nativeSuspension":crate::chats::native_suspensions::stored_summary(&state)}))
         }.await;
-        if result.is_err() {
-            if let Err(error) = dispatch
+        if result.is_err()
+            && let Err(error) = dispatch
                 .pause(
                     &claim["lease"],
                     &json!({"threadId":restore["checkpoint"]["suspension"]["threadId"],
@@ -192,14 +192,11 @@ impl Service {
                     false,
                 )
                 .await
-            {
-                if error
-                    .downcast_ref::<crate::task_dispatch::Conflict>()
-                    .is_none()
-                {
-                    return Err(error);
-                }
-            }
+            && error
+                .downcast_ref::<crate::task_dispatch::Conflict>()
+                .is_none()
+        {
+            return Err(error);
         }
         result
     }
