@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+import { modelAdapterSupportsOperation } from "@cantrip/protocol";
 
 import type {
   AgentTimeSummary,
@@ -68,6 +70,8 @@ export function toModelRouteSummary(
     providerName,
     providerModelId: route.providerModelId,
     modelName: route.modelName,
+    operationAdapter: route.operationAdapter,
+    operationOptions: route.operationOptions,
     position: route.position,
     enabled: route.enabled,
     discoveryManaged: route.discoveryManaged,
@@ -114,6 +118,16 @@ export class ModelRepository {
     if (input.routes.some((route) => !providerIds.has(route.providerId))) {
       return null;
     }
+    if (
+      input.routes.some(
+        (route) =>
+          !modelAdapterSupportsOperation(
+            route.operationAdapter,
+            input.operation ?? "language",
+          ),
+      )
+    )
+      return null;
     const modelId = randomUUID();
     await this.database.transaction(async (transaction) => {
       await transaction.insert(schema.modelProfiles).values({
@@ -128,6 +142,8 @@ export class ModelRepository {
           modelId,
           providerId: route.providerId,
           modelName: route.modelName,
+          operationAdapter: route.operationAdapter ?? null,
+          operationOptions: route.operationOptions ?? {},
           position,
           enabled: route.enabled,
         })),
@@ -219,6 +235,17 @@ export class ModelRepository {
       .select()
       .from(schema.modelRoutes)
       .where(eq(schema.modelRoutes.modelId, modelId));
+    if (
+      input.routes.some((route) => {
+        const previous = existingRoutes.find((old) => old.id === route.id);
+        const adapter =
+          route.operationAdapter !== undefined
+            ? route.operationAdapter
+            : previous?.operationAdapter;
+        return !modelAdapterSupportsOperation(adapter, models[0]!.operation);
+      })
+    )
+      return null;
     const existingRouteIds = new Set(existingRoutes.map(({ id }) => id));
     const suppliedRouteIds = input.routes.flatMap((route) =>
       route.id ? [route.id] : [],
@@ -240,7 +267,14 @@ export class ModelRepository {
         if (!inputRoute) return [route.id];
         const runtimeConfigurationChanged =
           route.providerId !== inputRoute.providerId ||
-          route.modelName !== inputRoute.modelName;
+          route.modelName !== inputRoute.modelName ||
+          (inputRoute.operationAdapter !== undefined &&
+            route.operationAdapter !== inputRoute.operationAdapter) ||
+          (inputRoute.operationOptions !== undefined &&
+            !isDeepStrictEqual(
+              route.operationOptions,
+              inputRoute.operationOptions ?? {},
+            ));
         return runtimeConfigurationChanged ? [route.id] : [];
       }),
     );
@@ -282,6 +316,12 @@ export class ModelRepository {
             .set({
               providerId: route.providerId,
               modelName: route.modelName,
+              ...(route.operationAdapter !== undefined
+                ? { operationAdapter: route.operationAdapter }
+                : {}),
+              ...(route.operationOptions !== undefined
+                ? { operationOptions: route.operationOptions ?? {} }
+                : {}),
               position,
               enabled: route.enabled,
               updatedAt: new Date(),
@@ -293,6 +333,8 @@ export class ModelRepository {
             modelId,
             providerId: route.providerId,
             modelName: route.modelName,
+            operationAdapter: route.operationAdapter ?? null,
+            operationOptions: route.operationOptions ?? {},
             position,
             enabled: route.enabled,
           });

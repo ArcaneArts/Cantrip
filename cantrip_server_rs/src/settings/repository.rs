@@ -201,6 +201,8 @@ fn route_summary(route: &Value, provider_name: &Value) -> Value {
             "providerId",
             "providerModelId",
             "modelName",
+            "operationAdapter",
+            "operationOptions",
             "position",
             "enabled",
             "discoveryManaged",

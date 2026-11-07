@@ -7,6 +7,8 @@ import type {
   TaskGoalCycleRecovery,
   ModelOperation,
   ModelOperationCapabilities,
+  ModelOperationAdapter,
+  ModelOperationOptions,
 } from "@cantrip/protocol";
 import type { TaskInferenceInputState } from "./task-inference-inputs.js";
 export { projectAlerts, chatGoalObservations } from "./schema-alerts.js";
@@ -1105,6 +1107,11 @@ export const modelProfiles = pgTable(
 export const modelRoutes = pgTable(
   "model_routes",
   {
+    operationAdapter: text("operation_adapter").$type<ModelOperationAdapter>(),
+    operationOptions: jsonb("operation_options")
+      .$type<ModelOperationOptions>()
+      .notNull()
+      .default({}),
     id: text("id").primaryKey(),
     modelId: text("model_id")
       .notNull()
