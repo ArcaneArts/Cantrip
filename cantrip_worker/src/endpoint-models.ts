@@ -9,6 +9,10 @@ import {
   type EndpointModelInventoryItem,
 } from "@cantrip/protocol";
 import { fetchModelCatalogJson as catalogJson } from "./model-catalog-json.js";
+import {
+  liteLlmModelOverlay,
+  liteLlmOperationCapabilities,
+} from "./litellm-model-metadata.js";
 
 type ObjectValue = Record<string, unknown>;
 const object = (value: unknown): ObjectValue =>
@@ -35,6 +39,18 @@ export function normalizeEndpointModel(
   const id = text(model.id) ?? text(model.key);
   if (!id) return null;
   const operations = endpointOperationMetadata(model);
+  if (providerKind === "litellm") {
+    const gateway = liteLlmOperationCapabilities(model, observedAt);
+    for (const operation of ["language", "embedding", "decision"] as const) {
+      const capability = gateway[operation];
+      if (
+        capability &&
+        (capability.status === "supported" ||
+          !operations.operationCapabilities[operation])
+      )
+        operations.operationCapabilities[operation] = capability;
+    }
+  }
   const registered = registeredModelOperations(
     { kind: providerKind ?? "", baseUrl },
     id,
@@ -46,20 +62,21 @@ export function normalizeEndpointModel(
     if (!advertised && fallback)
       operations.operationCapabilities[operation] = fallback;
   }
-  if (!operations.outputModalities.length) {
-    for (const [operation, modality] of [
-      ["language", "text"],
-      ["embedding", "embeddings"],
-      ["decision", "decisions"],
-    ] as const) {
-      if (registered[operation]?.status === "supported")
-        operations.outputModalities.push(modality);
-    }
+  for (const [operation, modality] of [
+    ["language", "text"],
+    ["embedding", "embeddings"],
+    ["decision", "decisions"],
+  ] as const) {
+    if (
+      operations.operationCapabilities[operation]?.status === "supported" &&
+      !operations.outputModalities.includes(modality)
+    )
+      operations.outputModalities.push(modality);
   }
   if (!operations.inputModalities.length) {
     operations.inputModalities = [
       ...new Set(
-        Object.values(registered)
+        Object.values(operations.operationCapabilities)
           .filter((capability) => capability.status === "supported")
           .flatMap((capability) => capability.inputModalities ?? []),
       ),
@@ -286,6 +303,27 @@ export async function discoverEndpointModels(
       signal?.throwIfAborted();
       // Do not publish half an overlay if normalization or bounds fail partway
       // through it. Both servers retain prior observations from this scope.
+      models.clear();
+      for (const [id, model] of standardModels) models.set(id, model);
+      bytes = standardBytes;
+      metadataIncomplete = true;
+    }
+  }
+  if (provider.kind === "litellm") {
+    const standardModels = new Map(models);
+    const standardBytes = bytes;
+    try {
+      const rich = await catalogJson(
+        `${base}/model/info`,
+        provider.apiKey,
+        fetcher,
+        20_000,
+        signal,
+      );
+      for (const model of liteLlmModelOverlay(rich, standardModels, observedAt))
+        save(model);
+    } catch {
+      signal?.throwIfAborted();
       models.clear();
       for (const [id, model] of standardModels) models.set(id, model);
       bytes = standardBytes;

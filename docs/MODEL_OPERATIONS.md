@@ -77,6 +77,20 @@ overlay is discarded atomically, including entries processed before the error.
 Discovery does not require the native interface to permit a configured inference
 request.
 
+LiteLLM's standard catalog `mode` and optional `/v1/model/info` metadata identify
+embedding and decision routes, including `evaluation`/`decisions` modes and
+advertised native endpoints. The worker overlays only public aliases already
+listed by that credential's standard catalog and combines observations for
+multiple deployments without replacing their gateway alias. Raw deployment
+credentials, internal IDs, and upstream connection details never cross the worker
+control channel. A failed or malformed overlay rolls back atomically and uses
+the same incomplete-metadata retention behavior as LM Studio. Informational
+metadata does not establish that an unlisted operation is unsupported, and it
+never gates explicitly configured inference. See the [LiteLLM model listing
+contract](https://github.com/BerriAI/litellm/blob/main/litellm/types/proxy/model_listing.py),
+[gateway model metadata](https://docs.litellm.ai/docs/proxy/model_management), and
+[native decision modes](https://docs.litellm.ai/docs/decisions/).
+
 Operation classification is reconciled with prior observations from the same
 worker/account scope, not another worker's catalog. Unreported operations retain
 their last observation; explicitly reported supported, unsupported, or unknown
