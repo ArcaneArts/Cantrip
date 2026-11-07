@@ -1,8 +1,10 @@
-import type {
-  ModelProfileSummary,
-  UserSettings,
-  UserSettingsUpdate,
+import {
+  modelProfileOperation,
+  type ModelProfileSummary,
+  type UserSettings,
+  type UserSettingsUpdate,
 } from "@cantrip/protocol";
+import { ModelCombobox } from "@/components/chat/model-combobox";
 
 export function LabelingSettings({
   settings,
@@ -15,6 +17,11 @@ export function LabelingSettings({
   pending: boolean;
   update(input: UserSettingsUpdate): void;
 }) {
+  const selected = models.find(({ id }) => id === settings.labelingModelId);
+  const unavailable = Boolean(
+    settings.labelingModelId &&
+    (!selected || modelProfileOperation(selected) !== "language"),
+  );
   return (
     <div className="space-y-3 border-t px-3 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -66,29 +73,30 @@ export function LabelingSettings({
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <label htmlFor="labeling-model" className="text-xs font-medium">
-            Labeling model
-          </label>
+          <p className="text-xs font-medium">Labeling model</p>
           <p className="text-[11px] text-muted-foreground">
             Uses the lowest known thinking effort; otherwise keeps the default.
           </p>
         </div>
-        <select
-          id="labeling-model"
-          className="max-w-full rounded-md border bg-background px-2 py-1.5 text-xs"
-          value={settings.labelingModelId ?? ""}
-          disabled={pending}
-          onChange={(event) =>
-            update({ labelingModelId: event.target.value || null })
-          }
-        >
-          <option value="">Use default model</option>
-          {models.map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.name}
-            </option>
-          ))}
-        </select>
+        <div className="grid w-full gap-1 sm:w-72">
+          <ModelCombobox
+            ariaLabel="Labeling model"
+            models={models}
+            value={settings.labelingModelId ?? ""}
+            disabled={pending}
+            noneLabel="Use default model"
+            placeholder={
+              unavailable ? "Choose a language model" : "Use default model"
+            }
+            onValueChange={(id) => update({ labelingModelId: id || null })}
+          />
+          {unavailable ? (
+            <p className="text-[11px] text-muted-foreground">
+              The saved model is unavailable for titles. Choose a language model
+              or use the default.
+            </p>
+          ) : null}
+        </div>
       </div>
     </div>
   );

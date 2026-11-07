@@ -17,7 +17,7 @@ import {
   type TokenUsageTotals,
 } from "@cantrip/protocol";
 import type { ProtectedSecretEnvelope } from "@cantrip/protocol/protected-secrets";
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import {
   accountProviderLabel,
@@ -334,16 +334,72 @@ export class ProviderCatalogRepository {
   }
 
   async deleteModelProvider(ownerId: string, providerId: string) {
-    const result = await this.database
-      .delete(schema.modelProviders)
-      .where(
-        and(
-          eq(schema.modelProviders.id, providerId),
-          eq(schema.modelProviders.ownerId, ownerId),
-        ),
-      )
-      .returning({ id: schema.modelProviders.id });
-    return Boolean(result[0]);
+    return this.database.transaction(async (transaction) => {
+      const defaultColumns = [
+        schema.userSettings.defaultModelId,
+        schema.userSettings.defaultChatModelId,
+        schema.userSettings.defaultSubagentModelId,
+        schema.userSettings.labelingModelId,
+        schema.userSettings.defaultEmbeddingModelId,
+        schema.userSettings.defaultDecisionModelId,
+      ];
+      const affected = await transaction
+        .select({ modelId: schema.modelRoutes.modelId })
+        .from(schema.modelRoutes)
+        .innerJoin(
+          schema.modelProfiles,
+          and(
+            eq(schema.modelProfiles.id, schema.modelRoutes.modelId),
+            eq(schema.modelProfiles.ownerId, ownerId),
+          ),
+        )
+        .innerJoin(schema.userSettings, eq(schema.userSettings.userId, ownerId))
+        .where(
+          and(
+            eq(schema.modelRoutes.providerId, providerId),
+            or(
+              ...defaultColumns.map((column) =>
+                eq(schema.modelRoutes.modelId, column),
+              ),
+            ),
+          ),
+        );
+      const result = await transaction
+        .delete(schema.modelProviders)
+        .where(
+          and(
+            eq(schema.modelProviders.id, providerId),
+            eq(schema.modelProviders.ownerId, ownerId),
+          ),
+        )
+        .returning({ id: schema.modelProviders.id });
+      if (!result[0]) return false;
+      const modelIds = [...new Set(affected.map(({ modelId }) => modelId))];
+      if (!modelIds.length) return true;
+
+      // Provider deletion cascades its routes, not the user's profiles. Retain
+      // those profiles for recovery, but clear defaults that lost their last
+      // enabled route. An offline provider never takes this deletion path.
+      const now = new Date();
+      for (const column of defaultColumns) {
+        const subagentReset =
+          column === schema.userSettings.defaultSubagentModelId
+            ? sql`default_custom_subagent_model = false,`
+            : sql``;
+        await transaction.execute(sql`
+          update ${schema.userSettings}
+          set ${sql.identifier(column.name)} = null, ${subagentReset} updated_at = ${now}
+          where ${schema.userSettings.userId} = ${ownerId}
+            and ${inArray(column, modelIds)}
+            and not exists (
+              select 1 from ${schema.modelRoutes}
+              where ${schema.modelRoutes.modelId} = ${column}
+                and ${schema.modelRoutes.enabled} = true
+            )
+        `);
+      }
+      return true;
+    });
   }
 
   async updateModelProvider(
