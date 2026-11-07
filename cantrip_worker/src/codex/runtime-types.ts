@@ -409,6 +409,11 @@ export interface RunAgentTurnOptions {
   ) => Promise<Partial<RunAgentTurnOptions>>;
   onBeforeNativeDispatch?: (threadId: string) => Promise<void>;
   onNativeReceipt?: (receipt: { turn: { id: string } }) => Promise<void>;
+  /** Settle a received turn/start rejection; transport loss has no rejection receipt. */
+  onNativeRejected?: (input: {
+    threadId: string;
+    frame: { error: { code: number; message: string; data?: unknown } };
+  }) => Promise<void>;
   /** Persist an explicitly unconsumed input before ending this GUI attempt. */
   onNativeDeferred?: (input: {
     threadId: string;

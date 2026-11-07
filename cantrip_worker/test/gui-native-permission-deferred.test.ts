@@ -157,4 +157,73 @@ describe("GUI native no-consumption retention", () => {
       expect(runtime.hasActiveThread("thread")).toBe(false);
     });
   });
+  it("awaits a received native rejection receipt before failing the GUI attempt", async () => {
+    await fixture(async ({ runtime, options, request }) => {
+      const nativeError = {
+        code: -32600,
+        message:
+          "the native turn is durably paused; resume it or queue input before starting work",
+      };
+      const failure = new CodexNativeRpcError(
+        nativeError.message,
+        nativeError,
+        "turn/start",
+      );
+      request.mockRejectedValueOnce(failure);
+      let finish!: () => void;
+      const persistence = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const rejected = vi.fn(async () => persistence);
+      let settled = false;
+      const result = runtime
+        .runTurn({ ...options, onNativeRejected: rejected })
+        .catch((error) => {
+          settled = true;
+          return error;
+        });
+      await expect.poll(() => rejected.mock.calls.length).toBe(1);
+      expect(rejected).toHaveBeenCalledWith({
+        threadId: "thread",
+        frame: { error: nativeError },
+      });
+      expect(settled).toBe(false);
+      finish();
+      expect(await result).toBe(failure);
+      expect(request).toHaveBeenCalledTimes(1);
+    });
+  });
+  it("does not report transport loss, pre-dispatch failure or settings deferral as a start rejection", async () => {
+    await fixture(async ({ runtime, options, request }) => {
+      const rejected = vi.fn();
+      const deferred = vi.fn();
+      const failure = new CodexNativeRpcError(
+        "rejected",
+        { code: -32600, message: "rejected" },
+        "turn/start",
+      );
+      request.mockRejectedValueOnce(new Error("connection lost"));
+      await expect(
+        runtime.runTurn({ ...options, onNativeRejected: rejected }),
+      ).rejects.toThrow("connection lost");
+      await expect(
+        runtime.runTurn({
+          ...options,
+          onNativeRejected: rejected,
+          onBeforeNativeDispatch: async () => {
+            throw failure;
+          },
+        }),
+      ).rejects.toBe(failure);
+      await expect(
+        runtime.runTurn({
+          ...options,
+          onNativeRejected: rejected,
+          onNativeDeferred: deferred,
+        }),
+      ).rejects.toBeInstanceOf(NativePermissionDeferredError);
+      expect(rejected).not.toHaveBeenCalled();
+      expect(deferred).toHaveBeenCalledTimes(1);
+    });
+  });
 });

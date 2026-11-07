@@ -479,6 +479,28 @@ export class EncryptedChatEventSealer {
         };
   }
 
+  async rejectedStart(clientMessageId: string, reason: string) {
+    const key = `error:${clientMessageId}`;
+    return {
+      type: "agent.protected-message" as const,
+      message: await protectChatMessage({
+        id: this.#id(key),
+        message: {
+          role: "system",
+          content: [
+            {
+              type: "text",
+              text: `Codex could not start this turn: ${reason}`,
+            },
+          ],
+          idempotencyKey: key,
+        },
+        service: this.#service,
+      }),
+      telemetry: { kind: "message" as const, phase: null, turnId: null },
+    };
+  }
+
   async message(message: NormalizedAgentMessage) {
     const turnId = message.correlation?.turnId ?? null;
     const agentKey = message.agentScope
