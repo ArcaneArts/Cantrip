@@ -24,6 +24,7 @@ import {
   retainedProjectGitViews,
 } from "./actual-project-git-views.mjs";
 import { createRequire } from "node:module";
+import { once } from "node:events";
 import {
   mkdtemp,
   mkdir,
@@ -57,6 +58,7 @@ import { verifySharedProductOfflineShutdown } from "./shared-product-offline-shu
 import { actualNativeInflightClient } from "./actual-native-inflight-client.mjs";
 import { SingleProductFixture } from "./single-product-fixture.mjs";
 import { actualSingleInflightClient } from "./actual-single-inflight-client.mjs";
+import { actualModelOperationsClient } from "./actual-model-operations-client.mjs";
 import { singleAgentInterruption } from "./single-agent-interruption.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { password } from "./security-fixtures.mjs";
@@ -97,7 +99,8 @@ const databaseMode = option("--database") ?? "pglite";
 const sharedPair = option("--server-pair");
 const singleProduct =
   process.argv.includes("--native-single-recovery") ||
-  process.argv.includes("--native-single-agent-recovery");
+  process.argv.includes("--native-single-agent-recovery") ||
+  process.argv.includes("--model-operations");
 const selectedRuntime = option("--runtime");
 assert.ok(!selectedRuntime || ["node", "rust"].includes(selectedRuntime));
 const runtimeCases = sharedPair
@@ -162,6 +165,7 @@ async function flow(
     const pathname = new URL(request.url()).pathname;
     if (
       pathname.startsWith("/api/projects") ||
+      pathname.startsWith("/api/model-operations/") ||
       pathname.startsWith("/api/chats/") ||
       pathname.startsWith("/api/skills") ||
       pathname.startsWith("/api/settings/mcp-") ||
@@ -242,6 +246,22 @@ async function flow(
     } finally {
       result.workerDiagnostics.push(current.diagnostics());
     }
+  };
+  const crashWorker = async () => {
+    const current = worker;
+    assert.ok(current);
+    const ended = once(current.child, "close");
+    assert.equal(current.child.kill("SIGKILL"), true);
+    const [code, signal] = await ended;
+    assert.equal(code, null);
+    assert.equal(signal, "SIGKILL");
+    worker = undefined;
+    result.workerStops.push({
+      code,
+      signal,
+      intentionalInterruption: "SIGKILL",
+    });
+    result.workerDiagnostics.push(current.diagnostics());
   };
   const workers = () => page.evaluate(() => window.folderWorkers.getWorkers());
   const job = (id) =>
@@ -960,6 +980,19 @@ async function flow(
           : {}),
       });
     }
+    if (process.argv.includes("--model-operations")) {
+      if (!worker) await startWorker();
+      await actualModelOperationsClient({
+        page,
+        fixture,
+        workerId,
+        startWorker,
+        stopWorker,
+        crashWorker,
+        requests,
+        result,
+      });
+    }
     if (process.argv.includes("--rolling-servers")) {
       if (!worker) await startWorker();
       await verifySharedProductRolling({
@@ -1200,6 +1233,11 @@ try {
   for (const runtime of report.runtimes.slice(1)) {
     assert.deepEqual(runtime.steps, report.runtimes[0].steps);
     assert.deepEqual(runtime.projects, report.runtimes[0].projects);
+    if (process.argv.includes("--model-operations"))
+      assert.deepEqual(
+        runtime.modelOperations.summary,
+        report.runtimes[0].modelOperations.summary,
+      );
     if (process.argv.includes("--native-single-recovery"))
       assert.deepEqual(
         runtime.singleInflight.summary,

@@ -6272,10 +6272,13 @@
         "status": "partial",
         "evidence": [
           "docs/RUST_SERVER_SOURCE_DRIFT.md",
-          "scripts/server-rust/model-operation-boundary-compatibility.mjs"
+          "scripts/server-rust/model-operation-boundary-compatibility.mjs",
+          "docs/RUST_SERVER_MODEL_OPERATIONS.md",
+          "scripts/server-rust/actual-model-operations-client.mjs",
+          "scripts/server-rust/model-operation-provider.mjs"
         ],
         "remaining": [
-          "HTTP error/configuration/ownership boundaries are qualified separately from successful protected inference, cancellation of actual running inference, usage accounting and supported-platform acceptance."
+          "Supported-platform, mixed-server, server-interruption and long-outage product qualification remain required; the selected local adapters and cases are documented explicitly."
         ]
       },
       {
@@ -6285,10 +6288,13 @@
         "status": "partial",
         "evidence": [
           "docs/RUST_SERVER_SOURCE_DRIFT.md",
-          "scripts/server-rust/model-operation-boundary-compatibility.mjs"
+          "scripts/server-rust/model-operation-boundary-compatibility.mjs",
+          "docs/RUST_SERVER_MODEL_OPERATIONS.md",
+          "scripts/server-rust/actual-model-operations-client.mjs",
+          "scripts/server-rust/model-operation-provider.mjs"
         ],
         "remaining": [
-          "HTTP error/configuration/ownership boundaries are qualified separately from successful protected inference, cancellation of actual running inference, usage accounting and supported-platform acceptance."
+          "Supported-platform, mixed-server, server-interruption and long-outage product qualification remain required; the selected local adapters and cases are documented explicitly."
         ]
       },
       {
@@ -6298,10 +6304,13 @@
         "status": "partial",
         "evidence": [
           "docs/RUST_SERVER_SOURCE_DRIFT.md",
-          "scripts/server-rust/model-operation-boundary-compatibility.mjs"
+          "scripts/server-rust/model-operation-boundary-compatibility.mjs",
+          "docs/RUST_SERVER_MODEL_OPERATIONS.md",
+          "scripts/server-rust/actual-model-operations-client.mjs",
+          "scripts/server-rust/model-operation-provider.mjs"
         ],
         "remaining": [
-          "HTTP error/configuration/ownership boundaries are qualified separately from successful protected inference, cancellation of actual running inference, usage accounting and supported-platform acceptance."
+          "Supported-platform, mixed-server, server-interruption and long-outage product qualification remain required; the selected local adapters and cases are documented explicitly."
         ]
       },
       {
@@ -6311,10 +6320,13 @@
         "status": "partial",
         "evidence": [
           "docs/RUST_SERVER_SOURCE_DRIFT.md",
-          "scripts/server-rust/model-operation-boundary-compatibility.mjs"
+          "scripts/server-rust/model-operation-boundary-compatibility.mjs",
+          "docs/RUST_SERVER_MODEL_OPERATIONS.md",
+          "scripts/server-rust/actual-model-operations-client.mjs",
+          "scripts/server-rust/model-operation-provider.mjs"
         ],
         "remaining": [
-          "HTTP error/configuration/ownership boundaries are qualified separately from successful protected inference, cancellation of actual running inference, usage accounting and supported-platform acceptance."
+          "Supported-platform, mixed-server, server-interruption and long-outage product qualification remain required; the selected local adapters and cases are documented explicitly."
         ]
       }
     ]
@@ -15825,7 +15837,6 @@
         "nodeOnly": ["2060beb2a", "fc71cc21e"]
       },
       "remaining": [
-        "Successful current embedding/decision operations, cancellation while running and direct operation usage accounting.",
         "Current catalog pagination/partial-scope discovery and operation-specific routing behavior.",
         "Current CantripOS desktop/package/system/workspace lifecycle, failure and recovery behaviors.",
         "Complete current native Task/Goal interruption/reconnect and supported-platform requalification.",
@@ -15877,6 +15888,41 @@
       "remaining": [
         "Worker/native-process and database interruption, longer outages, mixed-peer GUI transfer and already-suspended legacy lanes remain unqualified.",
         "Requalify current packaged artifacts on supported platforms; final default cutover and production Node removal remain required."
+      ]
+    },
+    "fullWorkerModelOperations": {
+      "status": "implemented-pending-platform-acceptance",
+      "sourceBaseline": "bb7af5ccc7322e5b18c1a23cd31abb198ad1608c",
+      "evidence": [
+        "docs/RUST_SERVER_MODEL_OPERATIONS.md",
+        "scripts/server-rust/actual-model-operations-client.mjs",
+        "scripts/server-rust/model-operation-provider.mjs"
+      ],
+      "localQualification": {
+        "platform": "darwin-arm64",
+        "auth": "accounts",
+        "storageModes": ["pglite", "bundled-postgres", "postgres"],
+        "peers": ["node", "rust"],
+        "productSteps": 114,
+        "operationCases": 72,
+        "providerHttpRequests": 78,
+        "workerSigkills": 6,
+        "cleanWorkerExits": 24,
+        "cleanProductionServerExits": 18,
+        "rustExecutableSha256": "20bb778bd097862de7be6e51ee9d2c90c57dce27700c14e856b53ce36054b985",
+        "unchangedRustAndWorkerImplementation": true
+      },
+      "behavior": [
+        "Actual browser encryption and full-worker direct admission preserve batched vectors, pinned space, typed decisions and operation identities.",
+        "Explicit cancellation, SDK abort and HTTP disconnect close the original provider connection, retain one receipt and never replay inference.",
+        "Timeout and worker SIGKILL retain failed versus unknown usage; original exported rows survive actual server/worker restart.",
+        "Public aggregate totals and completeness match observed receipts; missing counters and worker receipts remain unknown."
+      ],
+      "baselineRepair": "Unmodified Node external/private PostgreSQL aggregate routes fail to bind Date parameters for a SQL CASE expression; four ISO timestamp bindings restore the range predicates. Node PGlite and native Rust already passed.",
+      "remaining": [
+        "Supported-platform artifact acceptance and mixed-server/server-interruption/long-outage qualification remain required.",
+        "Configured OpenAI-compatible adapters and an owned local provider are exercised; this does not prove every provider-private adapter behavior.",
+        "Default Rust cutover and production Node-server removal remain required."
       ]
     }
   },
