@@ -6,6 +6,8 @@ mod desktop;
 mod packages;
 #[path = "power_coordinator.rs"]
 mod power;
+#[path = "system_coordinator.rs"]
+mod systems;
 #[path = "workspace_operation_coordinator.rs"]
 mod workspace_operations;
 use super::{InstanceObservation, Repository, checked, text};

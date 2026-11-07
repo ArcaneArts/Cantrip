@@ -7,6 +7,7 @@ mod frames;
 pub(crate) mod inference_failure;
 pub mod limits;
 pub mod maintenance;
+pub mod management;
 mod notifications;
 mod offline;
 pub(crate) mod output;

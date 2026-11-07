@@ -22,6 +22,13 @@ import { registerWorkerContracts } from "./worker-contracts.mjs";
 import { registerWorkerCommandContracts } from "./worker-command-contracts.mjs";
 
 export const contractRoots = [
+  "protectedDecisionRequestSchema",
+  "protectedDecisionResponseSchema",
+  "protectedEmbeddingRequestSchema",
+  "protectedEmbeddingResponseSchema",
+  "modelOperationCancelSchema",
+  "modelOperationCancelResultSchema",
+  "modelOperationRouteSchema",
   "nativeTurnSuspensionSchema",
   "nativeSuspensionTargetSchema",
   "nativeSuspensionTaskGoalCycleSchema",
@@ -168,6 +175,8 @@ export const contractRoots = [
   "cuaEffectWorkerStatusSchema",
   "ollamaModelInventorySchema",
   "endpointModelInventorySchema",
+  "modelCatalogPageSchema",
+  "modelCatalogPageRequestSchema",
   "providerQuotaSnapshotSchema",
   "providerRateLimitResetConsumeRequestSchema",
   "providerRateLimitResetConsumeResultSchema",
@@ -743,6 +752,13 @@ export const contractRoots = [
   "cantripOsSystemRootReceiptSchema",
   "cantripOsSystemOperationResultSchema",
   "cantripOsSystemPrivateOperationResultSchema",
+  "cantripOsSystemCreateSchema",
+  "cantripOsSystemControlSchema",
+  "cantripOsSystemTargetSummarySchema",
+  "cantripOsSystemStatusSchema",
+  "cantripOsSystemSummarySchema",
+  "cantripOsSystemListQuerySchema",
+  "cantripOsSystemPageSchema",
   "cantripOsRecoveryRequestSchema",
   "cantripOsRecoveryResultSchema",
   "cantripOsWorkspaceCreateSchema",
@@ -807,6 +823,9 @@ export const contractRoots = [
   "externalChatAttachmentReadResultSchema",
   "externalChatDiscoveryWorkerResultSchema",
   "projectExternalChatDiscoverySchema",
+  "modelOperationUsageSchema",
+  "modelOperationUsageIdentitySchema",
+  "modelOperationUsageEvidenceSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -820,6 +839,22 @@ export const projectExportContractRoots = [
   "projectExportItemOutcomeSchema",
   "projectExportResultSchema",
   "projectExportChatBeginResultSchema",
+];
+
+export const chatAttachmentContractRoots = [
+  "attachmentUploadOpaqueSchema",
+  "attachmentDownloadOpaqueSchema",
+  "attachmentChunkOpaqueSchema",
+  "attachmentProtectedMetadataSchema",
+];
+
+export const workerManagementContractRoots = [
+  "workerManagementSourceSchema",
+  "workerManagementSummarySchema",
+  "workerManagementListSchema",
+  "workerUpdateSchema",
+  "workerRestartAcknowledgementSchema",
+  "workerRestartResultSchema",
 ];
 
 // Keep independently added roots self-contained. Numeric graph references must
@@ -881,6 +916,11 @@ export function sourceContractSchema(name) {
 }
 
 const refinements = new Map([
+  [attachmentContent.attachmentUploadOpaqueSchema, "attachment-upload-stream"],
+  [
+    attachmentContent.attachmentDownloadOpaqueSchema,
+    "attachment-download-stream",
+  ],
   [protocol.projectExportCreateSchema, "project-export-chat-ids"],
   [protocol.externalChatAttachmentSchema, "external-chat-attachment"],
   [protocol.externalChatTranscriptSchema, "external-chat-transcript"],
@@ -1674,6 +1714,34 @@ if (
       {
         ...(await resolveConfig(fileURLToPath(exportDestination))),
         filepath: fileURLToPath(exportDestination),
+      },
+    ),
+  );
+  const attachmentDestination = new URL(
+    "../../cantrip_server_rs/contracts/chat-attachments.json",
+    import.meta.url,
+  );
+  await writeFile(
+    attachmentDestination,
+    await format(
+      JSON.stringify(buildContractManifest(chatAttachmentContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(attachmentDestination))),
+        filepath: fileURLToPath(attachmentDestination),
+      },
+    ),
+  );
+  const managementDestination = new URL(
+    "../../cantrip_server_rs/contracts/worker-management.json",
+    import.meta.url,
+  );
+  await writeFile(
+    managementDestination,
+    await format(
+      JSON.stringify(buildContractManifest(workerManagementContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(managementDestination))),
+        filepath: fileURLToPath(managementDestination),
       },
     ),
   );

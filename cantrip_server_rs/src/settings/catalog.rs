@@ -116,6 +116,7 @@ pub struct CatalogUpdate {
     pub account_id: Option<String>,
     pub default_native_id: Option<String>,
     pub connection_revision: Option<i64>,
+    pub preserve_missing_models: bool,
 }
 impl SettingsRepository {
     pub async fn list_provider_catalog_targets(&self, owner: &str) -> Result<Vec<Value>> {
@@ -235,19 +236,35 @@ impl SettingsRepository {
         &self,
         owner: &str,
         provider: &str,
-        input: CatalogUpdate,
+        mut input: CatalogUpdate,
     ) -> Result<bool> {
         let (owner, provider) = (owner.to_owned(), provider.to_owned());
         let at = now();
         self.database.transaction(move |tx|Box::pin(async move {
             if tx.query("SELECT id FROM model_providers WHERE id=$2 AND owner_id=$1 AND ($3::bigint IS NULL OR connection_revision=$3::bigint) FOR UPDATE", &[&owner,&provider,&input.connection_revision]).await?.is_empty() { return Ok(false); }
 
+            let retained = tx.query("SELECT m.native_model_id,a.operation_capabilities FROM provider_model_availability a INNER JOIN provider_models m ON m.id=a.provider_model_id AND m.provider_id=$1 WHERE a.scope_key=$2", &[&provider,&input.availability_scope]).await?;
+            let retained = retained.iter().map(|row| Ok((row.get::<String>(0)?, WireValue::from_serialize(&row.get::<Value>(1)?)))).collect::<Result<HashMap<_,_>>>()?;
+            for model in &mut input.models {
+                let previous = model["nativeModelId"].as_str().and_then(|name|retained.get(name));
+                let mut capabilities = previous.and_then(WireValue::as_object).cloned().unwrap_or_default();
+                if let Some(observed) = model["operationCapabilities"].as_object() { capabilities.extend(observed.clone()); }
+                model["operationCapabilities"] = WireValue::Object(capabilities);
+            }
+
             for batch in input.models.chunks(BATCH) {
                 let rows=batch.iter().map(|model|Ok(json!({"id":uuid(),"source":model["metadataSource"].as_js_string().context("catalog metadata source")?.lossy(),"hash":catalog_hash::snapshot(model)?}))).collect::<Result<Vec<_>>>()?;
                 tx.query("INSERT INTO provider_model_catalog_snapshots(id,owner_id,provider_id,provider_account_id,worker_id,availability_scope,metadata_source,metadata_hash,observed_at) SELECT s.id,$2,$3,$4,$5,$6,s.source,s.hash,$7 FROM jsonb_to_recordset($1::jsonb) AS s(id text,source text,hash text) ON CONFLICT DO NOTHING", &[&json!(rows),&owner,&provider,&input.account_id,&input.worker_id,&input.availability_scope,&at]).await?;
             }
             let columns=FIELDS.iter().map(|(_,field,_)|*field).collect::<Vec<_>>();
-            let updates=columns.iter().map(|field| if *field == "operation_capabilities" { "operation_capabilities=CASE WHEN excluded.operation_capabilities='{}'::jsonb THEN provider_models.operation_capabilities ELSE excluded.operation_capabilities END".to_owned() } else { format!("{field}=excluded.{field}") }).collect::<Vec<_>>().join(",");
+            let updates=columns.iter().map(|field| {
+                if *field == "operation_capabilities" { "operation_capabilities=provider_models.operation_capabilities || excluded.operation_capabilities".to_owned() }
+                else if !input.preserve_missing_models { format!("{field}=excluded.{field}") }
+                else if matches!(*field,"input_modalities"|"output_modalities"|"supported_reasoning_efforts") { format!("{field}=CASE WHEN excluded.{field}='[]'::jsonb THEN provider_models.{field} ELSE excluded.{field} END") }
+                else if *field == "display_name" { "display_name=CASE WHEN excluded.display_name=excluded.native_model_id THEN provider_models.display_name ELSE excluded.display_name END".to_owned() }
+                else if matches!(*field,"native_model_id"|"metadata_source"|"match_confidence_basis_points"|"hidden"|"is_default"|"raw_metadata") { format!("{field}=excluded.{field}") }
+                else { format!("{field}=coalesce(excluded.{field},provider_models.{field})") }
+            }).collect::<Vec<_>>().join(",");
             for batch in input.models.chunks(BATCH) {
                 let rows=WireValue::Array(batch.iter().map(|model|model_row(&provider,model)).collect());
                 tx.query(&format!("INSERT INTO provider_models(id,provider_id,{},last_seen_at,updated_at) SELECT m.id,m.provider_id,{},$2,$2 FROM jsonb_populate_recordset(NULL::provider_models,$1::text::jsonb) m ON CONFLICT(provider_id,native_model_id) DO UPDATE SET {updates},last_seen_at=$2,updated_at=$2",columns.join(","),columns.iter().map(|field|format!("m.{field}")).collect::<Vec<_>>().join(",")), &[&rows.stringify(),&at]).await?;
@@ -261,11 +278,13 @@ impl SettingsRepository {
             }
             let observed_by_name = input.models.iter().map(|model| (model["nativeModelId"].as_str().unwrap_or_default(), model)).collect::<HashMap<_,_>>();
             for batch in models.chunks(BATCH) {
-                let entries=batch.iter().map(|(id,name)| {
+                let entries=batch.iter().filter(|(_,name)| !input.preserve_missing_models || observed_by_name.contains_key(name.as_str())).map(|(id,name)| {
                     let capabilities = observed_by_name.get(name.as_str()).and_then(|model| model.get("operationCapabilities")).cloned().unwrap_or_else(||WireValue::object([] as [(&str,WireValue);0]));
                     Ok(json!({"id":uuid(),"model":id,"capabilities":serde_json::from_str::<Value>(&capabilities.stringify())?,"state":if input.available.contains(&JsString::from(name.as_str())){"available"}else{"unavailable"}}))
                 }).collect::<Result<Vec<_>>>()?;
-                tx.query("INSERT INTO provider_model_availability(id,provider_model_id,scope_key,worker_id,provider_account_id,state,operation_capabilities,last_seen_at,updated_at) SELECT a.id,a.model,$2,$3,$4,a.state,a.capabilities,$5,$5 FROM jsonb_to_recordset($1::jsonb) AS a(id text,model text,state text,capabilities jsonb) ON CONFLICT(provider_model_id,scope_key) DO UPDATE SET state=excluded.state,worker_id=excluded.worker_id,provider_account_id=excluded.provider_account_id,operation_capabilities=CASE WHEN excluded.operation_capabilities='{}'::jsonb THEN provider_model_availability.operation_capabilities ELSE excluded.operation_capabilities END,last_seen_at=$5,updated_at=$5", &[&json!(entries),&input.availability_scope,&input.worker_id,&input.account_id,&at]).await?;
+                if !entries.is_empty() {
+                    tx.query("INSERT INTO provider_model_availability(id,provider_model_id,scope_key,worker_id,provider_account_id,state,operation_capabilities,last_seen_at,updated_at) SELECT a.id,a.model,$2,$3,$4,a.state,a.capabilities,$5,$5 FROM jsonb_to_recordset($1::jsonb) AS a(id text,model text,state text,capabilities jsonb) ON CONFLICT(provider_model_id,scope_key) DO UPDATE SET state=excluded.state,worker_id=excluded.worker_id,provider_account_id=excluded.provider_account_id,operation_capabilities=provider_model_availability.operation_capabilities || excluded.operation_capabilities,last_seen_at=$5,updated_at=$5", &[&json!(entries),&input.availability_scope,&input.worker_id,&input.account_id,&at]).await?;
+                }
             }
             if input.auto_create {
                 let suppressions=tx.query("SELECT provider_model_id,operation FROM provider_model_suppressions WHERE owner_id=$1", &[&owner]).await?;

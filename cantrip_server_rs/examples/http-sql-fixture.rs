@@ -52,7 +52,7 @@ mod cantrip_server {
             match result {
                 Ok(events) => Json(serde_json::json!({"events":events})).into_response(),
                 Err(error) => {
-                    (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
+                    (StatusCode::INTERNAL_SERVER_ERROR, format!("{error:#}")).into_response()
                 }
             }
         }
@@ -87,7 +87,7 @@ mod cantrip_server {
                 })
                 .into_response(),
                 Err(error) => {
-                    (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
+                    (StatusCode::INTERNAL_SERVER_ERROR, format!("{error:#}")).into_response()
                 }
             }
         }

@@ -378,7 +378,7 @@ impl SettingsRepository {
         project: Option<&str>,
         at: DateTime<Utc>,
     ) -> Result<AgentTimeAnalytics> {
-        let rows = self.database.query("SELECT attempt_status,completed_at::text,model_id,provider_id,started_at::text FROM token_usage_records WHERE owner_id=$1 AND ($2::text IS NULL OR project_id=$2)", &[&owner,&project.filter(|id| !id.is_empty())]).await?;
+        let rows = self.database.query("SELECT attempt_status,completed_at::text,model_id,provider_id,started_at::text FROM token_usage_records WHERE owner_id=$1 AND attempt_kind NOT IN ('embedding','decision') AND ($2::text IS NULL OR project_id=$2)", &[&owner,&project.filter(|id| !id.is_empty())]).await?;
         let mut intervals = Vec::new();
         for row in rows {
             intervals.push((
@@ -413,17 +413,17 @@ impl SettingsRepository {
 
     async fn usage_totals(&self, owner: &str, providers: bool) -> Result<HashMap<String, Value>> {
         let key = if providers { "provider_id" } else { "model_id" };
-        let rows = self.database.query(&format!("SELECT {key},coalesce(sum(input_tokens),0)::text,coalesce(sum(output_tokens),0)::text FROM token_usage_records WHERE owner_id=$1 GROUP BY {key}"), &[&owner]).await?;
+        let observed = super::model_operation_usage::OBSERVED_TOTAL_SQL;
+        let rows = self.database.query(&format!("SELECT {key},coalesce(sum(input_tokens),0)::text,coalesce(sum(output_tokens),0)::text,coalesce(sum({observed}),0)::text FROM token_usage_records WHERE owner_id=$1 GROUP BY {key}"), &[&owner]).await?;
         let mut totals = HashMap::new();
         for row in rows {
             if let Some(id) = row.get::<Option<String>>(0)?.filter(|id| !id.is_empty()) {
-                totals.insert(
-                    id,
-                    token_usage(
-                        row.get::<String>(1)?.parse()?,
-                        row.get::<String>(2)?.parse()?,
-                    ),
+                let mut usage = token_usage(
+                    row.get::<String>(1)?.parse()?,
+                    row.get::<String>(2)?.parse()?,
                 );
+                usage["totalTokens"] = Value::Number(row.get::<String>(3)?.parse()?);
+                totals.insert(id, usage);
             }
         }
         Ok(totals)

@@ -4690,6 +4690,9 @@ export const tokenUsageRecords = pgTable(
       .$type<string[]>()
       .notNull()
       .default([]),
+    modelOperationUsage: jsonb("model_operation_usage").$type<
+      import("@cantrip/protocol").ModelOperationUsageEvidence
+    >(),
     nativeUsage:
       jsonb("native_usage").$type<
         import("@cantrip/protocol").NativeHistoryUsage
@@ -6368,3 +6371,7 @@ export const nativeHistoryItems = pgTable(
 export { cantripOsBackupOperations } from "./schema-cantrip-os-backups.js";
 
 export { cantripOsWorkspaceOperations } from "./schema-cantrip-os-workspace-operations.js";
+export {
+  cantripOsSystemTargets,
+  cantripOsSystemOperations,
+} from "./schema-cantrip-os-systems.js";

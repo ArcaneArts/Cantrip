@@ -33,6 +33,7 @@ export interface QuotaAnalyticsTokenAttempt {
   reasoningOutputTokens: number;
   visibleOutputTokens: number | null;
   reportedTotalTokens: number | null;
+  observedTotalTokens?: number;
 }
 
 export interface QuotaTokenTotals {
@@ -177,7 +178,8 @@ function addTotals(
     totals.cacheWriteInputTokens += attempt.cacheWriteInputTokens;
     totals.outputTokens += attempt.outputTokens;
     totals.reasoningOutputTokens += attempt.reasoningOutputTokens;
-    totals.comparableTokens += attempt.inputTokens + attempt.outputTokens;
+    totals.comparableTokens +=
+      attempt.observedTotalTokens ?? attempt.inputTokens + attempt.outputTokens;
     if (attempt.visibleOutputTokens === null) visibleKnown = false;
     else
       totals.visibleOutputTokens =

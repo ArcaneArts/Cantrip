@@ -58,6 +58,11 @@ pub struct CommandError {
     pub inference: Option<Box<Value>>,
 }
 impl CommandError {
+    pub(super) fn not_sent(message: String) -> Self {
+        let mut error = Self::unavailable(message);
+        error.code = Some("worker-command-not-sent".into());
+        error
+    }
     pub(super) fn unavailable(message: String) -> Self {
         Self {
             message: message.into(),
@@ -607,7 +612,7 @@ impl WorkerBridge {
             // The Node bridge rejects an offline worker before encoding, and
             // encoding failures do not admit a request, timer or routing metric.
             if !self.is_connected(worker) {
-                return Err(CommandError::unavailable(format!(
+                return Err(CommandError::not_sent(format!(
                     "Worker {worker} is offline."
                 )));
             }
@@ -627,6 +632,7 @@ impl WorkerBridge {
                 ("requestId", Value::String(id.clone().into())),
                 ("command", command),
                 ("inferenceAdmissionAck", Value::Bool(true)),
+                ("modelOperationUsage", Value::Bool(true)),
                 (
                     "inferenceSequence",
                     Value::String(sequence.to_string().into()),
@@ -658,7 +664,7 @@ impl WorkerBridge {
             {
                 let mut state = self.state.lock().unwrap();
                 let Some(peer) = state.peers.get(worker).filter(|p| p.is_open()).cloned() else {
-                    return Err(CommandError::unavailable(format!(
+                    return Err(CommandError::not_sent(format!(
                         "Worker {worker} is offline."
                     )));
                 };

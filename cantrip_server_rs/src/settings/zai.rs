@@ -106,6 +106,7 @@ impl SettingsRepository {
             provider,
             CatalogUpdate {
                 connection_revision: runtime["connectionRevision"].as_i64(),
+                preserve_missing_models: false,
                 models: models.iter().map(WireValue::from_serialize).collect(),
                 availability_scope: scope.into(),
                 available: available.clone(),

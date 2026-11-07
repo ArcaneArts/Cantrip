@@ -273,6 +273,9 @@ export function systemFixture() {
     lock: () => {
       locked = true;
     },
+    unlock: () => {
+      locked = false;
+    },
     changeOwner: () => {
       owner = "another-owner";
     },

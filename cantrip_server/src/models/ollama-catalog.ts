@@ -1,4 +1,7 @@
 import {
+  MODEL_CATALOG_BYTES_LIMIT,
+  MODEL_CATALOG_PAGE_BYTES,
+  modelCatalogPageSchema,
   ollamaModelInventorySchema,
   endpointModelInventorySchema,
   usesWorkerModelCatalog,
@@ -7,6 +10,7 @@ import {
   type OllamaModelInventoryItem,
   type ProviderModelCatalogResult,
 } from "@cantrip/protocol";
+import { randomUUID } from "node:crypto";
 
 import type {
   ProviderModelCatalogWrite,
@@ -79,6 +83,7 @@ export function normalizeOllamaModel(
               inputModalities: vision ? ["text", "image"] : ["text"],
             },
             embedding: {
+              modelRevision: model.digest,
               status: capabilities.has("embedding")
                 ? "supported"
                 : "unsupported",
@@ -232,24 +237,106 @@ export class OllamaCatalogService {
               type: "model.endpoint.catalog" as const,
               provider: { ...runtimeProvider, kind: provider.kind },
             };
-      const result = await this.#bridge.request(workerId, command, {
-        ownerId,
-        timeoutMs: DISCOVERY_TIMEOUT_MS,
-      });
-      const models =
-        provider.kind === "ollama"
-          ? ollamaModelInventorySchema
-              .parse(result)
-              .models.map(normalizeOllamaModel)
-          : endpointModelInventorySchema
-              .parse(result)
-              .models.map(normalizeEndpointCatalogModel);
+      const models: ProviderModelCatalogWrite[] = [];
+      const names = new Set<string>();
+      const deadline = Date.now() + DISCOVERY_TIMEOUT_MS;
+      const transferId = randomUUID();
+      let snapshotId: string | undefined;
+      let observedAt: string | undefined;
+      let metadataIncomplete = false;
+      let total: number | undefined;
+      let offset = 0;
+      let bytes = 0;
+      while (true) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0)
+          throw new Error("Model catalog transfer timed out.");
+        const result = await this.#bridge.request(
+          workerId,
+          {
+            ...command,
+            catalogPage: { transferId, snapshotId, offset },
+          },
+          { ownerId, timeoutMs: remaining },
+        );
+        if (
+          !result ||
+          typeof result !== "object" ||
+          !("snapshotId" in result)
+        ) {
+          if (snapshotId)
+            throw new Error("Model catalog pagination disappeared.");
+          // Older workers strip the optional request field and return a full
+          // legacy inventory. Never treat that as a continuation of a page.
+          if (provider.kind === "ollama") {
+            models.push(
+              ...ollamaModelInventorySchema
+                .parse(result)
+                .models.map(normalizeOllamaModel),
+            );
+          } else {
+            const inventory = endpointModelInventorySchema.parse(result);
+            models.push(...inventory.models.map(normalizeEndpointCatalogModel));
+            metadataIncomplete = inventory.metadataIncomplete === true;
+          }
+          break;
+        }
+        const page = modelCatalogPageSchema.parse(result);
+        if (
+          page.kind !== (provider.kind === "ollama" ? "ollama" : "endpoint") ||
+          page.transferId !== transferId ||
+          page.offset !== offset ||
+          (snapshotId !== undefined &&
+            (snapshotId !== page.snapshotId ||
+              observedAt !== page.observedAt ||
+              total !== page.total ||
+              metadataIncomplete !==
+                (page.kind === "endpoint" && page.metadataIncomplete === true)))
+        )
+          throw new Error("Model catalog page belongs to another snapshot.");
+        snapshotId = page.snapshotId;
+        observedAt = page.observedAt;
+        metadataIncomplete =
+          page.kind === "endpoint" && page.metadataIncomplete === true;
+        total = page.total;
+        const pageBytes = Buffer.byteLength(JSON.stringify(page));
+        if (pageBytes > MODEL_CATALOG_PAGE_BYTES)
+          throw new Error("Model catalog page exceeded its byte limit.");
+        bytes += pageBytes;
+        if (bytes > MODEL_CATALOG_BYTES_LIMIT + 64 * 1024)
+          throw new Error("Model catalog transfer exceeded its byte limit.");
+        const batch =
+          page.kind === "ollama"
+            ? page.models.map(normalizeOllamaModel)
+            : page.models.map(normalizeEndpointCatalogModel);
+        for (const model of batch) {
+          if (names.has(model.nativeModelId))
+            throw new Error("Model catalog repeated a model.");
+          names.add(model.nativeModelId);
+          models.push(model);
+        }
+        offset += page.models.length;
+        if (page.nextOffset === null) {
+          if (offset !== total)
+            throw new Error(
+              "Model catalog ended before its complete snapshot.",
+            );
+          break;
+        }
+        if (
+          !page.models.length ||
+          page.nextOffset !== offset ||
+          offset >= total
+        )
+          throw new Error("Model catalog pagination did not advance.");
+      }
       const accepted = await this.#repository.reconcileProviderModelCatalog(
         ownerId,
         providerId,
         {
           connectionRevision: provider.connectionRevision,
           models,
+          preserveMissingModels: metadataIncomplete,
           availabilityScope: scopeKey,
           availabilityWorkerId: workerId,
           availableNativeModelIds: new Set(
@@ -264,11 +351,17 @@ export class OllamaCatalogService {
         connection,
         scopeKey,
         workerId,
-        status: "current",
-        errorCode: null,
-        lastSuccessAt: new Date(),
+        status: metadataIncomplete ? "stale" : "current",
+        errorCode: metadataIncomplete
+          ? "endpoint-native-metadata-unavailable"
+          : null,
+        ...(metadataIncomplete ? {} : { lastSuccessAt: new Date() }),
       });
-      return this.#repository.getProviderModelCatalog(ownerId, providerId);
+      return this.#repository.getProviderModelCatalog(
+        ownerId,
+        providerId,
+        metadataIncomplete,
+      );
     } catch (error) {
       const accepted = await this.#repository.setProviderCatalogSyncState(
         providerId,

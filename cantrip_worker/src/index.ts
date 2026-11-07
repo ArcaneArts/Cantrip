@@ -1,4 +1,5 @@
 import { discoverEndpointModels } from "./endpoint-models.js";
+import { ModelCatalogSnapshots } from "./model-catalog-snapshots.js";
 import {
   osNativeMcpServers,
   osNativeMcpOperations,
@@ -339,6 +340,7 @@ import { RemoteSurfaceWorkerLinkAdapter } from "./remote-surface-worker-link-ada
 import { WorkerObservationHub } from "./worker-observation-worker-link-adapter.js";
 import { LocalNativeInferenceOwnership } from "./native-inference-ownership.js";
 import { WorkerInferenceAdmission } from "./inference-admission.js";
+import { ModelOperationCommands } from "./commands/model-operations.js";
 import { CodexRpcObservationError } from "./codex/rpc-protocol.js";
 import {
   withInferenceCommand,
@@ -1679,6 +1681,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     ownerId: workerEncryption.ownerId(),
     workerId: config.workerId,
   });
+  const modelCatalogSnapshots = new ModelCatalogSnapshots();
   const taskPauseControls = new TaskPauseControls({
     scope: nativeNamespaceScope,
     selected: (chatId) => managedCurrentRuntimes.get(chatId),
@@ -4274,6 +4277,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
 
   // Provider decryption and the protected repository operation dispatcher stay
   // here with native runtime ownership. Feature handlers receive only their ports.
+  const modelOperationCommands = new ModelOperationCommands({
+    scope: () => nativeNamespaceScope(),
+    service: workerEncryption,
+    admission: inferenceAdmissionForWorker,
+    workerVersion: cantripVersion.version,
+  });
   const managedGoalRecoveries = new Map<
     string,
     Promise<NativeGoalRecoveryReceipt>
@@ -4285,6 +4294,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const handleCommand = async (
     command: WorkerCommand,
     emit: (event: WorkerEvent) => void,
+    collectModelOperationUsage = false,
   ): Promise<unknown> => {
     const protectedRuntimeProvider =
       command.type === "chat.interrupt"
@@ -4307,6 +4317,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       return runtimeProvider;
     };
     switch (command.type) {
+      case "model.embedding":
+      case "model.decision":
+        return modelOperationCommands.execute(
+          command,
+          collectModelOperationUsage,
+        );
+      case "model.operation.cancel":
+        return modelOperationCommands.cancel(command);
       case "inference.status":
         return inferenceAdmissionForWorker().snapshot();
       case "inference.task-revoke": {
@@ -4541,10 +4559,33 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         config.token = command.credential;
         config.tokenSource = "persisted";
         return { accepted: true };
-      case "model.endpoint.catalog":
-        return discoverEndpointModels(provider());
-      case "model.ollama.catalog":
-        return discoverOllamaModels(provider().baseUrl, provider().apiKey);
+      case "model.endpoint.catalog": {
+        const connection = provider();
+        return modelCatalogSnapshots.read({
+          scope: nativeNamespaceScope(),
+          provider: connection,
+          kind: "endpoint",
+          page: command.catalogPage,
+          load: (signal) =>
+            discoverEndpointModels(connection, globalThis.fetch, signal),
+        });
+      }
+      case "model.ollama.catalog": {
+        const connection = provider();
+        return modelCatalogSnapshots.read({
+          scope: nativeNamespaceScope(),
+          provider: connection,
+          kind: "ollama",
+          page: command.catalogPage,
+          load: (signal) =>
+            discoverOllamaModels(
+              connection.baseUrl,
+              connection.apiKey,
+              globalThis.fetch,
+              signal,
+            ),
+        });
+      }
       case "model.chatgpt.catalog":
         return catalogRuntimeFor(
           provider().credentialHomeKey!,
@@ -9024,7 +9065,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               signal?.throwIfAborted();
               const resolved = await routingRegistry.resolveCommand(command);
               signal?.throwIfAborted();
-              return handleCommand(resolved, emit);
+              return handleCommand(
+                resolved,
+                emit,
+                context.modelOperationUsage === true,
+              );
             },
             context.inferenceAdmissionAck === true,
             context.inferenceOperationIdentity,

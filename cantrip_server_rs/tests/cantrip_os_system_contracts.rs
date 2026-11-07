@@ -36,7 +36,7 @@ fn system_ciphertext_bounds_and_completion_match_source() -> Result<()> {
         );
     }
     println!(
-        "7 explicit system completion, command-envelope and ciphertext-bound cases matched source"
+        "8 explicit system completion, command-envelope and ciphertext-bound cases matched source"
     );
     Ok(())
 }
@@ -58,6 +58,13 @@ fn system_contracts_match_actual_source_protocol() -> Result<()> {
         "cantripOsSystemRootReceiptSchema",
         "cantripOsSystemOperationResultSchema",
         "cantripOsSystemPrivateOperationResultSchema",
+        "cantripOsSystemCreateSchema",
+        "cantripOsSystemControlSchema",
+        "cantripOsSystemTargetSummarySchema",
+        "cantripOsSystemStatusSchema",
+        "cantripOsSystemSummarySchema",
+        "cantripOsSystemListQuerySchema",
+        "cantripOsSystemPageSchema",
     ] {
         let output = Command::new("node")
             .args(["scripts/server-rust/security-oracle.mjs", "--vectors", name])

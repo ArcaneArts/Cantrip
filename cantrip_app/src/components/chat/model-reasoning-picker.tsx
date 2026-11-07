@@ -1,5 +1,6 @@
 import {
   modelConfigurationSchema,
+  modelProfileOperation,
   type ChatReasoningState,
   type ModelConfiguration,
   type ModelProfileSummary,
@@ -369,7 +370,7 @@ export function ModelReasoningPicker({
   configuration,
   disabled = false,
   loadReasoningState,
-  models,
+  models: configuredModels,
   mode = "chat",
   onSave,
   pending = false,
@@ -381,6 +382,13 @@ export function ModelReasoningPicker({
   subagentCapability,
   subagents = true,
 }: ModelReasoningPickerProps) {
+  const models = useMemo(
+    () =>
+      configuredModels.filter(
+        (model) => modelProfileOperation(model) === "language",
+      ),
+    [configuredModels],
+  );
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = controlledOpen ?? uncontrolledOpen;
   const setOpen = (nextOpen: boolean) => {
@@ -401,16 +409,24 @@ export function ModelReasoningPicker({
     ({ id }) => id === configuration.subagentModelId,
   );
   const draftRootModel = models.find(({ id }) => id === draft.modelId);
+  const draftSubagentModel = models.find(
+    ({ id }) => id === draft.subagentModelId,
+  );
+  const invalidSelection =
+    (Boolean(draft.modelId) && !draftRootModel) ||
+    (draft.customSubagentModel &&
+      Boolean(draft.subagentModelId) &&
+      !draftSubagentModel);
   const rootReasoning = useModelReasoningState({
     enabled: open,
     fallbackState: reasoningState,
     loader: loadReasoningState,
-    modelId: draft.modelId,
+    modelId: draftRootModel?.id ?? null,
   });
   const subagentReasoning = useModelReasoningState({
     enabled: open && draft.customSubagentModel,
     loader: loadReasoningState,
-    modelId: draft.subagentModelId,
+    modelId: draftSubagentModel?.id ?? null,
   });
   const rootChoices = useMemo(
     () =>
@@ -510,6 +526,12 @@ export function ModelReasoningPicker({
   };
 
   const save = async () => {
+    if (!draftRootModel || (draft.customSubagentModel && !draftSubagentModel)) {
+      setSaveError(
+        "Choose language models for the root and any custom subagents.",
+      );
+      return;
+    }
     const normalizedDraft = {
       ...draft,
       reasoningEffort: normalizeReasoningSelection(
@@ -551,7 +573,7 @@ export function ModelReasoningPicker({
     : subagentCapability && !subagentsAvailable
       ? "Subagents unavailable"
       : configuration.customSubagentModel
-        ? (selectedSubagentModel?.name ?? "Custom subagent model")
+        ? (selectedSubagentModel?.name ?? "Subagent model unavailable")
         : "Subagents inherit root";
 
   return (
@@ -576,7 +598,8 @@ export function ModelReasoningPicker({
       >
         <span className="min-w-0 flex-1">
           <span className="block truncate text-xs font-medium">
-            {selectedModel?.name ?? "Select model"}
+            {selectedModel?.name ??
+              (configuration.modelId ? "Model unavailable" : "Select model")}
           </span>
           <span className="block truncate text-[10px] font-normal text-muted-foreground">
             {subagentSummary}
@@ -607,6 +630,12 @@ export function ModelReasoningPicker({
 
         <div className="space-y-4 py-1">
           {selectionStatus}
+          {invalidSelection ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              A saved model is unavailable for this conversation. Choose a
+              language model to update the configuration.
+            </p>
+          ) : null}
           {readOnly ? (
             <p className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
               {readOnlyReason ??
@@ -763,7 +792,8 @@ export function ModelReasoningPicker({
               effectivePending ||
               reasoningPending ||
               reasoningUnavailable ||
-              !draft.modelId ||
+              !draftRootModel ||
+              (draft.customSubagentModel && !draftSubagentModel) ||
               (draft.customSubagentModel && !subagentsAvailable)
             }
             onClick={() => void save()}

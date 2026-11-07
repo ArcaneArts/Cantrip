@@ -7,7 +7,7 @@ use crate::{
 use anyhow::{Context, Result};
 use futures::FutureExt;
 use serde_json::{Value as Json, json};
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc};
 
 fn positive_integer(value: &Value) -> Option<f64> {
     value
@@ -73,7 +73,7 @@ pub fn normalize_model(model: &Value) -> Value {
     } else {
         json!({
             "language": {"status":status("completion"),"source":"ollama","inputModalities":if has("vision") {json!(["text","image"])} else {json!(["text"])}},
-            "embedding": {"status":status("embedding"),"source":"ollama","adapter":"ollama-embed","inputModalities":["text"]},
+            "embedding": {"status":status("embedding"),"source":"ollama","adapter":"ollama-embed","inputModalities":["text"],"modelRevision":model["digest"]},
             "decision": {"status":status("decision"),"source":"ollama","adapter":"system-one","inputModalities":if has("vision") {json!(["text","image","json"])} else {json!(["text","json"])},"questionTypes":["predicate","choice","score"]}
         })
     };
@@ -216,17 +216,20 @@ impl SettingsRepository {
             runtime["name"] = Value::String(super::endpoint_providers::label(&kind).into());
             runtime["accountId"] = Value::Null;
             runtime["credentialHomeKey"] = Value::Null;
-            let result = commands.request(worker, Value::object([("type",Value::String(if ollama {"model.ollama.catalog"} else {"model.endpoint.catalog"}.into())), ("provider",runtime)]), Some(Duration::from_secs(120)), None).await?;
-            let inventory = super::parse_response(if ollama {"ollamaModelInventorySchema"} else {"endpointModelInventorySchema"}, result.as_ref())?;
-            let models: Vec<_> = inventory["models"].as_array().expect("validated endpoint inventory").iter().map(|model| if ollama { normalize_model(model) } else { super::endpoint_providers::normalize_model(model) }).collect();
+            let inventory = super::worker_catalog_pages::read(commands,worker,runtime,ollama).boxed().await?;
+            let incomplete = inventory.metadata_incomplete;
+            let models = inventory.models;
             let available = models.iter().map(|model|model["nativeModelId"].as_js_string().expect("validated model ID").clone()).collect();
             let accepted = self.reconcile_provider_model_catalog(owner,provider,CatalogUpdate { connection_revision: Some(revision),
+                preserve_missing_models: incomplete,
                 models, available, availability_scope:scope.clone(), auto_create:true, auto_create_native_ids:None,
                 worker_id:Some(worker.into()), account_id:None, default_native_id:None,
             }).boxed().await?;
             if !accepted { return self.get_provider_model_catalog(owner, provider, false).await; }
-            self.set_provider_catalog_sync_state(provider, &json!({"connection":connection,"scopeKey":scope,"workerId":worker,"status":"current","errorCode":null,"lastSuccessAt":now()})).await?;
-            self.get_provider_model_catalog(owner,provider,false).await
+            let mut sync = json!({"connection":connection,"scopeKey":scope,"workerId":worker,"status":if incomplete {"stale"}else{"current"},"errorCode":if incomplete {Some("endpoint-native-metadata-unavailable")}else{None}});
+            if !incomplete { sync["lastSuccessAt"] = json!(now()); }
+            self.set_provider_catalog_sync_state(provider, &sync).await?;
+            self.get_provider_model_catalog(owner,provider,incomplete).await
         }.boxed().await;
         match refresh {
             Ok(result) => Ok(result),

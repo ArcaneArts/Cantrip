@@ -17,7 +17,16 @@ import {
   type TokenUsageTotals,
 } from "@cantrip/protocol";
 import type { ProtectedSecretEnvelope } from "@cantrip/protocol/protected-secrets";
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNull,
+  or,
+  sql,
+  type SQLWrapper,
+} from "drizzle-orm";
 
 import {
   accountProviderLabel,
@@ -118,7 +127,23 @@ function stableJsonValue(value: unknown): unknown {
 }
 
 export function catalogMetadataSnapshot(model: ProviderModelCatalogWrite) {
-  const metadata = stableJsonValue(model) as Record<string, unknown>;
+  // Observation times are persisted on capabilities and snapshot rows, but do
+  // not make otherwise identical metadata a new durable snapshot every refresh.
+  const operations = model.operationCapabilities;
+  const metadata = stableJsonValue(
+    operations
+      ? {
+          ...model,
+          operationCapabilities: Object.fromEntries(
+            Object.entries(operations).map(([operation, capability]) => {
+              if (!capability) return [operation, capability];
+              const { observedAt: _observedAt, ...value } = capability;
+              return [operation, value];
+            }),
+          ),
+        }
+      : model,
+  ) as Record<string, unknown>;
   return createHash("sha256").update(JSON.stringify(metadata)).digest("hex");
 }
 
@@ -334,16 +359,72 @@ export class ProviderCatalogRepository {
   }
 
   async deleteModelProvider(ownerId: string, providerId: string) {
-    const result = await this.database
-      .delete(schema.modelProviders)
-      .where(
-        and(
-          eq(schema.modelProviders.id, providerId),
-          eq(schema.modelProviders.ownerId, ownerId),
-        ),
-      )
-      .returning({ id: schema.modelProviders.id });
-    return Boolean(result[0]);
+    return this.database.transaction(async (transaction) => {
+      const defaultColumns = [
+        schema.userSettings.defaultModelId,
+        schema.userSettings.defaultChatModelId,
+        schema.userSettings.defaultSubagentModelId,
+        schema.userSettings.labelingModelId,
+        schema.userSettings.defaultEmbeddingModelId,
+        schema.userSettings.defaultDecisionModelId,
+      ];
+      const affected = await transaction
+        .select({ modelId: schema.modelRoutes.modelId })
+        .from(schema.modelRoutes)
+        .innerJoin(
+          schema.modelProfiles,
+          and(
+            eq(schema.modelProfiles.id, schema.modelRoutes.modelId),
+            eq(schema.modelProfiles.ownerId, ownerId),
+          ),
+        )
+        .innerJoin(schema.userSettings, eq(schema.userSettings.userId, ownerId))
+        .where(
+          and(
+            eq(schema.modelRoutes.providerId, providerId),
+            or(
+              ...defaultColumns.map((column) =>
+                eq(schema.modelRoutes.modelId, column),
+              ),
+            ),
+          ),
+        );
+      const result = await transaction
+        .delete(schema.modelProviders)
+        .where(
+          and(
+            eq(schema.modelProviders.id, providerId),
+            eq(schema.modelProviders.ownerId, ownerId),
+          ),
+        )
+        .returning({ id: schema.modelProviders.id });
+      if (!result[0]) return false;
+      const modelIds = [...new Set(affected.map(({ modelId }) => modelId))];
+      if (!modelIds.length) return true;
+
+      // Provider deletion cascades its routes, not the user's profiles. Retain
+      // those profiles for recovery, but clear defaults that lost their last
+      // enabled route. An offline provider never takes this deletion path.
+      const now = new Date();
+      for (const column of defaultColumns) {
+        const subagentReset =
+          column === schema.userSettings.defaultSubagentModelId
+            ? sql`default_custom_subagent_model = false,`
+            : sql``;
+        await transaction.execute(sql`
+          update ${schema.userSettings}
+          set ${sql.identifier(column.name)} = null, ${subagentReset} updated_at = ${now}
+          where ${schema.userSettings.userId} = ${ownerId}
+            and ${inArray(column, modelIds)}
+            and not exists (
+              select 1 from ${schema.modelRoutes}
+              where ${schema.modelRoutes.modelId} = ${column}
+                and ${schema.modelRoutes.enabled} = true
+            )
+        `);
+      }
+      return true;
+    });
   }
 
   async updateModelProvider(
@@ -613,6 +694,7 @@ export class ProviderCatalogRepository {
       models: ProviderModelCatalogWrite[];
       availabilityScope: string;
       availableNativeModelIds: ReadonlySet<string>;
+      preserveMissingModels?: boolean;
       autoCreateLogicalModels?: boolean;
       autoCreateNativeModelIds?: ReadonlySet<string>;
       availabilityWorkerId?: string | null;
@@ -643,8 +725,57 @@ export class ProviderCatalogRepository {
         provider[0].revision !== input.connectionRevision
       )
         return false;
-      if (input.models.length > 0) {
-        const modelBatches = providerCatalogBatches(input.models);
+      // Reuse only this scope's previous classification. A different worker or
+      // account may expose different operations for the same catalog identity.
+      const retained = await transaction
+        .select({
+          nativeModelId: schema.providerModels.nativeModelId,
+          operationCapabilities:
+            schema.providerModelAvailability.operationCapabilities,
+        })
+        .from(schema.providerModelAvailability)
+        .innerJoin(
+          schema.providerModels,
+          and(
+            eq(
+              schema.providerModels.id,
+              schema.providerModelAvailability.providerModelId,
+            ),
+            eq(schema.providerModels.providerId, providerId),
+          ),
+        )
+        .where(
+          eq(
+            schema.providerModelAvailability.scopeKey,
+            input.availabilityScope,
+          ),
+        );
+      const retainedByName = new Map(
+        retained.map((model) => [
+          model.nativeModelId,
+          model.operationCapabilities,
+        ]),
+      );
+      const observations = input.models.map((model) => ({
+        ...model,
+        operationCapabilities: {
+          ...retainedByName.get(model.nativeModelId),
+          ...model.operationCapabilities,
+        },
+      }));
+      const metadata = (
+        field: string,
+        column: SQLWrapper,
+        emptyArray = false,
+      ) => {
+        const incoming = sql.raw(`excluded.${field}`);
+        if (!input.preserveMissingModels) return incoming;
+        return emptyArray
+          ? sql`case when ${incoming} = '[]'::jsonb then ${column} else ${incoming} end`
+          : sql`coalesce(${incoming}, ${column})`;
+      };
+      if (observations.length > 0) {
+        const modelBatches = providerCatalogBatches(observations);
         for (const models of modelBatches) {
           await transaction
             .insert(schema.providerModelCatalogSnapshots)
@@ -684,26 +815,79 @@ export class ProviderCatalogRepository {
                 schema.providerModels.nativeModelId,
               ],
               set: {
-                operationCapabilities: sql`case when excluded.operation_capabilities = '{}'::jsonb then ${schema.providerModels.operationCapabilities} else excluded.operation_capabilities end`,
-                canonicalModelId: sql`excluded.canonical_model_id`,
-                displayName: sql`excluded.display_name`,
-                description: sql`excluded.description`,
-                contextWindow: sql`excluded.context_window`,
-                maxOutputTokens: sql`excluded.max_output_tokens`,
-                inputModalities: sql`excluded.input_modalities`,
-                outputModalities: sql`excluded.output_modalities`,
-                supportsTools: sql`excluded.supports_tools`,
-                supportsParallelTools: sql`excluded.supports_parallel_tools`,
-                supportsStructuredOutput: sql`excluded.supports_structured_output`,
-                supportsVision: sql`excluded.supports_vision`,
-                supportsReasoning: sql`excluded.supports_reasoning`,
-                supportedReasoningEfforts: sql`excluded.supported_reasoning_efforts`,
-                defaultReasoningEffort: sql`excluded.default_reasoning_effort`,
-                reasoningMandatory: sql`excluded.reasoning_mandatory`,
-                family: sql`excluded.family`,
-                parameterSize: sql`excluded.parameter_size`,
-                quantization: sql`excluded.quantization`,
-                digest: sql`excluded.digest`,
+                operationCapabilities: sql`${schema.providerModels.operationCapabilities} || excluded.operation_capabilities`,
+                canonicalModelId: metadata(
+                  "canonical_model_id",
+                  schema.providerModels.canonicalModelId,
+                ),
+                displayName: input.preserveMissingModels
+                  ? sql`case when excluded.display_name = excluded.native_model_id then ${schema.providerModels.displayName} else excluded.display_name end`
+                  : sql`excluded.display_name`,
+                description: metadata(
+                  "description",
+                  schema.providerModels.description,
+                ),
+                contextWindow: metadata(
+                  "context_window",
+                  schema.providerModels.contextWindow,
+                ),
+                maxOutputTokens: metadata(
+                  "max_output_tokens",
+                  schema.providerModels.maxOutputTokens,
+                ),
+                inputModalities: metadata(
+                  "input_modalities",
+                  schema.providerModels.inputModalities,
+                  true,
+                ),
+                outputModalities: metadata(
+                  "output_modalities",
+                  schema.providerModels.outputModalities,
+                  true,
+                ),
+                supportsTools: metadata(
+                  "supports_tools",
+                  schema.providerModels.supportsTools,
+                ),
+                supportsParallelTools: metadata(
+                  "supports_parallel_tools",
+                  schema.providerModels.supportsParallelTools,
+                ),
+                supportsStructuredOutput: metadata(
+                  "supports_structured_output",
+                  schema.providerModels.supportsStructuredOutput,
+                ),
+                supportsVision: metadata(
+                  "supports_vision",
+                  schema.providerModels.supportsVision,
+                ),
+                supportsReasoning: metadata(
+                  "supports_reasoning",
+                  schema.providerModels.supportsReasoning,
+                ),
+                supportedReasoningEfforts: metadata(
+                  "supported_reasoning_efforts",
+                  schema.providerModels.supportedReasoningEfforts,
+                  true,
+                ),
+                defaultReasoningEffort: metadata(
+                  "default_reasoning_effort",
+                  schema.providerModels.defaultReasoningEffort,
+                ),
+                reasoningMandatory: metadata(
+                  "reasoning_mandatory",
+                  schema.providerModels.reasoningMandatory,
+                ),
+                family: metadata("family", schema.providerModels.family),
+                parameterSize: metadata(
+                  "parameter_size",
+                  schema.providerModels.parameterSize,
+                ),
+                quantization: metadata(
+                  "quantization",
+                  schema.providerModels.quantization,
+                ),
+                digest: metadata("digest", schema.providerModels.digest),
                 metadataSource: sql`excluded.metadata_source`,
                 matchConfidenceBasisPoints: sql`excluded.match_confidence_basis_points`,
                 hidden: sql`excluded.hidden`,
@@ -754,9 +938,14 @@ export class ProviderCatalogRepository {
       }
 
       const observedByName = new Map(
-        input.models.map((model) => [model.nativeModelId, model]),
+        observations.map((model) => [model.nativeModelId, model]),
       );
-      for (const models of providerCatalogBatches(providerModelRows)) {
+      const availabilityRows = input.preserveMissingModels
+        ? providerModelRows.filter((model) =>
+            observedByName.has(model.nativeModelId),
+          )
+        : providerModelRows;
+      for (const models of providerCatalogBatches(availabilityRows)) {
         await transaction
           .insert(schema.providerModelAvailability)
           .values(
@@ -782,7 +971,7 @@ export class ProviderCatalogRepository {
               schema.providerModelAvailability.scopeKey,
             ],
             set: {
-              operationCapabilities: sql`case when excluded.operation_capabilities = '{}'::jsonb then ${schema.providerModelAvailability.operationCapabilities} else excluded.operation_capabilities end`,
+              operationCapabilities: sql`${schema.providerModelAvailability.operationCapabilities} || excluded.operation_capabilities`,
               state: sql`excluded.state`,
               workerId: sql`excluded.worker_id`,
               providerAccountId: sql`excluded.provider_account_id`,

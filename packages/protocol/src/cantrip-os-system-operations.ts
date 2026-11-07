@@ -51,7 +51,7 @@ export const cantripOsSystemSourceSchema = z.discriminatedUnion("kind", [
 ]);
 const operation = z
   .object({
-    mode: z.enum(["execute", "observe", "continue"]),
+    mode: z.enum(["execute", "observe", "continue", "prepare"]),
     operationId: z.uuid(),
     scope: cantripOsSystemScopeSchema,
     transport: cantripOsTransportSchema.options[0],
@@ -109,6 +109,11 @@ export const cantripOsSystemStatusResultSchema = z
     target: cantripOsSystemTargetSchema.nullable(),
     bases: z.array(cantripOsSystemBaseImageSchema).max(256),
     running: z.boolean().nullable(),
+    enrollment: z
+      .object({ containerId: digest, guestInstanceId: z.uuid() })
+      .strict()
+      .nullable()
+      .default(null),
     error: z.string().max(4000).nullable(),
   })
   .strict();

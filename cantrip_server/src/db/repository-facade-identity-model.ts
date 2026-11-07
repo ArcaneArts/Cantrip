@@ -12,6 +12,7 @@ import type {
   EncryptedModelProviderCreate,
   EncryptedModelProviderUpdate,
   ModelProfileCreate,
+  ModelOperationRoute,
   ModelProfileSummary,
   ModelProfileUpdate,
   ModelProviderAccountWireSummary,
@@ -75,6 +76,7 @@ import type {
   ProviderQuotaObservationInput,
   QuotaTokenAnalyticsQuery,
   TokenUsageRecordInput,
+  ModelOperationUsageWrite,
 } from "./repository/telemetry.js";
 import type {
   WorkerRepository,
@@ -270,6 +272,12 @@ export abstract class IdentityModelRepositoryFacade {
     input: TokenUsageRecordInput,
   ): Promise<void> {
     return this.telemetry.recordTokenUsage(ownerId, input);
+  }
+  async recordModelOperationUsage(
+    ownerId: string,
+    input: ModelOperationUsageWrite,
+  ): Promise<void> {
+    return this.telemetry.recordModelOperationUsage(ownerId, input);
   }
 
   async recordModelBehaviorObservation(
@@ -624,6 +632,7 @@ export abstract class IdentityModelRepositoryFacade {
       models: ProviderModelCatalogWrite[];
       availabilityScope: string;
       availableNativeModelIds: ReadonlySet<string>;
+      preserveMissingModels?: boolean;
       autoCreateLogicalModels?: boolean;
       autoCreateNativeModelIds?: ReadonlySet<string>;
       availabilityWorkerId?: string | null;
@@ -709,6 +718,22 @@ export abstract class IdentityModelRepositoryFacade {
       routeId,
       includeDisabled,
       providerId,
+    );
+  }
+
+  async getModelOperationRoute(
+    ownerId: string,
+    operation: "embedding" | "decision",
+    modelId: string,
+    workerId: string,
+    routeId?: string,
+  ): Promise<ModelOperationRoute | null> {
+    return this.models.getModelOperationRoute(
+      ownerId,
+      operation,
+      modelId,
+      workerId,
+      routeId,
     );
   }
 

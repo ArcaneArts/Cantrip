@@ -153,6 +153,7 @@ fn is_execution_control(command: &Value) -> bool {
         ),
         Some(
             "inference.status"
+            | "model.operation.cancel"
             | "inference.configure"
             | "inference.revoke"
             | "inference.task-revoke"

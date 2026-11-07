@@ -48,7 +48,7 @@ const journalSchema = z
   })
   .strict();
 type Journal = z.infer<typeof journalSchema>;
-type Mode = "execute" | "observe" | "continue";
+type Mode = "prepare" | "execute" | "observe" | "continue";
 export interface SystemCheckpointPorts {
   docker: () => Promise<LocalDocker>;
   seal: typeof sealPrivateSystem;
@@ -200,7 +200,7 @@ export class CantripOsSystemCheckpointManager {
     signal?: AbortSignal,
   ): Promise<CantripOsSystemCaptureOutcome | null> {
     const admission = cantripOsSystemCaptureAdmissionSchema.parse(raw);
-    if (!["execute", "observe", "continue"].includes(mode))
+    if (!["prepare", "execute", "observe", "continue"].includes(mode))
       throw new Error("Unknown system checkpoint operation mode.");
     this.account(admission, signal);
     const paths = this.paths(admission);
@@ -220,7 +220,7 @@ export class CantripOsSystemCheckpointManager {
             version: 1,
             admission,
             state: "running",
-            phase: "reserved",
+            phase: mode === "prepare" ? "prepared" : "reserved",
             startedAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             manifest: null,
@@ -234,6 +234,9 @@ export class CantripOsSystemCheckpointManager {
         }
         if (record.state === "ready" || record.state === "failed")
           return this.result(record);
+        // The parent claims this child only after its admission is durable.
+        // Preparing must never contact Docker or capture a filesystem.
+        if (mode === "prepare") return this.result(record);
         const action = fresh
           ? "execute"
           : mode === "execute"

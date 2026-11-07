@@ -19,6 +19,16 @@ pub(super) fn collator() -> Result<&'static CollatorBorrowed<'static>> {
         .map_err(|error| anyhow!("Catalog sorting locale: {error}"))
 }
 pub(super) fn snapshot(model: &Value) -> Result<String> {
+    let mut model = model.clone();
+    if let Value::Object(root) = &mut model
+        && let Some(Value::Object(operations)) = root.get_mut("operationCapabilities")
+    {
+        for capability in operations.values_mut() {
+            if let Value::Object(fields) = capability {
+                fields.shift_remove("observedAt");
+            }
+        }
+    }
     static SENSITIVE: OnceLock<regress::Regex> = OnceLock::new();
     let sensitive=SENSITIVE.get_or_init(||regress::Regex::with_flags(r"^(?:api[-_]?key|authorization|cookie|set-cookie|password|secret|client[-_]?secret|access[-_]?token|refresh[-_]?token|id[-_]?token|credential|headers?)$","iu").expect("catalog metadata secret key pattern"));
     let collator = collator()?;
@@ -27,7 +37,7 @@ pub(super) fn snapshot(model: &Value) -> Result<String> {
         Array(usize),
         Object(Vec<JsString>),
     }
-    let mut pending = vec![Work::Visit(model)];
+    let mut pending = vec![Work::Visit(&model)];
     let mut values = vec![];
     while let Some(work) = pending.pop() {
         match work {

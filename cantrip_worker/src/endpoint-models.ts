@@ -1,11 +1,14 @@
 import {
-  endpointModelInventorySchema,
+  MODEL_CATALOG_MODEL_LIMIT,
+  MODEL_CATALOG_BYTES_LIMIT,
+  endpointModelInventoryItemSchema,
   endpointOperationMetadata,
   normalizeResponsesBaseUrl,
   registeredModelOperations,
   type EndpointModelInventory,
   type EndpointModelInventoryItem,
 } from "@cantrip/protocol";
+import { fetchModelCatalogJson as catalogJson } from "./model-catalog-json.js";
 
 type ObjectValue = Record<string, unknown>;
 const object = (value: unknown): ObjectValue =>
@@ -26,6 +29,7 @@ export function normalizeEndpointModel(
   raw: unknown,
   providerKind?: string,
   baseUrl = "",
+  observedAt = new Date().toISOString(),
 ): EndpointModelInventoryItem | null {
   const model = object(raw);
   const id = text(model.id) ?? text(model.key);
@@ -70,6 +74,20 @@ export function normalizeEndpointModel(
           : null;
     if (adapter) operations.operationCapabilities.decision.adapter = adapter;
   }
+  if (
+    operations.operationCapabilities.embedding?.status === "supported" &&
+    text(model.digest)
+  )
+    operations.operationCapabilities.embedding.modelRevision = text(
+      model.digest,
+    );
+  if (
+    providerKind === "vllm" &&
+    operations.operationCapabilities.embedding?.status === "supported"
+  )
+    operations.operationCapabilities.embedding.adapter = "vllm-embeddings";
+  for (const capability of Object.values(operations.operationCapabilities))
+    if (capability) capability.observedAt = observedAt;
   const capabilities = object(model.capabilities);
   const metadata = object(model.meta);
   const instances = Array.isArray(model.loaded_instances)
@@ -103,7 +121,9 @@ export function normalizeEndpointModel(
       ? operations.inputModalities
       : vision
         ? ["text", "image"]
-        : ["text"],
+        : vision === false
+          ? ["text"]
+          : [],
     outputModalities: operations.outputModalities,
     supportsTools:
       boolean(capabilities.trained_for_tool_use) ??
@@ -130,128 +150,152 @@ export function normalizeEndpointModel(
   };
 }
 
-async function catalogJson(
-  url: string,
-  apiKey: string | null,
-  fetcher: typeof fetch,
-  timeout: number,
-) {
-  const response = await fetcher(url, {
-    headers: {
-      accept: "application/json",
-      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
-    },
-    signal: AbortSignal.timeout(timeout),
-    // A redirect must not move a private endpoint credential to another server.
-    redirect: "error",
-  });
-  if (!response.ok)
-    throw new Error(`Model catalog request returned HTTP ${response.status}.`);
-  // Bound catalog memory and control-channel payloads independently of server headers.
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error("Model catalog response was empty.");
-  const chunks: Uint8Array[] = [];
-  let bytes = 0;
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      bytes += value.byteLength;
-      if (bytes > 4 * 1024 * 1024)
-        throw new Error("Model catalog response exceeded 4 MiB.");
-      chunks.push(value);
-    }
-    try {
-      return object(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-    } catch {
-      throw new Error("Model catalog response was not valid JSON.");
-    }
-  } finally {
-    await reader.cancel().catch(() => undefined);
-    reader.releaseLock();
-  }
-}
-
 export async function discoverEndpointModels(
   provider: { kind: string; baseUrl: string; apiKey: string | null },
   fetcher: typeof fetch = globalThis.fetch,
+  signal?: AbortSignal,
 ): Promise<EndpointModelInventory> {
   const base = normalizeResponsesBaseUrl(provider.baseUrl);
-  const catalog = await catalogJson(
-    `${base}/models`,
-    provider.apiKey,
-    fetcher,
-    20_000,
-  );
-  if (!Array.isArray(catalog.data))
-    throw new Error("Model catalog did not contain a model list.");
+  const observedAt = new Date().toISOString();
+  let metadataIncomplete = false;
   const models = new Map<string, EndpointModelInventoryItem>();
-  for (const raw of catalog.data) {
-    const model = normalizeEndpointModel(raw, provider.kind, provider.baseUrl);
-    if (model) models.set(model.nativeModelId, model);
+  let bytes = 0;
+  const save = (raw: EndpointModelInventoryItem) => {
+    const model = endpointModelInventoryItemSchema.parse(raw);
+    const previous = models.get(model.nativeModelId);
+    const nextBytes =
+      bytes +
+      Buffer.byteLength(JSON.stringify(model)) +
+      1 -
+      (previous ? Buffer.byteLength(JSON.stringify(previous)) + 1 : 0);
+    if (
+      nextBytes > MODEL_CATALOG_BYTES_LIMIT ||
+      (!previous && models.size >= MODEL_CATALOG_MODEL_LIMIT)
+    )
+      throw new Error("Model catalog exceeded its snapshot limit.");
+    bytes = nextBytes;
+    models.set(model.nativeModelId, model);
+  };
+  const first = new URL(`${base}/models`);
+  let next: URL | null = first;
+  const visited = new Set<string>();
+  while (next) {
+    if (visited.has(next.href) || visited.size >= 256)
+      throw new Error(
+        "Model catalog pagination repeated or exceeded its page limit.",
+      );
+    visited.add(next.href);
+    const catalog = object(
+      await catalogJson(next, provider.apiKey, fetcher, 20_000, signal),
+    );
+    if (!Array.isArray(catalog.data))
+      throw new Error("Model catalog did not contain a model list.");
+    for (const raw of catalog.data) {
+      const model = normalizeEndpointModel(
+        raw,
+        provider.kind,
+        provider.baseUrl,
+        observedAt,
+      );
+      if (!model)
+        throw new Error("Model catalog contains a model without an ID.");
+      save(model);
+    }
+    const continuation = text(object(catalog.links).next) ?? text(catalog.next);
+    if (!continuation) {
+      if (catalog.has_more === true || catalog.next_cursor)
+        throw new Error(
+          "Model catalog is incomplete without a continuation URL.",
+        );
+      next = null;
+    } else {
+      const url: URL = new URL(continuation, next);
+      // Follow the provider's URL, including its base path, without moving the
+      // configured credential to another origin or guessing cursor parameters.
+      if (url.origin !== first.origin || url.username || url.password)
+        throw new Error("Model catalog continuation changed its endpoint.");
+      url.hash = "";
+      next = url;
+    }
   }
   if (provider.kind === "lm-studio") {
     // Native metadata is optional. Older LM Studio servers still support /v1/models.
     const nativeBase = base.endsWith("/api/v1")
       ? base
       : `${base.replace(/\/v1$/, "")}/api/v1`;
+    const standardModels = new Map(models);
+    const standardBytes = bytes;
     try {
-      const rich = await catalogJson(
-        `${nativeBase}/models`,
-        provider.apiKey,
-        fetcher,
-        2_000,
+      const rich = object(
+        await catalogJson(
+          `${nativeBase}/models`,
+          provider.apiKey,
+          fetcher,
+          20_000,
+          signal,
+        ),
       );
-      if (Array.isArray(rich.models))
-        for (const raw of rich.models) {
-          const model = normalizeEndpointModel(
-            raw,
-            provider.kind,
-            provider.baseUrl,
+      if (!Array.isArray(rich.models))
+        throw new Error("Native model catalog did not contain a model list.");
+      for (const raw of rich.models) {
+        const model = normalizeEndpointModel(
+          raw,
+          provider.kind,
+          provider.baseUrl,
+          observedAt,
+        );
+        if (!model)
+          throw new Error(
+            "Native model catalog contains a model without an ID.",
           );
-          if (!model) continue;
-          const standard = models.get(model.nativeModelId);
-          if (!standard) {
-            models.set(model.nativeModelId, model);
-            continue;
-          }
-          // Native discovery can be partial. Missing fields must not erase
-          // capabilities or context supplied by the standard catalog.
-          models.set(model.nativeModelId, {
-            ...standard,
-            ...Object.fromEntries(
-              Object.entries(model).filter(
-                ([, value]) =>
-                  value !== null && (!Array.isArray(value) || value.length > 0),
-              ),
-            ),
-            displayName:
-              model.displayName === model.nativeModelId
-                ? standard.displayName
-                : model.displayName,
-            operationCapabilities: {
-              ...standard.operationCapabilities,
-              ...model.operationCapabilities,
-            },
-            inputModalities:
-              model.supportsVision === null
-                ? [
-                    ...new Set([
-                      ...standard.inputModalities,
-                      ...model.inputModalities,
-                    ]),
-                  ]
-                : model.inputModalities,
-          });
+        const standard = models.get(model.nativeModelId);
+        if (!standard) {
+          save(model);
+          continue;
         }
+        // Native discovery can be partial. Missing fields must not erase
+        // capabilities or context supplied by the standard catalog.
+        save({
+          ...standard,
+          ...Object.fromEntries(
+            Object.entries(model).filter(
+              ([, value]) =>
+                value !== null && (!Array.isArray(value) || value.length > 0),
+            ),
+          ),
+          displayName:
+            model.displayName === model.nativeModelId
+              ? standard.displayName
+              : model.displayName,
+          operationCapabilities: {
+            ...standard.operationCapabilities,
+            ...model.operationCapabilities,
+          },
+          inputModalities:
+            model.supportsVision === null
+              ? [
+                  ...new Set([
+                    ...standard.inputModalities,
+                    ...model.inputModalities,
+                  ]),
+                ]
+              : model.inputModalities,
+        });
+      }
     } catch {
-      // Rich metadata availability cannot invalidate a working standard catalog.
+      signal?.throwIfAborted();
+      // Do not publish half an overlay if normalization or bounds fail partway
+      // through it. Both servers retain prior observations from this scope.
+      models.clear();
+      for (const [id, model] of standardModels) models.set(id, model);
+      bytes = standardBytes;
+      metadataIncomplete = true;
     }
   }
-  return endpointModelInventorySchema.parse({
-    // An oversized inventory fails explicitly and preserves the saved catalog;
-    // silently publishing its first page would mark missing models unavailable.
+  // The dispatcher validates the full worker-local snapshot and pages it.
+  return {
     models: [...models.values()],
-    observedAt: new Date().toISOString(),
-  });
+    observedAt,
+    ...(metadataIncomplete ? { metadataIncomplete: true as const } : {}),
+  };
 }

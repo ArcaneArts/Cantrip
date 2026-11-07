@@ -28,7 +28,7 @@ impl Repository {
             let old=decode(tx.query("SELECT to_jsonb(p)::text FROM cantrip_os_power_targets p WHERE instance_id=$1", &[&instance]).await?)?;
             let generation=old.first().filter(|p|p["attachment_generation"]==attachment && p["container_id"]==container).and_then(|p|p["generation"].as_str()).map(str::to_owned).unwrap_or_else(uuid);
             tx.query("INSERT INTO cantrip_os_power_targets(instance_id,generation,attachment_generation,runtime_generation,container_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT(instance_id) DO UPDATE SET generation=EXCLUDED.generation,attachment_generation=EXCLUDED.attachment_generation,runtime_generation=EXCLUDED.runtime_generation,container_id=EXCLUDED.container_id,verified_at=now()", &[&instance,&generation,&attachment,&runtime,&container]).await?;
-            tx.query("UPDATE cantrip_os_instances SET status=CASE WHEN EXISTS(SELECT 1 FROM cantrip_os_power_operations WHERE instance_id=$1 AND attachment_generation=$2 AND target_generation=$3 AND state IN ('admitted','running','unknown')) THEN 'unknown' ELSE 'connected' END,last_error=NULL WHERE id=$1", &[&instance,&attachment,&generation]).await?;
+            tx.query("UPDATE cantrip_os_instances SET status=CASE WHEN EXISTS(SELECT 1 FROM cantrip_os_power_operations WHERE instance_id=$1 AND attachment_generation=$2 AND target_generation=$3 AND state IN ('admitted','running','unknown')) OR EXISTS(SELECT 1 FROM cantrip_os_system_operations s WHERE s.instance_id=$1 AND s.retired_by IS NULL AND s.state IN ('admitted','running','unknown')) THEN 'unknown' ELSE 'connected' END,last_error=NULL WHERE id=$1", &[&instance,&attachment,&generation]).await?;
             Ok(())
         })).await
     }
@@ -56,6 +56,7 @@ impl Repository {
                 ensure!(old["owner_id"]==owner && old["instance_id"]==instance && old["request"]==input,"This power operation ID belongs to another admission.");
                 return Ok((old.clone(),false));
             }
+            super::system_common::no_active(tx,&instance,None).await?;
             let targets=decode(tx.query("SELECT to_jsonb(p)::text FROM cantrip_os_power_targets p WHERE instance_id=$1", &[&instance]).await?)?;
             let p=targets.first().context("No retained power target is recorded.")?;
             ensure!(i["transport"]["kind"]=="docker" && i["attachment_generation"]==input["attachmentGeneration"] && p["attachment_generation"]==input["attachmentGeneration"] && p["generation"]==input["targetGeneration"],"The selected retained power target changed.");

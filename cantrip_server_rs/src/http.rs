@@ -32,7 +32,9 @@ mod cantrip_os_backups;
 mod cantrip_os_desktop;
 mod cantrip_os_packages;
 mod cantrip_os_power;
+mod cantrip_os_systems;
 mod cantrip_os_workspace_operations;
+mod chat_attachments;
 mod chat_catalogs;
 mod chat_configuration;
 mod chat_console;
@@ -61,6 +63,7 @@ mod github_import;
 mod live_socket;
 mod mcp_settings;
 mod middleware;
+mod model_operations;
 mod native_admission;
 mod native_coordination;
 mod native_events;
@@ -115,6 +118,7 @@ mod worker_link_terminals;
 mod worker_link_tunnels;
 mod worker_links;
 mod worker_maintenance;
+mod worker_management;
 mod worker_socket;
 mod workers;
 mod workspace_layouts;
@@ -212,6 +216,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(projects::routes())
         .merge(folders::routes())
         .merge(chat_catalogs::routes())
+        .merge(chat_attachments::routes())
         .merge(chat_configuration::routes())
         .merge(chat_customizations::routes())
         .merge(conversations::routes())
@@ -254,6 +259,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(settings::routes())
         .merge(settings_operations::routes())
         .merge(skill_settings::routes())
+        .merge(model_operations::routes())
         .merge(mcp_settings::routes())
         .merge(cli::routes())
         .merge(terminals::routes())
@@ -271,6 +277,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(provider_quota::routes())
         .merge(provider_telemetry::routes())
         .merge(workers::routes())
+        .merge(worker_management::routes())
         .merge(worker_maintenance::routes())
         .merge(worker_socket::routes())
         .merge(live_socket::routes())

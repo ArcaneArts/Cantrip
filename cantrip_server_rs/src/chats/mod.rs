@@ -2,6 +2,7 @@
 pub mod account_failover;
 pub(crate) mod agent_delivery;
 mod archive;
+pub mod attachments;
 pub mod automatic_title;
 pub mod automation_pause;
 pub mod catalog;

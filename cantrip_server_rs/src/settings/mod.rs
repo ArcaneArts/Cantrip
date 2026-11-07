@@ -16,6 +16,7 @@ pub mod enrichment;
 pub mod grok;
 pub mod lifecycle;
 mod mcp_servers;
+pub(crate) mod model_operation_usage;
 mod models;
 pub mod native_inventory;
 pub mod ollama;
@@ -30,6 +31,7 @@ pub mod reasoning;
 pub mod repository;
 mod skill_audiences;
 pub mod telemetry;
+mod worker_catalog_pages;
 pub mod zai;
 
 pub use providers::normalize_responses_base_url;

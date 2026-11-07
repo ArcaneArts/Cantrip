@@ -42,7 +42,10 @@ import { workerLogError, workerLogger } from "./logger.js";
 type CommandHandler = (
   command: WorkerCommand,
   emit: (event: WorkerEvent) => void,
-  context: Pick<WorkerRequestEnvelope, "inferenceAdmissionAck"> & {
+  context: Pick<
+    WorkerRequestEnvelope,
+    "inferenceAdmissionAck" | "modelOperationUsage"
+  > & {
     inferenceOperationIdentity?: string;
     inferenceOperationSignal?: AbortSignal;
   },
@@ -1382,6 +1385,7 @@ export class WorkerConnection {
       };
       const result = await this.handleCommand(request.command, emit, {
         inferenceAdmissionAck: request.inferenceAdmissionAck,
+        modelOperationUsage: request.modelOperationUsage,
         inferenceOperationIdentity,
         inferenceOperationSignal,
       });

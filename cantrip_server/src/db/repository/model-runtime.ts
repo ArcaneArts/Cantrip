@@ -1,10 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { modelAdapterSupportsOperation } from "@cantrip/protocol";
+import {
+  modelAdapterSupportsOperation,
+  modelOperationRouteSchema,
+  type ModelOperationRoute,
+} from "@cantrip/protocol";
 
 import type {
   AgentTimeSummary,
   ModelProfileCreate,
+  ModelOperationCapabilities,
   ModelProfileSummary,
   ModelProfileUpdate,
   ModelProviderSummary,
@@ -106,6 +111,108 @@ export class ModelRepository {
     private readonly collaborators: ModelRepositoryCollaborators,
   ) {}
 
+  async getModelOperationRoute(
+    ownerId: string,
+    operation: "embedding" | "decision",
+    modelId: string,
+    workerId: string,
+    routeId?: string,
+  ): Promise<ModelOperationRoute | null> {
+    const rows = await this.database
+      .select({
+        model: schema.modelProfiles,
+        route: schema.modelRoutes,
+        provider: schema.modelProviders,
+        catalog: schema.providerModels,
+      })
+      .from(schema.modelProfiles)
+      .innerJoin(
+        schema.modelRoutes,
+        eq(schema.modelRoutes.modelId, schema.modelProfiles.id),
+      )
+      .innerJoin(
+        schema.modelProviders,
+        and(
+          eq(schema.modelProviders.id, schema.modelRoutes.providerId),
+          eq(schema.modelProviders.ownerId, ownerId),
+        ),
+      )
+      .leftJoin(
+        schema.providerModels,
+        and(
+          eq(schema.providerModels.providerId, schema.modelRoutes.providerId),
+          or(
+            eq(schema.providerModels.id, schema.modelRoutes.providerModelId),
+            and(
+              isNull(schema.modelRoutes.providerModelId),
+              eq(
+                schema.providerModels.nativeModelId,
+                schema.modelRoutes.modelName,
+              ),
+            ),
+          ),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.modelProfiles.ownerId, ownerId),
+          eq(schema.modelProfiles.operation, operation),
+          eq(schema.modelProfiles.id, modelId),
+          eq(schema.modelRoutes.enabled, true),
+          ...(routeId ? [eq(schema.modelRoutes.id, routeId)] : []),
+        ),
+      )
+      .orderBy(asc(schema.modelRoutes.position))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    const observations = row.catalog
+      ? await this.database
+          .select()
+          .from(schema.providerModelAvailability)
+          .where(
+            eq(
+              schema.providerModelAvailability.providerModelId,
+              row.catalog.id,
+            ),
+          )
+      : [];
+    const matching = observations
+      .filter((value) => value.workerId === null || value.workerId === workerId)
+      .sort(
+        (a, b) =>
+          Number(b.workerId === workerId) - Number(a.workerId === workerId) ||
+          b.updatedAt.getTime() - a.updatedAt.getTime(),
+      );
+    const capabilities: ModelOperationCapabilities =
+      matching[0]?.operationCapabilities ??
+      (observations.some((value) => value.workerId !== null)
+        ? {}
+        : (row.catalog?.operationCapabilities ?? {}));
+    return modelOperationRouteSchema.parse({
+      modelId,
+      routeId: row.route.id,
+      modelName: row.route.modelName,
+      adapter: row.route.operationAdapter,
+      options: row.route.operationOptions,
+      capabilities,
+      observedRevision: capabilities.embedding?.modelRevision ?? null,
+      provider: {
+        id: row.provider.id,
+        name: row.provider.name,
+        kind: row.provider.kind,
+        baseUrl: row.provider.baseUrl,
+        protectedApiKey: row.provider.protectedApiKey,
+        accountId: null,
+        credentialHomeKey: null,
+        maxConcurrentInference: row.provider.maxConcurrentInference,
+        inferenceConfigRevision: row.provider.inferenceConfigRevision,
+        inferenceCatalogCreatedRevision:
+          row.provider.inferenceCatalogCreatedRevision,
+      },
+    });
+  }
+
   async createModelProfile(
     ownerId: string,
     input: ModelProfileCreate,
@@ -189,6 +296,19 @@ export class ModelRepository {
           )
           .onConflictDoNothing();
       }
+      // The foreign key clears the ID on deletion; clear the paired override
+      // only for this owner's selected profile in the same transaction.
+      await transaction.execute(sql`
+        update ${schema.userSettings}
+        set default_custom_subagent_model = false, updated_at = ${new Date()}
+        where ${schema.userSettings.userId} = ${ownerId}
+          and ${schema.userSettings.defaultSubagentModelId} = ${modelId}
+          and exists (
+            select 1 from ${schema.modelProfiles}
+            where ${schema.modelProfiles.id} = ${modelId}
+              and ${schema.modelProfiles.ownerId} = ${ownerId}
+          )
+      `);
       const result = await transaction
         .delete(schema.modelProfiles)
         .where(

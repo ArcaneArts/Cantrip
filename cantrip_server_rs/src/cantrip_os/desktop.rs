@@ -90,6 +90,7 @@ impl Repository {
                 ensure!(old["owner_id"]==owner && old["instance_id"]==instance && old["workspace_id"]==workspace && old["request"]==input,"This desktop operation ID belongs to another admission.");
                 return Ok((old.clone(),false));
             }
+            super::system_common::no_active(tx,&instance,None).await?;
             let targets=decode(tx.query("SELECT to_jsonb(p)::text FROM cantrip_os_desktop_targets p WHERE workspace_id=$1", &[&workspace]).await?)?;
             let p=targets.first().context("No observed desktop target is recorded.")?;
             ensure!(i["status"]=="connected" && i["attachment_generation"]==input["attachmentGeneration"] && i["runtime_generation"]==input["runtimeGeneration"] && p["attachment_generation"]==input["attachmentGeneration"] && p["runtime_generation"]==input["runtimeGeneration"] && p["generation"]==input["targetGeneration"],"The selected desktop authority changed. Verify the intended runtime and observe its desktop.");

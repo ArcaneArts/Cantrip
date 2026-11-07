@@ -86,6 +86,8 @@ async fn rows(
     }
     let at = if is_quota {
         "observed_at"
+    } else if table == "token_usage_records" {
+        super::super::model_operation_usage::OBSERVED_AT_SQL
     } else {
         "started_at"
     };
@@ -200,8 +202,7 @@ fn detailed_breakdown(entries: &Value) -> Value {
                         "reasoningOutputTokens",
                     ],
                 );
-                tokens["totalTokens"] =
-                    Value::Number(number(&tokens, "inputTokens") + number(&tokens, "outputTokens"));
+                tokens["totalTokens"] = entry["totals"]["comparableTokens"].clone();
                 result["tokens"] = tokens;
                 result
             })
@@ -361,7 +362,7 @@ impl SettingsRepository {
         }
         let samples = quota["movementSamples"].as_array().unwrap();
         Ok(
-            object!({"generatedAt":auth::iso(auth::now()),"range":object!({"from":iso(from as f64)?,"to":iso(to as f64)?}),"accounts":accounts,"currentQuota":current,"quotaHistory":statistics::sample_quota_history(&history,800.0)?,"resetBoundaries":resets,"tokens":object!({"total":statistics::sum_detailed_token_usage(&tokens),"daily":daily}),"estimates":estimates(samples),"comparisons":pick(&quota,&["rolling7Days","rolling30Days","monthOverMonth"]),"breakdowns":object!({"accounts":detailed_breakdown(&quota["breakdowns"]["account"]),"models":detailed_breakdown(&quota["breakdowns"]["model"]),"reasoningEfforts":detailed_breakdown(&quota["breakdowns"]["reasoningEffort"]),"months":detailed_breakdown(&quota["breakdowns"]["month"])}),"behavior":object!({"total":statistics::summarize_model_behavior(&behavior),"daily":daily_behavior,"accounts":behavior_breakdown(&behavior,|row|quota::nullish(&row["providerAccountId"],"unattributed").as_js_string().unwrap().clone()),"models":behavior_breakdown(&behavior,|row|quota::nullish(&row["modelId"],quota::nullish(&row["modelRouteId"],"unattributed")).as_js_string().unwrap().clone()),"reasoningEfforts":behavior_breakdown(&behavior,|row|if truthy(row.get("nativeAttribution")) && row["signalAvailability"]["nativeReasoningKnown"]!=true{"unattributed".into()}else{quota::nullish(&row["reasoningEffort"],"provider-default").as_js_string().unwrap().clone()})}),"changePoints":changes::detect(samples,&behavior)?}),
+            object!({"generatedAt":auth::iso(auth::now()),"range":object!({"from":iso(from as f64)?,"to":iso(to as f64)?}),"accounts":accounts,"currentQuota":current,"quotaHistory":statistics::sample_quota_history(&history,800.0)?,"resetBoundaries":resets,"tokens":object!({"total":statistics::sum_detailed_token_usage(&tokens),"daily":daily,"directOperations":crate::settings::model_operation_usage::coverage(&tokens)}),"estimates":estimates(samples),"comparisons":pick(&quota,&["rolling7Days","rolling30Days","monthOverMonth"]),"breakdowns":object!({"accounts":detailed_breakdown(&quota["breakdowns"]["account"]),"models":detailed_breakdown(&quota["breakdowns"]["model"]),"reasoningEfforts":detailed_breakdown(&quota["breakdowns"]["reasoningEffort"]),"months":detailed_breakdown(&quota["breakdowns"]["month"])}),"behavior":object!({"total":statistics::summarize_model_behavior(&behavior),"daily":daily_behavior,"accounts":behavior_breakdown(&behavior,|row|quota::nullish(&row["providerAccountId"],"unattributed").as_js_string().unwrap().clone()),"models":behavior_breakdown(&behavior,|row|quota::nullish(&row["modelId"],quota::nullish(&row["modelRouteId"],"unattributed")).as_js_string().unwrap().clone()),"reasoningEfforts":behavior_breakdown(&behavior,|row|if truthy(row.get("nativeAttribution")) && row["signalAvailability"]["nativeReasoningKnown"]!=true{"unattributed".into()}else{quota::nullish(&row["reasoningEffort"],"provider-default").as_js_string().unwrap().clone()})}),"changePoints":changes::detect(samples,&behavior)?}),
         )
     }
 }

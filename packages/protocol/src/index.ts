@@ -10,9 +10,13 @@ export * from "./task-inference-route.js";
 export * from "./task-goal-outcome.js";
 export * from "./provider-definitions.js";
 export * from "./model-operations.js";
+export * from "./model-embedding.js";
+export * from "./model-decision.js";
 export * from "./provider-operation-registry.js";
 export * from "./model-operation-discovery.js";
 export * from "./endpoint-models.js";
+export * from "./model-catalog-pages.js";
+export * from "./model-operation-usage.js";
 export * from "./native-settings-state.js";
 export * from "./conversations.js";
 export * from "./file-documents.js";
@@ -87,3 +91,4 @@ export * from "./task-pause.js";
 
 export * from "./cantrip-os-workspace-operations.js";
 export * from "./cantrip-os-system-operations.js";
+export * from "./cantrip-os-system-management.js";
