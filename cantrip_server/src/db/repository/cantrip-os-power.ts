@@ -13,6 +13,10 @@ import {
 import * as schema from "../schema.js";
 import type { RepositoryDatabase } from "./database.js";
 import { CantripOsPlacementError } from "./cantrip-os-error.js";
+import {
+  assertNoActiveSystem,
+  hasActiveSystem,
+} from "./cantrip-os-system-common.js";
 
 const targets = schema.cantripOsPowerTargets,
   operations = schema.cantripOsPowerOperations;
@@ -146,7 +150,13 @@ export class CantripOsPowerRepository {
       // Concurrent power admission keeps execution fenced until it settles.
       await tx
         .update(schema.cantripOsInstances)
-        .set({ status: pending ? "unknown" : "connected", lastError: null })
+        .set({
+          status:
+            pending || (await hasActiveSystem(tx, instanceId))
+              ? "unknown"
+              : "connected",
+          lastError: null,
+        })
         .where(eq(schema.cantripOsInstances.id, instanceId));
       return value;
     });
@@ -202,6 +212,7 @@ export class CantripOsPowerRepository {
         return { row: old, created: false };
       }
       const instance = owned.instance;
+      await assertNoActiveSystem(tx, instanceId);
       const [target] = await tx
         .select()
         .from(targets)

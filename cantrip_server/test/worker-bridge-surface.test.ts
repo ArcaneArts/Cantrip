@@ -22,6 +22,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   WorkerCommandError,
   WorkerBridge,
+  WorkerCommandNotSentError,
   type WorkerConnectionContinuityIdentity,
 } from "../src/workers/bridge.js";
 
@@ -111,6 +112,13 @@ const continuityIdentity: WorkerConnectionContinuityIdentity = {
 };
 
 describe("WorkerBridge Remote Surface transport", () => {
+  it("identifies a missing peer as a proven refusal before queueing", async () => {
+    const bridge = new WorkerBridge();
+    await expect(
+      bridge.request("worker-1", { type: "worker.version" }),
+    ).rejects.toBeInstanceOf(WorkerCommandNotSentError);
+    bridge.close();
+  });
   it("keeps WorkerLink frames binary and isolated from command envelopes", () => {
     const bridge = new WorkerBridge();
     const socket = new TestWorkerSocket();
@@ -294,6 +302,9 @@ describe("WorkerBridge Remote Surface transport", () => {
     socket.close(1006, "network loss");
 
     await expect(response).rejects.toThrow(/disconnected/i);
+    await expect(response).rejects.not.toBeInstanceOf(
+      WorkerCommandNotSentError,
+    );
     bridge.close();
   });
 

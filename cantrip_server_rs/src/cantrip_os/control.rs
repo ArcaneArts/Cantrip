@@ -11,7 +11,8 @@ impl Repository {
         self.database.transaction(|tx|Box::pin(async move {
             let worker=text(&input,"workerId")?;
             ensure!(!tx.query("SELECT id FROM workers WHERE id=$1 AND owner_id=$2 AND unlinked_at IS NULL FOR UPDATE", &[&worker,&owner]).await?.is_empty(),"Owning worker not found.");
-            let old=decode(tx.query("SELECT to_jsonb(i)::text FROM cantrip_os_instances i WHERE worker_id=$1 AND guest_instance_id=$2", &[&worker,&text(&input,"guestInstanceId")?]).await?)?;
+            let old=decode(tx.query("SELECT to_jsonb(i)::text FROM cantrip_os_instances i WHERE worker_id=$1 AND guest_instance_id=$2 FOR UPDATE", &[&worker,&text(&input,"guestInstanceId")?]).await?)?;
+            if let Some(old)=old.first() {super::system_common::no_active(tx,text(old,"id")?,None).await?;}
             let previous=old.first().map_or(Value::Null,|v|v["attachment_generation"].clone());
             ensure!(previous==input["expectedAttachmentGeneration"],"OS attachment changed; refresh before attaching again.");
             let id=old.first().and_then(|v|v["id"].as_str()).map(str::to_owned).unwrap_or_else(uuid);
@@ -30,7 +31,7 @@ impl Repository {
         runtime: Option<&str>,
         error: Option<&str>,
     ) -> Result<Value> {
-        let rows=self.rows("UPDATE cantrip_os_instances SET status=CASE WHEN $4='connected' AND EXISTS(SELECT 1 FROM cantrip_os_power_operations o JOIN cantrip_os_power_targets p ON p.instance_id=o.instance_id AND p.generation=o.target_generation WHERE o.instance_id=$2 AND o.attachment_generation=$3 AND o.state IN ('admitted','running','unknown')) THEN 'unknown' ELSE $4 END,runtime_generation=$5,last_error=$6,last_observed_at=now(),updated_at=now() WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3 RETURNING to_jsonb(cantrip_os_instances)::text", &[&owner,&id,&generation,&status,&runtime,&error]).await?;
+        let rows=self.rows("UPDATE cantrip_os_instances SET status=CASE WHEN $4='connected' AND (EXISTS(SELECT 1 FROM cantrip_os_power_operations o JOIN cantrip_os_power_targets p ON p.instance_id=o.instance_id AND p.generation=o.target_generation WHERE o.instance_id=$2 AND o.attachment_generation=$3 AND o.state IN ('admitted','running','unknown')) OR EXISTS(SELECT 1 FROM cantrip_os_system_operations s WHERE s.instance_id=$2 AND s.retired_by IS NULL AND s.state IN ('admitted','running','unknown'))) THEN 'unknown' ELSE $4 END,runtime_generation=CASE WHEN EXISTS(SELECT 1 FROM cantrip_os_system_operations s WHERE s.instance_id=$2 AND s.retired_by IS NULL AND s.state IN ('admitted','running','unknown')) THEN NULL ELSE $5 END,last_error=$6,last_observed_at=now(),updated_at=now() WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3 RETURNING to_jsonb(cantrip_os_instances)::text", &[&owner,&id,&generation,&status,&runtime,&error]).await?;
         summary(
             rows.first()
                 .context("OS attachment changed before observation arrived.")?,
@@ -65,7 +66,7 @@ impl Repository {
             runtime,
             error,
         } = observation;
-        let rows=self.rows("UPDATE cantrip_os_instances SET status=CASE WHEN $4='connected' AND EXISTS(SELECT 1 FROM cantrip_os_power_operations o JOIN cantrip_os_power_targets p ON p.instance_id=o.instance_id AND p.generation=o.target_generation WHERE o.instance_id=$2 AND o.attachment_generation=$3 AND o.state IN ('admitted','running','unknown')) THEN 'unknown' ELSE $4 END,runtime_generation=$5,last_error=$6,last_observed_at=now(),updated_at=now() WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3 AND runtime_generation IS NOT DISTINCT FROM $7 AND ($8::integer IS NULL OR power_epoch=$8) RETURNING to_jsonb(cantrip_os_instances)::text", &[&owner,&id,&generation,&status,&runtime,&error,&expected_runtime,&expected_power_epoch]).await?;
+        let rows=self.rows("UPDATE cantrip_os_instances SET status=CASE WHEN $4='connected' AND (EXISTS(SELECT 1 FROM cantrip_os_power_operations o JOIN cantrip_os_power_targets p ON p.instance_id=o.instance_id AND p.generation=o.target_generation WHERE o.instance_id=$2 AND o.attachment_generation=$3 AND o.state IN ('admitted','running','unknown')) OR EXISTS(SELECT 1 FROM cantrip_os_system_operations s WHERE s.instance_id=$2 AND s.retired_by IS NULL AND s.state IN ('admitted','running','unknown'))) THEN 'unknown' ELSE $4 END,runtime_generation=CASE WHEN EXISTS(SELECT 1 FROM cantrip_os_system_operations s WHERE s.instance_id=$2 AND s.retired_by IS NULL AND s.state IN ('admitted','running','unknown')) THEN NULL ELSE $5 END,last_error=$6,last_observed_at=now(),updated_at=now() WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3 AND runtime_generation IS NOT DISTINCT FROM $7 AND ($8::integer IS NULL OR power_epoch=$8) RETURNING to_jsonb(cantrip_os_instances)::text", &[&owner,&id,&generation,&status,&runtime,&error,&expected_runtime,&expected_power_epoch]).await?;
         summary(
             rows.first()
                 .context("OS attachment changed before observation arrived.")?,

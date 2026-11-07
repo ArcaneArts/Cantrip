@@ -14,6 +14,7 @@ import {
 import * as schema from "../schema.js";
 import type { RepositoryDatabase } from "./database.js";
 import { CantripOsPlacementError } from "./cantrip-os-error.js";
+import { assertNoActiveSystem } from "./cantrip-os-system-common.js";
 
 const instances = schema.cantripOsInstances;
 const targets = schema.cantripOsPackageTargets;
@@ -216,6 +217,7 @@ export class CantripOsPackageRepository {
           );
         return { row: old, created: false };
       }
+      await assertNoActiveSystem(tx, instanceId);
       const [target] = await tx
         .select()
         .from(targets)

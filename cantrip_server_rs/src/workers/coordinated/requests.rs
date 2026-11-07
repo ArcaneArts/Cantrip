@@ -110,7 +110,7 @@ impl CoordinatedBridge {
         let Some(presence) = presence else {
             self.state.lock().unwrap().failed += 1;
             self.repeat(format!("coordination-command-offline:{worker}:{}",command["type"].as_str().unwrap_or("")),"warn","Remote worker command could not be dispatched",json!({"event":"coordination.command.rejected","subsystem":"relay-coordination","operation":command["type"],"reasonCode":"worker-offline","status":"rejected","workerId":worker}));
-            return Err(CommandError::unavailable(format!(
+            return Err(CommandError::not_sent(format!(
                 "Worker {worker} is offline."
             )));
         };

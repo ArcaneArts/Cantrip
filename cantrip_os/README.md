@@ -69,8 +69,8 @@ observation after a lost commit/start reply. The host
 verified checkpoint or explicitly reset the root image while retaining the old
 writable layer and mounted data. Registered Worker commands now provide durable
 private capture/replacement/rollback jobs and helper-independent Docker discovery.
-Server-owned routing, client controls and fresh authority remain dependent Phase 5
-work.
+Both Server implementations own system admission/history and explicit fresh
+identity recovery; client system controls remain dependent Phase 5 work.
 Docker/ISO scripts include the recovery package with the executor edition;
 `CANTRIP_OS_RECOVERY=0` omits it independently. The package is an administrative
 foundation. [Private Worker archive encryption/transfer and Server admissions](BACKUPS.md)
@@ -168,6 +168,12 @@ color, and desktop defaults under `overlays/etc/X11/icewm/`. Executables belong 
 are refreshed with the image. Personal `~/.icewm` overrides take precedence;
 remove the relevant personal override to see a changed system default. We do
 not copy defaults into persistent home files on every startup.
+
+Both Server implementations now retain [system admissions and history](SYSTEM_REPLACEMENT.md#server-owned-system-admissions)
+for capture, retained replacement/reset and rollback. Preparation is metadata-only;
+explicit completed-target recovery fences old handles and establishes new identity
+authority before runtime/source verification. Client system controls remain the
+next dependent block.
 
 ## Customizing the desktop
 

@@ -134,6 +134,36 @@ for (const fault of ["create", "start"])
         );
       const invoke = (command) =>
         manager().handle(workerCommandSchema.parse(command));
+      async function prepare(command) {
+        const originalRequest = lab.engine.request;
+        let calls = 0;
+        lab.engine.request = (...args) => {
+          calls++;
+          return originalRequest.apply(lab.engine, args);
+        };
+        try {
+          const prepared = await invoke({ ...command, mode: "prepare" });
+          assert.equal(prepared.state, "running");
+          assert.equal(prepared.phase, "prepared");
+          assert.ok(prepared.protectedResult);
+          assert.deepEqual(
+            await invoke({ ...command, mode: "observe" }),
+            prepared,
+          );
+          assert.deepEqual(
+            await invoke({ ...command, mode: "prepare" }),
+            prepared,
+          );
+          assert.equal(
+            calls,
+            0,
+            "Preparation and its observation must not contact Docker",
+          );
+          return prepared;
+        } finally {
+          lab.engine.request = originalRequest;
+        }
+      }
       const first = await status();
       const capture = {
         type: "cantrip-os.system.capture",
@@ -146,7 +176,8 @@ for (const fault of ["create", "start"])
         transport,
         target: first.target,
       };
-      const captured = await invoke(capture);
+      const preparedCapture = await prepare(capture);
+      const captured = await invoke({ ...capture, mode: "continue" });
       assert.equal(captured.state, "ready", JSON.stringify(captured));
       const privateCapture = await decryptCantripOsSystemOperationResult({
         context: systemOperationContext(capture),
@@ -218,10 +249,11 @@ for (const fault of ["create", "start"])
       let childTrace = [],
         replaced;
       try {
+        await prepare(replace);
         if (fault === "create") {
           childTrace = await holdSystemWorker({
             directory: path,
-            command: replace,
+            command: { ...replace, mode: "continue" },
             hold: "create",
             key,
             managerModule,
@@ -231,7 +263,7 @@ for (const fault of ["create", "start"])
           assert.equal(observed.state, "unknown", JSON.stringify(observed));
           assert.equal(effects.length, count);
           replaced = await invoke({ ...replace, mode: "continue" });
-        } else replaced = await invoke(replace);
+        } else replaced = await invoke({ ...replace, mode: "continue" });
         assert.equal(replaced.state, "ready", JSON.stringify(replaced));
         assert.equal(replaced.root.runtimeHandlesRestored, false);
         assert.equal(
@@ -285,10 +317,11 @@ for (const fault of ["create", "start"])
           },
         };
         let undone;
+        await prepare(rollback);
         if (fault === "start") {
           childTrace = await holdSystemWorker({
             directory: path,
-            command: rollback,
+            command: { ...rollback, mode: "continue" },
             hold: "start",
             holdId: source.id,
             key,
@@ -299,7 +332,7 @@ for (const fault of ["create", "start"])
           assert.equal(effects.length, count);
           assert.equal(observed.state, "unknown", JSON.stringify(observed));
           undone = await invoke({ ...rollback, mode: "continue" });
-        } else undone = await invoke(rollback);
+        } else undone = await invoke({ ...rollback, mode: "continue" });
         assert.equal(undone.state, "ready", JSON.stringify(undone));
         assert.equal(undone.root.targetContainerId, source.id);
         assert.equal(
@@ -354,6 +387,7 @@ for (const fault of ["create", "start"])
           JSON.stringify(
             {
               capture,
+              preparedCapture,
               captured,
               privateCapture,
               replace,

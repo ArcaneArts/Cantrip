@@ -11,6 +11,7 @@ import {
 import * as schema from "../schema.js";
 import type { RepositoryDatabase } from "./database.js";
 import { CantripOsPlacementError } from "./cantrip-os-error.js";
+import { assertNoActiveSystem } from "./cantrip-os-system-common.js";
 
 const operations = schema.cantripOsWorkspaceOperations;
 const instances = schema.cantripOsInstances;
@@ -103,6 +104,7 @@ export class CantripOsWorkspaceOperationRepository {
         return { row: old, created: false };
       }
       const i = owned.instance;
+      await assertNoActiveSystem(tx, instanceId);
       if (
         (input.attachmentGeneration !== undefined &&
           input.attachmentGeneration !== i.attachmentGeneration) ||

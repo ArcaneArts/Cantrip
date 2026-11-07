@@ -36,6 +36,8 @@ import { existingLinuxSourcePath } from "./cantrip-os-existing-path.js";
 import { CantripOsDesktopRepository } from "./cantrip-os-desktop.js";
 import { CantripOsPowerRepository } from "./cantrip-os-power.js";
 import { CantripOsPackageRepository } from "./cantrip-os-packages.js";
+import { CantripOsSystemRepository } from "./cantrip-os-systems.js";
+import { assertNoActiveSystem } from "./cantrip-os-system-common.js";
 
 const instance = ({
   workerProcessGeneration: _workerProcessGeneration,
@@ -113,6 +115,7 @@ export class CantripOsRepository {
   readonly backups: CantripOsBackupRepository;
   readonly power: CantripOsPowerRepository;
   readonly packages: CantripOsPackageRepository;
+  readonly systems: CantripOsSystemRepository;
   readonly desktop: CantripOsDesktopRepository;
   constructor(private readonly database: RepositoryDatabase) {
     this.workspaceOperations = new CantripOsWorkspaceOperationRepository(
@@ -121,6 +124,7 @@ export class CantripOsRepository {
     this.backups = new CantripOsBackupRepository(database);
     this.power = new CantripOsPowerRepository(database);
     this.packages = new CantripOsPackageRepository(database);
+    this.systems = new CantripOsSystemRepository(database);
     this.desktop = new CantripOsDesktopRepository(database);
   }
 
@@ -243,7 +247,9 @@ export class CantripOsRepository {
               input.guestInstanceId,
             ),
           ),
-        );
+        )
+        .for("update");
+      if (old) await assertNoActiveSystem(tx, old.id);
       if (
         (old?.attachmentGeneration ?? null) !==
         input.expectedAttachmentGeneration
@@ -300,7 +306,8 @@ export class CantripOsRepository {
         ...observation,
         ...(observation.status === "connected"
           ? {
-              status: sql`CASE WHEN EXISTS (SELECT 1 FROM cantrip_os_power_operations o JOIN cantrip_os_power_targets p ON p.instance_id=o.instance_id AND p.generation=o.target_generation WHERE o.instance_id=${instanceId} AND o.attachment_generation=${expectedAttachmentGeneration} AND o.state IN ('admitted','running','unknown')) THEN 'unknown' ELSE 'connected' END`,
+              status: sql`CASE WHEN EXISTS (SELECT 1 FROM cantrip_os_power_operations o JOIN cantrip_os_power_targets p ON p.instance_id=o.instance_id AND p.generation=o.target_generation WHERE o.instance_id=${instanceId} AND o.attachment_generation=${expectedAttachmentGeneration} AND o.state IN ('admitted','running','unknown')) OR EXISTS (SELECT 1 FROM cantrip_os_system_operations s WHERE s.instance_id=${instanceId} AND s.retired_by IS NULL AND s.state IN ('admitted','running','unknown')) THEN 'unknown' ELSE 'connected' END`,
+              runtimeGeneration: sql`CASE WHEN EXISTS (SELECT 1 FROM cantrip_os_system_operations s WHERE s.instance_id=${instanceId} AND s.retired_by IS NULL AND s.state IN ('admitted','running','unknown')) THEN NULL ELSE ${observation.runtimeGeneration} END`,
             }
           : {}),
         lastObservedAt: new Date(),

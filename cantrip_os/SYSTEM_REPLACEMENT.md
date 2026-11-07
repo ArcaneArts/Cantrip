@@ -3,9 +3,9 @@
 The host library can replace a Docker CantripOS instance's root image while
 retaining the original container, or explicitly roll back to that original. It
 also supports deliberate root reset to an exact normal base image. This is an
-administration foundation: Server-owned admissions, client review/history and
-fresh execution authority remain dependent
-Phase 5 work. These functions do not enroll a clone or issue runtime handles.
+administration foundation with Server-owned admissions and history in both Server
+implementations. Client review/history controls remain dependent Phase 5 work.
+These functions do not enroll a clone or issue runtime handles.
 
 The external Worker remains the orchestrator. These operations need actual Docker
 management access, not a live guest executor/recovery helper. Nothing installs a
@@ -83,6 +83,66 @@ These locks coordinate Cantrip management paths. An unrestricted root/Docker
 administrator can still start retained containers manually; product controls must
 retire old admission authority rather than treating those containers as clones.
 Do not race external Docker administration with a transition.
+
+## Server-owned system admissions
+
+Both Server implementations expose these authenticated, owner-scoped endpoints
+under `/api/cantrip-os/:instanceId`:
+
+| Method and path                                 | Behavior                                                                       |
+| ----------------------------------------------- | ------------------------------------------------------------------------------ |
+| `GET /system`                                   | Observe the exact current Docker target and normal base images.                |
+| `POST /system-operations`                       | Admit capture, replacement or rollback with a saved UUID.                      |
+| `GET /system-operations`                        | Paginated immutable request/outcome history (`limit`, `cursor`).               |
+| `GET /system-operations/:operationId`           | Read saved history without contacting the Worker.                              |
+| `POST /system-operations/:operationId/observe`  | Observe that original Worker job; no new admission or execution.               |
+| `POST /system-operations/:operationId/continue` | Continue only that original admission.                                         |
+| `POST /system-operations/:operationId/abandon`  | Close a prepared admission before execution is dispatched.                     |
+| `POST /system-operations/:operationId/recover`  | Adopt the proven resulting physical identity after ready replacement/rollback. |
+
+Save the complete create request before submission. Every create requires
+`operationId`, `attachmentGeneration` and `targetGeneration` from the current
+system observation. Capture uses `action: "capture"` and `resumeOriginal` (default
+true). Replacement uses `action: "replace"`, `startTarget` (default true) and
+`source: {kind: "checkpoint", operationId: "<ready capture UUID>"}` or
+`source: {kind: "base", imageId: "sha256:<exact observed image>"}`. Rollback uses
+`action: "rollback"`, `replacementOperationId` and `startTarget`. The Server
+resolves checkpoint identity/encryption context from its original owned record;
+a caller cannot substitute an archive path or declare private images as bases.
+
+Admission rotates attachment authority, clears runtime continuity and fences old
+handles before maintenance. The command retains its original immutable scope;
+summary `attachmentGeneration` is the current operation fence, while `context`
+retains the original encryption scope. Control bodies contain the summary's
+`attachmentGeneration` and `targetGeneration`. Current mount contents are retained;
+a completed root checkpoint is not a workspace backup.
+
+Dispatch has durable `preparing` and `executing` stages. Worker preparation saves
+metadata and a protected receipt without contacting Docker. The Server commits
+execution authority only after that receipt, then continues the original job.
+Unknown preparation delivery can be prepared again or abandoned without guest
+changes. Observation never advances either stage. A typed actual bridge refusal
+before preparation was queued records `rejected` / `not-dispatched`. An abandoned
+prepared job has the same terminal result; repeating its controls only returns
+that result. Once execution is armed, missing receipts remain unknown and cannot
+be converted into another execution or canceled as though nothing happened.
+
+Ready replacement/rollback does not reconnect old work. Explicit system recovery
+verifies the exact resulting full Docker ID, raw guest identity and owning Worker.
+An unattached reset base is assigned only after that physical proof; a lost
+enrollment reply is recovered through its raw identity instead of assigning it
+again. A changed guest UUID is adopted on the same logical instance only through
+this completed transition. SQL rejects ordinary owner/Worker/guest identity
+rewrites. Recovery rotates attachment authority again and leaves runtime unknown;
+use the existing **Check recovery** and source-verification steps for fresh work.
+Old source bindings, chats and handles retain their captured generation.
+
+Rollback retires continuation of its original replacement. Historical late
+outcomes remain readable but cannot overwrite fresh runtime authority. New power,
+package, desktop and workspace-creation admissions are blocked during an active
+system admission. The ordinary desktop and optional guest packages remain separate from
+these external Worker/Server management paths. This API foundation has no new
+client controls yet and does not constitute real-remote product acceptance.
 
 ## Administrative use
 
