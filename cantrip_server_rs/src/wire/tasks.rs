@@ -147,7 +147,7 @@ pub(super) fn refine(
         }
         "task-goal-outcome-delivery" => {
             let source = &value["goalCycleSource"];
-            if (value["inputKind"] == "goal-cycle") != !source.is_null()
+            if (value["inputKind"] == "goal-cycle") == source.is_null()
                 || (!source.is_null()
                     && (super::coercion::truthy(
                         value["notification"].get("taskInferenceInputOperationId"),

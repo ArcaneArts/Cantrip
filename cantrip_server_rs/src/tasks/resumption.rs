@@ -134,10 +134,9 @@ impl Repository {
                     {
                         return stale();
                     }
-                    if !source.goal_cycle.is_null() {
-                        if tx.query("UPDATE chat_execution_lanes SET state='active',updated_at=now() WHERE id=$1 AND chat_id=$2 AND worker_id=$3 AND worktree_id=$4 AND activated_at=$5::text::timestamptz AND state IN ('idle','suspended','active') RETURNING id",
+                    if !source.goal_cycle.is_null()
+                        && tx.query("UPDATE chat_execution_lanes SET state='active',updated_at=now() WHERE id=$1 AND chat_id=$2 AND worker_id=$3 AND worktree_id=$4 AND activated_at=$5::text::timestamptz AND state IN ('idle','suspended','active') RETURNING id",
                             &[&text(&original["executionLaneId"])?,&chat,&text(&original["workerId"])?,&text(&original["worktreeId"])?,&text(&original["executionLaneActivatedAt"])?]).await?.is_empty() { return stale(); }
-                    }
                     Ok(source.context)
                 })
             })

@@ -75,6 +75,17 @@ pub(super) fn apply(
         .as_ref()
         .ok_or(ValidationError::Operation)?
         .clone();
+    if tag == "worker-operation-version" {
+        let version = ["major", "minor", "patch"]
+            .map(|field| value[field].stringify())
+            .join(".");
+        if value["version"] != version.as_str() {
+            let mut at = path.to_vec();
+            at.push(json!("version"));
+            result.issues.push(json!({"code":"custom","message":"Version string does not match its numeric components.","path":at}));
+        }
+        return Ok(());
+    }
     if tag == "project-export-chat-ids" {
         let ids = value["chatIds"]
             .as_array()

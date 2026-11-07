@@ -857,6 +857,13 @@ export const workerManagementContractRoots = [
   "workerRestartResultSchema",
 ];
 
+export const workerOperationContractRoots = [
+  "cantripVersionSchema",
+  "codeGraphActionAcknowledgementSchema",
+  "managedWebRuntimeActionRequestSchema",
+  "managedWebRuntimeActionResultSchema",
+];
+
 // Keep independently added roots self-contained. Numeric graph references must
 // not depend on the size of the base graph after an unrelated branch merges.
 export const runMcpContractRoots = [
@@ -916,6 +923,11 @@ export function sourceContractSchema(name) {
 }
 
 const refinements = new Map([
+  [protocol.cantripVersionSchema, "worker-operation-version"],
+  [
+    protocol.managedWebRuntimeActionRequestSchema,
+    "worker-command-runtime-profiles",
+  ],
   [attachmentContent.attachmentUploadOpaqueSchema, "attachment-upload-stream"],
   [
     attachmentContent.attachmentDownloadOpaqueSchema,
@@ -1742,6 +1754,20 @@ if (
       {
         ...(await resolveConfig(fileURLToPath(managementDestination))),
         filepath: fileURLToPath(managementDestination),
+      },
+    ),
+  );
+  const operationsDestination = new URL(
+    "../../cantrip_server_rs/contracts/worker-operations.json",
+    import.meta.url,
+  );
+  await writeFile(
+    operationsDestination,
+    await format(
+      JSON.stringify(buildContractManifest(workerOperationContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(operationsDestination))),
+        filepath: fileURLToPath(operationsDestination),
       },
     ),
   );

@@ -1,5 +1,12 @@
 # Rust server replacement
 
+The remaining worker version, CodeGraph and managed web runtime maintenance
+handlers now execute natively. The port preserves existing owner/worktree context,
+validation, command deadlines and response-completion Live behavior. Local
+qualification and its controlled-worker/platform boundaries are documented in
+[worker maintenance operations](RUST_SERVER_WORKER_OPERATIONS.md). Full replacement
+acceptance remains in progress and Node remains the default server.
+
 Native worker management now includes the owned catalog, display-name updates,
 restart acknowledgment and atomic unlink/revocation. Local comparison passes all
 three storage modes with development, password, account and standalone profiles,

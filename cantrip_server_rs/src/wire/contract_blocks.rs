@@ -8,6 +8,7 @@ const CLI: &str = include_str!("../../contracts/cli.json");
 const PROJECT_EXPORTS: &str = include_str!("../../contracts/project-exports.json");
 const ATTACHMENTS: &str = include_str!("../../contracts/chat-attachments.json");
 const WORKER_MANAGEMENT: &str = include_str!("../../contracts/worker-management.json");
+const WORKER_OPERATIONS: &str = include_str!("../../contracts/worker-operations.json");
 
 pub(super) fn load() -> Contracts {
     let mut contracts: Contracts = serde_json::from_str(BASE).expect("embedded protocol contracts");
@@ -19,6 +20,9 @@ pub(super) fn load() -> Contracts {
     contracts.append(serde_json::from_str(ATTACHMENTS).expect("embedded attachment contracts"));
     contracts.append(
         serde_json::from_str(WORKER_MANAGEMENT).expect("embedded worker management contracts"),
+    );
+    contracts.append(
+        serde_json::from_str(WORKER_OPERATIONS).expect("embedded worker operation contracts"),
     );
     contracts.compile_patterns();
     contracts
@@ -110,6 +114,10 @@ mod tests {
     fn worker_management_contracts_survive_unrelated_base_graph_growth() -> Result<()> {
         source_contracts_survive_growth(WORKER_MANAGEMENT, "worker management")
     }
+    #[test]
+    fn worker_operation_contracts_survive_unrelated_base_graph_growth() -> Result<()> {
+        source_contracts_survive_growth(WORKER_OPERATIONS, "worker operations")
+    }
 
     fn source_contracts_survive_growth(block: &str, label: &str) -> Result<()> {
         let base: Contracts = serde_json::from_str(BASE)?;
@@ -119,6 +127,20 @@ mod tests {
         let exports: Contracts = serde_json::from_str(PROJECT_EXPORTS)?;
         let attachments: Contracts = serde_json::from_str(ATTACHMENTS)?;
         let management: Contracts = serde_json::from_str(WORKER_MANAGEMENT)?;
+        let operations: Contracts = serde_json::from_str(WORKER_OPERATIONS)?;
+        assert!(operations.roots.keys().all(|name| {
+            [
+                &base,
+                &run,
+                &surface,
+                &cli,
+                &exports,
+                &attachments,
+                &management,
+            ]
+            .iter()
+            .all(|graph| !graph.roots.contains_key(name))
+        }));
         assert!(
             management
                 .roots
@@ -174,6 +196,7 @@ mod tests {
             graph.append(serde_json::from_str(PROJECT_EXPORTS)?);
             graph.append(serde_json::from_str(ATTACHMENTS)?);
             graph.append(serde_json::from_str(WORKER_MANAGEMENT)?);
+            graph.append(serde_json::from_str(WORKER_OPERATIONS)?);
             graph.compile_patterns();
             graphs.push(graph);
         }
@@ -182,7 +205,14 @@ mod tests {
         let mut count = 0;
         for schema in schemas {
             let mut command = Command::new("node");
-            if label == "worker management" {
+            if label == "worker operations" {
+                command.args([
+                    "--import",
+                    "tsx",
+                    "scripts/server-rust/worker-operation-contract-oracle.mjs",
+                    schema,
+                ]);
+            } else if label == "worker management" {
                 command.args([
                     "--import",
                     "tsx",

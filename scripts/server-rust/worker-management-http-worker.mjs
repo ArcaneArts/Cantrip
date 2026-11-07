@@ -6,7 +6,13 @@ import { sendHeartbeat } from "../../cantrip_worker/src/heartbeat.ts";
 import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
 import { heartbeat } from "./security-fixtures.mjs";
 import { eventually } from "./full-worker.mjs";
-export async function managementWorker({ f, visit, root, state }) {
+export async function managementWorker({
+  f,
+  visit,
+  root,
+  state,
+  handlers = {},
+}) {
   const report = {
     ...heartbeat,
     workerId: "alpha",
@@ -54,6 +60,8 @@ export async function managementWorker({ f, visit, root, state }) {
       async (command) => {
         if (command.type === "worktree.observation.configure")
           return { accepted: true, paths: [] };
+        if (Object.hasOwn(handlers, command.type))
+          return handlers[command.type](command);
         if (command.type !== "worker.restart") {
           state.background.push(command);
           throw new Error(

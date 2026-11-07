@@ -5756,6 +5756,126 @@
           "Actual browser/full-worker supervisor restart, shared/mixed Redis consumers and current supported-platform/packaged acceptance remain required.",
           "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and default cutover remain required for complete replacement."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/workers/:workerId/version",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_operations.rs",
+          "cantrip_server_rs/src/projects/targets/worktree_context.rs"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/worker_operation_contracts.rs",
+          "scripts/server-rust/worker-operation-contract-oracle.mjs",
+          "scripts/server-rust/worker-operation-http-compatibility.mjs",
+          "scripts/server-rust/worker-operation-http-lifecycle.mjs",
+          "docs/RUST_SERVER_WORKER_OPERATIONS.md"
+        ],
+        "remaining": [
+          "Actual browser/full-worker CodeGraph/runtime asset effects, shared/mixed Redis and supported-platform/package acceptance remain required.",
+          "Complete legacy upgrade, post-write Node rollback, performance, desktop/Winterhold rehearsal and Node-server removal remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/workers/:workerId/codegraph/update-check",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_operations.rs",
+          "cantrip_server_rs/src/projects/targets/worktree_context.rs"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/worker_operation_contracts.rs",
+          "scripts/server-rust/worker-operation-contract-oracle.mjs",
+          "scripts/server-rust/worker-operation-http-compatibility.mjs",
+          "scripts/server-rust/worker-operation-http-lifecycle.mjs",
+          "docs/RUST_SERVER_WORKER_OPERATIONS.md"
+        ],
+        "remaining": [
+          "Actual browser/full-worker CodeGraph/runtime asset effects, shared/mixed Redis and supported-platform/package acceptance remain required.",
+          "Complete legacy upgrade, post-write Node rollback, performance, desktop/Winterhold rehearsal and Node-server removal remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/workers/:workerId/web-runtimes/actions",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_operations.rs",
+          "cantrip_server_rs/src/projects/targets/worktree_context.rs"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/worker_operation_contracts.rs",
+          "scripts/server-rust/worker-operation-contract-oracle.mjs",
+          "scripts/server-rust/worker-operation-http-compatibility.mjs",
+          "scripts/server-rust/worker-operation-http-lifecycle.mjs",
+          "docs/RUST_SERVER_WORKER_OPERATIONS.md"
+        ],
+        "remaining": [
+          "Actual browser/full-worker CodeGraph/runtime asset effects, shared/mixed Redis and supported-platform/package acceptance remain required.",
+          "Complete legacy upgrade, post-write Node rollback, performance, desktop/Winterhold rehearsal and Node-server removal remain required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/codegraph",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_operations.rs",
+          "cantrip_server_rs/src/projects/targets/worktree_context.rs"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/worker_operation_contracts.rs",
+          "scripts/server-rust/worker-operation-contract-oracle.mjs",
+          "scripts/server-rust/worker-operation-http-compatibility.mjs",
+          "scripts/server-rust/worker-operation-http-lifecycle.mjs",
+          "docs/RUST_SERVER_WORKER_OPERATIONS.md"
+        ],
+        "remaining": [
+          "Actual browser/full-worker CodeGraph/runtime asset effects, shared/mixed Redis and supported-platform/package acceptance remain required.",
+          "Complete legacy upgrade, post-write Node rollback, performance, desktop/Winterhold rehearsal and Node-server removal remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/codegraph/sync",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_operations.rs",
+          "cantrip_server_rs/src/projects/targets/worktree_context.rs"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/worker_operation_contracts.rs",
+          "scripts/server-rust/worker-operation-contract-oracle.mjs",
+          "scripts/server-rust/worker-operation-http-compatibility.mjs",
+          "scripts/server-rust/worker-operation-http-lifecycle.mjs",
+          "docs/RUST_SERVER_WORKER_OPERATIONS.md"
+        ],
+        "remaining": [
+          "Actual browser/full-worker CodeGraph/runtime asset effects, shared/mixed Redis and supported-platform/package acceptance remain required.",
+          "Complete legacy upgrade, post-write Node rollback, performance, desktop/Winterhold rehearsal and Node-server removal remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/codegraph/rebuild",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_operations.rs",
+          "cantrip_server_rs/src/projects/targets/worktree_context.rs"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/worker_operation_contracts.rs",
+          "scripts/server-rust/worker-operation-contract-oracle.mjs",
+          "scripts/server-rust/worker-operation-http-compatibility.mjs",
+          "scripts/server-rust/worker-operation-http-lifecycle.mjs",
+          "docs/RUST_SERVER_WORKER_OPERATIONS.md"
+        ],
+        "remaining": [
+          "Actual browser/full-worker CodeGraph/runtime asset effects, shared/mixed Redis and supported-platform/package acceptance remain required.",
+          "Complete legacy upgrade, post-write Node rollback, performance, desktop/Winterhold rehearsal and Node-server removal remain required."
+        ]
       }
     ]
   },
@@ -7163,6 +7283,108 @@
         "validatedSubset": "Actual unchanged WorkerConnection transport with controlled restart effects; exact acknowledgment, failure, timeout, rate limit and concurrent unlink behavior.",
         "remaining": [
           "Full production worker supervisor restart, service ownership, recovery and supported-platform/package acceptance."
+        ]
+      },
+      {
+        "command": "worker.version",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/worker_operations.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_operation_contracts.rs",
+          "scripts/server-rust/worker-operation-contract-oracle.mjs",
+          "scripts/server-rust/worker-operation-http-compatibility.mjs",
+          "scripts/server-rust/worker-operation-http-lifecycle.mjs",
+          "docs/RUST_SERVER_WORKER_OPERATIONS.md"
+        ],
+        "validatedSubset": "Actual production WorkerConnection transport with controlled endpoint effects and real HTTP/SQL/Live comparisons; full worker runtime/asset acceptance remains required.",
+        "remaining": [
+          "Actual browser/full-worker CodeGraph/runtime asset effects, shared/mixed Redis and supported-platform/package acceptance remain required.",
+          "Complete legacy upgrade, post-write Node rollback, performance, desktop/Winterhold rehearsal and Node-server removal remain required."
+        ]
+      },
+      {
+        "command": "codegraph.update.check",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/worker_operations.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_operation_contracts.rs",
+          "scripts/server-rust/worker-operation-contract-oracle.mjs",
+          "scripts/server-rust/worker-operation-http-compatibility.mjs",
+          "scripts/server-rust/worker-operation-http-lifecycle.mjs",
+          "docs/RUST_SERVER_WORKER_OPERATIONS.md"
+        ],
+        "validatedSubset": "Actual production WorkerConnection transport with controlled endpoint effects and real HTTP/SQL/Live comparisons; full worker runtime/asset acceptance remains required.",
+        "remaining": [
+          "Actual browser/full-worker CodeGraph/runtime asset effects, shared/mixed Redis and supported-platform/package acceptance remain required.",
+          "Complete legacy upgrade, post-write Node rollback, performance, desktop/Winterhold rehearsal and Node-server removal remain required."
+        ]
+      },
+      {
+        "command": "web-runtime.action",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/worker_operations.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_operation_contracts.rs",
+          "scripts/server-rust/worker-operation-contract-oracle.mjs",
+          "scripts/server-rust/worker-operation-http-compatibility.mjs",
+          "scripts/server-rust/worker-operation-http-lifecycle.mjs",
+          "docs/RUST_SERVER_WORKER_OPERATIONS.md"
+        ],
+        "validatedSubset": "Actual production WorkerConnection transport with controlled endpoint effects and real HTTP/SQL/Live comparisons; full worker runtime/asset acceptance remains required.",
+        "remaining": [
+          "Actual browser/full-worker CodeGraph/runtime asset effects, shared/mixed Redis and supported-platform/package acceptance remain required.",
+          "Complete legacy upgrade, post-write Node rollback, performance, desktop/Winterhold rehearsal and Node-server removal remain required."
+        ]
+      },
+      {
+        "command": "codegraph.status",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/worker_operations.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_operation_contracts.rs",
+          "scripts/server-rust/worker-operation-contract-oracle.mjs",
+          "scripts/server-rust/worker-operation-http-compatibility.mjs",
+          "scripts/server-rust/worker-operation-http-lifecycle.mjs",
+          "docs/RUST_SERVER_WORKER_OPERATIONS.md"
+        ],
+        "validatedSubset": "Actual production WorkerConnection transport with controlled endpoint effects and real HTTP/SQL/Live comparisons; full worker runtime/asset acceptance remains required.",
+        "remaining": [
+          "Actual browser/full-worker CodeGraph/runtime asset effects, shared/mixed Redis and supported-platform/package acceptance remain required.",
+          "Complete legacy upgrade, post-write Node rollback, performance, desktop/Winterhold rehearsal and Node-server removal remain required."
+        ]
+      },
+      {
+        "command": "codegraph.sync",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/worker_operations.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_operation_contracts.rs",
+          "scripts/server-rust/worker-operation-contract-oracle.mjs",
+          "scripts/server-rust/worker-operation-http-compatibility.mjs",
+          "scripts/server-rust/worker-operation-http-lifecycle.mjs",
+          "docs/RUST_SERVER_WORKER_OPERATIONS.md"
+        ],
+        "validatedSubset": "Actual production WorkerConnection transport with controlled endpoint effects and real HTTP/SQL/Live comparisons; full worker runtime/asset acceptance remains required.",
+        "remaining": [
+          "Actual browser/full-worker CodeGraph/runtime asset effects, shared/mixed Redis and supported-platform/package acceptance remain required.",
+          "Complete legacy upgrade, post-write Node rollback, performance, desktop/Winterhold rehearsal and Node-server removal remain required."
+        ]
+      },
+      {
+        "command": "codegraph.rebuild",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/worker_operations.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_operation_contracts.rs",
+          "scripts/server-rust/worker-operation-contract-oracle.mjs",
+          "scripts/server-rust/worker-operation-http-compatibility.mjs",
+          "scripts/server-rust/worker-operation-http-lifecycle.mjs",
+          "docs/RUST_SERVER_WORKER_OPERATIONS.md"
+        ],
+        "validatedSubset": "Actual production WorkerConnection transport with controlled endpoint effects and real HTTP/SQL/Live comparisons; full worker runtime/asset acceptance remains required.",
+        "remaining": [
+          "Actual browser/full-worker CodeGraph/runtime asset effects, shared/mixed Redis and supported-platform/package acceptance remain required.",
+          "Complete legacy upgrade, post-write Node rollback, performance, desktop/Winterhold rehearsal and Node-server removal remain required."
         ]
       }
     ]
@@ -14473,6 +14695,72 @@
       "remaining": [
         "Actual browser/full-worker supervisor restart, shared/mixed Redis consumers and current supported-platform/packaged acceptance remain required.",
         "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and default cutover remain required for complete replacement."
+      ]
+    },
+    "workerMaintenanceOperations": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/http/worker_operations.rs",
+        "cantrip_server_rs/src/projects/targets/worktree_context.rs",
+        "cantrip_server_rs/contracts/worker-operations.json"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/worker_operation_contracts.rs",
+        "scripts/server-rust/worker-operation-contract-oracle.mjs",
+        "scripts/server-rust/worker-operation-http-compatibility.mjs",
+        "scripts/server-rust/worker-operation-http-lifecycle.mjs",
+        "docs/RUST_SERVER_WORKER_OPERATIONS.md"
+      ],
+      "localQualification": {
+        "base": "70c714f9a18e98f413336e41375147cc5c97413c",
+        "platform": "macOS arm64",
+        "databaseModes": ["pglite", "postgres", "bundled-postgres"],
+        "profiles": [
+          "development",
+          "password",
+          "accounts",
+          "standalone-bootstrap"
+        ],
+        "initialPairedHTTP": 642,
+        "initialCompletePairedSQL": 606,
+        "sourceContractComparisons": 883,
+        "graphGrowthComparisons": 1968,
+        "workerRegressionTests": 13,
+        "bodyParserTests": 4,
+        "responseCompletionTests": 8,
+        "sourceVersionAPITests": 1,
+        "sourceVersionAPIUnselectedSkips": 9,
+        "sourceManagedRuntimeTests": 5,
+        "strictAllTargetClippy": "passed after three inherited lint-only condition simplifications",
+        "expandedContextAndLongDeadline": "passed: final twelve-cell matrix plus real720second deadline/late-response comparison",
+        "rootCheck": "failed: unchanged Source1532/1500 and2336/1999 line budgets",
+        "boundaryAudit": "failed: unchanged Source protected desktopTarget343/392",
+        "appBuild": "failed: pinned Source imports missing availableCatalogModelIds export",
+        "finalPairedHTTP": 798,
+        "finalCompletePairedSQL": 759,
+        "finalMatrixCells": 12,
+        "finalNativeArtifactSha256": "c71c8fa9fa16e91412682d9de90a9d3238fbaa4d38851a60c8f9aabc5e0c6e07",
+        "sourceOnlyBaselineFilesProvedUnchanged": 4192,
+        "taskAndSuspensionRegressionTests": 4,
+        "taskInputSourceComparisons": 8206,
+        "sourceFocusedProtocol": "2 inherited public-surface expectation failures;10pass",
+        "sourceFocusedWorktreeGuide": {
+          "app": "56pass",
+          "worker": "2 inherited model-capacity expectation failures;92pass",
+          "server": "1 inherited standalone-Chat expectation failure;59pass"
+        },
+        "longDeadlinePairedHTTP": 67,
+        "longDeadlineCompletePairedSQL": 64,
+        "sourceLongDeadlineResponseMs": 720010.711167,
+        "nativeLongDeadlineResponseMs": 720010.176583,
+        "longDeadlineNativeArtifactSha256": "1d6772758909b526ce2e9ff5a4fbb052bc7c82ced4c1dbb240238b0894c14bad",
+        "longDeadlineSourceBase": "74e88cb22f99ac1f0ba7b349cd7c5f0876aa8e68",
+        "longDeadlineNativeBase": "70c714f9a18e98f413336e41375147cc5c97413c",
+        "longDeadlineArtifactNote": "Native v4 precedes only three inherited Task lint expressions; final v5 passes all twelve HTTP/SQL/lifecycle cells. Source drift manifest records the exact three files."
+      },
+      "remaining": [
+        "Actual browser/full-worker CodeGraph/runtime asset effects, shared/mixed Redis and supported-platform/package acceptance remain required.",
+        "Complete legacy upgrade, post-write Node rollback, performance, desktop/Winterhold rehearsal and Node-server removal remain required."
       ]
     }
   },
