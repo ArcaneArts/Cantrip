@@ -845,6 +845,15 @@ export const chatAttachmentContractRoots = [
   "attachmentProtectedMetadataSchema",
 ];
 
+export const workerManagementContractRoots = [
+  "workerManagementSourceSchema",
+  "workerManagementSummarySchema",
+  "workerManagementListSchema",
+  "workerUpdateSchema",
+  "workerRestartAcknowledgementSchema",
+  "workerRestartResultSchema",
+];
+
 // Keep independently added roots self-contained. Numeric graph references must
 // not depend on the size of the base graph after an unrelated branch merges.
 export const runMcpContractRoots = [
@@ -1709,6 +1718,20 @@ if (
       {
         ...(await resolveConfig(fileURLToPath(attachmentDestination))),
         filepath: fileURLToPath(attachmentDestination),
+      },
+    ),
+  );
+  const managementDestination = new URL(
+    "../../cantrip_server_rs/contracts/worker-management.json",
+    import.meta.url,
+  );
+  await writeFile(
+    managementDestination,
+    await format(
+      JSON.stringify(buildContractManifest(workerManagementContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(managementDestination))),
+        filepath: fileURLToPath(managementDestination),
       },
     ),
   );

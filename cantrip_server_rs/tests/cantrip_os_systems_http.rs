@@ -153,12 +153,14 @@ async fn serve(service: Arc<AuthService>, worker: &str, f: Fixture) -> Result<Ru
                         }
                         records.insert(operation.into(), result);
                     }
-                    if !first && c["mode"] == "continue" && c["action"] == "capture" {
-                        if let Some(result) = records.get_mut(operation) {
-                            result["state"] = json!("ready");
-                            result["phase"] = json!("complete");
-                            result["protectedResult"] = envelope();
-                        }
+                    if !first
+                        && c["mode"] == "continue"
+                        && c["action"] == "capture"
+                        && let Some(result) = records.get_mut(operation)
+                    {
+                        result["state"] = json!("ready");
+                        result["phase"] = json!("complete");
+                        result["protectedResult"] = envelope();
                     }
                     records.get(operation).cloned().unwrap_or(Value::Null)
                 }

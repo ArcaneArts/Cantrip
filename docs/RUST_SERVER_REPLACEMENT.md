@@ -1,5 +1,13 @@
 # Rust server replacement
 
+Native worker management now includes the owned catalog, display-name updates,
+restart acknowledgment and atomic unlink/revocation. Local comparison passes all
+three storage modes with development, password, account and standalone profiles,
+including ordered Live events, rollback, concurrent unlinking and retained state
+after restart/re-enrollment. See the [worker management qualification](RUST_SERVER_WORKER_MANAGEMENT.md)
+for exact scope and remaining full-worker/platform acceptance. Node remains the
+default server.
+
 Native project Chat export previews and opaque transcript relays are now
 implemented. See the [project export qualification](RUST_SERVER_PROJECT_EXPORTS.md)
 for Source comparisons, actual database/transport failures, all nine local

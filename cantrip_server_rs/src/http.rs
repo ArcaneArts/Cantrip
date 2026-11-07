@@ -118,6 +118,7 @@ mod worker_link_terminals;
 mod worker_link_tunnels;
 mod worker_links;
 mod worker_maintenance;
+mod worker_management;
 mod worker_socket;
 mod workers;
 mod workspace_layouts;
@@ -276,6 +277,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(provider_quota::routes())
         .merge(provider_telemetry::routes())
         .merge(workers::routes())
+        .merge(worker_management::routes())
         .merge(worker_maintenance::routes())
         .merge(worker_socket::routes())
         .merge(live_socket::routes())
