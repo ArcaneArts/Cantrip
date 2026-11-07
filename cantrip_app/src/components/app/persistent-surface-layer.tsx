@@ -46,7 +46,6 @@ export function PersistentSurfaceLayer({
     codeAppearance,
     codeSurfaceVisible,
     compactShell,
-    desktopRuntime,
     dockPanePresentations,
     explorerGraphRequest,
     explorerSurfaceVisible,
@@ -66,7 +65,6 @@ export function PersistentSurfaceLayer({
     isPopout,
     newTerminal,
     onlineWorkerIds,
-    openExplorerFileWindow,
     openExplorers,
     openProjectExplorerFile,
     persistFileViewMode,
@@ -584,25 +582,20 @@ export function PersistentSurfaceLayer({
           onChanged={handleExplorerChanged}
           onHeaderChange={setExplorerHeader}
           onLifecycleChange={handleExplorerLifecycleChange}
-          onOpenFile={
-            desktopRuntime
-              ? openExplorerFileWindow
-              : (explorer, entry) =>
-                  openProjectExplorerFile(
-                    explorer.projectId,
-                    explorer.worktreeId,
-                    entry.path,
-                    ...(explorer.cantripOsBindingId
-                      ? ([
-                          {
-                            cantripOsBindingId: explorer.cantripOsBindingId,
-                            cantripOsRuntimeGeneration:
-                              explorer.cantripOsRuntimeGeneration,
-                            workerId: explorer.activeWorkerId,
-                          },
-                        ] as const)
-                      : ([] as const)),
-                  )
+          onOpenFile={(explorer, entry) =>
+            openProjectExplorerFile(
+              explorer.projectId,
+              explorer.worktreeId,
+              entry.path,
+              explorer.cantripOsBindingId
+                ? {
+                    cantripOsBindingId: explorer.cantripOsBindingId,
+                    cantripOsRuntimeGeneration:
+                      explorer.cantripOsRuntimeGeneration,
+                    workerId: explorer.activeWorkerId,
+                  }
+                : undefined,
+            )
           }
           onOpenGraphFile={(explorer, path) =>
             openProjectExplorerFile(

@@ -150,13 +150,12 @@ describe("persistent surface layer", () => {
     },
   );
   it.each([false, true])(
-    "routes Explorer files through ownership on desktop=%s",
+    "opens Explorer files as workspace tabs on desktop=%s",
     async (desktopRuntime) => {
       (
         globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
       ).IS_REACT_ACT_ENVIRONMENT = true;
       const openProjectExplorerFile = vi.fn();
-      const openExplorerFileWindow = vi.fn(async () => {});
       const explorer = { projectId: "project", worktreeId: "checkout" };
       const entry = { path: "src/main.rs" };
       let tree!: TestRenderer.ReactTestRenderer;
@@ -169,7 +168,6 @@ describe("persistent surface layer", () => {
               projectSurfaces: [],
               desktopRuntime,
               openProjectExplorerFile,
-              openExplorerFileWindow,
             }}
           />,
         );
@@ -178,20 +176,12 @@ describe("persistent surface layer", () => {
         const open = surfaceProps.explorer!.onOpenFile as Function;
         expect(open).toBeTypeOf("function");
         await open(explorer, entry);
-        if (desktopRuntime) {
-          expect(openExplorerFileWindow).toHaveBeenCalledExactlyOnceWith(
-            explorer,
-            entry,
-          );
-          expect(openProjectExplorerFile).not.toHaveBeenCalled();
-        } else {
-          expect(openProjectExplorerFile).toHaveBeenCalledExactlyOnceWith(
-            "project",
-            "checkout",
-            "src/main.rs",
-          );
-          expect(openExplorerFileWindow).not.toHaveBeenCalled();
-        }
+        expect(openProjectExplorerFile).toHaveBeenCalledExactlyOnceWith(
+          "project",
+          "checkout",
+          "src/main.rs",
+          undefined,
+        );
       } finally {
         await act(async () => tree.unmount());
       }

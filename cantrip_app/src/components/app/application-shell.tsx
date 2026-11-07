@@ -12,7 +12,6 @@ import { useProjectToolNavigationBridge } from "./project-tool-navigation-bridge
 import { useWorkspaceConnection } from "./use-workspace-connection";
 import { useWorkspaceEditorTransfer } from "./use-workspace-editor-transfer";
 import { detachWorkspaceEditors } from "./detach-workspace-editors";
-import { useOwnedFileWindow } from "./use-owned-file-window";
 import { useWorkspaceWindowReturn } from "./use-workspace-window-return";
 import { useWorkspaceWindowRecovery } from "./use-workspace-window-recovery";
 import { openOwnedFile } from "@/lib/open-owned-file";
@@ -1157,13 +1156,6 @@ export function App() {
       resources: projectWorkspaceResources,
       selectedTabKey,
     });
-  const openExplorerFileWindow = useOwnedFileWindow({
-    workspace: ownedWorkspace,
-    queryClient,
-    surfaces: projectSurfaceIndex.byTabKey,
-    explorers: explorerLifecycleRef.current,
-    lifecycleRevision: fileLifecycleRevision,
-  });
   const legacyDocumentMigration = useLegacyDocumentMigration({
     workspace: ownedWorkspace,
     explorers: explorers.data,
@@ -2251,7 +2243,7 @@ export function App() {
     newRemoteDesktop, newStandaloneChat, newTask, newTerminal,
     onlineWorker, onlineWorkerIds, openChatConsole, openChatExplorerHere, openChatFileLink,
     openChatHistoryHere, openChatTerminalHere, openCompactRootSettings, openCreatedProject, openCreatedTab,
-    openExplorerFileWindow, openExplorers, openOrFocusSurface, openProjectCreateSource, openProjectExplorerFile, openProjectNavigatorSurface, openProjectToolSection, openRunTerminal, ownedTerminals,
+    openExplorers, openOrFocusSurface, openProjectCreateSource, openProjectExplorerFile, openProjectNavigatorSurface, openProjectToolSection, openRunTerminal, ownedTerminals,
     openProjectSettings, openProjectTask, openServerAdmin, openSidebarFilePreview, openSidebarFileAs, openSidebarFolderGraph,
     openSidebarFolderNative, openSidebarRootNative, openSidebarFolderTerminal, openTerminalLink, openTerminalLinkExternally, openTunnelOwner,
     overlayTitlebar, pendingTerminalInputs, permanentlyDeleteStandaloneChat, pinSidebarFile, pinSidebarFileMutation,
