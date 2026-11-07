@@ -249,7 +249,7 @@ describe("Models provider navigation", () => {
     const general = renderToStaticMarkup(<ModelsSettings {...props()} />);
     expect(general).toContain("Default model configuration");
     expect(general).toContain("Standalone Chat defaults");
-    expect(general).toContain("Unassigned models");
+    expect(general).toContain('aria-label="Unassigned language models"');
     expect(general).not.toContain('aria-label="Edit local-only"');
     const selected = renderToStaticMarkup(
       <ModelsSettings {...props({ activeTab: providerModelsTab("local") })} />,
@@ -267,13 +267,15 @@ describe("Models provider navigation", () => {
         <ModelsSettings {...props({ providers: [], models: [] })} />,
       ),
     ).toContain("Add a provider with +");
-    expect(
-      renderToStaticMarkup(
-        <ModelsSettings
-          {...props({ activeTab: "provider:local", models: [] })}
-        />,
-      ),
-    ).toContain("No models configured for");
+    const empty = renderToStaticMarkup(
+      <ModelsSettings
+        {...props({ activeTab: "provider:local", models: [] })}
+      />,
+    );
+    for (const operation of ["language", "embedding", "decision"]) {
+      expect(empty).toContain(`aria-label="Ollama ${operation} models"`);
+      expect(empty).toContain(`No ${operation} models configured.`);
+    }
   });
 
   it("preserves provider identity through rename and recovers after removal", async () => {
@@ -353,10 +355,14 @@ describe("Models provider navigation", () => {
     );
     await act(async () => edits[1]!.props.onClick());
     expect(inputs.onEditProvider).toHaveBeenCalledWith(providers[1]);
-    await act(async () =>
-      view.root.findByProps({ "aria-label": "Add model" }).props.onClick(),
-    );
-    expect(inputs.onAddModel).toHaveBeenCalledWith("local");
+    for (const operation of ["language", "embedding", "decision"]) {
+      await act(async () =>
+        view.root
+          .findByProps({ "aria-label": `Add ${operation} model` })
+          .props.onClick(),
+      );
+      expect(inputs.onAddModel).toHaveBeenLastCalledWith("local", operation);
+    }
     await act(async () => view.unmount());
   });
 

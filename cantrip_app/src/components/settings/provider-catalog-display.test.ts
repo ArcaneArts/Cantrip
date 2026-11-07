@@ -101,7 +101,7 @@ describe("provider catalog presentation", () => {
         kind: "openai-compatible",
         baseUrl: "https://api.x.ai/v1",
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       providerSupportsCatalog({
         ...provider,

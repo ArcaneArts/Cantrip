@@ -5,8 +5,8 @@ import {
   type ModelProviderSummary,
 } from "@cantrip/protocol";
 import { ModelCombobox } from "@/components/chat/model-combobox";
-import { availableCatalogModelIds } from "./provider-catalog-cache";
 import {
+  availableCatalogModelIds,
   catalogDisplayStatus,
   providerSupportsCatalog,
 } from "./provider-catalog-display";

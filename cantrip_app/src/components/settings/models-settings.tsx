@@ -5,7 +5,6 @@ import {
 } from "@cantrip/protocol";
 import { OperationDefaultPicker } from "./operation-default-picker";
 import { useProviderCatalog } from "./use-provider-catalog";
-import { availableCatalogModelIds } from "./provider-catalog-cache";
 import {
   modelOperationLabels,
   operationCapabilityText,
@@ -72,6 +71,7 @@ import {
   type ModelsSettingsTab,
 } from "./models-settings-state";
 import {
+  availableCatalogModelIds,
   providerRouteLabel,
   providerSupportsCatalog,
 } from "./provider-catalog-display";
