@@ -762,6 +762,8 @@ export async function createNativeSharedViewFixture(
               adapter.dispatchGui(receipt, guiSession, receipt),
             onNativeReceipt: (result) =>
               adapter.guiReceipt(receipt, guiSession, result),
+            onNativeRejected: ({ frame }) =>
+              adapter.guiRejected(receipt, guiSession, frame),
             ...interactionCallbacks,
             onMessage: (message) => messages.push(message.text),
           }),

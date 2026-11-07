@@ -1205,6 +1205,29 @@ export class ManagedNativeCommandSession {
     await this.persistResult(execution, result, "applied");
   }
 
+  /** A received native rejection releases the queue claim without inventing a
+   * terminal turn or treating an ambiguous transport failure as retryable. */
+  async guiRejected(
+    receipt: NativeCommandReceipt,
+    session: NativeCommandSession,
+    frame: { error: { code: number; message: string; data?: unknown } },
+  ): Promise<void> {
+    this.assertTransport(session);
+    const execution = this.active;
+    if (
+      !execution ||
+      execution.receipt.operationId !== receipt.operationId ||
+      execution.receipt.operationGeneration !== receipt.operationGeneration ||
+      execution.session.threadId !== session.threadId ||
+      execution.session.runtimeGeneration !== session.runtimeGeneration ||
+      execution.nativeTurnId
+    )
+      throw new Error(
+        "The GUI rejection has no matching native dispatch identity.",
+      );
+    await this.persistResult(execution, frame, "rejected");
+  }
+
   /** Native terminal proof precedes the GUI's separate logical/publication
    * cleanup. A transport failure must never call this with an invented status. */
   async guiTerminal(

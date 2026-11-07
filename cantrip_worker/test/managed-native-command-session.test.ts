@@ -569,6 +569,49 @@ describe("managed native command session", () => {
     });
     expect(frame.error.data.queueRetained).toBeUndefined();
   });
+  it("persists a GUI start rejection as protected evidence before logical cleanup", async () => {
+    const f = fixture();
+    await f.adapter.dispatchGui(receipt, session);
+    const frame = {
+      error: { code: -32600, message: "PRIVATE native turn is durably paused" },
+    };
+    await expect(
+      f.adapter.guiRejected(
+        { ...receipt, operationGeneration: "stale" },
+        session,
+        frame,
+      ),
+    ).rejects.toThrow("matching native dispatch identity");
+    expect(f.client.settle).not.toHaveBeenCalled();
+    await f.adapter.guiRejected(receipt, session, frame);
+    const settlement = f.client.settle.mock.calls[0]![0];
+    expect(settlement).toMatchObject({
+      status: "rejected",
+      rejectionCode: "native-request-rejected",
+      executionComplete: false,
+    });
+    expect(JSON.stringify(settlement)).not.toContain("PRIVATE");
+    expect(
+      await openNativeCommandContent({
+        service: {
+          ownerId: () => "owner",
+          serverIdentity: () => "server",
+          componentKey: () => ({
+            keyRevision: 1,
+            key: new Uint8Array(32).fill(7),
+          }),
+        },
+        context: {
+          chatId: "chat",
+          operationId: receipt.operationId,
+          direction: "result",
+        },
+        envelope: settlement.protectedResult!,
+        digest: settlement.resultDigest!,
+      }),
+    ).toEqual(frame);
+  });
+
   it("keeps an existing deferred queue claim without creating another prompt", async () => {
     const f = fixture();
     const admission = await f.adapter.admit({

@@ -123,6 +123,7 @@ import { protectProjectAutomationDispatch } from "./automation-encryption.js";
 import { codexAccountHome } from "./codex/account-home.js";
 import {
   CodexAppServer,
+  CodexNativeRpcError,
   CodexTurnFailureError,
   codexChatThreadSecurityParams,
   codexModelProviderName,
@@ -342,6 +343,7 @@ import { LocalNativeInferenceOwnership } from "./native-inference-ownership.js";
 import { WorkerInferenceAdmission } from "./inference-admission.js";
 import { ModelOperationCommands } from "./commands/model-operations.js";
 import { CodexRpcObservationError } from "./codex/rpc-protocol.js";
+import { sourceInferenceFailure } from "./inference-failure.js";
 import {
   withInferenceCommand,
   inferenceCommandResource,
@@ -6953,6 +6955,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     );
                   }
                 : undefined,
+              onNativeRejected: command.nativeCommandReceipt
+                ? async ({ threadId, frame }) => {
+                    const { entry, dispatch, receipt } = nativeCommandState;
+                    if (
+                      !entry ||
+                      !dispatch ||
+                      !receipt ||
+                      dispatch.threadId !== threadId
+                    )
+                      throw new Error(
+                        "The rejected GUI input has no matching dispatch identity.",
+                      );
+                    await entry.adapter.guiRejected(receipt, dispatch, frame);
+                  }
+                : undefined,
               onNativeReceipt: command.nativeCommandReceipt
                 ? async (receipt) => {
                     if (
@@ -7531,6 +7548,23 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   } catch (error) {
                     if (error instanceof CodexTurnFailureError)
                       await terminal(error.turnId, error.terminalStatus);
+                    const nativeError = sourceInferenceFailure(error);
+                    if (
+                      encryptedChatSealer &&
+                      nativeError instanceof CodexNativeRpcError &&
+                      nativeError.requestMethod === "turn/start"
+                    ) {
+                      // Report the final rejection through the encrypted chat
+                      // channel, after native retries have finished.
+                      await protectedEventQueue;
+                      if (protectedEventFailure) throw protectedEventFailure;
+                      emitAgentEvent(
+                        await encryptedChatSealer.rejectedStart(
+                          command.clientMessageId,
+                          nativeError.nativeError.message,
+                        ),
+                      );
+                    }
                     throw error;
                   }
                   await terminal(result.turnId, "completed");

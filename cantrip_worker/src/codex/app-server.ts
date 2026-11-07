@@ -4298,6 +4298,15 @@ export class CodexAppServer implements CodexRuntime {
         });
         throw new NativePermissionDeferredError();
       }
+      if (
+        dispatchedInput &&
+        error instanceof CodexNativeRpcError &&
+        error.requestMethod === "turn/start"
+      )
+        await options.onNativeRejected?.({
+          threadId,
+          frame: { error: error.nativeError },
+        });
       throw error;
     }
     this.bindTurnStartResponse(response.turn.id, activeTurn);

@@ -16,6 +16,50 @@ import {
 import type { WorkerEncryptionService } from "./worker-encryption.js";
 
 describe("worker chat message encryption", () => {
+  it("publishes a rejected start as an encrypted system message with a stable retry identity", async () => {
+    const ownerId = "rejected-owner";
+    const componentKey = new Uint8Array(32).fill(7);
+    const service = {
+      ownerId: () => ownerId,
+      componentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision: 1,
+      }),
+    } as unknown as WorkerEncryptionService;
+    const sealer = () =>
+      new EncryptedChatEventSealer(service, "chat", {
+        explanation: null,
+        steps: [],
+        question: null,
+      });
+    const event = await sealer().rejectedStart(
+      "message",
+      "PRIVATE native turn is durably paused; resume it or queue input before starting work",
+    );
+    expect(JSON.stringify(event)).not.toContain("PRIVATE");
+    expect(event.message.classification.role).toBe("system");
+    expect(event.message.idempotencyKey).toBe("error:message");
+    expect(
+      (await sealer().rejectedStart("message", "same rejection")).message.id,
+    ).toBe(event.message.id);
+    await expect(
+      decryptChatMessageProtectedContent({
+        ownerId,
+        componentKey,
+        keyRevision: 1,
+        messageId: event.message.id,
+        encrypted: event.message.protectedContent,
+        publicClassification: event.message.classification,
+      }),
+    ).resolves.toMatchObject({
+      content: [
+        {
+          type: "text",
+          text: "Codex could not start this turn: PRIVATE native turn is durably paused; resume it or queue input before starting work",
+        },
+      ],
+    });
+  });
   it("keeps the objective encrypted in goal status and edit responses", async () => {
     const componentKey = new Uint8Array(32).fill(7);
     const ownerId = "goal-owner";
