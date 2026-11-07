@@ -1,4 +1,5 @@
 import { discoverEndpointModels } from "./endpoint-models.js";
+import { ModelCatalogSnapshots } from "./model-catalog-snapshots.js";
 import {
   osNativeMcpServers,
   osNativeMcpOperations,
@@ -1680,6 +1681,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     ownerId: workerEncryption.ownerId(),
     workerId: config.workerId,
   });
+  const modelCatalogSnapshots = new ModelCatalogSnapshots();
   const taskPauseControls = new TaskPauseControls({
     scope: nativeNamespaceScope,
     selected: (chatId) => managedCurrentRuntimes.get(chatId),
@@ -4551,10 +4553,33 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         config.token = command.credential;
         config.tokenSource = "persisted";
         return { accepted: true };
-      case "model.endpoint.catalog":
-        return discoverEndpointModels(provider());
-      case "model.ollama.catalog":
-        return discoverOllamaModels(provider().baseUrl, provider().apiKey);
+      case "model.endpoint.catalog": {
+        const connection = provider();
+        return modelCatalogSnapshots.read({
+          scope: nativeNamespaceScope(),
+          provider: connection,
+          kind: "endpoint",
+          page: command.catalogPage,
+          load: (signal) =>
+            discoverEndpointModels(connection, globalThis.fetch, signal),
+        });
+      }
+      case "model.ollama.catalog": {
+        const connection = provider();
+        return modelCatalogSnapshots.read({
+          scope: nativeNamespaceScope(),
+          provider: connection,
+          kind: "ollama",
+          page: command.catalogPage,
+          load: (signal) =>
+            discoverOllamaModels(
+              connection.baseUrl,
+              connection.apiKey,
+              globalThis.fetch,
+              signal,
+            ),
+        });
+      }
       case "model.chatgpt.catalog":
         return catalogRuntimeFor(
           provider().credentialHomeKey!,

@@ -4,6 +4,7 @@ import {
   providerInferenceRevisionSchema,
 } from "./inference-admission.js";
 import { endpointProviderKinds } from "./provider-definitions.js";
+import { modelCatalogPageRequestSchema } from "./model-catalog-pages.js";
 import {
   modelEmbeddingCommandSchema,
   modelOperationCancelCommandSchema,
@@ -167,10 +168,12 @@ export const workerCoreCommandSchemas = [
   }),
   z.object({
     type: z.literal("model.ollama.catalog"),
+    catalogPage: modelCatalogPageRequestSchema.optional(),
     provider: workerRuntimeProviderSchema.extend({ kind: z.literal("ollama") }),
   }),
   z.object({
     type: z.literal("model.endpoint.catalog"),
+    catalogPage: modelCatalogPageRequestSchema.optional(),
     provider: workerRuntimeProviderSchema.extend({
       kind: z.enum([...endpointProviderKinds, "openai-compatible"]),
     }),

@@ -30,6 +30,7 @@ pub mod reasoning;
 pub mod repository;
 mod skill_audiences;
 pub mod telemetry;
+mod worker_catalog_pages;
 pub mod zai;
 
 pub use providers::normalize_responses_base_url;
