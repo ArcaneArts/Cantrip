@@ -70,6 +70,13 @@ export function normalizeEndpointModel(
           : null;
     if (adapter) operations.operationCapabilities.decision.adapter = adapter;
   }
+  if (
+    operations.operationCapabilities.embedding?.status === "supported" &&
+    text(model.digest)
+  )
+    operations.operationCapabilities.embedding.modelRevision = text(
+      model.digest,
+    );
   const capabilities = object(model.capabilities);
   const metadata = object(model.meta);
   const instances = Array.isArray(model.loaded_instances)

@@ -79,6 +79,7 @@ export function normalizeOllamaModel(
               inputModalities: vision ? ["text", "image"] : ["text"],
             },
             embedding: {
+              modelRevision: model.digest,
               status: capabilities.has("embedding")
                 ? "supported"
                 : "unsupported",

@@ -34,6 +34,7 @@ interface LimitedWorkerCommandBusOptions {
 // Keep this narrow allowlist aligned with workers/command_bus.rs. Commands
 // carrying new inference input use the ordinary lane, including native steer.
 const EXECUTION_CONTROL_COMMANDS = new Set<WorkerCommand["type"]>([
+  "model.operation.cancel",
   "inference.configure",
   "inference.revoke",
   "inference.task-revoke",

@@ -79,6 +79,7 @@ import {
   SkillSettingsRequestError,
 } from "../shared/errors.js";
 import { serverLogger } from "../../logger.js";
+import { installModelOperationRoutes } from "../routes/model-operations.js";
 
 type ProviderAccountAuthRuntime = ReturnType<
   typeof installProviderAccountAuthRoutes
@@ -178,6 +179,12 @@ export function installSettingsRouteRuntime(
     zaiCatalogService,
   }: SettingsRouteRuntimeDependencies,
 ) {
+  installModelOperationRoutes(app, {
+    applicationOwnerId,
+    serverId,
+    repository,
+    bridge,
+  });
   app.get("/api/settings", async (_request, reply) => {
     const ownerId = applicationOwnerId();
     await zaiCatalogService.reconcileOwnerProviders(ownerId);

@@ -11,6 +11,7 @@ export const endpointContentDomainSchema = z.enum([
   "alert-content",
   "run-content",
   "customization-content",
+  "model-operation-content",
   "tunnel-content",
   "client-control-content",
 ]);
