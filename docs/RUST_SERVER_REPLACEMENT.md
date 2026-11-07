@@ -1,5 +1,13 @@
 # Rust server replacement
 
+Current CantripOS root checkpoints, encrypted image restore, retained rollback
+and exact-base reset now pass actual browser/full-worker qualification across
+all three stores and all four Redis pairings. Actual Server loss at Docker commit
+and Worker loss at candidate creation retain one admitted effect and require
+explicit recovery. See [root-system qualification](RUST_SERVER_CANTRIP_OS_SYSTEMS.md)
+for the executed matrix and remaining acceptance. Node remains the default and
+full replacement remains incomplete.
+
 Current CantripOS workspace, desktop, retained power and package lifecycle now
 pass actual browser/full-worker/Docker qualification across all three stores and
 all four Redis peer pairings. Ten actual server kills after workspace receipt

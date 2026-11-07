@@ -107,7 +107,8 @@ const singleProduct =
   process.argv.includes("--native-single-agent-recovery") ||
   process.argv.includes("--model-operations") ||
   process.argv.includes("--provider-catalog") ||
-  process.argv.includes("--cantrip-os");
+  process.argv.includes("--cantrip-os") ||
+  process.argv.includes("--cantrip-os-system");
 const selectedRuntime = option("--runtime");
 assert.ok(!selectedRuntime || ["node", "rust"].includes(selectedRuntime));
 const runtimeCases = sharedPair
@@ -216,7 +217,10 @@ async function flow(
       )
     : undefined;
   let worker, tunnel;
-  const startWorker = async (enrollmentCode, { providerTest = false } = {}) => {
+  const startWorker = async (
+    enrollmentCode,
+    { providerTest = false, environment = {} } = {},
+  ) => {
     const homeDirectory = process.argv.includes("--mcp-settings")
       ? path.join(dataDirectory, "mcp-test-home")
       : undefined;
@@ -229,7 +233,10 @@ async function flow(
         enrollmentCode,
         workerId,
         homeDirectory,
-        environment: providerTest ? providerBoundary?.environment : undefined,
+        environment: {
+          ...(providerTest ? providerBoundary?.environment : {}),
+          ...environment,
+        },
         traceShutdown:
           process.argv.includes("--trace-worker-shutdown") ||
           process.argv.includes("--replicas") ||
@@ -988,7 +995,10 @@ async function flow(
           : {}),
       });
     }
-    if (process.argv.includes("--cantrip-os")) {
+    if (
+      process.argv.includes("--cantrip-os") ||
+      process.argv.includes("--cantrip-os-system")
+    ) {
       if (!worker) await startWorker();
       await actualCantripOsClient({
         page,
@@ -998,6 +1008,7 @@ async function flow(
         workerId,
         startWorker,
         stopWorker,
+        crashWorker,
         result,
       });
     }
@@ -1269,7 +1280,10 @@ try {
   for (const runtime of report.runtimes.slice(1)) {
     assert.deepEqual(runtime.steps, report.runtimes[0].steps);
     assert.deepEqual(runtime.projects, report.runtimes[0].projects);
-    if (process.argv.includes("--cantrip-os"))
+    if (
+      process.argv.includes("--cantrip-os") ||
+      process.argv.includes("--cantrip-os-system")
+    )
       assert.deepEqual(
         runtime.cantripOs.summary,
         report.runtimes[0].cantripOs.summary,
