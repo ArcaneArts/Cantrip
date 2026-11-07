@@ -1,5 +1,5 @@
 import {
-  modelProfileOperation,
+  isLanguageModelProfile,
   type ModelProfileSummary,
   type UserSettings,
   type UserSettingsUpdate,
@@ -20,7 +20,7 @@ export function LabelingSettings({
   const selected = models.find(({ id }) => id === settings.labelingModelId);
   const unavailable = Boolean(
     settings.labelingModelId &&
-    (!selected || modelProfileOperation(selected) !== "language"),
+    (!selected || !isLanguageModelProfile(selected)),
   );
   return (
     <div className="space-y-3 border-t px-3 py-3">

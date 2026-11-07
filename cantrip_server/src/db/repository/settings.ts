@@ -8,7 +8,7 @@ import type {
   UserSettingsUpdate,
   WorkerSummary,
 } from "@cantrip/protocol";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 
 import * as schema from "../schema.js";
 import { firstOrThrow, type RepositoryDatabase } from "./database.js";
@@ -189,6 +189,26 @@ export class SettingsRepository {
         .select({
           route: schema.modelRoutes,
           providerName: schema.modelProviders.name,
+          // Every observed scope must positively exclude language and support a
+          // different operation. One unknown or language-capable scope preserves
+          // selection, even if it is currently unavailable. No execution uses it.
+          languageSelectionConflict: sql<boolean>`coalesce(
+            (select bool_and(
+              coalesce(a.operation_capabilities->'language'->>'status', 'unknown') = 'unsupported'
+              and (
+                coalesce(a.operation_capabilities->'embedding'->>'status', 'unknown') = 'supported'
+                or coalesce(a.operation_capabilities->'decision'->>'status', 'unknown') = 'supported'
+              )
+            ) from provider_model_availability a
+              where a.provider_model_id = ${schema.providerModels.id}),
+            (
+              coalesce(${schema.providerModels.operationCapabilities}->'language'->>'status', 'unknown') = 'unsupported'
+              and (
+                coalesce(${schema.providerModels.operationCapabilities}->'embedding'->>'status', 'unknown') = 'supported'
+                or coalesce(${schema.providerModels.operationCapabilities}->'decision'->>'status', 'unknown') = 'supported'
+              )
+            ), false
+          )`.mapWith(Boolean),
         })
         .from(schema.modelRoutes)
         .innerJoin(
@@ -198,6 +218,22 @@ export class SettingsRepository {
         .innerJoin(
           schema.modelProviders,
           eq(schema.modelProviders.id, schema.modelRoutes.providerId),
+        )
+        .leftJoin(
+          schema.providerModels,
+          and(
+            eq(schema.providerModels.providerId, schema.modelRoutes.providerId),
+            or(
+              eq(schema.providerModels.id, schema.modelRoutes.providerModelId),
+              and(
+                isNull(schema.modelRoutes.providerModelId),
+                eq(
+                  schema.providerModels.nativeModelId,
+                  schema.modelRoutes.modelName,
+                ),
+              ),
+            ),
+          ),
         )
         .where(eq(schema.modelProfiles.ownerId, ownerId))
         .orderBy(asc(schema.modelRoutes.position)),
@@ -297,8 +333,12 @@ export class SettingsRepository {
           model,
           routeRows
             .filter(({ route }) => route.modelId === model.id)
-            .map(({ route, providerName }) =>
-              toModelRouteSummary(route, providerName),
+            .map(({ route, providerName, languageSelectionConflict }) =>
+              toModelRouteSummary(
+                route,
+                providerName,
+                languageSelectionConflict,
+              ),
             ),
           modelUsage.get(model.id),
           agentTime.models.get(model.id),

@@ -20,6 +20,18 @@ profiles only. A saved configuration whose profile is no longer a language model
 shows a configuration-needed state; opening its picker does not select a
 replacement or request its reasoning options.
 
+An edited legacy language profile is retained when discovery identifies its
+routes as non-language. Both servers report a presentation conflict only when
+every observed scope for a route explicitly excludes language and supports
+embeddings or decisions. An unknown scope, an unavailable language-capable scope,
+or an unclassified route prevents that conclusion. A language profile whose
+enabled routes all have that conflict stays in settings with a recovery note,
+but is omitted from new chat, agent, task, title, and import language selections.
+Edit its routes or add a profile in the matching operation section; saved IDs,
+defaults, and historical references are not silently rewritten or cleared.
+This is presentation metadata, not an inference gate: an explicitly configured
+request still reaches the actual endpoint regardless of catalog observations.
+
 Deleting a profile clears defaults through its database foreign keys. Deleting a
 provider also clears defaults whose profiles lose their last enabled route,
 including embedding and decision defaults. Profiles remain available for manual

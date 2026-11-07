@@ -68,6 +68,7 @@ export interface ModelRuntime {
 export function toModelRouteSummary(
   route: typeof schema.modelRoutes.$inferSelect,
   providerName: string,
+  languageSelectionConflict = false,
 ): ModelRouteSummary {
   return {
     id: route.id,
@@ -80,6 +81,7 @@ export function toModelRouteSummary(
     position: route.position,
     enabled: route.enabled,
     discoveryManaged: route.discoveryManaged,
+    ...(languageSelectionConflict ? { languageSelectionConflict: true } : {}),
   };
 }
 

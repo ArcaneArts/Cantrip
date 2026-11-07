@@ -17,6 +17,38 @@ pub const DEFAULT_OLLAMA_PROVIDER_ID: &str = "00000000-0000-0000-0000-0000000000
 pub const DEFAULT_MODEL_ID: &str = "00000000-0000-0000-0000-000000000020";
 pub const DEFAULT_MODEL_ROUTE_ID: &str = "00000000-0000-0000-0000-000000000021";
 
+// Settings presentation only: all observed scopes must positively identify a
+// non-language route. Unknown and unavailable language scopes remain selectable.
+// Explicit inference does not depend on these discovery observations.
+const ROUTE_SUMMARIES_SQL: &str = r#"
+SELECT jsonb_build_object(
+  'route', to_jsonb(r) || jsonb_build_object('language_selection_conflict', coalesce(
+    (SELECT bool_and(
+      coalesce(a.operation_capabilities->'language'->>'status', 'unknown') = 'unsupported'
+      AND (
+        coalesce(a.operation_capabilities->'embedding'->>'status', 'unknown') = 'supported'
+        OR coalesce(a.operation_capabilities->'decision'->>'status', 'unknown') = 'supported'
+      )
+    ) FROM provider_model_availability a WHERE a.provider_model_id = c.id),
+    (
+      coalesce(c.operation_capabilities->'language'->>'status', 'unknown') = 'unsupported'
+      AND (
+        coalesce(c.operation_capabilities->'embedding'->>'status', 'unknown') = 'supported'
+        OR coalesce(c.operation_capabilities->'decision'->>'status', 'unknown') = 'supported'
+      )
+    ), false
+  )),
+  'providerName', p.name
+)
+FROM model_routes r
+INNER JOIN model_profiles m ON m.id = r.model_id
+INNER JOIN model_providers p ON p.id = r.provider_id
+LEFT JOIN provider_models c ON c.provider_id = r.provider_id
+  AND (c.id = r.provider_model_id OR (r.provider_model_id IS NULL AND c.native_model_id = r.model_name))
+WHERE m.owner_id = $1
+ORDER BY r.position ASC
+"#;
+
 const PREFERENCES: &[&str] = &[
     "computerUseEnabled",
     "computerUseCantripAppAllowed",
@@ -209,6 +241,9 @@ fn route_summary(route: &Value, provider_name: &Value) -> Value {
         ],
     );
     output["providerName"] = provider_name.clone();
+    if route["language_selection_conflict"] == true {
+        output["languageSelectionConflict"] = json!(true);
+    }
     output
 }
 fn model_summary(
@@ -438,7 +473,7 @@ impl SettingsRepository {
             self.json_rows("SELECT to_jsonb(a) FROM model_provider_accounts a INNER JOIN model_providers p ON p.id=a.provider_id AND p.owner_id=$1 ORDER BY a.position ASC", parameters).boxed(),
             self.json_rows("SELECT to_jsonb(b) FROM model_provider_account_workers b INNER JOIN model_provider_accounts a ON a.id=b.account_id INNER JOIN model_providers p ON p.id=a.provider_id AND p.owner_id=$1", parameters).boxed(),
             self.json_rows("SELECT to_jsonb(m) FROM model_profiles m WHERE owner_id=$1 ORDER BY name ASC", parameters).boxed(),
-            self.json_rows("SELECT jsonb_build_object('route',to_jsonb(r),'providerName',p.name) FROM model_routes r INNER JOIN model_profiles m ON m.id=r.model_id INNER JOIN model_providers p ON p.id=r.provider_id WHERE m.owner_id=$1 ORDER BY r.position ASC", parameters).boxed(),
+            self.json_rows(ROUTE_SUMMARIES_SQL, parameters).boxed(),
             self.usage_totals(owner,true).boxed(),self.usage_totals(owner,false).boxed(),self.agent_time_analytics(owner,None,at).boxed(),
         )?;
         let providers = providers
