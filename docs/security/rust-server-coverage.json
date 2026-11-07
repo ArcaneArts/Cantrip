@@ -803,7 +803,10 @@
         "implementation": "cantrip_server_rs/src/http/provider_catalogs.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/provider-catalog-http-compatibility.mjs"
+          "scripts/server-rust/provider-catalog-http-compatibility.mjs",
+          "docs/RUST_SERVER_CATALOG_PRODUCT.md",
+          "scripts/server-rust/actual-provider-catalog-client.mjs",
+          "scripts/server-rust/catalog-provider.mjs"
         ],
         "remaining": [
           "Current-head supported-platform and packaged product acceptance."
@@ -815,7 +818,10 @@
         "implementation": "cantrip_server_rs/src/http/provider_catalogs.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/provider-catalog-http-compatibility.mjs"
+          "scripts/server-rust/provider-catalog-http-compatibility.mjs",
+          "docs/RUST_SERVER_CATALOG_PRODUCT.md",
+          "scripts/server-rust/actual-provider-catalog-client.mjs",
+          "scripts/server-rust/catalog-provider.mjs"
         ],
         "remaining": [
           "Current-head supported-platform and packaged product acceptance."
@@ -15837,7 +15843,6 @@
         "nodeOnly": ["2060beb2a", "fc71cc21e"]
       },
       "remaining": [
-        "Current catalog pagination/partial-scope discovery and operation-specific routing behavior.",
         "Current CantripOS desktop/package/system/workspace lifecycle, failure and recovery behaviors.",
         "Complete current native Task/Goal interruption/reconnect and supported-platform requalification.",
         "Consolidate historical category-row limitations against current executed evidence before final replacement completion."
@@ -15922,6 +15927,53 @@
       "remaining": [
         "Supported-platform artifact acceptance and mixed-server/server-interruption/long-outage qualification remain required.",
         "Configured OpenAI-compatible adapters and an owned local provider are exercised; this does not prove every provider-private adapter behavior.",
+        "Default Rust cutover and production Node-server removal remain required."
+      ]
+    },
+    "fullWorkerProviderCatalog": {
+      "status": "implemented-pending-platform-acceptance",
+      "sourceBaseline": "b77899188ccf1588840f11f9431f7d72b85d9049",
+      "evidence": [
+        "docs/RUST_SERVER_CATALOG_PRODUCT.md",
+        "scripts/server-rust/actual-provider-catalog-client.mjs",
+        "scripts/server-rust/catalog-provider.mjs",
+        "scripts/server-rust/actual-folder-client.mjs",
+        "scripts/server-rust/shared-product-fixture.mjs"
+      ],
+      "localQualification": {
+        "platform": "darwin-arm64",
+        "auth": "accounts",
+        "singleServerStorageModes": ["pglite", "bundled-postgres", "postgres"],
+        "singleServerPeers": ["node", "rust"],
+        "sharedPostgresPairs": [
+          "node/node",
+          "node/rust",
+          "rust/node",
+          "rust/rust"
+        ],
+        "redisVersion": "8.10.3",
+        "cells": 10,
+        "productSteps": 160,
+        "comparedSnapshots": 260,
+        "largeCatalogModels": 1050,
+        "largeCatalogDescriptionBytesAbove": 4194304,
+        "largeCatalogProviderHttpPages": 5,
+        "cleanProductionServerExits": 42,
+        "cleanWorkerExits": 50,
+        "completeServerLogsCheckedForPrivateMarkers": 84,
+        "rustExecutableSha256": "20bb778bd097862de7be6e51ee9d2c90c57dce27700c14e856b53ce36054b985",
+        "unchangedProductionImplementation": true
+      },
+      "behavior": [
+        "The actual full worker follows provider continuation pages and transfers an inventory beyond legacy full-snapshot bounds; reconciliation waits for completion.",
+        "Failed, foreign-origin and repeating continuations retain catalog data and identities; optional native overlays fail atomically and preserve missing native-only models.",
+        "Public gateway aliases retain conservative operation-specific capabilities without private deployment metadata; unknown non-language tasks do not gain language profiles.",
+        "Contradictory worker scopes preserve existing language and explicit profiles/defaults; a discovered embedding route executes on its actual owning worker and records its receipt.",
+        "Offline scopes serve cached data without provider calls; complete catalogs/profiles and creation timestamps survive actual restart with nondecreasing observation clocks."
+      ],
+      "remaining": [
+        "Current supported-platform and packaged artifact acceptance remains required.",
+        "Interrupted catalog transfer, long outages, Redis TLS/partitions and arbitrary provider implementations are outside this scoped local qualification.",
         "Default Rust cutover and production Node-server removal remain required."
       ]
     }

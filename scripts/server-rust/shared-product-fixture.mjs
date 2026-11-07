@@ -170,6 +170,25 @@ export class SharedProductFixture {
       await this.redis.stop();
     }
   }
+  async restart() {
+    const before = this.peers.map((peer) => ({
+      pid: peer.server.child.pid,
+      origin: peer.server.origin,
+      instanceId: peer.environment.CANTRIP_SERVER_INSTANCE_ID,
+    }));
+    await this.close();
+    for (const peer of this.peers)
+      peer.environment.CANTRIP_SERVER_INSTANCE_ID = randomUUID();
+    await this.start();
+    return {
+      before,
+      after: this.peers.map((peer) => ({
+        pid: peer.server.child.pid,
+        origin: peer.server.origin,
+        instanceId: peer.environment.CANTRIP_SERVER_INSTANCE_ID,
+      })),
+    };
+  }
   async replacePeer(index, kind = "rust", { crash = false } = {}) {
     const peer = this.peers[index];
     const server = peer.server;

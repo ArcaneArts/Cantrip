@@ -1,5 +1,12 @@
 # Rust server replacement
 
+Current provider catalog discovery now passes actual browser/full-worker
+qualification for pagination, partial native metadata, independent worker
+scopes, operation-aware routing and retained state. All three stores and all
+four Node/Rust Redis pairings match. See [catalog product qualification](RUST_SERVER_CATALOG_PRODUCT.md)
+for evidence and limits. Node remains the default and full replacement remains
+incomplete.
+
 Successful protected embedding and typed decision operations now have full-worker
 qualification covering batching, pinned identity, cancellation, worker crash,
 exact replay and retained usage. Aggregate checks also expose and repair a Node
