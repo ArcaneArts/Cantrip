@@ -5672,6 +5672,90 @@
           "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
           "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/workers/management",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_management.rs",
+          "cantrip_server_rs/src/workers/management.rs"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/worker_management_contracts.rs",
+          "scripts/server-rust/worker-management-contract-oracle.mjs",
+          "scripts/server-rust/worker-management-http-compatibility.mjs",
+          "scripts/server-rust/worker-management-http-worker.mjs",
+          "scripts/server-rust/worker-management-http-reopen.mjs",
+          "docs/RUST_SERVER_WORKER_MANAGEMENT.md"
+        ],
+        "remaining": [
+          "Actual browser/full-worker supervisor restart, shared/mixed Redis consumers and current supported-platform/packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and default cutover remain required for complete replacement."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/workers/:workerId",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_management.rs",
+          "cantrip_server_rs/src/workers/management.rs"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/worker_management_contracts.rs",
+          "scripts/server-rust/worker-management-contract-oracle.mjs",
+          "scripts/server-rust/worker-management-http-compatibility.mjs",
+          "scripts/server-rust/worker-management-http-worker.mjs",
+          "scripts/server-rust/worker-management-http-reopen.mjs",
+          "docs/RUST_SERVER_WORKER_MANAGEMENT.md"
+        ],
+        "remaining": [
+          "Actual browser/full-worker supervisor restart, shared/mixed Redis consumers and current supported-platform/packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and default cutover remain required for complete replacement."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/workers/:workerId/restart",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_management.rs",
+          "cantrip_server_rs/src/workers/management.rs"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/worker_management_contracts.rs",
+          "scripts/server-rust/worker-management-contract-oracle.mjs",
+          "scripts/server-rust/worker-management-http-compatibility.mjs",
+          "scripts/server-rust/worker-management-http-worker.mjs",
+          "scripts/server-rust/worker-management-http-reopen.mjs",
+          "docs/RUST_SERVER_WORKER_MANAGEMENT.md"
+        ],
+        "remaining": [
+          "Actual browser/full-worker supervisor restart, shared/mixed Redis consumers and current supported-platform/packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and default cutover remain required for complete replacement."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/workers/:workerId",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_management.rs",
+          "cantrip_server_rs/src/workers/management.rs"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/worker_management_contracts.rs",
+          "scripts/server-rust/worker-management-contract-oracle.mjs",
+          "scripts/server-rust/worker-management-http-compatibility.mjs",
+          "scripts/server-rust/worker-management-http-worker.mjs",
+          "scripts/server-rust/worker-management-http-reopen.mjs",
+          "docs/RUST_SERVER_WORKER_MANAGEMENT.md"
+        ],
+        "remaining": [
+          "Actual browser/full-worker supervisor restart, shared/mixed Redis consumers and current supported-platform/packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and default cutover remain required for complete replacement."
+        ]
       }
     ]
   },
@@ -7063,13 +7147,30 @@
           "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
           "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
         ]
+      },
+      {
+        "command": "worker.restart",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/worker_management.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_management_contracts.rs",
+          "scripts/server-rust/worker-management-contract-oracle.mjs",
+          "scripts/server-rust/worker-management-http-compatibility.mjs",
+          "scripts/server-rust/worker-management-http-worker.mjs",
+          "scripts/server-rust/worker-management-http-reopen.mjs",
+          "docs/RUST_SERVER_WORKER_MANAGEMENT.md"
+        ],
+        "validatedSubset": "Actual unchanged WorkerConnection transport with controlled restart effects; exact acknowledgment, failure, timeout, rate limit and concurrent unlink behavior.",
+        "remaining": [
+          "Full production worker supervisor restart, service ownership, recovery and supported-platform/package acceptance."
+        ]
       }
     ]
   },
   "durableTables": {
     "defaultStatus": "schema-migrated-only",
     "evidence": ["cantrip_server_rs/tests/database_contract.rs"],
-    "implementedSubset": "Account/session, mobile sign-in, local provisioning, configured-administrator, license-whitelist, audit-query/write and encryption-registry operations in the native auth and encryption repositories. Complete domain operations remain unported. Worker, enrollment-code and credential persistence, atomic replacement/rotation/revocation and heartbeat storage are implemented in workers/repository.rs; this is not the full worker-management or execution domain. Policy owner/bootstrap/collection state, opaque policy CRUD/order, project/workspace assignment transactions, cascade handling and IDE/standalone effective-policy resolution execute natively in policies/repository.rs; project/workspace creation and chat execution remain unported. Settings/model/provider/account/catalog persistence and quota-observation insert/deduplication/weekly projections execute natively; telemetry analytics/export/atomic deletion now execute natively; remaining execution and telemetry write consumers are unported.",
+    "implementedSubset": "Account/session, mobile sign-in, local provisioning, configured-administrator, license-whitelist, audit-query/write and encryption-registry operations in the native auth and encryption repositories. Complete domain operations remain unported. Worker, enrollment-code and credential persistence, atomic replacement/rotation/revocation and heartbeat storage are implemented in workers/repository.rs; Owner-scoped worker management, display-name updates and transactional unlink/revocation now execute in workers/management.rs; remaining lifecycle/execution consumers and full product acceptance remain required. Policy owner/bootstrap/collection state, opaque policy CRUD/order, project/workspace assignment transactions, cascade handling and IDE/standalone effective-policy resolution execute natively in policies/repository.rs; project/workspace creation and chat execution remain unported. Settings/model/provider/account/catalog persistence and quota-observation insert/deduplication/weekly projections execute natively; telemetry analytics/export/atomic deletion now execute natively; remaining execution and telemetry write consumers are unported.",
     "overrides": [
       {
         "tableName": "file_documents",
@@ -10253,6 +10354,57 @@
         "remaining": [
           "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
           "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
+        ]
+      },
+      {
+        "method": "listWorkerManagement",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/workers/management.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_management_contracts.rs",
+          "scripts/server-rust/worker-management-contract-oracle.mjs",
+          "scripts/server-rust/worker-management-http-compatibility.mjs",
+          "scripts/server-rust/worker-management-http-worker.mjs",
+          "scripts/server-rust/worker-management-http-reopen.mjs",
+          "docs/RUST_SERVER_WORKER_MANAGEMENT.md"
+        ],
+        "remaining": [
+          "Actual browser/full-worker supervisor restart, shared/mixed Redis consumers and current supported-platform/packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and default cutover remain required for complete replacement."
+        ]
+      },
+      {
+        "method": "updateWorkerDisplayName",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/workers/management.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_management_contracts.rs",
+          "scripts/server-rust/worker-management-contract-oracle.mjs",
+          "scripts/server-rust/worker-management-http-compatibility.mjs",
+          "scripts/server-rust/worker-management-http-worker.mjs",
+          "scripts/server-rust/worker-management-http-reopen.mjs",
+          "docs/RUST_SERVER_WORKER_MANAGEMENT.md"
+        ],
+        "remaining": [
+          "Actual browser/full-worker supervisor restart, shared/mixed Redis consumers and current supported-platform/packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and default cutover remain required for complete replacement."
+        ]
+      },
+      {
+        "method": "unlinkWorker",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/workers/management.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_management_contracts.rs",
+          "scripts/server-rust/worker-management-contract-oracle.mjs",
+          "scripts/server-rust/worker-management-http-compatibility.mjs",
+          "scripts/server-rust/worker-management-http-worker.mjs",
+          "scripts/server-rust/worker-management-http-reopen.mjs",
+          "docs/RUST_SERVER_WORKER_MANAGEMENT.md"
+        ],
+        "remaining": [
+          "Actual browser/full-worker supervisor restart, shared/mixed Redis consumers and current supported-platform/packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and default cutover remain required for complete replacement."
         ]
       }
     ]
@@ -14276,6 +14428,51 @@
       "remaining": [
         "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
         "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
+      ]
+    },
+    "workerManagement": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/http/worker_management.rs",
+        "cantrip_server_rs/src/workers/management.rs",
+        "cantrip_server_rs/contracts/worker-management.json"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/worker_management_contracts.rs",
+        "scripts/server-rust/worker-management-contract-oracle.mjs",
+        "scripts/server-rust/worker-management-http-compatibility.mjs",
+        "scripts/server-rust/worker-management-http-worker.mjs",
+        "scripts/server-rust/worker-management-http-reopen.mjs",
+        "docs/RUST_SERVER_WORKER_MANAGEMENT.md"
+      ],
+      "localQualification": {
+        "base": "a689b9d966a5e14855609b6e21923569751516ce",
+        "platform": "macOS arm64",
+        "databaseModes": ["pglite", "postgres", "bundled-postgres"],
+        "profiles": ["development", "password", "accounts", "standalone"],
+        "pairedHTTP": 591,
+        "completePairedSQLComparisons": 519,
+        "actualCrossOwnerConstraintRejections": 24,
+        "actualUnlinkRollbackFailures": 24,
+        "concurrentUnlinkBatches": 24,
+        "realTenSecondDeadlines": 6,
+        "serverDatabaseReopensAfterWrites": 24,
+        "additionalRealQuotaHTTP": 1436,
+        "protocolComparisons": 5396,
+        "baseGraphGrowthComparisons": 16188,
+        "sourceAPITests": 5,
+        "rootCheck": "failed: unchanged Source1532/1500 and2334/1999 line budgets",
+        "boundaryAudit": "failed: unchanged Source protected desktopTarget accesses343/392",
+        "nativeWorkerRegressionTests": 14,
+        "responseCompletionTests": 8,
+        "sharedUnlinkTimestampAndUnchangedFieldTraces": 24,
+        "nativeFixtureSha256": "f7835689439fb778aa371922d51ed7b27cd7e0380af23ad7ea992e7d65c77331",
+        "strictAllTargetClippy": "passed",
+        "integratedCantripOsRestartRegressionTests": 1
+      },
+      "remaining": [
+        "Actual browser/full-worker supervisor restart, shared/mixed Redis consumers and current supported-platform/packaged acceptance remain required.",
+        "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and default cutover remain required for complete replacement."
       ]
     }
   },

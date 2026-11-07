@@ -7,6 +7,7 @@ const SURFACE: &str = include_str!("../../contracts/mcp-surface.json");
 const CLI: &str = include_str!("../../contracts/cli.json");
 const PROJECT_EXPORTS: &str = include_str!("../../contracts/project-exports.json");
 const ATTACHMENTS: &str = include_str!("../../contracts/chat-attachments.json");
+const WORKER_MANAGEMENT: &str = include_str!("../../contracts/worker-management.json");
 
 pub(super) fn load() -> Contracts {
     let mut contracts: Contracts = serde_json::from_str(BASE).expect("embedded protocol contracts");
@@ -16,6 +17,9 @@ pub(super) fn load() -> Contracts {
     contracts
         .append(serde_json::from_str(PROJECT_EXPORTS).expect("embedded project export contracts"));
     contracts.append(serde_json::from_str(ATTACHMENTS).expect("embedded attachment contracts"));
+    contracts.append(
+        serde_json::from_str(WORKER_MANAGEMENT).expect("embedded worker management contracts"),
+    );
     contracts.compile_patterns();
     contracts
 }
@@ -102,6 +106,10 @@ mod tests {
     fn attachment_contracts_survive_unrelated_base_graph_growth() -> Result<()> {
         source_contracts_survive_growth(ATTACHMENTS, "attachment")
     }
+    #[test]
+    fn worker_management_contracts_survive_unrelated_base_graph_growth() -> Result<()> {
+        source_contracts_survive_growth(WORKER_MANAGEMENT, "worker management")
+    }
 
     fn source_contracts_survive_growth(block: &str, label: &str) -> Result<()> {
         let base: Contracts = serde_json::from_str(BASE)?;
@@ -110,6 +118,18 @@ mod tests {
         let cli: Contracts = serde_json::from_str(CLI)?;
         let exports: Contracts = serde_json::from_str(PROJECT_EXPORTS)?;
         let attachments: Contracts = serde_json::from_str(ATTACHMENTS)?;
+        let management: Contracts = serde_json::from_str(WORKER_MANAGEMENT)?;
+        assert!(
+            management
+                .roots
+                .keys()
+                .all(|name| !base.roots.contains_key(name)
+                    && !run.roots.contains_key(name)
+                    && !surface.roots.contains_key(name)
+                    && !cli.roots.contains_key(name)
+                    && !exports.roots.contains_key(name)
+                    && !attachments.roots.contains_key(name))
+        );
         assert!(
             attachments
                 .roots
@@ -153,6 +173,7 @@ mod tests {
             graph.append(serde_json::from_str(CLI)?);
             graph.append(serde_json::from_str(PROJECT_EXPORTS)?);
             graph.append(serde_json::from_str(ATTACHMENTS)?);
+            graph.append(serde_json::from_str(WORKER_MANAGEMENT)?);
             graph.compile_patterns();
             graphs.push(graph);
         }
@@ -161,7 +182,14 @@ mod tests {
         let mut count = 0;
         for schema in schemas {
             let mut command = Command::new("node");
-            if label == "attachment" {
+            if label == "worker management" {
+                command.args([
+                    "--import",
+                    "tsx",
+                    "scripts/server-rust/worker-management-contract-oracle.mjs",
+                    schema,
+                ]);
+            } else if label == "attachment" {
                 command.args([
                     "--import",
                     "tsx",

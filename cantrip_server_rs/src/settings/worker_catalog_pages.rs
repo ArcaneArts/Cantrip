@@ -59,9 +59,9 @@ pub(super) async fn read(
                 None,
             )
             .await?;
-        if !result
+        if result
             .as_ref()
-            .is_some_and(|result| result.get("snapshotId").is_some())
+            .is_none_or(|result| result.get("snapshotId").is_none())
         {
             anyhow::ensure!(snapshot.is_none(), "Model catalog pagination disappeared.");
             let inventory = parse_response(
