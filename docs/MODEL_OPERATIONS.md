@@ -238,10 +238,57 @@ and are not executed again. The replay ledger is bounded to 10,000 operation IDs
 once full it refuses new operations instead of evicting replay protection. A new
 worker incarnation starts a fresh ledger and does not automatically replay work.
 
-The exported worker `embed()` is a standalone execution entry point. Integration
-with an already-admitted native turn still needs explicit dependent HTTP ownership:
-native process death alone cannot establish settlement of a separate HTTP request.
-Do not nest an independent acquisition while holding the same provider's ticket.
+### Worker calls inside a native preparation
+
+The worker exports `embed()` and `decide()` for authenticated canonical command
+callers. They normally acquire independent tickets. An already-admitted native
+owner can instead use `CodexInferenceExecution.prepareModelOperations()` while its
+input is still blocked and it has no native execution binding:
+
+```ts
+import { embed } from "./model-embedding.js";
+
+const vectors = await execution.prepareModelOperations(async (preparation) => {
+  return await embed({
+    admission,
+    route: resolvedEmbeddingRoute,
+    request: {
+      items: [
+        { id: "document-1", content: [{ type: "text", text: "Example" }] },
+      ],
+    },
+    preparation,
+  });
+});
+// Only after preparation returns may this owner dispatch its native input.
+```
+
+The context is an opaque worker-issued capability tied to this admission service
+and actual lease; wire IDs and UI status cannot grant borrowing authority. Native
+dispatch, native binding, and unused-reservation withdrawal cannot overlap the
+preparation. This API is not a way to borrow a ticket from a concurrently running
+native model call or an unrelated chat. The existing native-RPC `prepare()` API
+does not establish HTTP ownership and must not wrap independent HTTP work.
+
+A sequential same-provider decision can use the held reservation without another
+acquisition. Concurrent calls acquire their own tickets. Once a concurrent child
+exists, the borrowed HTTP callback finishes its actual teardown before the parent
+yields; at a limit of one, that yield lets the waiting child run. Cross-provider
+work yields an idle parent before queuing at the destination, avoiding a parent
+reservation held across a child wait. Each embedding batch yields, including a
+borrowed first batch; later batches rejoin FIFO independently. After all children
+finish, a live parent rejoins FIFO before native dispatch may continue.
+
+Await every `embed()`/`decide()` call within the structured callback, including all
+embedding batches. An escaped context rejects new work after that callback closes.
+Closure also joins already-admitted callbacks even if a caller catches a failure
+or returns early. A failed preparation cancels outstanding children; its caller
+may recover only after any live parent has reacquired permission. Parent source
+closure, cancellation, native-process retirement, and worker shutdown propagate
+cancellation and wait for real HTTP/body teardown. Native process death alone
+never releases capacity still used by its HTTP children. Callbacks must honor the
+provided signal and join their own resource cleanup; aborting a connection does
+not prove the remote provider stopped computing.
 
 ## Direct-operation usage
 
@@ -361,8 +408,8 @@ with operation-specific authenticated encryption context. Both servers and the
 worker share route resolution, cancellation and bounded replay handling with
 embeddings. Every standalone native HTTP request acquires the existing provider
 FIFO ticket and holds it until HTTP/body teardown settles. Timeout begins after
-admission. Native-turn ticket inheritance still requires the dependent-ownership
-integration described above.
+admission. Worker callers may use the explicit blocked-native preparation context
+described above for sequential reuse and structured child ownership.
 
 Contracts: [OpenAI Decisions](https://developers.openai.com/api/docs/guides/decisions),
 [Ollama System One](https://docs.ollama.com/api/systemone), and

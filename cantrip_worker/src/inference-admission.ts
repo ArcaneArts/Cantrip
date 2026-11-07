@@ -11,6 +11,11 @@ import {
 import type { NativeInferenceOwnership } from "./native-inference-ownership.js";
 import { UnstartedInferenceUnavailableError } from "./inference-withdrawal.js";
 import {
+  InferencePreparation,
+  type InferencePreparationContext,
+} from "./inference-preparation.js";
+export type { InferencePreparationContext } from "./inference-preparation.js";
+import {
   observeInferenceCommand,
   observeInferenceCommandAdmission,
 } from "./inference-command.js";
@@ -88,7 +93,12 @@ export interface InferenceRequest {
 export type DirectInferenceRequest = Omit<
   InferenceRequest,
   "lifetime" | "operationId" | "recoveryKey" | "recovery" | "initiallySuspended"
-> & { source: InferenceOperationSource };
+> & {
+  source: InferenceOperationSource;
+  preparation?: InferencePreparationContext;
+  /** Rejoin FIFO between large-job batches, including a borrowed first batch. */
+  yieldAfter?: boolean;
+};
 
 interface DirectRuntimeOwner {
   cancel(reason: Error): void;
@@ -226,6 +236,10 @@ interface Ticket {
   nativeBinding: Promise<void> | null;
   releaseReceipt: Promise<InferenceJournalRecord> | null;
   withdrawal: Promise<InferenceJournalRecord> | null;
+  externalWork: Set<Promise<void>>;
+  pendingSettlement: InferenceSettlement | null;
+  settlement: Promise<void>;
+  resolveSettlement(): void;
 }
 
 export interface InferenceDiagnostic {
@@ -342,6 +356,11 @@ function goalPreparationEpisode(
  * run only after FIFO reservations have been installed in the active set.
  */
 export class WorkerInferenceAdmission {
+  private readonly leaseTickets = new WeakMap<InferenceLease, Ticket>();
+  private readonly preparations = new WeakMap<
+    InferencePreparationContext,
+    InferencePreparation
+  >();
   private readonly pools = new Map<string, Pool>();
   private readonly runtimes = new Set<Runtime>();
   private readonly directExecutions = new WeakMap<
@@ -866,15 +885,21 @@ export class WorkerInferenceAdmission {
     return this.createOwnedRuntime();
   }
 
-  /** Run one independently admitted HTTP operation in the existing provider
-   * pool. The callback must join response/body teardown before it settles; an
-   * abort request alone never proves that the local operation has ended, nor
+  /** Run one HTTP operation in the existing provider pool, independently or
+   * through its explicit native preparation. The callback must join response/body
+   * teardown before it settles; an abort request alone never proves that the local operation has ended, nor
    * that a remote provider stopped computing. Redelivery of the same canonical
    * source joins its original result rather than executing the callback twice. */
   runDirect<T>(
     input: DirectInferenceRequest,
     execute: (signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
+    const preparation =
+      input.preparation && this.preparations.get(input.preparation);
+    if (input.preparation && !preparation)
+      return Promise.reject(
+        new Error("The preparation belongs to another inference owner."),
+      );
     const identity = JSON.stringify([
       input.source.operationId,
       input.providerId,
@@ -882,6 +907,8 @@ export class WorkerInferenceAdmission {
       input.purpose ?? "helper",
       input.chatId ?? null,
       input.projectId ?? null,
+      input.preparation?.id ?? null,
+      input.yieldAfter === true,
     ]);
     const previous = this.directExecutions.get(input.source);
     if (previous) {
@@ -893,9 +920,141 @@ export class WorkerInferenceAdmission {
         );
       return previous.result as Promise<T>;
     }
-    const result = this.executeDirect(input, execute);
+    const result = preparation
+      ? preparation.run(input, execute)
+      : this.executeDirect(input, execute);
     this.directExecutions.set(input.source, { identity, result });
     return result;
+  }
+
+  /** The native owner must block dispatch for the entire structured callback.
+   * This dependency survives native-process exit until real HTTP work settles. */
+  async withPreparation<T>(
+    lease: InferenceLease,
+    owner: { assertCurrent(): void; started(): void },
+    action: (context: InferencePreparationContext) => Promise<T>,
+  ): Promise<T> {
+    const ticket = this.leaseTickets.get(lease);
+    if (
+      !ticket ||
+      ticket.runtime.directOwner ||
+      ticket.externalWork.size ||
+      ticket.nativeExecution ||
+      !["granted", "running"].includes(ticket.state) ||
+      !ticket.permissionGranted
+    )
+      throw new Error(
+        "Model-operation preparation requires its actual unused native grant.",
+      );
+    const current = () => {
+      owner.assertCurrent();
+      lease.signal.throwIfAborted();
+      if (
+        ticket.pendingSettlement ||
+        ticket.runtime.retiring ||
+        ticket.runtime.retired ||
+        this.closing ||
+        ticket.state === "released" ||
+        ticket.state === "cancelling"
+      )
+        throw new Error(
+          "Model-operation preparation no longer owns its native reservation.",
+        );
+    };
+    current();
+    let finish!: () => void;
+    const dependency = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    let preparation: InferencePreparation | undefined;
+    let succeeded = false;
+    ticket.externalWork.add(dependency);
+    try {
+      preparation = new InferencePreparation({
+        providerId: ticket.input.providerId,
+        providerCreationRevision: ticket.input.providerCreationRevision,
+        signal: lease.signal,
+        assertCurrent: current,
+        borrow: (input, execute) =>
+          this.executeBorrowed(ticket, input, execute, owner.started),
+        independent: (input, execute) => this.executeDirect(input, execute),
+        yield: () => this.suspend(ticket, true),
+        resume: async () => {
+          await this.resume(ticket);
+          owner.started();
+        },
+      });
+      this.preparations.set(preparation.context, preparation);
+      const result = await action(preparation.context);
+      succeeded = true;
+      return result;
+    } finally {
+      try {
+        await preparation?.close(succeeded);
+        current();
+      } finally {
+        ticket.externalWork.delete(dependency);
+        finish();
+        if (ticket.pendingSettlement && !ticket.externalWork.size)
+          this.settle(ticket, ticket.pendingSettlement);
+      }
+    }
+  }
+
+  whenLeaseSettled(lease: InferenceLease): Promise<void> {
+    const ticket = this.leaseTickets.get(lease);
+    return ticket
+      ? ticket.settlement
+      : Promise.reject(
+          new Error("The lease belongs to another admission service."),
+        );
+  }
+
+  private async executeBorrowed<T>(
+    ticket: Ticket,
+    input: DirectInferenceRequest,
+    execute: (signal: AbortSignal) => Promise<T>,
+    started: () => void,
+  ): Promise<T> {
+    input.source.assertCurrent();
+    if (
+      ticket.nativeExecution ||
+      !ticket.externalWork.size ||
+      !["granted", "running"].includes(ticket.state) ||
+      ticket.input.providerId !== input.providerId ||
+      ticket.pendingSettlement
+    )
+      throw new Error(
+        "The HTTP operation cannot borrow this native reservation.",
+      );
+    const cancellation = new AbortController();
+    const signal = AbortSignal.any([
+      ticket.controller.signal,
+      cancellation.signal,
+      ...(input.signal ? [input.signal] : []),
+      ...(input.source.signal ? [input.source.signal] : []),
+    ]);
+    let finished = false;
+    const sourceEnded = () => {
+      if (!finished)
+        cancellation.abort(
+          new Error("The canonical direct inference source has ended."),
+        );
+    };
+    void input.source.released.then(sourceEnded, sourceEnded);
+    try {
+      signal.throwIfAborted();
+      input.source.assertCurrent();
+      if (ticket.state === "granted") {
+        this.start(ticket);
+        started();
+      }
+      const result = await execute(signal);
+      signal.throwIfAborted();
+      return result;
+    } finally {
+      finished = true;
+    }
   }
 
   private async executeDirect<T>(
@@ -1040,16 +1199,19 @@ export class WorkerInferenceAdmission {
               if (state.closed) return;
               state.closed = true;
               const ticket = state.ticket;
-              // Canonical ownership ended before any model request began.
-              // A running/suspended/resuming turn still needs real settlement.
+              // Direct children follow their parent's canonical closure. Their
+              // cancellation still retains capacity through real HTTP teardown.
+              // Running native work needs its separate settlement evidence.
               if (
-                ticket?.startedAt === null &&
-                (ticket.state === "waiting" || ticket.state === "granted")
+                ticket &&
+                (ticket.externalWork.size ||
+                  (ticket.startedAt === null &&
+                    (ticket.state === "waiting" || ticket.state === "granted")))
               )
                 this.cancel(
                   ticket,
                   new Error(
-                    "Canonical inference ownership ended before execution.",
+                    "Canonical inference ownership has ended.",
                   ),
                 );
             },
@@ -1274,6 +1436,10 @@ export class WorkerInferenceAdmission {
       resolveQueued = yes;
       rejectQueued = no;
     });
+    let resolveSettlement!: () => void;
+    const settlement = new Promise<void>((resolve) => {
+      resolveSettlement = resolve;
+    });
     void queued.catch(() => {});
     // Admission can be cancelled before its owner starts awaiting it.
     void ready.catch(() => {});
@@ -1317,6 +1483,10 @@ export class WorkerInferenceAdmission {
       nativeBinding: null,
       releaseReceipt: null,
       withdrawal: null,
+      externalWork: new Set(),
+      pendingSettlement: null,
+      settlement,
+      resolveSettlement,
       handle: {
         queued,
         get ready() {
@@ -1355,6 +1525,7 @@ export class WorkerInferenceAdmission {
         settle: (outcome) => this.settle(ticket, outcome),
       },
     };
+    this.leaseTickets.set(ticket.lease, ticket);
     runtime.records.set(input.operationId, ticket);
     lifetime.ticket = ticket;
     if (ticket.parkedWaiting) pool.suspended.add(ticket);
@@ -1446,6 +1617,10 @@ export class WorkerInferenceAdmission {
     ticket: Ticket,
     input: InferenceNativeExecution,
   ): Promise<void> {
+    if (ticket.externalWork.size)
+      throw new Error(
+        "Native inference cannot overlap its model-operation preparation.",
+      );
     if (ticket.runtime.directOwner)
       throw new Error("Direct HTTP inference cannot bind a native execution.");
     const execution = inferenceNativeExecutionSchema.parse(input);
@@ -1503,6 +1678,24 @@ export class WorkerInferenceAdmission {
     if (ticket.state === "released" || ticket.state === "cancelling") return;
     this.diagnose(ticket, "cancel-requested");
     const running = ticket.state === "running";
+    if (ticket.externalWork.size) {
+      ticket.pendingSettlement ??=
+        ticket.startedAt === null ? "never-started" : "interrupted";
+      // A suspended/queued parent owns no capacity, but its dependent HTTP still
+      // needs cancellation and teardown. Remove only its unused queue entry.
+      const index = ticket.pool.queue.indexOf(ticket);
+      if (index >= 0) ticket.pool.queue.splice(index, 1);
+      ticket.pool.suspended.delete(ticket);
+      this.transition(ticket, "cancelling");
+      // close() may already be awaiting the parent's FIFO reacquisition. The
+      // dependency cannot finish unless that actual pending permission rejects.
+      ticket.reject(reason);
+      ticket.controller.abort(reason);
+      ticket.observe?.(ticket.state);
+      this.drain(ticket.pool);
+      this.changed();
+      return;
+    }
     if (running) {
       // Reserve capacity until the execution owner confirms it has stopped.
       this.transition(ticket, "cancelling");
@@ -1537,6 +1730,7 @@ export class WorkerInferenceAdmission {
       !ticket.durableQueueReady ||
       !["waiting", "granted"].includes(ticket.state) ||
       ticket.startedAt !== null ||
+      ticket.externalWork.size ||
       ticket.controller.signal.aborted ||
       ticket.runtime.retired ||
       ticket.runtime.retiring ||
@@ -1601,6 +1795,7 @@ export class WorkerInferenceAdmission {
         !ticket.durableQueueReady ||
         !["waiting", "granted"].includes(ticket.state) ||
         ticket.startedAt !== null ||
+        ticket.externalWork.size ||
         ticket.nativeExecution ||
         ticket.controller.signal.aborted ||
         ticket.runtime.retired ||
@@ -1651,6 +1846,7 @@ export class WorkerInferenceAdmission {
       !ticket.journalKey ||
       !["waiting", "granted"].includes(ticket.state) ||
       ticket.startedAt !== null ||
+      ticket.externalWork.size ||
       (ticket.nativeExecution && !privateTaskGoal) ||
       ticket.recoveryPending ||
       (expectedQueueRevision !== undefined &&
@@ -1699,6 +1895,9 @@ export class WorkerInferenceAdmission {
   /** Waiting Core requests keep their pending permission. An outer input owner
    * can replace its unused grant before dispatch and commit no-start evidence. */
   private pauseWaiting(ticket: Ticket, unforwardedGrant = false): boolean {
+    // A preparation may have a granted but not-yet-started parent while an
+    // independently admitted child runs. Only that preparation may yield it.
+    if (ticket.externalWork.size) return false;
     if (ticket.parkedWaiting && ticket.state === "suspended") {
       if (ticket.parkedGrant) this.persistParkedGrant(ticket);
       return true;
@@ -1829,9 +2028,22 @@ export class WorkerInferenceAdmission {
     this.changed();
   }
 
-  private suspend(ticket: Ticket): void {
+  private suspend(ticket: Ticket, unusedPreparation = false): void {
+    if (ticket.externalWork.size && !unusedPreparation)
+      throw new Error(
+        "Native suspension cannot release a model-operation preparation's capacity.",
+      );
     if (ticket.state === "suspended") return;
-    if (ticket.state !== "running" && ticket.state !== "cancelling")
+    if (
+      ticket.state !== "running" &&
+      ticket.state !== "cancelling" &&
+      !(
+        unusedPreparation &&
+        ticket.externalWork.size &&
+        !ticket.nativeExecution &&
+        ticket.state === "granted"
+      )
+    )
       throw new Error(
         "Only a running inference can enter a native suspension boundary.",
       );
@@ -1875,6 +2087,16 @@ export class WorkerInferenceAdmission {
       throw new Error(
         "A started inference must be settled by its execution owner.",
       );
+    if (ticket.externalWork.size) {
+      ticket.pendingSettlement ??= outcome;
+      this.cancel(
+        ticket,
+        new Error(
+          "The native owner settled during model-operation preparation.",
+        ),
+      );
+      return;
+    }
     const waiting = ticket.state === "waiting";
     this.release(ticket, outcome);
     if (waiting)
@@ -1928,6 +2150,7 @@ export class WorkerInferenceAdmission {
     // retired sources cannot mint replacement owners from an evicted UUID.
     if (ticket.runtime.records.get(ticket.input.operationId) === ticket)
       ticket.runtime.records.delete(ticket.input.operationId);
+    ticket.resolveSettlement();
   }
 
   private async releaseGoalWithRetry(
@@ -2028,7 +2251,12 @@ export class WorkerInferenceAdmission {
     for (const pool of this.pools.values())
       pool.queue = pool.queue.filter((ticket) => ticket.runtime !== runtime);
     for (const ticket of runtime.records.values()) this.cancel(ticket);
-    const settled = () => {
+    const settled = async () => {
+      await Promise.all(
+        [...runtime.records.values()].flatMap((ticket) => [
+          ...ticket.externalWork,
+        ]),
+      );
       this.exited(runtime);
       resolve();
     };

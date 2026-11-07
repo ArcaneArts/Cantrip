@@ -21,7 +21,10 @@ import {
   inferenceCommandSignal,
   trackInferenceCommandOperation,
 } from "./inference-command.js";
-import type { WorkerInferenceAdmission } from "./inference-admission.js";
+import type {
+  InferencePreparationContext,
+  WorkerInferenceAdmission,
+} from "./inference-admission.js";
 import type { RuntimeProvider } from "./protected-secrets.js";
 import { ModelOperationError } from "./model-operation-error.js";
 
@@ -620,12 +623,12 @@ async function execute(
   );
 }
 
-/** Standalone native decisions. Native-turn reservation reuse is a separate
- * explicit ownership path; callers must not nest independent admission. */
+/** Native decisions, standalone or in an explicit blocked native preparation. */
 export async function decide(input: {
   request: DecisionInput;
   route: Route;
   admission: WorkerInferenceAdmission;
+  preparation?: InferencePreparationContext;
   signal?: AbortSignal;
   fetcher?: typeof fetch;
   usageCollector?: ModelOperationUsageCollector;
@@ -645,7 +648,7 @@ export async function decide(input: {
       route.provider.inferenceCatalogCreatedRevision,
   });
   const signal = AbortSignal.any(
-    [input.signal, inferenceCommandSignal()].filter(
+    [input.signal, input.preparation?.signal, inferenceCommandSignal()].filter(
       (value): value is AbortSignal => Boolean(value),
     ),
   );
@@ -664,6 +667,7 @@ export async function decide(input: {
         providerCreationRevision:
           route.provider.inferenceCatalogCreatedRevision,
         signal,
+        preparation: input.preparation,
       },
       (permission) =>
         execute(

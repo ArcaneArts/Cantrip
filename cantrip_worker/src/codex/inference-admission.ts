@@ -16,6 +16,7 @@ import type {
   InferenceOperationLifetime,
   InferenceOperationSource,
   InferenceTicket,
+  InferencePreparationContext,
   WorkerInferenceAdmission,
 } from "../inference-admission.js";
 import { trackInferenceCommandOperation } from "../inference-command.js";
@@ -72,6 +73,11 @@ export interface CodexInferenceExecution {
   prepare<T>(
     providerId: string,
     action: (scope: InferencePreparationScope) => Promise<T>,
+  ): Promise<T>;
+  /** Block native dispatch while direct embedding/decision work uses the actual
+   * reservation or independently joins provider FIFO. Joins all HTTP teardown. */
+  prepareModelOperations<T>(
+    action: (context: InferencePreparationContext) => Promise<T>,
   ): Promise<T>;
 }
 
@@ -568,6 +574,57 @@ export class CodexInferenceAdmission {
             operation,
             operation.leaseStarted ? "completed" : "never-started",
           );
+      },
+      prepareModelOperations: async (action) => {
+        for (;;) {
+          const permission = ticket.ready;
+          const lease = await permission;
+          lease.signal.throwIfAborted();
+          if (permission !== ticket.ready) continue;
+          const state = ticket.status().state;
+          if (
+            state !== "granted" &&
+            !(state === "running" && operation.leaseStarted)
+          )
+            throw new Error(
+              "Model-operation preparation no longer owns its inference grant.",
+            );
+          operation.lease = lease;
+          break;
+        }
+        const current = () => {
+          input.lifetime.assertCurrent();
+          if (
+            this.exited ||
+            operation.settled ||
+            operation.dispatched ||
+            operation.inputDispatching ||
+            operation.nativeBoundary
+          )
+            throw new Error(
+              "Native input is not blocked for model-operation preparation.",
+            );
+        };
+        current();
+        if (operation.preparing)
+          throw new Error(
+            "This native owner already has a preparation in progress.",
+          );
+        operation.preparing = true;
+        try {
+          return await this.admission.withPreparation(
+            operation.lease!,
+            {
+              assertCurrent: current,
+              started: () => {
+                operation.leaseStarted = true;
+              },
+            },
+            action,
+          );
+        } finally {
+          operation.preparing = false;
+        }
       },
       prepare: async (providerId, action) => {
         for (;;) {
@@ -1542,12 +1599,17 @@ export class CodexInferenceAdmission {
   ): void {
     if (operation.settled) return;
     operation.settled = true;
-    if (operation.lease) operation.lease.settle(outcome);
-    else
+    if (operation.lease) {
+      operation.lease.settle(outcome);
+      void this.admission
+        .whenLeaseSettled(operation.lease)
+        .then(operation.resolveSettlement);
+    } else {
       operation.ticket.cancel(
         new Error("Native execution settled before admission."),
       );
+      operation.resolveSettlement();
+    }
     this.operations.delete(operation);
-    operation.resolveSettlement();
   }
 }
