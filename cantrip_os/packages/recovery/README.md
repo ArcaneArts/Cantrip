@@ -206,9 +206,11 @@ exchange is recovered from actual process/directory identities without replay.
 Package removal releases interrupted reset maintenance before removing the helper
 and retains both workspace data and operation records.
 
-This is the guest administration foundation. Worker/Server reset admissions and
-product reset controls are a separate dependent checkpoint; the existing Cantrip
-backup controls continue to use the unchanged version-1 operations.
+Worker/Server reset admissions and the
+[product reset controls](../../PRODUCT_WORKFLOW.md#reset-workspace-state) build on
+this guest administration boundary. In Project Settings → CantripOS, choose
+**Private backups and recovery → Reset workspace state**, review explicit paths
+or the entire home, and confirm. Capture/restore retain their version-1 records.
 
 ## Package upgrade and external repair
 
@@ -221,7 +223,9 @@ observation without replay. Version 0.5.0 adds actual identity/boot probing,
 owner-pinned version 2 requests and durable pre-start abandonment. External
 Worker jobs supply verified artifact snapshots and private encrypted outcomes
 without requiring a live executor. Both Servers now retain authorized package
-admissions, history and protected results; client controls follow separately.
+admissions, history and protected results. Project Settings → CantripOS →
+**Cantrip integration packages** supplies build selection, update/repair review,
+saved-request recovery and private receipts.
 See [package recovery](../../PACKAGE_RECOVERY.md).
 
 ## Interruption and removal

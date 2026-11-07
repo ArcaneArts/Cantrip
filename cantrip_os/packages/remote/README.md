@@ -1,6 +1,6 @@
 # Optional native desktop package
 
-`cantrip-os-remote` 0.10.0 supplies the Linux X11 `cantrip-cua` helper and a
+`cantrip-os-remote` 0.11.0 supplies the Linux X11 `cantrip-cua` helper and a
 workspace-bound protected stdio carrier. It depends on the existing workspace
 and executor packages. Removing it leaves those packages, ordinary desktops,
 and workspace files available. No Worker, conversation database, scheduler,
