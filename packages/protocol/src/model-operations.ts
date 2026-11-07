@@ -64,6 +64,7 @@ export function modelAdapterSupportsOperation(
 const positive = z.number().int().positive();
 const modalities = z.array(z.string().trim().min(1).max(80)).max(32);
 const operationCapabilitySchema = z.object({
+  modelRevision: z.string().trim().min(1).max(1000).nullable().optional(),
   status: z.enum(["supported", "unsupported", "unknown"]),
   adapter: modelOperationAdapterSchema.nullable().optional(),
   inputModalities: modalities.nullable().optional(),

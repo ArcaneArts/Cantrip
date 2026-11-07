@@ -73,7 +73,7 @@ pub fn normalize_model(model: &Value) -> Value {
     } else {
         json!({
             "language": {"status":status("completion"),"source":"ollama","inputModalities":if has("vision") {json!(["text","image"])} else {json!(["text"])}},
-            "embedding": {"status":status("embedding"),"source":"ollama","adapter":"ollama-embed","inputModalities":["text"]},
+            "embedding": {"status":status("embedding"),"source":"ollama","adapter":"ollama-embed","inputModalities":["text"],"modelRevision":model["digest"]},
             "decision": {"status":status("decision"),"source":"ollama","adapter":"system-one","inputModalities":if has("vision") {json!(["text","image","json"])} else {json!(["text","json"])},"questionTypes":["predicate","choice","score"]}
         })
     };

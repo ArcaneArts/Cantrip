@@ -29,6 +29,54 @@ fn options_json(value: &WireValue) -> Result<Value> {
     serde_json::from_str(&value.stringify()).context("validated operation options")
 }
 impl SettingsRepository {
+    pub async fn get_model_operation_route(
+        &self,
+        owner: &str,
+        operation: &str,
+        model: &str,
+        worker: &str,
+        route: Option<&str>,
+    ) -> Result<Option<Value>> {
+        let rows = self.json_rows("SELECT jsonb_build_object('route',to_jsonb(r),'provider',to_jsonb(p),'catalog',to_jsonb(c)) FROM model_profiles m INNER JOIN model_routes r ON r.model_id=m.id INNER JOIN model_providers p ON p.id=r.provider_id AND p.owner_id=$1 LEFT JOIN provider_models c ON c.provider_id=r.provider_id AND (c.id=r.provider_model_id OR (r.provider_model_id IS NULL AND c.native_model_id=r.model_name)) WHERE m.owner_id=$1 AND m.operation=$2 AND m.id=$3 AND r.enabled=true AND ($4::text IS NULL OR r.id=$4) ORDER BY r.position ASC LIMIT 1", &[&owner,&operation,&model,&route]).await?;
+        let Some(row) = rows.first() else {
+            return Ok(None);
+        };
+        let (route, provider, catalog) = (&row["route"], &row["provider"], &row["catalog"]);
+        let observations = if let Some(id) = catalog["id"].as_str() {
+            self.json_rows("SELECT to_jsonb(a) FROM provider_model_availability a WHERE provider_model_id=$1 ORDER BY (worker_id=$2) DESC NULLS LAST,updated_at DESC", &[&id,&worker]).await?
+        } else {
+            Vec::new()
+        };
+        let scoped = observations
+            .iter()
+            .find(|value| value["worker_id"].is_null() || value["worker_id"] == worker);
+        let capabilities = scoped
+            .map(|value| value["operation_capabilities"].clone())
+            .filter(|value| !value.is_null())
+            .unwrap_or_else(|| {
+                if observations
+                    .iter()
+                    .any(|value| !value["worker_id"].is_null())
+                {
+                    json!({})
+                } else {
+                    catalog
+                        .get("operation_capabilities")
+                        .filter(|value| !value.is_null())
+                        .cloned()
+                        .unwrap_or(json!({}))
+                }
+            });
+        Ok(Some(
+            json!({"modelId":model,"routeId":route["id"],"modelName":route["model_name"],
+            "adapter":route["operation_adapter"],"options":route["operation_options"],"capabilities":capabilities,"observedRevision":capabilities["embedding"]["modelRevision"],
+            "provider":{"id":provider["id"],"name":provider["name"],"kind":provider["kind"],"baseUrl":provider["base_url"],
+                "protectedApiKey":provider["protected_api_key"],"accountId":null,"credentialHomeKey":null,
+                "maxConcurrentInference":provider["max_concurrent_inference"],"inferenceConfigRevision":provider["inference_config_revision"],
+                "inferenceCatalogCreatedRevision":provider["inference_catalog_created_revision"]}}),
+        ))
+    }
+
     pub async fn get_model_reasoning_default(
         &self,
         owner: &str,

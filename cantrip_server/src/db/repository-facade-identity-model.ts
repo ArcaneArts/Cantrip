@@ -12,6 +12,7 @@ import type {
   EncryptedModelProviderCreate,
   EncryptedModelProviderUpdate,
   ModelProfileCreate,
+  ModelOperationRoute,
   ModelProfileSummary,
   ModelProfileUpdate,
   ModelProviderAccountWireSummary,
@@ -709,6 +710,22 @@ export abstract class IdentityModelRepositoryFacade {
       routeId,
       includeDisabled,
       providerId,
+    );
+  }
+
+  async getModelOperationRoute(
+    ownerId: string,
+    operation: "embedding" | "decision",
+    modelId: string,
+    workerId: string,
+    routeId?: string,
+  ): Promise<ModelOperationRoute | null> {
+    return this.models.getModelOperationRoute(
+      ownerId,
+      operation,
+      modelId,
+      workerId,
+      routeId,
     );
   }
 

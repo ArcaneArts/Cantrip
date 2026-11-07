@@ -339,6 +339,7 @@ import { RemoteSurfaceWorkerLinkAdapter } from "./remote-surface-worker-link-ada
 import { WorkerObservationHub } from "./worker-observation-worker-link-adapter.js";
 import { LocalNativeInferenceOwnership } from "./native-inference-ownership.js";
 import { WorkerInferenceAdmission } from "./inference-admission.js";
+import { ModelEmbeddingCommands } from "./commands/model-embedding.js";
 import { CodexRpcObservationError } from "./codex/rpc-protocol.js";
 import {
   withInferenceCommand,
@@ -4273,6 +4274,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
 
   // Provider decryption and the protected repository operation dispatcher stay
   // here with native runtime ownership. Feature handlers receive only their ports.
+  const modelEmbeddingCommands = new ModelEmbeddingCommands({
+    scope: () => nativeNamespaceScope(),
+    service: workerEncryption,
+    admission: inferenceAdmissionForWorker,
+  });
   const managedGoalRecoveries = new Map<
     string,
     Promise<NativeGoalRecoveryReceipt>
@@ -4306,6 +4312,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       return runtimeProvider;
     };
     switch (command.type) {
+      case "model.embedding":
+        return modelEmbeddingCommands.execute(command);
+      case "model.operation.cancel":
+        return modelEmbeddingCommands.cancel(command);
       case "inference.status":
         return inferenceAdmissionForWorker().snapshot();
       case "inference.task-revoke": {

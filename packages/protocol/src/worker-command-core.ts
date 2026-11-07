@@ -4,6 +4,10 @@ import {
   providerInferenceRevisionSchema,
 } from "./inference-admission.js";
 import { endpointProviderKinds } from "./provider-definitions.js";
+import {
+  modelEmbeddingCommandSchema,
+  modelOperationCancelCommandSchema,
+} from "./model-embedding.js";
 import { taskInferenceInputReceiptSchema } from "./task-inference-input.js";
 import {
   directCapabilityPrepareCommandSchema,
@@ -52,6 +56,8 @@ import {
 } from "./workspace-repository-discovery.js";
 
 export const workerCoreCommandSchemas = [
+  modelEmbeddingCommandSchema,
+  modelOperationCancelCommandSchema,
   z.object({ type: z.literal("inference.status") }).strict(),
   z
     .object({
