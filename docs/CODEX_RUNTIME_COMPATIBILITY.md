@@ -34,7 +34,8 @@ polling or repeatedly launching the worker. The phase comes from the model
 resolver's explicit missing-selection result, not a separate readiness gate.
 Provider-route and native runtime failures retain their normal failure states.
 
-All 43 existing Cantrip source patches are rebased onto this tag. Patch `0045`
+The original 43 Cantrip source patches were rebased onto this tag; the reviewed
+series has continued to grow since that upgrade. Patch `0045`
 adapts the new native interfaces and regenerates both
 stable and experimental protocol exports. Recipe 6 packages the new standalone
 executor alongside the CLI, code-mode host, and responses proxy. Canonical
@@ -67,6 +68,15 @@ the sandboxed Rusty V8 archive and binding from OpenAI's official versioned
 Codex dependency release, verifies their published SHA-256 values, and passes
 them to Cargo. The ordered patch-set hash is part of the runtime manifest and
 invalidates cached binaries.
+
+Keeping the imported snapshot pristine preserves the patch-based upgrade
+workflow. It does not establish compatibility with a newer upstream release.
+Changes to native turn execution, extensions, resources, and protocol internals
+must be ported and tested against the actual destination version. Durable pause
+has not yet been qualified on a newer upstream than this pin. The private Task
+Goal recovery integration reuses the current native checkpoint contract and adds
+no native patch; its Goal worker continuation is version 2 inside the existing
+version 3 Task-protected source registry.
 
 ## Startup negotiation
 

@@ -9,7 +9,7 @@ import { suspensionChat } from "./durable-suspension-browser.mjs";
 import { qualifyTaskRestoreRetry } from "./task-suspension-retry.mjs";
 import { qualifyTaskSuspensionStop } from "./task-suspension-stop.mjs";
 
-async function nativeEvents(workerData, threadId) {
+async function nativeHistory(workerData, threadId) {
   const files = [];
   for await (const file of glob("**/rollout-*.jsonl", { cwd: workerData }))
     if (path.basename(file).includes(threadId))
@@ -18,7 +18,10 @@ async function nativeEvents(workerData, threadId) {
   return (await readFile(files[0], "utf8"))
     .trim()
     .split("\n")
-    .map((line) => JSON.parse(line))
+    .map((line) => JSON.parse(line));
+}
+async function nativeEvents(workerData, threadId) {
+  return (await nativeHistory(workerData, threadId))
     .filter((row) => row.type === "event_msg")
     .map((row) => row.payload);
 }
@@ -276,12 +279,33 @@ export async function qualifyTaskGoalSuspension({
       entry.name === "update_goal" || entry.name.endsWith("__update_goal"),
   );
   assert.ok(finishGoal, "The actual Goal advertises its completion control");
-  const completedWork = model.reply({ text: "DURABLE_GOAL_WORK_ACCOUNTED", hold: true });
-  continued.calls = [{ ...command, arguments: { cmd: "printf 'DURABLE_GOAL_RESUMED_RESULT\\n'", yield_time_ms: 1000, max_output_tokens: 1000 } }];
+  const completedWork = model.reply({
+    text: "DURABLE_GOAL_WORK_ACCOUNTED",
+    hold: true,
+  });
+  continued.calls = [
+    {
+      ...command,
+      arguments: {
+        cmd: "printf 'DURABLE_GOAL_RESUMED_RESULT\\n'",
+        yield_time_ms: 1000,
+        max_output_tokens: 1000,
+      },
+    },
+  ];
   continued.release();
-  await eventually(() => completedWork.entered, (value) => assert.equal(value, true));
-  assert.ok(completedWork.request.input.input.some((item) => item.type === "function_call_output" &&
-    String(item.output).includes("DURABLE_GOAL_RESUMED_RESULT") && String(item.output).includes("Process exited with code 0")));
+  await eventually(
+    () => completedWork.entered,
+    (value) => assert.equal(value, true),
+  );
+  assert.ok(
+    completedWork.request.input.input.some(
+      (item) =>
+        item.type === "function_call_output" &&
+        String(item.output).includes("DURABLE_GOAL_RESUMED_RESULT") &&
+        String(item.output).includes("Process exited with code 0"),
+    ),
+  );
   evidence.accountedGoal = await readGoal();
   const completedWorkTokens = 240 + rounds * 120;
   assert.equal(evidence.accountedGoal.goal.tokensUsed, completedWorkTokens);
@@ -301,7 +325,9 @@ export async function qualifyTaskGoalSuspension({
   // usage event. Compare the fully accounted work at the held boundary above;
   // the final control response may contribute its own additional 120 tokens.
   assert.ok(evidence.completedGoal.goal.tokensUsed >= completedWorkTokens);
-  assert.ok(evidence.completedGoal.goal.tokensUsed <= completedWorkTokens + 120);
+  assert.ok(
+    evidence.completedGoal.goal.tokensUsed <= completedWorkTokens + 120,
+  );
   assert.equal(
     evidence.completedTask.planningRound,
     evidence.beforePause.task.planningRound,
@@ -315,7 +341,42 @@ export async function qualifyTaskGoalSuspension({
     evidence.beforePause.task.dispatch.attemptCount,
   );
   assert.equal(inferences(), 6 + rounds);
-  const events = await nativeEvents(workerData, native.threadId);
+  const history = await nativeHistory(workerData, native.threadId);
+  const userInputs = history.filter(
+    (row) =>
+      row.type === "response_item" &&
+      row.payload.type === "message" &&
+      row.payload.role === "user" &&
+      row.metadata?.retained_source?.id?.turn_id === native.turnId,
+  );
+  assert.equal(
+    userInputs.length,
+    1,
+    "The original Goal input appears once across cold recovery",
+  );
+  assert.ok(
+    JSON.stringify(userInputs[0].payload).includes(
+      "DURABLE_TASK_GOAL_OBJECTIVE",
+    ),
+  );
+  const events = history
+    .filter((row) => row.type === "event_msg")
+    .map((row) => row.payload);
+  const allCommands = events.filter(
+    (event) =>
+      event.type === "item_completed" &&
+      event.turn_id === native.turnId &&
+      event.item.type === "CommandExecution",
+  );
+  assert.equal(
+    allCommands.length,
+    rounds + 2,
+    "Every original, held-boundary and resumed command completes once",
+  );
+  assert.equal(
+    new Set(allCommands.map((event) => event.item.id)).size,
+    allCommands.length,
+  );
   const completedCommands = events.filter(
     (event) =>
       event.type === "item_completed" &&
