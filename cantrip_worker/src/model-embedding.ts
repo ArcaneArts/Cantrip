@@ -27,6 +27,11 @@ import {
   embeddingResponseRoot,
   object,
 } from "./model-embedding-formats.js";
+import {
+  observeModelOperationRequest,
+  reportedModelOperationUsage,
+  type ModelOperationUsageCollector,
+} from "./model-operation-usage.js";
 export { ModelOperationError } from "./model-operation-error.js";
 
 type Route = Omit<ModelOperationRoute, "provider"> & {
@@ -74,6 +79,7 @@ async function requestBatch(
   items: EmbeddingInput["items"],
   signal: AbortSignal,
   fetcher: typeof fetch,
+  usageCollector?: ModelOperationUsageCollector,
 ) {
   const request = payload(route, options, items);
   const body = JSON.stringify(request.body);
@@ -82,136 +88,143 @@ async function requestBatch(
       "invalid-request",
       "The embedding batch exceeds the 4 MiB request limit.",
     );
-  let response: Response;
-  try {
-    response = await fetcher(request.url, {
-      method: "POST",
-      redirect: "error",
-      signal,
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json",
-        ...(route.provider.apiKey
-          ? { authorization: `Bearer ${route.provider.apiKey}` }
-          : {}),
-      },
-      body,
-    });
-  } catch {
-    if (signal.aborted) aborted(signal);
-    throw new ModelOperationError(
-      "provider-error",
-      "The embedding provider request failed.",
-    );
-  }
-  const reader = response.body?.getReader();
-  const chunks: Uint8Array[] = [];
-  try {
-    if (!response.ok)
-      throw new ModelOperationError(
-        "provider-error",
-        `The embedding provider returned HTTP ${response.status}.`,
-        response.status,
-      );
-    if (!reader) invalidResponse();
-    let bytes = 0;
-    while (true) {
-      const part = await reader.read();
-      if (part.done) break;
-      bytes += part.value.length;
-      if (bytes > MAX_BYTES)
+  return observeModelOperationRequest(
+    usageCollector,
+    signal,
+    async (report) => {
+      let response: Response;
+      try {
+        response = await fetcher(request.url, {
+          method: "POST",
+          redirect: "error",
+          signal,
+          headers: {
+            "content-type": "application/json",
+            accept: "application/json",
+            ...(route.provider.apiKey
+              ? { authorization: `Bearer ${route.provider.apiKey}` }
+              : {}),
+          },
+          body,
+        });
+      } catch {
+        if (signal.aborted) aborted(signal);
         throw new ModelOperationError(
-          "invalid-response",
-          "The embedding response exceeded 4 MiB.",
+          "provider-error",
+          "The embedding provider request failed.",
         );
-      chunks.push(part.value);
-    }
-    signal.throwIfAborted();
-    let parsed: unknown;
-    const combined = Buffer.concat(chunks);
-    try {
-      parsed = JSON.parse(combined.toString("utf8"));
-    } catch {
-      invalidResponse();
-    } finally {
-      combined.fill(0);
-      for (const chunk of chunks) chunk.fill(0);
-    }
-    const raw = embeddingResponseRoot(parsed, request.adapter);
-    const vectors = parseEmbeddingBatch(
-      parsed,
-      request.adapter,
-      options,
-      items.length,
-    );
-    const dimensions = embeddingDimensions(vectors[0]!);
-    const usage = object(raw.usage);
-    const count = (value: unknown): number | null => {
-      if (value === undefined || value === null) return null;
-      if (
-        typeof value !== "number" ||
-        !Number.isSafeInteger(value) ||
-        value < 0
-      )
+      }
+      const reader = response.body?.getReader();
+      const chunks: Uint8Array[] = [];
+      try {
+        if (!response.ok)
+          throw new ModelOperationError(
+            "provider-error",
+            `The embedding provider returned HTTP ${response.status}.`,
+            response.status,
+          );
+        if (!reader) invalidResponse();
+        let bytes = 0;
+        while (true) {
+          const part = await reader.read();
+          if (part.done) break;
+          bytes += part.value.length;
+          if (bytes > MAX_BYTES)
+            throw new ModelOperationError(
+              "invalid-response",
+              "The embedding response exceeded 4 MiB.",
+            );
+          chunks.push(part.value);
+        }
+        signal.throwIfAborted();
+        let parsed: unknown;
+        const combined = Buffer.concat(chunks);
+        try {
+          parsed = JSON.parse(combined.toString("utf8"));
+        } catch {
+          invalidResponse();
+        } finally {
+          combined.fill(0);
+          for (const chunk of chunks) chunk.fill(0);
+        }
+        const raw = embeddingResponseRoot(parsed, request.adapter);
+        report(reportedModelOperationUsage(raw, "embedding"));
+        const vectors = parseEmbeddingBatch(
+          parsed,
+          request.adapter,
+          options,
+          items.length,
+        );
+        const dimensions = embeddingDimensions(vectors[0]!);
+        const usage = object(raw.usage);
+        const count = (value: unknown): number | null => {
+          if (value === undefined || value === null) return null;
+          if (
+            typeof value !== "number" ||
+            !Number.isSafeInteger(value) ||
+            value < 0
+          )
+            invalidResponse();
+          return value;
+        };
+        const {
+          input: _input,
+          inputs: _inputs,
+          messages: _messages,
+          images: _images,
+          texts: _texts,
+          data: plugin,
+          ...configuration
+        } = request.body;
+        const { input: _pluginInput, ...pluginOptions } = object(plugin);
+        const inputFormat = ["vllm-embeddings", "vllm-pooling"].includes(
+          request.adapter,
+        )
+          ? Array.isArray(request.body.messages)
+            ? ("chat" as const)
+            : ("text" as const)
+          : undefined;
+        return {
+          vectors,
+          dimensions,
+          inputFormat,
+          configuration: {
+            ...configuration,
+            ...(plugin ? { data: pluginOptions } : {}),
+            endpoint: request.url,
+            adapter: request.adapter,
+            ...(inputFormat
+              ? {
+                  inputFormat,
+                  messageRole: Array.isArray(request.body.messages)
+                    ? object(request.body.messages[0]).role
+                    : null,
+                }
+              : {}),
+          },
+          actualModel:
+            typeof raw.model === "string" && raw.model ? raw.model : null,
+          inputTokens: count(
+            usage.prompt_tokens ??
+              usage.input_tokens ??
+              raw.prompt_eval_count ??
+              object(object(raw.meta).billed_units).input_tokens,
+          ),
+          totalTokens: count(usage.total_tokens ?? raw.prompt_eval_count),
+        };
+      } catch (error) {
+        if (signal.aborted) aborted(signal);
+        if (error instanceof ModelOperationError) throw error;
         invalidResponse();
-      return value;
-    };
-    const {
-      input: _input,
-      inputs: _inputs,
-      messages: _messages,
-      images: _images,
-      texts: _texts,
-      data: plugin,
-      ...configuration
-    } = request.body;
-    const { input: _pluginInput, ...pluginOptions } = object(plugin);
-    const inputFormat = ["vllm-embeddings", "vllm-pooling"].includes(
-      request.adapter,
-    )
-      ? Array.isArray(request.body.messages)
-        ? ("chat" as const)
-        : ("text" as const)
-      : undefined;
-    return {
-      vectors,
-      dimensions,
-      inputFormat,
-      configuration: {
-        ...configuration,
-        ...(plugin ? { data: pluginOptions } : {}),
-        endpoint: request.url,
-        adapter: request.adapter,
-        ...(inputFormat
-          ? {
-              inputFormat,
-              messageRole: Array.isArray(request.body.messages)
-                ? object(request.body.messages[0]).role
-                : null,
-            }
-          : {}),
-      },
-      actualModel:
-        typeof raw.model === "string" && raw.model ? raw.model : null,
-      inputTokens: count(
-        usage.prompt_tokens ??
-          usage.input_tokens ??
-          raw.prompt_eval_count ??
-          object(object(raw.meta).billed_units).input_tokens,
-      ),
-      totalTokens: count(usage.total_tokens ?? raw.prompt_eval_count),
-    };
-  } catch (error) {
-    if (signal.aborted) aborted(signal);
-    if (error instanceof ModelOperationError) throw error;
-    invalidResponse();
-  } finally {
-    for (const chunk of chunks) chunk.fill(0);
-    if (reader) {
-      await reader.cancel().catch(() => {});
-      reader.releaseLock();
-    }
-  }
+      } finally {
+        for (const chunk of chunks) chunk.fill(0);
+        if (reader) {
+          await reader.cancel().catch(() => {});
+          reader.releaseLock();
+        }
+      }
+    },
+  );
 }
 
 /** Standalone embedding execution with one independently admitted batch at a time.
@@ -222,6 +235,7 @@ export async function embed(input: {
   admission: WorkerInferenceAdmission;
   signal?: AbortSignal;
   fetcher?: typeof fetch;
+  usageCollector?: ModelOperationUsageCollector;
 }): Promise<EmbeddingResult> {
   const request = embeddingInputSchema.parse(input.request);
   const { route, admission } = input;
@@ -297,6 +311,7 @@ export async function embed(input: {
           AbortSignal.timeout(options.timeoutMs ?? 120000),
         ]),
         input.fetcher ?? globalThis.fetch,
+        input.usageCollector,
       );
     const source = claimInferenceCommandSource(signal);
     if (!source)

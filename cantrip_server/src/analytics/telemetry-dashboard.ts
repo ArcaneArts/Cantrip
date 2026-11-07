@@ -2,10 +2,15 @@ import type {
   DetailedTokenUsageTotals,
   ModelBehaviorSummary,
 } from "@cantrip/protocol";
+import {
+  observedModelTokenTotal,
+  type ModelOperationUsageEvidence,
+} from "@cantrip/protocol";
 
 import { quotaValueStatistics } from "./quota-token.js";
 
 export interface TelemetryTokenRow {
+  modelOperationUsage?: ModelOperationUsageEvidence | null;
   inputTokens: number;
   cachedInputTokens: number;
   cacheWriteInputTokens: number;
@@ -54,7 +59,9 @@ export function sumDetailedTokenUsage(
       outputTokens: total.outputTokens + row.outputTokens,
       reasoningOutputTokens:
         total.reasoningOutputTokens + row.reasoningOutputTokens,
-      totalTokens: total.totalTokens + row.inputTokens + row.outputTokens,
+      totalTokens: row.modelOperationUsage?.receipt
+        ? total.totalTokens + observedModelTokenTotal(row)
+        : total.totalTokens + row.inputTokens + row.outputTokens,
     }),
     { ...EMPTY_DETAILED_TOKEN_USAGE },
   );

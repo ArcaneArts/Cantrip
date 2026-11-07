@@ -4690,6 +4690,9 @@ export const tokenUsageRecords = pgTable(
       .$type<string[]>()
       .notNull()
       .default([]),
+    modelOperationUsage: jsonb("model_operation_usage").$type<
+      import("@cantrip/protocol").ModelOperationUsageEvidence
+    >(),
     nativeUsage:
       jsonb("native_usage").$type<
         import("@cantrip/protocol").NativeHistoryUsage

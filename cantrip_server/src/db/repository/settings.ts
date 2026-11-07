@@ -20,6 +20,7 @@ import {
 import { toProviderAccountSummary } from "./provider-accounts.js";
 import { toProviderSummary } from "./provider-catalog.js";
 import { tokenUsageTotals, type AgentTimeAnalytics } from "./telemetry.js";
+import { observedTokenTotalSql } from "./model-operation-usage.js";
 
 export const DEFAULT_OLLAMA_PROVIDER_ID =
   "00000000-0000-0000-0000-000000000010";
@@ -203,6 +204,10 @@ export class SettingsRepository {
       this.database
         .select({
           id: schema.tokenUsageRecords.providerId,
+          totalTokens:
+            sql<number>`coalesce(sum(${observedTokenTotalSql}), 0)`.mapWith(
+              Number,
+            ),
           inputTokens:
             sql<number>`coalesce(sum(${schema.tokenUsageRecords.inputTokens}), 0)`.mapWith(
               Number,
@@ -218,6 +223,10 @@ export class SettingsRepository {
       this.database
         .select({
           id: schema.tokenUsageRecords.modelId,
+          totalTokens:
+            sql<number>`coalesce(sum(${observedTokenTotalSql}), 0)`.mapWith(
+              Number,
+            ),
           inputTokens:
             sql<number>`coalesce(sum(${schema.tokenUsageRecords.inputTokens}), 0)`.mapWith(
               Number,
@@ -235,14 +244,32 @@ export class SettingsRepository {
     const providerUsage = new Map(
       providerUsageRows.flatMap((row) =>
         row.id
-          ? [[row.id, tokenUsageTotals(row.inputTokens, row.outputTokens)]]
+          ? [
+              [
+                row.id,
+                tokenUsageTotals(
+                  row.inputTokens,
+                  row.outputTokens,
+                  row.totalTokens,
+                ),
+              ],
+            ]
           : [],
       ),
     );
     const modelUsage = new Map(
       modelUsageRows.flatMap((row) =>
         row.id
-          ? [[row.id, tokenUsageTotals(row.inputTokens, row.outputTokens)]]
+          ? [
+              [
+                row.id,
+                tokenUsageTotals(
+                  row.inputTokens,
+                  row.outputTokens,
+                  row.totalTokens,
+                ),
+              ],
+            ]
           : [],
       ),
     );

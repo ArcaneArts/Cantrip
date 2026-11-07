@@ -16,6 +16,7 @@ pub mod enrichment;
 pub mod grok;
 pub mod lifecycle;
 mod mcp_servers;
+pub(crate) mod model_operation_usage;
 mod models;
 pub mod native_inventory;
 pub mod ollama;

@@ -820,6 +820,9 @@ export const contractRoots = [
   "externalChatAttachmentReadResultSchema",
   "externalChatDiscoveryWorkerResultSchema",
   "projectExternalChatDiscoverySchema",
+  "modelOperationUsageSchema",
+  "modelOperationUsageIdentitySchema",
+  "modelOperationUsageEvidenceSchema",
 ];
 
 export const projectExportContractRoots = [

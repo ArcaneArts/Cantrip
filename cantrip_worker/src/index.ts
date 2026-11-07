@@ -4280,6 +4280,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     scope: () => nativeNamespaceScope(),
     service: workerEncryption,
     admission: inferenceAdmissionForWorker,
+    workerVersion: cantripVersion.version,
   });
   const managedGoalRecoveries = new Map<
     string,
@@ -4292,6 +4293,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const handleCommand = async (
     command: WorkerCommand,
     emit: (event: WorkerEvent) => void,
+    collectModelOperationUsage = false,
   ): Promise<unknown> => {
     const protectedRuntimeProvider =
       command.type === "chat.interrupt"
@@ -4316,7 +4318,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     switch (command.type) {
       case "model.embedding":
       case "model.decision":
-        return modelOperationCommands.execute(command);
+        return modelOperationCommands.execute(
+          command,
+          collectModelOperationUsage,
+        );
       case "model.operation.cancel":
         return modelOperationCommands.cancel(command);
       case "inference.status":
@@ -8911,7 +8916,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               signal?.throwIfAborted();
               const resolved = await routingRegistry.resolveCommand(command);
               signal?.throwIfAborted();
-              return handleCommand(resolved, emit);
+              return handleCommand(
+                resolved,
+                emit,
+                context.modelOperationUsage === true,
+              );
             },
             context.inferenceAdmissionAck === true,
             context.inferenceOperationIdentity,

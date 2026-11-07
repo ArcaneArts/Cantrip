@@ -149,6 +149,9 @@ impl SettingsRepository {
                 if !row["native_usage"].is_null() {
                     result["nativeUsage"] = row["native_usage"].clone();
                 }
+                if !row["model_operation_usage"].is_null() {
+                    result["modelOperationUsage"] = row["model_operation_usage"].clone();
+                }
                 Ok(result)
             })
             .collect::<Result<Vec<_>>>()?;

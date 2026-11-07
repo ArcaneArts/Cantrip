@@ -39,6 +39,38 @@ impl Drop for CancelOnDrop {
         }
     }
 }
+fn report_usage(
+    service: &Arc<AuthService>,
+    owner: &str,
+    identity: &Value,
+    status: &str,
+    raw_receipt: Option<&Value>,
+) {
+    let receipt = raw_receipt
+        .and_then(|value| settings::parse_response("modelOperationUsageSchema", Some(value)).ok())
+        .filter(|receipt| settings::model_operation_usage::receipt_fits(receipt, identity));
+    let input = json!({"identity":identity,"transportStatus":status,"receipt":receipt});
+    let repository = SettingsRepository::new(service.repository.database.clone());
+    let jobs = service.scratch_roots.clone();
+    let owner = owner.to_owned();
+    tokio::spawn(async move {
+        // Reporting is tracked during shutdown but never gates inference or its
+        // protected response. A missing receipt remains explicitly unknown.
+        let result = jobs
+            .owned(async move {
+                repository
+                    .record_model_operation_usage(&owner, &input)
+                    .await
+            })
+            .await;
+        if result.is_err() {
+            tracing::warn!(
+                event = "model.operation.usage-unavailable",
+                "Model operation usage could not be recorded."
+            );
+        }
+    });
+}
 async fn execute(
     service: Arc<AuthService>,
     owner: String,
@@ -98,6 +130,7 @@ async fn execute(
         ));
     };
     let route = Value::from_serialize(&route);
+    let usage_identity = json!({"serverId":service.server_id,"workerId":worker,"operationId":input["operationId"],"operation":operation,"modelId":route["modelId"],"routeId":route["routeId"],"providerId":route["provider"]["id"]});
     let command = json!({"type":if operation == "embedding" {"model.embedding"} else {"model.decision"},"serverId":service.server_id,"scope":input["scope"],"operationId":input["operationId"],"protectedRequest":input["protectedRequest"],"route":route});
     // Matches MODEL_OPERATION_WIRE_BYTES_LIMIT; leave room in the 8 MiB frame.
     if command.stringify().len() > 7 * 1024 * 1024 {
@@ -115,18 +148,37 @@ async fn execute(
     let result = service
         .scratch_roots
         .owned(async move {
+            report_usage(&target, &owner, &usage_identity, "running", None);
             let raw = target
                 .workers
                 .commands
                 .request_with_timeout(&worker, command, RequestTimeout::Disabled, None)
-                .await?;
-            let response =
-                settings::parse_response("protectedEmbeddingResponseSchema", raw.as_ref())?;
+                .await;
+            let raw = match raw {
+                Ok(value) => value,
+                Err(error) => {
+                    report_usage(&target, &owner, &usage_identity, "unavailable", None);
+                    return Err(error.into());
+                }
+            };
+            let raw = raw.unwrap_or(Value::Null);
+            let public = json!({"operationId":raw["operationId"],"scope":raw["scope"],"protectedResponse":raw["protectedResponse"]});
+            let response = match settings::parse_response("protectedEmbeddingResponseSchema", Some(&public)) {
+                Ok(value) => value,
+                Err(error) => {
+                    report_usage(&target, &owner, &usage_identity, "unavailable", None);
+                    return Err(error);
+                }
+            };
+            if response["operationId"] != input["operationId"] || response["scope"].stringify() != input["scope"].stringify() {
+                report_usage(&target, &owner, &usage_identity, "unavailable", None);
+            }
             anyhow::ensure!(
                 response["operationId"] == input["operationId"]
                     && response["scope"].stringify() == input["scope"].stringify(),
                 "Model operation response scope changed."
             );
+            report_usage(&target, &owner, &usage_identity, "replied", raw.get("usageReceipt"));
             output(200, "protectedEmbeddingResponseSchema", &response)
         })
         .await;

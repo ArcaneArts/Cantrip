@@ -1,7 +1,15 @@
 import { persistModelBehaviorObservation } from "./model-behavior-writes.js";
+import {
+  persistModelOperationUsage,
+  modelOperationObservedAtSql,
+  type ModelOperationUsageWrite,
+} from "./model-operation-usage.js";
+export type { ModelOperationUsageWrite } from "./model-operation-usage.js";
 import { withNativeUsageIdentity } from "./native-usage-identity.js";
 import {
   nativeTurnModelAttributionSchema,
+  modelOperationUsageCoverage,
+  observedModelTokenTotal,
   reconcileNativeHistoryUsage,
   type NativeHistoryUsage,
   type NativeTurnModelAttribution,
@@ -18,7 +26,17 @@ import type {
   ReasoningEffort,
   TokenUsageTotals,
 } from "@cantrip/protocol";
-import { and, asc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  gte,
+  isNull,
+  lte,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import {
   deriveQuotaTokenAnalytics,
@@ -181,11 +199,12 @@ export const ZERO_AGENT_TIME: AgentTimeSummary = {
 export function tokenUsageTotals(
   inputTokens: number,
   outputTokens: number,
+  totalTokens = inputTokens + outputTokens,
 ): TokenUsageTotals {
   return {
     inputTokens,
     outputTokens,
-    totalTokens: inputTokens + outputTokens,
+    totalTokens,
   };
 }
 
@@ -195,9 +214,10 @@ function detailedTokenUsageTotals(
   cachedInputTokens: number,
   cacheWriteInputTokens: number,
   reasoningOutputTokens: number,
+  totalTokens = inputTokens + outputTokens,
 ): DetailedTokenUsageTotals {
   return {
-    ...tokenUsageTotals(inputTokens, outputTokens),
+    ...tokenUsageTotals(inputTokens, outputTokens, totalTokens),
     cachedInputTokens,
     cacheWriteInputTokens,
     reasoningOutputTokens,
@@ -206,6 +226,12 @@ function detailedTokenUsageTotals(
 
 export class TelemetryRepository {
   constructor(private readonly database: RepositoryDatabase) {}
+  async recordModelOperationUsage(
+    ownerId: string,
+    input: ModelOperationUsageWrite,
+  ) {
+    return persistModelOperationUsage(this.database, ownerId, input);
+  }
 
   async getAgentTimeAnalytics(
     ownerId: string,
@@ -224,6 +250,10 @@ export class TelemetryRepository {
       .where(
         and(
           eq(schema.tokenUsageRecords.ownerId, ownerId),
+          notInArray(schema.tokenUsageRecords.attemptKind, [
+            "embedding",
+            "decision",
+          ]),
           ...(projectId
             ? [eq(schema.tokenUsageRecords.projectId, projectId)]
             : []),
@@ -923,10 +953,8 @@ export class TelemetryRepository {
       ...(query.projectId
         ? [eq(schema.tokenUsageRecords.projectId, query.projectId)]
         : []),
-      ...(query.from
-        ? [gte(schema.tokenUsageRecords.startedAt, query.from)]
-        : []),
-      ...(query.to ? [lte(schema.tokenUsageRecords.startedAt, query.to)] : []),
+      ...(query.from ? [gte(modelOperationObservedAtSql, query.from)] : []),
+      ...(query.to ? [lte(modelOperationObservedAtSql, query.to)] : []),
     ];
     const [quotaRows, tokenRows] = await Promise.all([
       this.database
@@ -998,6 +1026,7 @@ export class TelemetryRepository {
         cachedInputTokens: row.cachedInputTokens,
         cacheWriteInputTokens: row.cacheWriteInputTokens,
         outputTokens: row.outputTokens,
+        observedTotalTokens: observedModelTokenTotal(row),
         reasoningOutputTokens: row.reasoningOutputTokens,
         visibleOutputTokens: row.visibleOutputTokens,
         reportedTotalTokens: row.reportedTotalTokens,
@@ -1035,8 +1064,8 @@ export class TelemetryRepository {
       ...(query.projectId
         ? [eq(schema.tokenUsageRecords.projectId, query.projectId)]
         : []),
-      gte(schema.tokenUsageRecords.startedAt, from),
-      lte(schema.tokenUsageRecords.startedAt, to),
+      gte(modelOperationObservedAtSql, from),
+      lte(modelOperationObservedAtSql, to),
     ];
     const behaviorFilters = [
       eq(schema.modelBehaviorObservations.ownerId, ownerId),
@@ -1161,6 +1190,7 @@ export class TelemetryRepository {
           entry.totals.cachedInputTokens,
           entry.totals.cacheWriteInputTokens,
           entry.totals.reasoningOutputTokens,
+          entry.totals.comparableTokens,
         ),
         effectiveTokensPer100Percent: entry.effectiveTokensPer100Percent,
       }));
@@ -1214,6 +1244,7 @@ export class TelemetryRepository {
         left.resetsAt.localeCompare(right.resetsAt),
       ),
       tokens: {
+        directOperations: modelOperationUsageCoverage(tokenRows),
         total: sumDetailedTokenUsage(tokenRows),
         daily: [...dailyTokens.entries()]
           .map(([date, rows]) => ({ date, ...sumDetailedTokenUsage(rows) }))
@@ -1388,6 +1419,9 @@ export class TelemetryRepository {
         reportedTotalTokens: row.reportedTotalTokens,
         usageSemantics: row.usageSemantics,
         ...(row.nativeUsage === null ? {} : { nativeUsage: row.nativeUsage }),
+        ...(row.modelOperationUsage === null
+          ? {}
+          : { modelOperationUsage: row.modelOperationUsage }),
         startedAt: row.startedAt?.toISOString() ?? null,
         completedAt: row.completedAt?.toISOString() ?? null,
         finalizedAt: row.finalizedAt?.toISOString() ?? null,
