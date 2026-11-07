@@ -2,13 +2,13 @@
 use super::{
     body,
     middleware::{self, Context},
-    settings::{error, output, parse},
+    settings::{error, output},
 };
 use crate::{
     auth::service::AuthService,
     operations::logging::{self, LogCall},
     settings::{self, repository::SettingsRepository},
-    wire::{Value, value::json},
+    wire::{self, ValidationError, Value, value::json},
     workers::{command_bus::RequestTimeout, repository::WorkerRepository},
 };
 use anyhow::{Context as _, Result};
@@ -205,7 +205,7 @@ async fn handle(
         Ok(value) => value,
         Err(response) => return response,
     };
-    let input = match parse(
+    let input = match wire::parse(
         if cancel {
             "modelOperationCancelSchema"
         } else {
@@ -213,16 +213,32 @@ async fn handle(
         },
         body.as_ref(),
     ) {
-        Ok(Ok(value)) => value,
-        Ok(Err(response)) => return response,
-        Err(cause) => return middleware::failure(&service, &ctx.id, &cause),
+        Ok(value) => value,
+        Err(ValidationError::Invalid(_)) => {
+            return if cancel {
+                error(400, "Invalid model operation cancellation.")
+            } else {
+                super::json_response(
+                    axum::http::StatusCode::BAD_REQUEST,
+                    json!({"code":"invalid-request","error":format!("Invalid protected {operation} request.")}),
+                )
+            };
+        }
+        Err(ValidationError::Operation) => {
+            return middleware::failure(
+                &service,
+                &ctx.id,
+                &anyhow::anyhow!("Model operation request validation failed."),
+            );
+        }
     };
     let owner = ctx.principal.user.as_ref().unwrap().id.clone();
     match execute(service, owner, input, cancel, operation).await {
         Ok(response) => response,
+        Err(_) if cancel => error(502, "The worker could not confirm cancellation."),
         Err(_) => super::json_response(
             axum::http::StatusCode::BAD_GATEWAY,
-            json!({"code":"model-operation-unavailable","error":if cancel {"The worker could not confirm cancellation.".to_owned()} else {format!("The {operation} worker operation could not be completed. It was not automatically retried.")}}),
+            json!({"code":"model-operation-unavailable","error":format!("The {operation} worker operation could not be completed. It was not automatically retried.")}),
         ),
     }
 }

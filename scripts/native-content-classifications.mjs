@@ -193,10 +193,23 @@ export function nativeWorkerCommandContentClassification(command) {
       "cantrip-os.backup.capture",
       "cantrip-os.backup.restore",
       "cantrip-os.backup.rollback",
+      "cantrip-os.backup.reset",
     ].includes(command)
   )
     return protectedContract(
       "server-derived owned instance/workspace dispatch and operation identities accompany endpoint-encrypted private backup intent and results; archive contents and native execution remain worker-local",
+    );
+  if (/^cantrip-os\.(?:packages|system)\./u.test(command))
+    return protectedContract(
+      "owner-resolved guest target, generation and immutable package/system admission; lifecycle catalogs are control metadata and detailed operation diagnostics and receipts use endpoint-encrypted result envelopes",
+    );
+  if (/^cantrip-os\.desktop\./u.test(command))
+    return control(
+      "server-owned guest account/display/generation admission and lifecycle observation; the same-named private remote-surface target and desktop pixels remain endpoint-owned",
+    );
+  if (command === "chat.suspension.stop")
+    return control(
+      "owner/chat/thread-bound native suspension and exact command/activation identities stop an existing admission; no private prompt or new inference grant",
     );
   if (command === "cantrip-os.backup.observe")
     return protectedContract(

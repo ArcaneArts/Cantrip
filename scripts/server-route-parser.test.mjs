@@ -52,6 +52,30 @@ test("resolves a local route factory from its actual literal calls", () => {
   );
 });
 
+test("resolves literal tuple loop paths without confusing another column", () => {
+  assert.deepEqual(
+    paths(
+      `for (const [url, captures] of [["/backups",true],["/operations",false]] as const) app.get(url, handler);`,
+    ),
+    ["/backups", "/operations"],
+  );
+  assert.deepEqual(
+    paths(
+      `for (const [capture, url] of [[true,"/backups"],[false,"/operations"]]) app.get(url, handler);`,
+    ),
+    ["/backups", "/operations"],
+  );
+});
+
+test("resolves a constant prefix plus one varying loop binding", () => {
+  assert.deepEqual(
+    paths(
+      'const base="/api/os"; for (const mode of ["continue","abandon"]) app.post(`${base}/operations/${mode}`, handler);',
+    ),
+    ["/api/os/operations/continue", "/api/os/operations/abandon"],
+  );
+});
+
 for (const [label, source] of [
   [
     "exported factory",
@@ -81,6 +105,18 @@ for (const [label, source] of [
   [
     "correlated bindings",
     'function install(a,b) { app.get(`/${a}/${b}`, handler); } install("one","two");',
+  ],
+  [
+    "dynamic tuple member",
+    "for (const [url, flag] of [[runtime(),true]]) app.get(url, handler);",
+  ],
+  [
+    "missing tuple member",
+    "for (const [flag, url] of [[true]]) app.get(url, handler);",
+  ],
+  [
+    "tuple rest binding",
+    'for (const [flag, ...url] of [[true,"/x"]]) app.get(url, handler);',
   ],
 ]) {
   test(`rejects ${label} without guessing or evaluating code`, () => {
@@ -132,6 +168,25 @@ const actualFamilies = [
     ["suspend", "resume"],
   ],
 ];
+
+test("inventories all actual protected model-operation endpoints", async () => {
+  const file = "model-operations.ts";
+  const source = await readFile(
+    new URL(`../cantrip_server/src/app/routes/${file}`, import.meta.url),
+    "utf8",
+  );
+  assert.deepEqual(
+    readStaticServerRoutes(source, file)
+      .map(({ method, path }) => ({ method, path }))
+      .sort((a, b) => a.path.localeCompare(b.path)),
+    ["embedding", "decision"]
+      .flatMap((operation) => [
+        { method: "POST", path: `/api/model-operations/${operation}` },
+        { method: "POST", path: `/api/model-operations/${operation}/cancel` },
+      ])
+      .sort((a, b) => a.path.localeCompare(b.path)),
+  );
+});
 for (const [file, prefix, suffixes] of actualFamilies) {
   test(`inventories the real ${file} registrations`, async () => {
     const source = await readFile(
