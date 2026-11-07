@@ -44,6 +44,14 @@ import {
   type SystemJob,
 } from "./system-job.js";
 
+const privateImageLabels = (labels: Record<string, string> = {}) =>
+  Object.keys(labels).some(
+    (key) =>
+      key === "io.cantrip.os.source-mounts" ||
+      key.startsWith("io.cantrip.os.system.") ||
+      key.startsWith("io.cantrip.os.replacement."),
+  );
+
 export class CantripOsSystemManager {
   readonly captures: CantripOsSystemCheckpointManager;
   constructor(
@@ -175,14 +183,7 @@ export class CantripOsSystemManager {
         `/images/json?filters=${encodeURIComponent(JSON.stringify({ label: ["io.cantrip.os=foundation"] }))}`,
       );
       for (const item of images.slice(0, 256)) {
-        if (
-          Object.keys(item.Labels ?? {}).some(
-            (key) =>
-              key.startsWith("io.cantrip.os.system.") ||
-              key.startsWith("io.cantrip.os.replacement."),
-          )
-        )
-          continue;
+        if (privateImageLabels(item.Labels)) continue;
         try {
           const actual = await engine.request<{
             Id: string;
@@ -192,7 +193,8 @@ export class CantripOsSystemManager {
           }>("GET", `/images/${encodeURIComponent(item.Id)}/json`);
           if (
             actual.Os !== "linux" ||
-            actual.Config.Labels?.["io.cantrip.os"] !== "foundation"
+            actual.Config.Labels?.["io.cantrip.os"] !== "foundation" ||
+            privateImageLabels(actual.Config.Labels)
           )
             continue;
           bases.push({

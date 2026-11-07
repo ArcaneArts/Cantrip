@@ -809,9 +809,17 @@ can be explicitly abandoned. Admission fences prior execution handles, and ready
 replacement/rollback recovery adopts only its proven physical guest identity,
 including lost enrollment replies, before separate runtime/source verification.
 Rollback retires the earlier replacement's continuation. Concurrent power/package/
-desktop/workspace creation cannot cross an active system transition. Client system
-review/history controls and full Worker/client acceptance are the next dependent
-block. Real remote acceptance, clone provisioning and final artifacts remain open.
+desktop/workspace creation cannot cross an active system transition.
+
+The client now offers system checkpoint, checkpoint restore, exact-base reset and
+retained rollback in the selected instance's settings. Reviews explain shared root
+effects and excluded mounted files. Saved requests preserve their original UUID
+across reloads; history, continuation, pre-execution abandonment and explicit
+resulting-identity recovery keep the original admission and encryption context.
+Private outcomes clear on encryption lock or account change. Runtime and source
+verification remain separate from root recovery. Real remote acceptance, clone
+provisioning and final artifacts remain open; see the acceptance record for the
+exact product checks and any upstream startup limitations.
 
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output

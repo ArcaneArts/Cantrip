@@ -4,7 +4,7 @@ The host library can replace a Docker CantripOS instance's root image while
 retaining the original container, or explicitly roll back to that original. It
 also supports deliberate root reset to an exact normal base image. This is an
 administration foundation with Server-owned admissions and history in both Server
-implementations. Client review/history controls remain dependent Phase 5 work.
+implementations and [client review/history controls](PRODUCT_WORKFLOW.md#shared-system-checkpoints-and-recovery).
 These functions do not enroll a clone or issue runtime handles.
 
 The external Worker remains the orchestrator. These operations need actual Docker
@@ -109,6 +109,10 @@ true). Replacement uses `action: "replace"`, `startTarget` (default true) and
 `action: "rollback"`, `replacementOperationId` and `startTarget`. The Server
 resolves checkpoint identity/encryption context from its original owned record;
 a caller cannot substitute an archive path or declare private images as bases.
+The normal Docker distribution declares its foundation-image label. Private
+linked-source recreation snapshots, system checkpoints and replacement images
+are excluded from reusable bases, including when an image list has stale labels.
+The selected base's exact inspected labels are checked again before replacement.
 
 Admission rotates attachment authority, clears runtime continuity and fences old
 handles before maintenance. The command retains its original immutable scope;

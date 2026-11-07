@@ -239,12 +239,18 @@ test("an undelivered uncertain start is never replayed or bypassed by rollback",
 });
 
 test("private snapshots cannot become reusable base templates and foreign instance proof cannot activate", async () => {
-  for (const mode of ["base", "foreign"]) {
+  for (const mode of ["base", "linked-source", "foreign"]) {
     const f = await replacementFixture();
     try {
-      if (mode === "base")
+      if (mode === "base" || mode === "linked-source") {
         f.input.request.source = { kind: "base", imageId: f.target.Id };
-      else
+        if (mode === "linked-source") {
+          f.target.Config.Labels = {
+            "io.cantrip.os": "foundation",
+            "io.cantrip.os.source-mounts": JSON.stringify({ bindings: [] }),
+          };
+        }
+      } else
         f.target.Config.Labels["io.cantrip.os.system.instance"] = randomUUID();
       const value = await replaceSystem(f.engine, f.input);
       assert.equal(value.operation.state, "unknown");

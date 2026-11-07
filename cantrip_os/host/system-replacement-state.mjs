@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import { DockerApiError } from "./docker.mjs";
 import { writeSystemJournal } from "./system-journal.mjs";
 import { withInstanceLock } from "./lock.mjs";
-import { imageDefaults } from "./image-defaults.mjs";
+import { imageDefaults, sourceMountsLabel } from "./image-defaults.mjs";
 import { mountedConfiguration, sourceMounts } from "./mounts.mjs";
 
 export const format = "cantrip-os-retained-system-replacement";
@@ -181,7 +181,9 @@ export function checkImage(actual, request) {
   } else if (
     Object.keys(actual.Config.Labels).some(
       (key) =>
-        key.startsWith("io.cantrip.os.system.") || key.startsWith(label("")),
+        key === sourceMountsLabel ||
+        key.startsWith("io.cantrip.os.system.") ||
+        key.startsWith(label("")),
     )
   ) {
     throw new Error(
