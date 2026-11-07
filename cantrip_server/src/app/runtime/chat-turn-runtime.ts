@@ -669,7 +669,9 @@ export function createChatTurnRuntime({
       taskDispatchHeartbeat?.unref();
       try {
         for (const [index, runtime] of runtimes.entries()) {
-          const executionAttemptId = `${userMessage.id}:${runtime.routeId}:${index}`;
+          const attemptSource =
+            options.taskResumption?.goalCycle?.operationId ?? userMessage.id;
+          const executionAttemptId = `${attemptSource}:${runtime.routeId}:${index}`;
           const tokenUsageSourceKey = `chat-attempt:${executionAttemptId}`;
           const behaviorSourceKey = `chat-attempt:${executionAttemptId}`;
           const behaviorTracker = new ModelBehaviorTracker();

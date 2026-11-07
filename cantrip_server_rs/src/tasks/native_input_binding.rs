@@ -73,7 +73,15 @@ pub(super) async fn bind(
     physical["nativeExecution"] = execution.clone();
     physical["nativeOwner"] = native_owner;
     if goal {
-        super::goal_inference_inputs::write(tx, &cycle, &state).await?;
+        let current = super::goal_inference_inputs::cycle(
+            tx,
+            owner,
+            &text(&receipt["chatId"])?,
+            Some(&cycle),
+        )
+        .await?
+        .ok_or_else(stale)?;
+        super::resumption::save_goal_execution(tx, &current, receipt, &state).await?;
     } else {
         update(
             tx,

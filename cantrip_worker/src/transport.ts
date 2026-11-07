@@ -278,6 +278,10 @@ export class WorkerConnection {
     "inactive";
   #workerLinkCapacityWait: Promise<boolean> | null = null;
   readonly #goalOutcomes: TaskGoalOutcomeDelivery | null;
+  readonly #taskResultCommits = new Map<
+    string,
+    { result: Promise<void>; resolve(): void; reject(error: unknown): void }
+  >();
 
   constructor(
     private readonly config: WorkerConfig,
@@ -329,6 +333,31 @@ export class WorkerConnection {
     return this.#connectionGeneration;
   }
 
+  async deliverGoalCycleOutcome(
+    notification: GoalOutcomeRecord["notification"],
+    source: NonNullable<GoalOutcomeRecord["goalCycleSource"]>,
+    scope: GoalOutcomeScope,
+  ): Promise<void> {
+    if (!this.#goalOutcomes || !this.timing.goalOutcomeDelivery)
+      throw new Error("The Goal cycle has no durable outcome publisher.");
+    await this.#goalOutcomes.append(notification, scope, "goal-cycle", source);
+  }
+
+  taskResultCommitted(operationId: string): Promise<void> {
+    let pending = this.#taskResultCommits.get(operationId);
+    if (!pending) {
+      let resolve!: () => void, reject!: (error: unknown) => void;
+      const result = new Promise<void>((yes, no) => {
+        resolve = yes;
+        reject = no;
+      });
+      void result.catch(() => {});
+      pending = { result, resolve, reject };
+      this.#taskResultCommits.set(operationId, pending);
+    }
+    return pending.result;
+  }
+
   start(): void {
     if (this.#closed || this.#authenticationRejected) return;
     this.#disconnectStartedAtMs ??= Date.now();
@@ -343,6 +372,9 @@ export class WorkerConnection {
   }
 
   close(): void {
+    for (const pending of this.#taskResultCommits.values())
+      pending.reject(new Error("Task result publication stopped."));
+    this.#taskResultCommits.clear();
     if (this.#closed) return;
     this.#closed = true;
     this.#goalOutcomes?.close();
@@ -980,8 +1012,18 @@ export class WorkerConnection {
           notification,
           scope,
           command.taskInferenceInput.kind === "goal" ? "goal" : "round",
+          undefined,
+          command.taskInferenceInput.kind === "goal",
         );
+        this.#taskResultCommits
+          .get(command.taskInferenceInput.operationId)
+          ?.resolve();
+        this.#taskResultCommits.delete(command.taskInferenceInput.operationId);
       } catch (error) {
+        this.#taskResultCommits
+          .get(command.taskInferenceInput.operationId)
+          ?.reject(error);
+        this.#taskResultCommits.delete(command.taskInferenceInput.operationId);
         // Persistence/transport errors cannot contradict the actual execution
         // result. Shutdown leaves already committed files for the next owner.
         workerLogger.event("warn", "Task outcome persistence was interrupted", {

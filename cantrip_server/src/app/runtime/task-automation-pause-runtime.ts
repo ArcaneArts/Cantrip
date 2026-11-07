@@ -84,13 +84,14 @@ export async function setTaskAutomationPause(
         throw new ChatAutomationPauseError(404, "Task source not found.");
       intent = current;
       suspension = null;
-      const previous = intent.scope.taskRound
-        ? await repository.nativeSuspensions.read(ownerId, chatId)
-        : null;
+      const previous =
+        intent.scope.taskRound || intent.scope.taskGoalCycle
+          ? await repository.nativeSuspensions.read(ownerId, chatId)
+          : null;
       if (!intent.paused && previous?.phase === "running") {
         suspension = previous;
       } else if (
-        intent.scope.taskRound &&
+        (intent.scope.taskRound || intent.scope.taskGoalCycle) &&
         (intent.paused || previous?.checkpoint)
       ) {
         suspension = (

@@ -75,6 +75,55 @@ async function readGoalResumption(
     owner,
     original.chatId,
   );
+  if (input.resumption.goalCycle) {
+    const suspension = cycle?.goalCycleRecovery?.suspension;
+    if (
+      !cycle ||
+      !source?.goalCycle ||
+      !chat ||
+      !state ||
+      !suspension ||
+      suspension.terminal ||
+      !isDeepStrictEqual(source.goalCycle, input.resumption.goalCycle) ||
+      !isDeepStrictEqual(source.goalCycle.parent, original) ||
+      !isDeepStrictEqual(suspension.source, source.goalCycle) ||
+      saved?.controlId !== input.resumption.controlId ||
+      saved.phase !== "resuming" ||
+      saved.action !== "resume" ||
+      !isDeepStrictEqual(saved.checkpoint, input.resumption.checkpoint) ||
+      !sameNativeSuspensionSource(
+        source.context,
+        chat,
+        saved,
+        source.taskRound,
+        source.taskGoalCycle,
+      ) ||
+      (input.expectedInputRevision !== undefined &&
+        chat.managedInputRevision !== input.expectedInputRevision)
+    )
+      stale();
+    const checkpointActor = {
+      ...source.nativeOwner,
+      operationId: source.executionReceipt.operationId,
+      operationGeneration: source.executionReceipt.operationId,
+    };
+    if (
+      !isDeepStrictEqual(saved.actor, checkpointActor) ||
+      saved.active?.threadId !== source.nativeExecution.threadId ||
+      saved.active.turnId !== source.nativeExecution.turnId
+    )
+      stale();
+    return {
+      kind: "cycle" as const,
+      original,
+      state,
+      saved,
+      cycle,
+      suspension,
+      checkpointActor,
+      checkpointExecution: source.nativeExecution,
+    };
+  }
   if (
     !source ||
     !chat ||
@@ -110,7 +159,7 @@ async function readGoalResumption(
     saved.active.turnId !== checkpointOwner.nativeExecution.turnId
   )
     stale();
-  return { original, state, saved, checkpointOwner };
+  return { kind: "input" as const, original, state, saved, checkpointOwner };
 }
 
 /** Rebuild result publication from the existing encrypted message. This does not
@@ -121,12 +170,8 @@ export async function goalRestorationSource(
   input: GoalResumptionRequest,
 ) {
   return database.transaction(async (tx) => {
-    const { original, state } = await readGoalResumption(
-      tx,
-      database,
-      owner,
-      input,
-    );
+    const read = await readGoalResumption(tx, database, owner, input);
+    const { original, state } = read;
     const [message] = await tx
       .select()
       .from(schema.chatMessages)
@@ -138,7 +183,10 @@ export async function goalRestorationSource(
       );
     if (!message) stale();
     return {
-      publication: state.publication!,
+      publication:
+        read.kind === "cycle"
+          ? read.suspension.source.publication
+          : state.publication!,
       message: taskMessageOpaqueContentSchema.parse({
         id: message.id,
         classification: {
@@ -161,14 +209,51 @@ export async function prepareGoalInputResumption(
   input: GoalResumptionRequest,
 ) {
   return database.transaction(async (tx) => {
-    const { original, state, saved, checkpointOwner } =
-      await readGoalResumption(tx, database, owner, input);
+    const read = await readGoalResumption(tx, database, owner, input);
+    const { original, saved } = read;
     const dispatch = {
       cycleId: input.lease.cycleId,
       operationId: input.lease.operationId,
       leaseOwner: input.lease.leaseOwner,
       fencingToken: input.lease.fencingToken,
     };
+    if (read.kind === "cycle") {
+      const prior = read.suspension.restoration;
+      if (
+        prior?.controlId === saved.controlId &&
+        isDeepStrictEqual(prior.receipt.dispatch, dispatch)
+      )
+        return prior.receipt;
+      const receipt = taskInferenceInputReceiptSchema.parse({
+        ...original,
+        operationId: randomUUID(),
+        dispatch,
+        modelRouteId: read.suspension.source.cycle.modelRouteId,
+        providerId: read.cycle.goalCycleRecovery!.providerId,
+        providerAccountId: read.suspension.source.cycle.providerAccountId,
+      });
+      await tx
+        .update(schema.taskDispatchCycles)
+        .set({
+          goalCycleRecovery: {
+            ...read.cycle.goalCycleRecovery!,
+            suspension: {
+              ...read.suspension,
+              restoration: {
+                controlId: saved.controlId,
+                receipt,
+                accepted: false,
+                dispatched: false,
+                checkpointActor: read.checkpointActor,
+                checkpointExecution: read.checkpointExecution,
+              },
+            },
+          },
+        })
+        .where(eq(schema.taskDispatchCycles.id, input.lease.cycleId));
+      return receipt;
+    }
+    const { state, checkpointOwner } = read;
     if (
       state.resumption?.controlId === saved.controlId &&
       isDeepStrictEqual(state.resumption.receipt.dispatch, dispatch)

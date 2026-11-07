@@ -14,11 +14,13 @@ import {
   type NativeSuspensionEvidence,
   type NativeSuspensionRecord,
   type NativeSuspensionTaskRound,
+  type NativeSuspensionTaskGoalCycle,
   type TaskInferenceInputReceipt,
   type TaskTurnResumption,
   type TaskDispatchFence,
+  type TaskGoalCycleSuspensionSource,
 } from "@cantrip/protocol";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import * as schema from "../schema.js";
 import type { RepositoryDatabase, RepositoryTransaction } from "./database.js";
 import { nativeCommandContext } from "./native-command-context.js";
@@ -38,6 +40,7 @@ import {
   currentTaskInputExecution,
   taskCheckpointExecution,
 } from "../task-input-execution-state.js";
+import { taskGoalExecutionState } from "../task-goal-execution-state.js";
 
 type Chat = typeof schema.chats.$inferSelect;
 type State = NativeSuspensionRecord;
@@ -67,12 +70,15 @@ export function sameNativeSuspensionSource(
   chat: Chat,
   state: State,
   taskRound?: NativeSuspensionTaskRound,
+  taskGoalCycle?: NativeSuspensionTaskGoalCycle,
 ): boolean {
   const target = state.target;
   return (
     !!context &&
     isDeepStrictEqual(target.taskRound, taskRound) &&
-    (!taskRound || target.executionLaneId === context.executionLaneId) &&
+    isDeepStrictEqual(target.taskGoalCycle, taskGoalCycle) &&
+    (!(taskRound || taskGoalCycle) ||
+      target.executionLaneId === context.executionLaneId) &&
     target.workerId === context.workerId &&
     target.contextKind === context.contextKind &&
     target.projectId === context.projectId &&
@@ -153,7 +159,7 @@ export class NativeSuspensionRepository {
       await lockNativeCommandChat(tx, ownerId, receipt.chatId);
       const saved = await this.inTransaction(tx).read(ownerId, receipt.chatId);
       if (
-        !saved?.target.taskRound ||
+        !(saved?.target.taskRound || saved?.target.taskGoalCycle) ||
         saved.action !== "stop" ||
         !["stopping", "stopped", "error"].includes(saved.phase)
       )
@@ -161,7 +167,10 @@ export class NativeSuspensionRepository {
       const [row] =
         receipt.kind === "goal"
           ? await tx
-              .select({ input: schema.taskDispatchCycles.goalInput })
+              .select({
+                input: schema.taskDispatchCycles.goalInput,
+                cycle: schema.taskDispatchCycles,
+              })
               .from(schema.taskDispatchCycles)
               .where(
                 and(
@@ -170,7 +179,10 @@ export class NativeSuspensionRepository {
                 ),
               )
           : await tx
-              .select({ input: schema.taskPlanningRounds.inferenceInput })
+              .select({
+                input: schema.taskPlanningRounds.inferenceInput,
+                cycle: sql<null>`NULL`,
+              })
               .from(schema.taskPlanningRounds)
               .where(
                 and(
@@ -181,7 +193,9 @@ export class NativeSuspensionRepository {
                   eq(schema.taskPlanningRounds.chatId, receipt.chatId),
                 ),
               );
-      const input = row?.input;
+      const input = row?.cycle
+        ? taskGoalExecutionState(row.cycle, receipt)
+        : row?.input;
       if (!input) return null;
       const native = taskCheckpointExecution(input).nativeExecution;
       const owns =
@@ -189,9 +203,15 @@ export class NativeSuspensionRepository {
         isDeepStrictEqual(currentTaskInputExecution(input).receipt, receipt) &&
         saved.target.workerId === receipt.workerId &&
         saved.target.executionLaneId === receipt.executionLaneId &&
-        saved.target.taskRound.inputOperationId === input.receipt.operationId &&
-        saved.target.taskRound.operationId === receipt.dispatch.operationId &&
-        saved.target.taskRound.cycleId === receipt.dispatch.cycleId &&
+        (saved.target.taskGoalCycle
+          ? saved.target.taskGoalCycle.sourceKey ===
+              row?.cycle?.goalCycleRecovery?.suspension?.source.sourceKey &&
+            saved.target.taskGoalCycle.cycleId === receipt.dispatch.cycleId
+          : saved.target.taskRound!.inputOperationId ===
+              input.receipt.operationId &&
+            saved.target.taskRound!.operationId ===
+              receipt.dispatch.operationId &&
+            saved.target.taskRound!.cycleId === receipt.dispatch.cycleId) &&
         !!native &&
         sameTurn(saved.active, native);
       return owns ? saved : null;
@@ -215,16 +235,20 @@ export class NativeSuspensionRepository {
         .from(schema.tasks)
         .where(eq(schema.tasks.chatId, chatId));
       if (
-        previous?.target.taskRound &&
+        (previous?.target.taskRound || previous?.target.taskGoalCycle) &&
         terminal.has(previous.phase) &&
         (source
           ? isDeepStrictEqual(previous.target.taskRound, source.taskRound) &&
+            isDeepStrictEqual(
+              previous.target.taskGoalCycle,
+              source.taskGoalCycle,
+            ) &&
             sameTurn(previous.active, {
               threadId: source.nativeExecution.threadId,
               turnId: source.nativeExecution.turnId,
             })
           : !task?.active ||
-            task.active === previous.target.taskRound.operationId)
+            task.active === previous.target.taskRound?.operationId)
       )
         return { state: previous, context: null, stop: null };
       if (!source) return null;
@@ -241,6 +265,7 @@ export class NativeSuspensionRepository {
             chat,
             previous,
             source.taskRound,
+            source.taskGoalCycle,
           ))
       )
         conflict("suspension-authority-changed");
@@ -309,6 +334,7 @@ export class NativeSuspensionRepository {
       if (!source) conflict("suspension-source-unavailable");
       if (
         !isDeepStrictEqual(state.target.taskRound, scope.taskRound) ||
+        !isDeepStrictEqual(state.target.taskGoalCycle, scope.taskGoalCycle) ||
         !sameTurn(state.active, stop.active) ||
         !sameTurn(proof.active, stop.active)
       )
@@ -319,6 +345,7 @@ export class NativeSuspensionRepository {
           chat,
           state,
           source.taskRound,
+          source.taskGoalCycle,
         ) ||
         !isDeepStrictEqual(source.receipt, stop.source)
       )
@@ -378,7 +405,7 @@ export class NativeSuspensionRepository {
         state?.controlId !== controlId ||
         state.phase !== "resuming" ||
         !state.checkpoint ||
-        !state.target.taskRound
+        !(state.target.taskRound || state.target.taskGoalCycle)
       )
         conflict("suspension-control-stale");
       const context = await nativeCommandContext(tx, ownerId, chatId);
@@ -397,6 +424,7 @@ export class NativeSuspensionRepository {
           chat,
           state,
           source.taskRound,
+          source.taskGoalCycle,
         )
       )
         conflict("suspension-source-unavailable");
@@ -404,6 +432,7 @@ export class NativeSuspensionRepository {
         controlId,
         checkpoint: state.checkpoint,
         source: source.receipt,
+        ...(source.goalCycle ? { goalCycle: source.goalCycle } : {}),
       };
     });
   }
@@ -445,12 +474,90 @@ export class NativeSuspensionRepository {
           chat,
           state,
           source.taskRound,
+          source.taskGoalCycle,
         ) ||
-        !isDeepStrictEqual(source.receipt, restore.source)
+        !isDeepStrictEqual(source.receipt, restore.source) ||
+        !isDeepStrictEqual(source.goalCycle, restore.goalCycle)
       )
         conflict("suspension-source-unavailable");
+      if (source.goalCycle) {
+        // The autonomous cycle's original input already released this lane.
+        // Reactivate its exact placement under the newly acquired dispatch
+        // fence; keep the immutable source activation for callback correlation.
+        const [lane] = await tx
+          .update(schema.chatExecutionLanes)
+          .set({ state: "active", updatedAt: new Date() })
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.id, source.receipt.executionLaneId),
+              eq(schema.chatExecutionLanes.chatId, chatId),
+              eq(schema.chatExecutionLanes.workerId, source.receipt.workerId),
+              eq(
+                schema.chatExecutionLanes.worktreeId,
+                source.receipt.worktreeId,
+              ),
+              eq(
+                schema.chatExecutionLanes.activatedAt,
+                new Date(source.receipt.executionLaneActivatedAt),
+              ),
+              inArray(schema.chatExecutionLanes.state, [
+                "idle",
+                "suspended",
+                "active",
+              ]),
+            ),
+          )
+          .returning({ id: schema.chatExecutionLanes.id });
+        if (!lane) conflict("suspension-authority-changed");
+      }
       return source.context;
     });
+  }
+
+  /** The autonomous observer has positive terminal evidence but no new input
+   * receipt. Retire only this cycle; a Stop or restored physical owner wins. */
+  async retireGoalCycle(
+    owner: string,
+    source: TaskGoalCycleSuspensionSource,
+    outcome: "completed" | "failed",
+  ) {
+    const saved = await this.read(owner, source.parent.chatId);
+    if (!saved) return;
+    const actor = {
+      workerGeneration: source.workerGeneration,
+      runtimeGeneration: source.runtimeGeneration,
+      operationId: source.operationId,
+      operationGeneration: source.operationId,
+    };
+    await this.change(
+      owner,
+      source.parent.chatId,
+      async (_tx, _chat, current, now) => {
+        if (
+          !current ||
+          current.target.taskGoalCycle?.sourceKey !== source.sourceKey ||
+          terminal.has(current.phase) ||
+          current.action === "stop" ||
+          current.target.threadId !== source.threadId ||
+          current.target.originalOperationId !== source.operationId ||
+          (current.active && !sameTurn(current.active, source)) ||
+          (current.actor && !sameActor(current.actor, actor))
+        )
+          return { state: current ?? saved, changed: false };
+        return {
+          state: {
+            ...finishPausedTime(current, now),
+            phase: outcome,
+            actor,
+            active: { threadId: source.threadId, turnId: source.turnId },
+            actorControlId: current.controlId,
+            checkpoint: null,
+            error: null,
+          },
+          changed: true,
+        };
+      },
+    );
   }
 
   /** Canonical Task terminal projection retires only its actual bound native
@@ -472,11 +579,16 @@ export class NativeSuspensionRepository {
       operationGeneration: physical.operationId,
     };
     if (
-      !state?.target.taskRound ||
+      !state ||
       terminal.has(state.phase) ||
-      state.target.taskRound.inputOperationId !== original.operationId ||
-      state.target.taskRound.operationId !== physical.dispatch.operationId ||
-      state.target.taskRound.cycleId !== physical.dispatch.cycleId ||
+      (state.target.taskGoalCycle
+        ? state.target.taskGoalCycle.cycleId !== physical.dispatch.cycleId ||
+          state.target.taskGoalCycle.cycleId !== original.dispatch.cycleId
+        : !state.target.taskRound ||
+          state.target.taskRound.inputOperationId !== original.operationId ||
+          state.target.taskRound.operationId !==
+            physical.dispatch.operationId ||
+          state.target.taskRound.cycleId !== physical.dispatch.cycleId) ||
       state.target.workerId !== physical.workerId ||
       state.target.executionLaneId !== physical.executionLaneId ||
       !sameActor(state.actor, actor) ||
@@ -644,7 +756,11 @@ export class NativeSuspensionRepository {
               !expectedActive ||
               sameTurn(current.active, expectedActive)))),
       );
-      if (current && duplicate && !current.target.taskRound)
+      if (
+        current &&
+        duplicate &&
+        !(current.target.taskRound || current.target.taskGoalCycle)
+      )
         return { state: current, changed: false };
       if (
         current?.action === "stop" &&
@@ -687,7 +803,13 @@ export class NativeSuspensionRepository {
       let source = current && !terminal.has(current.phase) ? current : null;
       if (
         source &&
-        !sameNativeSuspensionSource(context, chat, source, task?.taskRound)
+        !sameNativeSuspensionSource(
+          context,
+          chat,
+          source,
+          task?.taskRound,
+          task?.taskGoalCycle,
+        )
       )
         conflict("suspension-authority-changed");
       if (duplicate && current) return { state: current, changed: false };
@@ -713,8 +835,13 @@ export class NativeSuspensionRepository {
             providerAccountId: context.providerAccountId,
             threadId: context.threadId,
             originalOperationId:
-              task?.receipt.operationId ?? activation?.operationId ?? null,
-            ...(task ? { taskRound: task.taskRound } : {}),
+              task?.goalCycle?.operationId ??
+              task?.receipt.operationId ??
+              activation?.operationId ??
+              null,
+            ...(task
+              ? { taskRound: task.taskRound, taskGoalCycle: task.taskGoalCycle }
+              : {}),
           },
           active: null,
           checkpoint: null,
@@ -792,8 +919,9 @@ export class NativeSuspensionRepository {
             chat,
             state,
             task?.taskRound,
+            task?.taskGoalCycle,
           ) ||
-          (state.target.taskRound &&
+          ((state.target.taskRound || state.target.taskGoalCycle) &&
             !matchesNativeTaskSuspensionActor(
               task,
               state.target,
@@ -868,8 +996,9 @@ export class NativeSuspensionRepository {
             chat,
             state,
             task?.taskRound,
+            task?.taskGoalCycle,
           ) ||
-          (state.target.taskRound &&
+          ((state.target.taskRound || state.target.taskGoalCycle) &&
             !matchesNativeTaskSuspensionActor(
               task,
               state.target,
@@ -878,6 +1007,39 @@ export class NativeSuspensionRepository {
             ))
         )
           conflict("suspension-authority-changed");
+        // Autonomous Core cycles outlive their parent's input command. Commit
+        // their dispatch hold with the actual native acknowledgement rather
+        // than relying on that completed command's disconnect callback.
+        if (next.changed && state.target.taskGoalCycle) {
+          const paused = next.state.phase === "paused";
+          const [updated] = await tx
+            .update(schema.taskDispatchCycles)
+            .set({
+              state: paused ? "paused" : "running",
+              codexThreadId: next.state.active!.threadId,
+              turnId: next.state.active!.turnId,
+              pausedAt: paused ? now : null,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(
+                  schema.taskDispatchCycles.id,
+                  state.target.taskGoalCycle.cycleId,
+                ),
+                eq(schema.taskDispatchCycles.ownerId, ownerId),
+                eq(schema.taskDispatchCycles.chatId, chatId),
+                sql`${schema.taskDispatchCycles.goalCycleRecovery}->'suspension'->'source'->>'sourceKey'=${state.target.taskGoalCycle.sourceKey}`,
+                inArray(schema.taskDispatchCycles.state, [
+                  "claimed",
+                  "running",
+                  "paused",
+                ]),
+              ),
+            )
+            .returning({ id: schema.taskDispatchCycles.id });
+          if (!updated) conflict("suspension-authority-changed");
+        }
       }
       return next;
     });

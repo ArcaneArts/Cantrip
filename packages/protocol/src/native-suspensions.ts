@@ -25,6 +25,19 @@ export type NativeSuspensionTaskRound = z.infer<
   typeof nativeSuspensionTaskRoundSchema
 >;
 
+export const nativeSuspensionTaskGoalCycleSchema = z
+  .object({
+    cycleId: z.uuid(),
+    sourceKey: z.string().regex(/^[a-f0-9]{64}$/u),
+    operationId: id,
+    goalEpoch: id,
+    scopeId: id,
+  })
+  .strict();
+export type NativeSuspensionTaskGoalCycle = z.infer<
+  typeof nativeSuspensionTaskGoalCycleSchema
+>;
+
 /** Server-owned source identity. Worker-local paths and credentials stay on the worker. */
 export const nativeSuspensionTargetSchema = z
   .object({
@@ -40,6 +53,7 @@ export const nativeSuspensionTargetSchema = z
     threadId: id.nullable(),
     originalOperationId: id.nullable(),
     taskRound: nativeSuspensionTaskRoundSchema.optional(),
+    taskGoalCycle: nativeSuspensionTaskGoalCycleSchema.optional(),
   })
   .strict();
 
@@ -133,6 +147,7 @@ export const nativeSuspensionRecordSchema = z
   .strict()
   .superRefine((value, context) => {
     const task = value.target.taskRound;
+    const cycle = value.target.taskGoalCycle;
     if (
       task &&
       (value.target.contextKind !== "project" ||
@@ -145,6 +160,20 @@ export const nativeSuspensionRecordSchema = z
         path: ["target", "taskRound"],
         message:
           "A Task suspension must retain its canonical input and project lane.",
+      });
+    if (
+      cycle &&
+      (task ||
+        value.target.contextKind !== "project" ||
+        !value.target.projectId ||
+        !value.target.executionLaneId ||
+        value.target.originalOperationId !== cycle.operationId)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["target", "taskGoalCycle"],
+        message:
+          "An autonomous Goal suspension must retain its own execution and project lane.",
       });
     if (
       value.actorControlId !== null &&

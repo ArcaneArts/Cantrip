@@ -2055,7 +2055,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         inferenceAdmissionForWorker(),
         createNativeResourceProtection(workerEncryption),
         async (input, signal) => {
-          await nativeCommands.dispatchTaskGoalCycle(
+          const result = await nativeCommands.dispatchTaskGoalCycle(
             {
               ...input,
               serverId: nativeNamespaceScope().serverId,
@@ -2064,6 +2064,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             signal,
           );
           inferenceAdmissionForWorker().wakeRecovery(input.chatId);
+          return result;
         },
         (input, signal) =>
           handoffStaging.waitInference(runtime!, input, signal),
@@ -6326,9 +6327,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   contextKind: "project",
                   projectId: command.policyProjectId!,
                   placementId: source.worktreeId,
-                  modelRouteId: source.modelRouteId,
-                  providerAccountId: source.providerAccountId,
-                  taskInput: source,
+                  modelRouteId:
+                    command.taskResumption!.goalCycle?.cycle.modelRouteId ??
+                    source.modelRouteId,
+                  providerAccountId: command.taskResumption!.goalCycle
+                    ? command.taskResumption!.goalCycle.cycle.providerAccountId
+                    : source.providerAccountId,
+                  ...(command.taskResumption!.goalCycle
+                    ? { taskGoalCycle: command.taskResumption!.goalCycle }
+                    : { taskInput: source }),
                 },
               );
               const saved = opened.taskContinuation;
@@ -6373,7 +6380,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             : command.resultMode.kind === "task-message-encrypted" &&
                 command.protectedTaskPrompt
               ? {
-                  kind: "goal" as const,
+                  ...(command.taskResumption?.goalCycle
+                    ? {
+                        kind: "goal-cycle" as const,
+                        goalCycle: command.taskResumption.goalCycle,
+                      }
+                    : { kind: "goal" as const }),
                   prompt: command.protectedTaskPrompt,
                   publication: {
                     id: command.resultMode.messageId,
@@ -6697,6 +6709,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                         turnId: execution.turnId,
                       })
                   : undefined,
+                command.taskResumption?.goalCycle?.sourceKey,
               );
               // Claim the actual input once before creating a collectible
               // admission owner. Repeated accepted receipts cannot remint it.
@@ -7082,6 +7095,98 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                           }),
                   }),
               onThreadLoaded: (threadId) => {
+                if (
+                  command.taskInferenceInput?.kind === "goal" &&
+                  command.protectedTaskPrompt &&
+                  encryptedTaskSealer
+                ) {
+                  const prompt = command.protectedTaskPrompt;
+                  const publisherScope = { ...nativeNamespaceScope() };
+                  runtime.registerTaskGoalSuspensionCapture(
+                    threadId,
+                    async (source, active) => {
+                      if (
+                        source.parent.chatId !== command.chatId ||
+                        source.parent.clientMessageId !== prompt.id
+                      )
+                        throw new Error(
+                          "The autonomous Goal publisher belongs to another canonical input.",
+                        );
+                      return createTaskSuspensionCapture(
+                        runtime,
+                        nativeSuspensionStore,
+                        {
+                          kind: "goal-cycle",
+                          receipt: source.parent,
+                          goalCycle: source,
+                          projectId: command.policyProjectId!,
+                          prompt,
+                          publication: source.publication,
+                          events: async () => {
+                            await protectedEventQueue;
+                            if (protectedEventFailure)
+                              throw protectedEventFailure;
+                            return encryptedTaskSealer.snapshot();
+                          },
+                        },
+                      )(active);
+                    },
+                    turnOptions,
+                    async (source, result) => {
+                      await protectedEventQueue;
+                      if (protectedEventFailure) throw protectedEventFailure;
+                      if (result instanceof CodexTurnFailureError) {
+                        await commandConnection.deliverGoalCycleOutcome(
+                          {
+                            type: "chat.turn.outcome",
+                            chatId: source.parent.chatId,
+                            clientMessageId: source.parent.clientMessageId,
+                            executionLaneId: source.parent.executionLaneId,
+                            contextKind: "project",
+                            scratchRootId: null,
+                            worktreeId: source.parent.worktreeId,
+                            outcome: {
+                              ok: false,
+                              error:
+                                result.terminalStatus === "interrupted"
+                                  ? "The autonomous Task Goal turn was interrupted."
+                                  : "The autonomous Task Goal turn failed.",
+                            },
+                          },
+                          source,
+                          publisherScope,
+                        );
+                        return;
+                      }
+                      const protectedResult = await encryptTaskTurnResult({
+                        getComponentKey: () =>
+                          workerEncryption.componentKey("task-content"),
+                        idempotencyKey: source.publication.idempotencyKey,
+                        messageId: source.publication.id,
+                        ownerId: publisherScope.ownerId,
+                        result,
+                        mode: "goal",
+                      });
+                      await commandConnection.deliverGoalCycleOutcome(
+                        {
+                          type: "chat.turn.outcome",
+                          chatId: source.parent.chatId,
+                          clientMessageId: source.parent.clientMessageId,
+                          executionLaneId: source.parent.executionLaneId,
+                          contextKind: "project",
+                          scratchRootId: null,
+                          worktreeId: source.parent.worktreeId,
+                          outcome: { ok: true, result: protectedResult },
+                        },
+                        source,
+                        publisherScope,
+                      );
+                    },
+                    commandConnection.taskResultCommitted(
+                      command.taskInferenceInput.operationId,
+                    ),
+                  );
+                }
                 if (
                   computerUseRegistration.root !== threadId &&
                   nativeCommandState.authority &&
@@ -7653,7 +7758,41 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           });
           if (command.waitForBoundary !== false) {
             const state = await control.settled;
-            if (!state.active || !command.task.taskRound) return state;
+            if (
+              !state.active ||
+              !(command.task.taskRound || command.task.taskGoalCycle)
+            )
+              return state;
+            if (command.task.taskGoalCycle) {
+              const states = (
+                await Promise.all(
+                  [...codexRuntimes.values()].map((runtime) =>
+                    runtime.taskGoalCyclePauseState(
+                      command.chatId,
+                      command.task!,
+                      state.active!,
+                      state.paused,
+                      workerProcessGeneration,
+                    ),
+                  ),
+                )
+              ).filter((value) => value !== null);
+              const restored = await taskInputExecutions.pauseState(
+                command.chatId,
+                nativeNamespaceScope(),
+                command.task,
+                state.active,
+                state.paused,
+                workerProcessGeneration,
+                true,
+              );
+              if (restored) states.push(restored);
+              if (states.length !== 1)
+                throw new Error(
+                  "The autonomous Goal has no unique native checkpoint owner.",
+                );
+              return { ...state, execution: states[0] };
+            }
             const execution = await taskInputExecutions.pauseState(
               command.chatId,
               nativeNamespaceScope(),
@@ -7662,6 +7801,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               state.paused,
               workerProcessGeneration,
             );
+            if (!execution)
+              throw new Error("The Task control has no current native owner.");
             return { ...state, execution };
           }
           await control.applied;
@@ -7726,16 +7867,24 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           try {
             const stop = command.taskStop;
             const round = stop.scope.taskRound;
+            const cycle = stop.scope.taskGoalCycle;
             if (
-              !round ||
+              Boolean(round) === Boolean(cycle) ||
               stop.source.chatId !== command.chatId ||
               command.threadId !== stop.active.threadId ||
               stop.source.workerId !== stop.scope.workerId ||
               stop.scope.threadId !== stop.active.threadId ||
               stop.source.worktreeId !== stop.scope.worktreeId ||
-              round.inputOperationId !== stop.source.operationId ||
-              round.operationId !== stop.source.dispatch.operationId ||
-              round.cycleId !== stop.source.dispatch.cycleId ||
+              (round &&
+                (round.inputOperationId !== stop.source.operationId ||
+                  round.operationId !== stop.source.dispatch.operationId ||
+                  round.cycleId !== stop.source.dispatch.cycleId)) ||
+              (cycle &&
+                (stop.source.kind !== "goal" ||
+                  cycle.cycleId !== stop.source.dispatch.cycleId ||
+                  !cycle.operationId.startsWith(
+                    `native-inference:${stop.active.threadId}:${stop.active.turnId}:${cycle.scopeId}:`,
+                  ))) ||
               (stop.checkpoint &&
                 (stop.checkpoint.suspension.threadId !== stop.active.threadId ||
                   stop.checkpoint.suspension.turnId !== stop.active.turnId))

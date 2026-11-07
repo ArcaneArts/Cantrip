@@ -1,5 +1,10 @@
 import { TaskRestorationError } from "../task-restoration-error.js";
-import type { TaskPauseScope } from "@cantrip/protocol";
+import type {
+  TaskPauseScope,
+  TaskGoalCycleSuspensionSource,
+  NativeSuspensionActiveTurn,
+  NativeSuspensionEvidence,
+} from "@cantrip/protocol";
 import { CodexInteractions } from "./interactions.js";
 import { ManagedExecutionGates } from "./managed-execution-gates.js";
 import { ManagedRootProducerHold } from "./managed-root-producer-hold.js";
@@ -636,10 +641,11 @@ export function reconciledRootTurnStatus(
   status: TurnCompletedParams["turn"]["status"],
   finalAnswerAvailable: boolean,
   interruptionRequested: boolean,
+  nativeErrorAvailable = false,
 ): TurnCompletedParams["turn"]["status"] {
   if (status === "completed" || status === "interrupted") return status;
   if (interruptionRequested) return "interrupted";
-  if (finalAnswerAvailable) return "completed";
+  if (finalAnswerAvailable && !nativeErrorAvailable) return "completed";
   return status;
 }
 
@@ -1735,6 +1741,34 @@ export class CodexAppServer implements CodexRuntime {
     string,
     Set<(admission: { operationId: string; runtimeGeneration: string }) => void>
   >();
+  readonly #taskGoalSuspensionSources = new Map<
+    string,
+    { source: TaskGoalCycleSuspensionSource; generation: string | null }
+  >();
+  readonly #taskGoalSuspensionCaptures = new Map<
+    string,
+    (
+      source: TaskGoalCycleSuspensionSource,
+      active: NativeSuspensionActiveTurn,
+    ) => Promise<NativeSuspensionEvidence>
+  >();
+  readonly #taskGoalObserverOptions = new Map<string, RunAgentTurnOptions>();
+  readonly #taskGoalCompletions = new Map<
+    string,
+    (
+      source: TaskGoalCycleSuspensionSource,
+      result: AgentTurnResult | CodexTurnFailureError,
+    ) => Promise<void>
+  >();
+  readonly #taskGoalPublications = new Map<
+    string,
+    { turnId: string; result: Promise<void> }
+  >();
+  readonly #chatExecutionCompletions = new Map<
+    string,
+    Promise<AgentTurnResult | AgentOperationResult>
+  >();
+  readonly #taskInputPublications = new Map<string, Promise<void>>();
   #goalObserver: ((threadId: string, goal: ThreadGoal | null) => void) | null =
     null;
   readonly #managedQueueResumers = new Map<
@@ -1908,7 +1942,9 @@ export class CodexAppServer implements CodexRuntime {
             "serverId" | "workerId" | "workerGeneration"
           >,
           signal: AbortSignal,
-        ) => Promise<void>)
+        ) => Promise<{
+          suspensionSource?: TaskGoalCycleSuspensionSource;
+        } | void>)
       | null = null,
     private readonly beforeNativeInference:
       | ((
@@ -2625,6 +2661,108 @@ export class CodexAppServer implements CodexRuntime {
 
   /** Called only after the admitted live Pause boundary. Native history and
    * resource capture decide whether durable confirmation is possible. */
+  registerTaskGoalSuspensionCapture(
+    threadId: string,
+    capture: (
+      source: TaskGoalCycleSuspensionSource,
+      active: NativeSuspensionActiveTurn,
+    ) => Promise<NativeSuspensionEvidence>,
+    observer: RunAgentTurnOptions,
+    complete: (
+      source: TaskGoalCycleSuspensionSource,
+      result: AgentTurnResult | CodexTurnFailureError,
+    ) => Promise<void>,
+    parentPublished: Promise<void>,
+  ) {
+    this.#taskGoalSuspensionCaptures.set(threadId, capture);
+    this.#taskGoalObserverOptions.set(threadId, observer);
+    this.#taskGoalCompletions.set(threadId, complete);
+    this.#taskInputPublications.set(threadId, parentPublished);
+  }
+
+  private async waitForGoalObservation(
+    threadId: string,
+    turnId: string,
+    signal: AbortSignal,
+  ) {
+    if (this.#taskGoalSuspensionSources.get(threadId)?.source.turnId === turnId)
+      return;
+    const pending =
+      this.#taskGoalPublications.get(threadId)?.result ??
+      this.#taskInputPublications.get(threadId) ??
+      this.#chatExecutionCompletions.get(threadId);
+    if (!pending) return;
+    await new Promise<void>((resolve, reject) => {
+      const abort = () => reject(signal.reason);
+      if (signal.aborted) {
+        abort();
+        return;
+      }
+      signal.addEventListener("abort", abort, { once: true });
+      void pending.then(
+        () => {
+          signal.removeEventListener("abort", abort);
+          resolve();
+        },
+        (error) => {
+          signal.removeEventListener("abort", abort);
+          reject(error);
+        },
+      );
+    });
+  }
+
+  async taskGoalCyclePauseState(
+    chatId: string,
+    scope: TaskPauseScope,
+    active: NativeSuspensionActiveTurn,
+    paused: boolean,
+    workerGeneration: string,
+  ) {
+    if (
+      !scope.taskGoalCycle ||
+      !this.matchesTaskPauseScope(chatId, scope, active.threadId)
+    )
+      return null;
+    const entry = this.#taskGoalSuspensionSources.get(active.threadId);
+    if (!entry) return null;
+    const capture = this.#taskGoalSuspensionCaptures.get(active.threadId);
+    const current = () => {
+      if (
+        !entry ||
+        this.#taskGoalSuspensionSources.get(active.threadId) !== entry ||
+        entry.generation !== this.transportGeneration ||
+        entry.source.workerGeneration !== workerGeneration ||
+        entry.source.parent.chatId !== chatId ||
+        entry.source.turnId !== active.turnId ||
+        !isDeepStrictEqual(scope.taskGoalCycle, {
+          cycleId: entry.source.cycle.cycleId,
+          sourceKey: entry.source.sourceKey,
+          operationId: entry.source.operationId,
+          goalEpoch: entry.source.cycle.goalEpoch,
+          scopeId: entry.source.cycle.scopeId,
+        })
+      )
+        throw new Error("The autonomous Goal suspension owner changed.");
+    };
+    current();
+    if (paused && !capture)
+      throw new Error(
+        "The autonomous Goal has no protected continuation publisher.",
+      );
+    const checkpoint = paused ? await capture!(entry!.source, active) : null;
+    current();
+    return {
+      actor: {
+        workerGeneration,
+        runtimeGeneration: entry!.source.runtimeGeneration,
+        operationId: entry!.source.operationId,
+        operationGeneration: entry!.source.operationId,
+      },
+      checkpoint,
+    };
+  }
+
   async captureTurnSuspension(threadId: string, turnId: string) {
     const generation = this.transportGeneration;
     const result = await this.request(
@@ -2873,6 +3011,7 @@ export class CodexAppServer implements CodexRuntime {
         "preserve",
       );
       attached = true;
+      options.onThreadLoaded?.(suspension.threadId);
       stage = "admit";
       handle = await this.prepareRestoredNativeExecution(
         {
@@ -3653,6 +3792,12 @@ export class CodexAppServer implements CodexRuntime {
     );
 
     void completion.catch(() => {});
+    this.#chatExecutionCompletions.set(threadId, completion);
+    const cleanup = () => {
+      if (this.#chatExecutionCompletions.get(threadId) === completion)
+        this.#chatExecutionCompletions.delete(threadId);
+    };
+    void completion.then(cleanup, cleanup);
     return { active: activeTurn, completion };
   }
 
@@ -8025,6 +8170,13 @@ export class CodexAppServer implements CodexRuntime {
     this.#confirmedManagedPermissions.delete(threadId);
     this.#threadSettings.forget(threadId);
     this.#goals.delete(threadId);
+    this.#taskGoalSuspensionSources.delete(threadId);
+    this.#taskGoalSuspensionCaptures.delete(threadId);
+    this.#taskGoalObserverOptions.delete(threadId);
+    this.#taskGoalCompletions.delete(threadId);
+    this.#taskGoalPublications.delete(threadId);
+    this.#chatExecutionCompletions.delete(threadId);
+    this.#taskInputPublications.delete(threadId);
   }
 
   private permissionProfilesSupported(): boolean {
@@ -8755,6 +8907,7 @@ export class CodexAppServer implements CodexRuntime {
             operationId,
             recovery,
             source,
+            nativeRuntimeGeneration,
           ) => {
             if (!recovery && !source)
               throw new Error(
@@ -8779,9 +8932,16 @@ export class CodexAppServer implements CodexRuntime {
               throw new Error(
                 "The queued Task Goal epoch is no longer active.",
               );
-            await this.dispatchTaskGoalCycle(
+            await this.waitForGoalObservation(
+              base.threadId,
+              base.turnId,
+              signal,
+            );
+            this.assertManagedExecutionTransport(transport);
+            const dispatched = await this.dispatchTaskGoalCycle(
               {
                 sourceKey: recovery?.sourceKey ?? source!.key,
+                nativeRuntimeGeneration,
                 ...(recovery
                   ? {}
                   : {
@@ -8798,6 +8958,60 @@ export class CodexAppServer implements CodexRuntime {
               signal,
             );
             this.assertManagedExecutionTransport(transport);
+            if (dispatched?.suspensionSource) {
+              const source = dispatched.suspensionSource;
+              const observer = this.#taskGoalObserverOptions.get(base.threadId);
+              if (
+                observer &&
+                !this.#executions.activeTurnsByThread.has(base.threadId)
+              ) {
+                // Observe the actual Core-generated turn; this neither sends
+                // input nor creates a native execution or inference grant.
+                const baseline = await this.snapshotWorkspace(observer.cwd);
+                this.assertManagedExecutionTransport(transport);
+                const observed = this.createChatExecution(
+                  { ...observer, operationGeneration: source.operationId },
+                  base.threadId,
+                  baseline,
+                  null,
+                );
+                observed.active.admission!.initialTurnId = base.turnId;
+                this.#executions.trackActiveThread(
+                  base.threadId,
+                  observed.active,
+                );
+                this.registerRootExecution(observed.active);
+                this.bindTurnStartResponse(base.turnId, observed.active);
+                const complete = this.#taskGoalCompletions.get(base.threadId);
+                if (!complete)
+                  throw new Error(
+                    "The autonomous Goal has no canonical result publisher.",
+                  );
+                const publication = observed.completion.then(
+                  (result) =>
+                    complete(source, agentTurnResultSchema.parse(result)),
+                  (error: unknown) => {
+                    // A transport loss is not proof that native execution ended.
+                    if (
+                      !(error instanceof CodexTurnFailureError) ||
+                      error.threadId !== source.threadId ||
+                      error.turnId !== source.turnId
+                    )
+                      throw error;
+                    return complete(source, error);
+                  },
+                );
+                this.#taskGoalPublications.set(base.threadId, {
+                  turnId: base.turnId,
+                  result: publication,
+                });
+                void publication.catch(() => {});
+              }
+              this.#taskGoalSuspensionSources.set(base.threadId, {
+                source,
+                generation: transport,
+              });
+            }
           },
           independent: phase === "begin-independent",
           isPaused: () => {
@@ -10006,6 +10220,7 @@ export class CodexAppServer implements CodexRuntime {
               !active.structuredChat &&
               Boolean(active.finalText?.trim()),
             active.interruptionRequestedAtMs !== null,
+            Boolean(params.turn.error),
           )
         : params.turn.status;
       if (target.isRoot && terminalStatus !== params.turn.status) {

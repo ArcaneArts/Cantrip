@@ -175,9 +175,8 @@ cancels an actual restoration waiting for provider capacity and verifies that
 freeing capacity cannot restart it. Late physical failure callbacks cannot fail
 the stopped logical Task; matching native terminal proof still retires recovery.
 
-These results qualify direct Task rounds. Planning/finalizer recovery, later
-autonomous Goal cycles, and the complete resource/client matrix still require
-production qualification.
+These results qualify direct Task rounds. Planning/finalizer recovery and the
+complete resource/client matrix still require production qualification.
 
 ### Private Task Goal input
 
@@ -214,8 +213,46 @@ Use `--task-cold-rounds 2 --task-duplicate-resume` for repeated recovery,
 `--task-live-pause` for the surviving-process comparison, and the existing
 `--task-restore-damage missing|corrupt|incompatible` and `--task-cold-stop` controls
 for actual recovery errors and cancellation. This qualification covers the first
-private Goal input. It does not yet qualify subsequent native-generated Goal
-cycles or all Goal settings/resource/client combinations.
+private Goal input. Later native-generated cycles use the separate source below;
+all Goal settings/resource/client combinations are not yet qualified.
+
+### Autonomous private Task Goal cycles
+
+A later Core-generated Goal turn has no new user input or SDK command. Its source
+therefore records the actual native inference operation, thread, turn, Goal
+epoch/scope, worker/runtime generations and canonical completed parent receipt.
+It has its own encrypted response-publication identity. Pause and restoration
+never rewrite or replay the completed parent Goal input or Task finalizer.
+
+The worker observes the actual native turn and persists the protected Goal prompt,
+event identities and this cycle's publication in the existing Task-content
+continuation. Server acknowledgement commits the dispatch pause. Cold Resume
+acquires a fresh dispatch lease and physical restoration receipt, restores the
+same native turn, and publishes its result under that cycle's identity. The
+native Task input journal contract is unchanged; the separate cycle correlation
+is not inserted into its strict input receipt.
+
+For a surviving process, the cycle observer durably delivers its own terminal
+outcome. A later autonomous begin waits for its predecessor's actual outcome
+commit before replacing the current source. Delivery files survive worker
+restart and contain protected response content, not execution authority. A
+transport failure alone is not native terminal proof. An actual failed native
+turn retires resumability even if it emitted assistant text before the failure;
+that earlier output cannot convert the failure into success. Stop supersedes
+Resume and remains retryable with missing or damaged checkpoint contents.
+
+The real `--task-goal-origin --task-goal-cycle` fixture passes on both servers for
+live Resume, two full worker-tree kills with concurrent Resume requests, and
+normal terminal retirement. `--task-goal-cycles 3` exercises consecutive native
+cycles before suspension. Rust additionally passes incompatible-checkpoint
+rejection followed by same-turn retry, and cold Stop with a corrupt checkpoint.
+Both servers pass `--task-live-pause --task-fail-cycle`, using an actual provider
+failure after resumed tool execution. Both also pass
+`--task-goal-cycles-after-resume 2` with three preceding cycles, two cold rounds,
+concurrent Resume, and missing-checkpoint repair. The browser decrypts exactly
+one final canonical response after the later cycles complete. These cases retain the
+Goal's read-only planning policy; other Goal settings, planning/finalizer cold
+recovery, resources and client combinations remain part of the complete target.
 
 ## Held managed attachment
 

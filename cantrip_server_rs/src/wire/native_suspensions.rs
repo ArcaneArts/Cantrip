@@ -24,6 +24,18 @@ pub(super) fn refine(
         at.extend([json!("target"), json!("taskRound")]);
         result.issues.push(json!({"code":"custom","path":at,"message":"A Task suspension must retain its canonical input and project lane."}));
     }
+    let cycle = &value["target"]["taskGoalCycle"];
+    if !cycle.is_null()
+        && (!task.is_null()
+            || value["target"]["contextKind"] != "project"
+            || !super::coercion::truthy(value["target"].get("projectId"))
+            || !super::coercion::truthy(value["target"].get("executionLaneId"))
+            || value["target"]["originalOperationId"] != cycle["operationId"])
+    {
+        let mut at = path.to_vec();
+        at.extend([json!("target"), json!("taskGoalCycle")]);
+        result.issues.push(json!({"code":"custom","path":at,"message":"An autonomous Goal suspension must retain its own execution and project lane."}));
+    }
     for (invalid, field, message) in [
         (
             !value["actorControlId"].is_null()

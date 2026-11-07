@@ -1,6 +1,25 @@
 //! Opaque Task operation metadata is checked without opening encrypted content.
 use super::{Parsed, ValidationError, Value, value::json};
 
+fn goal_operation_matches(operation: &Value, thread: &Value, turn: &Value, cycle: &Value) -> bool {
+    let mut expected = "native-inference:".encode_utf16().collect::<Vec<_>>();
+    for (index, part) in [thread, turn, &cycle["scopeId"], &cycle["gateAttemptId"]]
+        .iter()
+        .enumerate()
+    {
+        let Some(text) = part.as_js_string() else {
+            return false;
+        };
+        if index > 0 {
+            expected.push(u16::from(b':'));
+        }
+        expected.extend_from_slice(text.units());
+    }
+    operation
+        .as_js_string()
+        .is_some_and(|operation| operation.units() == expected.as_slice())
+}
+
 fn private_goal_source(record: &Value) -> bool {
     let identity = &record["identity"];
     let recovery = &identity["recovery"];
@@ -22,31 +41,15 @@ fn private_goal_source(record: &Value) -> bool {
     {
         return false;
     }
-    let mut expected = "native-inference:".encode_utf16().collect::<Vec<_>>();
-    for (index, part) in [
+    goal_operation_matches(
+        &identity["operationId"],
         &recovery["threadId"],
         &recovery["turnId"],
-        &cycle["scopeId"],
-        &cycle["gateAttemptId"],
-    ]
-    .iter()
-    .enumerate()
-    {
-        let Some(text) = part.as_js_string() else {
-            return false;
-        };
-        if index > 0 {
-            expected.push(u16::from(b':'));
-        }
-        expected.extend_from_slice(text.units());
-    }
-    identity["operationId"]
-        .as_js_string()
-        .is_some_and(|operation| operation.units() == expected.as_slice())
-        && (!truthy(record.get("nativeExecution"))
-            || (record["nativeExecution"].get("threadId") == recovery.get("threadId")
-                && record["nativeExecution"].get("turnId") == recovery.get("turnId")
-                && record["nativeExecution"].get("scopeId") == cycle.get("scopeId")))
+        cycle,
+    ) && (!truthy(record.get("nativeExecution"))
+        || (record["nativeExecution"].get("threadId") == recovery.get("threadId")
+            && record["nativeExecution"].get("turnId") == recovery.get("turnId")
+            && record["nativeExecution"].get("scopeId") == cycle.get("scopeId")))
 }
 fn goal_input_source(record: &Value) -> bool {
     let identity = &record["identity"];
@@ -79,6 +82,10 @@ pub(super) fn refine(
     if !matches!(
         tag,
         "task-input-native-binding"
+            | "task-goal-suspension-source"
+            | "task-goal-turn-resumption"
+            | "task-goal-outcome-delivery"
+            | "task-goal-outcome-commit"
             | "task-operation-start"
             | "task-operation-result"
             | "task-goal-worker-result"
@@ -109,6 +116,61 @@ pub(super) fn refine(
             .push(json!({"code":"custom","message":message,"path":at}));
     };
     match tag {
+        "task-goal-suspension-source" => {
+            if value["parent"]["kind"] != "goal"
+                || value["parent"]["dispatch"]["cycleId"] != value["cycle"]["cycleId"]
+                || !goal_operation_matches(
+                    &value["operationId"],
+                    &value["threadId"],
+                    &value["turnId"],
+                    &value["cycle"],
+                )
+            {
+                custom(
+                    &["parent"],
+                    "Goal cycle suspension must retain its actual native execution and canonical parent.",
+                );
+            }
+        }
+        "task-goal-turn-resumption" => {
+            let cycle = &value["goalCycle"];
+            if !cycle.is_null()
+                && (cycle["parent"].stringify() != value["source"].stringify()
+                    || cycle["threadId"] != value["checkpoint"]["suspension"]["threadId"]
+                    || cycle["turnId"] != value["checkpoint"]["suspension"]["turnId"])
+            {
+                custom(
+                    &["goalCycle"],
+                    "The Goal restoration must retain its canonical parent and exact native turn.",
+                );
+            }
+        }
+        "task-goal-outcome-delivery" => {
+            let source = &value["goalCycleSource"];
+            if (value["inputKind"] == "goal-cycle") != !source.is_null()
+                || (!source.is_null()
+                    && (super::coercion::truthy(
+                        value["notification"].get("taskInferenceInputOperationId"),
+                    ) || value["notification"]["chatId"] != source["parent"]["chatId"]
+                        || value["notification"]["clientMessageId"]
+                            != source["parent"]["clientMessageId"]))
+            {
+                custom(
+                    &["goalCycleSource"],
+                    "An autonomous Goal result must retain its actual source without inventing input.",
+                );
+            }
+        }
+        "task-goal-outcome-commit" => {
+            if super::coercion::truthy(value.get("taskInferenceInputOperationId"))
+                == super::coercion::truthy(value.get("goalCycleSourceKey"))
+            {
+                custom(
+                    &[],
+                    "A committed outcome must name exactly one physical source.",
+                );
+            }
+        }
         "task-input-native-binding" => {
             let native = value["phase"] == "native";
             if native != super::coercion::truthy(value.get("nativeExecution"))

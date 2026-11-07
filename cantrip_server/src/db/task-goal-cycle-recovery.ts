@@ -1,8 +1,12 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   taskGoalCycleRecoverySchema,
   taskGoalCycleRecoveryBinding,
+  taskGoalCycleSuspensionSourceSchema,
+  taskMessageRelayResultSchema,
+  type TaskGoalOutcomeDelivery,
   type NativeInferenceRecovery,
   type NativeInferenceRecoveryResult,
   type TaskGoalCycleDispatch,
@@ -18,11 +22,163 @@ import type {
 import { projectChatExecutionLock } from "./repository/chat-execution-lock.js";
 import { nativeCommandContext } from "./repository/native-command-context.js";
 import { TaskDispatchConflictError } from "./task-dispatch.js";
+import { lockNativeCommandChat } from "./repository/native-command-lock.js";
+import { NativeSuspensionRepository } from "./repository/native-suspensions.js";
+import type { MessageWriteRepository } from "./repository/message-writes.js";
 
 /** Private Goal cycles have no new user input and no managed command receipt.
  * Reconcile their Task binding without manufacturing either authority. */
 export class TaskGoalCycleRecoveryRepository {
-  constructor(private readonly database: RepositoryDatabase) {}
+  constructor(
+    private readonly database: RepositoryDatabase,
+    private readonly messages?: MessageWriteRepository,
+  ) {}
+
+  async commitOutcome(
+    owner: string,
+    worker: string,
+    input: TaskGoalOutcomeDelivery,
+  ) {
+    const source = taskGoalCycleSuspensionSourceSchema.parse(
+      input.goalCycleSource,
+    );
+    const note = input.notification;
+    return this.database.transaction(async (tx) => {
+      await lockNativeCommandChat(tx, owner, source.parent.chatId);
+      const [cycle] = await tx
+        .select()
+        .from(schema.taskDispatchCycles)
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.id, source.cycle.cycleId),
+            eq(schema.taskDispatchCycles.ownerId, owner),
+            eq(schema.taskDispatchCycles.chatId, source.parent.chatId),
+          ),
+        )
+        .for("update");
+      const marker = cycle?.goalCycleRecovery;
+      const suspension = marker?.suspension;
+      if (
+        !cycle ||
+        !suspension ||
+        !isDeepStrictEqual(suspension.source, source) ||
+        !isDeepStrictEqual(cycle.goalInput?.receipt, source.parent)
+      )
+        return {
+          committed: false as const,
+          retiredReason: "goal-cycle-replaced" as const,
+        };
+      if (suspension.restoration)
+        return {
+          committed: false as const,
+          retiredReason: "goal-cycle-restored" as const,
+        };
+      if (
+        input.inputKind !== "goal-cycle" ||
+        source.parent.workerId !== worker ||
+        note.chatId !== source.parent.chatId ||
+        note.clientMessageId !== source.parent.clientMessageId ||
+        note.executionLaneId !== source.parent.executionLaneId ||
+        note.worktreeId !== source.parent.worktreeId ||
+        note.taskInferenceInputOperationId ||
+        (note.outcome.ok &&
+          (note.outcome.result.threadId !== source.threadId ||
+            note.outcome.result.turnId !== source.turnId))
+      )
+        throw new TaskDispatchConflictError(
+          "The Goal cycle result changed its physical execution.",
+          "stale-lease",
+        );
+      const message = note.outcome.ok
+        ? taskMessageRelayResultSchema.parse(
+            note.outcome.result.structuredResult,
+          ).message
+        : null;
+      if (
+        message &&
+        (message.id !== source.publication.id ||
+          message.idempotencyKey !== source.publication.idempotencyKey)
+      )
+        throw new TaskDispatchConflictError(
+          "The Goal cycle result changed its canonical publisher.",
+          "stale-lease",
+        );
+      const outcomeDigest = createHash("sha256")
+        .update(JSON.stringify(note))
+        .digest("hex");
+      if (
+        suspension.terminal?.outcomeDigest &&
+        suspension.terminal.outcomeDigest !== outcomeDigest
+      )
+        throw new TaskDispatchConflictError(
+          "The Goal cycle has another terminal result.",
+          "stale-lease",
+        );
+      if (message && !this.messages)
+        throw new Error(
+          "Goal cycle outcomes require encrypted history persistence.",
+        );
+      const [chat] = await tx
+        .select()
+        .from(schema.chats)
+        .where(
+          and(
+            eq(schema.chats.id, note.chatId),
+            eq(schema.chats.ownerId, owner),
+          ),
+        );
+      if (!chat || chat.experience !== "task")
+        throw new TaskDispatchConflictError(
+          "The Goal chat was deleted.",
+          "stale-lease",
+        );
+      const saved = message
+        ? await this.messages!.inTransaction(tx).appendTaskMessage(
+            owner,
+            note.chatId,
+            message,
+            {
+              executionLaneId: source.parent.executionLaneId,
+              worktreeId: source.parent.worktreeId,
+            },
+          )
+        : null;
+      if (message && !saved)
+        throw new Error("The Goal cycle response was not committed.");
+      const ok = note.outcome.ok;
+      const observedAt = new Date().toISOString();
+      await tx
+        .update(schema.taskDispatchCycles)
+        .set({
+          goalCycleRecovery: {
+            ...marker!,
+            suspension: {
+              ...suspension,
+              terminal: suspension.terminal ?? {
+                ok,
+                failureKind: ok ? null : "runtime",
+                observedAt,
+                projectedAt: null,
+                outcomeDigest,
+                threadId: source.threadId,
+                turnId: source.turnId,
+              },
+            },
+          },
+        })
+        .where(eq(schema.taskDispatchCycles.id, cycle.id));
+      await new NativeSuspensionRepository(this.database, tx).retireGoalCycle(
+        owner,
+        source,
+        ok ? "completed" : "failed",
+      );
+      return {
+        committed: true as const,
+        message: saved,
+        chat: { ...chat, experience: "task" as const },
+      };
+    });
+  }
 
   private async write(
     tx: RepositoryTransaction,
@@ -427,16 +583,54 @@ export class TaskGoalCycleRecoveryRepository {
           "The Task Goal recovery episode changed.",
           "stale-lease",
         );
-      if (!marker.settled)
+      let suspensionSource = marker.suspension?.source;
+      if (input.nativeRuntimeGeneration && row.cycle.goalInput) {
+        if (
+          input.freshRuntimeGeneration &&
+          input.nativeRuntimeGeneration !== input.freshRuntimeGeneration
+        )
+          throw new TaskDispatchConflictError(
+            "The actual Goal runtime changed.",
+            "stale-lease",
+          );
+        const source = taskGoalCycleSuspensionSourceSchema.parse({
+          kind: "goal-cycle",
+          sourceKey: marker.sourceKey,
+          operationId: input.operationId,
+          workerGeneration: input.workerGeneration,
+          runtimeGeneration: input.nativeRuntimeGeneration,
+          threadId: input.threadId,
+          turnId: input.turnId,
+          cycle: input.cycle,
+          parent: row.cycle.goalInput.receipt,
+          publication: suspensionSource?.publication ?? {
+            id: randomUUID(),
+            idempotencyKey: `assistant:goal-cycle:${marker.sourceKey}`,
+          },
+        });
+        if (suspensionSource && !isDeepStrictEqual(source, suspensionSource))
+          throw new TaskDispatchConflictError(
+            "The Goal suspension source changed.",
+            "stale-lease",
+          );
+        suspensionSource = source;
+      }
+      if (!marker.settled || (suspensionSource && !marker.suspension))
         await this.write(tx, row.cycle.id, input.chatId, {
           ...marker,
+          ...(suspensionSource
+            ? { suspension: { source: suspensionSource } }
+            : {}),
           settled: {
             reason: "dispatched",
             operationId: input.operationId,
             turnId: input.turnId,
           },
         });
-      return { accepted: true as const };
+      return {
+        accepted: true as const,
+        ...(suspensionSource ? { suspensionSource } : {}),
+      };
     });
   }
 

@@ -120,6 +120,34 @@ async fn apply(
             return Err(CommandError::new("stale-outcome-scope", None, 409).into());
         }
         let note = &input["notification"];
+        if input["inputKind"] == "goal-cycle" {
+            let tasks = crate::tasks::Repository::new(service.repository.database.clone());
+            let committed = tasks
+                .commit_goal_cycle_outcome(&owner, input["workerId"].as_str().unwrap(), &input)
+                .await?;
+            if committed["committed"] == true {
+                if !committed["message"].is_null() {
+                    service
+                        .execution
+                        .publish_task_outcome_message(
+                            &owner,
+                            &committed["message"],
+                            &committed["chat"],
+                        )
+                        .await;
+                }
+                service
+                    .execution
+                    .goals
+                    .observe_cycle_outcome(&owner, &input["goalCycleSource"])
+                    .await?;
+            }
+            let mut receipt = json!({"deliveryId":input["deliveryId"],"goalCycleSourceKey":input["goalCycleSource"]["sourceKey"],"committed":committed["committed"]});
+            if !committed["retiredReason"].is_null() {
+                receipt["retiredReason"] = committed["retiredReason"].clone();
+            }
+            return crate::settings::parse_response("taskGoalOutcomeCommitSchema", Some(&receipt));
+        }
         if note["taskInferenceInputOperationId"].as_str().is_none()
             || note["taskDispatchFence"].as_object().is_none()
         {

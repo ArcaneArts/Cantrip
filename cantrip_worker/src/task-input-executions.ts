@@ -4,6 +4,7 @@ import {
   type InferenceNativeExecution,
   type NativeSuspensionActiveTurn,
   type NativeSuspensionEvidence,
+  type NativeSuspensionActor,
   type TaskPauseScope,
 } from "@cantrip/protocol";
 import { isDeepStrictEqual } from "node:util";
@@ -18,7 +19,13 @@ interface Execution {
     active: NativeSuspensionActiveTurn,
   ) => Promise<NativeSuspensionEvidence>;
   onNativeBound?: (execution: InferenceNativeExecution) => void;
+  goalCycleSourceKey?: string;
 }
+
+type PauseState = {
+  actor: NativeSuspensionActor;
+  checkpoint: NativeSuspensionEvidence | null;
+};
 
 /** Current physical command owners, not another Task queue or receipt ledger.
  * Register before the claim RPC; mint inference authority only after its ACK. */
@@ -37,6 +44,7 @@ export class TaskInputExecutions {
     signal?: AbortSignal,
     checkpoint?: Execution["checkpoint"],
     onNativeBound?: Execution["onNativeBound"],
+    goalCycleSourceKey?: string,
   ) {
     const receipt = taskInferenceInputReceiptSchema.parse(input);
     if (receipt.workerId !== scope.workerId)
@@ -52,6 +60,7 @@ export class TaskInputExecutions {
       controller,
       checkpoint,
       onNativeBound,
+      goalCycleSourceKey,
       finish: () => {
         if (this.active.get(receipt.operationId) !== entry) return;
         this.active.delete(receipt.operationId);
@@ -114,15 +123,36 @@ export class TaskInputExecutions {
     active: NativeSuspensionActiveTurn,
     paused: boolean,
     workerGeneration: string,
-  ) {
+    allowMissing: true,
+  ): Promise<PauseState | null>;
+  async pauseState(
+    chatId: string,
+    scope: Execution["scope"],
+    target: TaskPauseScope,
+    active: NativeSuspensionActiveTurn,
+    paused: boolean,
+    workerGeneration: string,
+    allowMissing?: false,
+  ): Promise<PauseState>;
+  async pauseState(
+    chatId: string,
+    scope: Execution["scope"],
+    target: TaskPauseScope,
+    active: NativeSuspensionActiveTurn,
+    paused: boolean,
+    workerGeneration: string,
+    allowMissing = false,
+  ): Promise<PauseState | null> {
     const entries = [...this.active.values()].filter(
       (entry) =>
         entry.receipt.chatId === chatId &&
         this.matches(entry, entry.receipt, scope) &&
         entry.receipt.dispatch.cycleId === target.cycleId &&
+        entry.goalCycleSourceKey === target.taskGoalCycle?.sourceKey &&
         entry.native?.execution.threadId === active.threadId &&
         entry.native.execution.turnId === active.turnId,
     );
+    if (entries.length === 0 && allowMissing) return null;
     if (entries.length !== 1)
       throw new Error("The Task control has no unique canonical native owner.");
     const entry = entries[0]!;

@@ -10,6 +10,10 @@ import * as schema from "./schema.js";
 import { TaskDispatchConflictError } from "./task-dispatch.js";
 import { projectChatExecutionLock } from "./repository/chat-execution-lock.js";
 import { currentTaskInputExecution } from "./task-input-execution-state.js";
+import {
+  taskGoalExecutionReceipt,
+  taskGoalExecutionState,
+} from "./task-goal-execution-state.js";
 
 export type TaskOperationLeaseFence = {
   kind: "leased";
@@ -253,7 +257,15 @@ export async function assertTaskOperationDispatchFence(
           )
           .for("update")
           .limit(1);
-    const input = goal ? cycle.goalInput : round?.input;
+    const input = goal
+      ? taskGoalExecutionState(
+          cycle,
+          taskGoalExecutionReceipt(
+            cycle,
+            expected.goalInferenceInputOperationId,
+          ) ?? {},
+        )
+      : round?.input;
     const receipt = input
       ? currentTaskInputExecution(input).receipt
       : undefined;
@@ -372,7 +384,13 @@ export async function assertTaskOperationDispatchFence(
         fail();
     }
     if (expected.goalInferenceInputOperationId !== undefined) {
-      const input = cycle.goalInput;
+      const input = taskGoalExecutionState(
+        cycle,
+        taskGoalExecutionReceipt(
+          cycle,
+          expected.goalInferenceInputOperationId,
+        ) ?? {},
+      );
       const receipt = input ? currentTaskInputExecution(input).receipt : null;
       if (
         !input ||

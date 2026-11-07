@@ -1,10 +1,12 @@
 import { z } from "zod";
+import { taskGoalCycleSuspensionSourceSchema } from "./task-goal-cycle.js";
 import { taskInferenceInputReceiptSchema } from "./task-inference-input.js";
 import {
   nativeSuspensionActiveTurnSchema,
   nativeSuspensionActorSchema,
   nativeSuspensionEvidenceSchema,
   nativeSuspensionTaskRoundSchema,
+  nativeSuspensionTaskGoalCycleSchema,
 } from "./native-suspensions.js";
 
 /** Server-derived current Task control scope. No prompt or model capacity. */
@@ -19,6 +21,7 @@ export const taskPauseScopeSchema = z
     providerAccountId: z.string().min(1).nullable(),
     cycleId: z.string().min(1).nullable(),
     taskRound: nativeSuspensionTaskRoundSchema.optional(),
+    taskGoalCycle: nativeSuspensionTaskGoalCycleSchema.optional(),
     // Omitted by older senders; never reset an already known FIFO episode.
     orderEpoch: z
       .number()
@@ -58,8 +61,24 @@ export const taskTurnResumptionSchema = z
     controlId: z.uuid(),
     checkpoint: nativeSuspensionEvidenceSchema,
     source: taskInferenceInputReceiptSchema,
+    goalCycle: taskGoalCycleSuspensionSourceSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    const cycle = value.goalCycle;
+    if (
+      cycle &&
+      (JSON.stringify(cycle.parent) !== JSON.stringify(value.source) ||
+        cycle.threadId !== value.checkpoint.suspension.threadId ||
+        cycle.turnId !== value.checkpoint.suspension.turnId)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["goalCycle"],
+        message:
+          "The Goal restoration must retain its canonical parent and exact native turn.",
+      });
+  });
 export type TaskTurnResumption = z.infer<typeof taskTurnResumptionSchema>;
 
 /** A cancellation control grants no inference or input replay. The worker must

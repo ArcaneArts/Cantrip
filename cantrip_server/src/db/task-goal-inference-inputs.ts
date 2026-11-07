@@ -42,6 +42,11 @@ import { bindTaskNativeInput } from "./task-native-input-binding.js";
 import { NativeSuspensionRepository } from "./repository/native-suspensions.js";
 import { currentTaskInputExecution } from "./task-input-execution-state.js";
 import {
+  taskGoalExecutionReceipt,
+  taskGoalExecutionState,
+  saveTaskGoalExecutionState,
+} from "./task-goal-execution-state.js";
+import {
   goalRestorationSource,
   prepareGoalInputResumption,
   type GoalResumptionRequest,
@@ -73,7 +78,7 @@ function physicalInput(
   cycle: typeof schema.taskDispatchCycles.$inferSelect | null,
   receipt: TaskInferenceInputReceipt,
 ) {
-  const input = cycle?.goalInput;
+  const input = taskGoalExecutionState(cycle, receipt);
   if (
     !cycle ||
     !input ||
@@ -538,7 +543,7 @@ export class TaskGoalInferenceInputRepository {
         receipt.chatId,
         receipt.dispatch.cycleId,
       );
-      const state = cycle?.goalInput;
+      const state = taskGoalExecutionState(cycle, receipt);
       const execution = state ? currentTaskInputExecution(state) : null;
       if (
         !cycle ||
@@ -605,32 +610,30 @@ export class TaskGoalInferenceInputRepository {
         stale();
       if (phase === "dispatch" && !execution.accepted) stale();
       if (phase === "claim" && execution.accepted) stale();
-      await tx
-        .update(schema.taskDispatchCycles)
-        .set({
-          goalInput:
-            phase !== "dispatch"
-              ? updatedExecution({
-                  accepted: true,
-                  ...(phase === "claim" && metadata
-                    ? { claimWorkerGeneration: metadata.workerGeneration }
-                    : {}),
-                })
-              : resumed
-                ? updatedExecution({ dispatched: true })
-                : {
-                    ...state,
-                    dispatched: true,
-                    firstDispatchedOperationId:
-                      state.firstDispatchedOperationId ?? receipt.operationId,
-                    multipleDispatched:
-                      state.multipleDispatched ||
-                      (state.firstDispatchedOperationId !== null &&
-                        state.firstDispatchedOperationId !==
-                          receipt.operationId),
-                  },
-        })
-        .where(eq(schema.taskDispatchCycles.id, cycle.id));
+      await saveTaskGoalExecutionState(
+        tx,
+        cycle,
+        receipt,
+        phase !== "dispatch"
+          ? updatedExecution({
+              accepted: true,
+              ...(phase === "claim" && metadata
+                ? { claimWorkerGeneration: metadata.workerGeneration }
+                : {}),
+            })
+          : resumed
+            ? updatedExecution({ dispatched: true })
+            : {
+                ...state,
+                dispatched: true,
+                firstDispatchedOperationId:
+                  state.firstDispatchedOperationId ?? receipt.operationId,
+                multipleDispatched:
+                  state.multipleDispatched ||
+                  (state.firstDispatchedOperationId !== null &&
+                    state.firstDispatchedOperationId !== receipt.operationId),
+              },
+      );
       return { receipt };
     });
   }
@@ -1070,7 +1073,13 @@ export class TaskGoalInferenceInputRepository {
         notification.chatId,
         fence.cycleId,
       );
-      const state = cycle?.goalInput;
+      const state = taskGoalExecutionState(
+        cycle,
+        taskGoalExecutionReceipt(
+          cycle,
+          notification.taskInferenceInputOperationId,
+        ) ?? {},
+      );
       const execution = state ? currentTaskInputExecution(state) : null;
       if (
         !state ||
@@ -1155,7 +1164,12 @@ export class TaskGoalInferenceInputRepository {
           message = taskMessageRelayResultSchema.parse(
             notification.outcome.result.structuredResult,
           ).message;
-          if (message.idempotencyKey !== `assistant:${receipt.clientMessageId}`)
+          if (
+            message.idempotencyKey !==
+              (state.publication?.idempotencyKey ??
+                `assistant:${receipt.clientMessageId}`) ||
+            (state.publication && message.id !== state.publication.id)
+          )
             message = null;
         } catch {
           /* The actual terminal receipt remains useful for recovery. */
@@ -1196,10 +1210,10 @@ export class TaskGoalInferenceInputRepository {
         : null;
       if (message && !saved) stale();
       if (!state.terminal)
-        await tx
-          .update(schema.taskDispatchCycles)
-          .set({ goalInput: { ...state, terminal } })
-          .where(eq(schema.taskDispatchCycles.id, cycle!.id));
+        await saveTaskGoalExecutionState(tx, cycle!, receipt, {
+          ...state,
+          terminal,
+        });
       if (
         notification.outcome.ok &&
         execution!.nativeExecution &&
@@ -1311,7 +1325,10 @@ export class TaskGoalInferenceInputRepository {
           chat,
           expected?.dispatch.cycleId,
         );
-        const state = cycle?.goalInput;
+        const state = taskGoalExecutionState(
+          cycle,
+          expected ?? taskGoalExecutionReceipt(cycle) ?? {},
+        );
         if (
           !state?.terminal ||
           state.terminal.projectedAt ||
@@ -1402,7 +1419,7 @@ export class TaskGoalInferenceInputRepository {
         receipt.chatId,
         receipt.dispatch.cycleId,
       );
-      const state = cycle?.goalInput;
+      const state = taskGoalExecutionState(cycle, receipt);
       if (
         !cycle ||
         !state?.terminal ||
@@ -1472,13 +1489,13 @@ export class TaskGoalInferenceInputRepository {
           );
       }
       const now = new Date();
+      await saveTaskGoalExecutionState(tx, cycle, receipt, {
+        ...state,
+        terminal: { ...state.terminal, projectedAt: now.toISOString() },
+      });
       await tx
         .update(schema.taskDispatchCycles)
         .set({
-          goalInput: {
-            ...state,
-            terminal: { ...state.terminal, projectedAt: now.toISOString() },
-          },
           ...(["complete", "blocked", "failed"].includes(c.task.state)
             ? {
                 state:
@@ -1509,7 +1526,10 @@ export class TaskGoalInferenceInputRepository {
     return this.database
       .transaction(async (tx) => {
         const cycle = await this.cycle(tx, owner, chat, lease.cycleId);
-        const state = cycle?.goalInput;
+        const state = taskGoalExecutionState(
+          cycle,
+          taskGoalExecutionReceipt(cycle) ?? {},
+        );
         const receipt = state ? currentTaskInputExecution(state).receipt : null;
         if (
           !state ||

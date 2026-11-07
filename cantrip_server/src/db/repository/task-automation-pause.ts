@@ -54,7 +54,8 @@ export class TaskAutomationPauseRepository {
     ).read(owner, chat);
     return {
       paused:
-        suspension?.target.taskRound && suspension.phase === "resuming"
+        (suspension?.target.taskRound || suspension?.target.taskGoalCycle) &&
+        suspension.phase === "resuming"
           ? false
           : context.automationPaused,
       scope: taskPauseScopeSchema.parse({
@@ -65,7 +66,9 @@ export class TaskAutomationPauseRepository {
         threadId: source.threadId,
         modelRouteId: source.modelRouteId,
         providerAccountId: source.providerAccountId,
-        ...(task ? { taskRound: task.taskRound } : {}),
+        ...(task
+          ? { taskRound: task.taskRound, taskGoalCycle: task.taskGoalCycle }
+          : {}),
         cycleId: cycle?.id ?? null,
         orderEpoch: cycle?.orderEpoch ?? 0,
       }),
@@ -184,7 +187,7 @@ export class TaskAutomationPauseRepository {
       const suspensions = new NativeSuspensionRepository(this.database, tx);
       const saved = await suspensions.read(owner, chat);
       const held = Boolean(
-        saved?.target.taskRound &&
+        (saved?.target.taskRound || saved?.target.taskGoalCycle) &&
         saved.checkpoint &&
         ["paused", "pausing", "resuming", "error"].includes(saved.phase),
       );

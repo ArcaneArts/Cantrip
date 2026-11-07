@@ -162,13 +162,13 @@ impl EventSink {
         turn_state: Arc<Mutex<TurnState>>,
     ) -> Arc<Self> {
         let route = runtime.lock().unwrap()["routeId"].clone();
-        let attempt_id = identifier(&[
-            &turn.user_message["id"],
-            &json!(":"),
-            &route,
-            &json!(":"),
-            &json!(index),
-        ]);
+        let cycle_operation = &turn.options["taskResumption"]["goalCycle"]["operationId"];
+        let operation = if cycle_operation.is_null() {
+            &turn.user_message["id"]
+        } else {
+            cycle_operation
+        };
+        let attempt_id = identifier(&[operation, &json!(":"), &route, &json!(":"), &json!(index)]);
         let source = identifier(&[&json!("chat-attempt:"), &attempt_id])
             .as_js_string()
             .unwrap()

@@ -12,7 +12,8 @@ fn outcome_guard(r: &Value) -> Value {
 }
 // Original physical input ownership never becomes a newer control lease.
 fn physical_input(c: &Value, r: &Value) -> Result<()> {
-    let input = &c["goal_input"];
+    let state = super::resumption::goal_execution(c, r);
+    let input = &state;
     if c.is_null()
         || input.is_null()
         || input["deferred"] == true
@@ -320,7 +321,8 @@ impl Repository {
             let chat=text(&n["chatId"])?;
             let c=cycle(tx,&owner,&chat,Some(&text(&f["cycleId"])?)).await?;
             let Some(c)=c else{return super::goal_input_history::recover(tx,&owner,&worker,&n).await;};
-            let s=&c["goal_input"];let physical=super::resumption::physical(s);let r=&physical["receipt"];
+            let state=super::resumption::goal_execution(&c,&super::resumption::goal_receipt(&c,Some(&n["taskInferenceInputOperationId"])));
+            let s=&state;let physical=super::resumption::physical(s);let r=&physical["receipt"];
             if s.is_null() || r["operationId"]!=n["taskInferenceInputOperationId"] {return super::goal_input_history::recover(tx,&owner,&worker,&n).await;}
             if s["deferred"]==true || (n["outcome"]["ok"]==true && (physical["accepted"]!=true || physical["dispatched"]!=true || s["failedBeforeDispatch"]==true)) || r["workerId"]!=worker.as_str()
                 || r["clientMessageId"]!=n["clientMessageId"] || r["executionLaneId"]!=n["executionLaneId"]
@@ -342,10 +344,10 @@ impl Repository {
                         "chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})));
                 }
             }
-            let response_key=format!("assistant:{}",text(&r["clientMessageId"])?);
+            let response_key=if s["publication"]["idempotencyKey"].is_null() {format!("assistant:{}",text(&r["clientMessageId"])?)} else {text(&s["publication"]["idempotencyKey"])?};
             let message=if n["outcome"]["ok"]==true {
                 parse("taskMessageRelayResultSchema",&n["outcome"]["result"]["structuredResult"]).ok()
-                    .filter(|result|result["message"]["idempotencyKey"]==response_key.as_str())
+                    .filter(|result|result["message"]["idempotencyKey"]==response_key.as_str() && (s["publication"].is_null() || result["message"]["id"]==s["publication"]["id"]))
                     .map(|result|result["message"].clone())
             } else {None};
             let ok=n["outcome"]["ok"]==true && message.is_some();
@@ -361,7 +363,7 @@ impl Repository {
                 Some(crate::chats::message_writes::append_task_with(Executor::Transaction(tx),&owner,&chat,&message,
                     Some(&json!({"executionLaneId":r["executionLaneId"],"worktreeId":r["worktreeId"]}))).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?)
             }else{None};
-            if s["terminal"].is_null() {let mut state=s.clone();state["terminal"]=terminal.clone();write(tx,&text(&c["id"])?,&state).await?;}
+            if s["terminal"].is_null() {let mut state=s.clone();state["terminal"]=terminal.clone();super::resumption::save_goal_execution(tx,&c,r,&state).await?;}
             if n["outcome"]["ok"] == true && !physical["nativeExecution"].is_null() &&
                 n["outcome"]["result"]["threadId"] == physical["nativeExecution"]["threadId"] &&
                 n["outcome"]["result"]["turnId"] == physical["nativeExecution"]["turnId"] {
@@ -393,7 +395,8 @@ impl Repository {
         let result=self.database.transaction(|tx|Box::pin(async move {
             let c=cycle(tx,&owner,&chat,expected.as_ref().and_then(|r|r["dispatch"]["cycleId"].as_str())).await?;
             let Some(c)=c else{return Ok(None);};
-            let s=&c["goal_input"];let r=&super::resumption::physical(s)["receipt"];
+            let state=super::resumption::goal_execution(&c,&expected.clone().unwrap_or_else(||super::resumption::goal_receipt(&c,None)));
+            let s=&state;let r=&super::resumption::physical(s)["receipt"];
             if s["terminal"].is_null() || !s["terminal"]["projectedAt"].is_null() || s["deferred"]==true {return Ok(None);}
             if let Some(expected)=expected
                 && parse("taskInferenceInputReceiptSchema",&expected)?!=parse("taskInferenceInputReceiptSchema",r)? {return Ok(None);}
@@ -428,7 +431,7 @@ impl Repository {
             guard["goalProjection"]=projection.clone();
             dispatch_fence::assert(tx,&owner,&chat,&text(&guard["operationId"])?,&guard,false).await?;
             let c=cycle(tx,&owner,&chat,Some(&text(&r["dispatch"]["cycleId"])?)).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?;
-            let s=&c["goal_input"];
+            let state=super::resumption::goal_execution(&c,&r);let s=&state;
             if s["terminal"].is_null() || !s["terminal"]["projectedAt"].is_null() || s["deferred"]==true {return stale();}
             let row=context(tx,&owner,&r,true,true).await?;
             let task=&row["task"];
@@ -449,7 +452,7 @@ impl Repository {
                     if task["state"]=="failed"{"failed"}else{"idle"},&options).await?;
             }
             let mut state=s.clone();state["terminal"]["projectedAt"]=now();
-            let id=text(&c["id"])?;write(tx,&id,&state).await?;
+            let id=text(&c["id"])?;super::resumption::save_goal_execution(tx,&c,&r,&state).await?;
             if matches!(task["state"].as_str(),Some("complete"|"blocked"|"failed")) {
                 let at=crate::auth::now();
                 tx.query("UPDATE task_dispatch_cycles SET state=$2,completed_at=$3,eligibility_code=NULL,updated_at=$3 WHERE id=$1",&[&id,&if task["state"]=="failed"{"failed"}else{"succeeded"},&at]).await?;
@@ -478,7 +481,11 @@ impl Repository {
                     let Some(c) = c else {
                         return Ok(None);
                     };
-                    let s = &c["goal_input"];
+                    let state = super::resumption::goal_execution(
+                        &c,
+                        &super::resumption::goal_receipt(&c, None),
+                    );
+                    let s = &state;
                     let r = &super::resumption::physical(s)["receipt"];
                     if s.is_null()
                         || s["deferred"] == true
@@ -596,7 +603,7 @@ impl Repository {
                     let c = cycle(tx, &owner, &chat, Some(&id))
                         .await?
                         .ok_or_else(crate::task_dispatch::Conflict::stale)?;
-                    let mut s = c["goal_input"].clone();
+                    let mut s = super::resumption::goal_execution(&c, &r);
                     if s.is_null()
                         || s["deferred"] == true
                         || s["failedBeforeDispatch"] == true
@@ -667,7 +674,7 @@ impl Repository {
                         s["dispatched"] = execution["dispatched"].clone();
                         s["claimWorkerGeneration"] = execution["claimWorkerGeneration"].clone();
                     }
-                    write(tx, &id, &s).await?;
+                    super::resumption::save_goal_execution(tx, &c, &r, &s).await?;
                     Ok(json!({"receipt":r}))
                 })
             })

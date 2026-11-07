@@ -154,7 +154,11 @@ pub(super) async fn assert(
     }
     if outcome {
         if let Some(attempt) = expected.get("goalInferenceInputOperationId") {
-            let input = &cycle["goal_input"];
+            let state = super::resumption::goal_execution(
+                &cycle,
+                &super::resumption::goal_receipt(&cycle, Some(attempt)),
+            );
+            let input = &state;
             let r = &super::resumption::physical(input)["receipt"];
             if input.is_null()
                 || input["deferred"] == true
@@ -242,7 +246,11 @@ pub(super) async fn assert(
         }
     }
     if leased && let Some(attempt) = expected.get("goalInferenceInputOperationId") {
-        let input = &cycle["goal_input"];
+        let state = super::resumption::goal_execution(
+            &cycle,
+            &super::resumption::goal_receipt(&cycle, Some(attempt)),
+        );
+        let input = &state;
         let receipt = &super::resumption::physical(input)["receipt"];
         if input.is_null()
             || input["deferred"] == true
