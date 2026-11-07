@@ -39,6 +39,8 @@ const PREFERENCES: &[&str] = &[
     "desktopFrameRate",
     "desktopStreamQuality",
     "defaultModelId",
+    "defaultEmbeddingModelId",
+    "defaultDecisionModelId",
     "defaultReasoningEffort",
     "defaultCustomSubagentModel",
     "defaultSubagentModelId",
@@ -199,6 +201,8 @@ fn route_summary(route: &Value, provider_name: &Value) -> Value {
             "providerId",
             "providerModelId",
             "modelName",
+            "operationAdapter",
+            "operationOptions",
             "position",
             "enabled",
             "discoveryManaged",
@@ -218,6 +222,7 @@ fn model_summary(
         &[
             "id",
             "name",
+            "operation",
             "canonicalModelId",
             "defaultReasoningEffort",
             "discoveryManaged",
@@ -247,6 +252,7 @@ pub(super) fn catalog_entry(model: &Value) -> Result<Value> {
             "maxOutputTokens",
             "inputModalities",
             "outputModalities",
+            "operationCapabilities",
             "supportsTools",
             "supportsParallelTools",
             "supportsStructuredOutput",
@@ -517,6 +523,15 @@ impl SettingsRepository {
     }
 
     pub async fn update_settings(&self, owner: &str, input: &Value) -> Result<Option<Value>> {
+        for (field, operation) in [
+            ("defaultEmbeddingModelId", "embedding"),
+            ("defaultDecisionModelId", "decision"),
+        ] {
+            if let Some(id) = input[field].as_str().filter(|id| !id.is_empty())
+                && self.database.query("SELECT id FROM model_profiles WHERE id=$1 AND owner_id=$2 AND operation=$3 LIMIT 1", &[&id, &owner, &operation]).await?.is_empty() {
+                return Ok(None);
+            }
+        }
         for field in [
             "labelingModelId",
             "defaultModelId",
@@ -586,7 +601,7 @@ impl SettingsRepository {
         include_disabled: bool,
         provider: Option<&str>,
     ) -> Result<Vec<Value>> {
-        let rows = self.json_rows("SELECT jsonb_build_object('profile',to_jsonb(m),'route',to_jsonb(r),'provider',to_jsonb(p),'catalog',to_jsonb(c)) FROM model_profiles m INNER JOIN model_routes r ON r.model_id=m.id INNER JOIN model_providers p ON p.id=r.provider_id AND p.owner_id=$1 LEFT JOIN provider_models c ON c.provider_id=r.provider_id AND (c.id=r.provider_model_id OR (r.provider_model_id IS NULL AND c.native_model_id=r.model_name)) WHERE m.owner_id=$1 AND ($2::text IS NULL OR m.id=$2) AND ($3::text IS NULL OR r.id=$3) AND ($4 OR r.enabled=true) AND ($5::text IS NULL OR p.id=$5) ORDER BY r.position ASC", &[&owner,&model.filter(|id| !id.is_empty()),&route.filter(|id| !id.is_empty()),&include_disabled,&provider.filter(|id| !id.is_empty())]).await?;
+        let rows = self.json_rows("SELECT jsonb_build_object('profile',to_jsonb(m),'route',to_jsonb(r),'provider',to_jsonb(p),'catalog',to_jsonb(c)) FROM model_profiles m INNER JOIN model_routes r ON r.model_id=m.id INNER JOIN model_providers p ON p.id=r.provider_id AND p.owner_id=$1 LEFT JOIN provider_models c ON c.provider_id=r.provider_id AND (c.id=r.provider_model_id OR (r.provider_model_id IS NULL AND c.native_model_id=r.model_name)) WHERE m.owner_id=$1 AND m.operation='language' AND ($2::text IS NULL OR m.id=$2) AND ($3::text IS NULL OR r.id=$3) AND ($4 OR r.enabled=true) AND ($5::text IS NULL OR p.id=$5) ORDER BY r.position ASC", &[&owner,&model.filter(|id| !id.is_empty()),&route.filter(|id| !id.is_empty()),&include_disabled,&provider.filter(|id| !id.is_empty())]).await?;
         let catalogs = rows
             .iter()
             .map(|row| catalog_entry(&row["catalog"]))

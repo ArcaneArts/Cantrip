@@ -57,7 +57,31 @@ pub fn normalize_model(model: &Value) -> Value {
         })
         .collect();
     let has = |name: &str| capabilities.contains(&JsString::from(name));
+    let mut modalities = Vec::new();
+    if has("completion") {
+        modalities.push("text");
+    }
+    if has("embedding") {
+        modalities.push("embeddings");
+    }
+    if has("decision") {
+        modalities.push("decisions");
+    }
+    let status = |cap: &str| if has(cap) { "supported" } else { "unsupported" };
+    let operation_capabilities = if modalities.is_empty() {
+        json!({})
+    } else {
+        json!({
+            "language": {"status":status("completion"),"source":"ollama","inputModalities":if has("vision") {json!(["text","image"])} else {json!(["text"])}},
+            "embedding": {"status":status("embedding"),"source":"ollama","adapter":"ollama-embed","inputModalities":["text"]},
+            "decision": {"status":status("decision"),"source":"ollama","adapter":"system-one","inputModalities":if has("vision") {json!(["text","image","json"])} else {json!(["text","json"])},"questionTypes":["predicate","choice","score"]}
+        })
+    };
     let mut output = Value::object([
+        (
+            "operationCapabilities",
+            Value::from_serialize(&operation_capabilities),
+        ),
         ("nativeModelId", model["name"].clone()),
         ("canonicalModelId", Value::Null),
         ("displayName", model["name"].clone()),
@@ -72,7 +96,7 @@ pub fn normalize_model(model: &Value) -> Value {
                 json!(["text"])
             }),
         ),
-        ("outputModalities", Value::from_serialize(&json!(["text"]))),
+        ("outputModalities", Value::from_serialize(&modalities)),
         ("supportsTools", Value::Bool(has("tools"))),
         (
             "supportsParallelTools",
@@ -146,9 +170,7 @@ impl SettingsRepository {
         };
         anyhow::ensure!(owned_worker.is_some(), "Worker not found.");
         anyhow::ensure!(
-            runtime["kind"]
-                .as_str()
-                .is_some_and(super::endpoint_providers::worker_endpoint_kind),
+            super::endpoint_providers::worker_catalog_provider(&runtime),
             "Provider does not use worker endpoint discovery."
         );
         let revision = runtime["connectionRevision"]

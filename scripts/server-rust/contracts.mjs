@@ -727,6 +727,19 @@ export const contractRoots = [
   "cantripOsPackageShaSchema",
   "cantripOsPackageTargetSchema",
   "cantripOsPackageWorkerCommandSchema",
+  "cantripOsSystemScopeSchema",
+  "cantripOsSystemTargetSchema",
+  "cantripOsSystemReferenceSchema",
+  "cantripOsSystemBaseImageSchema",
+  "cantripOsSystemSourceSchema",
+  "cantripOsSystemOperationCommandSchema",
+  "cantripOsSystemWorkerCommandSchema",
+  "cantripOsSystemStatusResultSchema",
+  "cantripOsSystemOperationContextSchema",
+  "cantripOsSystemProtectedOperationResultSchema",
+  "cantripOsSystemRootReceiptSchema",
+  "cantripOsSystemOperationResultSchema",
+  "cantripOsSystemPrivateOperationResultSchema",
   "cantripOsRecoveryRequestSchema",
   "cantripOsRecoveryResultSchema",
   "cantripOsWorkspaceCreateSchema",
@@ -977,6 +990,12 @@ for (const schema of [
   registerChecks(schema, ["cantrip-os-package-repair"]);
 registerChecks(protocol.cantripOsPackageOperationResultSchema, [
   "cantrip-os-package-outcome",
+]);
+registerChecks(protocol.cantripOsSystemProtectedOperationResultSchema, [
+  "cantrip-os-system-envelope",
+]);
+registerChecks(protocol.cantripOsSystemOperationResultSchema, [
+  "cantrip-os-system-outcome",
 ]);
 for (const schema of [
   taskOperations.taskOpaqueMutationSchema.shape.draftAttachmentIds.unwrap(),

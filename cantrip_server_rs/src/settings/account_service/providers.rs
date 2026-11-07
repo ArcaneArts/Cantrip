@@ -33,10 +33,9 @@ impl AccountService {
                 .as_array()
                 .context("stored providers")?
             {
-                if provider["kind"].as_str().is_some_and(|kind| {
-                    matches!(kind, "chatgpt" | "grok")
-                        || super::super::endpoint_providers::worker_endpoint_kind(kind)
-                }) {
+                if matches!(provider["kind"].as_str(), Some("chatgpt" | "grok"))
+                    || super::super::endpoint_providers::worker_catalog_provider(provider)
+                {
                     // load admits its owned task synchronously. Dropping the
                     // receiver neither delays this response nor cancels work.
                     drop(service.catalogs.load(catalog(
@@ -69,10 +68,7 @@ impl AccountService {
             );
             if crate::settings::zai::is_coding_plan_provider(&provider) {
                 service.catalogs.load(request).await?;
-            } else if provider["kind"]
-                .as_str()
-                .is_some_and(super::super::endpoint_providers::worker_endpoint_kind)
-            {
+            } else if super::super::endpoint_providers::worker_catalog_provider(&provider) {
                 drop(service.catalogs.load(request));
             }
             Ok(provider)
@@ -119,10 +115,7 @@ impl AccountService {
                 let request = catalog(&owner, &provider, true);
                 if crate::settings::zai::is_coding_plan_provider(updated) {
                     service.catalogs.load(request).await?;
-                } else if updated["kind"]
-                    .as_str()
-                    .is_some_and(super::super::endpoint_providers::worker_endpoint_kind)
-                {
+                } else if super::super::endpoint_providers::worker_catalog_provider(updated) {
                     drop(service.catalogs.load(request));
                 }
             }

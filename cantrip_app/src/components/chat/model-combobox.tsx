@@ -1,4 +1,8 @@
-import type { ModelProfileSummary } from "@cantrip/protocol";
+import {
+  modelProfileOperation,
+  type ModelOperation,
+  type ModelProfileSummary,
+} from "@cantrip/protocol";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useRef, useState, type Ref } from "react";
 
@@ -19,10 +23,12 @@ import {
 import { cn } from "@/lib/utils";
 
 export interface ModelComboboxProps {
+  operation?: ModelOperation;
   ariaLabel: string;
   className?: string;
   disabled?: boolean;
   emptyMessage?: string;
+  noneLabel?: string;
   getOptionDisabled?(model: ModelProfileSummary): boolean;
   getOptionNote?(model: ModelProfileSummary): string | null | undefined;
   models: ModelProfileSummary[];
@@ -56,6 +62,7 @@ export function filterConfiguredModels(
 
 export function ModelComboboxMenu({
   emptyMessage = "No models found.",
+  noneLabel,
   getOptionDisabled,
   getOptionNote,
   inputRef,
@@ -67,6 +74,7 @@ export function ModelComboboxMenu({
   setQuery,
 }: {
   emptyMessage?: string;
+  noneLabel?: string;
   getOptionDisabled?(model: ModelProfileSummary): boolean;
   getOptionNote?(model: ModelProfileSummary): string | null | undefined;
   inputRef?: Ref<HTMLInputElement>;
@@ -90,6 +98,18 @@ export function ModelComboboxMenu({
       <CommandList className="max-h-72">
         <CommandEmpty>{emptyMessage}</CommandEmpty>
         <CommandGroup>
+          {noneLabel ? (
+            <CommandItem value={noneLabel} onSelect={() => onSelect("")}>
+              <span className="flex-1">{noneLabel}</span>
+              <Check
+                aria-hidden="true"
+                className={cn(
+                  "size-4",
+                  selectedValue ? "opacity-0" : "opacity-100",
+                )}
+              />
+            </CommandItem>
+          ) : null}
           {models.map((model) => {
             const optionDisabled = getOptionDisabled?.(model) ?? false;
             const note = getOptionNote?.(model);
@@ -127,9 +147,11 @@ export function ModelCombobox({
   className,
   disabled = false,
   emptyMessage,
+  noneLabel,
   getOptionDisabled,
   getOptionNote,
   models,
+  operation = "language",
   onValueChange,
   placeholder = "Select a model",
   searchPlaceholder,
@@ -138,7 +160,10 @@ export function ModelCombobox({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const selectedModel = models.find((model) => model.id === value);
+  const operationModels = models.filter(
+    (model) => modelProfileOperation(model) === operation,
+  );
+  const selectedModel = operationModels.find((model) => model.id === value);
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -185,10 +210,11 @@ export function ModelCombobox({
       >
         <ModelComboboxMenu
           emptyMessage={emptyMessage}
+          noneLabel={noneLabel}
           getOptionDisabled={getOptionDisabled}
           getOptionNote={getOptionNote}
           inputRef={inputRef}
-          models={models}
+          models={operationModels}
           query={query}
           searchPlaceholder={searchPlaceholder}
           selectedValue={value}

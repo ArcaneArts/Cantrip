@@ -5,6 +5,10 @@ import type {
   NativeGoalRecovery,
   NativeGoalRecoverySource,
   TaskGoalCycleRecovery,
+  ModelOperation,
+  ModelOperationCapabilities,
+  ModelOperationAdapter,
+  ModelOperationOptions,
 } from "@cantrip/protocol";
 import type { TaskInferenceInputState } from "./task-inference-inputs.js";
 export { projectAlerts, chatGoalObservations } from "./schema-alerts.js";
@@ -843,6 +847,10 @@ export const providerModels = pgTable(
     providerId: text("provider_id")
       .notNull()
       .references(() => modelProviders.id, { onDelete: "cascade" }),
+    operationCapabilities: jsonb("operation_capabilities")
+      .$type<ModelOperationCapabilities>()
+      .notNull()
+      .default({}),
     nativeModelId: text("native_model_id").notNull(),
     canonicalModelId: text("canonical_model_id"),
     displayName: text("display_name").notNull(),
@@ -954,6 +962,10 @@ export const providerModelCatalogSnapshots = pgTable(
 export const providerModelAvailability = pgTable(
   "provider_model_availability",
   {
+    operationCapabilities: jsonb("operation_capabilities")
+      .$type<ModelOperationCapabilities>()
+      .notNull()
+      .default({}),
     id: text("id").primaryKey(),
     providerModelId: text("provider_model_id")
       .notNull()
@@ -1035,6 +1047,10 @@ export const providerCatalogSyncStates = pgTable(
 export const providerModelSuppressions = pgTable(
   "provider_model_suppressions",
   {
+    operation: text("operation")
+      .$type<ModelOperation>()
+      .notNull()
+      .default("language"),
     ownerId: text("owner_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -1045,30 +1061,57 @@ export const providerModelSuppressions = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.ownerId, table.providerModelId] })],
+  (table) => [
+    primaryKey({
+      name: "provider_model_suppressions_operation_pk",
+      columns: [table.ownerId, table.providerModelId, table.operation],
+    }),
+    check(
+      "provider_model_suppressions_operation_check",
+      sql`${table.operation} in ('language', 'embedding', 'decision')`,
+    ),
+  ],
 );
 
-export const modelProfiles = pgTable("model_profiles", {
-  id: text("id").primaryKey(),
-  ownerId: text("owner_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  canonicalModelId: text("canonical_model_id"),
-  defaultReasoningEffort: text("default_reasoning_effort"),
-  discoveryManaged: boolean("discovery_managed").notNull().default(false),
-  routingPolicy: text("routing_policy").notNull().default("priority"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const modelProfiles = pgTable(
+  "model_profiles",
+  {
+    operation: text("operation")
+      .$type<ModelOperation>()
+      .notNull()
+      .default("language"),
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    canonicalModelId: text("canonical_model_id"),
+    defaultReasoningEffort: text("default_reasoning_effort"),
+    discoveryManaged: boolean("discovery_managed").notNull().default(false),
+    routingPolicy: text("routing_policy").notNull().default("priority"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "model_profiles_operation_check",
+      sql`${table.operation} in ('language', 'embedding', 'decision')`,
+    ),
+  ],
+);
 
 export const modelRoutes = pgTable(
   "model_routes",
   {
+    operationAdapter: text("operation_adapter").$type<ModelOperationAdapter>(),
+    operationOptions: jsonb("operation_options")
+      .$type<ModelOperationOptions>()
+      .notNull()
+      .default({}),
     id: text("id").primaryKey(),
     modelId: text("model_id")
       .notNull()
@@ -1239,6 +1282,14 @@ export const userSettings = pgTable(
       {
         onDelete: "set null",
       },
+    ),
+    defaultEmbeddingModelId: text("default_embedding_model_id").references(
+      () => modelProfiles.id,
+      { onDelete: "set null" },
+    ),
+    defaultDecisionModelId: text("default_decision_model_id").references(
+      () => modelProfiles.id,
+      { onDelete: "set null" },
     ),
     defaultReasoningEffort: text("default_reasoning_effort"),
     defaultCustomSubagentModel: boolean("default_custom_subagent_model")

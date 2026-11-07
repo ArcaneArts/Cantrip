@@ -790,6 +790,18 @@ bypassed by admitting both identities. This is the management foundation, not
 Server/WorkerLink/client routing, fresh runtime authority, clone provisioning or
 completion of Phase 5.
 
+The registered Worker now routes system status, capture, replacement and rollback
+to immutable private jobs. Read-only Docker archive discovery works without a
+live helper and retains only previously verified exact physical authority when
+that container's own identity files break. Replacement uses fully authenticated
+private staging; protected terminal outcomes remain immutable across Manager
+restart and locked keys. Missing claimed receipts stay unknown rather than
+restarting an effect. A completed transition can prove its resulting physical
+container for discovery, but never restores runtime handles. Matching native
+wire contracts are exercised against the actual TypeScript schemas. Server-owned
+system admissions/catalogue, client controls and explicit fresh authority remain
+the next dependent work; this does not complete Phase 5.
+
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output
 recovery, and worker-offline behavior. Deliver workspace backups/restores,

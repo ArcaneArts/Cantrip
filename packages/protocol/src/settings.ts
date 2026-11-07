@@ -67,6 +67,9 @@ export const userSettingsSchema = z.object({
   desktopFrameRate: z.union([z.literal(15), z.literal(30), z.literal(60)]),
   desktopStreamQuality: z.enum(["adaptive", "data-saver", "balanced", "sharp"]),
   defaultModelId: z.string().min(1).nullable(),
+  // Optional on the wire for older peers; repositories always emit null or an ID.
+  defaultEmbeddingModelId: z.string().min(1).nullable().optional(),
+  defaultDecisionModelId: z.string().min(1).nullable().optional(),
   defaultReasoningEffort: reasoningEffortSchema.nullable().default(null),
   defaultCustomSubagentModel: z.boolean().default(false),
   defaultSubagentModelId: z.string().min(1).nullable().default(null),

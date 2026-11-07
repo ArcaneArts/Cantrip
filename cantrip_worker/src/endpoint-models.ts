@@ -1,6 +1,8 @@
 import {
   endpointModelInventorySchema,
+  endpointOperationMetadata,
   normalizeResponsesBaseUrl,
+  registeredModelOperations,
   type EndpointModelInventory,
   type EndpointModelInventoryItem,
 } from "@cantrip/protocol";
@@ -22,18 +24,62 @@ const boolean = (value: unknown): boolean | null =>
 /** Unknown metadata stays unknown; it never prevents attempting inference. */
 export function normalizeEndpointModel(
   raw: unknown,
+  providerKind?: string,
+  baseUrl = "",
 ): EndpointModelInventoryItem | null {
   const model = object(raw);
-  if (model.type === "embedding" || model.type === "decision") return null;
   const id = text(model.id) ?? text(model.key);
   if (!id) return null;
+  const operations = endpointOperationMetadata(model);
+  const registered = registeredModelOperations(
+    { kind: providerKind ?? "", baseUrl },
+    id,
+  );
+  // Advertised operation fields take precedence over maintained documentation.
+  for (const operation of ["language", "embedding", "decision"] as const) {
+    const advertised = operations.operationCapabilities[operation];
+    const fallback = registered[operation];
+    if (!advertised && fallback)
+      operations.operationCapabilities[operation] = fallback;
+  }
+  if (!operations.outputModalities.length) {
+    for (const [operation, modality] of [
+      ["language", "text"],
+      ["embedding", "embeddings"],
+      ["decision", "decisions"],
+    ] as const) {
+      if (registered[operation]?.status === "supported")
+        operations.outputModalities.push(modality);
+    }
+  }
+  if (!operations.inputModalities.length) {
+    operations.inputModalities = [
+      ...new Set(
+        Object.values(registered)
+          .filter((capability) => capability.status === "supported")
+          .flatMap((capability) => capability.inputModalities ?? []),
+      ),
+    ];
+  }
+  if (operations.operationCapabilities.decision?.status === "supported") {
+    const adapter =
+      providerKind === "lm-studio" || providerKind === "litellm"
+        ? "openai-decisions"
+        : providerKind === "llama-cpp" || providerKind === "vllm"
+          ? "system-one"
+          : null;
+    if (adapter) operations.operationCapabilities.decision.adapter = adapter;
+  }
   const capabilities = object(model.capabilities);
   const metadata = object(model.meta);
   const instances = Array.isArray(model.loaded_instances)
     ? model.loaded_instances
     : null;
   const loadedConfig = object(object(instances?.[0]).config);
-  const vision = boolean(capabilities.vision) ?? boolean(model.supports_vision);
+  const vision =
+    boolean(capabilities.vision) ??
+    boolean(model.supports_vision) ??
+    boolean(model.has_vision_adapter);
   const reasoning = object(capabilities.reasoning);
   const efforts = Array.isArray(reasoning.allowed_options)
     ? reasoning.allowed_options.filter(
@@ -43,6 +89,7 @@ export function normalizeEndpointModel(
     : [];
   return {
     nativeModelId: id,
+    operationCapabilities: operations.operationCapabilities,
     displayName: text(model.display_name) ?? text(model.name) ?? id,
     description: text(model.description),
     contextWindow:
@@ -52,8 +99,12 @@ export function normalizeEndpointModel(
       positive(model.max_model_len) ??
       positive(metadata.n_ctx_train),
     maxOutputTokens: positive(model.max_output_tokens),
-    inputModalities: vision ? ["text", "image"] : ["text"],
-    outputModalities: ["text"],
+    inputModalities: operations.inputModalities.length
+      ? operations.inputModalities
+      : vision
+        ? ["text", "image"]
+        : ["text"],
+    outputModalities: operations.outputModalities,
     supportsTools:
       boolean(capabilities.trained_for_tool_use) ??
       boolean(model.supports_tool_calling),
@@ -135,8 +186,8 @@ export async function discoverEndpointModels(
   if (!Array.isArray(catalog.data))
     throw new Error("Model catalog did not contain a model list.");
   const models = new Map<string, EndpointModelInventoryItem>();
-  for (const raw of catalog.data.slice(0, 1_000)) {
-    const model = normalizeEndpointModel(raw);
+  for (const raw of catalog.data) {
+    const model = normalizeEndpointModel(raw, provider.kind, provider.baseUrl);
     if (model) models.set(model.nativeModelId, model);
   }
   if (provider.kind === "lm-studio") {
@@ -152,8 +203,12 @@ export async function discoverEndpointModels(
         2_000,
       );
       if (Array.isArray(rich.models))
-        for (const raw of rich.models.slice(0, 1_000)) {
-          const model = normalizeEndpointModel(raw);
+        for (const raw of rich.models) {
+          const model = normalizeEndpointModel(
+            raw,
+            provider.kind,
+            provider.baseUrl,
+          );
           if (!model) continue;
           const standard = models.get(model.nativeModelId);
           if (!standard) {
@@ -174,9 +229,18 @@ export async function discoverEndpointModels(
               model.displayName === model.nativeModelId
                 ? standard.displayName
                 : model.displayName,
+            operationCapabilities: {
+              ...standard.operationCapabilities,
+              ...model.operationCapabilities,
+            },
             inputModalities:
               model.supportsVision === null
-                ? standard.inputModalities
+                ? [
+                    ...new Set([
+                      ...standard.inputModalities,
+                      ...model.inputModalities,
+                    ]),
+                  ]
                 : model.inputModalities,
           });
         }
@@ -185,7 +249,9 @@ export async function discoverEndpointModels(
     }
   }
   return endpointModelInventorySchema.parse({
-    models: [...models.values()].slice(0, 1_000),
+    // An oversized inventory fails explicitly and preserves the saved catalog;
+    // silently publishing its first page would mark missing models unavailable.
+    models: [...models.values()],
     observedAt: new Date().toISOString(),
   });
 }

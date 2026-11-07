@@ -46,6 +46,7 @@ export async function nativeRuntimeHandoffInventory(
       and(
         eq(schema.modelProviders.ownerId, ownerId),
         eq(schema.modelProfiles.ownerId, ownerId),
+        eq(schema.modelProfiles.operation, "language"),
         eq(schema.modelRoutes.enabled, true),
       ),
     )

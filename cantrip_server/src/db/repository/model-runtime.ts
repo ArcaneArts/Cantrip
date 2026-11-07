@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+import { modelAdapterSupportsOperation } from "@cantrip/protocol";
 
 import type {
   AgentTimeSummary,
@@ -68,6 +70,8 @@ export function toModelRouteSummary(
     providerName,
     providerModelId: route.providerModelId,
     modelName: route.modelName,
+    operationAdapter: route.operationAdapter,
+    operationOptions: route.operationOptions,
     position: route.position,
     enabled: route.enabled,
     discoveryManaged: route.discoveryManaged,
@@ -83,6 +87,7 @@ export function toModelSummary(
   return {
     id: model.id,
     name: model.name,
+    operation: model.operation,
     canonicalModelId: model.canonicalModelId,
     defaultReasoningEffort: model.defaultReasoningEffort,
     discoveryManaged: model.discoveryManaged,
@@ -113,12 +118,23 @@ export class ModelRepository {
     if (input.routes.some((route) => !providerIds.has(route.providerId))) {
       return null;
     }
+    if (
+      input.routes.some(
+        (route) =>
+          !modelAdapterSupportsOperation(
+            route.operationAdapter,
+            input.operation ?? "language",
+          ),
+      )
+    )
+      return null;
     const modelId = randomUUID();
     await this.database.transaction(async (transaction) => {
       await transaction.insert(schema.modelProfiles).values({
         id: modelId,
         ownerId,
         name: input.name,
+        operation: input.operation ?? "language",
       });
       await transaction.insert(schema.modelRoutes).values(
         input.routes.map((route, position) => ({
@@ -126,6 +142,8 @@ export class ModelRepository {
           modelId,
           providerId: route.providerId,
           modelName: route.modelName,
+          operationAdapter: route.operationAdapter ?? null,
+          operationOptions: route.operationOptions ?? {},
           position,
           enabled: route.enabled,
         })),
@@ -141,7 +159,10 @@ export class ModelRepository {
   async deleteModelProfile(ownerId: string, modelId: string) {
     return this.database.transaction(async (transaction) => {
       const managedRoutes = await transaction
-        .select({ providerModelId: schema.modelRoutes.providerModelId })
+        .select({
+          providerModelId: schema.modelRoutes.providerModelId,
+          operation: schema.modelProfiles.operation,
+        })
         .from(schema.modelRoutes)
         .innerJoin(
           schema.modelProfiles,
@@ -152,16 +173,18 @@ export class ModelRepository {
           ),
         )
         .where(eq(schema.modelRoutes.modelId, modelId));
-      const providerModelIds = managedRoutes.flatMap(({ providerModelId }) =>
-        providerModelId ? [providerModelId] : [],
+      const providerModelIds = managedRoutes.flatMap(
+        ({ providerModelId, operation }) =>
+          providerModelId ? [{ providerModelId, operation }] : [],
       );
       if (providerModelIds.length > 0) {
         await transaction
           .insert(schema.providerModelSuppressions)
           .values(
-            providerModelIds.map((providerModelId) => ({
+            providerModelIds.map(({ providerModelId, operation }) => ({
               ownerId,
               providerModelId,
+              operation,
             })),
           )
           .onConflictDoNothing();
@@ -193,7 +216,10 @@ export class ModelRepository {
       return null;
     }
     const models = await this.database
-      .select({ id: schema.modelProfiles.id })
+      .select({
+        id: schema.modelProfiles.id,
+        operation: schema.modelProfiles.operation,
+      })
       .from(schema.modelProfiles)
       .where(
         and(
@@ -203,10 +229,23 @@ export class ModelRepository {
       )
       .limit(1);
     if (!models[0]) return null;
+    // Changing an operation would invalidate existing chats, defaults and indexes.
+    if (input.operation && input.operation !== models[0].operation) return null;
     const existingRoutes = await this.database
       .select()
       .from(schema.modelRoutes)
       .where(eq(schema.modelRoutes.modelId, modelId));
+    if (
+      input.routes.some((route) => {
+        const previous = existingRoutes.find((old) => old.id === route.id);
+        const adapter =
+          route.operationAdapter !== undefined
+            ? route.operationAdapter
+            : previous?.operationAdapter;
+        return !modelAdapterSupportsOperation(adapter, models[0]!.operation);
+      })
+    )
+      return null;
     const existingRouteIds = new Set(existingRoutes.map(({ id }) => id));
     const suppliedRouteIds = input.routes.flatMap((route) =>
       route.id ? [route.id] : [],
@@ -228,7 +267,14 @@ export class ModelRepository {
         if (!inputRoute) return [route.id];
         const runtimeConfigurationChanged =
           route.providerId !== inputRoute.providerId ||
-          route.modelName !== inputRoute.modelName;
+          route.modelName !== inputRoute.modelName ||
+          (inputRoute.operationAdapter !== undefined &&
+            route.operationAdapter !== inputRoute.operationAdapter) ||
+          (inputRoute.operationOptions !== undefined &&
+            !isDeepStrictEqual(
+              route.operationOptions,
+              inputRoute.operationOptions ?? {},
+            ));
         return runtimeConfigurationChanged ? [route.id] : [];
       }),
     );
@@ -270,6 +316,12 @@ export class ModelRepository {
             .set({
               providerId: route.providerId,
               modelName: route.modelName,
+              ...(route.operationAdapter !== undefined
+                ? { operationAdapter: route.operationAdapter }
+                : {}),
+              ...(route.operationOptions !== undefined
+                ? { operationOptions: route.operationOptions ?? {} }
+                : {}),
               position,
               enabled: route.enabled,
               updatedAt: new Date(),
@@ -281,6 +333,8 @@ export class ModelRepository {
             modelId,
             providerId: route.providerId,
             modelName: route.modelName,
+            operationAdapter: route.operationAdapter ?? null,
+            operationOptions: route.operationOptions ?? {},
             position,
             enabled: route.enabled,
           });
@@ -357,6 +411,7 @@ export class ModelRepository {
       .where(
         and(
           eq(schema.modelProfiles.ownerId, ownerId),
+          eq(schema.modelProfiles.operation, "language"),
           ...(!includeDisabled ? [eq(schema.modelRoutes.enabled, true)] : []),
           ...(modelId ? [eq(schema.modelProfiles.id, modelId)] : []),
           ...(providerId ? [eq(schema.modelProviders.id, providerId)] : []),

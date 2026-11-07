@@ -383,4 +383,34 @@ export class CantripOsSystemCheckpointManager {
       { signal },
     );
   }
+  async verify(raw: CantripOsSystemCaptureAdmission, signal?: AbortSignal) {
+    const admission = cantripOsSystemCaptureAdmissionSchema.parse(raw);
+    this.account(admission, signal);
+    return withInstanceLock(
+      this.lock(admission),
+      async () => {
+        const record = await this.load(admission);
+        if (
+          !record ||
+          record.state !== "ready" ||
+          !record.manifest ||
+          !record.archive
+        )
+          throw new Error("The original system checkpoint is not complete.");
+        const verified = await verifyPrivateSystem({
+          context: admission.context,
+          keys: this.keys,
+          source: this.paths(admission).archive,
+          signal,
+        });
+        if (
+          !isDeepStrictEqual(verified.manifest, record.manifest) ||
+          !isDeepStrictEqual(verified.receipt, record.archive)
+        )
+          throw new Error("The original system archive proof changed.");
+        return verified;
+      },
+      { signal },
+    );
+  }
 }

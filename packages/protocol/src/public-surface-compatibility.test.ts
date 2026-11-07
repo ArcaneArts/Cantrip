@@ -535,6 +535,21 @@ const agentChatExports = [
 ].sort();
 
 const cantripOsExports = [
+  "CANTRIP_OS_SYSTEM_RESULT_BYTES",
+  "cantripOsSystemScopeSchema",
+  "cantripOsSystemTargetSchema",
+  "cantripOsSystemReferenceSchema",
+  "cantripOsSystemBaseImageSchema",
+  "cantripOsSystemSourceSchema",
+  "cantripOsSystemOperationCommandSchema",
+  "cantripOsSystemWorkerCommandSchema",
+  "workerCantripOsSystemCommandSchemas",
+  "cantripOsSystemStatusResultSchema",
+  "cantripOsSystemOperationContextSchema",
+  "cantripOsSystemProtectedOperationResultSchema",
+  "cantripOsSystemRootReceiptSchema",
+  "cantripOsSystemOperationResultSchema",
+  "cantripOsSystemPrivateOperationResultSchema",
   "cantripOsPackageTargetSummarySchema",
   "cantripOsPackageStatusSchema",
   "cantripOsPackageCreateSchema",
@@ -1015,6 +1030,16 @@ describe("protocol public surface compatibility", () => {
     ).toEqual(["cantrip-os.packages.status", "cantrip-os.packages.operation"]);
     expect(
       advertisedCommandTypes.filter((type) =>
+        type.startsWith("cantrip-os.system."),
+      ),
+    ).toEqual([
+      "cantrip-os.system.status",
+      "cantrip-os.system.capture",
+      "cantrip-os.system.replace",
+      "cantrip-os.system.rollback",
+    ]);
+    expect(
+      advertisedCommandTypes.filter((type) =>
         type.startsWith("cantrip-os.backup."),
       ),
     ).toEqual([
@@ -1055,6 +1080,7 @@ describe("protocol public surface compatibility", () => {
         type !== "chat.suspension.resume" &&
         !type.startsWith("cantrip-os.power.") &&
         !type.startsWith("cantrip-os.packages.") &&
+        !type.startsWith("cantrip-os.system.") &&
         !type.startsWith("cantrip-os.backup.") &&
         !type.startsWith("cantrip-os.desktop."),
     );

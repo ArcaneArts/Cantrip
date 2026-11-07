@@ -67,8 +67,10 @@ exports Docker root customization separately from mounted data, with durable
 observation after a lost commit/start reply. The host
 [retained replacement/rollback carrier](SYSTEM_REPLACEMENT.md) can now activate a
 verified checkpoint or explicitly reset the root image while retaining the old
-writable layer and mounted data. Server/WorkerLink/client integration and fresh
-authority remain dependent Phase 5 work.
+writable layer and mounted data. Registered Worker commands now provide durable
+private capture/replacement/rollback jobs and helper-independent Docker discovery.
+Server-owned routing, client controls and fresh authority remain dependent Phase 5
+work.
 Docker/ISO scripts include the recovery package with the executor edition;
 `CANTRIP_OS_RECOVERY=0` omits it independently. The package is an administrative
 foundation. [Private Worker archive encryption/transfer and Server admissions](BACKUPS.md)

@@ -1,7 +1,7 @@
 import {
   ollamaModelInventorySchema,
   endpointModelInventorySchema,
-  isWorkerEndpointProviderKind,
+  usesWorkerModelCatalog,
   providerDefinitions,
   type EndpointModelInventoryItem,
   type OllamaModelInventoryItem,
@@ -63,7 +63,42 @@ export function normalizeOllamaModel(
     contextWindow: contextWindow(model),
     maxOutputTokens: null,
     inputModalities: vision ? ["text", "image"] : ["text"],
-    outputModalities: ["text"],
+    outputModalities: [
+      ...(completion ? ["text"] : []),
+      ...(capabilities.has("embedding") ? ["embeddings"] : []),
+      ...(capabilities.has("decision") ? ["decisions"] : []),
+    ],
+    operationCapabilities:
+      completion ||
+      capabilities.has("embedding") ||
+      capabilities.has("decision")
+        ? {
+            language: {
+              status: completion ? "supported" : "unsupported",
+              source: "ollama",
+              inputModalities: vision ? ["text", "image"] : ["text"],
+            },
+            embedding: {
+              status: capabilities.has("embedding")
+                ? "supported"
+                : "unsupported",
+              source: "ollama",
+              adapter: "ollama-embed",
+              inputModalities: ["text"],
+            },
+            decision: {
+              status: capabilities.has("decision")
+                ? "supported"
+                : "unsupported",
+              source: "ollama",
+              adapter: "system-one",
+              inputModalities: vision
+                ? ["text", "image", "json"]
+                : ["text", "json"],
+              questionTypes: ["predicate", "choice", "score"],
+            },
+          }
+        : {},
     supportsTools: capabilities.has("tools"),
     supportsParallelTools: capabilities.has("tools") ? null : false,
     supportsStructuredOutput: completion ? true : null,
@@ -121,7 +156,7 @@ export class OllamaCatalogService {
     ]);
     if (!provider) return null;
     if (!worker) throw new Error("Worker not found.");
-    if (!isWorkerEndpointProviderKind(provider.kind)) {
+    if (!usesWorkerModelCatalog(provider)) {
       throw new Error("Provider does not use worker endpoint discovery.");
     }
     const connection = {

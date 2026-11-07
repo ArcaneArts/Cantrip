@@ -83,6 +83,7 @@ function modelsUrl(baseUrl: string): URL {
   const path = url.pathname.replace(/\/+$/u, "");
   url.pathname = `${path}/models`;
   url.search = "";
+  url.searchParams.set("output_modalities", "all");
   url.hash = "";
   return url;
 }
@@ -139,6 +140,33 @@ export function normalizeOpenRouterModel(
     );
   const metadataSource: ProviderModelMetadataSource = "openrouter";
   return {
+    operationCapabilities: outputModalities.length
+      ? {
+          language: {
+            status: outputModalities.includes("text")
+              ? "supported"
+              : "unsupported",
+            source: "openrouter",
+            inputModalities,
+          },
+          embedding: {
+            status: outputModalities.includes("embeddings")
+              ? "supported"
+              : "unsupported",
+            source: "openrouter",
+            adapter: "openai-embeddings",
+            inputModalities,
+          },
+          decision: {
+            status: outputModalities.includes("decisions")
+              ? "supported"
+              : "unsupported",
+            source: "openrouter",
+            adapter: "openrouter-decisions",
+            inputModalities,
+          },
+        }
+      : {},
     nativeModelId: record.id,
     canonicalModelId: stringValue(record.canonical_slug) ?? record.id,
     displayName: stringValue(record.name) ?? record.id,
