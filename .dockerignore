@@ -21,3 +21,4 @@ cantrip_codex/.build
 coverage
 logs
 test-results
+.qa

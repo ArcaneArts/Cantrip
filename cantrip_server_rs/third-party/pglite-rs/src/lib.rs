@@ -68,3 +68,12 @@ pub use transaction::Transaction;
 
 pub(crate) static RUNTIME_TAR: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/pglite-runtime.tar"));
+
+/// Materialize this binary's matching runtime into a new distribution directory.
+/// The directory can subsequently be read-only and selected with
+/// `PGLITE_RUNTIME_DIR`; no database initialization is performed here.
+pub fn materialize_runtime(destination: &std::path::Path) -> Result<(), Error> {
+    std::fs::create_dir(destination)?;
+    tar::Archive::new(RUNTIME_TAR).unpack(destination)?;
+    Ok(())
+}

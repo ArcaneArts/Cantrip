@@ -28,6 +28,15 @@ macro_rules! shutdown_step {
 #[derive(Parser)]
 #[command(about = "Cantrip Rust server (replacement implementation in progress)")]
 struct Arguments {
+    /// Read Node-compatible dotenv data without overriding the process environment.
+    #[arg(long)]
+    env_file_if_exists: Option<PathBuf>,
+    /// Write this executable's PGlite assets into a new directory and exit.
+    #[arg(long)]
+    materialize_pglite_runtime: Option<PathBuf>,
+    /// Distribution PGlite assets, used when PGLITE_RUNTIME_DIR is unset.
+    #[arg(long)]
+    bundled_pglite_runtime_dir: Option<PathBuf>,
     #[arg(long)]
     host: Option<String>,
     #[arg(long)]
@@ -40,6 +49,9 @@ struct Arguments {
     database_url: Option<String>,
     #[arg(long)]
     postgres_bin_dir: Option<PathBuf>,
+    /// Distribution PostgreSQL assets, used only when no configured path exists.
+    #[arg(long)]
+    bundled_postgres_bin_dir: Option<PathBuf>,
     #[arg(long)]
     migrate_only: bool,
     /// Save the selected database connection privately after successful setup.
@@ -91,12 +103,40 @@ async fn shutdown() {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    if cantrip_server::managed_postgres::run_owner_if_requested().await? {
+fn main() -> Result<()> {
+    // The pipe-owned private database process has its own argument parser.
+    #[cfg(unix)]
+    if std::env::args_os().nth(1).as_deref()
+        == Some(std::ffi::OsStr::new("--internal-postgres-owner"))
+    {
+        tokio::runtime::Runtime::new()?
+            .block_on(cantrip_server::managed_postgres::run_owner_if_requested())?;
         return Ok(());
     }
     let arguments = Arguments::parse();
+    if let Some(path) = &arguments.env_file_if_exists {
+        // SAFETY: this executable has not created Tokio or database threads yet.
+        unsafe {
+            cantrip_server::env_file::load_if_exists(path)?;
+        }
+    }
+    if let Some(directory) = &arguments.materialize_pglite_runtime {
+        pglite::materialize_runtime(directory).context("materialize bundled PGlite runtime")?;
+        println!("{}", json!({"event":"pglite.runtime.materialized"}));
+        return Ok(());
+    }
+    if let Some(directory) = &arguments.bundled_pglite_runtime_dir
+        && std::env::var_os("PGLITE_RUNTIME_DIR").is_none()
+    {
+        // SAFETY: startup is synchronous, before Tokio/database threads exist.
+        unsafe {
+            std::env::set_var("PGLITE_RUNTIME_DIR", directory);
+        }
+    }
+    tokio::runtime::Runtime::new()?.block_on(run(arguments))
+}
+
+async fn run(arguments: Arguments) -> Result<()> {
     if let Some(root) = &arguments.materialize_profile {
         let receipt = cantrip_server::profile::Bundle::open(root)?
             .stage(
@@ -196,6 +236,19 @@ async fn main() -> Result<()> {
         bundle.apply_database_defaults(&mut environment);
     } else {
         cantrip_server::profile::apply_database(&mut environment, &cwd)?;
+    }
+    // An installation's saved configuration is explicit configuration too.
+    // Supply distribution assets only after environment/CLI/profile selection.
+    if let Some(directory) = arguments.bundled_postgres_bin_dir
+        && let std::collections::hash_map::Entry::Vacant(entry) =
+            environment.entry("CANTRIP_POSTGRES_BIN_DIR".into())
+    {
+        entry.insert(
+            directory
+                .to_str()
+                .context("bundled PostgreSQL path must be valid UTF-8")?
+                .into(),
+        );
     }
     let mut config = ServerConfig::read(&environment, &cwd)?;
     let profile_stage = bundle
