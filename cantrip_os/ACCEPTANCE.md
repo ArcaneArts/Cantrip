@@ -4898,3 +4898,26 @@ live/install checks and authorized real external SSH acceptance remain. Codex
 browser control is disabled in Work settings, so this checkpoint uses product
 API/client transport tests and guest CUA, without claiming rendered browser
 acceptance or using the personal browser.
+
+## Phase 5: ISO recovery-package source fix (2026-11-07)
+
+The first full-edition ISO attempt reached a real builder error: recovery 0.5.0
+copies the canonical host `package-job.py`, but the ISO recipe did not include
+that source file. The OCI recipe already supplied it. The ISO Dockerfile now
+copies the same file into its expected source location before building packages.
+
+Isolated `codex/os-phase5-iso-recovery-source`, based on `9bd226189`, successfully
+built the normal AMD64 ISO builder recipe with the preceding recorded executor
+0.12.0 and remote 0.11.0 Debian contexts. Its workspace 0.4.0 and recovery 0.5.0
+packages built normally. Independent extraction from the resulting recovery
+Debian archive found the exact canonical helper bytes, SHA-256
+`53541e3d4d93053aa16dbf3f4f07b30d86443a6f6c1164c35aa7624764ec0364`.
+The inspection container and separate regression image tag were removed.
+
+This is builder/package regression evidence. The normal full-edition ISO script
+is separately rebuilding current Main's changed native patch inputs using its
+existing dependency caches. Final ISO, live/install/BIOS/UEFI and external SSH
+acceptance remain unproven by this check. `pnpm check` still stops on the known
+Server budgets, 1532/1500 and 2336/1999. Formatting and diff checks pass; no hosted
+ordinary-PR validation was run. Small proof/build logs are retained under ignored
+`artifacts/phase5-iso-recovery-source/`.

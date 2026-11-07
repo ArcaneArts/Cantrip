@@ -9,6 +9,7 @@ COPY overlays/ /source/overlays/
 COPY images/iso/ /source/images/iso/
 COPY scripts/configure-system.sh /source/scripts/configure-system.sh
 COPY packages/ /source/packages/
+COPY host/package-job.py /source/host/package-job.py
 RUN /source/packages/workspaces/build.sh /source/debs
 RUN /source/packages/recovery/build.sh /source/recovery-debs
 COPY --from=executor / /source/executor-debs/
