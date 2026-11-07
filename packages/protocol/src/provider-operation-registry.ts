@@ -43,7 +43,7 @@ export const providerOperationDocumentation = {
     "https://docs.litellm.ai/docs/decisions/",
   ],
   "mlx-lm": ["https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/server.py"],
-  unsloth: ["https://unsloth.ai/docs/basics/embedding-finetuning"],
+  unsloth: ["https://unsloth.ai/docs/basics/api"],
   xai: ["https://docs.x.ai/developers/models"],
   zai: ["https://docs.z.ai/llms.txt"],
 } as const;
@@ -98,6 +98,7 @@ export function providerOperationSupport(
       "llama-cpp",
       "vllm",
       "litellm",
+      "unsloth",
     ].includes(family)
   )
     return {
@@ -105,7 +106,13 @@ export function providerOperationSupport(
       embedding: "supported",
       decision: "supported",
     };
-  // Unsloth export/training and a compatible chat API are not evidence of other APIs.
+  if (["mlx-lm", "xai", "zai"].includes(family))
+    return {
+      language: "supported",
+      embedding: "unknown",
+      decision: "unknown",
+    };
+  // A compatible chat API is not evidence of other APIs.
   return { language: "unknown", embedding: "unknown", decision: "unknown" };
 }
 

@@ -331,6 +331,9 @@ export function embeddingPayload(
         : {}),
     };
   } else {
+    const unsloth = operationProviderFamily(route.provider) === "unsloth";
+    if (unsloth && !textOnly)
+      return unsupported("Unsloth's embedding API accepts text inputs.");
     const nativeLlama =
       adapter === "llama-embeddings" ||
       operationProviderFamily(route.provider) === "llama-cpp";
@@ -366,6 +369,9 @@ export function embeddingPayload(
     body = {
       ...standard,
       input,
+      // Studio otherwise truncates over-limit text by default, including its
+      // configured embedding model path. Preserve the caller's full input.
+      ...(unsloth ? { truncate: false } : {}),
       encoding_format: options.encodingFormat ?? "float",
       ...(options.inputType ? { input_type: options.inputType } : {}),
       ...(provider ? { provider } : {}),

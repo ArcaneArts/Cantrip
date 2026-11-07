@@ -108,6 +108,50 @@ which its [Models documentation](https://openrouter.ai/docs/guides/overview/mode
 defines to include embedding and decision models as well as language models.
 This public catalog remains separate from authenticated worker endpoint discovery.
 
+Unsloth Studio's [`/v1/models` catalog](https://github.com/unslothai/unsloth/blob/main/studio/backend/routes/inference.py)
+also needs `output_modalities=all` to include decision models. Its advertised
+architecture modalities flow into operation-specific profiles. Entries with an
+unclassified native `task` retain unknown operation support instead of becoming
+language profiles through the legacy fallback; Studio lists image, video and
+speech models alongside chat models. A `loaded: false` observation is retained
+as loading metadata, not permanent lack of API support. Embedding models absent
+from this catalog remain manually configurable by their actual served ID.
+
+## Provider coverage
+
+This matrix describes the implemented adapters and documented serving APIs as
+reviewed on November 7, 2026. It does not grant access to a model or promise that
+every installation exposes every endpoint. Positive operation metadata is scoped
+to the connection and worker/account observation. An explicitly configured
+request reaches its selected endpoint even when discovery is stale or unknown.
+
+| Connection          | Language                            | Embedding                                                                                                     | Native decisions                                                                 | Discovery and limits                                                                                                                                                                                                                            |
+| ------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenAI API key      | Existing language routes            | `/v1/embeddings`, text, dense float/base64                                                                    | `/v1/decisions`, predicate/choice/score, text/JSON/images                        | API catalog plus a versioned documented model registry; catalog membership does not establish account access.                                                                                                                                   |
+| ChatGPT account     | Existing subscription routes        | Not exposed by this connection                                                                                | Not exposed by this connection                                                   | Subscription authentication does not supply API-key operation access.                                                                                                                                                                           |
+| Ollama              | Existing language routes            | `/api/embed`, text, dense vectors, truncation disabled                                                        | `/v1/systemone`, model-specific native images/audio                              | `/api/tags` and bounded `/api/show` metadata; native capabilities retained without borrowing chat vision for embeddings.                                                                                                                        |
+| OpenRouter          | Existing gateway routes             | Compatible embeddings, including advertised joint image/text inputs                                           | Isolated alpha decision adapter with native media/question envelopes             | Explicit all-operation catalog; gateway routing restrictions retained; embedding fallback disabled.                                                                                                                                             |
+| LM Studio / llmster | Existing language routes            | Compatible embeddings for served models                                                                       | OpenAI Decisions and explicitly configured System One; native image envelope     | Native model categories augment the standard catalog; unloaded models remain configurable.                                                                                                                                                      |
+| llama.cpp           | Existing language routes            | Compatible or native embeddings, pooled or token vectors and supported media                                  | System One, including model-specific inline image/audio files                    | Advertised modalities retained; native pooling, model limits and fixed-question constraints remain significant.                                                                                                                                 |
+| vLLM                | Existing language routes            | Embedding, explicit embedding pooling, and BGE-M3 plugin adapters; supported media and vector representations | Native System One structured decisions and typed media arrays                    | Its standard model cards do not advertise serving tasks. Unknown entries stay unverified; configure the served operation/adapter explicitly when needed. Classification, reranking and generated JSON do not establish native decision support. |
+| LiteLLM             | Existing gateway routes             | Compatible embeddings or an explicitly selected native compatible format                                      | Gateway Decisions/System One, native media and explicit TypeSafe image extension | Public aliases retained; optional `model/info` overlay uses only authorized catalog aliases; upstream credentials never leave the worker.                                                                                                       |
+| Unsloth Studio      | Existing language routes            | `/v1/embeddings`, text, dense float/base64, truncation disabled                                               | `/v1/systemone`, native image/audio arrays                                       | Documented API must be enabled/configured in Studio; serving backend and model decide availability. Training/export alone does not establish these APIs.                                                                                        |
+| MLX-LM              | Existing chat/completion routes     | No standard endpoint verified                                                                                 | No standard endpoint verified                                                    | The standard server dispatches completion routes. Compatible extensions can be configured explicitly; they are not advertised as standard MLX-LM features.                                                                                      |
+| xAI API key         | Existing language routes            | No public raw-vector inference endpoint verified                                                              | No native typed decision endpoint verified                                       | Current public API reference is the authority. Collections/search and JSON output are separate capabilities. Compatible extensions remain explicit configuration.                                                                               |
+| Grok account        | Existing account routes             | Not exposed by this connection                                                                                | Not exposed by this connection                                                   | Account passthrough remains separate from xAI API-key access.                                                                                                                                                                                   |
+| Z.ai Coding Plan    | Existing language routes            | No plan endpoint verified                                                                                     | No native typed decision endpoint verified                                       | Coding Plan and standard API access remain separate. Thinking and structured chat output are language capabilities.                                                                                                                             |
+| Custom compatible   | Existing configured language routes | Explicit model, embedding adapter and options                                                                 | Explicit model, decision adapter and options                                     | Custom base paths and protected credentials retained; compatibility with one API never implies every OpenAI endpoint.                                                                                                                           |
+
+The remaining-provider audit uses the current [MLX-LM route dispatcher](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/server.py),
+[Unsloth API reference](https://unsloth.ai/docs/basics/api),
+[Unsloth System One implementation](https://github.com/unslothai/unsloth/blob/main/studio/backend/routes/systemone.py),
+[vLLM model-card protocol](https://github.com/vllm-project/vllm/blob/main/vllm/entrypoints/serve/engine/protocol.py),
+[xAI API reference](https://docs.x.ai/developers/rest-api-reference/inference),
+[Z.ai documentation index](https://docs.z.ai/llms.txt) and
+[Coding Plan scope](https://docs.z.ai/devpack/overview).
+Missing documented APIs remain unverified; Cantrip does not manufacture inference
+servers, use chat as a hidden substitute, or call a gateway's upstream directly.
+
 ## Embedding entry point
 
 The application exports `embed()` from `cantrip_app/src/lib/api.ts`. It accepts a
@@ -146,6 +190,13 @@ Ollama receives `truncate: false` and Cohere-compatible requests use
 `truncate: "NONE"`. No adapter truncates content, drops media, transcribes audio or
 creates video frames. Provider-side model loading, templates, pooling configuration
 and accepted media remain the configured endpoint's responsibility.
+
+Unsloth's compatible embedding request also sends `truncate: false`, because its
+configured embedding-model path otherwise clips oversized text by default.
+The returned actual model identity is included in Cantrip's embedding-space
+fingerprint, so a changed Unsloth backend identity cannot be combined with prior
+batches or silently query an existing space. Media is not passed to Studio's
+documented text-only embedding interface.
 
 ### Native embedding formats
 
@@ -449,6 +500,7 @@ attempt execution without a successful capability refresh.
 | System One / llama.cpp         | Ordered `files` with inline image/audio data URLs; no video conversion                     |
 | System One / LM Studio         | Inline data URLs in the compatible `images` field                                          |
 | System One / vLLM              | Separate `images`, `audio`, and `videos` URL/data-URL arrays                               |
+| System One / Unsloth Studio    | Separate inline PNG/JPEG `images` and `audio` data-URL arrays; no video                    |
 | LiteLLM Decisions / System One | Native image envelope plus separate inline `audio` and `videos` arrays                     |
 | OpenRouter Decisions           | Shared state followed by native top-level image/audio/video parts; inline base64 data URLs |
 

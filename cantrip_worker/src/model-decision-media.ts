@@ -69,6 +69,31 @@ export function systemOneMedia(
       "Select a System One media encoding: raw base64, data-URL files, or typed media URL arrays.",
     );
 
+  if (family === "unsloth" && !options.mediaFormat) {
+    // Studio's OpenJev extension uses separate inline image/audio arrays.
+    // It rejects videos and does not accept Ollama's raw-base64 images.
+    const fields: Record<string, string[]> = {};
+    for (const part of media) {
+      if (part.type === "video")
+        unsupported("Unsloth System One accepts images and audio, not video.");
+      const encoded = inlineDecisionMedia(part.url, part.type);
+      if (
+        part.type === "image" &&
+        !["image/png", "image/jpeg"].includes(encoded.mime)
+      )
+        unsupported("Unsloth decision images require PNG or JPEG data URLs.");
+      (fields[part.type === "image" ? "images" : "audio"] ??= []).push(
+        part.url,
+      );
+    }
+    if (options.typesafeImages)
+      throw new ModelOperationError(
+        "invalid-request",
+        "Unsloth uses native image arrays. Select a gateway media encoding explicitly for a TypeSafe extension.",
+      );
+    return { fields, references: [] };
+  }
+
   if (options.typesafeImages) {
     if (format !== "media-urls")
       throw new ModelOperationError(
