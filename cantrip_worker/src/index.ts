@@ -1704,11 +1704,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }),
   });
   // This belongs to the worker, outside the per-project/per-model runtime maps.
+  let managedGuiBridgeLifetime = new AbortController();
   const nativeCommands = new NativeCommandClient({
     serverUrl: config.serverUrl,
     workerId: config.workerId,
     workerGeneration: workerProcessGeneration,
     token: () => config.token,
+    metadataSignal: () => managedGuiBridgeLifetime.signal,
   });
   const authorizeInferenceResource = (
     target: Parameters<
@@ -2150,6 +2152,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     serverUrl: config.serverUrl,
     workerId: config.workerId,
     token: () => config.token,
+    metadataSignal: () => managedGuiBridgeLifetime.signal,
   });
   const managedHistory = new ManagedNativeHistory({
     directory: config.dataDirectory,
@@ -2478,7 +2481,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         ? session.worktreeId
         : session.scratchRootId,
   });
-  let managedGuiBridgeLifetime = new AbortController();
   const managedGuiPreparations = new ManagedGuiPreparationRegistry();
   const managedExecutionRunnerFor = (
     runtime: CodexAppServer,

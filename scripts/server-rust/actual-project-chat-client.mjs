@@ -22,9 +22,11 @@ export async function actualProjectChatClient({
   result,
   requests,
   providerBoundary,
+  interruptNativeStream,
 }) {
   const model = await taskModelProvider({
     allowMcpDiscoveryProbe: process.argv.includes("--mcp-settings"),
+    observeStreams: Boolean(interruptNativeStream),
   });
   const prompt = "Private actual Agent prompt 🌲",
     answer = "Private actual Agent answer 🍄",
@@ -142,7 +144,10 @@ export async function actualProjectChatClient({
     }, chat.id);
     assert.equal(usage.used.applied, true);
     assert.equal(usage.page.items[0].id, chat.id);
-    const reply = model.reply({ text: answer });
+    const reply = model.reply({
+      text: answer,
+      hold: Boolean(interruptNativeStream),
+    });
     const admitted = await page.evaluate(
       async ({ chatId, prompt, configuration }) =>
         (await import("/src/lib/api/chats.ts")).startTurn(
@@ -166,6 +171,14 @@ export async function actualProjectChatClient({
         window.actualProjectChatCanonicalSnapshot = messages;
         return messages;
       }, chat.id);
+    if (interruptNativeStream)
+      await interruptNativeStream({
+        phase: "agent",
+        reply,
+        model,
+        chatId: chat.id,
+        admitted,
+      });
     observedMessageSnapshots.afterAgentAnswer = await eventually(
       readMessages,
       (messages) => {
@@ -215,8 +228,9 @@ export async function actualProjectChatClient({
         { name: "create_goal", arguments: { objective, token_budget: 1000 } },
       ],
     });
-    model.reply({
+    const goalUpdate = model.reply({
       calls: [{ name: "update_goal", arguments: { status: "complete" } }],
+      hold: Boolean(interruptNativeStream),
     });
     const final = model.reply({ text: goalAnswer });
     const goalTurn = await page.evaluate(
@@ -232,6 +246,15 @@ export async function actualProjectChatClient({
     assert.equal(goalTurn.prompt.chatId, chat.id);
     assert.equal(goalTurn.prompt.text, "Private actual Agent Goal request 🌙");
     assert.equal(typeof goalTurn.prompt.id, "string");
+    if (interruptNativeStream)
+      await interruptNativeStream({
+        phase: "goal",
+        reply: goalUpdate,
+        model,
+        chatId: chat.id,
+        admitted: goalTurn,
+        objective,
+      });
     observedMessageSnapshots.afterGoalAnswer = await eventually(
       readMessages,
       (messages) => {
@@ -288,6 +311,14 @@ export async function actualProjectChatClient({
     );
     await eventually(readMessages, (messages) => {
       for (const text of [answer, goalAnswer]) {
+        if (interruptNativeStream)
+          assert.equal(
+            messages
+              .flatMap((m) => m.content)
+              .filter((i) => i.type === "text" && i.text === text).length,
+            1,
+            "the interrupted native turn has one canonical response",
+          );
         const message = messages.find((m) =>
           m.content.some((i) => i.type === "text" && i.text === text),
         );

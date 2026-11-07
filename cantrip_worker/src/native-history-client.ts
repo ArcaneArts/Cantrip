@@ -24,6 +24,7 @@ import { CantripServerRequestError } from "./cli-client.js";
 import type { NativeCommandClientOptions } from "./native-command-client.js";
 import type { NativeHistoryOutboxRecord } from "./native-history-outbox.js";
 import { nativeHistoryRejectionError } from "./native-history-rejection.js";
+import { recoverNativeMetadata } from "./native-metadata-recovery.js";
 
 /** History transport only: no native input, active-turn lease or CUA authority. */
 export class NativeHistoryClient {
@@ -227,11 +228,16 @@ export class NativeHistoryClient {
       ...input,
       workerId: this.options.workerId,
     });
-    const { binding } = await this.post(
-      "open",
-      request,
-      nativeHistoryBindingOpenResultSchema,
+    const { binding } = await recoverNativeMetadata(
+      (requestSignal) =>
+        this.post(
+          "open",
+          request,
+          nativeHistoryBindingOpenResultSchema,
+          requestSignal,
+        ),
       signal,
+      this.options.metadataSignal?.(),
     );
     if (
       binding.workerId !== request.workerId ||
@@ -252,11 +258,16 @@ export class NativeHistoryClient {
       ...input,
       workerId: this.options.workerId,
     });
-    const { items } = await this.post(
-      "resolve",
-      request,
-      nativeHistoryResolveResultSchema,
+    const { items } = await recoverNativeMetadata(
+      (requestSignal) =>
+        this.post(
+          "resolve",
+          request,
+          nativeHistoryResolveResultSchema,
+          requestSignal,
+        ),
       signal,
+      this.options.metadataSignal?.(),
     );
     if (
       items.length !== request.items.length ||

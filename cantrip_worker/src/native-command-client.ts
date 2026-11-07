@@ -52,6 +52,7 @@ import { z } from "zod";
 import { CantripServerRequestError } from "./cli-client.js";
 import { setTimeout as delay } from "node:timers/promises";
 import { isDeepStrictEqual } from "node:util";
+import { recoverNativeMetadata } from "./native-metadata-recovery.js";
 
 export interface NativeCommandClientOptions {
   serverUrl: string;
@@ -59,6 +60,7 @@ export interface NativeCommandClientOptions {
   workerGeneration?: string;
   token(): string;
   fetch?: typeof fetch;
+  metadataSignal?(): AbortSignal;
 }
 
 /** Short admission transactions only; never hold a request open for a model turn. */
@@ -475,17 +477,23 @@ export class NativeCommandClient {
     input: Omit<NativeCommandSettlement, "workerId">,
     signal?: AbortSignal,
   ) {
-    const result = await this.post(
-      "receipt",
-      nativeCommandSettlementSchema.parse({
-        ...input,
-        ...(input.durableSuspension && this.options.workerGeneration
-          ? { workerGeneration: this.options.workerGeneration }
-          : {}),
-        workerId: this.options.workerId,
-      }),
-      nativeCommandSettlementResultSchema,
+    const body = nativeCommandSettlementSchema.parse({
+      ...input,
+      ...(input.durableSuspension && this.options.workerGeneration
+        ? { workerGeneration: this.options.workerGeneration }
+        : {}),
+      workerId: this.options.workerId,
+    });
+    const result = await recoverNativeMetadata(
+      (requestSignal) =>
+        this.post(
+          "receipt",
+          body,
+          nativeCommandSettlementResultSchema,
+          requestSignal,
+        ),
       signal,
+      this.options.metadataSignal?.(),
     );
     this.correlate(result.receipt, input);
     return result;

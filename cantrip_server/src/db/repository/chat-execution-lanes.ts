@@ -25,6 +25,7 @@ import {
   isNull,
   ne,
   notInArray,
+  or,
   sql,
 } from "drizzle-orm";
 
@@ -330,10 +331,57 @@ export class ChatExecutionLaneRepository {
   async resetInterruptedChatExecutions(): Promise<void> {
     const now = new Date();
     await this.database.transaction(async (transaction) => {
+      // A server restart does not terminate an admitted native GUI input.
+      // Preserve its exact lane and authority until the worker reports its
+      // physical/logical outcome, including a receipt lost after dispatch.
+      const retained = await transaction
+        .select({
+          laneId: schema.chatExecutionLanes.id,
+          chatId: schema.chatExecutionLanes.chatId,
+          runtimeId: schema.chatExecutionLanes.runtimeSessionId,
+        })
+        .from(schema.chatExecutionLanes)
+        .where(
+          and(
+            eq(schema.chatExecutionLanes.state, "active"),
+            sql`EXISTS (
+          SELECT 1 FROM native_command_activations a
+          JOIN native_commands h ON h.operation_id=a.operation_id
+          JOIN native_commands r ON r.operation_id=h.logical_operation_id
+          JOIN chats c ON c.id=a.chat_id AND c.owner_id=h.owner_id
+          WHERE a.chat_id=${schema.chatExecutionLanes.chatId}
+            AND a.execution_lane_id=${schema.chatExecutionLanes.id}
+            AND a.worker_id=${schema.chatExecutionLanes.workerId} AND a.active=true
+            AND h.chat_id=a.chat_id AND h.worker_id=a.worker_id
+            AND h.execution_lane_id=a.execution_lane_id AND h.activation_generation=a.generation
+            AND h.status IN ('accepted','dispatched','applied','uncertain')
+            AND r.chat_id=h.chat_id AND r.owner_id=h.owner_id AND r.worker_id=h.worker_id
+            AND r.execution_lane_id=a.execution_lane_id AND r.origin='gui' AND r.kind='start'
+            AND r.logical_operation_id=r.operation_id AND r.logical_completed_at IS NULL
+        )`,
+          ),
+        );
+      const retainedLanes = retained.map((row) => row.laneId);
+      const retainedRuntimes = retained.flatMap((row) =>
+        row.runtimeId ? [row.runtimeId] : [],
+      );
       await transaction
         .update(schema.agentInteractionRequests)
         .set({ status: "interrupted", resolvedAt: now, updatedAt: now })
-        .where(eq(schema.agentInteractionRequests.status, "pending"));
+        .where(
+          and(
+            eq(schema.agentInteractionRequests.status, "pending"),
+            retainedLanes.length
+              ? or(
+                  isNull(schema.agentInteractionRequests.executionLaneId),
+                  notInArray(
+                    schema.agentInteractionRequests.executionLaneId,
+                    retainedLanes,
+                  ),
+                )
+              : undefined,
+          ),
+        );
       const interruptedPrimaryLanes = await transaction
         .select({ id: schema.chatExecutionLanes.id })
         .from(schema.chatExecutionLanes)
@@ -345,15 +393,38 @@ export class ChatExecutionLaneRepository {
           and(
             eq(schema.chatExecutionLanes.state, "active"),
             eq(schema.projectWorktrees.isPrimary, true),
+            retainedLanes.length
+              ? notInArray(schema.chatExecutionLanes.id, retainedLanes)
+              : undefined,
           ),
         );
       await transaction
         .update(schema.chatExecutionLanes)
         .set({ state: "suspended", updatedAt: now })
-        .where(eq(schema.chatExecutionLanes.state, "active"));
+        .where(
+          and(
+            eq(schema.chatExecutionLanes.state, "active"),
+            retainedLanes.length
+              ? notInArray(schema.chatExecutionLanes.id, retainedLanes)
+              : undefined,
+          ),
+        );
       for (const lane of interruptedPrimaryLanes) {
         await releaseChatLogicalBranchLease(transaction, lane.id);
       }
+      if (retained.length)
+        await transaction
+          .update(schema.chats)
+          .set({ status: "offline", updatedAt: now })
+          .where(
+            and(
+              inArray(
+                schema.chats.id,
+                retained.map((row) => row.chatId),
+              ),
+              inArray(schema.chats.status, ["running", "waiting-for-approval"]),
+            ),
+          );
       // The worker/native Goal may still be running. A server restart alone
       // is not evidence of implementation failure; recovery observes it next.
       await transaction
@@ -404,7 +475,12 @@ export class ChatExecutionLaneRepository {
         .update(schema.chatRuntimeSessions)
         .set({ status: "detached", updatedAt: now })
         .where(
-          inArray(schema.chatRuntimeSessions.status, ["starting", "running"]),
+          and(
+            inArray(schema.chatRuntimeSessions.status, ["starting", "running"]),
+            retainedRuntimes.length
+              ? notInArray(schema.chatRuntimeSessions.id, retainedRuntimes)
+              : undefined,
+          ),
         );
     });
   }
