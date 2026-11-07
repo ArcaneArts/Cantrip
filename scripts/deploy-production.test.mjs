@@ -225,6 +225,37 @@ test("passes the release commit count into the production Docker build", () => {
   );
 });
 
+test("selects the native distribution through the existing production build path", () => {
+  for (const runtime of [undefined, "node", "rust"]) {
+    const selected = { ...config, serverRuntime: runtime };
+    validateDeploymentConfig(selected);
+    const args = productionServerBuildArguments(
+      selected,
+      "/tmp/native-output",
+      "2739",
+    );
+    assert.equal(
+      args[args.indexOf("--file") + 1],
+      path.join(
+        "deploy",
+        "docker",
+        runtime === "rust" ? "server-rust.Dockerfile" : "server.Dockerfile",
+      ),
+    );
+    assert.ok(args.includes("type=local,dest=/tmp/native-output"));
+    assert.ok(args.includes("CANTRIP_VERSION_PATCH=2739"));
+  }
+  assert.throws(
+    () =>
+      productionServerBuildArguments(
+        { ...config, serverRuntime: "other" },
+        "/tmp/output",
+        "2739",
+      ),
+    /serverRuntime must be node or rust/u,
+  );
+});
+
 test("strips macOS metadata from the uploaded production server archive", async () => {
   const root = await mkdtemp(
     path.join(os.tmpdir(), "cantrip-production-archive-test-"),
