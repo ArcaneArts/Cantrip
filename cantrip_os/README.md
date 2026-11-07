@@ -369,5 +369,9 @@ These tests remove their temporary containers, anonymous volumes and private cop
 image. The selected normal image remains the caller's responsibility. A separate
 [full Server/Worker acceptance test](BACKUPS.md#cross-instance-product-test)
 checks workspace restoration between independently initialized instances, UID
-remapping, corrupt archive rejection and fresh source identities. ISO live/install
-boot and external remote/model/CUA acceptance remain separate requirements.
+remapping, corrupt archive rejection and fresh source identities. The
+[current native acceptance record](ACCEPTANCE.md#phase-5-current-native-model-and-viewing-2026-11-07)
+also covers a real local model, Linux computer use and encrypted desktop/console
+viewing. External SSH and refreshed ISO live/install acceptance remain separate
+requirements. See the [product viewing test guide](tests/PRODUCT_ACCEPTANCE.md)
+for the opt-in tests and their cleanup responsibilities.

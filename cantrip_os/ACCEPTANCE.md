@@ -4815,3 +4815,86 @@ assertions and cleanup receipts belong under ignored
 The full Phase 5 goal remains active. Current native/model/CUA, an authorized
 real external SSH target, and final recorded OCI/DEB/AMD64 BIOS+UEFI live/install
 artifacts still require acceptance. No machine was purchased or provisioned.
+
+## Phase 5: current native model and viewing (2026-11-07)
+
+Isolated `codex/os-phase5-current-native` qualifies runtime source
+`b610718b39a8a403a9994e70a6f3fe1db1a7080b`. The normal macOS ARM64 development
+build of Codex 0.166.0 passed with 91 reviewed patches. All six binary/license
+artifacts matched the embedded manifest. Its upstream source manifest is
+`2898d420717dfe2da8883a3360c048c90c559cbb15ed23c76e04d8b37eff171f`;
+the patch digest is
+`d7cb069533e88b1544862fea6d545ac01bbbbd4bce6ac3b7df6ea30faca79c67`.
+This qualifies those exact bytes, rather than every later patch set sharing the
+same version number. It is a development build, not a release distribution.
+
+The normal ARM64 OCI recipe built image
+`sha256:0f167ee073c93b20e56a10742776b6487a9f66190124f98fb169fffd834692a4`.
+It used the preceding normal executor 0.12.0 and remote 0.11.0 package artifacts
+as unchanged build contexts, with workspace 0.4.0 and recovery 0.5.0 built by the
+recipe. A fresh guest was exercised through the full Node Server and external
+Worker with actual profile initialization, principal approval and component grants.
+
+- Six actual native integration cases passed in 14.21 seconds: ownership/task
+  journals, captured Linux environment, delegated shell/file operations,
+  attachment handling and Worker MCP. A separate native cancellation case
+  passed in 13.71 seconds, including sudo/disowned descendant cleanup and an
+  independent process that remained alive. These cases use a deterministic
+  provider fixture.
+- A real local Ollama `gemma4:12b` turn executed a native Linux Python command.
+  Independent guest reads verified UID/GID 20000, the exact registered source
+  directory, passwordless sudo UID 0, Unicode JSON, tracked-file SHA-256, no
+  `PROVIDER_API_KEY` environment name, and exactly one counter line. The proof
+  file was absent from the Host guest-path location and Worker files. The
+  model required explicit user steering with the command after a long reasoning
+  period; this is guided acceptance. Its final JSON and Markdown file link
+  were recovered from the actual encrypted Server chat history.
+- A second real model turn invoked `targets.list`, `target.attach`,
+  `observation.snapshot` and `js.evaluate` against the captured Linux session.
+  The observation was a 1440×900 PNG with an actual completed operation receipt.
+  The empty desktop had no application window title; the model reported the
+  assigned surface name. No Host application or browser was opened.
+- Two reusable opt-in product viewing cases passed in 6.52 seconds against the
+  original Worker source. The native console authenticated 34 ordered output
+  frames containing the Linux directory. The integrated desktop captured the
+  exact binding/runtime/desktop generation through Server admission and actual
+  encrypted WorkerLink relay lanes. Its 9,778-byte JPEG displayed the black
+  IceWM desktop at 1440×900; SHA-256
+  `057c9d33d6b03a751e551e26b3a86c2d2c64a62d4d5bc0fea0cb44ff47b7acaa`.
+  The current mode was `agent`, with no human controller. Both tests send no
+  terminal input or computer-use input.
+- After two Worker restarts, the guest proof counter still contained exactly
+  one line. Console and desktop viewing were reopened on the same retained
+  guest. This is completed-turn retention evidence; earlier checkpoints cover
+  interruption of running processes and destructive operations.
+
+Initial setup failures remain in the evidence: an Ollama URL omitted `/v1`,
+unsupported reasoning effort was submitted, and an earlier Qwen turn was
+explicitly interrupted after producing no Linux result. The initial headless
+desktop test omitted the normal viewer's ready-time viewport message and missed
+the control-state response. A proposed Worker change did not fix that test and
+was completely discarded. Matching the actual viewer initialization made the
+test pass against unmodified Worker code. Direct `tsx` lacked Vite's environment;
+an initial cold Vite console attempt exceeded its timeout. Later Vite runs passed.
+No production fallback or admission bypass was added.
+
+Normal shared package, Worker, full Node Server and app builds pass. Full app
+TypeScript validation passes. `pnpm check` stops on the same independently
+reproduced Primary Server budgets, 1532/1500 and 2336/1999. Formatting, default
+opt-in skips and diff checks are recorded separately. No hosted ordinary-PR
+validation was run.
+
+The 16.9 GiB native compiler target was cleaned immediately after testing. The
+private Server/Worker profile, database, recovery artifact, downloaded managed
+runtimes and temporary native build are removed after collecting bounded
+evidence. The disposable guest, its anonymous volumes and test image are removed
+after exporting the intended compressed Docker archive. Unrelated databases,
+the ordinary CantripOS instance and active AMD64 compiler caches are preserved.
+Cleanup receipts and the exact Docker archive checksum belong under ignored
+`artifacts/phase5-current-native/`.
+
+The full goal remains active: AMD64 executor/ISO builds, refreshed BIOS/UEFI
+live/install checks and authorized real external SSH acceptance remain. Codex
+browser control is disabled in Work settings, so this checkpoint uses product
+API/client transport tests and guest CUA, without claiming rendered browser
+acceptance or using the personal browser.
