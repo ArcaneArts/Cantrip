@@ -112,6 +112,11 @@ export function embeddingPayload(
   items: Items,
 ) {
   const adapter = embeddingAdapter(route);
+  if (options.typesafeImages)
+    throw new ModelOperationError(
+      "invalid-request",
+      "TypeSafe decision image options cannot be used for embeddings.",
+    );
   if (
     ![
       "ollama-embed",
@@ -152,8 +157,10 @@ export function embeddingPayload(
     "api-key",
     "access_token",
     "base_url",
+    "api_base",
     "baseurl",
     "headers",
+    "extra_headers",
     "authorization",
   ]);
   const parameters = options.parameters ?? {};

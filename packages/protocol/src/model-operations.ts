@@ -48,6 +48,8 @@ export const modelOperationOptionsSchema = z
     mediaFormat: z
       .enum(["content-parts", "base64-images", "data-url-files", "media-urls"])
       .optional(),
+    // Explicit opt-in to a fixed, credential-free TypeSafe gateway header.
+    typesafeImages: z.boolean().optional(),
     providerRouting: boundedJsonObjectSchema.optional(),
     // Adapters must protect model, input, questions and credentials from overrides.
     parameters: boundedJsonObjectSchema.optional(),
