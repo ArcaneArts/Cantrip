@@ -6,6 +6,7 @@ import {
   decisionOutcomeSchema,
   modelOperationContentContext,
   protectedEmbeddingResponseSchema,
+  type ModelOperationUsage,
   type WorkerCommand,
 } from "@cantrip/protocol";
 import {
@@ -15,6 +16,7 @@ import {
 import { openRuntimeProvider } from "../protected-secrets.js";
 import { embed, ModelOperationError } from "../model-embedding.js";
 import { decide } from "../model-decision.js";
+import { ModelOperationUsageCollector } from "../model-operation-usage.js";
 import type { WorkerInferenceAdmission } from "../inference-admission.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
 
@@ -24,13 +26,21 @@ type Command = Extract<
 >;
 type Cancellation = Extract<WorkerCommand, { type: "model.operation.cancel" }>;
 const MAX_OPERATION_RECORDS = 10000;
+type ExecutionResult = {
+  response: ReturnType<typeof protectedEmbeddingResponseSchema.parse>;
+  usageReceipt?: ModelOperationUsage;
+};
 
 /** Metadata-only replay protection survives result disposal for this worker
  * incarnation. Completed operations are never automatically submitted again. */
 export class ModelOperationCommands {
   private readonly active = new Map<
     string,
-    { signature: string; controller: AbortController; result: Promise<unknown> }
+    {
+      signature: string;
+      controller: AbortController;
+      result: Promise<ExecutionResult>;
+    }
   >();
   private readonly ended = new Map<string, "completed" | "cancelled">();
   constructor(
@@ -38,6 +48,7 @@ export class ModelOperationCommands {
       scope(): { serverId: string; workerId: string };
       service: WorkerEncryptionService;
       admission(): WorkerInferenceAdmission;
+      workerVersion?: string;
     },
   ) {}
   private key(command: Command | Cancellation) {
@@ -74,7 +85,11 @@ export class ModelOperationCommands {
       cancelled: Boolean(active) || this.ended.get(key) === "cancelled",
     };
   }
-  execute(command: Command): Promise<unknown> {
+  execute(command: Command, collectUsage = false): Promise<unknown> {
+    const expose = (value: ExecutionResult) =>
+      collectUsage && value.usageReceipt
+        ? { ...value.response, usageReceipt: value.usageReceipt }
+        : value.response;
     const key = this.key(command);
     const signature = createHash("sha256")
       .update(JSON.stringify(command))
@@ -85,7 +100,7 @@ export class ModelOperationCommands {
         return Promise.reject(
           new Error("The model operation cannot change during redelivery."),
         );
-      return existing.result;
+      return existing.result.then(expose);
     }
     const ended = this.ended.get(key);
     if (!ended && this.active.size + this.ended.size >= MAX_OPERATION_RECORDS)
@@ -102,13 +117,13 @@ export class ModelOperationCommands {
       },
     );
     this.active.set(key, { signature, controller, result });
-    return result;
+    return result.then(expose);
   }
   private async perform(
     command: Command,
     signal: AbortSignal,
     ended?: "completed" | "cancelled",
-  ) {
+  ): Promise<ExecutionResult> {
     const context = {
       serverId: command.serverId,
       operationId: command.operationId,
@@ -123,6 +138,14 @@ export class ModelOperationCommands {
         ? decisionOutcomeSchema
         : embeddingOutcomeSchema;
     let outcome: unknown;
+    let status: ModelOperationUsage["status"] = "failed";
+    const usageCollector = new ModelOperationUsageCollector({
+      operation: context.operation,
+      modelId: command.route.modelId,
+      routeId: command.route.routeId,
+      providerId: command.route.provider.id,
+      workerVersion: this.ports.workerVersion ?? null,
+    });
     try {
       if (ended)
         throw new ModelOperationError(
@@ -149,6 +172,7 @@ export class ModelOperationCommands {
         route: { ...command.route, provider },
         admission: this.ports.admission(),
         signal,
+        usageCollector,
       };
       const open = {
         context: modelOperationContentContext({
@@ -175,7 +199,9 @@ export class ModelOperationCommands {
               }),
             });
       outcome = schema.parse({ status: "succeeded", value });
+      status = "completed";
     } catch (error) {
+      status = signal.aborted ? "cancelled" : "failed";
       outcome = schema.parse({
         status: "failed",
         error:
@@ -193,7 +219,7 @@ export class ModelOperationCommands {
               },
       });
     }
-    return protectedEmbeddingResponseSchema.parse({
+    const response = protectedEmbeddingResponseSchema.parse({
       operationId: command.operationId,
       scope: command.scope,
       protectedResponse: await protectWorkerEndpointContent({
@@ -206,5 +232,14 @@ export class ModelOperationCommands {
         service: this.ports.service,
       }),
     });
+    let usageReceipt: ModelOperationUsage | undefined;
+    // Rejected replay does not describe the original operation's usage. Missing
+    // observation remains unknown, and telemetry cannot fail a completed result.
+    if (!ended) {
+      try {
+        usageReceipt = usageCollector.finish(status);
+      } catch {}
+    }
+    return { response, ...(usageReceipt ? { usageReceipt } : {}) };
   }
 }

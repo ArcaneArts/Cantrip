@@ -813,6 +813,7 @@ export class WorkerBridge implements WorkerCommandBus {
       requestId,
       command,
       inferenceAdmissionAck: true,
+      modelOperationUsage: true,
     });
 
     return new Promise((resolve, reject) => {

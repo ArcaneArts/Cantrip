@@ -72,13 +72,12 @@ pub fn sum_detailed_token_usage(rows: &[Value]) -> Value {
         ] {
             total[key] = Value::Number(number(&total, key) + number(row, key));
         }
-        // Preserve the source's two successive additions, including f64 loss
-        // of precision; summing each row first is observably different.
-        total["totalTokens"] = Value::Number(
-            number(&total, "totalTokens")
-                + number(row, "inputTokens")
-                + number(row, "outputTokens"),
-        );
+        total["totalTokens"] = Value::Number(if row["modelOperationUsage"]["receipt"].is_null() {
+            // Preserve the existing native-chat addition order.
+            number(&total, "totalTokens") + number(row, "inputTokens") + number(row, "outputTokens")
+        } else {
+            number(&total, "totalTokens") + super::super::model_operation_usage::observed_total(row)
+        });
     }
     total
 }

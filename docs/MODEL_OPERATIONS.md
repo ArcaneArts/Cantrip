@@ -211,6 +211,44 @@ with an already-admitted native turn still needs explicit dependent HTTP ownersh
 native process death alone cannot establish settlement of a separate HTTP request.
 Do not nest an independent acquisition while holding the same provider's ticket.
 
+## Direct-operation usage
+
+Both servers opt into count-only worker receipts through the optional transport
+envelope. The strict inference command and protected client response are unchanged:
+an older worker can still execute the command, and an older server does not receive
+the extended private response. The servers remove the receipt before forwarding
+the encrypted result to the app.
+
+The worker observes each actual HTTP request after payload validation and retains
+valid numeric usage before validating vectors or decision answers. Completed
+batches still contribute known usage when a later batch, response validation, or
+embedding-space check fails. Receipts include request outcomes, HTTP duration,
+worker version, and coverage for each reported token counter. They contain no
+inputs, outputs, media, vectors, credentials, or provider error text.
+
+An observed token subtotal prefers each request's reported total, otherwise its
+known input/output counts. It is accumulated per request, preserving reports from
+different partial batches without double-counting them. Missing counters remain
+null in the receipt; overflow is explicit. Legacy numeric rollups include only
+known counts, with reporting coverage shown in provider telemetry and retained in
+exports. A subtotal is not an assertion of complete billing. The provider-reported
+total is only populated when every observed request reports it.
+
+Usage is persisted asynchronously in the existing token ledger under an identity
+bound to the owner, server, worker, and operation UUID, with the dispatched
+model/route/provider identities retained separately from nullable foreign keys.
+It creates no synthetic chat, turn, behavior observation, or agent-time interval.
+A valid terminal receipt is immutable; late bootstrap or disconnect reports cannot
+replace it. No inference is replayed to recover usage.
+
+Telemetry persistence never gates inference or its protected response. A legacy
+worker, transport loss, shutdown, or persistence failure can leave an unknown or
+missing observation. There is no durable worker receipt outbox in this path, so it
+does not guarantee recovery after a lost response or process crash. Unknown usage
+must not be interpreted as free inference or zero provider consumption. When the
+worker's inference start is unknown, telemetry ranges use the server observation
+time; the actual start remains null and contributes no invented daily token data.
+
 ## Provider contracts and validation
 
 The initial adapter contracts are grounded in the official

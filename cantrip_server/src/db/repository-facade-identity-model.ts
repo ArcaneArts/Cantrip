@@ -76,6 +76,7 @@ import type {
   ProviderQuotaObservationInput,
   QuotaTokenAnalyticsQuery,
   TokenUsageRecordInput,
+  ModelOperationUsageWrite,
 } from "./repository/telemetry.js";
 import type {
   WorkerRepository,
@@ -271,6 +272,12 @@ export abstract class IdentityModelRepositoryFacade {
     input: TokenUsageRecordInput,
   ): Promise<void> {
     return this.telemetry.recordTokenUsage(ownerId, input);
+  }
+  async recordModelOperationUsage(
+    ownerId: string,
+    input: ModelOperationUsageWrite,
+  ): Promise<void> {
+    return this.telemetry.recordModelOperationUsage(ownerId, input);
   }
 
   async recordModelBehaviorObservation(

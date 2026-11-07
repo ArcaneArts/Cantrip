@@ -798,6 +798,17 @@ export function ProviderTelemetryDialog({
                 <div className="mt-3">
                   <TokenMosaic analytics={analytics} />
                 </div>
+                {analytics.tokens.directOperations?.attemptCount ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Includes{" "}
+                    {analytics.tokens.directOperations.observedRequestCount.toLocaleString()}{" "}
+                    observed embedding and decision requests. Counts include
+                    reported usage only.
+                    {analytics.tokens.directOperations.incompleteUsageCount
+                      ? ` ${analytics.tokens.directOperations.incompleteUsageCount.toLocaleString()} operations have incomplete usage reporting.`
+                      : ""}
+                  </p>
+                ) : null}
               </section>
 
               <section>

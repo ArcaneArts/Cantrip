@@ -1,4 +1,9 @@
 import {
+  observeModelOperationRequest,
+  reportedModelOperationUsage,
+  type ModelOperationUsageCollector,
+} from "./model-operation-usage.js";
+import {
   MODEL_OPERATION_CONTENT_BYTES_LIMIT,
   decisionInputSchema,
   decisionResultSchema,
@@ -462,146 +467,157 @@ async function execute(
   options: ModelOperationOptions,
   signal: AbortSignal,
   fetcher: typeof fetch,
+  usageCollector?: ModelOperationUsageCollector,
 ): Promise<DecisionResult> {
   const payload = makePayload(route, request, options);
   const body = JSON.stringify(payload.body);
   if (Buffer.byteLength(body) > MODEL_OPERATION_CONTENT_BYTES_LIMIT)
     fail("invalid-request", "The native decision request exceeds 4 MiB.");
-  let response: Response;
-  try {
-    response = await fetcher(payload.url, {
-      method: "POST",
-      redirect: "error",
-      signal,
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json",
-        ...(route.provider.apiKey
-          ? { authorization: `Bearer ${route.provider.apiKey}` }
-          : {}),
-      },
-      body,
-    });
-  } catch {
-    if (signal.aborted) throw signal.reason;
-    throw new ModelOperationError(
-      "provider-error",
-      "The decision provider request failed.",
-    );
-  }
-  const reader = response.body?.getReader();
-  const chunks: Uint8Array[] = [];
-  try {
-    if (!response.ok)
-      throw new ModelOperationError(
-        "provider-error",
-        `The decision provider returned HTTP ${response.status}.`,
-        response.status,
-      );
-    if (!reader) malformed();
-    let bytes = 0;
-    while (true) {
-      const part = await reader.read();
-      if (part.done) break;
-      bytes += part.value.byteLength;
-      if (bytes > MODEL_OPERATION_CONTENT_BYTES_LIMIT)
-        fail("invalid-response", "The decision response exceeds 4 MiB.");
-      chunks.push(part.value);
-    }
-    signal.throwIfAborted();
-    let raw: Record<string, unknown>;
-    const joined = Buffer.concat(chunks);
-    try {
-      raw = object(JSON.parse(joined.toString("utf8")));
-    } catch {
-      malformed();
-    } finally {
-      joined.fill(0);
-    }
-    let answers: DecisionAnswer[];
-    if (payload.adapter === "openai-decisions") {
-      if (
-        !Array.isArray(raw.answers) ||
-        raw.answers.length !== request.questions.length
-      )
-        malformed();
-      const byId = new Map<string, unknown>();
-      for (const item of raw.answers) {
-        const name = object(item).name;
+  return observeModelOperationRequest(
+    usageCollector,
+    signal,
+    async (report) => {
+      let response: Response;
+      try {
+        response = await fetcher(payload.url, {
+          method: "POST",
+          redirect: "error",
+          signal,
+          headers: {
+            "content-type": "application/json",
+            accept: "application/json",
+            ...(route.provider.apiKey
+              ? { authorization: `Bearer ${route.provider.apiKey}` }
+              : {}),
+          },
+          body,
+        });
+      } catch {
+        if (signal.aborted) throw signal.reason;
+        throw new ModelOperationError(
+          "provider-error",
+          "The decision provider request failed.",
+        );
+      }
+      const reader = response.body?.getReader();
+      const chunks: Uint8Array[] = [];
+      try {
+        if (!response.ok)
+          throw new ModelOperationError(
+            "provider-error",
+            `The decision provider returned HTTP ${response.status}.`,
+            response.status,
+          );
+        if (!reader) malformed();
+        let bytes = 0;
+        while (true) {
+          const part = await reader.read();
+          if (part.done) break;
+          bytes += part.value.byteLength;
+          if (bytes > MODEL_OPERATION_CONTENT_BYTES_LIMIT)
+            fail("invalid-response", "The decision response exceeds 4 MiB.");
+          chunks.push(part.value);
+        }
+        signal.throwIfAborted();
+        let raw: Record<string, unknown>;
+        const joined = Buffer.concat(chunks);
+        try {
+          raw = object(JSON.parse(joined.toString("utf8")));
+        } catch {
+          malformed();
+        } finally {
+          joined.fill(0);
+        }
+        report(reportedModelOperationUsage(raw, "decision"));
+        let answers: DecisionAnswer[];
+        if (payload.adapter === "openai-decisions") {
+          if (
+            !Array.isArray(raw.answers) ||
+            raw.answers.length !== request.questions.length
+          )
+            malformed();
+          const byId = new Map<string, unknown>();
+          for (const item of raw.answers) {
+            const name = object(item).name;
+            if (
+              typeof name !== "string" ||
+              byId.has(name) ||
+              !request.questions.some((question) => question.id === name)
+            )
+              malformed();
+            byId.set(name, item);
+          }
+          answers = request.questions.map((question) =>
+            answer(byId.get(question.id), question, payload.adapter),
+          );
+        } else {
+          const entries = object(raw.answers);
+          if (Object.keys(entries).length !== request.questions.length)
+            malformed();
+          answers = request.questions.map((question) =>
+            answer(
+              Object.hasOwn(entries, question.id)
+                ? entries[question.id]
+                : undefined,
+              question,
+              payload.adapter,
+            ),
+          );
+        }
+        const usage = object(raw.usage);
+        const cost = usage.cost;
         if (
-          typeof name !== "string" ||
-          byId.has(name) ||
-          !request.questions.some((question) => question.id === name)
+          cost !== undefined &&
+          cost !== null &&
+          (typeof cost !== "number" || !Number.isFinite(cost) || cost < 0)
         )
           malformed();
-        byId.set(name, item);
+        const result = decisionResultSchema.parse({
+          modelId: route.modelId,
+          routeId: route.routeId,
+          providerId: route.provider.id,
+          requestedModel: route.modelName,
+          actualModel:
+            typeof raw.model === "string" && raw.model ? raw.model : null,
+          actualProvider:
+            typeof raw.provider === "string" && raw.provider
+              ? raw.provider
+              : null,
+          adapter: payload.adapter,
+          status: answers.some((value) => value.type === "error")
+            ? "partial"
+            : "complete",
+          answers,
+          usage: {
+            inputTokens: count(usage.input_tokens ?? usage.prompt_tokens),
+            outputTokens: count(usage.output_tokens ?? usage.completion_tokens),
+            totalTokens: count(usage.total_tokens),
+            cost: cost ?? null,
+          },
+        });
+        if (
+          Buffer.byteLength(
+            JSON.stringify({ status: "succeeded", value: result }),
+          ) > MODEL_OPERATION_CONTENT_BYTES_LIMIT
+        )
+          fail(
+            "invalid-response",
+            "The normalized decision response exceeds 4 MiB.",
+          );
+        return result;
+      } catch (error) {
+        if (signal.aborted) throw signal.reason;
+        if (error instanceof ModelOperationError) throw error;
+        malformed();
+      } finally {
+        for (const chunk of chunks) chunk.fill(0);
+        if (reader) {
+          await reader.cancel().catch(() => {});
+          reader.releaseLock();
+        }
       }
-      answers = request.questions.map((question) =>
-        answer(byId.get(question.id), question, payload.adapter),
-      );
-    } else {
-      const entries = object(raw.answers);
-      if (Object.keys(entries).length !== request.questions.length) malformed();
-      answers = request.questions.map((question) =>
-        answer(
-          Object.hasOwn(entries, question.id)
-            ? entries[question.id]
-            : undefined,
-          question,
-          payload.adapter,
-        ),
-      );
-    }
-    const usage = object(raw.usage);
-    const cost = usage.cost;
-    if (
-      cost !== undefined &&
-      cost !== null &&
-      (typeof cost !== "number" || !Number.isFinite(cost) || cost < 0)
-    )
-      malformed();
-    const result = decisionResultSchema.parse({
-      modelId: route.modelId,
-      routeId: route.routeId,
-      providerId: route.provider.id,
-      requestedModel: route.modelName,
-      actualModel:
-        typeof raw.model === "string" && raw.model ? raw.model : null,
-      actualProvider:
-        typeof raw.provider === "string" && raw.provider ? raw.provider : null,
-      adapter: payload.adapter,
-      status: answers.some((value) => value.type === "error")
-        ? "partial"
-        : "complete",
-      answers,
-      usage: {
-        inputTokens: count(usage.input_tokens ?? usage.prompt_tokens),
-        outputTokens: count(usage.output_tokens ?? usage.completion_tokens),
-        totalTokens: count(usage.total_tokens),
-        cost: cost ?? null,
-      },
-    });
-    if (
-      Buffer.byteLength(
-        JSON.stringify({ status: "succeeded", value: result }),
-      ) > MODEL_OPERATION_CONTENT_BYTES_LIMIT
-    )
-      fail(
-        "invalid-response",
-        "The normalized decision response exceeds 4 MiB.",
-      );
-    return result;
-  } catch (error) {
-    if (signal.aborted) throw signal.reason;
-    if (error instanceof ModelOperationError) throw error;
-    malformed();
-  } finally {
-    for (const chunk of chunks) chunk.fill(0);
-    if (reader) {
-      await reader.cancel().catch(() => {});
-      reader.releaseLock();
-    }
-  }
+    },
+  );
 }
 
 /** Standalone native decisions. Native-turn reservation reuse is a separate
@@ -612,6 +628,7 @@ export async function decide(input: {
   admission: WorkerInferenceAdmission;
   signal?: AbortSignal;
   fetcher?: typeof fetch;
+  usageCollector?: ModelOperationUsageCollector;
 }): Promise<DecisionResult> {
   const request = decisionInputSchema.parse(input.request);
   const { route, admission } = input;
@@ -658,6 +675,7 @@ export async function decide(input: {
             AbortSignal.timeout(options.timeoutMs ?? 120000),
           ]),
           input.fetcher ?? globalThis.fetch,
+          input.usageCollector,
         ),
     );
   } catch (error) {

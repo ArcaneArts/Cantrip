@@ -4,6 +4,9 @@ import {
   modelOperationCancelResultSchema,
   protectedEmbeddingRequestSchema,
   protectedEmbeddingResponseSchema,
+  modelOperationUsageSchema,
+  modelOperationUsageFitsIdentity,
+  type ModelOperationUsageIdentity,
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 import type { ServerRepository } from "../../db/repository.js";
@@ -18,6 +21,38 @@ export function installModelOperationRoutes(
     bridge: LimitedWorkerCommandBus;
   },
 ) {
+  const reports = new Set<Promise<void>>();
+  const report = (
+    ownerId: string,
+    identity: ModelOperationUsageIdentity,
+    transportStatus: "running" | "replied" | "unavailable",
+    rawReceipt?: unknown,
+  ) => {
+    const parsed = modelOperationUsageSchema.safeParse(rawReceipt);
+    const work: Promise<void> = ports.repository
+      .recordModelOperationUsage(ownerId, {
+        identity,
+        transportStatus,
+        ...(parsed.success &&
+        modelOperationUsageFitsIdentity(parsed.data, identity)
+          ? { receipt: parsed.data }
+          : {}),
+      })
+      .catch(() => {
+        app.log.warn(
+          {
+            event: "model.operation.usage-unavailable",
+            operation: identity.operation,
+          },
+          "Model operation usage could not be recorded.",
+        );
+      })
+      .finally(() => reports.delete(work));
+    reports.add(work);
+  };
+  app.addHook("onClose", async () => {
+    await Promise.allSettled([...reports]);
+  });
   for (const operation of ["embedding", "decision"] as const) {
     app.post(
       `/api/model-operations/${operation}`,
@@ -33,6 +68,7 @@ export function installModelOperationRoutes(
           ownerId = ports.applicationOwnerId();
         let dispatched = false;
         let disconnected = reply.raw.destroyed;
+        let usageIdentity: ModelOperationUsageIdentity | undefined;
         const cancel = () => {
           if (dispatched && !reply.raw.writableEnded)
             void ports.bridge
@@ -102,23 +138,40 @@ export function installModelOperationRoutes(
             });
           if (disconnected) return reply;
           dispatched = true;
-          const raw = await ports.bridge.request(
-            input.scope.workerId,
-            command,
-            {
-              ownerId,
-              timeoutMs: null,
-            },
-          );
-          const result = protectedEmbeddingResponseSchema.parse(raw);
+          usageIdentity = {
+            serverId: ports.serverId,
+            workerId: input.scope.workerId,
+            operationId: input.operationId,
+            operation,
+            modelId: route.modelId,
+            routeId: route.routeId,
+            providerId: route.provider.id,
+          };
+          const pending = ports.bridge.request(input.scope.workerId, command, {
+            ownerId,
+            timeoutMs: null,
+          });
+          report(ownerId, usageIdentity, "running");
+          const raw = await pending;
+          const envelope =
+            raw && typeof raw === "object"
+              ? (raw as Record<string, unknown>)
+              : {};
+          const result = protectedEmbeddingResponseSchema.parse({
+            operationId: envelope.operationId,
+            scope: envelope.scope,
+            protectedResponse: envelope.protectedResponse,
+          });
           if (
             result.operationId !== input.operationId ||
             JSON.stringify(result.scope) !== JSON.stringify(input.scope)
           )
             throw new Error("Model operation response scope changed.");
+          report(ownerId, usageIdentity, "replied", envelope.usageReceipt);
           return reply.send(result);
         } catch {
           cancel();
+          if (usageIdentity) report(ownerId, usageIdentity, "unavailable");
           return reply.code(502).send({
             code: "model-operation-unavailable",
             error: `The ${operation} worker operation could not be completed. It was not automatically retried.`,

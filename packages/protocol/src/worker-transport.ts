@@ -17,6 +17,9 @@ export const workerRequestEnvelopeSchema = z.object({
   // Older workers strip this optional envelope field. New workers only emit
   // the extended private admission event when the requesting server opts in.
   inferenceAdmissionAck: z.literal(true).optional(),
+  // Opt-in response metadata; older workers strip this envelope field without
+  // rejecting or changing the strict inference command itself.
+  modelOperationUsage: z.literal(true).optional(),
   // Issued in send order by the current server command bridge. This is an
   // execution identity, not a capacity grant or a second prompt queue.
   inferenceSequence: z

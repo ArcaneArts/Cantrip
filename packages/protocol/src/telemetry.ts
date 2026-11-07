@@ -1,6 +1,10 @@
 import { inferenceCommandTimingSchema } from "./inference-admission.js";
 import { nativeBehaviorAttributionSchema } from "./native-behavior-attribution.js";
 import { z } from "zod";
+import {
+  modelOperationUsageEvidenceSchema,
+  modelOperationUsageCoverageSchema,
+} from "./model-operation-usage.js";
 import { nativeHistoryUsageSchema } from "./native-history-usage.js";
 import {
   detailedTokenUsageTotalsSchema,
@@ -206,6 +210,7 @@ export const providerTelemetryAnalyticsSchema = z.object({
     }),
   ),
   tokens: z.object({
+    directOperations: modelOperationUsageCoverageSchema.optional(),
     total: detailedTokenUsageTotalsSchema,
     daily: z.array(projectTokenUsageDaySchema).max(366),
   }),
@@ -339,6 +344,7 @@ const telemetryExportTokenUsageSchema = z.object({
   reportedTotalTokens: z.number().int().nonnegative().nullable(),
   usageSemantics: z.string().min(1),
   nativeUsage: nativeHistoryUsageSchema.optional(),
+  modelOperationUsage: modelOperationUsageEvidenceSchema.optional(),
   startedAt: z.string().datetime().nullable(),
   completedAt: z.string().datetime().nullable(),
   finalizedAt: z.string().datetime().nullable(),

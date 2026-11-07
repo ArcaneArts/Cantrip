@@ -632,6 +632,7 @@ impl WorkerBridge {
                 ("requestId", Value::String(id.clone().into())),
                 ("command", command),
                 ("inferenceAdmissionAck", Value::Bool(true)),
+                ("modelOperationUsage", Value::Bool(true)),
                 (
                     "inferenceSequence",
                     Value::String(sequence.to_string().into()),

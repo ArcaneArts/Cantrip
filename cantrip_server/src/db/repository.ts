@@ -232,6 +232,7 @@ export type {
   ProviderQuotaObservationInput,
   QuotaTokenAnalyticsQuery,
   TokenUsageRecordInput,
+  ModelOperationUsageWrite,
 } from "./repository/telemetry.js";
 
 function toTerminalWireSummary(
