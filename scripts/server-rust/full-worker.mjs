@@ -34,6 +34,8 @@ export function launchActualWorker(
     traceShutdown = false,
     isolatedProcessGroup = false,
     homeDirectory,
+    workerPackage = process.env.CANTRIP_TEST_WORKER_PACKAGE ??
+      path.join(repositoryRoot, "cantrip_worker"),
     environment: extraEnvironment = {},
   } = {},
 ) {
@@ -100,9 +102,9 @@ export function launchActualWorker(
   delete environment.CANTRIP_WORKER_TOKEN;
   const child = spawn(
     process.execPath,
-    [path.join(repositoryRoot, "cantrip_worker/dist/index.js")],
+    [path.join(workerPackage, "dist/index.js")],
     {
-      cwd: path.join(repositoryRoot, "cantrip_worker"),
+      cwd: workerPackage,
       env: environment,
       detached: isolatedProcessGroup && process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"],

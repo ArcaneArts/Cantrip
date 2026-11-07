@@ -112,6 +112,7 @@ export async function actualProjectChatClient({
       return created;
     }, projectId);
     const replay = await page.evaluate(() => window.agentCreation());
+    result.projectChatId = chat.id;
     assert.equal(replay.id, chat.id);
     assert.equal(replay.title, chat.title);
     assert.equal(chat.experience, "agent");
@@ -151,15 +152,12 @@ export async function actualProjectChatClient({
         ),
       { chatId: chat.id, prompt, configuration },
     );
-    if (process.argv.includes("--agent-tasks")) {
-      // Current managed project Chats durably queue GUI input before execution.
-      assert.equal(admitted.status, "queued");
-      assert.equal(admitted.prompt.chatId, chat.id);
-      assert.equal(admitted.prompt.text, prompt);
-      assert.equal(typeof admitted.prompt.id, "string");
-    } else {
-      assert.equal(admitted.status, "started");
-    }
+    // The production managed-session route durably queues every new GUI input,
+    // independently of whether this scenario also exercises native Task tools.
+    assert.equal(admitted.status, "queued");
+    assert.equal(admitted.prompt.chatId, chat.id);
+    assert.equal(admitted.prompt.text, prompt);
+    assert.equal(typeof admitted.prompt.id, "string");
     const readMessages = () =>
       page.evaluate(async (chatId) => {
         const messages = await (
@@ -230,7 +228,10 @@ export async function actualProjectChatClient({
         ),
       { chatId: chat.id, configuration },
     );
-    assert.equal(goalTurn.status, "started");
+    assert.equal(goalTurn.status, "queued");
+    assert.equal(goalTurn.prompt.chatId, chat.id);
+    assert.equal(goalTurn.prompt.text, "Private actual Agent Goal request 🌙");
+    assert.equal(typeof goalTurn.prompt.id, "string");
     observedMessageSnapshots.afterGoalAnswer = await eventually(
       readMessages,
       (messages) => {

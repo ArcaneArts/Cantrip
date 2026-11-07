@@ -6,22 +6,29 @@ import net from "node:net";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-export async function startPackagedNodeServer(directory, environment) {
-  const listener = net.createServer();
-  await new Promise((resolve, reject) => {
-    listener.once("error", reject);
-    listener.listen(0, "127.0.0.1", resolve);
-  });
-  const port = listener.address().port;
-  await new Promise((resolve, reject) =>
-    listener.close((e) => (e ? reject(e) : resolve())),
-  );
+export async function startPackagedNodeServer(
+  directory,
+  environment,
+  { nodeExecutable, port = 0 } = {},
+) {
+  if (!port) {
+    const listener = net.createServer();
+    await new Promise((resolve, reject) => {
+      listener.once("error", reject);
+      listener.listen(0, "127.0.0.1", resolve);
+    });
+    port = listener.address().port;
+    await new Promise((resolve, reject) =>
+      listener.close((e) => (e ? reject(e) : resolve())),
+    );
+  }
   const child = spawn(
-    path.join(
-      directory,
-      "runtime",
-      process.platform === "win32" ? "node.exe" : "node",
-    ),
+    nodeExecutable ??
+      path.join(
+        directory,
+        "runtime",
+        process.platform === "win32" ? "node.exe" : "node",
+      ),
     [path.join(directory, "dist/index.js")],
     {
       cwd: directory,
@@ -52,7 +59,9 @@ export async function startPackagedNodeServer(directory, environment) {
           "Packaged Node server exited during startup: " + diagnostics,
         );
       try {
-        const response = await fetch(origin + "/readyz");
+        const response = await fetch(origin + "/readyz", {
+          signal: AbortSignal.timeout(5000),
+        });
         if (response.status === 200 && (await response.json()).database.engine)
           break;
       } catch (error) {
@@ -71,9 +80,13 @@ export async function startPackagedNodeServer(directory, environment) {
   }
   return {
     origin,
-    async close() {
-      child.kill("SIGTERM");
-      const timer = setTimeout(() => child.kill("SIGKILL"), 30_000);
+    child,
+    diagnostics: () => diagnostics,
+    events: [],
+    async close({ shutdownTimeoutMs = 30_000 } = {}) {
+      if (child.exitCode === null && child.signalCode === null)
+        child.kill("SIGTERM");
+      const timer = setTimeout(() => child.kill("SIGKILL"), shutdownTimeoutMs);
       try {
         const result = await completion;
         assert.equal(
