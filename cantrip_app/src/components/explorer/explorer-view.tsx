@@ -1925,7 +1925,7 @@ export function ExplorerView({
           setViewStateError(
             error instanceof Error
               ? error.message
-              : "The file editor window could not be opened.",
+              : "The file tab could not be opened.",
           );
         },
       );
