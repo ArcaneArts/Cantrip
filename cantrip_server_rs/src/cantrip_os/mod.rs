@@ -28,6 +28,16 @@ pub struct InstanceObservation<'a> {
     pub error: Option<&'a str>,
 }
 
+/// A reviewed public placement failure, distinct from internal SQL/worker errors.
+#[derive(Debug)]
+pub struct PlacementError(pub &'static str);
+impl std::fmt::Display for PlacementError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.0)
+    }
+}
+impl std::error::Error for PlacementError {}
+
 pub struct Repository {
     pub database: Arc<Database>,
 }
@@ -168,7 +178,9 @@ impl Repository {
     }
     pub async fn attachment(&self, owner: &str, id: &str) -> Result<Value> {
         let rows=self.rows("SELECT to_jsonb(i)::text FROM cantrip_os_instances i JOIN workers w ON w.id=i.worker_id AND w.owner_id=$1 AND w.unlinked_at IS NULL WHERE i.owner_id=$1 AND i.id=$2", &[&owner,&id]).await?;
-        let row = rows.first().context("OS attachment not found.")?;
+        let row = rows.first().context(crate::cantrip_os::PlacementError(
+            "OS attachment not found.",
+        ))?;
         Ok(
             serde_json::json!({"instance":summary(row,"instance",None)?,"transport":row["transport"],"workerProcessGeneration":row["worker_process_generation"],"powerEpoch":row["power_epoch"]}),
         )

@@ -419,7 +419,7 @@ export class CantripOsPackageRepository {
           eq(operations.ownerId, ownerId),
           eq(operations.instanceId, instanceId),
           cursor
-            ? sql`(${operations.createdAt},${operations.operationId}) < (${cursor.createdAt.toISOString()}::timestamptz,${cursor.operationId})`
+            ? sql`(${operations.createdAt},${operations.operationId}) < (SELECT created_at,operation_id FROM cantrip_os_package_operations WHERE owner_id=${ownerId} AND instance_id=${instanceId} AND operation_id=${cursor.operationId})`
             : undefined,
         ),
       )

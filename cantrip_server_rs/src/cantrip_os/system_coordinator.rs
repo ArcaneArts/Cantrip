@@ -94,7 +94,9 @@ impl Coordinator {
                 .repository
                 .system_get(owner, instance, id)
                 .await?
-                .context("System operation not found.")?,
+                .context(crate::cantrip_os::PlacementError(
+                    "System operation not found.",
+                ))?,
         )
     }
     pub async fn system_list(&self, owner: &str, instance: &str, input: &Value) -> Result<Value> {

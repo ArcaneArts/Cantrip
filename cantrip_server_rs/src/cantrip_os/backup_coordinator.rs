@@ -38,13 +38,9 @@ impl Coordinator {
         )
     }
     pub async fn backup_get(&self, owner: &str, id: &str) -> Result<Value> {
-        self.backup_summary(
-            &self
-                .repository
-                .backup_get(owner, id)
-                .await?
-                .context("Backup operation not found.")?,
-        )
+        self.backup_summary(&self.repository.backup_get(owner, id).await?.context(
+            crate::cantrip_os::PlacementError("Backup operation not found."),
+        )?)
     }
     pub async fn backup_admit(&self, owner: &str, instance: &str, input: &Value) -> Result<Value> {
         let (row, created) = self

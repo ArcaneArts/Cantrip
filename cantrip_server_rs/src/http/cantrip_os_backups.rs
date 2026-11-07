@@ -1,8 +1,4 @@
-use super::{
-    account, body, json_response,
-    middleware::Context,
-    settings::{error, parse},
-};
+use super::{account, body, json_response, middleware::Context, settings::parse};
 use crate::{auth::service::AuthService, cantrip_os::coordinator::Coordinator};
 use anyhow::{Context as _, Result};
 use axum::{
@@ -21,6 +17,7 @@ async fn execute(
     route: String,
     request: Request,
 ) -> Result<Response> {
+    let read = request.method() == Method::GET || request.method() == Method::HEAD;
     let coordinator = Coordinator::new(service);
     let param = |key: &str| {
         params
@@ -28,8 +25,8 @@ async fn execute(
             .map(String::as_str)
             .context("Backup route identity")
     };
-    let list = request.method() == Method::GET && !params.contains_key("operationId");
-    let output = if request.method() == Method::GET && !list {
+    let list = read && !params.contains_key("operationId");
+    let output = if read && !list {
         coordinator
             .backup_get(&owner, param("operationId")?)
             .await?
@@ -93,8 +90,8 @@ async fn handle(
         .await
     {
         Ok(response) => response,
-        Err(_) => error(
-            409,
+        Err(failure) => super::cantrip_os::failure(
+            &failure,
             "CantripOS backup request failed. Observe the original operation before retrying.",
         ),
     }

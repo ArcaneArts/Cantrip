@@ -87,7 +87,7 @@ impl Repository {
             let instance=text(&original["instance"],"id")?;let op=&original["operation"];let id=text(op,"operation_id")?;
             let i=owned(tx,&owner,instance).await?;
             let rows=decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_system_operations o WHERE operation_id=$1", &[&id]).await?)?;
-            let current=rows.first().context("System operation not found.")?;
+            let current=rows.first().context(crate::cantrip_os::PlacementError("System operation not found."))?;
             if current["recovery_generation"].is_string() && i["attachment_generation"]==current["recovery_generation"] {return Ok(i);}
             ensure!(current["retired_by"].is_null() && current["state"]=="ready" && i["attachment_generation"]==op["fence_generation"] && i["power_epoch"]==original["instance"]["power_epoch"] && i["worker_id"]==original["instance"]["worker_id"] && i["guest_instance_id"]==original["instance"]["guest_instance_id"],"The system recovery changed before its identity was adopted.");
             no_active(tx,instance,None).await?;

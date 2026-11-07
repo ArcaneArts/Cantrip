@@ -28,7 +28,7 @@ impl Repository {
         );
         self.database.transaction(|tx|Box::pin(async move {
             let parents=decode(tx.query("SELECT to_jsonb(i)::text FROM cantrip_os_instances i JOIN workers w ON w.id=i.worker_id WHERE i.owner_id=$1 AND i.id=$2 AND w.owner_id=$1 AND w.unlinked_at IS NULL FOR UPDATE OF i", &[&owner,&instance]).await?)?;
-            let i=parents.first().context("Owned OS attachment not found.")?;
+            let i=parents.first().context(crate::cantrip_os::PlacementError("Owned OS attachment not found."))?;
             let old=decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_workspace_operations o WHERE operation_id=$1", &[&text(&input,"operationId")?]).await?)?;
             if let Some(old)=old.first() {
                 ensure!(old["owner_id"]==owner && old["instance_id"]==instance && old["command"]["scope"]["serverId"]==server && old["request"]==input,"This workspace operation ID belongs to another admission.");
@@ -49,7 +49,7 @@ impl Repository {
         instance: &str,
         operation: &str,
     ) -> Result<Value> {
-        self.rows("UPDATE cantrip_os_workspace_operations SET revision=revision+1 WHERE owner_id=$1 AND instance_id=$2 AND operation_id=$3 RETURNING to_jsonb(cantrip_os_workspace_operations)::text", &[&owner,&instance,&operation]).await?.into_iter().next().context("Workspace operation not found.")
+        self.rows("UPDATE cantrip_os_workspace_operations SET revision=revision+1 WHERE owner_id=$1 AND instance_id=$2 AND operation_id=$3 RETURNING to_jsonb(cantrip_os_workspace_operations)::text", &[&owner,&instance,&operation]).await?.into_iter().next().context(crate::cantrip_os::PlacementError("Workspace operation not found."))
     }
     pub async fn workspace_operation_unknown(&self, original: &Value) -> Result<Value> {
         let revision = original["revision"]
@@ -65,7 +65,9 @@ impl Repository {
             text(original, "operation_id")?,
         )
         .await?
-        .context("Workspace operation not found.")
+        .context(crate::cantrip_os::PlacementError(
+            "Workspace operation not found.",
+        ))
     }
     pub async fn workspace_operation_record(
         &self,
@@ -87,7 +89,7 @@ impl Repository {
             let instance=text(&original,"instance_id")?;
             let parents=decode(tx.query("SELECT to_jsonb(i)::text FROM cantrip_os_instances i WHERE id=$1 AND owner_id=$2 FOR UPDATE", &[&instance,&owner]).await?)?;
             let rows=decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_workspace_operations o WHERE operation_id=$1 AND owner_id=$2 FOR UPDATE", &[&text(&original,"operation_id")?,&owner]).await?)?;
-            let current=rows.first().context("Workspace operation not found.")?;
+            let current=rows.first().context(crate::cantrip_os::PlacementError("Workspace operation not found."))?;
             if current["revision"]!=original["revision"] || ["ready","failed"].iter().any(|s|current["state"]==*s) {return Ok(current.clone());}
             if result["state"]=="ready" && let Some(i)=parents.first() && i["worker_id"]==original["worker_id"] && i["guest_instance_id"]==original["command"]["scope"]["guestInstanceId"] && i["attachment_generation"]==original["attachment_generation"] && i["runtime_generation"]==original["runtime_generation"] {
                 let observation=&result["receipt"]["workspace"];
@@ -119,7 +121,7 @@ impl Repository {
                 )
                 .await?
                 .is_empty(),
-            "Owned OS attachment not found."
+            crate::cantrip_os::PlacementError("Owned OS attachment not found.")
         );
         let cursor = input["cursor"].as_str();
         if let Some(cursor) = cursor {
@@ -127,7 +129,7 @@ impl Repository {
                 self.workspace_operation_get(owner, instance, cursor)
                     .await?
                     .is_some(),
-                "Workspace history cursor not found."
+                crate::cantrip_os::PlacementError("Workspace history cursor not found.")
             );
         }
         let limit = input["limit"].as_i64().context("History limit")?;

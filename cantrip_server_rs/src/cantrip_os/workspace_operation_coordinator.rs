@@ -69,7 +69,9 @@ impl Coordinator {
                 .repository
                 .workspace_operation_get(owner, instance, operation)
                 .await?
-                .context("Workspace operation not found.")?,
+                .context(crate::cantrip_os::PlacementError(
+                    "Workspace operation not found.",
+                ))?,
         )
     }
     pub async fn workspace_operation_list(

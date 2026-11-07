@@ -8,7 +8,9 @@ pub(super) async fn owned(tx: &Transaction<'_>, owner: &str, instance: &str) -> 
     decode(tx.query(OWNED, &[&owner, &instance]).await?)?
         .into_iter()
         .next()
-        .context("Owned OS attachment not found.")
+        .context(crate::cantrip_os::PlacementError(
+            "Owned OS attachment not found.",
+        ))
 }
 pub(super) async fn no_active(
     tx: &Transaction<'_>,

@@ -91,7 +91,9 @@ impl Coordinator {
                 .repository
                 .power_get(owner, instance, id)
                 .await?
-                .context("Power operation not found.")?,
+                .context(crate::cantrip_os::PlacementError(
+                    "Power operation not found.",
+                ))?,
         )
     }
     pub async fn power_list(&self, owner: &str, instance: &str, input: &Value) -> Result<Value> {

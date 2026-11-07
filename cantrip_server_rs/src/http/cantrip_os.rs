@@ -14,6 +14,15 @@ use axum::{
 };
 use std::{collections::HashMap, sync::Arc};
 
+pub(super) fn failure(cause: &anyhow::Error, fallback: &'static str) -> Response {
+    error(
+        409,
+        cause
+            .downcast_ref::<crate::cantrip_os::PlacementError>()
+            .map_or(fallback, |error| error.0),
+    )
+}
+
 async fn execute(
     service: Arc<AuthService>,
     owner: String,
@@ -21,6 +30,7 @@ async fn execute(
     route: String,
     request: Request,
 ) -> Result<Response> {
+    let read = request.method() == Method::GET || request.method() == Method::HEAD;
     let coordinator = Coordinator::new(service);
     let repository = &coordinator.repository;
     let param = |key: &str| {
@@ -29,7 +39,7 @@ async fn execute(
             .map(String::as_str)
             .context("CantripOS route identity")
     };
-    let value = if request.method() == Method::GET {
+    let value = if read {
         if route == "/api/cantrip-os" {
             serde_json::json!(repository.list(&owner).await?)
         } else if route.ends_with("/run-sources") {
@@ -128,8 +138,8 @@ async fn handle(
         Err(failure) => {
             // Keep transport/private operation diagnostics out of the client.
             eprintln!("CantripOS request failed: {failure}");
-            error(
-                409,
+            self::failure(
+                &failure,
                 "CantripOS request failed. Inspect worker diagnostics before retrying a mutation.",
             )
         }
@@ -176,4 +186,36 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
             "/api/projects/{projectId}/cantrip-os/bindings/{bindingId}/verify",
             post(handle),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::failure;
+    use crate::cantrip_os::PlacementError;
+    use axum::body::to_bytes;
+
+    #[tokio::test]
+    async fn placement_failures_are_public_but_untyped_diagnostics_stay_private() {
+        let message = "Owned OS attachment not found.";
+        for cause in [
+            anyhow::Error::new(PlacementError(message)),
+            anyhow::Error::new(PlacementError(message)).context("internal query details"),
+        ] {
+            let response = failure(&cause, "Private operation failed.");
+            assert_eq!(response.status(), 409);
+            let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&bytes).unwrap(),
+                serde_json::json!({"error":message})
+            );
+        }
+        for diagnostic in [message, "SQL failed with private transport credentials"] {
+            let response = failure(&anyhow::anyhow!(diagnostic), "Private operation failed.");
+            let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&bytes).unwrap(),
+                serde_json::json!({"error":"Private operation failed."})
+            );
+        }
+    }
 }

@@ -33,7 +33,7 @@ impl Repository {
         instance: &str,
         workspace: &str,
     ) -> Result<Value> {
-        self.rows("SELECT jsonb_build_object('instance',to_jsonb(i),'workspace',to_jsonb(w),'target',CASE WHEN p.attachment_generation=i.attachment_generation AND p.runtime_generation=i.runtime_generation THEN to_jsonb(p) ELSE NULL END)::text FROM cantrip_os_instances i JOIN cantrip_os_workspaces w ON w.instance_id=i.id LEFT JOIN cantrip_os_desktop_targets p ON p.workspace_id=w.id WHERE i.owner_id=$1 AND i.id=$2 AND w.id=$3", &[&owner,&instance,&workspace]).await?.into_iter().next().context("Owned OS workspace not found.")
+        self.rows("SELECT jsonb_build_object('instance',to_jsonb(i),'workspace',to_jsonb(w),'target',CASE WHEN p.attachment_generation=i.attachment_generation AND p.runtime_generation=i.runtime_generation THEN to_jsonb(p) ELSE NULL END)::text FROM cantrip_os_instances i JOIN cantrip_os_workspaces w ON w.instance_id=i.id LEFT JOIN cantrip_os_desktop_targets p ON p.workspace_id=w.id WHERE i.owner_id=$1 AND i.id=$2 AND w.id=$3", &[&owner,&instance,&workspace]).await?.into_iter().next().context(crate::cantrip_os::PlacementError("Owned OS workspace not found."))
     }
     pub async fn record_desktop_target(
         &self,
@@ -82,9 +82,9 @@ impl Repository {
         );
         self.database.transaction(|tx|Box::pin(async move {
             let parents=decode(tx.query("SELECT to_jsonb(i)::text FROM cantrip_os_instances i JOIN workers k ON k.id=i.worker_id AND k.owner_id=$1 AND k.unlinked_at IS NULL WHERE i.id=$2 AND i.owner_id=$1 FOR UPDATE OF i", &[&owner,&instance]).await?)?;
-            let i=parents.first().context("Owned OS attachment not found.")?;
+            let i=parents.first().context(crate::cantrip_os::PlacementError("Owned OS attachment not found."))?;
             let spaces=decode(tx.query("SELECT to_jsonb(w)::text FROM cantrip_os_workspaces w WHERE id=$1 AND instance_id=$2 FOR UPDATE", &[&workspace,&instance]).await?)?;
-            let w=spaces.first().context("Owned OS workspace not found.")?;
+            let w=spaces.first().context(crate::cantrip_os::PlacementError("Owned OS workspace not found."))?;
             let old=decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_desktop_operations o WHERE operation_id=$1", &[&text(&input,"operationId")?]).await?)?;
             if let Some(old)=old.first() {
                 ensure!(old["owner_id"]==owner && old["instance_id"]==instance && old["workspace_id"]==workspace && old["request"]==input,"This desktop operation ID belongs to another admission.");
@@ -111,7 +111,7 @@ impl Repository {
         workspace: &str,
         id: &str,
     ) -> Result<Value> {
-        self.rows("UPDATE cantrip_os_desktop_operations SET revision=revision+1 WHERE owner_id=$1 AND instance_id=$2 AND workspace_id=$3 AND operation_id=$4 RETURNING to_jsonb(cantrip_os_desktop_operations)::text", &[&owner,&instance,&workspace,&id]).await?.into_iter().next().context("Desktop operation not found.")
+        self.rows("UPDATE cantrip_os_desktop_operations SET revision=revision+1 WHERE owner_id=$1 AND instance_id=$2 AND workspace_id=$3 AND operation_id=$4 RETURNING to_jsonb(cantrip_os_desktop_operations)::text", &[&owner,&instance,&workspace,&id]).await?.into_iter().next().context(crate::cantrip_os::PlacementError("Desktop operation not found."))
     }
     pub async fn desktop_unknown(&self, owner: &str, row: &Value) -> Result<Value> {
         self.database.query("UPDATE cantrip_os_desktop_operations SET state='unknown',updated_at=now() WHERE owner_id=$1 AND operation_id=$2 AND revision=$3::bigint AND state NOT IN ('ready','failed')", &[&owner,&text(row,"operation_id")?,&row["revision"].as_i64().context("Desktop revision")?]).await?;
@@ -122,7 +122,9 @@ impl Repository {
             text(row, "operation_id")?,
         )
         .await?
-        .context("Desktop operation not found.")
+        .context(crate::cantrip_os::PlacementError(
+            "Desktop operation not found.",
+        ))
     }
     pub async fn desktop_record(&self, owner: &str, row: &Value, result: Value) -> Result<Value> {
         let result = checked("cantripOsDesktopOperationResultSchema", result)?;
@@ -172,7 +174,9 @@ impl Repository {
             text(row, "operation_id")?,
         )
         .await?
-        .context("Desktop operation not found.")
+        .context(crate::cantrip_os::PlacementError(
+            "Desktop operation not found.",
+        ))
     }
     pub async fn desktop_list(
         &self,
@@ -186,7 +190,9 @@ impl Repository {
         if let Some(id) = cursor {
             self.desktop_get(owner, instance, workspace, id)
                 .await?
-                .context("Desktop history cursor not found.")?;
+                .context(crate::cantrip_os::PlacementError(
+                    "Desktop history cursor not found.",
+                ))?;
         }
         let limit = input["limit"].as_i64().context("Desktop page limit")?;
         let mut rows=self.rows("SELECT to_jsonb(o)::text FROM cantrip_os_desktop_operations o WHERE owner_id=$1 AND instance_id=$2 AND workspace_id=$3 AND ($4::text IS NULL OR (created_at,operation_id)<(SELECT created_at,operation_id FROM cantrip_os_desktop_operations WHERE owner_id=$1 AND instance_id=$2 AND workspace_id=$3 AND operation_id=$4)) ORDER BY created_at DESC,operation_id DESC LIMIT $5", &[&owner,&instance,&workspace,&cursor,&(limit+1)]).await?;

@@ -28,7 +28,7 @@ impl Repository {
             tx.query("SELECT id FROM cantrip_os_instances WHERE owner_id=$1 AND id=$2 FOR UPDATE", &[&owner,&instance]).await?;
             let saved=tx.query("UPDATE cantrip_os_system_operations SET state='rejected',updated_at=now() WHERE owner_id=$1 AND operation_id=$2 AND dispatch_stage='preparing' AND state NOT IN ('ready','failed','rejected') RETURNING operation_id", &[&owner,&id]).await?;
             if !saved.is_empty() {let epoch=original["admission_epoch"].as_i64().context("System admission epoch")?;tx.query("UPDATE cantrip_os_instances SET runtime_generation=NULL,worker_process_generation=NULL,status='unknown',power_epoch=power_epoch+1,updated_at=now() WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3 AND power_epoch=$4::bigint", &[&owner,&instance,&text(&original,"fence_generation")?,&epoch]).await?;}
-            decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_system_operations o WHERE owner_id=$1 AND operation_id=$2", &[&owner,&id]).await?)?.into_iter().next().context("System operation not found.")
+            decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_system_operations o WHERE owner_id=$1 AND operation_id=$2", &[&owner,&id]).await?)?.into_iter().next().context(crate::cantrip_os::PlacementError("System operation not found."))
         })).await
     }
     pub async fn system_get(&self, owner: &str, instance: &str, id: &str) -> Result<Option<Value>> {
@@ -55,7 +55,7 @@ impl Repository {
                 ensure!(o["retired_by"].is_null() && o["worker_id"]==i["worker_id"] && o["fence_generation"]==input["attachmentGeneration"] && o["target_generation"]==input["targetGeneration"] && i["attachment_generation"]==input["attachmentGeneration"],"The original system attachment changed or was retired; no continuation was dispatched.");
             }
             let rows=decode(tx.query("UPDATE cantrip_os_system_operations SET revision=revision+1 WHERE owner_id=$1 AND instance_id=$2 AND operation_id=$3 RETURNING to_jsonb(cantrip_os_system_operations)::text", &[&owner,&instance,&id]).await?)?;
-            rows.into_iter().next().context("System operation not found.")
+            rows.into_iter().next().context(crate::cantrip_os::PlacementError("System operation not found."))
         })).await
     }
     pub async fn system_record(&self, owner: &str, original: &Value, raw: Value) -> Result<Value> {
@@ -82,14 +82,16 @@ impl Repository {
                 tx.query("UPDATE cantrip_os_instances SET runtime_generation=NULL,worker_process_generation=NULL,status='unknown',last_error=NULL,power_epoch=power_epoch+1,updated_at=now() WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3 AND power_epoch=$4::bigint", &[&owner,&instance,&text(&original,"fence_generation")?,&epoch]).await?;
             }
             let rows=decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_system_operations o WHERE owner_id=$1 AND operation_id=$2", &[&owner,&id]).await?)?;
-            rows.into_iter().next().context("System operation not found.")
+            rows.into_iter().next().context(crate::cantrip_os::PlacementError("System operation not found."))
         })).await
     }
     pub async fn system_unknown(&self, owner: &str, row: &Value) -> Result<Value> {
         self.database.query("UPDATE cantrip_os_system_operations SET state='unknown',updated_at=now() WHERE owner_id=$1 AND operation_id=$2 AND revision=$3::bigint AND state NOT IN ('ready','failed','rejected')", &[&owner,&text(row,"operation_id")?,&row["revision"].as_i64().context("System revision")?]).await?;
         self.system_get(owner, text(row, "instance_id")?, text(row, "operation_id")?)
             .await?
-            .context("System operation not found.")
+            .context(crate::cantrip_os::PlacementError(
+                "System operation not found.",
+            ))
     }
     pub async fn system_list(
         &self,
@@ -97,12 +99,12 @@ impl Repository {
         instance: &str,
         input: &Value,
     ) -> Result<(Vec<Value>, Option<String>)> {
-        ensure!(!self.rows("SELECT to_jsonb(i)::text FROM cantrip_os_instances i WHERE owner_id=$1 AND id=$2", &[&owner,&instance]).await?.is_empty(),"OS attachment not found.");
+        ensure!(!self.rows("SELECT to_jsonb(i)::text FROM cantrip_os_instances i WHERE owner_id=$1 AND id=$2", &[&owner,&instance]).await?.is_empty(),crate::cantrip_os::PlacementError("OS attachment not found."));
         let cursor = input["cursor"].as_str().map(str::to_owned);
         if let Some(cursor) = &cursor {
-            self.system_get(owner, instance, cursor)
-                .await?
-                .context("System history cursor not found.")?;
+            self.system_get(owner, instance, cursor).await?.context(
+                crate::cantrip_os::PlacementError("System history cursor not found."),
+            )?;
         }
         let limit = input["limit"].as_i64().context("System history limit")?;
         let mut rows=self.rows("SELECT to_jsonb(o)::text FROM cantrip_os_system_operations o WHERE owner_id=$1 AND instance_id=$2 AND ($3::text IS NULL OR (created_at,operation_id)<(SELECT created_at,operation_id FROM cantrip_os_system_operations WHERE owner_id=$1 AND instance_id=$2 AND operation_id=$3)) ORDER BY created_at DESC,operation_id DESC LIMIT $4", &[&owner,&instance,&cursor,&(limit+1)]).await?;
