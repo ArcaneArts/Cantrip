@@ -1059,3 +1059,20 @@ the guest listener and all active clients; a disconnected controller cannot
 retarget another browser's replacement attachment. Upgrades
 also invalidate package-owned timestamp bytecode so reproducible source changes
 actually execute the new code. Retained desktop/workspace state is preserved.
+
+## Phase 5 native acceptance checkpoint
+
+The [current acceptance record](../cantrip_os/ACCEPTANCE.md#phase-5-current-native-model-and-viewing-2026-11-07)
+qualifies the exact normal 91-patch Codex 0.166.0 development runtime at
+`b610718b3`, using a fresh normal Docker image and the full Node Server/Worker.
+Actual native integration/cancellation, a guided real local-model Linux command,
+real-model guest CUA, encrypted native console output and source-bound desktop
+viewing passed. A version-only probe is insufficient to qualify later native
+patch sets. Model/Worker orchestration and credentials remain outside the guest.
+
+The opt-in viewing tests close their own sessions/grants and delete the temporary
+view. Caller-owned private profiles, disposable guests and build caches need
+explicit final cleanup; retain bounded receipts and intended artifacts. Final
+AMD64 executor/ISO builds, refreshed live/install boot and an authorized external
+SSH machine remain required. Codex's disabled browser integration is recorded
+without using the owner's personal browser as a substitute.
