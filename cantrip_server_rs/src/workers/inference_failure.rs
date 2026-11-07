@@ -5,6 +5,18 @@ use crate::{
     workers::{bridge::CommandError, command_bus::CommandFailure},
 };
 
+pub(crate) fn transport_ended(error: &anyhow::Error) -> bool {
+    downcast_ref::<CommandFailure>(error)
+        .and_then(|failure| match failure {
+            CommandFailure::Bridge(command) => Some(command),
+            _ => None,
+        })
+        .or_else(|| downcast_ref::<CommandError>(error))
+        .is_some_and(|command| {
+            command.unavailable || command.code.as_deref() == Some("worker-command-timeout")
+        })
+}
+
 pub(crate) fn evidence(error: &anyhow::Error) -> Option<&Value> {
     let command = downcast_ref::<CommandFailure>(error)
         .and_then(|failure| match failure {

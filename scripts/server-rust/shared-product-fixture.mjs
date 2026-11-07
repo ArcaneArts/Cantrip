@@ -2,6 +2,7 @@
 // worker attached to the peer opposite the application. No command substitutes.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { appendFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -169,7 +170,7 @@ export class SharedProductFixture {
       await this.redis.stop();
     }
   }
-  async replacePeer(index, kind = "rust") {
+  async replacePeer(index, kind = "rust", { crash = false } = {}) {
     const peer = this.peers[index];
     const server = peer.server;
     const before = {
@@ -177,7 +178,16 @@ export class SharedProductFixture {
       instanceId: peer.environment.CANTRIP_SERVER_INSTANCE_ID,
       pid: server.child.pid,
     };
-    await peer.close();
+    if (crash) {
+      assert.equal(server.child.exitCode, null);
+      assert.equal(server.child.signalCode, null);
+      const completion = once(server.child, "close");
+      assert.equal(server.child.kill("SIGKILL"), true);
+      const [code, signal] = await completion;
+      assert.equal(code, null);
+      assert.equal(signal, "SIGKILL");
+      peer.server = undefined;
+    } else await peer.close();
     const generation = this.generations.findLast(
       (g) => g.pid === server.child.pid && g.peer === index,
     );
@@ -185,6 +195,7 @@ export class SharedProductFixture {
       exitCode: server.child.exitCode,
       signal: server.child.signalCode,
       diagnostics: server.diagnostics(),
+      ...(crash ? { intentionalInterruption: "SIGKILL" } : {}),
     });
     peer.kind = kind;
     peer.environment.CANTRIP_SERVER_INSTANCE_ID = randomUUID();

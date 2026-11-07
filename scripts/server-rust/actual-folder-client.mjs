@@ -54,6 +54,7 @@ import { HttpFixture } from "./http-fixture.mjs";
 import { SharedProductFixture } from "./shared-product-fixture.mjs";
 import { verifySharedProductRolling } from "./shared-product-rolling.mjs";
 import { verifySharedProductOfflineShutdown } from "./shared-product-offline-shutdown.mjs";
+import { actualNativeInflightClient } from "./actual-native-inflight-client.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { password } from "./security-fixtures.mjs";
 import { actualTerminalServices } from "./actual-terminal-services.mjs";
@@ -879,6 +880,19 @@ async function flow(
         stopWorker,
         result,
       });
+    if (process.argv.includes("--native-inflight-recovery")) {
+      if (!worker) await startWorker();
+      await actualNativeInflightClient({
+        fixture,
+        page,
+        projectId: first.id,
+        workerId,
+        worker,
+        dataDirectory,
+        requests,
+        result,
+      });
+    }
     if (process.argv.includes("--tasks"))
       await actualTaskClient({
         page,
@@ -1135,6 +1149,11 @@ try {
   for (const runtime of report.runtimes.slice(1)) {
     assert.deepEqual(runtime.steps, report.runtimes[0].steps);
     assert.deepEqual(runtime.projects, report.runtimes[0].projects);
+    if (process.argv.includes("--native-inflight-recovery"))
+      assert.deepEqual(
+        runtime.nativeInflight.summary,
+        report.runtimes[0].nativeInflight.summary,
+      );
     if (process.argv.includes("--tasks")) {
       const { chatId: currentId, ...current } = runtime.taskExecution;
       const { chatId: baselineId, ...baseline } =

@@ -206,6 +206,10 @@ impl Service {
                 self.publish(owner,&chat,Some(&json!({"experience":"task","projectId":claim["projectId"]})));
                 return Ok(());
             }
+            if failure.is_some_and(crate::workers::inference_failure::transport_ended)
+                && self.tasks.pending_input_after_transport_loss(owner, &chat, &claim["lease"]).await? {
+                return Ok(());
+            }
             self.dispatch.heartbeat(&claim["lease"],&Value::Null).await?;
             let mut completed=false;
             let persist:Result<()>=async {

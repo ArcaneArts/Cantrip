@@ -1298,6 +1298,58 @@ export class TaskInferenceInputRepository {
     }
   }
 
+  /** Keep an exact canonical round pending after transport loss. Its terminal
+   * worker receipt, or positive no-forward proof, owns settlement; losing the
+   * relay owner's RPC must not manufacture a failed round and fresh inference. */
+  async pendingAfterTransportLoss(
+    ownerId: string,
+    chatId: string,
+    fence: TaskDispatchFence,
+  ): Promise<boolean> {
+    return this.database.transaction(async (tx) => {
+      await assertTaskOperationDispatchFence(
+        tx,
+        ownerId,
+        chatId,
+        fence.operationId,
+        {
+          kind: "leased",
+          lease: fence,
+        },
+      );
+      const [round] = await tx
+        .select()
+        .from(schema.taskPlanningRounds)
+        .where(
+          and(
+            eq(schema.taskPlanningRounds.id, fence.operationId),
+            eq(schema.taskPlanningRounds.chatId, chatId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const state = round?.inferenceInput;
+      if (
+        !state ||
+        state.deferred ||
+        state.terminal ||
+        (state.failedBeforeDispatch &&
+          state.firstDispatchedOperationId === null)
+      )
+        return false;
+      const receipt = currentTaskInputExecution(state).receipt;
+      if (
+        receipt.dispatch.cycleId !== fence.cycleId ||
+        receipt.dispatch.operationId !== fence.operationId ||
+        receipt.dispatch.fencingToken !== fence.fencingToken ||
+        receipt.dispatch.leaseOwner !== fence.leaseOwner
+      )
+        return false;
+      await this.context(tx, ownerId, state.receipt);
+      return true;
+    });
+  }
+
   /** Revoke pending input authority and restore its original canonical cycle.
    * If dispatch won the race, uncertainty wins: never replay that whole input.
    * An old title/native preparation may still occupy its worker ticket until
