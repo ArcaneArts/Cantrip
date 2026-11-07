@@ -9,6 +9,7 @@ export * from "./task-goal-transfer.js";
 export * from "./task-inference-route.js";
 export * from "./task-goal-outcome.js";
 export * from "./provider-definitions.js";
+export * from "./model-operations.js";
 export * from "./endpoint-models.js";
 export * from "./native-settings-state.js";
 export * from "./conversations.js";

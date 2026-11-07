@@ -60,10 +60,12 @@ impl SettingsRepository {
         }
         let id = uuid::Uuid::new_v4().to_string();
         let name = string(input, "name")?.lossy().into_owned();
+        let operation = input["operation"].as_str().unwrap_or("language").to_owned();
         let profile_params = vec![
             WireValue::String(id.clone().into()),
             WireValue::String(owner.into()),
             input["name"].clone(),
+            WireValue::String(operation.clone().into()),
         ];
         let original_routes = routes.clone();
         let routes = routes.iter().enumerate().map(|(position,route)| Ok(json!({
@@ -73,7 +75,7 @@ impl SettingsRepository {
         let (route_query, route_params) = query_error::routes_insert(&routes, &original_routes);
         let owner = owner.to_owned();
         self.database.transaction({ let (owner,id)=(owner.clone(),id.clone()); move |tx| Box::pin(async move {
-            query_error::context(tx.query("INSERT INTO model_profiles(id,owner_id,name) VALUES($1,$2,$3)", &[&id,&owner,&name]).await,query_error::PROFILE_INSERT,&profile_params)?;
+            query_error::context(tx.query("INSERT INTO model_profiles(id,owner_id,name,operation) VALUES($1,$2,$3,$4)", &[&id,&owner,&name,&operation]).await,"INSERT INTO model_profiles(id,owner_id,name,operation) VALUES($1,$2,$3,$4)",&profile_params)?;
             query_error::context(tx.query("INSERT INTO model_routes(id,model_id,provider_id,model_name,position,enabled) SELECT id,model_id,provider_id,model_name,position,enabled FROM jsonb_to_recordset($1::jsonb) AS r(id text,model_id text,provider_id text,model_name text,position integer,enabled boolean)", &[&json!(routes)]).await,&route_query,&route_params)?;
             Ok(())
         }) }).await?;
@@ -113,6 +115,10 @@ impl SettingsRepository {
             .await?
             .is_empty()
         {
+            return Ok(None);
+        }
+        if let Some(operation) = input["operation"].as_str()
+            && self.database.query("SELECT id FROM model_profiles WHERE id=$1 AND owner_id=$2 AND operation=$3 LIMIT 1", &[&model, &owner, &operation]).await?.is_empty() {
             return Ok(None);
         }
         let existing = self

@@ -74,6 +74,7 @@ export interface ModelProviderRefreshTarget {
 }
 
 export interface ProviderModelCatalogWrite {
+  operationCapabilities?: ProviderModelCatalogEntry["operationCapabilities"];
   nativeModelId: string;
   canonicalModelId: string | null;
   displayName: string;
@@ -151,6 +152,7 @@ export function toProviderModelCatalogEntry(
     id: model.id,
     providerId: model.providerId,
     nativeModelId: model.nativeModelId,
+    operationCapabilities: model.operationCapabilities,
     canonicalModelId: model.canonicalModelId,
     displayName: model.displayName,
     description: model.description,
@@ -194,6 +196,7 @@ function toProviderModelAvailability(
     id: availability.id,
     providerModelId: availability.providerModelId,
     scopeKey: availability.scopeKey,
+    operationCapabilities: availability.operationCapabilities,
     workerId: availability.workerId,
     providerAccountId: availability.providerAccountId,
     state: availability.state as ProviderModelAvailability["state"],
@@ -680,6 +683,7 @@ export class ProviderCatalogRepository {
                 schema.providerModels.nativeModelId,
               ],
               set: {
+                operationCapabilities: sql`case when excluded.operation_capabilities = '{}'::jsonb then ${schema.providerModels.operationCapabilities} else excluded.operation_capabilities end`,
                 canonicalModelId: sql`excluded.canonical_model_id`,
                 displayName: sql`excluded.display_name`,
                 description: sql`excluded.description`,

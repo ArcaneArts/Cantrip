@@ -311,6 +311,8 @@ export class SettingsRepository {
       desktopStreamQuality:
         settings.desktopStreamQuality as UserSettings["desktopStreamQuality"],
       defaultModelId: settings.defaultModelId,
+      defaultEmbeddingModelId: settings.defaultEmbeddingModelId,
+      defaultDecisionModelId: settings.defaultDecisionModelId,
       defaultReasoningEffort: settings.defaultReasoningEffort,
       defaultCustomSubagentModel: settings.defaultCustomSubagentModel,
       defaultSubagentModelId: settings.defaultSubagentModelId,
@@ -427,6 +429,24 @@ export class SettingsRepository {
     ownerId: string,
     input: UserSettingsUpdate,
   ): Promise<SettingsBundleWire | null> {
+    for (const [modelId, operation] of [
+      [input.defaultEmbeddingModelId, "embedding"],
+      [input.defaultDecisionModelId, "decision"],
+    ] as const) {
+      if (!modelId) continue;
+      const [profile] = await this.database
+        .select({ id: schema.modelProfiles.id })
+        .from(schema.modelProfiles)
+        .where(
+          and(
+            eq(schema.modelProfiles.id, modelId),
+            eq(schema.modelProfiles.ownerId, ownerId),
+            eq(schema.modelProfiles.operation, operation),
+          ),
+        )
+        .limit(1);
+      if (!profile) return null;
+    }
     if (
       input.labelingModelId &&
       !(await this.collaborators.getModelRuntime(
