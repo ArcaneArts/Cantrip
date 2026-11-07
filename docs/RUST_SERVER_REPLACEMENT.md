@@ -7442,3 +7442,14 @@ write disconnects and server restarts. See [the CLI qualification](RUST_SERVER_C
 for exact counts, commands and the controlled-worker/platform boundaries. This
 adds no worker rewrite or default-server cutover; complete product, packaging,
 migration/rollback and replacement acceptance remain required.
+
+## Opaque Chat attachments
+
+The native server now owns opaque attachment upload, replica-aware download and
+concurrent deletion, with transactional primary-replica creation and caller-loss
+continuity. Local qualification covers all three database modes and all three
+authentication modes: 486 paired HTTP observations, 423 full paired attachment/
+replica SQL snapshots, actual INSERT failures, caller destruction, post-write
+reopen and real quotas. See [the attachment evidence and limitations](RUST_SERVER_CHAT_ATTACHMENTS.md).
+Node remains the default server; full product, platform, migration, rollback,
+packaging and Winterhold acceptance remain required.

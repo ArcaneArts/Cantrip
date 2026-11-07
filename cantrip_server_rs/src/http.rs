@@ -33,6 +33,7 @@ mod cantrip_os_desktop;
 mod cantrip_os_packages;
 mod cantrip_os_power;
 mod cantrip_os_workspace_operations;
+mod chat_attachments;
 mod chat_catalogs;
 mod chat_configuration;
 mod chat_console;
@@ -213,6 +214,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(projects::routes())
         .merge(folders::routes())
         .merge(chat_catalogs::routes())
+        .merge(chat_attachments::routes())
         .merge(chat_configuration::routes())
         .merge(chat_customizations::routes())
         .merge(conversations::routes())

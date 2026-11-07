@@ -826,6 +826,13 @@ export const projectExportContractRoots = [
   "projectExportChatBeginResultSchema",
 ];
 
+export const chatAttachmentContractRoots = [
+  "attachmentUploadOpaqueSchema",
+  "attachmentDownloadOpaqueSchema",
+  "attachmentChunkOpaqueSchema",
+  "attachmentProtectedMetadataSchema",
+];
+
 // Keep independently added roots self-contained. Numeric graph references must
 // not depend on the size of the base graph after an unrelated branch merges.
 export const runMcpContractRoots = [
@@ -885,6 +892,11 @@ export function sourceContractSchema(name) {
 }
 
 const refinements = new Map([
+  [attachmentContent.attachmentUploadOpaqueSchema, "attachment-upload-stream"],
+  [
+    attachmentContent.attachmentDownloadOpaqueSchema,
+    "attachment-download-stream",
+  ],
   [protocol.projectExportCreateSchema, "project-export-chat-ids"],
   [protocol.externalChatAttachmentSchema, "external-chat-attachment"],
   [protocol.externalChatTranscriptSchema, "external-chat-transcript"],
@@ -1671,6 +1683,20 @@ if (
       {
         ...(await resolveConfig(fileURLToPath(exportDestination))),
         filepath: fileURLToPath(exportDestination),
+      },
+    ),
+  );
+  const attachmentDestination = new URL(
+    "../../cantrip_server_rs/contracts/chat-attachments.json",
+    import.meta.url,
+  );
+  await writeFile(
+    attachmentDestination,
+    await format(
+      JSON.stringify(buildContractManifest(chatAttachmentContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(attachmentDestination))),
+        filepath: fileURLToPath(attachmentDestination),
       },
     ),
   );

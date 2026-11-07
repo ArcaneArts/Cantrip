@@ -5615,6 +5615,63 @@
           "Actual client/full worker endpoint-key decryption, native Codex replay and persistent worker-file receipts remain required.",
           "Mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback, performance, Winterhold rehearsal and final default cutover remain required. Node remains the default server; worker remains Node."
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/attachments",
+        "implementation": "cantrip_server_rs/src/http/chat_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_attachment_contracts.rs",
+          "scripts/server-rust/chat-attachment-contract-oracle.mjs",
+          "scripts/server-rust/chat-attachment-http-compatibility.mjs",
+          "scripts/server-rust/chat-attachment-http-worker.mjs",
+          "scripts/server-rust/chat-attachment-http-faults.mjs",
+          "scripts/server-rust/chat-attachment-http-reopen.mjs",
+          "docs/RUST_SERVER_CHAT_ATTACHMENTS.md"
+        ],
+        "remaining": [
+          "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/attachments/:attachmentId/content",
+        "implementation": "cantrip_server_rs/src/http/chat_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_attachment_contracts.rs",
+          "scripts/server-rust/chat-attachment-contract-oracle.mjs",
+          "scripts/server-rust/chat-attachment-http-compatibility.mjs",
+          "scripts/server-rust/chat-attachment-http-worker.mjs",
+          "scripts/server-rust/chat-attachment-http-faults.mjs",
+          "scripts/server-rust/chat-attachment-http-reopen.mjs",
+          "docs/RUST_SERVER_CHAT_ATTACHMENTS.md"
+        ],
+        "remaining": [
+          "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/attachments/:attachmentId",
+        "implementation": "cantrip_server_rs/src/http/chat_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_attachment_contracts.rs",
+          "scripts/server-rust/chat-attachment-contract-oracle.mjs",
+          "scripts/server-rust/chat-attachment-http-compatibility.mjs",
+          "scripts/server-rust/chat-attachment-http-worker.mjs",
+          "scripts/server-rust/chat-attachment-http-faults.mjs",
+          "scripts/server-rust/chat-attachment-http-reopen.mjs",
+          "docs/RUST_SERVER_CHAT_ATTACHMENTS.md"
+        ],
+        "remaining": [
+          "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
+        ]
       }
     ]
   },
@@ -6916,6 +6973,96 @@
           "Actual client/full worker endpoint-key decryption, native Codex replay and persistent worker-file receipts remain required.",
           "Mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback, performance, Winterhold rehearsal and final default cutover remain required. Node remains the default server; worker remains Node."
         ]
+      },
+      {
+        "command": "attachment.upload.begin",
+        "implementation": "cantrip_server_rs/src/http/chat_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_attachment_contracts.rs",
+          "scripts/server-rust/chat-attachment-contract-oracle.mjs",
+          "scripts/server-rust/chat-attachment-http-compatibility.mjs",
+          "scripts/server-rust/chat-attachment-http-worker.mjs",
+          "scripts/server-rust/chat-attachment-http-faults.mjs",
+          "scripts/server-rust/chat-attachment-http-reopen.mjs",
+          "docs/RUST_SERVER_CHAT_ATTACHMENTS.md"
+        ],
+        "remaining": [
+          "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
+        ]
+      },
+      {
+        "command": "attachment.upload.chunk",
+        "implementation": "cantrip_server_rs/src/http/chat_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_attachment_contracts.rs",
+          "scripts/server-rust/chat-attachment-contract-oracle.mjs",
+          "scripts/server-rust/chat-attachment-http-compatibility.mjs",
+          "scripts/server-rust/chat-attachment-http-worker.mjs",
+          "scripts/server-rust/chat-attachment-http-faults.mjs",
+          "scripts/server-rust/chat-attachment-http-reopen.mjs",
+          "docs/RUST_SERVER_CHAT_ATTACHMENTS.md"
+        ],
+        "remaining": [
+          "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
+        ]
+      },
+      {
+        "command": "attachment.upload.complete",
+        "implementation": "cantrip_server_rs/src/http/chat_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_attachment_contracts.rs",
+          "scripts/server-rust/chat-attachment-contract-oracle.mjs",
+          "scripts/server-rust/chat-attachment-http-compatibility.mjs",
+          "scripts/server-rust/chat-attachment-http-worker.mjs",
+          "scripts/server-rust/chat-attachment-http-faults.mjs",
+          "scripts/server-rust/chat-attachment-http-reopen.mjs",
+          "docs/RUST_SERVER_CHAT_ATTACHMENTS.md"
+        ],
+        "remaining": [
+          "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
+        ]
+      },
+      {
+        "command": "attachment.read",
+        "implementation": "cantrip_server_rs/src/http/chat_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_attachment_contracts.rs",
+          "scripts/server-rust/chat-attachment-contract-oracle.mjs",
+          "scripts/server-rust/chat-attachment-http-compatibility.mjs",
+          "scripts/server-rust/chat-attachment-http-worker.mjs",
+          "scripts/server-rust/chat-attachment-http-faults.mjs",
+          "scripts/server-rust/chat-attachment-http-reopen.mjs",
+          "docs/RUST_SERVER_CHAT_ATTACHMENTS.md"
+        ],
+        "remaining": [
+          "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
+        ]
+      },
+      {
+        "command": "attachment.delete",
+        "implementation": "cantrip_server_rs/src/http/chat_attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_attachment_contracts.rs",
+          "scripts/server-rust/chat-attachment-contract-oracle.mjs",
+          "scripts/server-rust/chat-attachment-http-compatibility.mjs",
+          "scripts/server-rust/chat-attachment-http-worker.mjs",
+          "scripts/server-rust/chat-attachment-http-faults.mjs",
+          "scripts/server-rust/chat-attachment-http-reopen.mjs",
+          "docs/RUST_SERVER_CHAT_ATTACHMENTS.md"
+        ],
+        "remaining": [
+          "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
+        ]
       }
     ]
   },
@@ -7896,6 +8043,46 @@
         "remaining": [
           "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
           "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "tableName": "chat_attachments",
+        "exportName": "chatAttachments",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/chats/attachments.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_attachment_contracts.rs",
+          "scripts/server-rust/chat-attachment-contract-oracle.mjs",
+          "scripts/server-rust/chat-attachment-http-compatibility.mjs",
+          "scripts/server-rust/chat-attachment-http-worker.mjs",
+          "scripts/server-rust/chat-attachment-http-faults.mjs",
+          "scripts/server-rust/chat-attachment-http-reopen.mjs",
+          "docs/RUST_SERVER_CHAT_ATTACHMENTS.md"
+        ],
+        "remaining": [
+          "Opaque HTTP create/read/delete and primary/ready-replica persistence are locally qualified across all3 stores/auth modes. Complete table-consumer and product/platform acceptance remains required.",
+          "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
+        ]
+      },
+      {
+        "tableName": "chat_attachment_replicas",
+        "exportName": "chatAttachmentReplicas",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/chats/attachments.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_attachment_contracts.rs",
+          "scripts/server-rust/chat-attachment-contract-oracle.mjs",
+          "scripts/server-rust/chat-attachment-http-compatibility.mjs",
+          "scripts/server-rust/chat-attachment-http-worker.mjs",
+          "scripts/server-rust/chat-attachment-http-faults.mjs",
+          "scripts/server-rust/chat-attachment-http-reopen.mjs",
+          "docs/RUST_SERVER_CHAT_ATTACHMENTS.md"
+        ],
+        "remaining": [
+          "Opaque HTTP create/read/delete and primary/ready-replica persistence are locally qualified across all3 stores/auth modes. Complete table-consumer and product/platform acceptance remains required.",
+          "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
         ]
       }
     ]
@@ -9994,6 +10181,78 @@
         ],
         "remaining": [
           "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "createChatAttachment",
+        "implementation": "cantrip_server_rs/src/chats/attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_attachment_contracts.rs",
+          "scripts/server-rust/chat-attachment-contract-oracle.mjs",
+          "scripts/server-rust/chat-attachment-http-compatibility.mjs",
+          "scripts/server-rust/chat-attachment-http-worker.mjs",
+          "scripts/server-rust/chat-attachment-http-faults.mjs",
+          "scripts/server-rust/chat-attachment-http-reopen.mjs",
+          "docs/RUST_SERVER_CHAT_ATTACHMENTS.md"
+        ],
+        "remaining": [
+          "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
+        ]
+      },
+      {
+        "method": "getChatAttachment",
+        "implementation": "cantrip_server_rs/src/chats/attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_attachment_contracts.rs",
+          "scripts/server-rust/chat-attachment-contract-oracle.mjs",
+          "scripts/server-rust/chat-attachment-http-compatibility.mjs",
+          "scripts/server-rust/chat-attachment-http-worker.mjs",
+          "scripts/server-rust/chat-attachment-http-faults.mjs",
+          "scripts/server-rust/chat-attachment-http-reopen.mjs",
+          "docs/RUST_SERVER_CHAT_ATTACHMENTS.md"
+        ],
+        "remaining": [
+          "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
+        ]
+      },
+      {
+        "method": "getChatAttachmentReplicaWorkerIds",
+        "implementation": "cantrip_server_rs/src/chats/attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_attachment_contracts.rs",
+          "scripts/server-rust/chat-attachment-contract-oracle.mjs",
+          "scripts/server-rust/chat-attachment-http-compatibility.mjs",
+          "scripts/server-rust/chat-attachment-http-worker.mjs",
+          "scripts/server-rust/chat-attachment-http-faults.mjs",
+          "scripts/server-rust/chat-attachment-http-reopen.mjs",
+          "docs/RUST_SERVER_CHAT_ATTACHMENTS.md"
+        ],
+        "remaining": [
+          "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
+        ]
+      },
+      {
+        "method": "deleteChatAttachment",
+        "implementation": "cantrip_server_rs/src/chats/attachments.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_attachment_contracts.rs",
+          "scripts/server-rust/chat-attachment-contract-oracle.mjs",
+          "scripts/server-rust/chat-attachment-http-compatibility.mjs",
+          "scripts/server-rust/chat-attachment-http-worker.mjs",
+          "scripts/server-rust/chat-attachment-http-faults.mjs",
+          "scripts/server-rust/chat-attachment-http-reopen.mjs",
+          "docs/RUST_SERVER_CHAT_ATTACHMENTS.md"
+        ],
+        "remaining": [
+          "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
+          "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
         ]
       }
     ]
@@ -13977,6 +14236,47 @@
         "pairedHttpObservations": 272,
         "passed": true
       }
+    },
+    "opaqueChatAttachments": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/http/chat_attachments.rs",
+        "cantrip_server_rs/src/chats/attachments.rs",
+        "cantrip_server_rs/src/wire/attachments.rs"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/chat_attachment_contracts.rs",
+        "scripts/server-rust/chat-attachment-contract-oracle.mjs",
+        "scripts/server-rust/chat-attachment-http-compatibility.mjs",
+        "scripts/server-rust/chat-attachment-http-worker.mjs",
+        "scripts/server-rust/chat-attachment-http-faults.mjs",
+        "scripts/server-rust/chat-attachment-http-reopen.mjs",
+        "docs/RUST_SERVER_CHAT_ATTACHMENTS.md"
+      ],
+      "localQualification": {
+        "base": "522a5724161c2956b1c240d920a329c7b3eca19c",
+        "platform": "macOS arm64",
+        "databaseModes": ["pglite", "postgres", "bundled-postgres"],
+        "authModes": ["none", "password", "accounts"],
+        "pairedHTTP": 486,
+        "completePairedSQLSnapshots": 423,
+        "actualFailedInserts": 36,
+        "actualCallerDestructions": 18,
+        "serverDatabaseReopensAfterWrites": 18,
+        "additionalRealQuotaWarmupHTTP": 1026,
+        "protocolComparisons": 1992,
+        "baseGraphGrowthComparisons": 4215,
+        "bodyParserTests": 4,
+        "sourceAPITests": 2,
+        "workerAttachmentTests": 6,
+        "strictAllTargetClippy": "passed",
+        "rootCheck": "failed: unchanged Source1532/1500 and2334/1999 line budgets",
+        "boundaryAudit": "failed: unchanged Source protected desktopTarget accesses341/390"
+      },
+      "remaining": [
+        "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
+        "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
+      ]
     }
   },
   "remainingAcceptance": [
