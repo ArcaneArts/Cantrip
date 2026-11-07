@@ -11,6 +11,7 @@ export * from "./task-goal-outcome.js";
 export * from "./provider-definitions.js";
 export * from "./model-operations.js";
 export * from "./model-embedding.js";
+export * from "./model-decision.js";
 export * from "./provider-operation-registry.js";
 export * from "./model-operation-discovery.js";
 export * from "./endpoint-models.js";

@@ -44,6 +44,7 @@ async fn execute(
     owner: String,
     input: Value,
     cancel: bool,
+    operation: &'static str,
 ) -> Result<Response> {
     let worker = input["scope"]["workerId"]
         .as_str()
@@ -67,20 +68,24 @@ async fn execute(
     let selected = input["scope"]["modelId"].as_str().map(str::to_owned);
     let model = match selected {
         Some(id) => Some(id),
-        None => repository.get_user_settings(&owner).await?["defaultEmbeddingModelId"]
-            .as_str()
-            .map(str::to_owned),
+        None => repository.get_user_settings(&owner).await?[if operation == "embedding" {
+            "defaultEmbeddingModelId"
+        } else {
+            "defaultDecisionModelId"
+        }]
+        .as_str()
+        .map(str::to_owned),
     };
     let Some(model) = model else {
         return Ok(super::json_response(
             axum::http::StatusCode::CONFLICT,
-            json!({"code":"configuration-required","error":"Configure a default embedding model or select a model explicitly."}),
+            json!({"code":"configuration-required","error":format!("Configure a default {operation} model or select a model explicitly.")}),
         ));
     };
     let route = repository
         .get_model_operation_route(
             &owner,
-            "embedding",
+            operation,
             &model,
             &worker,
             input["scope"]["routeId"].as_str(),
@@ -89,16 +94,16 @@ async fn execute(
     let Some(route) = route else {
         return Ok(super::json_response(
             axum::http::StatusCode::CONFLICT,
-            json!({"code":"configuration-required","error":"The selected embedding model has no configured enabled route."}),
+            json!({"code":"configuration-required","error":format!("The selected {operation} model has no configured enabled route.")}),
         ));
     };
     let route = Value::from_serialize(&route);
-    let command = json!({"type":"model.embedding","serverId":service.server_id,"scope":input["scope"],"operationId":input["operationId"],"protectedRequest":input["protectedRequest"],"route":route});
+    let command = json!({"type":if operation == "embedding" {"model.embedding"} else {"model.decision"},"serverId":service.server_id,"scope":input["scope"],"operationId":input["operationId"],"protectedRequest":input["protectedRequest"],"route":route});
     // Matches MODEL_OPERATION_WIRE_BYTES_LIMIT; leave room in the 8 MiB frame.
     if command.stringify().len() > 7 * 1024 * 1024 {
         return Ok(super::json_response(
             axum::http::StatusCode::PAYLOAD_TOO_LARGE,
-            json!({"code":"invalid-request","error":"The protected embedding command exceeds 7 MiB. Submit a smaller job or configuration."}),
+            json!({"code":"invalid-request","error":"The protected model command exceeds 7 MiB. Submit a smaller job or configuration."}),
         ));
     }
     let mut cancellation = CancelOnDrop {
@@ -120,7 +125,7 @@ async fn execute(
             anyhow::ensure!(
                 response["operationId"] == input["operationId"]
                     && response["scope"].stringify() == input["scope"].stringify(),
-                "Embedding response scope changed."
+                "Model operation response scope changed."
             );
             output(200, "protectedEmbeddingResponseSchema", &response)
         })
@@ -137,6 +142,11 @@ async fn handle(
     request: Request,
 ) -> Response {
     let cancel = matched.as_str().ends_with("/cancel");
+    let operation = if matched.as_str().contains("/decision") {
+        "decision"
+    } else {
+        "embedding"
+    };
     let body = match body::parse_js_buffer(request, 7 * 1024 * 1024, 7 * 1024 * 1024).await {
         Ok(value) => value,
         Err(response) => return response,
@@ -154,11 +164,11 @@ async fn handle(
         Err(cause) => return middleware::failure(&service, &ctx.id, &cause),
     };
     let owner = ctx.principal.user.as_ref().unwrap().id.clone();
-    match execute(service, owner, input, cancel).await {
+    match execute(service, owner, input, cancel, operation).await {
         Ok(response) => response,
         Err(_) => super::json_response(
             axum::http::StatusCode::BAD_GATEWAY,
-            json!({"code":"model-operation-unavailable","error":if cancel {"The worker could not confirm cancellation."} else {"The embedding worker operation could not be completed. It was not automatically retried."}}),
+            json!({"code":"model-operation-unavailable","error":if cancel {"The worker could not confirm cancellation.".to_owned()} else {format!("The {operation} worker operation could not be completed. It was not automatically retried.")}}),
         ),
     }
 }
@@ -166,4 +176,6 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
         .route("/api/model-operations/embedding", post(handle))
         .route("/api/model-operations/embedding/cancel", post(handle))
+        .route("/api/model-operations/decision", post(handle))
+        .route("/api/model-operations/decision/cancel", post(handle))
 }

@@ -206,6 +206,7 @@ export function modelOperationContentContext(input: {
   operationId: string;
   scope: z.infer<typeof modelOperationScopeSchema>;
   direction: "request" | "response";
+  operation?: "embedding" | "decision";
 }) {
   return endpointContentContextSchema.parse({
     domain: "model-operation-content",
@@ -217,7 +218,7 @@ export function modelOperationContentContext(input: {
       input.scope.routeId,
     ]),
     operationId: input.operationId,
-    operation: "embedding",
+    operation: input.operation ?? "embedding",
     direction: input.direction,
     sequence: 0,
   });

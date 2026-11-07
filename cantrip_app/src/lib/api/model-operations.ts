@@ -1,12 +1,16 @@
 import {
   embeddingInputSchema,
   embeddingOutcomeSchema,
+  decisionInputSchema,
+  decisionOutcomeSchema,
   modelOperationContentContext,
   modelOperationScopeSchema,
   protectedEmbeddingRequestSchema,
   protectedEmbeddingResponseSchema,
   type EmbeddingInput,
   type EmbeddingResult,
+  type DecisionInput,
+  type DecisionResult,
 } from "@cantrip/protocol";
 import { CantripApiError, request } from "@/lib/api-client";
 import {
@@ -22,35 +26,43 @@ import {
 import { authorizeWorkerEncryption } from "@/lib/worker-encryption-grants";
 import { refreshWorkerEncryption } from "./worker-wire";
 
-/** Direct model inference with protected payloads. Pin expectedSpace when using
- * existing vectors; a changed default never overrides its model/route identity. */
-export async function embed(
-  input: EmbeddingInput & {
-    workerId: string;
-    modelId?: string | null;
-    routeId?: string | null;
-    signal?: AbortSignal;
-  },
-): Promise<EmbeddingResult> {
+type Routing = {
+  workerId: string;
+  modelId?: string | null;
+  routeId?: string | null;
+  signal?: AbortSignal;
+};
+type Outcome<T> =
+  | { status: "succeeded"; value: T }
+  | {
+      status: "failed";
+      error: { code: string; message: string; httpStatus?: number | null };
+    };
+
+async function execute<T>(
+  operation: "embedding" | "decision",
+  input: Routing,
+  content: unknown,
+  contentSchema: { parse(value: unknown): unknown },
+  outcomeSchema: { parse(value: unknown): Outcome<T> },
+): Promise<T> {
   const session = getClientSession(),
     identity = getClientSessionIdentitySnapshot();
   if (!session || !identity)
-    throw new CantripApiError("Sign in before requesting embeddings.", 401);
-  const content = embeddingInputSchema.parse({
-    items: input.items,
-    options: input.options,
-    expectedSpace: input.expectedSpace,
-  });
+    throw new CantripApiError(
+      "Sign in before requesting model inference.",
+      401,
+    );
   input.signal?.throwIfAborted();
   const scope = modelOperationScopeSchema.parse({
     workerId: input.workerId,
-    modelId: input.modelId ?? input.expectedSpace?.modelId ?? null,
-    routeId: input.routeId ?? input.expectedSpace?.routeId ?? null,
+    modelId: input.modelId ?? null,
+    routeId: input.routeId ?? null,
   });
   const snapshot = clientEncryption.getSnapshot();
   if (!snapshot.masterKeyRevision)
     throw new CantripApiError(
-      "Unlock encryption before requesting embeddings.",
+      "Unlock encryption before requesting model inference.",
       409,
     );
   await authorizeWorkerEncryption({
@@ -72,16 +84,16 @@ export async function embed(
     keyRevision: snapshot.masterKeyRevision,
   });
   const operationId = crypto.randomUUID();
-  const context = { serverId: session.serverId, operationId, scope };
+  const context = { serverId: session.serverId, operationId, scope, operation };
   const protectedRequest = await protectEndpointContent({
     context: modelOperationContentContext({ ...context, direction: "request" }),
     content,
-    schema: embeddingInputSchema,
+    schema: contentSchema,
     options: { session: () => session },
   });
   const cancel = () => {
     void request(
-      "/api/model-operations/embedding/cancel",
+      `/api/model-operations/${operation}/cancel`,
       {
         method: "POST",
         body: JSON.stringify({ operationId, scope }),
@@ -93,7 +105,7 @@ export async function embed(
   input.signal?.addEventListener("abort", cancel, { once: true });
   try {
     const raw = await request(
-      "/api/model-operations/embedding",
+      `/api/model-operations/${operation}`,
       {
         method: "POST",
         signal: input.signal,
@@ -113,7 +125,7 @@ export async function embed(
       JSON.stringify(response.scope) !== JSON.stringify(scope)
     )
       throw new CantripApiError(
-        "Embedding response belongs to another operation.",
+        "Model response belongs to another operation.",
         502,
       );
     const outcome = await openEndpointContent({
@@ -122,7 +134,7 @@ export async function embed(
         direction: "response",
       }),
       opaque: response.protectedResponse,
-      schema: embeddingOutcomeSchema,
+      schema: outcomeSchema,
       options: { session: () => session },
     });
     if (outcome.status === "failed")
@@ -135,4 +147,45 @@ export async function embed(
   } finally {
     input.signal?.removeEventListener("abort", cancel);
   }
+}
+
+/** Pin expectedSpace when extending/querying existing vectors. */
+export async function embed(
+  input: EmbeddingInput & Routing,
+): Promise<EmbeddingResult> {
+  const content = embeddingInputSchema.parse({
+    items: input.items,
+    options: input.options,
+    expectedSpace: input.expectedSpace,
+  });
+  return execute(
+    "embedding",
+    {
+      ...input,
+      modelId: input.modelId ?? input.expectedSpace?.modelId ?? null,
+      routeId: input.routeId ?? input.expectedSpace?.routeId ?? null,
+    },
+    content,
+    embeddingInputSchema,
+    embeddingOutcomeSchema,
+  );
+}
+
+/** Native typed decisions; no ordinary-chat emulation or implicit preprocessing. */
+export async function decide(
+  input: DecisionInput & Routing,
+): Promise<DecisionResult> {
+  const content = decisionInputSchema.parse({
+    state: input.state,
+    media: input.media,
+    questions: input.questions,
+    options: input.options,
+  });
+  return execute(
+    "decision",
+    input,
+    content,
+    decisionInputSchema,
+    decisionOutcomeSchema,
+  );
 }

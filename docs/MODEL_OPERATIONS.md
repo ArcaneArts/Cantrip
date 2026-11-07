@@ -42,7 +42,7 @@ inconsistent vectors fail the operation.
 
 Ollama receives `truncate: false`. No adapter silently truncates content, drops
 media, or transcribes audio. Audio/video parts, additional native media envelopes,
-sparse/multi-vector output, and native decision execution require subsequent
+sparse/multi-vector output require subsequent
 provider integrations; their presence in capability metadata is not a claim that
 this initial embedding transport implements them.
 
@@ -115,8 +115,84 @@ The initial adapter contracts are grounded in the official
 [OpenAI embeddings guide](https://developers.openai.com/api/docs/guides/embeddings),
 [Ollama embed reference](https://docs.ollama.com/api/embed), and
 [OpenRouter embeddings reference](https://openrouter.ai/docs/api_reference/embeddings).
-Additional provider media and decision contracts remain part of the active
-implementation goal.
+Additional embedding media contracts remain part of the active implementation
+goal.
+
+## Native decisions
+
+The application also exports `decide()`. It uses the independent decision default
+unless a caller supplies a decision profile/route. No default returns
+`configuration-required`; no ordinary chat model is substituted.
+
+```ts
+import { decide } from "@/lib/api";
+
+const result = await decide({
+  workerId,
+  state: { ticket: "The checkout fails after payment." },
+  questions: [
+    { id: "urgent", type: "predicate", instructions: "Is revenue blocked?" },
+    {
+      id: "team",
+      type: "choice",
+      instructions: "Which team should own this?",
+      choices: [
+        { id: "payments", description: "Payment processing problems" },
+        { id: "frontend", description: "Rendering or navigation problems" },
+      ],
+    },
+  ],
+});
+```
+
+Questions have stable IDs and predicate, choice, or ordered score types. Choice
+IDs are sent as native choice values; score level IDs become OpenAI level labels,
+while System One's ordered descriptions retain their original position. Scores
+remain probability-weighted averages of zero-based level indices. No conversion
+to percentages or a universal confidence scale occurs. Optional predicate
+true/false criteria become explicit instructions in the OpenAI envelope and native
+criteria in System One/OpenRouter.
+
+Results restore request order, validate answer/question identity, selected choices,
+probability ranges/distributions and rubric score ranges, and retain the native
+answer alongside normalized fields. Explicit per-question errors produce a
+`partial` result; refusals retain their own type. Malformed or missing answers fail
+the operation. Missing confidence, usage and actual-model/provider fields remain
+null. Returned confidence retains the selected adapter's semantics.
+
+Adapters are isolated for OpenAI `/decisions`, native `/systemone`, and OpenRouter
+`/api/alpha/decisions`. They use their documented question arrays or maps, rather
+than treating all compatible endpoints as the same API. OpenRouter's alpha
+envelope is isolated from the other adapters. Explicitly configured endpoints may
+attempt execution without a successful capability refresh.
+
+`state` accepts bounded JSON or a string, with an optional ordered `media` list:
+
+| Adapter              | Media envelope                                                                                                         |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| OpenAI Decisions     | Text/JSON input parts followed by images; HTTP(S) or inline image data URLs                                            |
+| System One           | Shared state plus an ordered raw-base64 `images` array; image inputs and WAV clips where the served model accepts them |
+| OpenRouter Decisions | Shared state followed by native top-level image/audio/video parts; inline base64 data URLs                             |
+
+No remote media is downloaded by the worker. No transcription, transcoding, video
+frame extraction or captioning is performed. Model-specific media/question limits
+remain the actual endpoint's responsibility; catalog uncertainty is not an
+execution gate. Inline media and normalized results must fit the same 4 MiB content
+and 7 MiB command limits as embeddings. Larger media transport is not implemented
+by this milestone.
+
+Decision calls use `POST /api/model-operations/decision` and its `/cancel` endpoint,
+with operation-specific authenticated encryption context. Both servers and the
+worker share route resolution, cancellation and bounded replay handling with
+embeddings. Every standalone native HTTP request acquires the existing provider
+FIFO ticket and holds it until HTTP/body teardown settles. Timeout begins after
+admission. Native-turn ticket inheritance still requires the dependent-ownership
+integration described above.
+
+Contracts: [OpenAI Decisions](https://developers.openai.com/api/docs/guides/decisions),
+[Ollama System One](https://docs.ollama.com/api/systemone), and
+[OpenRouter native Decisions](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request)
+and its [multimodal envelope](https://openrouter.ai/docs/guides/community/multimodal-decisions).
 
 Source/diff review, formatting, mechanical protocol export, Rust contract
 generation, and `git diff --check` do not prove runtime behavior. No local tests,
