@@ -82,6 +82,19 @@ export interface InferenceRequest {
   initiallySuspended?: boolean;
 }
 
+/** A real canonical worker command owns direct HTTP inference. Its source is
+ * separate from transport settlement: closing a source requests cancellation,
+ * while the execution promise must actually finish before capacity is freed. */
+export type DirectInferenceRequest = Omit<
+  InferenceRequest,
+  "lifetime" | "operationId" | "recoveryKey" | "recovery" | "initiallySuspended"
+> & { source: InferenceOperationSource };
+
+interface DirectRuntimeOwner {
+  cancel(reason: Error): void;
+  readonly settled: Promise<void>;
+}
+
 export type InferenceSettlement =
   "completed" | "failed" | "interrupted" | "runtime-exited" | "never-started";
 
@@ -158,6 +171,7 @@ interface Runtime {
   lifetimes: WeakMap<InferenceOperationLifetime, OperationLifetimeState>;
   retired: boolean;
   prepared: boolean;
+  directOwner?: DirectRuntimeOwner;
   retiring: Promise<void> | null;
   handle: InferenceRuntime;
 }
@@ -330,6 +344,10 @@ function goalPreparationEpisode(
 export class WorkerInferenceAdmission {
   private readonly pools = new Map<string, Pool>();
   private readonly runtimes = new Set<Runtime>();
+  private readonly directExecutions = new WeakMap<
+    InferenceOperationSource,
+    { identity: string; result: Promise<unknown> }
+  >();
   /** Only live cross-provider preparations whose response source was sealed.
    * Recovery reads must join their actual settlement even if that source exits. */
   private readonly unrequestedSettlements = new Map<string, Promise<void>>();
@@ -845,6 +863,120 @@ export class WorkerInferenceAdmission {
 
   /** The opaque runtime handle prevents old callbacks from acting on a replacement. */
   createRuntime(): InferenceRuntime {
+    return this.createOwnedRuntime();
+  }
+
+  /** Run one independently admitted HTTP operation in the existing provider
+   * pool. The callback must join response/body teardown before it settles; an
+   * abort request alone never proves that the local operation has ended, nor
+   * that a remote provider stopped computing. Redelivery of the same canonical
+   * source joins its original result rather than executing the callback twice. */
+  runDirect<T>(
+    input: DirectInferenceRequest,
+    execute: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    const identity = JSON.stringify([
+      input.source.operationId,
+      input.providerId,
+      input.providerCreationRevision,
+      input.purpose ?? "helper",
+      input.chatId ?? null,
+      input.projectId ?? null,
+    ]);
+    const previous = this.directExecutions.get(input.source);
+    if (previous) {
+      if (previous.identity !== identity)
+        return Promise.reject(
+          new Error(
+            "A direct inference source cannot change identity during redelivery.",
+          ),
+        );
+      return previous.result as Promise<T>;
+    }
+    const result = this.executeDirect(input, execute);
+    this.directExecutions.set(input.source, { identity, result });
+    return result;
+  }
+
+  private async executeDirect<T>(
+    input: DirectInferenceRequest,
+    execute: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    input.source.assertCurrent();
+    // Recover actual existing native capacity before joining its shared pool;
+    // this does not prepare or invent a native runtime for an HTTP operation.
+    await this.prepareRecovery();
+    input.source.assertCurrent();
+    const cancellation = new AbortController();
+    const signals = [
+      cancellation.signal,
+      input.signal,
+      input.source.signal,
+    ].filter((signal): signal is AbortSignal => Boolean(signal));
+    const signal = AbortSignal.any(signals);
+    let finish!: () => void;
+    const settled = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const runtime = this.createOwnedRuntime({
+      cancel: (reason) => cancellation.abort(reason),
+      settled,
+    });
+    const lifetime = runtime.createOperationLifetime(input.source.operationId);
+    let lease: InferenceLease | undefined;
+    let ticket: InferenceTicket | undefined;
+    let finished = false;
+    const sourceEnded = () => {
+      if (!finished)
+        cancellation.abort(
+          new Error("The canonical direct inference source has ended."),
+        );
+    };
+    void input.source.released.then(sourceEnded, sourceEnded);
+    let outcome: InferenceSettlement = "failed";
+    try {
+      signal.throwIfAborted();
+      input.source.assertCurrent();
+      ticket = runtime.request({
+        operationId: input.source.operationId,
+        lifetime,
+        providerId: input.providerId,
+        providerCreationRevision: input.providerCreationRevision,
+        purpose: input.purpose,
+        chatId: input.chatId,
+        projectId: input.projectId,
+        signal,
+      });
+      lease = await ticket.ready;
+      signal.throwIfAborted();
+      input.source.assertCurrent();
+      lease.start();
+      const executionSignal = AbortSignal.any([signal, lease.signal]);
+      const result = await execute(executionSignal);
+      executionSignal.throwIfAborted();
+      outcome = "completed";
+      return result;
+    } finally {
+      // This boundary follows the real execution callback, including its catch
+      // and response cleanup. Service shutdown waits for this same settlement.
+      finished = true;
+      try {
+        if (lease)
+          lease.settle(
+            signal.aborted || lease.signal.aborted ? "interrupted" : outcome,
+          );
+        else ticket?.cancel();
+      } finally {
+        lifetime.close();
+        finish();
+        await runtime.exited();
+      }
+    }
+  }
+
+  private createOwnedRuntime(
+    directOwner?: DirectRuntimeOwner,
+  ): InferenceRuntime {
     if (this.closing)
       throw new Error("The inference admission service is closing.");
     const runtime: Runtime = {
@@ -852,13 +984,18 @@ export class WorkerInferenceAdmission {
       records: new Map(),
       lifetimes: new WeakMap(),
       retired: false,
-      prepared: !this.nativeOwnership,
+      prepared: Boolean(directOwner) || !this.nativeOwnership,
+      directOwner,
       retiring: null,
       handle: {
         get generation() {
           return runtime.generation;
         },
         prepareNativeLaunch: async () => {
+          if (directOwner)
+            throw new Error(
+              "A direct inference owner cannot launch a native runtime.",
+            );
           await this.prepareRecovery();
           const environment = await this.nativeOwnership?.prepare(
             runtime.generation,
@@ -1172,9 +1309,10 @@ export class WorkerInferenceAdmission {
       stopListening: () => {},
       observe: observeInferenceCommand(input.providerId),
       admitted: observeInferenceCommandAdmission(),
-      journalKey:
-        this.journal?.key(runtime.generation, input.operationId) ?? null,
-      durableQueueReady: !this.journal,
+      journalKey: runtime.directOwner
+        ? null
+        : (this.journal?.key(runtime.generation, input.operationId) ?? null),
+      durableQueueReady: Boolean(runtime.directOwner) || !this.journal,
       nativeExecution: null,
       nativeBinding: null,
       releaseReceipt: null,
@@ -1267,7 +1405,7 @@ export class WorkerInferenceAdmission {
           this.reportJournalError(error);
         });
     }
-    if (!this.journal) ticket.resolveQueued();
+    if (!ticket.journalKey) ticket.resolveQueued();
     if (input.signal) {
       const signal = input.signal;
       const cancel = () =>
@@ -1308,6 +1446,8 @@ export class WorkerInferenceAdmission {
     ticket: Ticket,
     input: InferenceNativeExecution,
   ): Promise<void> {
+    if (ticket.runtime.directOwner)
+      throw new Error("Direct HTTP inference cannot bind a native execution.");
     const execution = inferenceNativeExecutionSchema.parse(input);
     const current = () => {
       if (
@@ -1645,7 +1785,7 @@ export class WorkerInferenceAdmission {
     ticket.restoredOrder = null;
     ticket.enqueuedAt = Date.now();
     const revision = ++ticket.queueRevision;
-    ticket.durableQueueReady = !this.journal;
+    ticket.durableQueueReady = !ticket.journalKey;
     ticket.pool.queue.push(ticket);
     this.diagnose(ticket, "resumed");
     if (this.journal && ticket.journalKey && !ticket.recoveryPending)
@@ -1892,7 +2032,12 @@ export class WorkerInferenceAdmission {
       this.exited(runtime);
       resolve();
     };
-    if (this.nativeOwnership)
+    if (runtime.directOwner) {
+      runtime.directOwner.cancel(
+        new Error("Direct inference ownership is retiring."),
+      );
+      void runtime.directOwner.settled.then(settled);
+    } else if (this.nativeOwnership)
       void this.nativeOwnership.retire(runtime.generation).then(settled);
     else settled();
     return runtime.retiring;
