@@ -20,8 +20,10 @@ fn physical_input(c: &Value, r: &Value) -> Result<()> {
         || c["id"] != r["dispatch"]["cycleId"]
         || c["chat_id"] != r["chatId"]
         || c["operation_id"] != r["dispatch"]["operationId"]
-        || parse("taskInferenceInputReceiptSchema", &input["receipt"])?
-            != parse("taskInferenceInputReceiptSchema", r)?
+        || parse(
+            "taskInferenceInputReceiptSchema",
+            &super::resumption::physical(input)["receipt"],
+        )? != parse("taskInferenceInputReceiptSchema", r)?
     {
         return stale();
     }
@@ -40,7 +42,7 @@ fn original_control(c: &Value, r: &Value) -> bool {
                     .as_i64()
                     .and_then(|n| n.checked_add(1)))
 }
-async fn cycle(
+pub(super) async fn cycle(
     tx: &Transaction<'_>,
     owner: &str,
     chat: &str,
@@ -52,7 +54,7 @@ async fn cycle(
     let row=one(Executor::Transaction(tx),"SELECT to_jsonb(c)::text FROM task_dispatch_cycles c WHERE c.owner_id=$1 AND c.chat_id=$2 ORDER BY c.created_at DESC,c.id DESC LIMIT 1 FOR UPDATE",&[&owner,&chat]).await?;
     Ok(row.filter(|r| id.is_none_or(|id| r["id"] == id)))
 }
-async fn context(
+pub(super) async fn context(
     tx: &Transaction<'_>,
     owner: &str,
     r: &Value,
@@ -109,7 +111,7 @@ async fn context(
     }
     Ok(row)
 }
-async fn write(tx: &Transaction<'_>, id: &str, state: &Value) -> Result<()> {
+pub(super) async fn write(tx: &Transaction<'_>, id: &str, state: &Value) -> Result<()> {
     let data = state.stringify();
     tx.query(
         "UPDATE task_dispatch_cycles SET goal_input=$2::text::jsonb WHERE id=$1",
@@ -284,12 +286,15 @@ impl Repository {
             tx.query("WITH p AS MATERIALIZED (SELECT projects.id FROM projects JOIN chats ON chats.project_id=projects.id WHERE projects.owner_id=$1 AND chats.id=$2 FOR UPDATE OF projects) SELECT chats.id FROM p JOIN chats ON chats.project_id=p.id WHERE chats.id=$2 FOR UPDATE OF chats",&[&owner,&chat]).await?;
             let row=one(Executor::Transaction(tx),"SELECT jsonb_build_object('state',m.task_goal_input)::text FROM chat_messages m JOIN chats c ON c.id=m.chat_id JOIN projects p ON p.id=c.project_id AND p.owner_id=$1 WHERE m.id=$2 AND m.chat_id=$3 LIMIT 1 FOR UPDATE OF m,c,p",&[&owner,&text(&n["clientMessageId"])?,&chat]).await?;
             let Some(row)=row else{return Ok(Some("canonical-input-deleted"));};
-            if let Ok(receipt)=parse("taskInferenceInputReceiptSchema",&row["state"]["receipt"])
+            let current=cycle(tx,&owner,&chat,None).await?;
+            let canonical=current.as_ref().map(|c|&c["goal_input"]).filter(|s| !s.is_null() && s["receipt"]==row["state"]["receipt"]).unwrap_or(&row["state"]);
+            let physical=super::resumption::physical(canonical);
+            if let Ok(receipt)=parse("taskInferenceInputReceiptSchema",&physical["receipt"])
                 && receipt["kind"]=="goal" && receipt["chatId"]==n["chatId"] && receipt["clientMessageId"]==n["clientMessageId"]
                 && receipt["operationId"]!=n["taskInferenceInputOperationId"] {
                 return Ok(Some("canonical-input-replaced"));
             }
-            if let Ok(receipt)=parse("taskInferenceInputReceiptSchema",&row["state"]["receipt"])
+            if let Ok(receipt)=parse("taskInferenceInputReceiptSchema",&physical["receipt"])
                 && n["outcome"]["ok"]==false && row["state"]["deferred"]==true && row["state"]["accepted"]==true && row["state"]["allAttemptsEnforced"]==true && row["state"].get("firstDispatchedOperationId").is_some_and(Value::is_null)
                 && (row["state"]["failedBeforeDispatch"]==true || (n["outcome"]["inference"]["disposition"]=="input-not-dispatched" && n["outcome"]["inference"]["operationId"]==receipt["operationId"] && n["outcome"]["inference"]["providerId"]==receipt["providerId"] && n["outcome"]["inference"]["chatId"]==receipt["chatId"] && n["outcome"]["inference"]["messageId"]==receipt["clientMessageId"]))
                 && receipt["operationId"]==n["taskInferenceInputOperationId"] && receipt["workerId"]==worker.as_str() && receipt["clientMessageId"]==n["clientMessageId"] {
@@ -315,9 +320,9 @@ impl Repository {
             let chat=text(&n["chatId"])?;
             let c=cycle(tx,&owner,&chat,Some(&text(&f["cycleId"])?)).await?;
             let Some(c)=c else{return super::goal_input_history::recover(tx,&owner,&worker,&n).await;};
-            let s=&c["goal_input"];let r=&s["receipt"];
+            let s=&c["goal_input"];let physical=super::resumption::physical(s);let r=&physical["receipt"];
             if s.is_null() || r["operationId"]!=n["taskInferenceInputOperationId"] {return super::goal_input_history::recover(tx,&owner,&worker,&n).await;}
-            if s["deferred"]==true || (n["outcome"]["ok"]==true && (s["accepted"]!=true || s["dispatched"]!=true || s["failedBeforeDispatch"]==true)) || r["workerId"]!=worker.as_str()
+            if s["deferred"]==true || (n["outcome"]["ok"]==true && (physical["accepted"]!=true || physical["dispatched"]!=true || s["failedBeforeDispatch"]==true)) || r["workerId"]!=worker.as_str()
                 || r["clientMessageId"]!=n["clientMessageId"] || r["executionLaneId"]!=n["executionLaneId"]
                 || r["worktreeId"]!=n["worktreeId"] || r["dispatch"]["cycleId"]!=f["cycleId"] || r["dispatch"]["operationId"]!=f["operationId"]
                 || r["dispatch"]["fencingToken"]!=f["fencingToken"] || r["dispatch"]["leaseOwner"]!=f["leaseOwner"] {return stale();}
@@ -328,6 +333,15 @@ impl Repository {
                 Err(e) if e.downcast_ref::<crate::task_dispatch::Conflict>().is_some()=>return super::goal_input_history::recover(tx,&owner,&worker,&n).await,
                 Err(e)=>return Err(e),
             };
+            if n["outcome"]["ok"] != true {
+                let retained = if let Some(stopped) = crate::native_commands::task_suspension::stopped_input_locked(tx,&owner,&worker,r,s).await? {Some(stopped)}
+                    else {crate::native_commands::task_suspension::retain_locked(tx,&owner,&worker,&chat,&r["dispatch"],&r["executionLaneId"],&r["clientMessageId"]).await?};
+                if let Some(saved) = retained {
+                    crate::native_commands::task_suspension::fail_restore_locked(tx,&owner,&chat,saved).await?;
+                    return Ok(Some(json!({"retained":true,"receipt":r,"terminal":Value::Null,"message":Value::Null,"finished":false,"historyOnly":true,
+                        "chat":json!({"projectId":row["chat"]["project_id"],"experience":row["chat"]["experience"]})})));
+                }
+            }
             let response_key=format!("assistant:{}",text(&r["clientMessageId"])?);
             let message=if n["outcome"]["ok"]==true {
                 parse("taskMessageRelayResultSchema",&n["outcome"]["result"]["structuredResult"]).ok()
@@ -348,6 +362,12 @@ impl Repository {
                     Some(&json!({"executionLaneId":r["executionLaneId"],"worktreeId":r["worktreeId"]}))).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?)
             }else{None};
             if s["terminal"].is_null() {let mut state=s.clone();state["terminal"]=terminal.clone();write(tx,&text(&c["id"])?,&state).await?;}
+            if n["outcome"]["ok"] == true && !physical["nativeExecution"].is_null() &&
+                n["outcome"]["result"]["threadId"] == physical["nativeExecution"]["threadId"] &&
+                n["outcome"]["result"]["turnId"] == physical["nativeExecution"]["turnId"] {
+                crate::native_commands::task_suspension::retire_locked(tx,&owner,&s["receipt"],physical,
+                    &json!({"threadId":n["outcome"]["result"]["threadId"],"turnId":n["outcome"]["result"]["turnId"]}),if ok {"completed"}else{"failed"}).await?;
+            }
             if owns_control && !ok && s["accepted"]==true && s["allAttemptsEnforced"]==true && s["firstDispatchedOperationId"].is_null()
                 && s["failedBeforeDispatch"]!=true && (row["chat"]["automation_paused"]==true || row["project"]["task_scheduling_paused"]==true || row["task"]["state"]=="paused") {
                 let mut state=s.clone();state["terminal"]=terminal.clone();defer_locked(tx,&owner,&c,&state).await?;
@@ -373,7 +393,7 @@ impl Repository {
         let result=self.database.transaction(|tx|Box::pin(async move {
             let c=cycle(tx,&owner,&chat,expected.as_ref().and_then(|r|r["dispatch"]["cycleId"].as_str())).await?;
             let Some(c)=c else{return Ok(None);};
-            let s=&c["goal_input"];let r=&s["receipt"];
+            let s=&c["goal_input"];let r=&super::resumption::physical(s)["receipt"];
             if s["terminal"].is_null() || !s["terminal"]["projectedAt"].is_null() || s["deferred"]==true {return Ok(None);}
             if let Some(expected)=expected
                 && parse("taskInferenceInputReceiptSchema",&expected)?!=parse("taskInferenceInputReceiptSchema",r)? {return Ok(None);}
@@ -459,7 +479,7 @@ impl Repository {
                         return Ok(None);
                     };
                     let s = &c["goal_input"];
-                    let r = &s["receipt"];
+                    let r = &super::resumption::physical(s)["receipt"];
                     if s.is_null()
                         || s["deferred"] == true
                         || r["clientMessageId"] != turn["clientMessageId"]
@@ -496,7 +516,7 @@ impl Repository {
         })).await
     }
     pub async fn prepare_goal_inference_input(&self, owner: &str, input: &Value) -> Result<Value> {
-        self.prepare_goal_inference_input_at_revision(owner, input, None)
+        self.prepare_goal_inference_input_at_revision(owner, input, None, None)
             .await
     }
 
@@ -505,12 +525,14 @@ impl Repository {
         owner: &str,
         input: &Value,
         expected_revision: Option<i64>,
+        publication: Option<&Value>,
     ) -> Result<Value> {
         let mut r = input.clone();
         r["kind"] = json!("goal");
         r["operationId"] = json!(uuid::Uuid::new_v4().to_string());
         let mut r = parse("taskInferenceInputReceiptSchema", &r)?;
         let owner = owner.to_owned();
+        let publication = publication.cloned();
         let prepared = self.database.transaction(|tx|Box::pin(async move {
             let (chat,id,operation)=(text(&r["chatId"])?,text(&r["dispatch"]["cycleId"])?,text(&r["dispatch"]["operationId"])?);
             dispatch_fence::assert(tx,&owner,&chat,&operation,&json!({"kind":"leased","lease":r["dispatch"]}),false).await?;
@@ -525,6 +547,7 @@ impl Repository {
             if old["failedBeforeDispatch"]==true && old["receipt"]["dispatch"]["fencingToken"]==r["dispatch"]["fencingToken"] {return stale();}
             let same=old["receipt"]["clientMessageId"]==r["clientMessageId"];
             let mut state=json!({"receipt":r,"deferred":false,"failedBeforeDispatch":false,"accepted":false,"dispatched":false,"allAttemptsEnforced":!same || (old["allAttemptsEnforced"]==true && (old["accepted"]==true || old["deferred"]==true)),"firstDispatchedOperationId":if same{old["firstDispatchedOperationId"].clone()}else{Value::Null},"multipleDispatched":same && old["multipleDispatched"]==true,"attemptCountBefore":c["attempt_count"]});
+            if let Some(publication) = publication {state["publication"] = publication;}
             if same && let Some(change)=old.get("routeChange") {state["routeChange"]=change.clone();}
             if control_changed && (state["allAttemptsEnforced"]!=true || !state["firstDispatchedOperationId"].is_null()) {return stale();}
             write(tx,&id,&state).await?;
@@ -546,11 +569,13 @@ impl Repository {
         worker: &str,
         r: &Value,
         phase: &str,
+        metadata: Option<&Value>,
     ) -> Result<Value> {
         if r["workerId"] != worker {
             return stale();
         }
         let (owner, r, phase) = (owner.to_owned(), r.clone(), phase.to_owned());
+        let metadata = metadata.cloned().unwrap_or(Value::Null);
         self.database
             .transaction(|tx| {
                 Box::pin(async move {
@@ -575,38 +600,72 @@ impl Repository {
                     if s.is_null()
                         || s["deferred"] == true
                         || s["failedBeforeDispatch"] == true
-                        || s["dispatched"] == true
-                        || s["receipt"] != r
+                        || !s["terminal"].is_null()
+                        || super::resumption::physical(&s)["receipt"] != r
                     {
                         return stale();
                     }
-                    let row = context(tx, &owner, &r, true, false).await?;
+                    let mut row = context(tx, &owner, &r, true, false).await?;
                     assert_handoff_input(tx, &owner, &r, true).await?;
-                    if row["chat"]["automation_paused"] == true
+                    let resumed = !s["resumption"].is_null();
+                    if resumed {
+                        let current =
+                            crate::native_commands::suspension::chat(tx, &owner, &chat).await?;
+                        let saved = crate::native_commands::suspension::read(&current)?
+                            .ok_or_else(crate::task_dispatch::Conflict::stale)?;
+                        if saved["controlId"] != s["resumption"]["controlId"]
+                            || saved["action"] != "resume"
+                            || !(saved["phase"] == "resuming"
+                                || (phase == "native" && saved["phase"] == "running"))
+                        {
+                            return stale();
+                        }
+                    }
+                    if phase == "native" {
+                        row["goal_input"] = s.clone();
+                        return super::native_input_binding::bind(tx, &owner, &r, &row, &metadata)
+                            .await;
+                    }
+                    let mut execution = super::resumption::physical(&s).clone();
+                    if execution["dispatched"] == true
+                        || (row["chat"]["automation_paused"] == true && !resumed)
                         || row["project"]["task_scheduling_paused"] == true
-                        || row["task"]["state"] == "paused"
+                        || (row["task"]["state"] == "paused" && !resumed)
                         || row["lane"]["state"] != "active"
                     {
                         return stale();
                     }
                     if phase == "accepted" || phase == "claim" {
-                        if phase == "claim" && s["accepted"] == true {
+                        if phase == "claim" && execution["accepted"] == true {
                             return stale();
                         }
-                        s["accepted"] = json!(true);
+                        execution["accepted"] = json!(true);
+                        if phase == "claim" && !metadata["workerGeneration"].is_null() {
+                            execution["claimWorkerGeneration"] =
+                                metadata["workerGeneration"].clone();
+                        }
                     } else {
-                        if s["accepted"] != true {
+                        if execution["accepted"] != true {
                             return stale();
                         }
-                        s["dispatched"] = json!(true);
-                        s["multipleDispatched"] = json!(
-                            s["multipleDispatched"] == true
-                                || (!s["firstDispatchedOperationId"].is_null()
-                                    && s["firstDispatchedOperationId"] != r["operationId"])
-                        );
-                        if s["firstDispatchedOperationId"].is_null() {
-                            s["firstDispatchedOperationId"] = r["operationId"].clone();
+                        execution["dispatched"] = json!(true);
+                        if !resumed {
+                            s["multipleDispatched"] = json!(
+                                s["multipleDispatched"] == true
+                                    || (!s["firstDispatchedOperationId"].is_null()
+                                        && s["firstDispatchedOperationId"] != r["operationId"])
+                            );
+                            if s["firstDispatchedOperationId"].is_null() {
+                                s["firstDispatchedOperationId"] = r["operationId"].clone();
+                            }
                         }
+                    }
+                    if resumed {
+                        s["resumption"] = execution;
+                    } else {
+                        s["accepted"] = execution["accepted"].clone();
+                        s["dispatched"] = execution["dispatched"].clone();
+                        s["claimWorkerGeneration"] = execution["claimWorkerGeneration"].clone();
                     }
                     write(tx, &id, &s).await?;
                     Ok(json!({"receipt":r}))

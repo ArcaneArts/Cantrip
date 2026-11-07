@@ -155,7 +155,7 @@ pub(super) async fn assert(
     if outcome {
         if let Some(attempt) = expected.get("goalInferenceInputOperationId") {
             let input = &cycle["goal_input"];
-            let r = &input["receipt"];
+            let r = &super::resumption::physical(input)["receipt"];
             if input.is_null()
                 || input["deferred"] == true
                 || r["kind"] != "goal"
@@ -243,15 +243,16 @@ pub(super) async fn assert(
     }
     if leased && let Some(attempt) = expected.get("goalInferenceInputOperationId") {
         let input = &cycle["goal_input"];
+        let receipt = &super::resumption::physical(input)["receipt"];
         if input.is_null()
             || input["deferred"] == true
-            || input["receipt"]["operationId"] != *attempt
-            || input["receipt"]["dispatch"]["fencingToken"] != cycle["fencing_token"]
-            || input["receipt"]["dispatch"]["leaseOwner"] != cycle["lease_owner"]
+            || receipt["operationId"] != *attempt
+            || receipt["dispatch"]["fencingToken"] != cycle["fencing_token"]
+            || receipt["dispatch"]["leaseOwner"] != cycle["lease_owner"]
         {
             return Err(crate::task_dispatch::Conflict::stale().into());
         }
-        assert_goal_placement(tx, owner, chat, &input["receipt"], None).await?;
+        assert_goal_placement(tx, owner, chat, receipt, None).await?;
     }
     if leased && let Some(attempt) = expected.get("inferenceInputOperationId") {
         // Receipt prepare/defer uses this same owner/cycle lock. Match inside

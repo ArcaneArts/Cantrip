@@ -10,7 +10,12 @@ pub(super) async fn bind(
     metadata: &Value,
 ) -> Result<Value> {
     let stale = || crate::task_dispatch::Conflict::stale();
-    let state = &row["round"]["inference_input"];
+    let goal = receipt["kind"] == "goal";
+    let state = if goal {
+        &row["goal_input"]
+    } else {
+        &row["round"]["inference_input"]
+    };
     let physical = super::resumption::physical(state);
     if state.is_null()
         || state["deferred"] == true
@@ -67,14 +72,18 @@ pub(super) async fn bind(
     };
     physical["nativeExecution"] = execution.clone();
     physical["nativeOwner"] = native_owner;
-    update(
-        tx,
-        Table::Round,
-        &operation,
-        &json!({"inference_input":state}),
-        None,
-    )
-    .await?;
+    if goal {
+        super::goal_inference_inputs::write(tx, &cycle, &state).await?;
+    } else {
+        update(
+            tx,
+            Table::Round,
+            &operation,
+            &json!({"inference_input":state}),
+            None,
+        )
+        .await?;
+    }
     if resumed {
         crate::native_commands::task_suspension::bind_running(
             tx,

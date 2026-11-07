@@ -6,6 +6,8 @@ import {
   taskMessageOpaqueContentSchema,
   taskMessageRelayResultSchema,
   inferenceNeverStarted,
+  inferenceNativeExecutionSchema,
+  type InferenceNativeExecution,
   type TaskInferenceInputReceipt,
   type NativeInferenceRecovery,
   type NativeInferenceRecoveryResult,
@@ -36,6 +38,14 @@ import type { TaskInferenceInputState } from "./task-inference-inputs.js";
 import { TaskRetryRepository } from "./task-retries.js";
 import { classifyTaskFailure } from "../tasks/automatic-retry.js";
 import { recoverGoalInputHistory } from "./task-goal-input-history.js";
+import { bindTaskNativeInput } from "./task-native-input-binding.js";
+import { NativeSuspensionRepository } from "./repository/native-suspensions.js";
+import { currentTaskInputExecution } from "./task-input-execution-state.js";
+import {
+  goalRestorationSource,
+  prepareGoalInputResumption,
+  type GoalResumptionRequest,
+} from "./task-goal-input-resumption.js";
 
 function outcomeGuard(
   receipt: TaskInferenceInputReceipt,
@@ -72,8 +82,11 @@ function physicalInput(
     cycle.id !== receipt.dispatch.cycleId ||
     cycle.chatId !== receipt.chatId ||
     cycle.operationId !== receipt.dispatch.operationId ||
-    JSON.stringify(taskInferenceInputReceiptSchema.parse(input.receipt)) !==
-      JSON.stringify(taskInferenceInputReceiptSchema.parse(receipt))
+    JSON.stringify(
+      taskInferenceInputReceiptSchema.parse(
+        currentTaskInputExecution(input).receipt,
+      ),
+    ) !== JSON.stringify(taskInferenceInputReceiptSchema.parse(receipt))
   )
     stale();
   return cycle;
@@ -100,6 +113,14 @@ export class TaskGoalInferenceInputRepository {
     private readonly lanes?: ChatExecutionLaneRepository,
     private readonly messages?: MessageWriteRepository,
   ) {}
+
+  restorationSource(owner: string, input: GoalResumptionRequest) {
+    return goalRestorationSource(this.database, owner, input);
+  }
+
+  prepareResumption(owner: string, input: GoalResumptionRequest) {
+    return prepareGoalInputResumption(this.database, owner, input);
+  }
 
   private async handoff(
     tx: RepositoryTransaction,
@@ -397,6 +418,7 @@ export class TaskGoalInferenceInputRepository {
     owner: string,
     input: Omit<TaskInferenceInputReceipt, "operationId" | "kind">,
     expectedInputRevision?: number,
+    publication?: TaskInferenceInputState["publication"],
   ): Promise<TaskInferenceInputReceipt> {
     const receipt = taskInferenceInputReceiptSchema.parse({
       ...input,
@@ -446,6 +468,7 @@ export class TaskGoalInferenceInputRepository {
         stale();
       const same = old?.receipt.clientMessageId === receipt.clientMessageId;
       const state: TaskInferenceInputState = {
+        ...(publication ? { publication } : {}),
         ...(same && old?.routeChange ? { routeChange: old.routeChange } : {}),
         receipt,
         deferred: false,
@@ -493,7 +516,12 @@ export class TaskGoalInferenceInputRepository {
     owner: string,
     worker: string,
     receipt: TaskInferenceInputReceipt,
-    phase: "accepted" | "claim" | "dispatch",
+    phase: "accepted" | "claim" | "dispatch" | "native",
+    metadata?: {
+      workerGeneration: string;
+      nativeExecution?: InferenceNativeExecution;
+      nativeRuntimeGeneration?: string;
+    },
   ) {
     if (worker !== receipt.workerId) stale();
     return this.database.transaction(async (tx) => {
@@ -511,43 +539,96 @@ export class TaskGoalInferenceInputRepository {
         receipt.dispatch.cycleId,
       );
       const state = cycle?.goalInput;
+      const execution = state ? currentTaskInputExecution(state) : null;
       if (
         !cycle ||
         !state ||
         state.deferred ||
         state.failedBeforeDispatch ||
-        state.dispatched ||
-        JSON.stringify(taskInferenceInputReceiptSchema.parse(state.receipt)) !==
-          JSON.stringify(taskInferenceInputReceiptSchema.parse(receipt))
+        !execution ||
+        state.terminal ||
+        JSON.stringify(
+          taskInferenceInputReceiptSchema.parse(execution.receipt),
+        ) !== JSON.stringify(taskInferenceInputReceiptSchema.parse(receipt))
       )
         stale();
       const c = await this.context(tx, owner, receipt);
       await this.assertHandoffInput(tx, owner, receipt, true);
+      let resumed = false;
+      if (state.resumption) {
+        const saved = await new NativeSuspensionRepository(
+          this.database,
+          tx,
+        ).read(owner, receipt.chatId);
+        resumed =
+          saved?.controlId === state.resumption.controlId &&
+          saved.action === "resume" &&
+          (saved.phase === "resuming" ||
+            (phase === "native" && saved.phase === "running"));
+        if (!resumed) stale();
+      }
+      const updatedExecution = (
+        update: Partial<TaskInferenceInputState>,
+      ): TaskInferenceInputState =>
+        state.resumption
+          ? { ...state, resumption: { ...state.resumption, ...update } }
+          : { ...state, ...update };
+      if (phase === "native") {
+        if (
+          !execution.accepted ||
+          !execution.dispatched ||
+          !metadata?.nativeRuntimeGeneration ||
+          execution.claimWorkerGeneration !== metadata.workerGeneration ||
+          c.lane?.state !== "active"
+        )
+          stale();
+        return bindTaskNativeInput(
+          tx,
+          owner,
+          receipt,
+          inferenceNativeExecutionSchema.parse(metadata!.nativeExecution),
+          state,
+          {
+            workerGeneration: metadata!.workerGeneration,
+            runtimeGeneration: metadata!.nativeRuntimeGeneration!,
+          },
+          new NativeSuspensionRepository(this.database, tx),
+        );
+      }
       if (
-        c.chat.automationPaused ||
+        execution.dispatched ||
+        (c.chat.automationPaused && !resumed) ||
         c.project.taskSchedulingPaused ||
-        c.task.state === "paused" ||
+        (c.task.state === "paused" && !resumed) ||
         c.lane?.state !== "active"
       )
         stale();
-      if (phase === "dispatch" && !state.accepted) stale();
-      if (phase === "claim" && state.accepted) stale();
+      if (phase === "dispatch" && !execution.accepted) stale();
+      if (phase === "claim" && execution.accepted) stale();
       await tx
         .update(schema.taskDispatchCycles)
         .set({
           goalInput:
             phase !== "dispatch"
-              ? { ...state, accepted: true }
-              : {
-                  ...state,
-                  dispatched: true,
-                  firstDispatchedOperationId:
-                    state.firstDispatchedOperationId ?? receipt.operationId,
-                  multipleDispatched:
-                    state.multipleDispatched ||
-                    (state.firstDispatchedOperationId !== null &&
-                      state.firstDispatchedOperationId !== receipt.operationId),
-                },
+              ? updatedExecution({
+                  accepted: true,
+                  ...(phase === "claim" && metadata
+                    ? { claimWorkerGeneration: metadata.workerGeneration }
+                    : {}),
+                })
+              : resumed
+                ? updatedExecution({ dispatched: true })
+                : {
+                    ...state,
+                    dispatched: true,
+                    firstDispatchedOperationId:
+                      state.firstDispatchedOperationId ?? receipt.operationId,
+                    multipleDispatched:
+                      state.multipleDispatched ||
+                      (state.firstDispatchedOperationId !== null &&
+                        state.firstDispatchedOperationId !==
+                          receipt.operationId),
+                  },
         })
         .where(eq(schema.taskDispatchCycles.id, cycle.id));
       return { receipt };
@@ -924,8 +1005,14 @@ export class TaskGoalInferenceInputRepository {
         .for("update")
         .limit(1);
       if (!row) return "canonical-input-deleted" as const;
+      const cycle = await this.cycle(tx, owner, notification.chatId);
+      const canonical =
+        cycle?.goalInput &&
+        isDeepStrictEqual(cycle.goalInput.receipt, row.state?.receipt)
+          ? cycle.goalInput
+          : row.state;
       const receipt = taskInferenceInputReceiptSchema.safeParse(
-        row.state?.receipt,
+        canonical ? currentTaskInputExecution(canonical).receipt : undefined,
       );
       if (
         receipt.success &&
@@ -984,9 +1071,11 @@ export class TaskGoalInferenceInputRepository {
         fence.cycleId,
       );
       const state = cycle?.goalInput;
+      const execution = state ? currentTaskInputExecution(state) : null;
       if (
         !state ||
-        state.receipt.operationId !== notification.taskInferenceInputOperationId
+        execution?.receipt.operationId !==
+          notification.taskInferenceInputOperationId
       )
         return recoverGoalInputHistory(
           tx,
@@ -995,12 +1084,12 @@ export class TaskGoalInferenceInputRepository {
           notification,
           this.messages,
         );
-      const receipt = state.receipt;
+      const receipt = execution!.receipt;
       if (
         state.deferred ||
         (notification.outcome.ok &&
-          (!state.accepted ||
-            !state.dispatched ||
+          (!execution!.accepted ||
+            !execution!.dispatched ||
             state.failedBeforeDispatch)) ||
         receipt.workerId !== worker ||
         receipt.clientMessageId !== notification.clientMessageId ||
@@ -1032,6 +1121,34 @@ export class TaskGoalInferenceInputRepository {
         throw new Error(
           "Task Goal outcomes require transactional history and lane ownership.",
         );
+      if (!notification.outcome.ok) {
+        const suspensions = new NativeSuspensionRepository(this.database, tx);
+        const retained =
+          (await suspensions.taskExecutionStopped(owner, worker, receipt)) ??
+          (await suspensions.retainTaskExecution(owner, worker, receipt));
+        if (retained) {
+          if (
+            retained.action === "resume" &&
+            ["resuming", "error"].includes(retained.phase)
+          )
+            await suspensions.failedControl(
+              owner,
+              receipt.chatId,
+              retained.controlId,
+              retained.actor,
+              { code: "restore-failed", protectedDetails: null },
+            );
+          return {
+            retained: true as const,
+            receipt,
+            message: null,
+            terminal: null,
+            finished: false,
+            historyOnly: true,
+            chat: context.chat,
+          };
+        }
+      }
       let message: TaskMessageOpaqueContent | null = null;
       if (notification.outcome.ok) {
         try {
@@ -1083,6 +1200,27 @@ export class TaskGoalInferenceInputRepository {
           .update(schema.taskDispatchCycles)
           .set({ goalInput: { ...state, terminal } })
           .where(eq(schema.taskDispatchCycles.id, cycle!.id));
+      if (
+        notification.outcome.ok &&
+        execution!.nativeExecution &&
+        notification.outcome.result.threadId ===
+          execution!.nativeExecution.threadId &&
+        notification.outcome.result.turnId === execution!.nativeExecution.turnId
+      )
+        await new NativeSuspensionRepository(
+          this.database,
+          tx,
+        ).retireTaskExecution(
+          owner,
+          state.receipt,
+          receipt,
+          execution!.nativeOwner,
+          {
+            threadId: notification.outcome.result.threadId,
+            turnId: notification.outcome.result.turnId!,
+          },
+          ok ? "completed" : "failed",
+        );
       if (
         ownsControl &&
         !ok &&
@@ -1181,12 +1319,15 @@ export class TaskGoalInferenceInputRepository {
           (expected &&
             JSON.stringify(taskInferenceInputReceiptSchema.parse(expected)) !==
               JSON.stringify(
-                taskInferenceInputReceiptSchema.parse(state.receipt),
+                taskInferenceInputReceiptSchema.parse(
+                  currentTaskInputExecution(state).receipt,
+                ),
               ))
         )
           return null;
-        const physical = physicalInput(cycle, state.receipt);
-        const c = await this.context(tx, owner, state.receipt, {
+        const receipt = currentTaskInputExecution(state).receipt;
+        const physical = physicalInput(cycle, receipt);
+        const c = await this.context(tx, owner, receipt, {
           settled: true,
         });
         if (
@@ -1207,7 +1348,7 @@ export class TaskGoalInferenceInputRepository {
           threadId: c.lane?.codexThreadId ?? null,
         };
         const guard = {
-          ...outcomeGuard(state.receipt),
+          ...outcomeGuard(receipt),
           goalProjection: projection,
         };
         await assertTaskOperationDispatchFence(
@@ -1218,7 +1359,7 @@ export class TaskGoalInferenceInputRepository {
           guard,
         );
         return {
-          receipt: state.receipt,
+          receipt,
           terminal: state.terminal,
           guard,
           failedBeforeDispatch:
@@ -1369,7 +1510,7 @@ export class TaskGoalInferenceInputRepository {
       .transaction(async (tx) => {
         const cycle = await this.cycle(tx, owner, chat, lease.cycleId);
         const state = cycle?.goalInput;
-        const receipt = state?.receipt;
+        const receipt = state ? currentTaskInputExecution(state).receipt : null;
         if (
           !state ||
           state.deferred ||

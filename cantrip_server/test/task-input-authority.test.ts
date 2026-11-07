@@ -581,14 +581,76 @@ describe("canonical Task native execution binding", () => {
         .set({ state: "released", releasedAt: new Date() })
         .where(eq(schema.chatExecutionLanes.id, id));
   });
-  async function active() {
-    const f = await input("round");
+  async function active(
+    kind: "round" | "goal" = "round",
+    finalizerStatus: "running" | "completed" = "completed",
+  ) {
+    const f = await input(kind);
     await f.write({ deferred: false, accepted: false });
+    let goalInput: TaskInferenceInputState | undefined;
+    if (kind === "goal") {
+      const start = taskStart(
+        "finalize",
+        f.chat,
+        2,
+        1,
+        f.receipt.dispatch.operationId,
+      );
+      const finalizerMessage = randomUUID();
+      start.operation.userMessage.id = finalizerMessage;
+      const result = taskResult(start);
+      await database.insert(schema.chatMessages).values({
+        id: finalizerMessage,
+        chatId: f.chat,
+        worktreeId: tree,
+        role: "user",
+        mode: "plan",
+        taskProtectedContent: taskEnvelope,
+      });
+      await database.insert(schema.taskPlanningRounds).values({
+        id: f.receipt.dispatch.operationId,
+        chatId: f.chat,
+        ordinal: 2,
+        kind: "finalize",
+        status: finalizerStatus,
+        protectedContent: taskEnvelope,
+        relayRequest: start.operation,
+        relayResult: result,
+        failureTask: start.failure.task,
+        failureRound: start.failure.round,
+        userMessageId: finalizerMessage,
+      });
+      const [message] = await database
+        .select()
+        .from(schema.chatMessages)
+        .where(eq(schema.chatMessages.id, f.receipt.clientMessageId));
+      goalInput = {
+        ...message!.taskGoalInput!,
+        publication: {
+          id: randomUUID(),
+          idempotencyKey: `assistant:${f.receipt.clientMessageId}`,
+        },
+      };
+    }
     await database
       .update(schema.tasks)
       .set({
-        activeOperationId: f.receipt.dispatch.operationId,
-        activeOperationKind: "initial-plan",
+        ...(kind === "goal"
+          ? {
+              state: "implementing" as const,
+              activeOperationId: null,
+              activeOperationKind: null,
+              implementationStartedAt: new Date(),
+              planGoalEnabled: true,
+              planningRound: 2,
+              hasPlan: true,
+              hasFinalPlan: true,
+              hasGoalPrompt: true,
+            }
+          : {
+              activeOperationId: f.receipt.dispatch.operationId,
+              activeOperationKind: "initial-plan" as const,
+            }),
       })
       .where(eq(schema.tasks.chatId, f.chat));
     await database.insert(schema.chatExecutionLanes).values({
@@ -606,7 +668,8 @@ describe("canonical Task native execution binding", () => {
       chatId: f.chat,
       ownerId: owner,
       operationId: f.receipt.dispatch.operationId,
-      operationKind: "initial-plan",
+      operationKind: kind === "goal" ? "finalize" : "initial-plan",
+      ...(goalInput ? { goalInput } : {}),
       state: "running",
       fifoCreatedAt: new Date(),
       fencingToken: f.receipt.dispatch.fencingToken,
@@ -648,124 +711,182 @@ describe("canonical Task native execution binding", () => {
     return { ...f, metadata, dispatch, snapshot };
   }
 
-  it("fences stopped Task callbacks and requires the current cancellation proof", async () => {
-    const f = await active();
-    await f.dispatch("claim");
-    await f.dispatch("dispatch");
-    await f.dispatch("native");
-    const pending = (await repository.nativeSuspensions.prepareTaskStop(
-      owner,
-      f.chat,
-    ))!;
-    expect(pending.stop).not.toBeNull();
-    const intent = (await repository.taskAutomationPause.request(
-      owner,
-      f.chat,
-      true,
-    ))!;
-    const current = (await repository.taskAutomationPause.fenceInterrupt(
-      owner,
-      f.chat,
-      intent.scope.revision,
-    ))!;
-    const stopped = (await repository.nativeSuspensions.prepareTaskStop(
-      owner,
-      f.chat,
-    ))!;
-    expect(stopped.state.controlId).toBe(pending.state.controlId);
-    expect(
-      await repository.nativeSuspensions.taskExecutionStopped(
-        owner,
-        worker,
-        f.receipt,
-      ),
-    ).toMatchObject({ phase: "stopping" });
-    expect(
-      await repository.nativeSuspensions.taskExecutionStopped(
-        owner,
-        "another-worker",
-        f.receipt,
-      ),
-    ).toBeNull();
-    expect(
-      await repository.nativeSuspensions.taskExecutionStopped(owner, worker, {
-        ...f.receipt,
-        operationId: randomUUID(),
-      }),
-    ).toBeNull();
-    let attempted = false;
-    expect(
-      await repository.taskDispatch.resumeNextPaused(
-        owner,
-        "ordinary-scheduler",
-        async () => {
-          attempted = true;
-          return { eligible: true };
+  it.each(["running", "completed"] as const)(
+    "binds a Goal input without rewriting its %s finalizer",
+    async (status) => {
+      const f = await active("goal", status);
+      const before = await f.snapshot();
+      await expect(f.dispatch("native")).rejects.toMatchObject({
+        code: "stale-lease",
+      });
+      await f.dispatch("claim");
+      await f.dispatch("dispatch");
+      await f.dispatch("native");
+      await f.dispatch("native");
+      const bound = await f.snapshot();
+      expect(bound.round).toEqual(before.round);
+      expect(bound.cycle!.goalInput).toMatchObject({
+        receipt: f.receipt,
+        nativeExecution: f.metadata.nativeExecution,
+        nativeOwner: {
+          workerGeneration: f.metadata.workerGeneration,
+          runtimeGeneration: f.metadata.nativeRuntimeGeneration,
         },
-      ),
-    ).toBeNull();
-    expect(attempted).toBe(false);
-    const proof = {
-      controlId: stopped.state.controlId,
-      interrupted: true as const,
-      active: stopped.stop!.active,
-      outcome: "stopped" as const,
-      actor: {
-        operationId: stopped.state.controlId,
-        operationGeneration: stopped.state.controlId,
-        workerGeneration: randomUUID(),
-        runtimeGeneration: randomUUID(),
-      },
-    };
-    const before = await f.snapshot();
-    await expect(
-      repository.nativeSuspensions.acknowledgeTaskStop(
+      });
+      expect(bound.cycle!.turnId).toBe(f.metadata.nativeExecution.turnId);
+      await expect(
+        f.dispatch("native", {
+          ...f.metadata,
+          nativeRuntimeGeneration: randomUUID(),
+        }),
+      ).rejects.toMatchObject({ code: "stale-lease" });
+      expect(await f.snapshot()).toEqual(bound);
+      const intent = await repository.taskAutomationPause.request(
+        owner,
+        f.chat,
+        true,
+      );
+      expect(intent?.scope.taskRound).toEqual({
+        operationId: f.receipt.dispatch.operationId,
+        inputOperationId: f.receipt.operationId,
+        cycleId: f.receipt.dispatch.cycleId,
+      });
+    },
+  );
+
+  it.each(["round", "goal"] as const)(
+    "fences stopped Task %s callbacks and requires the current cancellation proof",
+    async (kind) => {
+      const f = await active(kind);
+      await f.dispatch("claim");
+      await f.dispatch("dispatch");
+      await f.dispatch("native");
+      const pending = (await repository.nativeSuspensions.prepareTaskStop(
+        owner,
+        f.chat,
+      ))!;
+      expect(pending.stop).not.toBeNull();
+      const intent = (await repository.taskAutomationPause.request(
+        owner,
+        f.chat,
+        true,
+      ))!;
+      const current = (await repository.taskAutomationPause.fenceInterrupt(
+        owner,
+        f.chat,
+        intent.scope.revision,
+      ))!;
+      const stopped = (await repository.nativeSuspensions.prepareTaskStop(
+        owner,
+        f.chat,
+      ))!;
+      expect(stopped.state.controlId).toBe(pending.state.controlId);
+      expect(
+        await repository.nativeSuspensions.taskExecutionStopped(
+          owner,
+          worker,
+          f.receipt,
+        ),
+      ).toMatchObject({ phase: "stopping" });
+      expect(
+        await repository.nativeSuspensions.taskExecutionStopped(
+          owner,
+          "another-worker",
+          f.receipt,
+        ),
+      ).toBeNull();
+      expect(
+        await repository.nativeSuspensions.taskExecutionStopped(owner, worker, {
+          ...f.receipt,
+          operationId: randomUUID(),
+        }),
+      ).toBeNull();
+      let attempted = false;
+      expect(
+        await repository.taskDispatch.resumeNextPaused(
+          owner,
+          "ordinary-scheduler",
+          async () => {
+            attempted = true;
+            return { eligible: true };
+          },
+        ),
+      ).toBeNull();
+      expect(attempted).toBe(false);
+      const proof = {
+        controlId: stopped.state.controlId,
+        interrupted: true as const,
+        active: stopped.stop!.active,
+        outcome: "stopped" as const,
+        actor: {
+          operationId: stopped.state.controlId,
+          operationGeneration: stopped.state.controlId,
+          workerGeneration: randomUUID(),
+          runtimeGeneration: randomUUID(),
+        },
+      };
+      const before = await f.snapshot();
+      await expect(
+        repository.nativeSuspensions.acknowledgeTaskStop(
+          owner,
+          f.chat,
+          stopped.stop!,
+          current.scope,
+          { ...proof, active: { ...proof.active, turnId: randomUUID() } },
+          repository.chatExecutionLanes,
+        ),
+      ).rejects.toThrow("suspension-turn-mismatch");
+      await expect(
+        repository.nativeSuspensions.acknowledgeTaskStop(
+          owner,
+          f.chat,
+          stopped.stop!,
+          current.scope,
+          { ...proof, actor: { ...proof.actor, operationId: randomUUID() } },
+          repository.chatExecutionLanes,
+        ),
+      ).rejects.toThrow("suspension-actor-stale");
+      expect(await f.snapshot()).toEqual(before);
+      await repository.nativeSuspensions.acknowledgeTaskStop(
         owner,
         f.chat,
         stopped.stop!,
         current.scope,
-        { ...proof, active: { ...proof.active, turnId: randomUUID() } },
+        proof,
         repository.chatExecutionLanes,
-      ),
-    ).rejects.toThrow("suspension-turn-mismatch");
-    await expect(
-      repository.nativeSuspensions.acknowledgeTaskStop(
-        owner,
-        f.chat,
-        stopped.stop!,
-        current.scope,
-        { ...proof, actor: { ...proof.actor, operationId: randomUUID() } },
-        repository.chatExecutionLanes,
-      ),
-    ).rejects.toThrow("suspension-actor-stale");
-    expect(await f.snapshot()).toEqual(before);
-    await repository.nativeSuspensions.acknowledgeTaskStop(
-      owner,
-      f.chat,
-      stopped.stop!,
-      current.scope,
-      proof,
-      repository.chatExecutionLanes,
-    );
-    expect(
-      await repository.nativeSuspensions.taskExecutionStopped(
-        owner,
-        worker,
-        f.receipt,
-      ),
-    ).toMatchObject({ phase: "stopped", checkpoint: null });
-    expect((await f.snapshot()).round).toMatchObject({
-      status: "running",
-      relayResult: null,
-    });
-    expect((await f.snapshot()).cycle).toMatchObject({
-      state: "paused",
-      attemptCount: before.cycle!.attemptCount,
-    });
-    expect(
-      (await repository.nativeSuspensions.prepareTaskStop(owner, f.chat))!.stop,
-    ).toBeNull();
-  });
+      );
+      expect(
+        await repository.nativeSuspensions.taskExecutionStopped(
+          owner,
+          worker,
+          f.receipt,
+        ),
+      ).toMatchObject({ phase: "stopped", checkpoint: null });
+      expect((await f.snapshot()).round).toEqual(before.round);
+      if (kind === "goal") {
+        const retained = await tasks.inferenceInputs.goals.applyOutcome(
+          owner,
+          worker,
+          f.outcome("model-failed-before-output"),
+        );
+        expect(retained).toMatchObject({
+          retained: true,
+          terminal: null,
+          finished: false,
+          historyOnly: true,
+        });
+        expect((await f.snapshot()).cycle!.goalInput!.terminal).toBeUndefined();
+      }
+      expect((await f.snapshot()).cycle).toMatchObject({
+        state: "paused",
+        attemptCount: before.cycle!.attemptCount,
+      });
+      expect(
+        (await repository.nativeSuspensions.prepareTaskStop(owner, f.chat))!
+          .stop,
+      ).toBeNull();
+    },
+  );
 
   it.each(["completed", "failed"] as const)(
     "retires actual native %s while Stop awaits its cancellation receipt",
@@ -820,151 +941,185 @@ describe("canonical Task native execution binding", () => {
     },
   );
 
-  it("admits a fresh physical Resume while keeping the original canonical input immutable", async () => {
-    const f = await active();
-    await f.dispatch("claim");
-    await f.dispatch("dispatch");
-    await f.dispatch("native");
-    const activeTurn = {
-      threadId: f.metadata.nativeExecution.threadId,
-      turnId: f.metadata.nativeExecution.turnId,
-    };
-    const actor = {
-      workerGeneration: f.metadata.workerGeneration,
-      runtimeGeneration: f.metadata.nativeRuntimeGeneration,
-      operationId: f.receipt.operationId,
-      operationGeneration: f.receipt.operationId,
-    };
-    const requested = (
-      await repository.nativeSuspensions.request(
-        owner,
-        f.chat,
-        "pause",
-        activeTurn,
-      )
-    ).state;
-    await repository.nativeSuspensions.claim(
-      owner,
-      f.chat,
-      requested.controlId,
-      null,
-      actor,
-      activeTurn,
-    );
-    const checkpoint = {
-      storageId: randomUUID(),
-      runtimeVersion: "0.166.0",
-      runtimeFingerprint: null,
-      suspension: { ...activeTurn, checkpointId: randomUUID(), revision: 1 },
-    };
-    await repository.nativeSuspensions.paused(
-      owner,
-      f.chat,
-      requested.controlId,
-      actor,
-      checkpoint,
-    );
-    await repository.nativeSuspensions.retainTaskExecution(
-      owner,
-      worker,
-      f.receipt,
-    );
-    const intent = (await repository.taskAutomationPause.request(
-      owner,
-      f.chat,
-      false,
-    ))!;
-    const saved = (await repository.nativeSuspensions.read(owner, f.chat))!;
-    const original = await f.snapshot();
-    const claim = await repository.taskDispatch.resumeNextPaused(
-      owner,
-      "fresh-resume-owner",
-      async () => ({ eligible: true }),
-      { nativeSuspension: { chatId: f.chat, controlId: saved.controlId } },
-    );
-    expect(claim).not.toBeNull();
-    expect(claim!.lease.fencingToken).toBe(f.receipt.dispatch.fencingToken + 1);
-    expect(claim!.cycle.attemptCount).toBe(original.cycle!.attemptCount);
-    const input = {
-      resumption: { controlId: saved.controlId, checkpoint, source: f.receipt },
-      lease: claim!.lease,
-      expectedInputRevision: intent.scope.revision,
-    };
-    await expect(
-      tasks.inferenceInputs.prepareResumption(owner, {
-        ...input,
-        expectedInputRevision: intent.scope.revision + 1,
-      }),
-    ).rejects.toMatchObject({ code: "stale-lease" });
-    const receipt = await tasks.inferenceInputs.prepareResumption(owner, input);
-    expect(await tasks.inferenceInputs.prepareResumption(owner, input)).toEqual(
-      receipt,
-    );
-    expect(receipt.operationId).not.toBe(f.receipt.operationId);
-    expect(receipt.executionLaneId).toBe(f.receipt.executionLaneId);
-    const fresh = {
-      workerGeneration: randomUUID(),
-      nativeRuntimeGeneration: randomUUID(),
-      nativeExecution: { ...f.metadata.nativeExecution, scopeId: randomUUID() },
-    };
-    const dispatch = (
-      phase: "claim" | "dispatch" | "native",
-      metadata = fresh,
-    ) =>
-      tasks.inferenceInputs.dispatch(owner, worker, receipt, phase, metadata);
-    await expect(f.dispatch("native")).rejects.toMatchObject({
-      code: "stale-lease",
-    });
-    await expect(dispatch("native")).rejects.toMatchObject({
-      code: "stale-lease",
-    });
-    await dispatch("claim");
-    await expect(dispatch("claim")).rejects.toMatchObject({
-      code: "stale-lease",
-    });
-    await dispatch("dispatch");
-    await expect(
-      dispatch("native", {
-        ...fresh,
-        nativeExecution: { ...fresh.nativeExecution, turnId: randomUUID() },
-      }),
-    ).rejects.toMatchObject({ code: "stale-lease" });
-    await dispatch("native");
-    const snapshot = await f.snapshot();
-    expect(snapshot.round!.inferenceInput).toMatchObject({
-      receipt: f.receipt,
-      nativeExecution: f.metadata.nativeExecution,
-      nativeOwner: {
+  it.each(["round", "goal"] as const)(
+    "admits a fresh physical %s Resume while keeping the original canonical input immutable",
+    async (kind) => {
+      const f = await active(kind);
+      await f.dispatch("claim");
+      await f.dispatch("dispatch");
+      await f.dispatch("native");
+      const activeTurn = {
+        threadId: f.metadata.nativeExecution.threadId,
+        turnId: f.metadata.nativeExecution.turnId,
+      };
+      const actor = {
         workerGeneration: f.metadata.workerGeneration,
         runtimeGeneration: f.metadata.nativeRuntimeGeneration,
-      },
-      firstDispatchedOperationId: f.receipt.operationId,
-      multipleDispatched: false,
-      resumption: {
-        receipt,
-        nativeExecution: fresh.nativeExecution,
+        operationId: f.receipt.operationId,
+        operationGeneration: f.receipt.operationId,
+      };
+      const requested = (
+        await repository.nativeSuspensions.request(
+          owner,
+          f.chat,
+          "pause",
+          activeTurn,
+        )
+      ).state;
+      await repository.nativeSuspensions.claim(
+        owner,
+        f.chat,
+        requested.controlId,
+        null,
+        actor,
+        activeTurn,
+      );
+      const checkpoint = {
+        storageId: randomUUID(),
+        runtimeVersion: "0.166.0",
+        runtimeFingerprint: null,
+        suspension: { ...activeTurn, checkpointId: randomUUID(), revision: 1 },
+      };
+      await repository.nativeSuspensions.paused(
+        owner,
+        f.chat,
+        requested.controlId,
+        actor,
+        checkpoint,
+      );
+      await repository.nativeSuspensions.retainTaskExecution(
+        owner,
+        worker,
+        f.receipt,
+      );
+      const intent = (await repository.taskAutomationPause.request(
+        owner,
+        f.chat,
+        false,
+      ))!;
+      const saved = (await repository.nativeSuspensions.read(owner, f.chat))!;
+      const original = await f.snapshot();
+      const claim = await repository.taskDispatch.resumeNextPaused(
+        owner,
+        "fresh-resume-owner",
+        async () => ({ eligible: true }),
+        { nativeSuspension: { chatId: f.chat, controlId: saved.controlId } },
+      );
+      expect(claim).not.toBeNull();
+      expect(claim!.lease.fencingToken).toBe(
+        f.receipt.dispatch.fencingToken + 1,
+      );
+      expect(claim!.cycle.attemptCount).toBe(original.cycle!.attemptCount);
+      const input = {
+        resumption: {
+          controlId: saved.controlId,
+          checkpoint,
+          source: f.receipt,
+        },
+        lease: claim!.lease,
+        expectedInputRevision: intent.scope.revision,
+      };
+      await expect(
+        tasks.inferenceInputs.prepareResumption(owner, {
+          ...input,
+          expectedInputRevision: intent.scope.revision + 1,
+        }),
+      ).rejects.toMatchObject({ code: "stale-lease" });
+      const receipt = await tasks.inferenceInputs.prepareResumption(
+        owner,
+        input,
+      );
+      expect(
+        await tasks.inferenceInputs.prepareResumption(owner, input),
+      ).toEqual(receipt);
+      expect(receipt.operationId).not.toBe(f.receipt.operationId);
+      expect(receipt.executionLaneId).toBe(f.receipt.executionLaneId);
+      if (kind === "goal") {
+        const note = f.outcome("model-failed-before-output", {
+          operationId: receipt.operationId,
+        });
+        note.taskInferenceInputOperationId = receipt.operationId;
+        note.taskDispatchFence = receipt.dispatch;
+        expect(
+          await tasks.inferenceInputs.goals.outcomeRetirementReason(
+            owner,
+            note,
+            worker,
+          ),
+        ).toBeNull();
+      }
+      const fresh = {
+        workerGeneration: randomUUID(),
+        nativeRuntimeGeneration: randomUUID(),
+        nativeExecution: {
+          ...f.metadata.nativeExecution,
+          scopeId: randomUUID(),
+        },
+      };
+      const dispatch = (
+        phase: "claim" | "dispatch" | "native",
+        metadata = fresh,
+      ) =>
+        tasks.inferenceInputs.dispatch(owner, worker, receipt, phase, metadata);
+      await expect(f.dispatch("native")).rejects.toMatchObject({
+        code: "stale-lease",
+      });
+      await expect(dispatch("native")).rejects.toMatchObject({
+        code: "stale-lease",
+      });
+      await dispatch("claim");
+      await expect(dispatch("claim")).rejects.toMatchObject({
+        code: "stale-lease",
+      });
+      await dispatch("dispatch");
+      await expect(
+        dispatch("native", {
+          ...fresh,
+          nativeExecution: { ...fresh.nativeExecution, turnId: randomUUID() },
+        }),
+      ).rejects.toMatchObject({ code: "stale-lease" });
+      await dispatch("native");
+      const snapshot = await f.snapshot();
+      if (kind === "goal") expect(snapshot.round).toEqual(original.round);
+      expect(
+        kind === "goal"
+          ? snapshot.cycle!.goalInput
+          : snapshot.round!.inferenceInput,
+      ).toMatchObject({
+        receipt: f.receipt,
+        nativeExecution: f.metadata.nativeExecution,
         nativeOwner: {
+          workerGeneration: f.metadata.workerGeneration,
+          runtimeGeneration: f.metadata.nativeRuntimeGeneration,
+        },
+        firstDispatchedOperationId: f.receipt.operationId,
+        multipleDispatched: false,
+        resumption: {
+          receipt,
+          nativeExecution: fresh.nativeExecution,
+          nativeOwner: {
+            workerGeneration: fresh.workerGeneration,
+            runtimeGeneration: fresh.nativeRuntimeGeneration,
+          },
+        },
+      });
+      const running = (await repository.nativeSuspensions.read(owner, f.chat))!;
+      expect(running).toMatchObject({
+        phase: "running",
+        active: activeTurn,
+        target: { originalOperationId: f.receipt.operationId },
+        actor: {
+          operationId: receipt.operationId,
           workerGeneration: fresh.workerGeneration,
           runtimeGeneration: fresh.nativeRuntimeGeneration,
         },
-      },
-    });
-    const running = (await repository.nativeSuspensions.read(owner, f.chat))!;
-    expect(running).toMatchObject({
-      phase: "running",
-      active: activeTurn,
-      target: { originalOperationId: f.receipt.operationId },
-      actor: {
-        operationId: receipt.operationId,
-        workerGeneration: fresh.workerGeneration,
-        runtimeGeneration: fresh.nativeRuntimeGeneration,
-      },
-    });
-    expect(
-      (await repository.getChatExecutionContext(owner, f.chat))!
-        .automationPaused,
-    ).toBe(false);
-  });
+      });
+      expect(
+        (await repository.getChatExecutionContext(owner, f.chat))!
+          .automationPaused,
+      ).toBe(false);
+    },
+  );
 
   it("binds exact native identity atomically while preserving final-result and runtime authority", async () => {
     const f = await active();

@@ -254,10 +254,9 @@ export async function assertTaskOperationDispatchFence(
           .for("update")
           .limit(1);
     const input = goal ? cycle.goalInput : round?.input;
-    const receipt =
-      !goal && round?.input
-        ? currentTaskInputExecution(round.input).receipt
-        : input?.receipt;
+    const receipt = input
+      ? currentTaskInputExecution(input).receipt
+      : undefined;
     if (
       !input ||
       input.deferred ||
@@ -374,22 +373,18 @@ export async function assertTaskOperationDispatchFence(
     }
     if (expected.goalInferenceInputOperationId !== undefined) {
       const input = cycle.goalInput;
+      const receipt = input ? currentTaskInputExecution(input).receipt : null;
       if (
         !input ||
         input.deferred ||
-        input.receipt.operationId !== expected.goalInferenceInputOperationId ||
-        input.receipt.dispatch.fencingToken !== cycle.fencingToken ||
-        input.receipt.dispatch.leaseOwner !== cycle.leaseOwner
+        !receipt ||
+        receipt.operationId !== expected.goalInferenceInputOperationId ||
+        receipt.dispatch.fencingToken !== cycle.fencingToken ||
+        receipt.dispatch.leaseOwner !== cycle.leaseOwner
       )
         fail();
       if (!input) return fail();
-      await assertGoalPlacement(
-        transaction,
-        ownerId,
-        chatId,
-        input.receipt,
-        fail,
-      );
+      await assertGoalPlacement(transaction, ownerId, chatId, receipt!, fail);
     }
     if (expected.inferenceInputOperationId !== undefined) {
       // Receipt replacement/defer holds this same owner/cycle lock. Validate

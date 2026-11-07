@@ -158,20 +158,33 @@ export class NativeSuspensionRepository {
         !["stopping", "stopped", "error"].includes(saved.phase)
       )
         return null;
-      const [round] = await tx
-        .select()
-        .from(schema.taskPlanningRounds)
-        .where(
-          and(
-            eq(schema.taskPlanningRounds.id, receipt.dispatch.operationId),
-            eq(schema.taskPlanningRounds.chatId, receipt.chatId),
-          ),
-        );
-      const input = round?.inferenceInput;
+      const [row] =
+        receipt.kind === "goal"
+          ? await tx
+              .select({ input: schema.taskDispatchCycles.goalInput })
+              .from(schema.taskDispatchCycles)
+              .where(
+                and(
+                  eq(schema.taskDispatchCycles.id, receipt.dispatch.cycleId),
+                  eq(schema.taskDispatchCycles.chatId, receipt.chatId),
+                ),
+              )
+          : await tx
+              .select({ input: schema.taskPlanningRounds.inferenceInput })
+              .from(schema.taskPlanningRounds)
+              .where(
+                and(
+                  eq(
+                    schema.taskPlanningRounds.id,
+                    receipt.dispatch.operationId,
+                  ),
+                  eq(schema.taskPlanningRounds.chatId, receipt.chatId),
+                ),
+              );
+      const input = row?.input;
       if (!input) return null;
       const native = taskCheckpointExecution(input).nativeExecution;
       const owns =
-        !receipt.kind &&
         receipt.workerId === workerId &&
         isDeepStrictEqual(currentTaskInputExecution(input).receipt, receipt) &&
         saved.target.workerId === receipt.workerId &&
@@ -487,7 +500,7 @@ export class NativeSuspensionRepository {
     workerId: string,
     receipt: TaskInferenceInputReceipt,
   ) {
-    if (receipt.kind || receipt.workerId !== workerId) return null;
+    if (receipt.workerId !== workerId) return null;
     const retain = async (tx: RepositoryTransaction) => {
       await lockNativeCommandChat(tx, ownerId, receipt.chatId);
       const state = await this.inTransaction(tx).read(ownerId, receipt.chatId);

@@ -73,6 +73,10 @@ export function createChatTurnOutcomeRuntime({
         notification,
       );
       if (goal) {
+        if ("retained" in goal && goal.retained) {
+          publishChatInvalidation(notification.chatId, "task", null, goal.chat);
+          return;
+        }
         if (goal.message) publishTaskMessage(goal.message, goal.chat);
         if (!goal.historyOnly) {
           if (goal.finished)

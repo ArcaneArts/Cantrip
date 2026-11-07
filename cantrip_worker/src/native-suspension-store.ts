@@ -46,8 +46,7 @@ export const nativeSuspensionSourceSchema = nativeCommandSessionSchema
     const task = value.taskInput;
     if (
       task &&
-      (task.kind ||
-        value.contextKind !== "project" ||
+      (value.contextKind !== "project" ||
         !value.projectId ||
         task.chatId !== value.chatId ||
         task.worktreeId !== value.placementId ||
@@ -102,9 +101,13 @@ const snapshotSchema = z
     if (
       value.version === 3 &&
       receipt &&
-      (value.task.request.chatId !== receipt.chatId ||
-        value.task.request.operationId !== receipt.dispatch.operationId ||
-        value.task.request.userMessage.id !== receipt.clientMessageId)
+      (value.task.version === 1
+        ? receipt.kind === "goal" ||
+          value.task.request.chatId !== receipt.chatId ||
+          value.task.request.operationId !== receipt.dispatch.operationId ||
+          value.task.request.userMessage.id !== receipt.clientMessageId
+        : receipt.kind !== "goal" ||
+          value.task.prompt.id !== receipt.clientMessageId)
     )
       context.addIssue({
         code: "custom",

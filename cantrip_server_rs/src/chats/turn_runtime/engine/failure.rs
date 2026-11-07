@@ -3,7 +3,9 @@ use crate::chats::{live_mutations::MessageOptions, message_queries::MessageKind}
 impl Runtime {
     pub(super) async fn retain_suspension(&self, turn: &PreparedTurn) -> Result<bool> {
         let commands = Commands::new(self.dependencies.events.database.clone());
-        if turn.task_relay.is_some()
+        let task_input = turn.task_relay.is_some()
+            || (turn.encrypted_task.is_some() && turn.user_message["mode"] == "goal");
+        if task_input
             && truthy(turn.options.get("taskDispatchLease"))
             && commands
                 .cancelled_task_execution(
@@ -32,7 +34,7 @@ impl Runtime {
                     &events::text(&receipt["operationGeneration"])?,
                 )
                 .await?
-        } else if turn.task_relay.is_some() && truthy(turn.options.get("taskDispatchLease")) {
+        } else if task_input && truthy(turn.options.get("taskDispatchLease")) {
             commands
                 .retain_task_suspension(
                     &turn.owner,

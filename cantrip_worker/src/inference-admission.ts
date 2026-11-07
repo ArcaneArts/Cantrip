@@ -1342,7 +1342,7 @@ export class WorkerInferenceAdmission {
           );
       }
       const task = ticket.input.recovery?.taskInput;
-      if (task && !task.kind)
+      if (task)
         await this.onTaskNativeBound?.(
           task,
           execution,

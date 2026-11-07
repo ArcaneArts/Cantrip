@@ -260,8 +260,7 @@ export const workerChatCommandSchemas = [
       if (
         restore &&
         (!taskInput ||
-          taskInput.kind ||
-          restore.source.kind ||
+          taskInput.kind !== restore.source.kind ||
           restore.source.operationId === taskInput.operationId ||
           restore.source.chatId !== command.chatId ||
           restore.source.clientMessageId !== command.clientMessageId ||

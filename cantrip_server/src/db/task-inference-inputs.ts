@@ -45,6 +45,8 @@ import {
  * Sticky dispatch evidence survives route retries: a later unstarted attempt
  * cannot authorize replay of an earlier possibly executed attempt. */
 export interface TaskInferenceInputState {
+  /** Original Goal result identity; opaque content stays on its existing message. */
+  publication?: { id: string; idempotencyKey: string };
   /** Only the current physical Resume attempt may produce native admission or
    * terminal projection. The original receipt remains the checkpoint source. */
   resumption?: TaskInferenceResumption;
@@ -782,9 +784,15 @@ export class TaskInferenceInputRepository {
     ownerId: string,
     input: Omit<TaskInferenceInputReceipt, "operationId">,
     expectedInputRevision?: number,
+    publication?: TaskInferenceInputState["publication"],
   ): Promise<TaskInferenceInputReceipt> {
     if (input.kind === "goal")
-      return this.goals.prepare(ownerId, input, expectedInputRevision);
+      return this.goals.prepare(
+        ownerId,
+        input,
+        expectedInputRevision,
+        publication,
+      );
     const receipt = taskInferenceInputReceiptSchema.parse({
       ...input,
       operationId: randomUUID(),
@@ -898,6 +906,8 @@ export class TaskInferenceInputRepository {
       expectedInputRevision?: number;
     },
   ): Promise<TaskInferenceInputReceipt> {
+    if (input.resumption.source.kind === "goal")
+      return this.goals.prepareResumption(ownerId, input);
     return this.database.transaction(async (tx) => {
       const original = taskInferenceInputReceiptSchema.parse(
         input.resumption.source,
@@ -1017,8 +1027,7 @@ export class TaskInferenceInputRepository {
     nativeRuntimeGeneration?: string;
   }> {
     if (receipt.kind === "goal") {
-      if (phase === "native") stale();
-      return this.goals.dispatch(ownerId, workerId, receipt, phase);
+      return this.goals.dispatch(ownerId, workerId, receipt, phase, metadata);
     }
     if (workerId !== receipt.workerId) stale();
     return this.database.transaction(async (tx) => {

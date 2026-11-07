@@ -129,128 +129,175 @@ afterEach(async () => {
 });
 
 describe("native suspension source registry with actual worker encryption", () => {
-  it("persists the original Task round and event identities with only a Task grant", async () => {
-    const w = await worker(undefined, true, "task-content");
-    const fixtures = JSON.parse(
-      await readFile(
-        new URL(
-          "../../scripts/server-rust/worker-command-alternatives.json",
-          import.meta.url,
+  it.each(["round", "goal"] as const)(
+    "persists the original Task %s and event identities with only a Task grant",
+    async (kind) => {
+      const w = await worker(undefined, true, "task-content");
+      const fixtures = JSON.parse(
+        await readFile(
+          new URL(
+            "../../scripts/server-rust/worker-command-alternatives.json",
+            import.meta.url,
+          ),
+          "utf8",
         ),
-        "utf8",
-      ),
-    ) as {
-      cases: Array<{
-        input: {
-          command: { resultMode?: { kind: string; operation?: unknown } };
-        };
-      }>;
-    };
-    const original = taskOperationRelayRequestSchema.parse(
-      fixtures.cases.find(
-        (item) => item.input.command.resultMode?.kind === "task-encrypted",
-      )!.input.command.resultMode!.operation,
-    );
-    const request = {
-      ...original,
-      chatId: source.chatId,
-      operationId: randomUUID(),
-    };
-    const receipt = taskInferenceInputReceiptSchema.parse({
-      operationId: randomUUID(),
-      chatId: source.chatId,
-      clientMessageId: request.userMessage.id,
-      workerId: scope.workerId,
-      worktreeId: source.placementId,
-      executionLaneId: randomUUID(),
-      executionLaneActivatedAt: timestamp,
-      providerId: "provider",
-      modelRouteId: source.modelRouteId,
-      providerAccountId: source.providerAccountId,
-      dispatch: {
-        operationId: request.operationId,
-        cycleId: randomUUID(),
-        leaseOwner: "original-owner",
-        fencingToken: 1,
-      },
-    });
-    const taskSource = { ...source, taskInput: receipt };
-    const continuation = captureWorkerTurn(
-      workerTurnState(),
-      suspension.turnId,
-    );
-    const taskContinuation = {
-      version: 1 as const,
-      request,
-      events: {
-        version: 1 as const,
-        mode:
-          request.classification.kind === "direct"
-            ? ("default" as const)
-            : ("plan" as const),
-        ids: [],
-        completedRootMessage: null,
-      },
-    };
-    const evidence = await w.store.commit({
-      ...input,
-      source: taskSource,
-      continuation,
-      taskContinuation,
-    });
-    const bytes = await readFile(
-      await file(w.dataDirectory, evidence.storageId),
-      "utf8",
-    );
-    expect(JSON.parse(bytes)).toMatchObject({
-      version: 3,
-      protectedSource: { formatVersion: 2, component: "task-content" },
-    });
-    for (const privateValue of [
-      receipt.operationId,
-      request.operationId,
-      request.fingerprint,
-      input.home,
-      "SAVED_ASSISTANT",
-    ])
-      expect(bytes).not.toContain(privateValue);
-    const denied = await worker(w.dataDirectory, false, "task-content");
-    await expect(
-      denied.store.open(evidence.storageId, taskSource),
-    ).rejects.toThrow("active task-content encryption grant");
-    const fresh = await worker(w.dataDirectory, true, "task-content");
-    const opened = await fresh.store.open(evidence.storageId, taskSource);
-    expect(opened.taskContinuation).toEqual(taskContinuation);
-    await expect(
-      createNativeResourceProtection(fresh.service).open(
-        {
-          threadId: suspension.threadId,
-          turnId: suspension.turnId,
-          checkpointId: suspension.checkpointId,
+      ) as {
+        cases: Array<{
+          input: {
+            command: { resultMode?: { kind: string; operation?: unknown } };
+          };
+        }>;
+      };
+      const original = taskOperationRelayRequestSchema.parse(
+        fixtures.cases.find(
+          (item) => item.input.command.resultMode?.kind === "task-encrypted",
+        )!.input.command.resultMode!.operation,
+      );
+      const request = {
+        ...original,
+        chatId: source.chatId,
+        operationId: randomUUID(),
+      };
+      const receipt = taskInferenceInputReceiptSchema.parse({
+        ...(kind === "goal" ? { kind: "goal" } : {}),
+        operationId: randomUUID(),
+        chatId: source.chatId,
+        clientMessageId: request.userMessage.id,
+        workerId: scope.workerId,
+        worktreeId: source.placementId,
+        executionLaneId: randomUUID(),
+        executionLaneActivatedAt: timestamp,
+        providerId: "provider",
+        modelRouteId: source.modelRouteId,
+        providerAccountId: source.providerAccountId,
+        dispatch: {
+          operationId: request.operationId,
+          cycleId: randomUUID(),
+          leaseOwner: "original-owner",
+          fencingToken: 1,
         },
-        JSON.parse(bytes).protectedSource,
-        "task-content",
-      ),
-    ).rejects.toThrow("authenticated");
-    expect(opened.continuation).toEqual(continuation);
-    await expect(
-      fresh.store.commit({ ...input, source: taskSource, continuation }),
-    ).rejects.toThrow("original round");
-    await expect(
-      fresh.store.commit({
+      });
+      const taskSource = { ...source, taskInput: receipt };
+      const continuation = captureWorkerTurn(
+        workerTurnState(),
+        suspension.turnId,
+      );
+      const roundContinuation = {
+        version: 1 as const,
+        request,
+        events: {
+          version: 1 as const,
+          mode:
+            request.classification.kind === "direct"
+              ? ("default" as const)
+              : ("plan" as const),
+          ids: [],
+          completedRootMessage: null,
+        },
+      };
+      const taskContinuation =
+        kind === "round"
+          ? roundContinuation
+          : {
+              version: 2 as const,
+              prompt: {
+                ...request.userMessage,
+                classification: {
+                  role: "user" as const,
+                  mode: "goal" as const,
+                  attachmentIds: [],
+                },
+              },
+              publication: {
+                id: randomUUID(),
+                idempotencyKey: `assistant:${receipt.clientMessageId}`,
+              },
+              events: { ...roundContinuation.events, mode: "goal" as const },
+            };
+      const evidence = await w.store.commit({
         ...input,
         source: taskSource,
         continuation,
-        taskContinuation: {
-          ...taskContinuation,
-          request: { ...request, operationId: randomUUID() },
-        },
-      }),
-    ).rejects.toThrow("another canonical input");
-    expect(
-      await readFile(await file(w.dataDirectory, evidence.storageId), "utf8"),
-    ).toBe(bytes);
-  });
+        taskContinuation,
+      });
+      const bytes = await readFile(
+        await file(w.dataDirectory, evidence.storageId),
+        "utf8",
+      );
+      expect(JSON.parse(bytes)).toMatchObject({
+        version: 3,
+        protectedSource: { formatVersion: 2, component: "task-content" },
+      });
+      for (const privateValue of [
+        receipt.operationId,
+        request.operationId,
+        request.fingerprint,
+        input.home,
+        "SAVED_ASSISTANT",
+      ])
+        expect(bytes).not.toContain(privateValue);
+      const denied = await worker(w.dataDirectory, false, "task-content");
+      await expect(
+        denied.store.open(evidence.storageId, taskSource),
+      ).rejects.toThrow("active task-content encryption grant");
+      const fresh = await worker(w.dataDirectory, true, "task-content");
+      const opened = await fresh.store.open(evidence.storageId, taskSource);
+      expect(opened.taskContinuation).toEqual(taskContinuation);
+      if (taskContinuation.version === 2) {
+        expect(bytes).not.toContain(taskContinuation.publication.id);
+        for (const invalid of [
+          roundContinuation,
+          {
+            ...taskContinuation,
+            events: { ...taskContinuation.events, mode: "default" },
+          },
+        ])
+          await expect(
+            fresh.store.commit({
+              ...input,
+              source: taskSource,
+              continuation,
+              taskContinuation: invalid as typeof taskContinuation,
+            }),
+          ).rejects.toThrow();
+      }
+      await expect(
+        createNativeResourceProtection(fresh.service).open(
+          {
+            threadId: suspension.threadId,
+            turnId: suspension.turnId,
+            checkpointId: suspension.checkpointId,
+          },
+          JSON.parse(bytes).protectedSource,
+          "task-content",
+        ),
+      ).rejects.toThrow("authenticated");
+      expect(opened.continuation).toEqual(continuation);
+      await expect(
+        fresh.store.commit({ ...input, source: taskSource, continuation }),
+      ).rejects.toThrow("original round");
+      await expect(
+        fresh.store.commit({
+          ...input,
+          source: taskSource,
+          continuation,
+          taskContinuation:
+            taskContinuation.version === 1
+              ? {
+                  ...taskContinuation,
+                  request: { ...request, operationId: randomUUID() },
+                }
+              : {
+                  ...taskContinuation,
+                  prompt: { ...taskContinuation.prompt, id: randomUUID() },
+                },
+        }),
+      ).rejects.toThrow("another canonical input");
+      expect(
+        await readFile(await file(w.dataDirectory, evidence.storageId), "utf8"),
+      ).toBe(bytes);
+    },
+  );
 
   it("keeps legacy evidence inspectable and protects worker bookkeeping under a distinct immutable locator", async () => {
     const w = await worker();

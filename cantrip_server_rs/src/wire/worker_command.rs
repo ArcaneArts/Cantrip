@@ -293,8 +293,7 @@ pub(super) fn refine(
                 let task = &value["taskInferenceInput"];
                 let source = &restore["source"];
                 if task.is_null()
-                    || truth(task.get("kind"))
-                    || truth(source.get("kind"))
+                    || task["kind"] != source["kind"]
                     || source["operationId"] == task["operationId"]
                     || source["chatId"] != value["chatId"]
                     || source["clientMessageId"] != value["clientMessageId"]

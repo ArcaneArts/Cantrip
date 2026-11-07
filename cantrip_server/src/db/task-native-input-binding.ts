@@ -76,17 +76,22 @@ export async function bindTaskNativeInput(
     )
     .returning({ id: schema.taskDispatchCycles.id });
   if (!lane || !cycle) stale();
-  await tx
-    .update(schema.taskPlanningRounds)
-    .set({
-      inferenceInput: state.resumption
-        ? {
-            ...state,
-            resumption: { ...state.resumption, nativeExecution, nativeOwner },
-          }
-        : { ...state, nativeExecution, nativeOwner },
-    })
-    .where(eq(schema.taskPlanningRounds.id, receipt.dispatch.operationId));
+  const bound = state.resumption
+    ? {
+        ...state,
+        resumption: { ...state.resumption, nativeExecution, nativeOwner },
+      }
+    : { ...state, nativeExecution, nativeOwner };
+  if (receipt.kind === "goal")
+    await tx
+      .update(schema.taskDispatchCycles)
+      .set({ goalInput: bound })
+      .where(eq(schema.taskDispatchCycles.id, receipt.dispatch.cycleId));
+  else
+    await tx
+      .update(schema.taskPlanningRounds)
+      .set({ inferenceInput: bound })
+      .where(eq(schema.taskPlanningRounds.id, receipt.dispatch.operationId));
   if (state.resumption) {
     const saved = await suspensions!.read(ownerId, receipt.chatId);
     if (!saved) return stale();
