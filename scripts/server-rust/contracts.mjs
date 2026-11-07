@@ -22,6 +22,8 @@ import { registerWorkerContracts } from "./worker-contracts.mjs";
 import { registerWorkerCommandContracts } from "./worker-command-contracts.mjs";
 
 export const contractRoots = [
+  "protectedDecisionRequestSchema",
+  "protectedDecisionResponseSchema",
   "protectedEmbeddingRequestSchema",
   "protectedEmbeddingResponseSchema",
   "modelOperationCancelSchema",
