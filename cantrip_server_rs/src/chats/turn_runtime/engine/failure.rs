@@ -77,6 +77,7 @@ impl Runtime {
             return Ok(());
         }
         let e = &turn.execution;
+        let transport_ended = crate::workers::inference_failure::transport_ended(error);
         if (turn.task_relay.is_some()
             || (turn.encrypted_task.is_some() && turn.user_message["mode"] == "goal"))
             && truthy(turn.options.get("taskDispatchLease"))
@@ -114,18 +115,28 @@ impl Runtime {
                 Err(error) if error.is::<crate::task_dispatch::Conflict>() => return Ok(()),
                 Err(error) => return Err(error),
             }
+            if transport_ended {
+                match crate::tasks::Repository::new(self.dependencies.events.database.clone())
+                    .pending_input_after_transport_loss(
+                        &turn.owner,
+                        &events::text(&e["chatId"])?,
+                        &turn.options["taskDispatchLease"],
+                    )
+                    .await
+                {
+                    Ok(true) => {
+                        self.log("info", "Task input retained while awaiting its native outcome",
+                            json!({"event":"task.input.transport-interrupted","chatId":e["chatId"],
+                                "workerId":e["workerId"],"operationId":turn.options["taskDispatchLease"]["operationId"],"status":"retained"}));
+                        return Ok(());
+                    }
+                    Ok(false) => {}
+                    Err(error) if error.is::<crate::task_dispatch::Conflict>() => return Ok(()),
+                    Err(error) => return Err(error),
+                }
+            }
         }
         let worker_interrupted = worker_interrupted(&turn, error);
-        let transport = error
-            .downcast_ref::<CommandFailure>()
-            .and_then(|cause| match cause {
-                CommandFailure::Bridge(cause) => Some(cause),
-                _ => None,
-            })
-            .or_else(|| error.downcast_ref::<CommandError>());
-        let transport_ended = transport.is_some_and(|cause| {
-            cause.unavailable || cause.code.as_deref() == Some("worker-command-timeout")
-        });
         let failure = Failure {
             turn: turn.clone(),
             error: error.clone(),

@@ -2,6 +2,7 @@
 // Rust differential corpus. The extracted function body retains Source order.
 import type { FastifyInstance } from "fastify";
 import { workerInferenceFailure } from "../../chats/inference-failure.js";
+import { workerTransportEnded } from "../../chats/execution-helpers.js";
 import type { TaskTurnResumption } from "@cantrip/protocol";
 import {
   taskEncryptedOperationStartSchema,
@@ -135,6 +136,15 @@ export function createTaskClaimedExecutionRuntime(
         });
         return;
       }
+      if (
+        workerTransportEnded(failure) &&
+        (await repository.tasks.inferenceInputs.pendingAfterTransportLoss(
+          ownerId,
+          claim.cycle.chatId,
+          claim.lease,
+        ))
+      )
+        return;
       await repository.taskDispatch.heartbeat(claim.lease);
       let completed = false;
       try {

@@ -3,12 +3,12 @@ import type {
   ChatExecutionAttribution,
   ChatExecutionContext,
 } from "../../db/repository.js";
-import { taskGoalWorkerInterrupted } from "../../chats/execution-helpers.js";
-import { errorMessage } from "../../http/request-helpers.js";
 import {
-  WorkerCommandError,
-  WorkerUnavailableError,
-} from "../../workers/bridge.js";
+  taskGoalWorkerInterrupted,
+  workerTransportEnded,
+} from "../../chats/execution-helpers.js";
+import { errorMessage } from "../../http/request-helpers.js";
+import { TaskDispatchConflictError } from "../../db/task-dispatch.js";
 import type {
   ChatTurnOptions,
   ChatTurnRuntimeDependencies,
@@ -67,6 +67,36 @@ export async function settleChatTurnFailure({
     transportEnded?: boolean,
   ): Promise<boolean>;
 }) {
+  if (
+    encryptedTaskMessages &&
+    options.taskDispatchLease &&
+    workerTransportEnded(error)
+  ) {
+    try {
+      if (
+        await repository.tasks.inferenceInputs.pendingAfterTransportLoss(
+          ownerId,
+          execution.chatId,
+          options.taskDispatchLease,
+        )
+      ) {
+        app.log.info(
+          {
+            event: "task.input.transport-interrupted",
+            chatId: execution.chatId,
+            workerId: execution.workerId,
+            operationId: options.taskDispatchLease.operationId,
+            status: "retained",
+          },
+          "Task input retained while awaiting its native outcome",
+        );
+        return;
+      }
+    } catch (error) {
+      if (error instanceof TaskDispatchConflictError) return;
+      throw error;
+    }
+  }
   const workerInterrupted = taskGoalWorkerInterrupted(
     execution.experience,
     userMessage.mode,
@@ -152,9 +182,7 @@ export async function settleChatTurnFailure({
   const finished = await finishExecution(
     interrupted || execution.contextKind === "standalone" ? "idle" : "failed",
     workerInterrupted,
-    error instanceof WorkerUnavailableError ||
-      (error instanceof WorkerCommandError &&
-        error.code === "worker-command-timeout"),
+    workerTransportEnded(error),
   );
   cancelChatTurnOutcomeRecovery(
     execution.workerId,

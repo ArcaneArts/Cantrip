@@ -6,6 +6,7 @@ import { once } from "node:events";
 
 export async function taskModelProvider({
   allowMcpDiscoveryProbe = false,
+  observeStreams = false,
 } = {}) {
   const replies = [],
     requests = [],
@@ -29,6 +30,13 @@ export async function taskModelProvider({
         input,
         completed: false,
       };
+      if (observeStreams) {
+        record.closed = false;
+        response.once("close", () => {
+          record.closed = true;
+          record.closedBeforeCompletion = !record.completed;
+        });
+      }
       const pathname = new URL(request.url, "http://fixture.invalid").pathname;
       if (
         allowMcpDiscoveryProbe &&

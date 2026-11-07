@@ -7,7 +7,19 @@ import {
 
 import type { ChatExecutionContext } from "../db/repository.js";
 import { errorMessage } from "../http/request-helpers.js";
-import { WorkerUnavailableError } from "../workers/bridge.js";
+import {
+  WorkerCommandError,
+  WorkerUnavailableError,
+} from "../workers/bridge.js";
+
+/** Transport loss cannot establish whether the native input executed. */
+export function workerTransportEnded(error: unknown): boolean {
+  return (
+    error instanceof WorkerUnavailableError ||
+    (error instanceof WorkerCommandError &&
+      error.code === "worker-command-timeout")
+  );
+}
 
 /** A lost worker is not proof that a Task's native implementation failed.
  * Pause instead of replaying an uncertain submission or discarding its Goal. */

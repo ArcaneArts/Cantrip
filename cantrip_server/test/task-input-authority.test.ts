@@ -713,6 +713,74 @@ describe("canonical Task native execution binding", () => {
     return { ...f, metadata, dispatch, snapshot };
   }
 
+  it.each([false, true])(
+    "retains transport-uncertain round input without changing its authority (dispatched=%s)",
+    async (dispatched) => {
+      const f = await active();
+      if (dispatched) {
+        await f.dispatch("claim");
+        await f.dispatch("dispatch");
+        await f.dispatch("native");
+      }
+      const before = await f.snapshot();
+      const task = await tasks.get(owner, f.chat);
+      expect(
+        await tasks.inferenceInputs.pendingAfterTransportLoss(
+          owner,
+          f.chat,
+          f.receipt.dispatch,
+        ),
+      ).toBe(true);
+      expect(await f.snapshot()).toEqual(before);
+      expect(await tasks.get(owner, f.chat)).toEqual(task);
+      for (const [actor, fence] of [
+        [randomUUID(), f.receipt.dispatch],
+        [owner, { ...f.receipt.dispatch, fencingToken: 2 }],
+        [owner, { ...f.receipt.dispatch, leaseOwner: "another-server" }],
+      ] as const) {
+        await expect(
+          tasks.inferenceInputs.pendingAfterTransportLoss(actor, f.chat, fence),
+        ).rejects.toMatchObject({ code: "stale-lease" });
+      }
+    },
+  );
+
+  it("allows positive no-forward evidence to settle rather than retaining an unused input", async () => {
+    const f = await active();
+    const notification = f.outcome("input-not-dispatched");
+    if (notification.outcome.ok)
+      throw new Error("Expected controlled worker failure");
+    await tasks.inferenceInputs.recordFailure(owner, {
+      workerId: worker,
+      evidence: notification.outcome.inference!,
+    });
+    expect(
+      (await f.snapshot()).round!.inferenceInput!.failedBeforeDispatch,
+    ).toBe(true);
+    expect(
+      await tasks.inferenceInputs.pendingAfterTransportLoss(
+        owner,
+        f.chat,
+        f.receipt.dispatch,
+      ),
+    ).toBe(false);
+  });
+
+  it("does not invent a pending input before native preparation", async () => {
+    const f = await active();
+    await database
+      .update(schema.taskPlanningRounds)
+      .set({ inferenceInput: null })
+      .where(eq(schema.taskPlanningRounds.id, f.receipt.dispatch.operationId));
+    expect(
+      await tasks.inferenceInputs.pendingAfterTransportLoss(
+        owner,
+        f.chat,
+        f.receipt.dispatch,
+      ),
+    ).toBe(false);
+  });
+
   it.each([
     "restored",
     "live",

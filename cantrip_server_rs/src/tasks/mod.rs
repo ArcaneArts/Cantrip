@@ -13,6 +13,7 @@ mod inference_inputs;
 mod inference_routes;
 mod native_input_binding;
 mod operations;
+mod pending_input;
 pub mod policy;
 mod query_error;
 mod reads;
