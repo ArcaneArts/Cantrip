@@ -34,6 +34,22 @@ export function decisionClipFields(media: Media): Record<string, string[]> {
   return result;
 }
 
+export function decisionImageAsset(url: string) {
+  const encoded = inlineDecisionMedia(url, "image");
+  if (!["image/png", "image/jpeg", "image/jpg"].includes(encoded.mime))
+    unsupported(
+      "TypeSafe image assets require PNG or JPEG; no conversion is performed.",
+    );
+  return {
+    reference: `cantrip-image-${randomUUID()}`,
+    asset: {
+      type: "image",
+      format: encoded.mime.slice(6),
+      data_base64: encoded.base64,
+    },
+  };
+}
+
 /** System One extensions differ by serving API, not just the endpoint name. */
 export function systemOneMedia(
   family: string,
@@ -63,19 +79,10 @@ export function systemOneMedia(
     const references: string[] = [];
     for (const part of media) {
       if (part.type !== "image") continue;
-      const encoded = inlineDecisionMedia(part.url, "image");
-      if (!["image/png", "image/jpeg", "image/jpg"].includes(encoded.mime))
-        unsupported(
-          "TypeSafe image assets require PNG or JPEG; no conversion is performed.",
-        );
       // A fresh opaque reference cannot accidentally alias ordinary state text.
-      const reference = `cantrip-image-${randomUUID()}`;
+      const { reference, asset } = decisionImageAsset(part.url);
       references.push(reference);
-      assets[reference] = {
-        type: "image",
-        format: encoded.mime.slice(6),
-        data_base64: encoded.base64,
-      };
+      assets[reference] = asset;
     }
     return {
       fields: {
