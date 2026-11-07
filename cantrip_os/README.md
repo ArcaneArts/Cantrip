@@ -328,3 +328,44 @@ If pnpm reports that Node is too old, select an installed supported Node version
 Server-owned attachment and protected source provisioning are described in the
 [dispatch guide](DISPATCH.md); the [product guide](PRODUCT_WORKFLOW.md) covers
 agent selection and the connected file, terminal, Run and artifact workflows.
+
+## Machine identity and copied installations
+
+Reusable images omit the machine ID generated while Debian installs D-Bus.
+Docker initializes `/etc/machine-id` on first boot and shares that ID with D-Bus.
+Later starts retain it. Existing installations that only have a D-Bus ID migrate
+that same value. Installed systems initialize through the ordinary systemd boot
+plus `cantrip-os-identity.service` before SSH and the desktop.
+
+The ISO installer copies the live system, then runs
+`chroot TARGET /usr/local/sbin/cantrip-os-identity prepare-clone` before binding
+live runtime mounts. This is an offline new-machine operation: it removes copied
+Linux IDs and system SSH host keys. Optional packages own the executable hooks
+under `/usr/lib/cantrip-os/clone-hooks.d/`: executor 0.12.0 removes copied
+machine enrollment, and remote 0.11.0 removes its copied service host keys from
+the configured state directory. Workspace accounts, files, configuration and
+service preferences remain. First startup creates fresh enrollment; first SSH
+service observation creates a fresh service host key. If a system OpenSSH server
+is installed, boot initializes its system host keys before its service starts.
+
+Attach the resulting machine as a new OS instance. Existing chats, terminals,
+source bindings and service handles retain their original placement and cannot
+follow the copy. Recreating a machine from an ordinary template also requires
+fresh state volumes; reusing another instance's executor volume reuses its
+identity deliberately. Private root checkpoints and retained rollback are
+same-instance recovery: they do not run `prepare-clone`. Never run that command
+against a live OS to perform ordinary recovery.
+
+Real Docker tests, using a disposable normal image:
+
+```sh
+CANTRIP_OS_IDENTITY_TEST_IMAGE=cantrip-os-identities:dev \
+CANTRIP_OS_CLONE_TEST_IMAGE=cantrip-os-identities:dev \
+  node --test cantrip_os/tests/machine-identity.integration.test.mjs \
+    cantrip_os/tests/clone-identity.integration.test.mjs
+```
+
+These tests remove their temporary containers, anonymous volumes and private copy
+image. The selected normal image remains the caller's responsibility. ISO
+live/install boot and full cross-instance product restore have separate acceptance
+requirements; Docker clone tests do not establish those results.

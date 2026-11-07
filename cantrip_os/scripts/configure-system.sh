@@ -15,3 +15,10 @@ install -d -o cantrip -g cantrip /home/cantrip/Documents /home/cantrip/Downloads
 find /usr/share/icewm/themes -mindepth 1 -maxdepth 1 ! -name cantrip-oled -exec rm -rf {} +
 
 glib-compile-schemas --strict /usr/share/glib-2.0/schemas
+
+chmod 0755 /usr/local/sbin/cantrip-os-identity
+install -d /etc/systemd/system/multi-user.target.wants
+ln -sf ../cantrip-os-identity.service /etc/systemd/system/multi-user.target.wants/cantrip-os-identity.service
+# Debian's D-Bus install generates an ID during the build. Templates must not
+# distribute that ID or an integration package's enrollment/key state.
+/usr/local/sbin/cantrip-os-identity prepare-clone

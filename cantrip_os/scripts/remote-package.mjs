@@ -12,7 +12,7 @@ export async function prepareRemote(architecture, options = {}) {
   const context = resolve(
     root,
     ".build/remote-packages",
-    "0.10.0",
+    "0.11.0",
     architecture,
   );
   await mkdir(output, { recursive: true });
@@ -33,11 +33,11 @@ export async function prepareRemote(architecture, options = {}) {
     ],
     options,
   );
-  const name = `cantrip-os-remote_0.10.0_${architecture}.deb`;
+  const name = `cantrip-os-remote_0.11.0_${architecture}.deb`;
   await cp(resolve(output, name), resolve(context, name));
   await registerBuiltPackage(resolve(output, name), {
     name: "cantrip-os-remote",
-    version: "0.10.0",
+    version: "0.11.0",
     architecture,
   });
   console.log(`Remote package: ${output}/${name}`);

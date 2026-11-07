@@ -31,14 +31,14 @@ requested.
 Workspace support remains enabled by default. Including the executor requires
 the workspace package; apt enforces that dependency.
 
-Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.11.0_<arch>.deb`.
+Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.12.0_<arch>.deb`.
 It contains the source/patch fingerprint manifest, binary hashes, licenses, and
 sandbox helper. Docker and ISO recipes install the same package.
 
 Inside Linux, after copying the package there:
 
 ```sh
-sudo apt install ./cantrip-os-executor_0.11.0_arm64.deb  # amd64 for the VM edition
+sudo apt install ./cantrip-os-executor_0.12.0_arm64.deb  # amd64 for the VM edition
 sudo cantrip-executor enable
 sudo cantrip-executor status
 sudo cantrip-executor attach OWNER_ID WORKER_ID
@@ -235,3 +235,9 @@ to native executor code require the normal source build. This avoids waiting for
 the shared compiler cache when changing only Python services, scripts or desktop
 configuration; it is also usable by Docker/ISO builders through the same package
 preparation function.
+
+Version 0.12.0 installs the executor-owned offline clone hook. The OS installer
+and image preparation remove copied enrollment through this hook; workspace
+accounts, files, configuration and service preferences remain. First startup
+creates a fresh guest instance UUID. Ordinary restarts and same-instance private
+root recovery retain enrollment. Removing the package removes its clone hook.

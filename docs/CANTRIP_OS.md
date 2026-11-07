@@ -821,6 +821,16 @@ verification remain separate from root recovery. Real remote acceptance, clone
 provisioning and final artifacts remain open; see the acceptance record for the
 exact product checks and any upstream startup limitations.
 
+Fresh templates and copied OS installs now initialize distinct Linux machine
+identities. The offline installer invokes package-owned clone hooks: executor
+0.12.0 removes copied enrollment and remote 0.11.0 removes copied service SSH
+host keys. Workspace files, accounts, configuration and preferences remain.
+Actual Docker copies receive fresh guest/runtime identities and reject the
+original binding, while the original retains its identity and host key. Normal
+restart and same-instance retained root recovery preserve enrollment. Full
+cross-instance workspace restore through Cantrip and final live/install ISO
+acceptance remain required.
+
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output
 recovery, and worker-offline behavior. Deliver workspace backups/restores,

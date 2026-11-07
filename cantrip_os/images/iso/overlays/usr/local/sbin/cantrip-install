@@ -41,6 +41,10 @@ echo "Copying the current live system to $disk..."
 rsync -aHAX --numeric-ids --exclude='/dev/*' --exclude='/proc/*' \
     --exclude='/sys/*' --exclude='/run/*' --exclude='/tmp/*' \
     --exclude='/mnt/*' --exclude='/media/*' --exclude='/lost+found' / "$target/"
+# This is a new machine, not a retained root recovery. Package-owned hooks remove
+# copied enrollment and service host keys without contacting the live daemons.
+# Run before binding the live medium's /run into the target.
+chroot "$target" /usr/local/sbin/cantrip-os-identity prepare-clone
 printf 'UUID=%s / ext4 defaults 0 1\nUUID=%s /boot/efi vfat umask=0077 0 2\n' \
     "$(blkid -s UUID -o value "$root")" "$(blkid -s UUID -o value "$efi")" \
     > "$target/etc/fstab"
