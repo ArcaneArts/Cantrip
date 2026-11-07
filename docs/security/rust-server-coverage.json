@@ -11337,7 +11337,7 @@
       ],
       "runtimeFinding": "REDIS_URL now starts one native coordinator shared by production WorkerTransport, WorkerLink and App Live; readiness checks the actual command connection and shutdown closes it after service drains. Global transient recovery uses observed instance count, while configured shared job recovery preserves unexpired peer leases. Source and native bridge request admission rechecks shutdown after directory/owner awaits, with native pending insertion atomic with the close drain. Node remains the default packaged server; full product/platform/deployment replacement acceptance is incomplete.",
       "remaining": [
-        "Exercise full unchanged-worker resource and native execution across actual SQL-backed mixed peers, including worker/server replacement, durable execution failures, replay/backpressure and binary endpoints; controlled WorkerLink acknowledgments do not establish full mixed rolling product behavior.",
+        "Qualify in-flight native execution across mixed peers under server/worker/database crashes, lease renewal/expiry, delayed acknowledgments and consumer replay/backpressure. Full-worker resource/native execution and orderly peer replacement now pass the scoped local shared-product suite; those results do not establish active-job failover.",
         "Qualify malformed legacy relay payloads, arbitrary malformed RPC error envelopes and complete listener lifecycle/error fidelity. Preserve consumer-level replay/deduplication.",
         "Qualify Redis TLS, long outages/expiry, service shutdown while Redis remains unavailable, supported platforms and packaged/deployment artifacts."
       ],
@@ -11393,6 +11393,9 @@
         "cantrip_server_rs/examples/support/worker_link_lookup_control.rs",
         "scripts/server-rust/redis-offline-directory.mjs",
         "scripts/server-rust/coordinated-shutdown-compatibility.mjs",
+        "scripts/server-rust/shared-product-fixture.mjs",
+        "scripts/server-rust/shared-product-rolling.mjs",
+        "scripts/server-rust/actual-folder-client.mjs",
         "scripts/server-rust/shared-runtime-http-compatibility.mjs",
         "scripts/server-rust/shared-runtime-node.mjs",
         "scripts/server-rust/shared-runtime-worker.mjs",
@@ -11456,6 +11459,37 @@
         "originalArchiveSha256": "db7f3d75b5a3301746bff39a767bf4c5c42506b08513527308b3875bfb64a031",
         "note": "cantrip_server_rs/third-party/redis/README.cantrip.md",
         "scope": "134 upstream files retained; multiplexed_connection.rs and connection_manager.rs gain three connection-observation methods. Inherited trailing whitespace is removed from those Rust files, README and CHANGELOG; all other upstream bytes match. Native ordered command queue preserves directory offline lifetime while publish/readiness observe actual command readiness. TLS/parser/auth/reconnect remain upstream; TLS operation still requires qualification."
+      },
+      "sharedProductLocalAcceptance": {
+        "platform": "darwin-arm64",
+        "observedAt": "2026-11-07",
+        "database": "shared external PostgreSQL (private fixture process)",
+        "redisVersion": "8.10.3",
+        "nodeVersion": "24.22.1",
+        "nativeCodexVersion": "0.166.0",
+        "authModes": ["accounts"],
+        "pairs": ["node/node", "node/rust", "rust/node", "rust/rust"],
+        "scenarioSteps": 300,
+        "cleanWorkerExits": 88,
+        "cleanServerExits": 128,
+        "orderlyPeerReplacements": 32,
+        "stepsPerPair": {
+          "resources": 31,
+          "tasks": 16,
+          "agentTasks": 13,
+          "agentChats": 15
+        },
+        "scope": "Existing browser SDK and full unchanged packaged worker on opposite production peers. Real encrypted resource/files/workspace/PTY/WorkerLink operations, native Tasks/planning/Goal/retry/paused admission, Agent-to-Task native MCP and Agent Goal/history. Replacing application then worker-owner peer retains original full worker PID, credential, browser session, App Live, encrypted 64KiB file operations, exact completed Task DTO and message projections. Managed Agent baseline waits for actual terminal native archive projection without stripping fields. Public model responses are controlled. No fixture routes or SQL-seeded product state in these scenarios.",
+        "qualification": "docs/RUST_SERVER_SHARED_PRODUCT.md",
+        "harnesses": [
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/shared-product-fixture.mjs",
+          "scripts/server-rust/shared-product-rolling.mjs"
+        ],
+        "remaining": [
+          "In-flight execution and server/worker/database failures, lease expiry/renewal, delayed acknowledgment and complete replay/backpressure.",
+          "Long Redis outage and unavailable-service shutdown, Redis TLS, multi-host and supported-platform/package qualification, performance, default Rust cutover and production Node removal."
+        ]
       },
       "sharedHttpRuntimeLocalAcceptance": {
         "platform": "darwin-arm64",
@@ -15369,6 +15403,21 @@
       "artifactVersion": "1.1.2739",
       "nativeBinarySha256": "9752afd5a94077c334ee03bb43a9001c7fe7f2a7810688ce7b268e0aee4e65c0",
       "remaining": "Final default cutover and production Node removal; remaining product, coordination/mixed/fault, supported-platform and performance acceptance. No Winterhold production access was used."
+    },
+    {
+      "branch": "codex/rust-shared-product",
+      "observedAt": "2026-11-07",
+      "platforms": ["darwin-arm64"],
+      "execution": "Local only; private PostgreSQL/Redis, actual browser SDK and complete packaged worker/native Codex; no hosted validation",
+      "conclusion": "All four production Node/Rust pairings passed four product scenario groups and orderly application/worker-owner peer replacement with the same worker process.",
+      "scope": "300 recorded steps, 88 clean worker exits, 128 clean server exits and 32 orderly peer replacements. Full encrypted resource, files, workspace, PTY/WorkerLink, native Tasks/planning/Goal/retry/paused admission, Agent-to-Task native MCP and Agent Goal/history. Exact completed message and Task DTO comparisons retain all fields. Completed native work precedes rolling replacement.",
+      "qualification": "docs/RUST_SERVER_SHARED_PRODUCT.md",
+      "harnesses": [
+        "scripts/server-rust/actual-folder-client.mjs",
+        "scripts/server-rust/shared-product-fixture.mjs",
+        "scripts/server-rust/shared-product-rolling.mjs"
+      ],
+      "remaining": "Active-job failover/crash and lease/acknowledgment boundaries, long Redis outage/shutdown, TLS, supported platforms, performance, final default Rust cutover and production Node removal remain required. No Winterhold production deployment was performed."
     }
   ]
 }

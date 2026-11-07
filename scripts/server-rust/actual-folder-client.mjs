@@ -51,6 +51,8 @@ import {
 } from "./build.mjs";
 import { eventually, launchActualWorker } from "./full-worker.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
+import { SharedProductFixture } from "./shared-product-fixture.mjs";
+import { verifySharedProductRolling } from "./shared-product-rolling.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { password } from "./security-fixtures.mjs";
 import { actualTerminalServices } from "./actual-terminal-services.mjs";
@@ -87,6 +89,25 @@ const option = (name) => {
   return i < 0 ? undefined : process.argv[i + 1];
 };
 const databaseMode = option("--database") ?? "pglite";
+const sharedPair = option("--server-pair");
+const runtimeCases = sharedPair
+  ? (sharedPair === "all"
+      ? ["node/node", "node/rust", "rust/node", "rust/rust"]
+      : [sharedPair]
+    ).map((value) => {
+      const pair = value.split("/");
+      assert.ok(
+        pair.length === 2 &&
+          pair.every((kind) => ["node", "rust"].includes(kind)),
+      );
+      assert.equal(
+        databaseMode,
+        "postgres",
+        "shared product runs require their own shared PostgreSQL database",
+      );
+      return pair;
+    })
+  : [["node"], ["rust"]];
 const workerLinkRoute = option("--worker-link-route") ?? "relay";
 const reportPath = option("--report");
 const liveTaskDiagnostics =
@@ -102,9 +123,10 @@ const { createServer } = await import(
 const report = {
   suite: "actual-browser-server-worker-folders",
   databaseMode,
+  serverPair: sharedPair ?? null,
   completeReplacement: false,
   scope:
-    "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Optional --github-conversion uses the existing encrypted APIs and full worker to link matching public history in a fresh managed folder, preserve dirty bytes and identities, and restart without SQL seeding or command substitutions. Optional --tasks uses existing encrypted Task APIs, the full production worker and bundled Codex for direct execution, planning, native Goal completion, failure/retry, paused admissions and retained restart; only public model HTTP responses are controlled. Optional --project-chats exercises retained Agent creation and usage, real managed native preparation, encrypted turns, completed canonical history, native Goal tools, exact restart retention and Goal clear; only public model HTTP responses are controlled. Optional --chat-customizations adds actual skills, extra roots, MCP and bound permission configuration with native restart recovery. Optional --skill-settings adds actual project/account skill files, audiences, encrypted recovery deletion and retained restart. Optional --mcp-settings uses an acceptance-only owned worker home and the existing encrypted browser SDK for MCP CRUD, full discovery, copy, native resource access and restart. Not whole UI, packaging or multi-instance acceptance.",
+    "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Optional --github-conversion uses the existing encrypted APIs and full worker to link matching public history in a fresh managed folder, preserve dirty bytes and identities, and restart without SQL seeding or command substitutions. Optional --tasks uses existing encrypted Task APIs, the full production worker and bundled Codex for direct execution, planning, native Goal completion, failure/retry, paused admissions and retained restart; only public model HTTP responses are controlled. Optional --project-chats exercises retained Agent creation and usage, real managed native preparation, encrypted turns, completed canonical history, native Goal tools, exact restart retention and Goal clear; only public model HTTP responses are controlled. Optional --chat-customizations adds actual skills, extra roots, MCP and bound permission configuration with native restart recovery. Optional --skill-settings adds actual project/account skill files, audiences, encrypted recovery deletion and retained restart. Optional --mcp-settings uses an acceptance-only owned worker home and the existing encrypted browser SDK for MCP CRUD, full discovery, copy, native resource access and restart. Shared --server-pair runs exercise production peers on private shared PostgreSQL/Redis with the browser and full worker on opposite peers; --rolling-servers replaces application and worker-owner peers without restarting that worker. Full UI, packaged/platform, active-job server-crash, long-outage/Redis TLS and whole replacement acceptance remain separate.",
   runtimes: [],
   taskDiagnostics: liveTaskDiagnostics
     ? "Development SQL fixture executable; unchanged production startup, routes, worker and native runtime. Failed Task runs retain scoped read-only database snapshots before teardown."
@@ -175,24 +197,29 @@ async function flow(
       ? path.join(dataDirectory, "mcp-test-home")
       : undefined;
     if (homeDirectory) await mkdir(homeDirectory, { recursive: true });
-    worker = launchActualWorker(fixture, dataDirectory, {
-      cliBinary,
-      enrollmentCode,
-      workerId,
-      homeDirectory,
-      environment: providerTest ? providerBoundary?.environment : undefined,
-      traceShutdown:
-        process.argv.includes("--trace-worker-shutdown") ||
-        process.argv.includes("--replicas") ||
-        process.argv.includes("--worktrees"),
-      ...(process.argv.includes("--surfaces")
-        ? {
-            chromiumExecutable: chromium.executablePath(),
-            chromiumTraceDirectory: path.resolve(".qa/rust-server"),
-          }
-        : {}),
-    });
+    worker = launchActualWorker(
+      fixture.workerFixture ?? fixture,
+      dataDirectory,
+      {
+        cliBinary,
+        enrollmentCode,
+        workerId,
+        homeDirectory,
+        environment: providerTest ? providerBoundary?.environment : undefined,
+        traceShutdown:
+          process.argv.includes("--trace-worker-shutdown") ||
+          process.argv.includes("--replicas") ||
+          process.argv.includes("--worktrees"),
+        ...(process.argv.includes("--surfaces")
+          ? {
+              chromiumExecutable: chromium.executablePath(),
+              chromiumTraceDirectory: path.resolve(".qa/rust-server"),
+            }
+          : {}),
+      },
+    );
     await worker.ready();
+    if (sharedPair) await fixture.assertRemoteWorker(workerId);
   };
   const stopWorker = async () => {
     if (!worker) return;
@@ -388,7 +415,7 @@ async function flow(
     );
     const credential = loadStoredWorkerCredential(
       dataDirectory,
-      fixture.server.origin,
+      (fixture.workerFixture ?? fixture).server.origin,
     );
     assert.ok(credential);
     if (nativeProbeBinary)
@@ -428,7 +455,10 @@ async function flow(
       "existing browser repository API authorizes and refreshes its key",
     );
     assert.deepEqual(
-      loadStoredWorkerCredential(dataDirectory, fixture.server.origin),
+      loadStoredWorkerCredential(
+        dataDirectory,
+        (fixture.workerFixture ?? fixture).server.origin,
+      ),
       credential,
     );
     result.steps.push(
@@ -873,6 +903,20 @@ async function flow(
         requests,
         providerBoundary,
       });
+    if (process.argv.includes("--rolling-servers")) {
+      if (!worker) await startWorker();
+      await verifySharedProductRolling({
+        fixture,
+        page,
+        projectId: first.id,
+        workerId,
+        directory: await filesystem(first.id),
+        dataDirectory,
+        worker,
+        credential,
+        result,
+      });
+    }
     result.requests = requests;
     result.events = await page.evaluate(() => window.folderEvents);
     assert.deepEqual(errors, []);
@@ -899,7 +943,7 @@ async function flow(
 try {
   const executable = liveTaskDiagnostics
     ? await buildRustExample("http-sql-fixture")
-    : await buildRustServer();
+    : (process.env.CANTRIP_TEST_SERVER_BINARY ?? (await buildRustServer()));
   if (
     process.argv.includes("--surfaces") ||
     process.argv.includes("--tunnels") ||
@@ -909,7 +953,8 @@ try {
     surfaceRepositoryBinary = await buildRustExample(
       "project-repository-fixture",
     );
-  const cliBinary = await buildWorkerCli();
+  const cliBinary =
+    process.env.CANTRIP_TEST_CLI_BIN ?? (await buildWorkerCli());
   const nativeProbeBinary = process.argv.includes("--native-probe")
     ? await buildDesktopDirectProbe()
     : undefined;
@@ -920,6 +965,16 @@ try {
     root: appRoot,
     configFile: path.join(appRoot, "vite.config.ts"),
     server: { host: "127.0.0.1", port: 0, strictPort: false },
+    // These optional workspace imports otherwise trigger a Vite page reload
+    // halfway through a cold acceptance run, discarding its real client state.
+    optimizeDeps: {
+      include: [
+        "@capacitor/network",
+        "@tauri-apps/api/dpi",
+        "@tauri-apps/api/webviewWindow",
+        "@tauri-apps/api/window",
+      ],
+    },
     plugins: [
       {
         name: "actual-folder-client",
@@ -961,12 +1016,13 @@ try {
   browser = await chromium.launch({ headless: true });
   if (databaseMode !== "pglite")
     postgres = await postgresFixture(path.join(root, "postgres"));
-  for (const kind of ["node", "rust"]) {
-    const fixture = new HttpFixture({
+  for (const kinds of runtimeCases) {
+    const kind = kinds[0];
+    const fixtureOptions = {
       kind,
       executable,
       root,
-      name: "actual-folder",
+      name: sharedPair ? "actual-folder-" + kinds.join("-") : "actual-folder",
       databaseMode,
       providerAuthDrain: true,
       liveSqlFixture: liveTaskDiagnostics,
@@ -984,15 +1040,28 @@ try {
           : {}),
         CANTRIP_APP_ORIGINS: `http://127.0.0.1:5173,${new URL(vite.resolvedUrls.local[0]).origin}`,
       },
-    });
-    if (postgres) {
+    };
+    const fixture = sharedPair
+      ? await SharedProductFixture.create({
+          ...fixtureOptions,
+          clientKind: kinds[0],
+          workerKind: kinds[1],
+          databaseUrl: await postgres.database(),
+        })
+      : new HttpFixture(fixtureOptions);
+    if (postgres && !sharedPair) {
       if (kind === "node" || databaseMode === "postgres")
         fixture.environment.DATABASE_URL = await postgres.database();
       else
         fixture.environment.CANTRIP_POSTGRES_BIN_DIR =
           process.env.CANTRIP_TEST_POSTGRES_BIN_DIR;
     }
-    const result = { kind, steps: [], workerStops: [], workerDiagnostics: [] };
+    const result = {
+      kind: sharedPair ? kinds.join("/") : kind,
+      steps: [],
+      workerStops: [],
+      workerDiagnostics: [],
+    };
     report.runtimes.push(result);
     if (liveTaskDiagnostics) {
       const start = fixture.start.bind(fixture);
@@ -1044,59 +1113,74 @@ try {
         directBrokerBinary,
       );
     } finally {
-      await fixture.close();
+      if (sharedPair) {
+        try {
+          await fixture.dispose();
+        } finally {
+          result.sharedServerGenerations = fixture.generations;
+        }
+      } else await fixture.close();
     }
   }
-  assert.deepEqual(report.runtimes[1].steps, report.runtimes[0].steps);
-  assert.deepEqual(report.runtimes[1].projects, report.runtimes[0].projects);
-  if (process.argv.includes("--chat-customizations"))
-    assert.deepEqual(
-      report.runtimes[1].chatCustomizationSummary,
-      report.runtimes[0].chatCustomizationSummary,
-    );
-  if (process.argv.includes("--mcp-settings"))
-    assert.deepEqual(
-      report.runtimes[1].mcpSettingsSummary,
-      report.runtimes[0].mcpSettingsSummary,
-    );
-  if (process.argv.includes("--skill-settings"))
-    assert.deepEqual(
-      report.runtimes[1].skillSettingsSummary,
-      report.runtimes[0].skillSettingsSummary,
-    );
-  if (process.argv.includes("--provider-test")) {
-    assert.deepEqual(
-      report.runtimes[1].nativeProviderProbeResults,
-      report.runtimes[0].nativeProviderProbeResults,
-    );
-    assert.deepEqual(
-      report.runtimes[1].providerConnectionSummary,
-      report.runtimes[0].providerConnectionSummary,
-    );
-  }
-  if (
-    process.argv.includes("--github-conversion") ||
-    process.argv.includes("--workspace-discovery")
-  )
-    assert.deepEqual(
-      report.runtimes[1].githubConversionSummary,
-      report.runtimes[0].githubConversionSummary,
-    );
-  if (process.argv.includes("--workspace-discovery"))
-    assert.deepEqual(
-      report.runtimes[1].workspaceDiscoverySummary,
-      report.runtimes[0].workspaceDiscoverySummary,
-    );
-  if (process.argv.includes("--github-replicas"))
-    assert.deepEqual(
-      report.runtimes[1].githubReplicaSummary,
-      report.runtimes[0].githubReplicaSummary,
-    );
-  if (process.argv.includes("--replicas")) {
-    assert.deepEqual(
-      replicaProductJobEvents(report.runtimes[1]),
-      replicaProductJobEvents(report.runtimes[0]),
-    );
+  for (const runtime of report.runtimes.slice(1)) {
+    assert.deepEqual(runtime.steps, report.runtimes[0].steps);
+    assert.deepEqual(runtime.projects, report.runtimes[0].projects);
+    if (process.argv.includes("--tasks")) {
+      const { chatId: currentId, ...current } = runtime.taskExecution;
+      const { chatId: baselineId, ...baseline } =
+        report.runtimes[0].taskExecution;
+      assert.ok(currentId && baselineId);
+      assert.deepEqual(current, baseline);
+    }
+    if (process.argv.includes("--chat-customizations"))
+      assert.deepEqual(
+        runtime.chatCustomizationSummary,
+        report.runtimes[0].chatCustomizationSummary,
+      );
+    if (process.argv.includes("--mcp-settings"))
+      assert.deepEqual(
+        runtime.mcpSettingsSummary,
+        report.runtimes[0].mcpSettingsSummary,
+      );
+    if (process.argv.includes("--skill-settings"))
+      assert.deepEqual(
+        runtime.skillSettingsSummary,
+        report.runtimes[0].skillSettingsSummary,
+      );
+    if (process.argv.includes("--provider-test")) {
+      assert.deepEqual(
+        runtime.nativeProviderProbeResults,
+        report.runtimes[0].nativeProviderProbeResults,
+      );
+      assert.deepEqual(
+        runtime.providerConnectionSummary,
+        report.runtimes[0].providerConnectionSummary,
+      );
+    }
+    if (
+      process.argv.includes("--github-conversion") ||
+      process.argv.includes("--workspace-discovery")
+    )
+      assert.deepEqual(
+        runtime.githubConversionSummary,
+        report.runtimes[0].githubConversionSummary,
+      );
+    if (process.argv.includes("--workspace-discovery"))
+      assert.deepEqual(
+        runtime.workspaceDiscoverySummary,
+        report.runtimes[0].workspaceDiscoverySummary,
+      );
+    if (process.argv.includes("--github-replicas"))
+      assert.deepEqual(
+        runtime.githubReplicaSummary,
+        report.runtimes[0].githubReplicaSummary,
+      );
+    if (process.argv.includes("--replicas")) {
+      assert.deepEqual(
+        replicaProductJobEvents(runtime),
+        replicaProductJobEvents(report.runtimes[0]),
+      );
+    }
   }
 } catch (error) {
   failure = error;
@@ -1105,9 +1189,9 @@ try {
   await browser?.close();
   await vite?.close();
   await postgres?.close();
-  if (failure) {
+  if (failure || process.argv.includes("--keep-fixture")) {
     report.fixtureRoot = root;
-    console.error("Retained failed full-worker fixture:", root);
+    console.error("Retained full-worker fixture:", root);
   } else {
     try {
       await rm(root, { recursive: true, force: true });

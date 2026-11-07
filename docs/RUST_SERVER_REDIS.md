@@ -13,8 +13,10 @@ shares it across worker transport, WorkerLink and App Live. Readiness observes
 its actual command connection, and shutdown closes it after service drains.
 Transient recovery uses the observed instance count; background job recovery
 retains unexpired peer leases whenever coordination is configured.
-Full worker resource execution, mixed rolling product and artifact acceptance
-remain required.
+The full worker now passes local resource/native execution and orderly mixed
+peer replacement checks described in [shared product acceptance](RUST_SERVER_SHARED_PRODUCT.md).
+Active-execution failures, long outages and supported-platform acceptance remain
+required.
 Node remains the default server and the worker remains Node.
 
 The Redis client is pinned to the vendored upstream 1.8.1 crate. Its original
@@ -307,3 +309,26 @@ These checks do not establish full worker resource/job execution, job lease
 renewal/expiry, complete mixed rolling product behavior, Redis TLS, other
 platforms or packaged/deployed artifacts. Existing-data upgrades, post-write
 rollback and default server cutover remain separate requirements.
+
+## Full worker and orderly peer replacement
+
+The [shared product suite](RUST_SERVER_SHARED_PRODUCT.md) runs the existing
+browser SDK and complete packaged worker on opposite production peers. The
+Node comparison uses its real compiled entry point; Rust uses its normal
+executable. Each pairing owns a private shared PostgreSQL database and Redis
+process. Public model responses are controlled for native execution.
+
+Local macOS ARM64 runs passed 300 recorded steps across all four pairings:
+encrypted files, workspace/dirty-document retention, PTYs and WorkerLink,
+native Tasks and planning/Goal, retry/paused admission, Agent-to-Task MCP,
+Agent Goal tools and canonical history. All 88 worker and 128 server process
+exits were clean. Thirty-two orderly peer replacements retained the same full
+worker PID during the rolling phase, its credential, the real browser session,
+App Live recovery, exact completed conversation/Task state and encrypted file
+reads/writes. Managed history is sampled after real terminal native archives
+have materialized; synthetic supplements remain in the exact comparison.
+
+Completed native work precedes replacement in this suite. It does not qualify
+in-flight execution failover, crash recovery, lease expiry, delayed
+acknowledgment, long Redis outage/shutdown, Redis TLS, multi-host networking,
+other platforms, performance or complete replacement readiness.
