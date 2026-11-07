@@ -85,10 +85,12 @@ impl SettingsRepository {
     pub async fn delete_model_profile(&self, owner: &str, model: &str) -> Result<bool> {
         let (owner, model) = (owner.to_owned(), model.to_owned());
         self.database.transaction(move |tx| Box::pin(async move {
-            let rows=tx.query("SELECT r.provider_model_id FROM model_routes r INNER JOIN model_profiles m ON m.id=r.model_id AND m.owner_id=$1 AND m.discovery_managed=true WHERE r.model_id=$2", &[&owner,&model]).await?;
-            let ids=rows.iter().map(|row| row.get::<Option<String>>(0)).collect::<Result<Vec<_>>>()?.into_iter().flatten().filter(|id| !id.is_empty()).collect::<Vec<_>>();
-            if !ids.is_empty() {
-                tx.query("INSERT INTO provider_model_suppressions(owner_id,provider_model_id) SELECT $1,id FROM unnest($2::text[]) AS id ON CONFLICT DO NOTHING", &[&owner,&ids]).await?;
+            let rows=tx.query("SELECT r.provider_model_id,m.operation FROM model_routes r INNER JOIN model_profiles m ON m.id=r.model_id AND m.owner_id=$1 AND m.discovery_managed=true WHERE r.model_id=$2", &[&owner,&model]).await?;
+            for row in rows {
+                if let Some(id) = row.get::<Option<String>>(0)?.filter(|id| !id.is_empty()) {
+                    let operation = row.get::<String>(1)?;
+                    tx.query("INSERT INTO provider_model_suppressions(owner_id,provider_model_id,operation) VALUES($1,$2,$3) ON CONFLICT DO NOTHING", &[&owner,&id,&operation]).await?;
+                }
             }
             Ok(!tx.query("DELETE FROM model_profiles WHERE id=$1 AND owner_id=$2 RETURNING id", &[&model,&owner]).await?.is_empty())
         })).await
