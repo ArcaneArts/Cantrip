@@ -6,6 +6,9 @@ embedding and decision defaults; discovery never selects either automatically.
 Provider tabs expose each operation separately. Subscription account connections
 do not acquire API-key operation access by sharing a provider's model names.
 
+The [delivery record](MODEL_OPERATIONS_DELIVERY.md) maps the implementation to the
+requirements and lists merged PRs, review evidence and validation limitations.
+
 Each provider section searches its complete configured model set, including IDs
 and route aliases. Results use the picker's existing fuzzy ranking, with at most
 50 rows mounted per section. Default model pickers mount at most 100 model options
