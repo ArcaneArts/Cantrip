@@ -25,6 +25,14 @@ for (const command of fixtures.cantripOsSystemWorkerCommandSchema)
     requestId: "fixture-system-command",
     command,
   });
+add("workerRequestEnvelopeSchema", {
+  kind: "request",
+  requestId: "fixture-system-prepare",
+  command: {
+    ...fixtures.cantripOsSystemOperationCommandSchema[0],
+    mode: "prepare",
+  },
+});
 for (const bytes of [limit, limit + 1])
   add("cantripOsSystemProtectedOperationResultSchema", {
     ...fixtures.cantripOsSystemProtectedOperationResultSchema[0],

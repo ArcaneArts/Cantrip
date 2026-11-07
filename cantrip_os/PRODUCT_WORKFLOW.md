@@ -626,3 +626,21 @@ the terminal or Run output reports known missing history. See the
 Guest/executor restart ends those processes and creates a fresh runtime. Use
 **Check recovery**, verify the intended source and open fresh work after that
 transition. Existing chats retain their original placement.
+
+## Shared system recovery APIs
+
+The [system admission API](SYSTEM_REPLACEMENT.md#server-owned-system-admissions)
+now records private root captures, retained replacement/reset and rollback in both
+Server implementations. This is the backend foundation; a dedicated system
+review/history panel remains dependent work. Continue using the existing product
+recovery and source-verification controls after an explicit system identity
+recovery. Historical completion never resumes an old chat or terminal placement.
+
+Keep the saved operation UUID and its returned attachment/target generations after
+a lost reply. Observe the original operation first. While its dispatch stage is
+`preparing`, explicit continuation can recover metadata preparation or abandonment
+can close it without guest changes. After `executing`, observation/continuation
+uses the original durable receipts; an uncertain claimed root effect is never
+reissued. A ready replacement/rollback can explicitly recover its exact resulting
+physical identity. Mounted files keep their current contents; use a separate
+workspace backup to restore file contents.

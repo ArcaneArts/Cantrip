@@ -799,8 +799,19 @@ restart and locked keys. Missing claimed receipts stay unknown rather than
 restarting an effect. A completed transition can prove its resulting physical
 container for discovery, but never restores runtime handles. Matching native
 wire contracts are exercised against the actual TypeScript schemas. Server-owned
-system admissions/catalogue, client controls and explicit fresh authority remain
-the next dependent work; this does not complete Phase 5.
+system admissions/catalogue and explicit fresh authority follow this Worker
+foundation; this does not complete Phase 5.
+
+Both Server implementations now persist system target observations, original
+capture/replacement/rollback admissions and paginated private history. Metadata-only
+Worker preparation precedes committed execution authority; an unarmed operation
+can be explicitly abandoned. Admission fences prior execution handles, and ready
+replacement/rollback recovery adopts only its proven physical guest identity,
+including lost enrollment replies, before separate runtime/source verification.
+Rollback retires the earlier replacement's continuation. Concurrent power/package/
+desktop/workspace creation cannot cross an active system transition. Client system
+review/history controls and full Worker/client acceptance are the next dependent
+block. Real remote acceptance, clone provisioning and final artifacts remain open.
 
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output

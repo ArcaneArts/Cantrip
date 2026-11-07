@@ -4478,3 +4478,98 @@ are retained under `cantrip_os/artifacts/phase5-system-worker`. No guest package
 version, OCI image or ISO changed. Server/client integration, fresh authority,
 clone identity handling, external remote/current-native model/CUA acceptance and
 final normal distributions remain required for the complete Phase 5 goal.
+
+## Phase 5: Server-owned system admissions and identity recovery (2026-11-06)
+
+This checkpoint extends the registered Worker foundation with Node and native
+Server HTTP APIs, SQL history and exact-target identity recovery. It does not add
+client system controls or complete Phase 5. The external Worker remains the
+orchestrator; no guest Worker or model credentials are introduced.
+
+Both implementations preserve original capture/replacement/rollback commands,
+resolve private checkpoint sources from owned completed admissions and fence old
+attachment/runtime handles before maintenance. Metadata-only Worker preparation
+precedes durable Server execution authority. Unknown preparation can be resumed
+or explicitly abandoned; execution-stage uncertainty never creates another job.
+Actual pre-queue bridge refusal records `rejected` / `not-dispatched`. Rollback
+retires its original replacement's continuation. Late historical results cannot
+clear a fresh recovered runtime. New package/power/desktop/workspace-create
+admissions are rejected while a system transition is active.
+
+Ready replacement/rollback recovery verifies its resulting full physical Docker
+ID and raw guest identity. A reset base can be enrolled on that exact target;
+a lost enrollment reply is observed without assigning it again. SQL allows a
+changed guest UUID on the original logical instance only with the completed
+transition proof and a fresh attachment generation. Ordinary owner/Worker/guest
+identity rewrites are rejected. Runtime and source verification remain explicit;
+old chats, terminals and source bindings keep their captured generations.
+
+Validation from the isolated `codex/os-phase5-system-server` lane:
+
+- Node management/bridge matrix: 21 passed, including persistent PGlite HTTP
+  history/reopen, missing and lost preparation replies, abandonment, no duplicate
+  execution, original encryption context, exact recovery, direct SQL identity
+  denial, old checkpoint reuse after guest replacement, rollback retirement,
+  stale catalogue observation and late outcome fencing.
+- Worker OS suite: 122 passed. Child capture preparation is durable before the
+  parent claims it; locking keys at that handoff leaves an unrequested capture
+  that can explicitly continue after unlocking.
+- Normal Worker build, Worker typecheck and Server typecheck passed.
+- Native system HTTP flow passed against actual PostgreSQL 17.9 and its normal
+  authenticated HTTP/control bridge, including Server service restart, missing
+  preparation, lost enrollment reply, abandonment and actual no-peer refusal.
+  Twenty source contract roots matched 14,954 generated cases plus eight explicit
+  command-envelope/ciphertext/completion policies. Five existing native OS HTTP
+  flows and both PostgreSQL/PGlite source-admission regressions passed. The first
+  PGlite attempt encountered a damaged shared extracted runtime missing
+  `postgres.bki`; a fresh isolated `PGLITE_RUNTIME_DIR` passed unchanged tests.
+- OS suite: 46 passed, nine opt-in tests skipped. Real Worker/Docker opt-in tests
+  below ran separately and passed both cases.
+
+The normal compiled Worker modules ran against Docker 26.1.5 in the existing
+disposable AMD64 installed Linux VM through a private, strict-SSH Unix proxy.
+Both capture/replacement/rollback preparations and repeated preparation observation
+made zero Docker API calls. Real child processes were killed with SIGKILL after
+candidate creation or original rollback start. Observation did not mutate; explicit
+continuation completed only future steps. Root marker bytes, mode 0640, UID/GID
+12345/23456, `ed`/`bc` inventory, current mounted contents, later retained root
+writes, start counts and changed-identity discovery remained correct.
+
+Both real cases passed in 301.481 seconds. Each plaintext archive was 82,352,640
+bytes; SHA-256 values were:
+
+- Create interruption: `9fb7d7f30ffeea93c3bd5b5b2e8c9408c7da64cc7d051e0bd428a9111cda6cc1`.
+- Rollback-start interruption: `d2cc1bd575b35bcd7bd0792514276d8150b0d2f3fbbef03ae1ea52bea788cf92`.
+
+Cleanup verified all eight owned Docker containers/images/volumes absent (404).
+Four generated archive/staging payloads totaling 384,342,128 bytes were then
+deleted after recording hashes. The owned proxy was stopped and its socket
+removed. Only bounded logs, JSON receipts and deletion manifests are retained in
+ignored `artifacts/phase5-system-server/`. The native test target uses debug=0 and
+no incremental cache and is removed at cycle completion. The prior C6d 19.5 GiB
+native cache was also cleaned at the user's request. Docker Desktop recovery and
+cleanup removed 24 old Cantrip test containers, associated test volumes, four
+build volumes and old test images; builder prunes reported 38.2 GB + 27.45 GB.
+A separate unreferenced 379 GB PostgreSQL18 database was identified and preserved.
+
+Repository-wide checks retain unrelated baseline failures: `pnpm check` stops at
+app files unchanged from current main at 1532/1500 and 2334/1999 lines; the repository decomposition
+check reports unchanged `native-commands.ts` at 2284/2000 lines. The Server boundary
+audit's two existing `desktopTarget` references also fail on clean Primary.
+Protocol tests report 1116 passes and four baseline failures (source/dist public
+exports and Worker discriminator checks; before rebase, 26 unrelated exports
+and four commands);
+this checkpoint's seven new public schema exports are reviewed explicitly. After
+rebasing onto current main, Server typecheck, the 21-test Node matrix, all 122
+Worker OS tests and all ten native tests passed again. Worker typecheck then
+reported upstream `model-decision.ts:465` TS2366 (missing return); that file is
+byte-identical to `origin/main`. The final protocol run has 58 unrelated
+exports beyond its reviewed count and a discriminator ordering failure introduced
+by upstream `model.decision`; all seven new OS schema exports remain reviewed.
+The normal Worker build/typecheck and actual
+Docker tests above ran before that unrelated upstream addition.
+
+Guest packages and the host package are unchanged by this Server checkpoint.
+There is no new OCI/DEB/ISO distribution claim here. Real account grants, a full
+Worker/client system-operation flow, dedicated client review/history, real remote
+acceptance, clone identity/SSH-key handling and final artifacts remain required.

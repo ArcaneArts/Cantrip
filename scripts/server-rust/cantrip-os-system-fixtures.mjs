@@ -116,6 +116,14 @@ export function cantripOsSystemFixtures() {
     cantripOsSystemStatusResultSchema: [
       { supported: true, target, bases: [base], running: false, error: null },
       {
+        supported: true,
+        target: null,
+        bases: [],
+        running: true,
+        error: "Unattached",
+        enrollment: { containerId: cid, guestInstanceId: id },
+      },
+      {
         supported: false,
         target: null,
         bases: [],

@@ -13,6 +13,7 @@ import { CantripOsSystemManager } from "./system-manager.js";
 import { systemFixture } from "./system-test-fixture.js";
 import {
   captureAdmission,
+  readSystemJob,
   systemOperationContext,
   systemJobPaths,
 } from "./system-job.js";
@@ -59,6 +60,113 @@ async function fixture() {
   return { ...f, directory, manager, capture, result };
 }
 describe("Worker system command routing", () => {
+  it("can continue after keys lock while preparing the child capture admission", async () => {
+    const f = await fixture(),
+      manager = f.manager();
+    const run = manager.captures.run.bind(manager.captures);
+    manager.captures.run = async (...args) => {
+      if (args[1] === "prepare") f.lock();
+      return run(...args);
+    };
+    await expect(manager.handle(f.capture)).rejects.toThrow("grant");
+    const record = await readSystemJob(f.directory, {
+      scope: f.capture.scope,
+      operationId: f.capture.operationId,
+      targetGeneration: f.capture.target.generation,
+    });
+    expect(record?.captureRequested).toBe(false);
+    expect(f.effects).toEqual([]);
+    f.unlock();
+    expect((await f.result({ ...f.capture, mode: "observe" }))?.state).toBe(
+      "unknown",
+    );
+    expect(f.effects).toEqual([]);
+    expect((await f.result({ ...f.capture, mode: "continue" }))?.state).toBe(
+      "ready",
+    );
+    expect(f.effects.filter((x) => x.path.startsWith("/commit?"))).toHaveLength(
+      1,
+    );
+  });
+  it("prepares durably without guest effects and requires explicit continuation", async () => {
+    const f = await fixture();
+    const prepared = await f.result({ ...f.capture, mode: "prepare" });
+    expect(prepared).toMatchObject({ state: "running", phase: "prepared" });
+    expect(f.effects).toEqual([]);
+    expect(await f.result({ ...f.capture, mode: "observe" })).toEqual(prepared);
+    expect(await f.result({ ...f.capture, mode: "prepare" })).toEqual(prepared);
+    expect(f.effects).toEqual([]);
+    expect((await f.result({ ...f.capture, mode: "continue" }))?.state).toBe(
+      "ready",
+    );
+  });
+  it("reports an unattached identity only for the completed exact physical recovery target", async () => {
+    const f = await fixture();
+    const command: CantripOsSystemOperationCommand = {
+      type: "cantrip-os.system.replace",
+      action: "replace",
+      mode: "execute",
+      operationId: randomUUID(),
+      scope: f.scope,
+      transport: f.capture.transport,
+      target: f.capture.target,
+      source: { kind: "base", imageId: f.baseId },
+      startTarget: true,
+    };
+    const result = await f.result(command),
+      guest = randomUUID();
+    expect(result?.state).toBe("ready");
+    const candidate = f.containers.get(result!.root!.targetContainerId!)!.files;
+    candidate.set(
+      "/etc/cantrip-os/executor.json",
+      f.files.get("/etc/cantrip-os/executor.json")!,
+    );
+    candidate.set(
+      f.identityPath,
+      Buffer.from(
+        JSON.stringify({ ...f.identity, instance_id: guest, attachment: null }),
+      ),
+    );
+    const status = {
+      type: "cantrip-os.system.status" as const,
+      scope: f.scope,
+      transport: f.capture.transport,
+      target: f.capture.target,
+      recovery: {
+        operationId: command.operationId,
+        scope: command.scope,
+        targetGeneration: command.target.generation,
+      },
+    };
+    const effects = f.effects.length;
+    expect(await f.manager().handle(status)).toMatchObject({
+      target: null,
+      enrollment: {
+        containerId: result!.root!.targetContainerId,
+        guestInstanceId: guest,
+      },
+    });
+    await expect(
+      f.manager().handle({
+        ...status,
+        recovery: { ...status.recovery, operationId: randomUUID() },
+      }),
+    ).rejects.toThrow("No completed original");
+    candidate.set(
+      f.identityPath,
+      Buffer.from(
+        JSON.stringify({
+          ...f.identity,
+          instance_id: guest,
+          attachment: { owner_id: "foreign", worker_id: f.scope.workerId },
+        }),
+      ),
+    );
+    await expect(f.manager().handle(status)).rejects.toThrow(
+      "identity changed",
+    );
+    expect(f.effects).toHaveLength(effects);
+  });
   async function reserve(
     f: Awaited<ReturnType<typeof fixture>>,
     command: CantripOsSystemOperationCommand,
@@ -234,5 +342,13 @@ describe("Worker system command routing", () => {
     g.lock();
     await expect(g.result(g.capture)).rejects.toThrow("grant");
     expect(g.effects).toEqual([]);
+    g.unlock();
+    expect((await g.result({ ...g.capture, mode: "observe" }))?.state).toBe(
+      "unknown",
+    );
+    expect(g.effects).toEqual([]);
+    expect((await g.result({ ...g.capture, mode: "continue" }))?.state).toBe(
+      "ready",
+    );
   });
 });

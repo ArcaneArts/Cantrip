@@ -152,6 +152,10 @@ interface PendingRequest {
 }
 
 export class WorkerUnavailableError extends Error {}
+/** Proven rejection before a request is queued. Disconnects after send never use this. */
+export class WorkerCommandNotSentError extends WorkerUnavailableError {
+  readonly code = "worker-command-not-sent";
+}
 
 export interface WorkerCommandErrorContext {
   operation?: WorkerCommand["type"];
@@ -799,7 +803,7 @@ export class WorkerBridge implements WorkerCommandBus {
         },
       );
       return Promise.reject(
-        new WorkerUnavailableError(`Worker ${workerId} is offline.`),
+        new WorkerCommandNotSentError(`Worker ${workerId} is offline.`),
       );
     }
 

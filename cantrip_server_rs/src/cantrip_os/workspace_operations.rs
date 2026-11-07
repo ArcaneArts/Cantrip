@@ -34,6 +34,7 @@ impl Repository {
                 ensure!(old["owner_id"]==owner && old["instance_id"]==instance && old["command"]["scope"]["serverId"]==server && old["request"]==input,"This workspace operation ID belongs to another admission.");
                 return Ok((old.clone(),false));
             }
+            super::system_common::no_active(tx,&instance,None).await?;
             ensure!((input.get("attachmentGeneration").is_none() || input["attachmentGeneration"]==i["attachment_generation"]) && (input.get("runtimeGeneration").is_none() || input["runtimeGeneration"]==i["runtime_generation"]),"The selected OS attachment or runtime changed before workspace admission.");
             let scope=checked("cantripOsDispatchScopeSchema",json!({"ownerId":owner,"serverId":server,"workerId":i["worker_id"],"instanceId":instance,"guestInstanceId":i["guest_instance_id"],"attachmentGeneration":i["attachment_generation"],"runtimeGeneration":i["runtime_generation"]}))?;
             let command=json!({"type":"cantrip-os.workspaces.create","scope":scope,"transport":i["transport"],"guestWorkspaceId":input["guestWorkspaceId"],"operationId":input["operationId"]});

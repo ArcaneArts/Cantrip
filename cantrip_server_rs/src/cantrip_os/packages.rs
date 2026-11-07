@@ -88,6 +88,7 @@ impl Repository {
                 ensure!(old["owner_id"] == owner && old["instance_id"] == instance && old["request"] == input, "This package operation ID belongs to another admission.");
                 return Ok((old.clone(),false));
             }
+            super::system_common::no_active(tx,&instance,None).await?;
             let targets = decode(tx.query("SELECT to_jsonb(p)::text FROM cantrip_os_package_targets p WHERE instance_id=$1", &[&instance]).await?)?;
             let p = targets.first().context("No verified package target is recorded.")?;
             let catalog = &p["catalog"];

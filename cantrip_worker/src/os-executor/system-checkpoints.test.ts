@@ -133,6 +133,19 @@ async function fixture() {
   };
 }
 describe("durable Worker system checkpoint transfer", () => {
+  it("durably prepares without capturing and continues the same admission once", async () => {
+    const f = await fixture();
+    const prepared = await f.manager().run(f.admission, "prepare");
+    expect(prepared).toMatchObject({ state: "running", phase: "prepared" });
+    expect(await f.manager().run(f.admission, "prepare")).toEqual(prepared);
+    expect(f.effects).toEqual([]);
+    expect(f.exports()).toBe(0);
+    expect((await f.manager().run(f.admission, "continue"))?.state).toBe(
+      "ready",
+    );
+    expect(f.effects).toHaveLength(3);
+    expect(f.exports()).toBe(1);
+  });
   it("does not dispatch an unstarted saved admission during observation", async () => {
     const f = await fixture();
     const unavailable = new CantripOsSystemCheckpointManager(

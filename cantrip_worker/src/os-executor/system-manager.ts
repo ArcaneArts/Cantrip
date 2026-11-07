@@ -120,9 +120,10 @@ export class CantripOsSystemManager {
     if (command.recovery) {
       this.sameOwner(command.scope, command.recovery.scope);
       const job = await readSystemJob(this.directory, command.recovery);
-      const actual = await engine.inspect<{ Id: string }>(
-        command.transport.container,
-      );
+      const actual = await engine.inspect<{
+        Id: string;
+        State: { Running: boolean };
+      }>(command.transport.container);
       if (
         !job ||
         job.state !== "ready" ||
@@ -132,6 +133,24 @@ export class CantripOsSystemManager {
         throw new Error(
           "No completed original system operation authorizes replacement discovery",
         );
+      const identity = await readSystemIdentity(
+        engine,
+        actual.Id,
+        job.command.target.expected.identityPath,
+      ).catch(() => null);
+      if (identity?.identity.attachment === null)
+        return cantripOsSystemStatusResultSchema.parse({
+          supported: true,
+          target: null,
+          bases: [],
+          running: actual.State.Running,
+          enrollment: {
+            containerId: actual.Id,
+            guestInstanceId: identity.identity.instance_id,
+          },
+          error:
+            "The resulting system is unattached. Explicit recovery can assign it to the owning Worker.",
+        });
       allowChangedGuest = true;
     }
     const current = await systemTarget(
@@ -378,7 +397,15 @@ export class CantripOsSystemManager {
   ) {
     const mutate = fresh || command.mode === "continue";
     if (!record.validated) {
-      await this.validate(command);
+      try {
+        await this.validate(command);
+      } catch (error) {
+        record.state = "failed";
+        record.phase = "validation-failed";
+        record.diagnostic =
+          error instanceof Error ? error.message : String(error);
+        return;
+      }
       record.validated = true;
       await this.save(record);
     }
@@ -388,9 +415,10 @@ export class CantripOsSystemManager {
       let value = await this.captures.run(input, "observe");
       this.account(command.scope);
       if (mutate && !record.captureRequested) {
+        await this.captures.run(input, "prepare");
         record.captureRequested = true;
         await this.save(record);
-        value = await this.captures.run(input, "execute");
+        value = await this.captures.run(input, "continue");
       } else if (command.mode === "continue" && value)
         value = await this.captures.run(input, "continue");
       if (!value) {
@@ -505,8 +533,6 @@ export class CantripOsSystemManager {
         if (command.mode === "observe") return null;
         if (command.mode === "continue")
           throw new Error("No original system admission exists to continue");
-        const material = this.keys.componentKey("repository-content");
-        clearSensitiveBytes(material.key);
         const at = new Date().toISOString();
         record = {
           version: 1,
@@ -533,6 +559,27 @@ export class CantripOsSystemManager {
       )
         return this.output(record);
       try {
+        if (
+          command.mode === "prepare" ||
+          (command.mode === "observe" &&
+            record.phase === "prepared" &&
+            !record.captureRequested &&
+            !record.hostRequested)
+        ) {
+          if (record.captureRequested || record.hostRequested)
+            return this.output(record);
+          if (record.phase === "prepared" && record.protectedResult)
+            return this.output(record);
+          record.state = "running";
+          record.phase = "prepared";
+          await this.protect(record);
+          await this.save(record);
+          return this.output(record);
+        }
+        if (fresh || command.mode === "continue") {
+          const material = this.keys.componentKey("repository-content");
+          clearSensitiveBytes(material.key);
+        }
         await this.advance(command, record, fresh);
         record.updatedAt = new Date().toISOString();
         await this.protect(record);

@@ -4,6 +4,7 @@ import { installCantripOsBackupRoutes } from "./cantrip-os-backups.js";
 import { installCantripOsDesktopRoutes } from "./cantrip-os-desktop.js";
 import { installCantripOsPowerRoutes } from "./cantrip-os-power.js";
 import { installCantripOsPackageRoutes } from "./cantrip-os-packages.js";
+import { installCantripOsSystemRoutes } from "./cantrip-os-systems.js";
 import {
   cantripOsRunDefinitionApiSchema,
   cantripOsAttachSchema,
@@ -38,6 +39,7 @@ export function installCantripOsRoutes(
   installCantripOsBackupRoutes(app, dependencies);
   installCantripOsPowerRoutes(app, dependencies);
   installCantripOsPackageRoutes(app, dependencies);
+  installCantripOsSystemRoutes(app, dependencies);
   installCantripOsDesktopRoutes(app, dependencies);
   const { repository, applicationOwnerId: owner } = dependencies;
   const coordinator = new CantripOsCoordinator(

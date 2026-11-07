@@ -140,6 +140,7 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         .merge(super::cantrip_os_backups::routes())
         .merge(super::cantrip_os_power::routes())
         .merge(super::cantrip_os_packages::routes())
+        .merge(super::cantrip_os_systems::routes())
         .merge(super::cantrip_os_desktop::routes())
         .merge(super::cantrip_os_workspace_operations::routes())
         .route(
