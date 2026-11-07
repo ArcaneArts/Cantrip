@@ -28,6 +28,7 @@ export interface ModelComboboxProps {
   className?: string;
   disabled?: boolean;
   emptyMessage?: string;
+  noneLabel?: string;
   getOptionDisabled?(model: ModelProfileSummary): boolean;
   getOptionNote?(model: ModelProfileSummary): string | null | undefined;
   models: ModelProfileSummary[];
@@ -61,6 +62,7 @@ export function filterConfiguredModels(
 
 export function ModelComboboxMenu({
   emptyMessage = "No models found.",
+  noneLabel,
   getOptionDisabled,
   getOptionNote,
   inputRef,
@@ -72,6 +74,7 @@ export function ModelComboboxMenu({
   setQuery,
 }: {
   emptyMessage?: string;
+  noneLabel?: string;
   getOptionDisabled?(model: ModelProfileSummary): boolean;
   getOptionNote?(model: ModelProfileSummary): string | null | undefined;
   inputRef?: Ref<HTMLInputElement>;
@@ -95,6 +98,18 @@ export function ModelComboboxMenu({
       <CommandList className="max-h-72">
         <CommandEmpty>{emptyMessage}</CommandEmpty>
         <CommandGroup>
+          {noneLabel ? (
+            <CommandItem value={noneLabel} onSelect={() => onSelect("")}>
+              <span className="flex-1">{noneLabel}</span>
+              <Check
+                aria-hidden="true"
+                className={cn(
+                  "size-4",
+                  selectedValue ? "opacity-0" : "opacity-100",
+                )}
+              />
+            </CommandItem>
+          ) : null}
           {models.map((model) => {
             const optionDisabled = getOptionDisabled?.(model) ?? false;
             const note = getOptionNote?.(model);
@@ -132,6 +147,7 @@ export function ModelCombobox({
   className,
   disabled = false,
   emptyMessage,
+  noneLabel,
   getOptionDisabled,
   getOptionNote,
   models,
@@ -194,6 +210,7 @@ export function ModelCombobox({
       >
         <ModelComboboxMenu
           emptyMessage={emptyMessage}
+          noneLabel={noneLabel}
           getOptionDisabled={getOptionDisabled}
           getOptionNote={getOptionNote}
           inputRef={inputRef}

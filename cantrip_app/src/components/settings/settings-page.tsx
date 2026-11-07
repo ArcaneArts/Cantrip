@@ -1,4 +1,11 @@
 import { ComputerUseEffectsSettings } from "./computer-use-effects-settings";
+import { ModelOperationFields } from "./model-operation-fields";
+import {
+  operationCapabilityText,
+  scopedOperationCapabilities,
+  scopedCapabilitiesByModel,
+  modelOperationLabels,
+} from "./model-operation-metadata";
 import { LabelingSettings } from "./labeling-settings";
 import { Monitor } from "lucide-react";
 import { FileChangeSettings } from "./file-change-settings";
@@ -8,6 +15,7 @@ import { FileNavigationSettings } from "./file-navigation-settings";
 import type {
   CodeAppearance,
   CodexDeviceLogin,
+  ModelOperation,
   ModelProfileSummary,
   ModelProviderKind,
   ModelProviderSummary,
@@ -20,6 +28,8 @@ import type {
 } from "@cantrip/protocol";
 import { useModelsSettingsTab } from "./use-models-settings-tab";
 import {
+  modelProfileOperation,
+  providerOperationSupport,
   DEFAULT_MAX_CONCURRENT_INFERENCE,
   providerInferenceLimitSchema,
   shouldUseChatGptCredits,
@@ -367,6 +377,16 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
       icon: Cpu,
       searchItems: [
         {
+          id: "default-embedding-model",
+          label: "Default embedding model",
+          keywords: ["embeddings dimensions vectors none selected"],
+        },
+        {
+          id: "default-decision-model",
+          label: "Default decision model",
+          keywords: ["predicate choice score native decisions none selected"],
+        },
+        {
           id: "providers",
           label: "Model providers",
           description: "Ollama, ChatGPT, Grok, xAI, and compatible APIs.",
@@ -544,11 +564,14 @@ export function settingsNavigationSectionsForResources(
                     )
                     .join(", ")
                 : "Logical model profile.",
-              keywords: model.routes.flatMap((route) => [
-                route.providerName,
-                route.modelName,
-                "route",
-              ]),
+              keywords: [
+                modelProfileOperation(model),
+                ...model.routes.flatMap((route) => [
+                  route.providerName,
+                  route.modelName,
+                  "route",
+                ]),
+              ],
             })),
           ],
         }
@@ -1023,9 +1046,11 @@ function CatalogModelField({
   provider,
   routeKey,
   value,
+  operation,
   workerId,
   onChange,
 }: {
+  operation: ModelOperation;
   provider: ModelProviderSummary | undefined;
   routeKey: string;
   value: string;
@@ -1039,8 +1064,16 @@ function CatalogModelField({
     Boolean(provider && supportsCatalog),
     provider?.connectionRevision ?? provider?.updatedAt,
   );
+  const capabilitiesById = useMemo(
+    () => scopedCapabilitiesByModel(catalog.data, workerId),
+    [catalog.data, workerId],
+  );
   const visibleModels =
-    catalog.data?.models.filter(({ hidden }) => !hidden) ?? [];
+    catalog.data?.models.filter(
+      (model) =>
+        !model.hidden &&
+        capabilitiesById.get(model.id)?.[operation]?.status !== "unsupported",
+    ) ?? [];
   const availableModelIds = catalog.data
     ? availableCatalogModelIds(catalog.data, workerId)
     : new Set<string>();
@@ -1079,6 +1112,7 @@ function CatalogModelField({
         catalog={catalog.data}
         loading={catalog.isLoading}
         model={selected}
+        operation={operation}
         accountScoped={Boolean(
           provider && isAccountProviderKind(provider.kind),
         )}
@@ -1095,10 +1129,12 @@ function CatalogModelMetadata({
   catalog,
   loading,
   model,
+  operation,
   supportsCatalog,
   value,
   workerId,
 }: {
+  operation: ModelOperation;
   accountScoped: boolean;
   catalog: ProviderModelCatalogResult | undefined;
   loading: boolean;
@@ -1126,12 +1162,13 @@ function CatalogModelMetadata({
       : model.loaded === false
         ? "Installed · not loaded"
         : null,
-    formatContextWindow(model.contextWindow),
-    model.inputModalities.length ? model.inputModalities.join(" + ") : null,
-    model.supportsTools ? "tools" : null,
-    model.supportsStructuredOutput ? "structured output" : null,
-    model.supportsVision ? "vision" : null,
-    model.supportsReasoning ? "reasoning" : null,
+    operationCapabilityText(
+      operation,
+      scopedOperationCapabilities(model, catalog, workerId),
+    ),
+    operation === "language" ? formatContextWindow(model.contextWindow) : null,
+    operation === "language" && model.supportsTools ? "tools" : null,
+    operation === "language" && model.supportsReasoning ? "reasoning" : null,
   ].filter((item): item is string => Boolean(item));
   const available = catalogModelAvailable(model, catalog, workerId);
   return (
@@ -1230,6 +1267,8 @@ export function SettingsPage({
   const [editingModel, setEditingModel] = useState<ModelProfileSummary | null>(
     null,
   );
+  const [modelOperation, setModelOperation] =
+    useState<ModelOperation>("language");
   const [modelName, setModelName] = useState("");
   const [modelRoutes, setModelRoutes] = useState<EditableRoute[]>([]);
   const accountProvider =
@@ -1469,6 +1508,7 @@ export function SettingsPage({
     mutationFn: async () => {
       const input = {
         name: modelName,
+        operation: modelOperation,
         routes: modelRoutes.map(({ key: _key, ...route }) => route),
       };
       return editingModel
@@ -1682,10 +1722,12 @@ export function SettingsPage({
   const openModelDialog = (
     model: ModelProfileSummary | null,
     providerId?: string,
+    operation: ModelOperation = "language",
   ) => {
     const firstProviderId = providerId ?? settings.data?.providers[0]?.id ?? "";
     saveModel.reset();
     setEditingModel(model);
+    setModelOperation(model ? modelProfileOperation(model) : operation);
     setModelName(model?.name ?? "");
     setModelRoutes(
       model
@@ -1737,7 +1779,10 @@ export function SettingsPage({
     ).find(
       ({ sectionId, id }) =>
         sectionId === "models" &&
-        (id.startsWith("provider:") || id.startsWith("model:")),
+        (id.startsWith("provider:") ||
+          id.startsWith("model:") ||
+          id === "default-embedding-model" ||
+          id === "default-decision-model"),
     );
     if (resource) {
       setActiveModelsTab(
@@ -2258,6 +2303,7 @@ export function SettingsPage({
               {section === "models" && settings.data ? (
                 <ModelsSettings
                   activeTab={activeModelsTab}
+                  workerId={worker?.workerId ?? null}
                   models={models}
                   providers={providers}
                   preferences={settings.data.preferences}
@@ -2278,7 +2324,9 @@ export function SettingsPage({
                   providersLoaded={Boolean(settings.data)}
                   onAddProvider={(setup) => openProviderDialog(null, setup)}
                   onEditProvider={(provider) => openProviderDialog(provider)}
-                  onAddModel={(providerId) => openModelDialog(null, providerId)}
+                  onAddModel={(providerId, operation) =>
+                    openModelDialog(null, providerId, operation)
+                  }
                   onEditModel={(model) => openModelDialog(model)}
                   onRemoveModel={(model) => removeModel.mutate(model.id)}
                   onPreferencesChange={preferences.mutateAsync}
@@ -3160,11 +3208,58 @@ export function SettingsPage({
                 {editingModel ? "Edit model" : "Add model"}
               </DialogTitle>
               <DialogDescription>
-                Select this logical model in an agent; Cantrip tries its enabled
-                provider routes from top to bottom.
+                {modelOperation === "language"
+                  ? "Select this model in an agent. Enabled routes are tried in priority order."
+                  : modelOperation === "embedding"
+                    ? "Configure embedding inference. Fallback must preserve the same embedding space."
+                    : "Configure native typed decisions. Enabled routes are tried in priority order."}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4">
+              <Field label="Operation">
+                <NativeSelect
+                  value={modelOperation}
+                  disabled={Boolean(editingModel)}
+                  onChange={(event) => {
+                    const operation = event.target.value as ModelOperation;
+                    setModelOperation(operation);
+                    const usable = providers.filter(
+                      (provider) =>
+                        providerOperationSupport(provider)[operation] !==
+                        "unsupported",
+                    );
+                    setModelRoutes((routes) =>
+                      routes.map((route) => ({
+                        ...route,
+                        providerId: usable.some(
+                          (provider) => provider.id === route.providerId,
+                        )
+                          ? route.providerId
+                          : (usable[0]?.id ?? ""),
+                        modelName: "",
+                        operationAdapter: null,
+                        operationOptions: null,
+                      })),
+                    );
+                  }}
+                >
+                  {(["language", "embedding", "decision"] as const).map(
+                    (operation) => (
+                      <option
+                        key={operation}
+                        value={operation}
+                        disabled={providers.every(
+                          (provider) =>
+                            providerOperationSupport(provider)[operation] ===
+                            "unsupported",
+                        )}
+                      >
+                        {modelOperationLabels[operation]}
+                      </option>
+                    ),
+                  )}
+                </NativeSelect>
+              </Field>
               <Field label="Display name">
                 <input
                   required
@@ -3172,7 +3267,13 @@ export function SettingsPage({
                   value={modelName}
                   onChange={(event) => setModelName(event.target.value)}
                   className={inputClass}
-                  placeholder="GPT-5.6 Sol"
+                  placeholder={
+                    modelOperation === "language"
+                      ? "GPT-5.6 Sol"
+                      : modelOperation === "embedding"
+                        ? "Text embeddings"
+                        : "Native decisions"
+                  }
                 />
               </Field>
               <div className="grid gap-2">
@@ -3180,7 +3281,11 @@ export function SettingsPage({
                   <div>
                     <p className="text-sm font-medium">Provider routes</p>
                     <p className="text-xs text-muted-foreground">
-                      The first available route handles each new turn.
+                      {modelOperation === "language"
+                        ? "The first available route handles each new turn."
+                        : modelOperation === "embedding"
+                          ? "Routes must produce compatible vectors to allow fallback."
+                          : "The first compatible route handles each decision request."}
                     </p>
                   </div>
                   <Button
@@ -3188,7 +3293,11 @@ export function SettingsPage({
                     size="sm"
                     variant="outline"
                     onClick={() => {
-                      const providerId = settings.data?.providers[0]?.id;
+                      const providerId = providers.find(
+                        (provider) =>
+                          providerOperationSupport(provider)[modelOperation] !==
+                          "unsupported",
+                      )?.id;
                       if (!providerId) return;
                       setModelRoutes((routes) => [
                         ...routes,
@@ -3236,6 +3345,8 @@ export function SettingsPage({
                                       ...candidate,
                                       providerId: event.target.value,
                                       modelName: "",
+                                      operationAdapter: null,
+                                      operationOptions: null,
                                     }
                                   : candidate,
                               ),
@@ -3244,7 +3355,15 @@ export function SettingsPage({
                           className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
                         >
                           {(settings.data?.providers ?? []).map((provider) => (
-                            <option key={provider.id} value={provider.id}>
+                            <option
+                              key={provider.id}
+                              value={provider.id}
+                              disabled={
+                                providerOperationSupport(provider)[
+                                  modelOperation
+                                ] === "unsupported"
+                              }
+                            >
                               {providerRouteLabel(provider)}
                             </option>
                           ))}
@@ -3258,6 +3377,7 @@ export function SettingsPage({
                           provider={settings.data?.providers.find(
                             ({ id }) => id === route.providerId,
                           )}
+                          operation={modelOperation}
                           routeKey={route.key}
                           value={route.modelName}
                           workerId={worker?.workerId ?? null}
@@ -3353,6 +3473,23 @@ export function SettingsPage({
                           <span className="sr-only">Remove route</span>
                         </Button>
                       </div>
+                      {modelOperation !== "language" ? (
+                        <ModelOperationFields
+                          key={`${route.providerId}:${modelOperation}`}
+                          operation={modelOperation}
+                          adapter={route.operationAdapter}
+                          options={route.operationOptions}
+                          onChange={(input) =>
+                            setModelRoutes((routes) =>
+                              routes.map((candidate) =>
+                                candidate.key === route.key
+                                  ? { ...candidate, ...input }
+                                  : candidate,
+                              ),
+                            )
+                          }
+                        />
+                      ) : null}
                     </div>
                   ))}
                 </div>
