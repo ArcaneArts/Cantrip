@@ -39,6 +39,15 @@ export function normalizeEndpointModel(
   const id = text(model.id) ?? text(model.key);
   if (!id) return null;
   const operations = endpointOperationMetadata(model);
+  if (providerKind === "unsloth" && text(model.task)) {
+    // Studio also lists image, speech and video tasks. An unclassified task
+    // must not use the legacy fallback that creates a language profile.
+    for (const operation of ["language", "embedding", "decision"] as const)
+      operations.operationCapabilities[operation] ??= {
+        status: "unknown",
+        source: "unsloth-catalog",
+      };
+  }
   if (providerKind === "litellm") {
     const gateway = liteLlmOperationCapabilities(model, observedAt);
     for (const operation of ["language", "embedding", "decision"] as const) {
@@ -86,7 +95,7 @@ export function normalizeEndpointModel(
     const adapter =
       providerKind === "lm-studio" || providerKind === "litellm"
         ? "openai-decisions"
-        : providerKind === "llama-cpp" || providerKind === "vllm"
+        : ["llama-cpp", "vllm", "unsloth"].includes(providerKind ?? "")
           ? "system-one"
           : null;
     if (adapter) operations.operationCapabilities.decision.adapter = adapter;
@@ -194,6 +203,9 @@ export async function discoverEndpointModels(
     models.set(model.nativeModelId, model);
   };
   const first = new URL(`${base}/models`);
+  // Studio otherwise omits its decision models from the compatible catalog.
+  if (provider.kind === "unsloth")
+    first.searchParams.set("output_modalities", "all");
   let next: URL | null = first;
   const visited = new Set<string>();
   while (next) {

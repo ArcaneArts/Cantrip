@@ -103,7 +103,7 @@ function makePayload(
     route.capabilities.decision?.adapter ??
     (family === "openrouter"
       ? "openrouter-decisions"
-      : ["ollama", "llama-cpp", "vllm"].includes(family)
+      : ["ollama", "llama-cpp", "vllm", "unsloth"].includes(family)
         ? "system-one"
         : "openai-decisions");
   if (
