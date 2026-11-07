@@ -5304,45 +5304,63 @@
         "method": "GET",
         "path": "/api/cantrip-os/:instanceId/power",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_power.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "cantrip_server_rs/src/http/cantrip_os_power.rs",
           "cantrip_server/src/app/routes/cantrip-os-power.ts",
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
-          "docs/RUST_SERVER_READ_METHODS.md"
+          "docs/RUST_SERVER_READ_METHODS.md",
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
         ],
         "remaining": [
-          "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       },
       {
         "method": "POST",
         "path": "/api/cantrip-os/:instanceId/power-operations",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_power.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "cantrip_server_rs/src/http/cantrip_os_power.rs",
-          "cantrip_server/src/app/routes/cantrip-os-power.ts"
+          "cantrip_server/src/app/routes/cantrip-os-power.ts",
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
         ],
         "remaining": [
-          "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       },
       {
         "method": "GET",
         "path": "/api/cantrip-os/:instanceId/power-operations",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_power.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "cantrip_server_rs/src/http/cantrip_os_power.rs",
           "cantrip_server/src/app/routes/cantrip-os-power.ts",
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
-          "docs/RUST_SERVER_READ_METHODS.md"
+          "docs/RUST_SERVER_READ_METHODS.md",
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
         ],
         "remaining": [
-          "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       },
       {
@@ -5365,13 +5383,19 @@
         "method": "POST",
         "path": "/api/cantrip-os/:instanceId/power-operations/:operationId/observe",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_power.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "cantrip_server_rs/src/http/cantrip_os_power.rs",
-          "cantrip_server/src/app/routes/cantrip-os-power.ts"
+          "cantrip_server/src/app/routes/cantrip-os-power.ts",
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
         ],
         "remaining": [
-          "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       },
       {
@@ -5898,15 +5922,21 @@
       {
         "method": "GET",
         "path": "/api/cantrip-os",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "implementation": ["cantrip_server_rs/src/http/cantrip_os.rs"],
         "evidence": [
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
-          "docs/RUST_SERVER_READ_METHODS.md"
+          "docs/RUST_SERVER_READ_METHODS.md",
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
         ],
         "remaining": [
-          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       },
       {
@@ -5926,15 +5956,21 @@
       {
         "method": "GET",
         "path": "/api/cantrip-os/:instanceId/workspaces",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "implementation": ["cantrip_server_rs/src/http/cantrip_os.rs"],
         "evidence": [
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
-          "docs/RUST_SERVER_READ_METHODS.md"
+          "docs/RUST_SERVER_READ_METHODS.md",
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
         ],
         "remaining": [
-          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       },
       {
@@ -5996,61 +6032,85 @@
       {
         "method": "GET",
         "path": "/api/cantrip-os/:instanceId/workspace-operations",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "implementation": [
           "cantrip_server_rs/src/http/cantrip_os_workspace_operations.rs"
         ],
         "evidence": [
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
-          "docs/RUST_SERVER_READ_METHODS.md"
+          "docs/RUST_SERVER_READ_METHODS.md",
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
         ],
         "remaining": [
-          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       },
       {
         "method": "GET",
         "path": "/api/cantrip-os/:instanceId/workspace-operations/:operationId",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "implementation": [
           "cantrip_server_rs/src/http/cantrip_os_workspace_operations.rs"
         ],
         "evidence": [
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
-          "docs/RUST_SERVER_READ_METHODS.md"
+          "docs/RUST_SERVER_READ_METHODS.md",
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
         ],
         "remaining": [
-          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       },
       {
         "method": "GET",
         "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "implementation": ["cantrip_server_rs/src/http/cantrip_os_desktop.rs"],
         "evidence": [
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
-          "docs/RUST_SERVER_READ_METHODS.md"
+          "docs/RUST_SERVER_READ_METHODS.md",
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
         ],
         "remaining": [
-          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       },
       {
         "method": "GET",
         "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop-operations",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "implementation": ["cantrip_server_rs/src/http/cantrip_os_desktop.rs"],
         "evidence": [
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
-          "docs/RUST_SERVER_READ_METHODS.md"
+          "docs/RUST_SERVER_READ_METHODS.md",
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
         ],
         "remaining": [
-          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       },
       {
@@ -6070,29 +6130,41 @@
       {
         "method": "GET",
         "path": "/api/cantrip-os/:instanceId/packages",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "implementation": ["cantrip_server_rs/src/http/cantrip_os_packages.rs"],
         "evidence": [
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
-          "docs/RUST_SERVER_READ_METHODS.md"
+          "docs/RUST_SERVER_READ_METHODS.md",
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
         ],
         "remaining": [
-          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       },
       {
         "method": "GET",
         "path": "/api/cantrip-os/:instanceId/package-operations",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "implementation": ["cantrip_server_rs/src/http/cantrip_os_packages.rs"],
         "evidence": [
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
-          "docs/RUST_SERVER_READ_METHODS.md"
+          "docs/RUST_SERVER_READ_METHODS.md",
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
         ],
         "remaining": [
-          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       },
       {
@@ -6155,10 +6227,18 @@
         "method": "POST",
         "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop-operations",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_desktop.rs",
-        "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
+        ],
         "remaining": [
-          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       },
       {
@@ -6175,20 +6255,36 @@
         "method": "POST",
         "path": "/api/cantrip-os/:instanceId/package-operations",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_packages.rs",
-        "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
+        ],
         "remaining": [
-          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       },
       {
         "method": "POST",
         "path": "/api/cantrip-os/:instanceId/package-operations/:operationId/observe",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_packages.rs",
-        "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
+        ],
         "remaining": [
-          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       },
       {
@@ -6265,10 +6361,18 @@
         "method": "POST",
         "path": "/api/cantrip-os/:instanceId/workspace-operations/:operationId/observe",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_workspace_operations.rs",
-        "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
+        ],
         "remaining": [
-          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       },
       {
@@ -6333,6 +6437,74 @@
         ],
         "remaining": [
           "Supported-platform, mixed-server, server-interruption and long-outage product qualification remain required; the selected local adapters and cases are documented explicitly."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/recovery",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/workspaces",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/attach",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/inspect",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+          "scripts/server-rust/actual-cantrip-os-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+          "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
+          "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
         ]
       }
     ]
@@ -15843,7 +16015,7 @@
         "nodeOnly": ["2060beb2a", "fc71cc21e"]
       },
       "remaining": [
-        "Current CantripOS desktop/package/system/workspace lifecycle, failure and recovery behaviors.",
+        "Current CantripOS root checkpoint/capture, system replacement/rollback and physical-identity recovery; mid-operation Worker/native loss and missing guest receipts remain unqualified.",
         "Complete current native Task/Goal interruption/reconnect and supported-platform requalification.",
         "Consolidate historical category-row limitations against current executed evidence before final replacement completion."
       ],
@@ -15975,6 +16147,52 @@
         "Current supported-platform and packaged artifact acceptance remains required.",
         "Interrupted catalog transfer, long outages, Redis TLS/partitions and arbitrary provider implementations are outside this scoped local qualification.",
         "Default Rust cutover and production Node-server removal remain required."
+      ]
+    },
+    "fullWorkerCantripOsLifecycle": {
+      "status": "implemented-pending-platform-acceptance",
+      "sourceBaseline": "e21a9e2736e6feaf2e6c62b719e8340c4541e062",
+      "evidence": [
+        "docs/RUST_SERVER_CANTRIP_OS_LIFECYCLE.md",
+        "scripts/server-rust/actual-cantrip-os-client.mjs",
+        "scripts/server-rust/actual-cantrip-os-power-client.mjs",
+        "scripts/server-rust/actual-cantrip-os-package-client.mjs",
+        "scripts/server-rust/cantrip-os-product-fixture.mjs"
+      ],
+      "localQualification": {
+        "platform": "darwin-arm64",
+        "auth": "accounts",
+        "singleServerStorageModes": ["pglite", "bundled-postgres", "postgres"],
+        "singleServerPeers": ["node", "rust"],
+        "sharedPostgresPairs": [
+          "node/node",
+          "node/rust",
+          "rust/node",
+          "rust/rust"
+        ],
+        "redisVersion": "8.10.3",
+        "cells": 10,
+        "productSteps": 150,
+        "comparedSnapshots": 440,
+        "intentionalServerSigkills": 10,
+        "cleanProductionServerExits": 42,
+        "cleanWorkerExits": 40,
+        "completeServerLogsCheckedForPrivateMarker": 104,
+        "rustExecutableSha256": "20bb778bd097862de7be6e51ee9d2c90c57dce27700c14e856b53ce36054b985",
+        "osImageId": "sha256:0f167ee073c93b20e56a10742776b6487a9f66190124f98fb169fffd834692a4",
+        "unchangedProductionImplementation": true
+      },
+      "behavior": [
+        "Actual post-commit Server SIGKILL plus lost workspace-create HTTP reply recovers the original receipt with the original full Worker and no second guest account.",
+        "Native desktop transitions preserve runtime and exact guest target on replay; retained Docker power transitions preserve root/workspace bytes, modes and ownership.",
+        "Lost power response, saved-draft replay and explicit runtime recovery preserve immutable history without repeating a physical effect.",
+        "Actual package upgrade and broken-helper repair work with the executor disabled; dpkg configure runs once per admission, private results authenticate through the browser and exact ciphertext survives restart.",
+        "Package maintenance revokes previous execution authority: stale recovery returns409 and fresh explicit observation is required."
+      ],
+      "remaining": [
+        "Root checkpoint/capture, replacement/rollback and physical-identity recovery require separate current full-worker qualification.",
+        "Mid-operation Worker/native failure, missing receipts, SSH guests, rendered UI/desktop streaming and supported-platform packaged acceptance remain outside this scoped local result.",
+        "Final migration/rollback, performance, default Rust selection and production Node-server removal remain required."
       ]
     }
   },

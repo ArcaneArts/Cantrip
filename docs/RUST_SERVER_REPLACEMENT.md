@@ -1,5 +1,13 @@
 # Rust server replacement
 
+Current CantripOS workspace, desktop, retained power and package lifecycle now
+pass actual browser/full-worker/Docker qualification across all three stores and
+all four Redis peer pairings. Ten actual server kills after workspace receipt
+commit recover the original admission with the original worker. See
+[CantripOS lifecycle qualification](RUST_SERVER_CANTRIP_OS_LIFECYCLE.md) for exact
+scope and remaining root-system, interruption and platform work. Node remains
+the default and full replacement remains incomplete.
+
 Current provider catalog discovery now passes actual browser/full-worker
 qualification for pagination, partial native metadata, independent worker
 scopes, operation-aware routing and retained state. All three stores and all
