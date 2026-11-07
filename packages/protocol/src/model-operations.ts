@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { boundedJsonObjectSchema } from "./bounded-json.js";
 
 /** A model may implement more than one operation; a profile selects one. */
 export const modelOperationSchema = z.enum([
@@ -17,6 +18,48 @@ export const modelOperationAdapterSchema = z.enum([
   "system-one",
   "openrouter-decisions",
 ]);
+export type ModelOperationAdapter = z.infer<typeof modelOperationAdapterSchema>;
+
+/** Saved request configuration, not a claim about endpoint health or access. */
+export const modelOperationOptionsSchema = z
+  .object({
+    dimensions: z.number().int().positive().optional(),
+    inputType: z.string().trim().min(1).max(160).optional(),
+    encodingFormat: z.enum(["float", "base64"]).optional(),
+    inputModalities: z
+      .array(z.string().trim().min(1).max(80))
+      .max(32)
+      .optional(),
+    modelRevision: z.string().trim().min(1).max(500).optional(),
+    embeddingSpace: z.string().trim().min(1).max(1_000).optional(),
+    normalization: z.string().trim().min(1).max(80).optional(),
+    maxBatchSize: z.number().int().positive().optional(),
+    timeoutMs: z.number().int().positive().optional(),
+    mediaFormat: z
+      .enum(["content-parts", "base64-images", "data-url-files", "media-urls"])
+      .optional(),
+    providerRouting: boundedJsonObjectSchema.optional(),
+    // Adapters must protect model, input, questions and credentials from overrides.
+    parameters: boundedJsonObjectSchema.optional(),
+  })
+  .strict();
+export type ModelOperationOptions = z.infer<typeof modelOperationOptionsSchema>;
+
+export function modelAdapterSupportsOperation(
+  adapter: ModelOperationAdapter | null | undefined,
+  operation: ModelOperation,
+): boolean {
+  if (!adapter) return true;
+  if (operation === "language")
+    return adapter === "responses" || adapter === "chat-completions";
+  if (operation === "embedding")
+    return adapter === "openai-embeddings" || adapter === "ollama-embed";
+  return (
+    adapter === "openai-decisions" ||
+    adapter === "system-one" ||
+    adapter === "openrouter-decisions"
+  );
+}
 
 const positive = z.number().int().positive();
 const modalities = z.array(z.string().trim().min(1).max(80)).max(32);

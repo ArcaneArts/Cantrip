@@ -2,6 +2,8 @@ import { z } from "zod";
 import {
   modelOperationSchema,
   modelOperationCapabilitiesSchema,
+  modelOperationAdapterSchema,
+  modelOperationOptionsSchema,
 } from "./model-operations.js";
 import { modelProviderKinds } from "./provider-definitions.js";
 import {
@@ -596,6 +598,9 @@ export const modelProviderWireListSchema = z.array(
 );
 
 export const modelRouteInputSchema = z.object({
+  // Missing on legacy updates preserves configuration; null explicitly resets it.
+  operationAdapter: modelOperationAdapterSchema.nullable().optional(),
+  operationOptions: modelOperationOptionsSchema.nullable().optional(),
   id: z.string().min(1).optional(),
   providerId: z.string().min(1),
   modelName: z.string().trim().min(1).max(160),
