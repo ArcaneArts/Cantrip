@@ -7,7 +7,7 @@ use crate::{
 use anyhow::{Context, Result};
 use futures::FutureExt;
 use serde_json::{Value as Json, json};
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc};
 
 fn positive_integer(value: &Value) -> Option<f64> {
     value
@@ -216,9 +216,7 @@ impl SettingsRepository {
             runtime["name"] = Value::String(super::endpoint_providers::label(&kind).into());
             runtime["accountId"] = Value::Null;
             runtime["credentialHomeKey"] = Value::Null;
-            let result = commands.request(worker, Value::object([("type",Value::String(if ollama {"model.ollama.catalog"} else {"model.endpoint.catalog"}.into())), ("provider",runtime)]), Some(Duration::from_secs(120)), None).await?;
-            let inventory = super::parse_response(if ollama {"ollamaModelInventorySchema"} else {"endpointModelInventorySchema"}, result.as_ref())?;
-            let models: Vec<_> = inventory["models"].as_array().expect("validated endpoint inventory").iter().map(|model| if ollama { normalize_model(model) } else { super::endpoint_providers::normalize_model(model) }).collect();
+            let models = super::worker_catalog_pages::read(commands,worker,runtime,ollama).boxed().await?;
             let available = models.iter().map(|model|model["nativeModelId"].as_js_string().expect("validated model ID").clone()).collect();
             let accepted = self.reconcile_provider_model_catalog(owner,provider,CatalogUpdate { connection_revision: Some(revision),
                 models, available, availability_scope:scope.clone(), auto_create:true, auto_create_native_ids:None,

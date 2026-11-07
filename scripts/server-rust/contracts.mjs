@@ -172,6 +172,8 @@ export const contractRoots = [
   "cuaEffectWorkerStatusSchema",
   "ollamaModelInventorySchema",
   "endpointModelInventorySchema",
+  "modelCatalogPageSchema",
+  "modelCatalogPageRequestSchema",
   "providerQuotaSnapshotSchema",
   "providerRateLimitResetConsumeRequestSchema",
   "providerRateLimitResetConsumeResultSchema",

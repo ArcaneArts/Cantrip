@@ -1,10 +1,13 @@
 import {
-  ollamaModelInventorySchema,
+  MODEL_CATALOG_MODEL_LIMIT,
+  MODEL_CATALOG_BYTES_LIMIT,
+  ollamaModelInventoryItemSchema,
   type OllamaModelInventory,
   type OllamaModelInventoryItem,
 } from "@cantrip/protocol";
 
 import { workerLogger } from "./logger.js";
+import { fetchModelCatalogJson } from "./model-catalog-json.js";
 
 const REQUEST_TIMEOUT_MS = 20_000;
 const SHOW_CONCURRENCY = 4;
@@ -59,29 +62,6 @@ function ollamaApiUrl(baseUrl: string, endpoint: "show" | "tags"): URL {
   return url;
 }
 
-async function requestJson(
-  fetchImplementation: FetchImplementation,
-  url: URL,
-  apiKey: string | null,
-  init: RequestInit = {},
-): Promise<unknown> {
-  const headers = new Headers(init.headers);
-  headers.set("accept", "application/json");
-  if (init.body) headers.set("content-type", "application/json");
-  if (apiKey) headers.set("authorization", `Bearer ${apiKey}`);
-  const response = await fetchImplementation(url, {
-    ...init,
-    headers,
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Ollama ${url.pathname} returned ${response.status} ${response.statusText}.`,
-    );
-  }
-  return response.json();
-}
-
 async function parallelMap<T, R>(
   values: T[],
   concurrency: number,
@@ -105,6 +85,7 @@ export async function discoverOllamaModels(
   baseUrl: string,
   apiKey: string | null,
   fetchImplementation: FetchImplementation = globalThis.fetch,
+  signal?: AbortSignal,
 ): Promise<OllamaModelInventory> {
   const startedAtMs = Date.now();
   const endpointOrigin = new URL(baseUrl).origin;
@@ -118,10 +99,12 @@ export async function discoverOllamaModels(
   });
   try {
     const tagsPayload = objectValue(
-      await requestJson(
-        fetchImplementation,
+      await fetchModelCatalogJson(
         ollamaApiUrl(baseUrl, "tags"),
         apiKey,
+        fetchImplementation,
+        REQUEST_TIMEOUT_MS,
+        signal,
       ),
     );
     if (!Array.isArray(tagsPayload?.models)) {
@@ -133,15 +116,20 @@ export async function discoverOllamaModels(
       return record && name ? [{ name, record }] : [];
     });
 
+    if (tags.length > MODEL_CATALOG_MODEL_LIMIT)
+      throw new Error("Model catalog exceeded the model count limit.");
+    let bytes = 0;
     const models = await parallelMap(
-      tags.slice(0, 1_000),
+      tags,
       SHOW_CONCURRENCY,
       async ({ name, record }): Promise<OllamaModelInventoryItem> => {
         const show = objectValue(
-          await requestJson(
-            fetchImplementation,
+          await fetchModelCatalogJson(
             ollamaApiUrl(baseUrl, "show"),
             apiKey,
+            fetchImplementation,
+            REQUEST_TIMEOUT_MS,
+            signal,
             {
               method: "POST",
               body: JSON.stringify({ model: name, verbose: false }),
@@ -150,7 +138,7 @@ export async function discoverOllamaModels(
         );
         const details =
           objectValue(show?.details) ?? objectValue(record.details);
-        return {
+        const model = ollamaModelInventoryItemSchema.parse({
           name,
           modifiedAt: isoDate(show?.modified_at ?? record.modified_at),
           sizeBytes: nonnegativeInteger(record.size),
@@ -163,14 +151,18 @@ export async function discoverOllamaModels(
             capability.toLowerCase(),
           ),
           modelInfo: objectValue(show?.model_info) ?? {},
-        };
+        });
+        bytes += Buffer.byteLength(JSON.stringify(model)) + 1;
+        if (bytes > MODEL_CATALOG_BYTES_LIMIT)
+          throw new Error("Model catalog exceeded its snapshot byte limit.");
+        return model;
       },
     );
 
-    const inventory = ollamaModelInventorySchema.parse({
+    const inventory: OllamaModelInventory = {
       models,
       observedAt: new Date().toISOString(),
-    });
+    };
     workerLogger.event("info", "Ollama model catalog refreshed", {
       event: "provider.catalog.refresh-completed",
       subsystem: "provider-catalog",

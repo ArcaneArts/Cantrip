@@ -20,6 +20,36 @@ servers. Temporary unavailability and stale discovery do not clear defaults.
 Removing a selected custom subagent configuration also clears its paired override
 toggle so an empty custom selection cannot remain active.
 
+## Catalog snapshots
+
+Compatible endpoints and Ollama transfer complete worker-local catalog snapshots
+in pages of at most 200 models and 2 MiB. Both servers verify the snapshot ID,
+transfer ID, observation, total, offsets and unique model IDs before reconciling the complete
+list. Failed, expired or incomplete transfers keep the previous catalog stale;
+they do not publish a first page or mark its unseen models unavailable.
+
+Discovery accepts up to 50,000 models and 32 MiB of normalized metadata, with
+16 MiB per native HTTP response. Worker discovery is deduplicated per actual
+namespace and connection and limited to four simultaneous loads. Up to eight
+snapshots share a 32 MiB cache, expire after two idle minutes, and are bound to the
+server, owner, worker, provider and credential configuration. Transfers remain
+pinned until every active reader's final page or idle expiry; new snapshots wait for cache space
+rather than evicting another in-progress transfer. Whole discovery and
+transfer requests retain their two-minute deadlines. Ollama no longer slices its
+installed models at 1,000; metadata requests retain their concurrency limit.
+
+Compatible catalogs may advertise continuation URLs on the same origin. Cantrip
+follows those URLs with cycle/page bounds, retaining custom base paths, and does
+not guess cursor parameters. An advertised incomplete response without a usable
+continuation fails explicitly. Older workers may return their complete legacy
+inventory; older servers receive a complete bounded legacy inventory or an error,
+never an unmarked first page.
+
+OpenRouter's public catalog already explicitly requests `output_modalities=all`,
+which its [Models documentation](https://openrouter.ai/docs/guides/overview/models)
+defines to include embedding and decision models as well as language models.
+This public catalog remains separate from authenticated worker endpoint discovery.
+
 ## Embedding entry point
 
 The application exports `embed()` from `cantrip_app/src/lib/api.ts`. It accepts a
