@@ -27,6 +27,11 @@ import type {
 } from "./inference-admission.js";
 import type { RuntimeProvider } from "./protected-secrets.js";
 import { ModelOperationError } from "./model-operation-error.js";
+import {
+  decisionClipFields,
+  inlineDecisionMedia as data,
+  systemOneMedia,
+} from "./model-decision-media.js";
 
 type Route = Omit<ModelOperationRoute, "provider"> & {
   provider: RuntimeProvider;
@@ -66,19 +71,6 @@ function count(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
     malformed();
   return value;
-}
-function data(url: string, kind: "image" | "audio" | "video") {
-  const match = /^data:([^;,]+);base64,([A-Za-z0-9+/]+={0,2})$/.exec(url);
-  if (
-    !match ||
-    !match[1]!.toLowerCase().startsWith(`${kind}/`) ||
-    match[2]!.length % 4 === 1
-  )
-    return fail(
-      "unsupported-input",
-      `This decision interface requires an inline base64 ${kind} data URL. Remote media is not fetched or converted.`,
-    );
-  return { mime: match[1]!.toLowerCase(), base64: match[2]! };
 }
 function endpoint(route: Route, adapter: Adapter): string {
   let base = normalizeResponsesBaseUrl(route.provider.baseUrl);
@@ -141,6 +133,9 @@ function makePayload(
     "state",
     "questions",
     "images",
+    "audio",
+    "videos",
+    "files",
     "assets",
     "messages",
     "provider",
@@ -150,8 +145,10 @@ function makePayload(
     "api-key",
     "access_token",
     "base_url",
+    "api_base",
     "baseurl",
     "headers",
+    "extra_headers",
     "authorization",
   ]);
   if (
@@ -166,14 +163,17 @@ function makePayload(
   const media = request.media ?? [];
   let body: Record<string, unknown>;
   if (selected === "openai-decisions") {
-    if (media.some((part) => part.type !== "image"))
+    const gatewayMedia =
+      family === "litellm" || options.mediaFormat === "media-urls";
+    if (!gatewayMedia && media.some((part) => part.type !== "image"))
       fail(
         "unsupported-input",
         "The OpenAI Decisions envelope accepts images, text and JSON, not audio or video.",
       );
     if (
       options.providerRouting ||
-      (options.mediaFormat && options.mediaFormat !== "content-parts")
+      (options.mediaFormat &&
+        !["content-parts", "media-urls"].includes(options.mediaFormat))
     )
       fail(
         "invalid-request",
@@ -213,14 +213,17 @@ function makePayload(
             typeof request.state === "string"
               ? { type: "input_text", text: request.state }
               : { type: "input_json", data: request.state },
-            ...media.map((part) => ({
-              type: "input_image",
-              image_url: part.url,
-            })),
+            ...media
+              .filter((part) => part.type === "image")
+              .map((part) => ({
+                type: "input_image",
+                image_url: part.url,
+              })),
           ],
         },
       ],
       questions,
+      ...(gatewayMedia ? decisionClipFields(media) : {}),
     };
   } else {
     const questions = Object.fromEntries(
@@ -249,39 +252,27 @@ function makePayload(
       ]),
     );
     if (selected === "system-one") {
-      if (
-        options.providerRouting ||
-        (options.mediaFormat && options.mediaFormat !== "base64-images")
-      )
+      if (options.providerRouting)
         fail(
           "invalid-request",
-          "System One uses a shared base64 images array, not gateway routing or content-part options.",
+          "System One does not accept OpenRouter routing options.",
         );
-      const images = media.map((part) => {
-        if (part.type === "video")
-          return fail(
-            "unsupported-input",
-            "The System One images envelope does not accept video.",
-          );
-        const encoded = data(part.url, part.type);
-        if (
-          part.type === "audio" &&
-          !["audio/wav", "audio/x-wav", "audio/wave"].includes(encoded.mime)
-        )
-          fail(
-            "unsupported-input",
-            "System One audio inputs must be WAV clips; no transcoding is performed.",
-          );
-        return encoded.base64;
-      });
+      const nativeMedia = systemOneMedia(family, options, media);
       body = {
         ...options.parameters,
         model: route.modelName,
-        state: request.state,
+        state: nativeMedia.references.length
+          ? [request.state, ...nativeMedia.references]
+          : request.state,
         questions,
-        ...(images.length ? { images } : {}),
+        ...nativeMedia.fields,
       };
     } else {
+      if (options.typesafeImages)
+        fail(
+          "invalid-request",
+          "OpenRouter Decisions uses its own image parts and does not need the TypeSafe gateway header.",
+        );
       if (options.mediaFormat && options.mediaFormat !== "content-parts")
         fail(
           "invalid-request",
@@ -489,6 +480,9 @@ async function execute(
           headers: {
             "content-type": "application/json",
             accept: "application/json",
+            ...(options.typesafeImages
+              ? { "TypeSafe-Danger-Zone-Images": "true" }
+              : {}),
             ...(route.provider.apiKey
               ? { authorization: `Bearer ${route.provider.apiKey}` }
               : {}),

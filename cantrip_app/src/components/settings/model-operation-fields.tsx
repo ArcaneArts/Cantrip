@@ -44,9 +44,21 @@ export function ModelOperationFields({
 }) {
   const mediaFormats: [string, string][] =
     operation === "decision"
-      ? adapter === "system-one"
-        ? [["base64-images", "Shared base64 media"]]
-        : [["content-parts", "Content parts"]]
+      ? adapter === "system-one" || !adapter
+        ? [
+            ["base64-images", "Raw base64 images (Ollama)"],
+            ["data-url-files", "Data-URL files (llama.cpp)"],
+            ["media-urls", "Typed media arrays (vLLM / gateways)"],
+            ...(!adapter
+              ? [["content-parts", "Content parts"] as [string, string]]
+              : []),
+          ]
+        : adapter === "openai-decisions"
+          ? [
+              ["content-parts", "Content parts"],
+              ["media-urls", "Gateway audio/video extension"],
+            ]
+          : [["content-parts", "Content parts"]]
       : adapter === "ollama-embed" || adapter === "vllm-bge-m3"
         ? []
         : adapter === "vllm-embeddings" || adapter === "vllm-pooling"
@@ -199,6 +211,18 @@ export function ModelOperationFields({
                 </NativeSelect>
               </label>
             </>
+          ) : adapter !== "openrouter-decisions" || options?.typesafeImages ? (
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                className="size-3.5 accent-primary"
+                checked={options?.typesafeImages ?? false}
+                onChange={(event) =>
+                  patch("typesafeImages", event.target.checked || undefined)
+                }
+              />
+              TypeSafe image extension (LiteLLM / gateway)
+            </label>
           ) : null}
           {textField("Model revision", "modelRevision")}
           {numberField("Request timeout (milliseconds)", "timeoutMs")}
