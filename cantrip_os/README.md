@@ -70,14 +70,18 @@ verified checkpoint or explicitly reset the root image while retaining the old
 writable layer and mounted data. Registered Worker commands now provide durable
 private capture/replacement/rollback jobs and helper-independent Docker discovery.
 Both Server implementations own system admission/history and explicit fresh
-identity recovery; client system controls remain dependent Phase 5 work.
+identity recovery. Project Settings → CantripOS → **System checkpoints and recovery**
+supplies capture, retained replacement/reset, rollback and saved-request recovery.
 Docker/ISO scripts include the recovery package with the executor edition;
 `CANTRIP_OS_RECOVERY=0` omits it independently. The package is an administrative
 foundation. [Private Worker archive encryption/transfer and Server admissions](BACKUPS.md)
 now back the capture, history, restore and rollback controls in project CantripOS
 settings. The real Worker/grant/browser Docker checkpoint is recorded in
-[acceptance](ACCEPTANCE.md). Restored-source adoption and broader remote/lifecycle
-acceptance remain Phase 5 work. Guest transfer staging is root-private plaintext.
+[acceptance](ACCEPTANCE.md). **Register existing or restored Linux files** reserves fresh source bindings
+after restore; existing chats keep their captured placement. Local recovery,
+clone identity and current-native product evidence are recorded in acceptance.
+Real external SSH and final distribution acceptance remain open Phase 5 work.
+Guest transfer staging is root-private plaintext.
 
 From the repository root, with Node 22.13+ (or Node 24) and a running Docker engine:
 
@@ -172,8 +176,9 @@ not copy defaults into persistent home files on every startup.
 Both Server implementations now retain [system admissions and history](SYSTEM_REPLACEMENT.md#server-owned-system-admissions)
 for capture, retained replacement/reset and rollback. Preparation is metadata-only;
 explicit completed-target recovery fences old handles and establishes new identity
-authority before runtime/source verification. Client system controls remain the
-next dependent block.
+authority before runtime/source verification. Use **System checkpoints and
+recovery** in Project Settings → CantripOS for the
+[review, history and recovery workflow](PRODUCT_WORKFLOW.md#shared-system-checkpoints-and-recovery).
 
 ## Customizing the desktop
 

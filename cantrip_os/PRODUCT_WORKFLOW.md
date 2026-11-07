@@ -553,8 +553,12 @@ for retry and path semantics.
 
 The actual Docker browser acceptance covers restore, registration, file editing,
 Linux terminal and Run execution through the full Server/Worker. Agent creation
-captures the restored source, but current-runtime model acceptance is still
-outstanding. Separate native Controller tests cover Git registration and a new
+captures the restored source. Separate
+[current native model and viewing acceptance](ACCEPTANCE.md#phase-5-current-native-model-and-viewing-2026-11-07)
+exercises a guided local-provider turn on a Linux-owned source, agent CUA,
+authenticated console output and desktop streaming through the full Worker. It
+does not establish model acceptance on restored files or an external SSH target.
+Separate native Controller tests cover Git registration and a new
 secondary worktree in Docker and the installed VM; they do not substitute for
 full installed-system product or real remote/cloud acceptance. Phase 5 remains
 in progress.

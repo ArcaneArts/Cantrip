@@ -37,8 +37,12 @@ application/source verification is still necessary after maintenance.
 A checkpoint image must match its original operation/request/container labels and
 the same logical instance. Known private system images cannot be declared normal
 base templates. Private images contain identity material; this is same-instance
-recovery, not clone provisioning. Product admission fencing and fresh clone
-identities/SSH keys remain separate required work.
+recovery, not clone provisioning. Completed-target recovery through the Server
+retires the earlier attachment authority and issues fresh handles explicitly.
+Fresh-image and offline-install clone preparation separately rotate Linux and
+enrollment identities and managed SSH host keys; a normal restart retains them.
+The [local clone acceptance](ACCEPTANCE.md#phase-5-fresh-machine-identity-for-templates-and-copied-installs-2026-11-07)
+records that distinction. These local results do not complete external SSH acceptance.
 
 ## Transition and failure behavior
 

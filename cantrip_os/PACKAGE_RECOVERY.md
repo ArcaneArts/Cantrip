@@ -136,7 +136,10 @@ encryption key with a separate package-operation purpose, bound to owner,
 Server, Worker, instance, attachment, target and operation. A terminal encrypted
 receipt is retained once and returned unchanged across Manager restarts. Raw
 guest paths and diagnostics stay out of the public result. These are Worker
-contracts used by both Servers' package management APIs; client controls follow.
+contracts used by both Servers' package management APIs. Project Settings →
+CantripOS → **Cantrip integration packages** exposes build selection, reviewed
+update/repair, saved-request observation and protected history. See the
+[product workflow](PRODUCT_WORKFLOW.md) for the complete client recovery paths.
 
 ## Server-owned package admissions
 
