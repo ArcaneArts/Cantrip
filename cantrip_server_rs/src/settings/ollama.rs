@@ -216,15 +216,20 @@ impl SettingsRepository {
             runtime["name"] = Value::String(super::endpoint_providers::label(&kind).into());
             runtime["accountId"] = Value::Null;
             runtime["credentialHomeKey"] = Value::Null;
-            let models = super::worker_catalog_pages::read(commands,worker,runtime,ollama).boxed().await?;
+            let inventory = super::worker_catalog_pages::read(commands,worker,runtime,ollama).boxed().await?;
+            let incomplete = inventory.metadata_incomplete;
+            let models = inventory.models;
             let available = models.iter().map(|model|model["nativeModelId"].as_js_string().expect("validated model ID").clone()).collect();
             let accepted = self.reconcile_provider_model_catalog(owner,provider,CatalogUpdate { connection_revision: Some(revision),
+                preserve_missing_models: incomplete,
                 models, available, availability_scope:scope.clone(), auto_create:true, auto_create_native_ids:None,
                 worker_id:Some(worker.into()), account_id:None, default_native_id:None,
             }).boxed().await?;
             if !accepted { return self.get_provider_model_catalog(owner, provider, false).await; }
-            self.set_provider_catalog_sync_state(provider, &json!({"connection":connection,"scopeKey":scope,"workerId":worker,"status":"current","errorCode":null,"lastSuccessAt":now()})).await?;
-            self.get_provider_model_catalog(owner,provider,false).await
+            let mut sync = json!({"connection":connection,"scopeKey":scope,"workerId":worker,"status":if incomplete {"stale"}else{"current"},"errorCode":if incomplete {Some("endpoint-native-metadata-unavailable")}else{None}});
+            if !incomplete { sync["lastSuccessAt"] = json!(now()); }
+            self.set_provider_catalog_sync_state(provider, &sync).await?;
+            self.get_provider_model_catalog(owner,provider,incomplete).await
         }.boxed().await;
         match refresh {
             Ok(result) => Ok(result),

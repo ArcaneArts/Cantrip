@@ -104,6 +104,7 @@ impl CatalogService {
                 provider,
                 CatalogUpdate {
                     connection_revision: revision,
+                    preserve_missing_models: false,
                     availability_scope: GLOBAL_SCOPE.into(),
                     available: models
                         .iter()

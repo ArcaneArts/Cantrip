@@ -632,6 +632,7 @@ export abstract class IdentityModelRepositoryFacade {
       models: ProviderModelCatalogWrite[];
       availabilityScope: string;
       availableNativeModelIds: ReadonlySet<string>;
+      preserveMissingModels?: boolean;
       autoCreateLogicalModels?: boolean;
       autoCreateNativeModelIds?: ReadonlySet<string>;
       availabilityWorkerId?: string | null;

@@ -45,6 +45,29 @@ continuation fails explicitly. Older workers may return their complete legacy
 inventory; older servers receive a complete bounded legacy inventory or an error,
 never an unmarked first page.
 
+LM Studio's native [`/api/v1/models` catalog](https://lmstudio.ai/docs/developer/rest/list)
+adds installed model categories and loading metadata to its compatible catalog.
+If that native request fails or its overlay is malformed, the worker returns the
+usable standard catalog with `metadataIncomplete: true`. The marker is fixed for
+every page of its snapshot. Both servers apply successful observations, preserve
+missing models and unknown metadata from the prior catalog, and report the scope
+as stale instead of asserting that native-only models disappeared. An invalid
+overlay is discarded atomically, including entries processed before the error.
+Discovery does not require the native interface to permit a configured inference
+request.
+
+Operation classification is reconciled with prior observations from the same
+worker/account scope, not another worker's catalog. Unreported operations retain
+their last observation; explicitly reported supported, unsupported, or unknown
+statuses replace it. This also prevents a temporary loss of type metadata from
+creating a language profile for a previously identified embedding/decision model.
+Changing a provider's base URL or protected key clears its operation observations
+alongside the existing native metadata invalidation. Retention does not carry old
+capabilities into a different connection; configured profiles and defaults remain.
+Fresh compatible observations carry their observation time. These timestamps are
+retained in capabilities but excluded from metadata hashes, so identical metadata
+does not create a new durable snapshot on every refresh.
+
 OpenRouter's public catalog already explicitly requests `output_modalities=all`,
 which its [Models documentation](https://openrouter.ai/docs/guides/overview/models)
 defines to include embedding and decision models as well as language models.

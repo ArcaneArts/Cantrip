@@ -12,16 +12,21 @@ use std::{
 
 /// Collect a complete immutable snapshot before catalog reconciliation can mark
 /// any missing model unavailable. A failed page leaves the saved catalog intact.
+pub(super) struct CatalogRead {
+    pub models: Vec<Value>,
+    pub metadata_incomplete: bool,
+}
+
 pub(super) async fn read(
     commands: &Arc<LimitedCommandBus>,
     worker: &str,
     runtime: Value,
     is_ollama: bool,
-) -> Result<Vec<Value>> {
+) -> Result<CatalogRead> {
     let deadline = Instant::now() + Duration::from_secs(120);
     let kind = if is_ollama { "ollama" } else { "endpoint" };
     let transfer_id = uuid::Uuid::new_v4().to_string();
-    let mut snapshot: Option<(JsString, JsString, i64)> = None;
+    let mut snapshot: Option<(JsString, JsString, i64, bool)> = None;
     let mut offset = 0_i64;
     let mut bytes = 0_usize;
     let mut models = Vec::new();
@@ -34,7 +39,7 @@ pub(super) async fn read(
             ("offset", Value::Number(offset as f64)),
             ("transferId", Value::String(transfer_id.clone().into())),
         ]);
-        if let Some((id, _, _)) = &snapshot {
+        if let Some((id, _, _, _)) = &snapshot {
             page_request["snapshotId"] = Value::String(id.clone());
         }
         let result = commands
@@ -72,7 +77,7 @@ pub(super) async fn read(
                 },
                 result.as_ref(),
             )?;
-            return Ok(inventory["models"]
+            let models = inventory["models"]
                 .as_array()
                 .context("validated legacy inventory")?
                 .iter()
@@ -83,7 +88,11 @@ pub(super) async fn read(
                         endpoint_providers::normalize_model(model)
                     }
                 })
-                .collect());
+                .collect();
+            return Ok(CatalogRead {
+                models,
+                metadata_incomplete: !is_ollama && inventory["metadataIncomplete"] == true,
+            });
         }
         let page = parse_response("modelCatalogPageSchema", result.as_ref())?;
         let id = page["snapshotId"]
@@ -95,16 +104,17 @@ pub(super) async fn read(
             .context("snapshot observation")?
             .clone();
         let total = page["total"].as_i64().context("snapshot total")?;
+        let incomplete = !is_ollama && page["metadataIncomplete"] == true;
         anyhow::ensure!(
             page["kind"] == kind
                 && page["transferId"] == transfer_id.as_str()
                 && page["offset"].as_i64() == Some(offset)
-                && snapshot
-                    .as_ref()
-                    .is_none_or(|previous| previous == &(id.clone(), observed.clone(), total)),
+                && snapshot.as_ref().is_none_or(
+                    |previous| previous == &(id.clone(), observed.clone(), total, incomplete)
+                ),
             "Model catalog page belongs to another snapshot."
         );
-        snapshot = Some((id, observed, total));
+        snapshot = Some((id, observed, total, incomplete));
         let page_bytes = page.stringify().len();
         anyhow::ensure!(
             page_bytes <= 2 * 1024 * 1024,
@@ -137,7 +147,10 @@ pub(super) async fn read(
                 offset == total,
                 "Model catalog ended before its complete snapshot."
             );
-            return Ok(models);
+            return Ok(CatalogRead {
+                models,
+                metadata_incomplete: incomplete,
+            });
         }
         anyhow::ensure!(
             !batch.is_empty() && page["nextOffset"].as_i64() == Some(offset) && offset < total,
