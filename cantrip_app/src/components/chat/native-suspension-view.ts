@@ -2,7 +2,7 @@ import type { ChatNativeSuspension } from "@cantrip/protocol";
 
 const recoveryErrors = {
   "pause-failed":
-    "The turn could not be saved. Retry Pause before closing the worker.",
+    "The turn could not be saved. Retry Pause, use live Resume, or Stop this turn. Keep the worker running until Pause is saved.",
   "restore-failed": "The paused turn could not be restored. Retry Resume.",
   "stop-failed": "The turn could not be stopped. Retry Stop.",
   "worker-offline": "The worker is offline. Reconnect it and retry.",

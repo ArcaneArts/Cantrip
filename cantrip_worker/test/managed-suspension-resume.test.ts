@@ -7,6 +7,8 @@ import {
   type ManagedSuspensionResumeTarget,
 } from "../src/codex/managed-suspension-resume.js";
 import { ManagedSuspensionSourceError } from "../src/codex/managed-suspended-source.js";
+import { CodexNativeRpcError } from "../src/codex/rpc-protocol.js";
+import { NativeSuspensionCheckpointMissing } from "../src/codex/native-suspension-errors.js";
 import { openNativeCommandContent } from "../src/native-command-content.js";
 
 function deferred() {
@@ -291,6 +293,66 @@ describe("worker explicit suspension recovery coordinator", () => {
     });
     expect(f.target.adapter.restoreSuspendedExecution).not.toHaveBeenCalled();
     expect(f.target.runtime.setActiveChatPaused).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["checkpoint JSON is corrupt", "checkpoint-corrupt"],
+    ["checkpoint checksum does not match", "checkpoint-corrupt"],
+    [
+      "checkpoint runtime version is unsupported: requires private-runtime",
+      "checkpoint-incompatible",
+    ],
+    ["native suspension checkpoint is missing", "checkpoint-missing"],
+  ])(
+    "retains the safe category for received native failure: %s",
+    async (message, code) => {
+      const f = fixture();
+      const diagnostic = `${message}: /private/worker/secret-path`;
+      f.target.adapter.restoreSuspendedExecution.mockRejectedValueOnce(
+        new CodexNativeRpcError(
+          diagnostic,
+          { code: -32600, message: diagnostic },
+          "turn/suspension",
+        ),
+      );
+      const error = await f.resumes.run(f.command).catch((error) => error);
+      expect(error).toMatchObject({ code });
+      expect(error.message).not.toMatch(/secret-path|private-runtime/);
+      expect(f.target.runtime.setActiveChatPaused).not.toHaveBeenCalled();
+    },
+  );
+  it("reports actual empty native inspection without exposing diagnostics", async () => {
+    const f = fixture();
+    f.target.adapter.restoreSuspendedExecution.mockRejectedValueOnce(
+      new NativeSuspensionCheckpointMissing(),
+    );
+    await expect(f.resumes.run(f.command)).rejects.toMatchObject({
+      code: "checkpoint-missing",
+    });
+  });
+  it.each(["turn/start", undefined])(
+    "does not classify unrelated native errors (%s)",
+    async (method) => {
+      const f = fixture();
+      f.ports.prepare.mockRejectedValueOnce(
+        new CodexNativeRpcError(
+          "checkpoint JSON is corrupt: private-path",
+          { code: -32600, message: "checkpoint JSON is corrupt: private-path" },
+          method,
+        ),
+      );
+      await expect(f.resumes.run(f.command)).rejects.toMatchObject({
+        code: "restore-failed",
+      });
+    },
+  );
+  it("keeps Stop failure distinct from checkpoint Resume errors", async () => {
+    const f = fixture();
+    f.ports.prepare.mockRejectedValueOnce(
+      new NativeSuspensionCheckpointMissing(),
+    );
+    await expect(
+      f.resumes.stop({ ...f.command, type: "chat.suspension.stop" }),
+    ).rejects.toMatchObject({ code: "stop-failed" });
   });
   it("retains specific actual source errors and supports retry after a failed attempt", async () => {
     const f = fixture();

@@ -29,6 +29,10 @@ async function processes() {
     });
 }
 function signal(pid, name) {
+  assert.ok(
+    Number.isSafeInteger(pid) && pid > 1,
+    "Signal one owned process, never a broadcast target",
+  );
   try {
     process.kill(pid, name);
   } catch (error) {
@@ -87,14 +91,18 @@ export async function killOwnedWorkerTree(
             !scopedExecutable(row)
           )
             continue;
-          assert.notEqual(
-            row.group,
-            hostGroup,
-            "Never signal the acceptance host group",
-          );
           if (!owned.has(row.pid)) changed = true;
           owned.set(row.pid, row);
-          groups.add(row.group);
+          // A scoped executable can share an unrelated supervisor's group.
+          // Adopt group membership only when its leader is itself owned.
+          if (row.group > 1 && owned.has(row.group)) {
+            assert.notEqual(
+              row.group,
+              hostGroup,
+              "Never adopt the acceptance host group",
+            );
+            groups.add(row.group);
+          }
         }
       } while (changed);
       frozen = rows.filter(
@@ -106,13 +114,34 @@ export async function killOwnedWorkerTree(
         )
       )
         break;
-      for (const row of frozen) signal(row.pid, "SIGSTOP");
+      for (const row of frozen)
+        if (!row.state.startsWith("Z")) signal(row.pid, "SIGSTOP");
       if (Date.now() > deadline)
         throw new Error("Owned worker processes did not stop for termination");
       await delay(5);
     }
   } finally {
-    for (const group of groups) signal(-group, "SIGKILL");
+    // Every producer is frozen, so terminate the actual collected processes.
+    // Group signaling can include unrelated members or fail after its leader
+    // exits; neither is evidence that this run's processes were terminated.
+    const failures = [];
+    for (const row of frozen) {
+      if (row.state.startsWith("Z")) continue;
+      try {
+        signal(row.pid, "SIGKILL");
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (child.exitCode === null && child.signalCode === null) {
+      try {
+        signal(child.pid, "SIGKILL");
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length)
+      throw new AggregateError(failures, "Owned process termination failed");
     await closed;
   }
   for (;;) {

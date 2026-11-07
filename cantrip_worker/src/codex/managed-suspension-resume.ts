@@ -15,6 +15,7 @@ import {
   ManagedSuspensionSourceError,
   type openManagedSuspensionSource,
 } from "./managed-suspended-source.js";
+import { nativeSuspensionCheckpointError } from "./native-suspension-errors.js";
 
 export type ManagedSuspensionResumeCommand = Extract<
   WorkerCommand,
@@ -234,6 +235,12 @@ export class ManagedSuspensionResumes {
         error instanceof ManagedSuspensionResumeError
       )
         throw error;
+      const checkpoint = !stopping && nativeSuspensionCheckpointError(error);
+      if (checkpoint)
+        throw new ManagedSuspensionResumeError(
+          checkpoint.code,
+          checkpoint.message,
+        );
       // Native diagnostics can contain private worker paths. The saved record
       // and its actual native checkpoint remain available for explicit recovery.
       throw new ManagedSuspensionResumeError(

@@ -55,6 +55,7 @@ export async function createNativeSharedViewFixture(
     computerUse?: boolean;
     plugins?: boolean;
     durablePause?: boolean;
+    multiAgentV2?: boolean;
     afterNativeReceipt?(method: string): void;
     beforeRestoredPublication?(): Promise<void>;
     beforeNativeSettlement?(
@@ -153,7 +154,10 @@ export async function createNativeSharedViewFixture(
     await Promise.all([mkdir(cwd), mkdir(home), mkdir(data)]);
     await writeFile(
       path.join(home, "config.toml"),
-      `features.plugins=${options.plugins ?? false}\n`,
+      `features.plugins=${options.plugins ?? false}\n` +
+        (options.multiAgentV2
+          ? 'features.multi_agent_v2.enabled=true\nfeatures.multi_agent_v2.tool_namespace="cantrip_agents"\n'
+          : ""),
     );
     authority = await createNativeCommandWorkerFixture({
       cwd,

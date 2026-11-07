@@ -369,6 +369,23 @@ earlier checkpoints require their matching runtime for Resume and remain
 inspectable/stoppable. The protected resource and encryption envelope versions
 remain 2 and 1 respectively. Complete product recovery is still outstanding.
 
+Patch `0091` advances the native suspension contract to
+`0.166.0/cantrip-suspension-v9`. Its capture boundary checks actual open native
+child threads, including V1 children without V2 agent-path membership. V1 children
+must finish and be explicitly closed before the parent can confirm durable
+Pause. V2 retains agents for follow-up without a close-agent tool; a retained
+V2 tree supports live Pause/Resume and Stop but cannot confirm durable Pause.
+A refused capture retains the live paused turn and its Resume/Stop
+controls. Checkpoints written by v8 do not attest this stronger boundary and
+require their matching runtime for Resume; v9 must preserve their evidence and
+offer Stop rather than silently restoring them. The protected resource and
+encryption formats remain unchanged. The macOS ARM64 optimized runtime passed
+all 73 original native acceptance cases, plus the V2 refusal/Resume/Stop case,
+including the open-V1-child refusal and closed-child parent recovery. Mounted
+Node and Rust acceptance also passed corrupt and
+v8-version rejection, retained evidence, idle browser reload and explicit retry
+through two process-tree terminations. Other platform builds are unqualified.
+
 Patch `0075` leaves those formats unchanged and adds a held MCP lifecycle.
 Attaching a suspended native thread defers all initial server publication and
 required-server validation until explicit Resume. Existing clients quiesce before

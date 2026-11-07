@@ -2,7 +2,7 @@
 
 ## Delivery status
 
-This feature is being implemented in sequential, independently merged milestones.
+This feature was implemented in sequential, independently merged milestones.
 The checkpoint storage foundation is implemented in patch `0048`; patch `0051`
 connects native capture and original-ID restoration through experimental native
 operations. Patch `0053` adds stored inspection, explicit attachment holds and
@@ -22,8 +22,11 @@ held restoration and original-input completion. Cold Stop can acquire a held
 observer for cancellation without restoring or releasing the continuation.
 The production worker acceptance
 below exercises this through the encrypted browser SDK and mounted application.
-The complete resource, error and autonomous-execution matrix is still being integrated; this is
-not yet the complete product guarantee.
+The qualified process-restart guarantee applies after durable confirmation.
+Resource states that cannot receive confirmation retain live controls, as
+described below. The current optimized native and production acceptance runs
+use macOS ARM64; Windows/Linux workers and device-specific client shells have
+not been qualified by these runs.
 
 The complete acceptance target is:
 
@@ -37,6 +40,61 @@ Process termination before durable confirmation and loss of persistent storage
 are outside this first guarantee. Stop remains cancellation, not suspension.
 A replacement turn, repeated original prompt, or injected "continue" message
 does not satisfy the contract.
+
+## Resource limits
+
+| Resource                                             | Durable Pause policy                                                                                                                                                        |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Completed commands and unread yielded-session output | Preserve completed results and polling identity; do not rerun the command.                                                                                                  |
+| Running PTYs/background commands                     | Refuse durable capture until the resource finishes; retain live Resume and Stop.                                                                                            |
+| Questions and approvals                              | Keep Pausing and the responder usable until the reply and resulting tool outcome are committed.                                                                             |
+| Finalized CodeMode values                            | Protect and restore supported stored values over gRPC or framed stdio; unsupported active state refuses capture.                                                            |
+| MCP sessions                                         | Quiesce before confirmation, defer startup while held, and initialize fresh authenticated sessions on Resume. Opaque external handles are not recreated by replaying calls. |
+| V1 native subagents                                  | Refuse while children remain open. Finish and close them, then Retry Pause; completed child results stay in parent history.                                                 |
+| V2 native subagent trees                             | Retained agents remain available for follow-up and have no close-agent tool. Durable tree suspension is unavailable; use live Resume or Stop and keep the worker alive.     |
+
+The V1 and V2 policies are exercised with actual native child agents and local
+provider requests. V2 qualification uses the same native feature configuration
+as ChatGPT routes; it does not qualify ChatGPT account authentication. No child
+checkpoint, invented child result, or replacement parent turn substitutes for
+the unsupported V2 tree continuation.
+
+## Qualified acceptance record
+
+The normal build workflow produced an optimized `release` runtime for macOS
+ARM64 from the pristine `0.166.0` upstream snapshot and 92 reviewed patches.
+Its native checkpoint contract is `0.166.0/cantrip-suspension-v9`, and its
+ordered patch fingerprint is
+`11ba64258abf73b678aef876152c131ac3f828163b5a11d258e7ef882ab41cbf`.
+Each native and production fixture verifies the actual bundle manifest before
+execution. These results use actual native processes and local deterministic
+provider responses; no native identity, checkpoint acknowledgement or tool
+result is substituted by a mocked RPC.
+
+| Acceptance                                                                                 | Result                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Native storage/lifecycle, Goal, terminal resources, CodeMode, MCP, TUI and shared controls | 72 cases pass; forced termination and EOF, both history formats, failed writes, interrupted preparation, stale history, duplicate Resume and terminal invalidation are covered. |
+| Native subagents                                                                           | V1 refusal and closed-child cold recovery pass; V2 retained-tree refusal, live Resume and server-confirmed Stop pass.                                                           |
+| Mounted GUI-origin recovery                                                                | Node and Rust pass two complete process-tree termination/Resume rounds with one original native turn and one completed command result.                                          |
+| Mounted terminal-origin recovery                                                           | Node and Rust pass the same sequence with physical TUI and GUI observer reattachment.                                                                                           |
+| Missing, corrupt, previous-runtime and unsupported-runtime checkpoints                     | Both servers retain evidence, stay idle through reload, expose recovery controls and resume after the fixture restores valid bytes.                                             |
+| Older-runtime cold Stop                                                                    | Both servers commit one original-turn abort without inference and reject resurrection by late Resume.                                                                           |
+| Encrypted Task planning and finalization                                                   | Both servers pass two cold rounds and duplicate Resume; structured schema, final plan and subsequent implementation Goal remain intact.                                         |
+| Autonomous private Task Goal cycles                                                        | Both servers pass three preceding cycles, corrupt restoration/retry, two cold rounds and two subsequent cycles with retained accounting.                                        |
+| Settings, queued input and completed yielded-session output                                | Both servers preserve current-turn settings/context and completed output, retain future settings/queued input, and avoid completed-command replay.                              |
+| Pending questions, approvals and active sessions                                           | Both servers retain responders/live controls before confirmation, then preserve accepted replies and completed results through two cold rounds.                                 |
+| Stop while restoration waits for admission                                                 | Both servers stop the original Task turn without releasing the restored continuation into inference.                                                                            |
+| Compact shared web controls                                                                | Both servers pass mounted error/retry and two cold rounds at 390×844. Sidebar selection uses the desktop fixture; native mobile shells and device navigation are not claimed.   |
+
+The final focused server checks pass 30 database-backed cases, worker recovery
+checks pass 19 cases, and shared GUI/terminal control checks pass 21 cases. Worker
+and server TypeScript builds, the production app build, formatting and the
+modified Rust module's formatting pass. `pnpm check` stops at existing unchanged
+server decomposition budgets: `build-app.ts` is 1532/1500 lines and
+`chat-turn-runtime.ts` is 2336/1999. It does not establish a full repository pass.
+The POSIX process-tree harness and native runtime have not been run on Windows
+or Linux. Device-specific desktop/mobile shell builds remain outside this
+machine's qualification.
 
 ## Existing runtime and ownership
 
@@ -368,6 +426,45 @@ are idempotent, including when native completion precedes Stop acknowledgement.
 
 ## Production worker recovery acceptance
 
+The production fixture also supports `--task-planning-origin` and
+`--task-finalizer-origin`. These create encrypted Tasks through the real APIs
+and test the original structured-output native turn through repeated cold
+resumption. Planning must retain its output schema and return the Task to Review.
+Finalization must preserve its protected final plan and Goal prompt, then start
+the ordinary implementation Goal as a subsequent turn. Neither path may replay
+the completed command or replace the suspended turn. Both stages pass on Node
+and Rust with the optimized v9 runtime through two process-tree terminations and
+duplicate Resume requests. Autonomous Task Goal cycles also pass after three
+preceding cycles, corrupt restoration and retry, two cold resumption rounds,
+and two subsequent cycles.
+
+Use `--mounted-ui --restore-damage missing|corrupt|incompatible|previous-runtime`
+to qualify a failed cold Resume followed by recovery. The fixture damages the
+actual committed checkpoint before worker restart, clicks Resume, checks the
+public recovery error and enabled Stop/Retry controls, and reloads the app.
+The failure must retain the checkpoint evidence and start no inference. Only
+the fixture repairs the original bytes before clicking Retry; production does
+not repair or reinterpret damaged checkpoints. `previous-runtime` changes only
+the recorded runtime contract to v8 and recomputes the envelope checksum to
+exercise v9 rejection; it is not a claim of executing an older runtime. These
+mounted corrupt, missing and previous-runtime failure cases pass on both Node
+and Rust with the optimized v9 macOS ARM64 runtime.
+
+A later explicit Resume can replace a failed, unprepared observer even if its
+worker and Codex process survive. It receives a fresh execution receipt and
+activation; the original input, thread, turn and checkpoint remain canonical.
+Deliveries of one in-flight control still join the same observer. An older
+observer's control or acknowledgement cannot release the newer hold. Both server
+implementations enforce this rule. The mounted corrupt-checkpoint case exercises
+the actual failed restoration, browser reload, data repair and retry without
+restarting that worker between attempts.
+
+Native checkpoint errors retain safe public categories for missing, damaged and
+incompatible data. The UI displays the corresponding recovery action and keeps
+Stop available. Native diagnostics, including worker paths and continuation
+contents, are not copied into public errors. Unknown restoration failures retain
+the generic retryable error, and Stop failures remain distinct.
+
 `scripts/server-rust/actual-durable-suspension.mjs` uses a real browser, account
 encryption, normal server HTTP routes, the built production worker entrypoint,
 provider admission and the verified patched native runtime. Only the public
@@ -413,6 +510,11 @@ any premature Paused status. After each worker-tree kill it reloads the actual
 application, reopens the paused chat and clicks Resume. It also checks that the
 final answer is visible in the mounted transcript. The same original-rollout
 and inference assertions apply to both servers.
+
+Add `--compact-controls` with `--mounted-ui` to exercise the shared chat controls
+at 390×844 after desktop sidebar selection. Pause, Stop availability, persisted
+errors, explicit Retry/Resume and final output use the actual compact DOM. This
+does not substitute for device-specific shell or mobile-navigation validation.
 
 Add `--terminal-origin` to enter the original prompt through the production
 native Codex PTY instead of the GUI send API. With `--mounted-ui`, Pause and
@@ -1081,7 +1183,12 @@ recovery, persistent product controls, code-mode or MCP resource recovery, nativ
 child recovery, or Linux/Windows execution. Final optimized product validation
 remains required.
 
-## Required next milestones
+## Historical implementation milestones
+
+The following subsections retain the original implementation requirements and
+earlier milestone evidence. Current qualification is recorded above; an older
+milestone's partial acceptance does not supersede that record or the resource
+limits.
 
 ### Native lifecycle and resource hardening
 

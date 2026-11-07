@@ -83,6 +83,7 @@ export {
   childThreadMetadataFromNotification,
 } from "./execution-ownership.js";
 import { COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS } from "./runtime-limits.js";
+import { NativeSuspensionCheckpointMissing } from "./native-suspension-errors.js";
 import {
   CodexRpcRequests,
   type NativeRpcSettlementObserver,
@@ -2841,10 +2842,9 @@ export class CodexAppServer implements CodexRuntime {
     const generation = this.transportGeneration;
     const inspect = async () => {
       const observed = await this.inspectTurnSuspension(suspension.threadId);
-      if (
-        !observed.paused ||
-        JSON.stringify(observed.suspension) !== JSON.stringify(suspension)
-      )
+      if (!observed.paused || !observed.suspension)
+        throw new NativeSuspensionCheckpointMissing();
+      if (JSON.stringify(observed.suspension) !== JSON.stringify(suspension))
         throw new Error("The stored native suspension changed identity.");
       return observed;
     };

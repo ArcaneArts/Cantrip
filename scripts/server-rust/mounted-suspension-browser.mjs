@@ -3,12 +3,33 @@ import assert from "node:assert/strict";
 /** Reopen the real application after losing the worker and browser RAM state.
  * Setup uses the existing SDK; selecting the chat and Resume use actual DOM. */
 export async function openMountedSuspensionChat(page, origin, paused = true) {
+  const compact = process.argv.includes("--compact-controls");
+  // Sidebar setup stays shared with the desktop fixture; all chat controls
+  // below are exercised at the actual compact viewport when requested.
+  if (compact) await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(origin);
-  await page.waitForFunction(
-    () =>
-      document.querySelector('input[type="password"]') ||
-      document.body.innerText.includes("Durable suspension project"),
-  );
+  try {
+    await page.waitForFunction(
+      () =>
+        document.querySelector('input[type="password"]') ||
+        document.body.innerText.includes("Durable suspension project"),
+    );
+  } catch (error) {
+    // Report the real boot-module failure after the mounted app has failed.
+    // Normal runs use the app's startup and never depend on this diagnostic.
+    const diagnostic = await page.evaluate(async () => {
+      try {
+        await import("/src/lib/server-connections.ts");
+        await import("/src/components/auth/application-session.tsx");
+        return document.body.innerText;
+      } catch (error) {
+        return error.stack ?? error.message;
+      }
+    });
+    throw new Error(`Mounted app did not boot: ${diagnostic}`, {
+      cause: error,
+    });
+  }
   if (await page.locator('input[type="password"]').isVisible()) {
     const email = page.getByLabel("Email", { exact: true });
     if (await email.isVisible()) await email.fill("suspension@example.invalid");
@@ -34,6 +55,7 @@ export async function openMountedSuspensionChat(page, origin, paused = true) {
     .first()
     .click();
   await page.getByText("Durable suspension", { exact: true }).first().click();
+  if (compact) await page.setViewportSize({ width: 390, height: 844 });
   if (paused === null) return { text: await page.locator("body").innerText() };
   const resume = page.getByRole("button", {
     name: paused ? /^Resume( automatic agent work| turn)?$/ : "Pause agent",
@@ -45,7 +67,10 @@ export async function openMountedSuspensionChat(page, origin, paused = true) {
       .getByRole("status")
       .filter({ hasText: /^Paused$/ })
       .waitFor({ state: "visible" });
-  return { text: await page.locator("body").innerText() };
+  return {
+    text: await page.locator("body").innerText(),
+    viewport: page.viewportSize(),
+  };
 }
 
 export async function clickMountedSuspensionPause(page, chatId) {
@@ -69,7 +94,9 @@ export async function clickMountedSuspensionResume(page, chatId) {
   );
   void reply.catch(() => {});
   await page
-    .getByRole("button", { name: /^Resume( automatic agent work| turn)?$/ })
+    .getByRole("button", {
+      name: /^(Resume( automatic agent work| turn)?|Retry resume)$/,
+    })
     .click();
   const response = await reply;
   assert.equal(response.status(), 200, await response.text());

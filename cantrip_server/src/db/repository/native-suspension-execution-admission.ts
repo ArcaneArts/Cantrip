@@ -179,11 +179,12 @@ export class NativeSuspensionExecutionAdmissionRepository {
       if (existing && existing.operationId !== head.operationId)
         fail("operation-id-conflict");
       const intent = nativeCommandIntentSchema.parse(head.intent);
-      // A new Stop control may replace a failed/unprepared observer in this
-      // same runtime. Its old authority is fenced by the new activation; it
-      // cannot release inference. Retries of one control still join exactly.
+      // A new explicit control may replace a failed/unprepared observer in this
+      // same runtime. Requesting Resume while one is in flight joins its
+      // control; only a later user request gets a new identity. The replacement
+      // fences old authority with a new activation. Duplicate deliveries of
+      // the same control still join exactly.
       const replacesControl =
-        action === "stop" &&
         intent.restoredSuspension?.controlId !== input.controlId;
       if (
         state.executionOwner?.workerGeneration === input.workerGeneration &&

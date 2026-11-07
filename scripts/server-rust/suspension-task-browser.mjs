@@ -8,6 +8,12 @@ import { suspensionChat } from "./durable-suspension-browser.mjs";
 import { qualifyTaskRestoreRetry } from "./task-suspension-retry.mjs";
 import { qualifyTaskSuspensionStop } from "./task-suspension-stop.mjs";
 import { stopRestoringTask } from "./task-suspension-stop-restoring.mjs";
+import {
+  stageCompletion,
+  stagePlan,
+  stageFinalization,
+  finishTaskStageGoal,
+} from "./suspension-task-stages.mjs";
 
 export async function qualifyTaskSuspension({
   page,
@@ -34,7 +40,10 @@ export async function qualifyTaskSuspension({
   workerId,
   startBlocker,
   restart,
+  stage = "direct",
 }) {
+  const completion = stageCompletion(stage);
+  let followingGoal;
   const evidence = (result.taskPauseEvidence = {
     mode: stopRunning
       ? "running-stop"
@@ -66,10 +75,11 @@ export async function qualifyTaskSuspension({
         (await import("/src/lib/api/chats.ts")).setChatPaused(id, paused),
       { id: chatId, paused },
     );
-  assert.equal(
-    await readFile(path.join(directory, "durable-cold-marker"), "utf8"),
-    "DURABLE_TOOL_RESULT\n",
-  );
+  if (stage === "direct")
+    assert.equal(
+      await readFile(path.join(directory, "durable-cold-marker"), "utf8"),
+      "DURABLE_TOOL_RESULT\n",
+    );
   assert.ok(
     JSON.stringify(boundary.request.input.input).includes(
       "DURABLE_TOOL_RESULT",
@@ -82,7 +92,14 @@ export async function qualifyTaskSuspension({
       await readFile(path.join(workerData, relative), "utf8"),
     );
     for (const record of Object.values(journal.operations)) {
-      if (record.identity.chatId !== chatId || !record.nativeExecution)
+      if (
+        record.identity.chatId !== chatId ||
+        !record.nativeExecution ||
+        record.nativeExecution.threadId !==
+          evidence.beforePause.task.dispatch.codexThreadId ||
+        record.nativeExecution.turnId !==
+          evidence.beforePause.task.dispatch.turnId
+      )
         continue;
       const { threadId, turnId } = record.nativeExecution;
       nativeOwners.set(JSON.stringify([threadId, turnId]), {
@@ -125,16 +142,16 @@ export async function qualifyTaskSuspension({
     });
   }
   if (completeOnly) {
-    boundary.text = "DURABLE_TASK_RECOVERED_FINAL";
+    boundary.text = completion.text;
     boundary.release();
     evidence.completed = await eventually(readTask, (value) =>
-      assert.equal(value.state, "complete"),
+      assert.equal(value.state, completion.state),
     );
     assert.equal(
       evidence.completed.planningRound,
       evidence.beforePause.task.planningRound,
     );
-    assert.equal(inferences(), 2);
+    assert.equal(inferences(), completion.initialRequests);
   } else {
     assert.ok(Number.isSafeInteger(rounds) && rounds > 0 && rounds <= 4);
     let currentBoundary = boundary;
@@ -184,9 +201,14 @@ export async function qualifyTaskSuspension({
       const next = stopRestoring
         ? null
         : model.reply({
-            text: "DURABLE_TASK_RECOVERED_FINAL",
+            text: completion.text,
             hold: true,
           });
+      if (stage === "finalize" && round === rounds && next)
+        followingGoal = model.reply({
+          text: "DURABLE_STAGE_IMPLEMENTATION",
+          hold: true,
+        });
       if (!livePause) await restart(native, round);
       control.afterRestart = evidence.afterRestart = {
         chat: await chat(),
@@ -212,10 +234,11 @@ export async function qualifyTaskSuspension({
         count,
         "Task startup and reopening must remain idle",
       );
-      assert.equal(
-        await readFile(path.join(directory, "durable-cold-marker"), "utf8"),
-        "DURABLE_TOOL_RESULT\n",
-      );
+      if (stage === "direct")
+        assert.equal(
+          await readFile(path.join(directory, "durable-cold-marker"), "utf8"),
+          "DURABLE_TOOL_RESULT\n",
+        );
       if (pauseOnly) {
         const events = await nativeTaskEvents(workerData, native);
         const starts = events.filter((event) => event.type === "task_started");
@@ -294,13 +317,21 @@ export async function qualifyTaskSuspension({
           "DURABLE_TOOL_RESULT",
         ),
       );
+      if (stage !== "direct") {
+        assert.equal(boundary.request.input.text?.format?.type, "json_schema");
+        assert.deepEqual(
+          next.request.input.text.format,
+          boundary.request.input.text.format,
+          "The restored planner/finalizer retains its actual output schema",
+        );
+      }
       if (duplicateResume) assert.equal((await pause(false)).paused, false);
       if (round < rounds) {
         currentBoundary = next;
       } else {
         next.release();
         evidence.completed = await eventually(readTask, (value) =>
-          assert.equal(value.state, "complete"),
+          assert.equal(value.state, completion.state),
         );
       }
     }
@@ -316,10 +347,28 @@ export async function qualifyTaskSuspension({
       evidence.completed.dispatch.attemptCount,
       evidence.beforePause.task.dispatch.attemptCount,
     );
-    evidence.completedChat = await chat();
-    assert.equal(evidence.completedChat.nativeSuspension.phase, "completed");
-    assert.equal(evidence.completedChat.nativeSuspension.resumable, false);
-    assert.equal(inferences(), 2 + rounds);
+    if (stage === "plan")
+      assert.equal(evidence.completed.planMarkdown, stagePlan.planMarkdown);
+    if (stage === "finalize") {
+      assert.equal(
+        evidence.completed.finalPlanMarkdown,
+        stageFinalization.finalPlanMarkdown,
+      );
+      evidence.followingGoal = await finishTaskStageGoal(
+        page,
+        chatId,
+        model,
+        followingGoal,
+      );
+    }
+    evidence.completedChat = await eventually(chat, (value) => {
+      assert.equal(value.nativeSuspension.phase, "completed");
+      assert.equal(value.nativeSuspension.resumable, false);
+    });
+    assert.equal(
+      inferences(),
+      completion.initialRequests + rounds + (followingGoal ? 2 : 0),
+    );
   }
 
   const events = await nativeTaskEvents(workerData, native);
@@ -338,9 +387,21 @@ export async function qualifyTaskSuspension({
     events.filter((event) => event.type === "turn_aborted").length,
     0,
   );
+  if (stage === "direct")
+    assert.equal(
+      await readFile(path.join(directory, "durable-cold-marker"), "utf8"),
+      "DURABLE_TOOL_RESULT\n",
+    );
+  const completedTools = events.filter(
+    (event) =>
+      event.type === "item_completed" &&
+      event.item.type === "CommandExecution" &&
+      event.item.aggregated_output.includes("DURABLE_TOOL_RESULT"),
+  );
   assert.equal(
-    await readFile(path.join(directory, "durable-cold-marker"), "utf8"),
-    "DURABLE_TOOL_RESULT\n",
+    completedTools.length,
+    1,
+    "The original completed tool is not replayed",
   );
   return {
     native,
@@ -364,5 +425,6 @@ async function nativeTaskEvents(workerData, native) {
     .map((line) => JSON.parse(line));
   return history
     .filter((row) => row.type === "event_msg")
-    .map((row) => row.payload);
+    .map((row) => row.payload)
+    .filter((event) => event.turn_id === native.turnId);
 }

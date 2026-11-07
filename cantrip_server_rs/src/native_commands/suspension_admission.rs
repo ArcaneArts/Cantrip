@@ -168,8 +168,9 @@ async fn admit(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Value
         return reject("operation-id-conflict");
     }
     let intent = parse_response("nativeCommandIntentSchema", Some(&head["intent"]))?;
-    let replaces_control =
-        action == "stop" && intent["restoredSuspension"]["controlId"] != input["controlId"];
+    // An explicit retry has a new control and activation, even when the failed
+    // observer's worker/runtime survives. In-flight duplicates keep one control.
+    let replaces_control = intent["restoredSuspension"]["controlId"] != input["controlId"];
     if state["executionOwner"]["workerGeneration"] == input["workerGeneration"]
         && state["executionOwner"]["runtimeGeneration"] == session["runtimeGeneration"]
         && !replaces_control

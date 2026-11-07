@@ -480,6 +480,108 @@ describe("committed native suspension retains execution across transport loss", 
       await app.close();
     }
   });
+  it("retries a failed restore in the same worker/runtime with fresh authority and fences its predecessor", async () => {
+    const { root, active, evidence } = await capture("gui");
+    const first = await fixture.repository.nativeSuspensions.request(
+      owner,
+      fixture.chatId,
+      "resume",
+    );
+    const base = await fixture.input("gui");
+    const request = {
+      workerId: fixture.workerId,
+      workerGeneration: randomUUID(),
+      session: {
+        ...base.session,
+        runtimeGeneration: "retry-runtime",
+        connectionId: "retry-owner",
+      },
+      operationId: randomUUID(),
+      controlId: first.state.controlId,
+      checkpoint: evidence,
+      payloadDigest: "e".repeat(64),
+      protectedPayload: settingsEnvelope,
+    };
+    const prior = await fixture.commands.admitSuspendedExecution(
+      owner,
+      request,
+    );
+    await fixture.repository.nativeSuspensions.failedControl(
+      owner,
+      fixture.chatId,
+      first.state.controlId,
+      prior.suspension.actor,
+      { code: "checkpoint-corrupt", protectedDetails: null },
+    );
+    const retry = await fixture.repository.nativeSuspensions.request(
+      owner,
+      fixture.chatId,
+      "resume",
+    );
+    expect(retry.state.controlId).not.toBe(first.state.controlId);
+    const nextRequest = {
+      ...request,
+      operationId: randomUUID(),
+      controlId: retry.state.controlId,
+    };
+    const next = await fixture.commands.admitSuspendedExecution(
+      owner,
+      nextRequest,
+    );
+    expect(next.receipt.operationId).not.toBe(prior.receipt.operationId);
+    expect(next.receipt.activationGeneration).not.toBe(
+      prior.receipt.activationGeneration,
+    );
+    expect(next.receipt.previousOperationId).toBe(prior.receipt.operationId);
+    expect(next.source.operationId).toBe(root.operationId);
+    expect(next.suspension.active).toEqual(active);
+    expect(next.suspension.checkpoint).toEqual(evidence);
+    expect(
+      (
+        await fixture.commands.admitSuspendedExecution(owner, {
+          ...nextRequest,
+          operationId: randomUUID(),
+        })
+      ).receipt.operationId,
+    ).toBe(next.receipt.operationId);
+    await expect(
+      fixture.commands.admitSuspendedExecution(owner, request),
+    ).rejects.toMatchObject({ code: "suspension-control-stale" });
+    await expect(
+      fixture.repository.nativeSuspensions.running(
+        owner,
+        fixture.chatId,
+        first.state.controlId,
+        prior.suspension.actor!,
+      ),
+    ).rejects.toMatchObject({ code: "suspension-control-stale" });
+    const stop = await fixture.repository.nativeSuspensions.request(
+      owner,
+      fixture.chatId,
+      "stop",
+    );
+    await fixture.repository.nativeSuspensions.claim(
+      owner,
+      fixture.chatId,
+      stop.state.controlId,
+      stop.state.actor,
+      next.suspension.executionOwner!,
+      active,
+    );
+    await fixture.repository.nativeSuspensions.stopped(
+      owner,
+      fixture.chatId,
+      stop.state.controlId,
+      next.suspension.executionOwner!,
+    );
+    await fixture.commands.finishLogicalGui(
+      owner,
+      fixture.workerId,
+      root.operationId,
+      root.operationGeneration,
+      "idle",
+    );
+  });
   it("admits a fresh physical observer without replacing input, turn or canonical history ownership", async () => {
     const { root, active, evidence } = await capture("gui");
     const resumed = await fixture.repository.nativeSuspensions.request(
