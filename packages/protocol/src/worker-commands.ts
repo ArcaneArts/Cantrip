@@ -9,6 +9,7 @@ import { workerChatCommandSchemas } from "./worker-command-chat.js";
 import { workerCantripOsCommandSchemas } from "./worker-command-cantrip-os.js";
 import { workerCantripOsPowerCommandSchemas } from "./cantrip-os-power.js";
 import { workerCantripOsPackageCommandSchemas } from "./cantrip-os-packages.js";
+import { workerCantripOsSystemCommandSchemas } from "./cantrip-os-system-operations.js";
 import { workerCantripOsDesktopCommandSchemas } from "./cantrip-os-desktop.js";
 import { workerCantripOsBackupCommandSchemas } from "./cantrip-os-backup-operations.js";
 import {
@@ -41,6 +42,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   ...workerCantripOsCommandSchemas,
   ...workerCantripOsPowerCommandSchemas,
   ...workerCantripOsPackageCommandSchemas,
+  ...workerCantripOsSystemCommandSchemas,
   ...workerCantripOsDesktopCommandSchemas,
   ...workerCantripOsBackupCommandSchemas,
   cantripOsRunDefinitionWorkerCommandSchema,

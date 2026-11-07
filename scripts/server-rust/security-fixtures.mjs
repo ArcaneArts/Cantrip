@@ -2,6 +2,7 @@ import { agentOperationWireFixtures } from "./agent-operation-wire-fixtures.mjs"
 import { cliWireFixtures } from "./cli-wire-fixtures.mjs";
 import { threadSyncWireFixtures } from "./chat-thread-sync-fixtures.mjs";
 import { cantripOsWireFixtures } from "./cantrip-os-wire-fixtures.mjs";
+import { cantripOsSystemFixtures } from "./cantrip-os-system-fixtures.mjs";
 import { projectSurfaceWireFixtures } from "./project-surface-wire-fixtures.mjs";
 import * as p from "../../packages/protocol/dist/index.js";
 import { workerIngressFixtures } from "./worker-wire-fixtures.mjs";
@@ -826,6 +827,13 @@ export const securityFixtures = {
   ...provisioningWireFixtures(projectLabel),
   ...projectAutomationWireFixtures(timestamp),
   workerRequestEnvelopeSchema: [
+    ...cantripOsSystemFixtures().cantripOsSystemWorkerCommandSchema.map(
+      (command) => ({
+        kind: "request",
+        requestId: "fixture-system-command",
+        command,
+      }),
+    ),
     ...workerCommands.commands.map((item) => item.input),
     ...commandRefinements.cases.map((item) => item.input),
   ],

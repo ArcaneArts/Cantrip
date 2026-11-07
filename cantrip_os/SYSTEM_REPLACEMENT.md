@@ -3,8 +3,8 @@
 The host library can replace a Docker CantripOS instance's root image while
 retaining the original container, or explicitly roll back to that original. It
 also supports deliberate root reset to an exact normal base image. This is an
-administration foundation: Server-owned admissions, private Worker command
-routing, client review/history and fresh execution authority remain dependent
+administration foundation: Server-owned admissions, client review/history and
+fresh execution authority remain dependent
 Phase 5 work. These functions do not enroll a clone or issue runtime handles.
 
 The external Worker remains the orchestrator. These operations need actual Docker
@@ -142,7 +142,56 @@ Library exports are `replaceSystem`, `observeSystemReplacement` and
 host paths. Product callers must enforce canonical owner/Worker/attachment scope
 and protect these details; this raw administration API is not a public route.
 
+## Worker system commands
+
+The registered Worker protocol now includes `cantrip-os.system.status`,
+`cantrip-os.system.capture`, `cantrip-os.system.replace` and
+`cantrip-os.system.rollback`. The Worker entrypoint routes these to a durable
+system manager. These are internal command contracts, not public HTTP or client
+controls. Server-owned admissions and fresh authority reconciliation remain
+required before exposing them through Cantrip.
+
+Discovery reads the actual Docker container archive without executing a guest
+helper, including while stopped. It follows configured identity relocation and
+guest-local symlinks without extracting archives on the host. Initial discovery
+requires the owning guest identity. A previously verified exact physical target
+can remain manageable after its own configuration/identity files break; a valid
+foreign identity or a different physical container never inherits that proof.
+Unavailable optional image inventory does not invalidate the proven target.
+SSH-only targets report unsupported system-image management, not power authority.
+
+Operation commands capture the complete original scope, target and selected
+source. `execute` reserves once; repeats recover the original job. `observe`
+performs no mutation. `continue` can dispatch only unrequested future steps.
+A claimed effect with missing original proof stays unknown. Rollback references
+the original replacement admission and retained physical root, even when the
+current canonical name or replacement helper is unavailable.
+
+Capture streams into the existing private system format. Replacement authenticates
+the complete archive before private plaintext staging; a recovered staging file
+must match its authenticated receipt. Operation outcomes use a separate encrypted
+domain bound to the full admission and original physical identity. Terminal
+ciphertext is retained unchanged across Manager restart, locked keys and later
+Engine unavailability. Detailed paths, manifests and diagnostics stay protected.
+
+Root completion does not restore runtime handles. A completed owned replacement
+can authorize discovery of its exact resulting container and an older owned guest
+identity; this does not itself adopt that identity or grant execution. Unattached,
+foreign or unavailable guest state needs an explicit subsequent recovery decision.
+
 ## Actual acceptance
+
+After the normal dependency/Worker builds shown below, run the real
+Worker-command integration:
+
+```sh
+CANTRIP_OS_SYSTEM_WORKER_INTEGRATION=1 \
+CANTRIP_OS_SYSTEM_WORKER_EVIDENCE=/absolute/private/evidence \
+  node --test cantrip_os/tests/system-worker.integration.test.mjs
+```
+
+It invokes normally compiled Manager modules through the registered command
+schema. This is not a full Worker/Server/client process acceptance test.
 
 Build normal Worker dependencies/modules, then opt into disposable Engine tests:
 
