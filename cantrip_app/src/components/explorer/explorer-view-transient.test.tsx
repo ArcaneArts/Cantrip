@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { ExplorerSummary } from "@cantrip/protocol";
+import type { ExplorerEntry, ExplorerSummary } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";
 import TestRenderer, { act } from "react-test-renderer";
@@ -10,6 +10,7 @@ const graphView = vi.hoisted(() => ({
 }));
 const fileBrowser = vi.hoisted(() => ({
   onShowInGraph: null as ((path: string | null) => void) | null,
+  onOpenFile: null as ((entry: ExplorerEntry) => void) | null,
 }));
 
 vi.mock("@/components/chat/markdown", () => ({
@@ -18,10 +19,13 @@ vi.mock("@/components/chat/markdown", () => ({
 vi.mock("@/components/explorer/explorer-file-browser", () => ({
   ExplorerFileBrowser: ({
     onShowInGraph,
+    onOpenFile,
   }: {
     onShowInGraph?: (path: string | null) => void;
+    onOpenFile(entry: ExplorerEntry): void;
   }) => {
     fileBrowser.onShowInGraph = onShowInGraph ?? null;
+    fileBrowser.onOpenFile = onOpenFile;
     return createElement("div");
   },
 }));
@@ -74,13 +78,176 @@ vi.mock("@/lib/client-log-relay", () => ({
   },
 }));
 
-import { ExplorerView } from "./explorer-view";
+import { ExplorerView, type ExplorerHeaderState } from "./explorer-view";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("ExplorerView transient selection", () => {
+  it.each(["dismiss", "refresh", "retry", "scope"])(
+    "recovers a failed file action without latching a worker error (%s)",
+    async (recovery) => {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const explorer = {
+        activeWorkerId: "worker-one",
+        fileMode: "preview",
+        id: "explorer-one",
+        projectId: "project-one",
+        selectedPath: null,
+        worktreeId: "worktree-one",
+      } as ExplorerSummary;
+      const onOpenFile = vi
+        .fn()
+        .mockRejectedValueOnce(
+          new Error(
+            "Workspace transfer timed out waiting for destination state restoration.",
+          ),
+        )
+        .mockResolvedValue(undefined);
+      const entry = {
+        kind: "file",
+        path: "README.md",
+        viewable: true,
+      } as ExplorerEntry;
+      let renderer!: TestRenderer.ReactTestRenderer;
+      let header: ExplorerHeaderState | null = null;
+      const captureHeader = (value: ExplorerHeaderState | null) => {
+        header = value;
+      };
+      const view = (summary = explorer) =>
+        createElement(
+          QueryClientProvider,
+          { client },
+          createElement(ExplorerView, {
+            appearance: "dark",
+            explorer: summary,
+            onHeaderChange: captureHeader,
+            onOpenFile,
+            repositoryGraphAvailable: false,
+          }),
+        );
+      try {
+        await act(async () => {
+          renderer = TestRenderer.create(view());
+        });
+        await act(async () => {
+          fileBrowser.onOpenFile!(entry);
+        });
+        const alerts = () => renderer.root.findAllByProps({ role: "alert" });
+        expect(alerts()).toHaveLength(1);
+        expect(
+          alerts()[0]!.findByType("span").props.children.join(""),
+        ).toContain("Could not open file");
+        if (recovery === "dismiss") {
+          const dismiss = renderer.root
+            .findAllByType("button")
+            .find((button) => button.props.children === "Dismiss")!;
+          await act(async () => dismiss.props.onClick());
+        } else if (recovery === "refresh") {
+          await act(async () => header!.refresh());
+        } else if (recovery === "retry") {
+          await act(async () => {
+            fileBrowser.onOpenFile!(entry);
+          });
+        } else {
+          await act(async () =>
+            renderer.update(view({ ...explorer, worktreeId: "other-tree" })),
+          );
+        }
+        expect(alerts()).toHaveLength(0);
+      } finally {
+        await act(async () => renderer?.unmount());
+        client.clear();
+      }
+    },
+  );
+
+  it("clears a read error on that query's recovery and ignores an older action failure", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const explorer = {
+      activeWorkerId: "worker-one",
+      fileMode: "preview",
+      id: "explorer-one",
+      projectId: "project-one",
+      selectedPath: null,
+      worktreeId: "worktree-one",
+    } as ExplorerSummary;
+    const queryKey = [
+      "explorer-directory",
+      "project-one",
+      "worktree-one",
+      "explorer-one",
+      "",
+    ];
+    const failure = new Error("Worker request timed out");
+    let rejectOld!: (error: Error) => void;
+    const onOpenFile = vi
+      .fn()
+      .mockImplementationOnce(() =>
+        client.fetchQuery({ queryKey, queryFn: () => Promise.reject(failure) }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectOld = reject;
+          }),
+      )
+      .mockResolvedValue(undefined);
+    const entry = {
+      kind: "file",
+      path: "README.md",
+      viewable: true,
+    } as ExplorerEntry;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    try {
+      await act(async () => {
+        renderer = TestRenderer.create(
+          createElement(
+            QueryClientProvider,
+            { client },
+            createElement(ExplorerView, {
+              appearance: "dark",
+              explorer,
+              onOpenFile,
+              repositoryGraphAvailable: false,
+            }),
+          ),
+        );
+      });
+      const alerts = () => renderer.root.findAllByProps({ role: "alert" });
+      await act(async () => {
+        fileBrowser.onOpenFile!(entry);
+      });
+      expect(alerts()).toHaveLength(1);
+      await act(async () => {
+        client.setQueryData(["unrelated-worker-read"], "ok");
+      });
+      expect(alerts()).toHaveLength(1);
+      await act(async () => {
+        await client.fetchQuery({ queryKey, queryFn: async () => "recovered" });
+      });
+      expect(alerts()).toHaveLength(0);
+      await act(async () => {
+        fileBrowser.onOpenFile!(entry);
+      });
+      await act(async () => {
+        fileBrowser.onOpenFile!(entry);
+      });
+      await act(async () => {
+        rejectOld(new Error("Late failure from an older action"));
+      });
+      expect(alerts()).toHaveLength(0);
+    } finally {
+      await act(async () => renderer?.unmount());
+      client.clear();
+    }
+  });
+
   it.each([null, "entry"])(
     "keeps the initial graph request for root %s",
     async (rootPath) => {

@@ -457,6 +457,77 @@ export function ExplorerView({
   streamEncryptionReadyRef.current = streamEncryptionReady;
   const queryClient = useQueryClient();
   const mountedRef = useRef(true);
+  const actionScope = JSON.stringify([
+    explorer.id,
+    explorer.projectId,
+    explorer.worktreeId,
+    explorer.activeWorkerId,
+    streamEncryption.bindingKey,
+    selectedPath,
+  ]);
+  const actionRequestRef = useRef({ scope: actionScope, revision: 0 });
+  if (actionRequestRef.current.scope !== actionScope) {
+    actionRequestRef.current = {
+      scope: actionScope,
+      revision: actionRequestRef.current.revision + 1,
+    };
+  }
+  const [actionError, setActionError] = useState<{
+    scope: string;
+    operation: string;
+    message: string;
+    failedQueries: string[];
+  } | null>(null);
+  const runExplorerAction = useCallback(
+    async (operation: string, action: () => unknown | Promise<unknown>) => {
+      const revision = ++actionRequestRef.current.revision;
+      const isCurrent = () =>
+        mountedRef.current &&
+        actionRequestRef.current.scope === actionScope &&
+        actionRequestRef.current.revision === revision;
+      try {
+        await action();
+        if (isCurrent()) setActionError(null);
+      } catch (error) {
+        if (isCurrent())
+          setActionError({
+            scope: actionScope,
+            operation,
+            message: error instanceof Error ? error.message : "Try again.",
+            failedQueries: queryClient
+              .getQueryCache()
+              .getAll()
+              .filter((query) => error != null && query.state.error === error)
+              .map((query) => query.queryHash),
+          });
+      }
+    },
+    [actionScope, queryClient],
+  );
+  useEffect(() => setActionError(null), [actionScope]);
+  useEffect(() => {
+    if (!actionError?.failedQueries.length) return;
+    const cache = queryClient.getQueryCache();
+    const recover = () => {
+      // Clear only when the reads that actually failed succeed again. A live
+      // worker, cached directory, or unrelated save is not recovery evidence.
+      if (
+        actionError.failedQueries.every(
+          (hash) => cache.get(hash)?.state.status === "success",
+        )
+      )
+        setActionError((current) => (current === actionError ? null : current));
+    };
+    const unsubscribe = cache.subscribe(recover);
+    recover();
+    return unsubscribe;
+  }, [actionError, queryClient]);
+  useEffect(
+    () => () => {
+      actionRequestRef.current.revision++;
+    },
+    [],
+  );
   const transferSuspendedRef = useRef(false);
   const [sourceTransferSuspended, setTransferSuspended] = useState(false);
   const transferSuspended = sourceTransferSuspended || Boolean(transferStaging);
@@ -1193,8 +1264,8 @@ export function ExplorerView({
   );
 
   useEffect(() => {
-    // Desktop Explorer surfaces remain file browsers. Their editor windows are
-    // transient and must not be pulled back inline by legacy saved view state.
+    // Explorer surfaces opening files in workspace tabs remain file browsers;
+    // legacy saved view state must not pull those files back inline.
     if (
       transferSuspended ||
       transientFilePath ||
@@ -1290,42 +1361,46 @@ export function ExplorerView({
     }
     setRefreshPending(true);
     try {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: [
-            "explorer-directory",
-            explorer.projectId,
-            explorer.worktreeId,
-            explorer.id,
-          ],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: [
-            "explorer-directory-commits",
-            explorer.projectId,
-            explorer.worktreeId,
-            explorer.id,
-          ],
-        }),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: [
-            "worktree-status",
-            explorer.projectId,
-            explorer.worktreeId,
-          ],
-        }),
-        selectedPathRef.current
-          ? loadFile(selectedPathRef.current, true)
-          : Promise.resolve(),
-      ]);
-    } catch (error) {
-      setViewStateError(
-        error instanceof Error
-          ? error.message
-          : "The file could not be reloaded.",
+      await runExplorerAction("Could not refresh Explorer", () =>
+        Promise.all([
+          queryClient.invalidateQueries(
+            {
+              queryKey: [
+                "explorer-directory",
+                explorer.projectId,
+                explorer.worktreeId,
+                explorer.id,
+              ],
+            },
+            { throwOnError: true },
+          ),
+          queryClient.invalidateQueries(
+            {
+              queryKey: [
+                "explorer-directory-commits",
+                explorer.projectId,
+                explorer.worktreeId,
+                explorer.id,
+              ],
+            },
+            { throwOnError: true },
+          ),
+          queryClient.invalidateQueries(
+            {
+              exact: true,
+              queryKey: [
+                "worktree-status",
+                explorer.projectId,
+                explorer.worktreeId,
+              ],
+            },
+            { throwOnError: true },
+          ),
+          selectedPathRef.current
+            ? loadFile(selectedPathRef.current, true)
+            : Promise.resolve(),
+        ]),
       );
-      throw error;
     } finally {
       setRefreshPending(false);
     }
@@ -1336,6 +1411,7 @@ export function ExplorerView({
     explorer.worktreeId,
     loadFile,
     queryClient,
+    runExplorerAction,
   ]);
 
   const back = useCallback(async () => {
@@ -1918,16 +1994,8 @@ export function ExplorerView({
       return;
     }
     if (onOpenFile) {
-      setViewStateError(null);
-      void Promise.resolve(onOpenFile(explorer, entry)).catch(
-        (error: unknown) => {
-          if (!mountedRef.current) return;
-          setViewStateError(
-            error instanceof Error
-              ? error.message
-              : "The file tab could not be opened.",
-          );
-        },
+      void runExplorerAction("Could not open file", () =>
+        onOpenFile(explorer, entry),
       );
       return;
     }
@@ -1947,16 +2015,8 @@ export function ExplorerView({
 
   const revealEntry = (entry: ExplorerEntry, localFolder: boolean) => {
     if (!onRevealFolder || isDocumentView(explorer)) return;
-    setViewStateError(null);
-    void Promise.resolve(onRevealFolder(explorer, entry, localFolder)).catch(
-      (error: unknown) => {
-        if (!mountedRef.current) return;
-        setViewStateError(
-          error instanceof Error
-            ? error.message
-            : "The entry could not be revealed.",
-        );
-      },
+    void runExplorerAction("Could not reveal folder", () =>
+      onRevealFolder(explorer, entry, localFolder),
     );
   };
 
@@ -2048,6 +2108,25 @@ export function ExplorerView({
         </div>
       ) : (
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          {actionError?.scope === actionScope ? (
+            <div
+              role="alert"
+              className="flex shrink-0 items-center justify-between gap-3 border-b border-destructive/30 bg-destructive/5 px-4 py-2 text-xs text-destructive"
+            >
+              <span className="min-w-0 break-words">
+                {actionError.operation}: {actionError.message}
+              </span>
+              <Button
+                className="h-6 shrink-0 px-2 text-[10px]"
+                onClick={() => setActionError(null)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Dismiss
+              </Button>
+            </div>
+          ) : null}
           {!graphVisible &&
           selectedPath &&
           (saveFileError || viewStateError) ? (
