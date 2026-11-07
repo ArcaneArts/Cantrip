@@ -78,6 +78,35 @@ or copied encrypted input store for the semaphore.
 
 ## Titles, helpers and autonomous cycles
 
+### Direct HTTP operations
+
+`WorkerInferenceAdmission.runDirect()` provides independent HTTP execution in
+the same provider pools as native work. Its input owns an actual canonical
+`InferenceOperationSource`, provider identity, and optional cancellation signal.
+Repeated delivery of that same source joins the original result; changing its
+provider or resource identity is rejected. A new intentional attempt needs a new
+canonical source. This helper adds no automatic restart replay or input store.
+
+The callback receives the combined execution signal and must await response/body
+cleanup, including cancellation teardown, before settling. The helper does not
+race an abort notification against the callback and release capacity early.
+Provider removal, source closure, and worker shutdown request cancellation;
+shutdown joins the callback's actual settlement. A local abort does not establish
+that the remote provider stopped computing.
+
+Direct ownership has its own in-process settlement boundary. It does not prepare
+a native process, manufacture native execution metadata, or write a recoverable
+native queue record. Existing native recovery still establishes the shared pool's
+previous capacity before direct work can acquire it. Independently concurrent
+HTTP work acquires separately; sequential requests already covered by an admitted
+turn must use that turn's explicit preparation ownership instead of nesting an
+independent acquisition.
+
+Embedding and decision transports are separate integrations; adding this helper
+does not itself expose those APIs or establish provider runtime qualification.
+
+### Native compound operations
+
 A new Chat acquires its response provider's ticket, generates an enabled
 same-provider title serially under that ticket, runs its response, then releases
 after settlement. The label cannot borrow another operation's ticket or run
