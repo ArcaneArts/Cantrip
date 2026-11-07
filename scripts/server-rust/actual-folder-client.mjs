@@ -59,6 +59,10 @@ import { actualNativeInflightClient } from "./actual-native-inflight-client.mjs"
 import { SingleProductFixture } from "./single-product-fixture.mjs";
 import { actualSingleInflightClient } from "./actual-single-inflight-client.mjs";
 import { actualModelOperationsClient } from "./actual-model-operations-client.mjs";
+import {
+  actualProviderCatalogClient,
+  assertProviderCatalogSummary,
+} from "./actual-provider-catalog-client.mjs";
 import { singleAgentInterruption } from "./single-agent-interruption.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { password } from "./security-fixtures.mjs";
@@ -100,7 +104,8 @@ const sharedPair = option("--server-pair");
 const singleProduct =
   process.argv.includes("--native-single-recovery") ||
   process.argv.includes("--native-single-agent-recovery") ||
-  process.argv.includes("--model-operations");
+  process.argv.includes("--model-operations") ||
+  process.argv.includes("--provider-catalog");
 const selectedRuntime = option("--runtime");
 assert.ok(!selectedRuntime || ["node", "rust"].includes(selectedRuntime));
 const runtimeCases = sharedPair
@@ -980,6 +985,21 @@ async function flow(
           : {}),
       });
     }
+    if (process.argv.includes("--provider-catalog")) {
+      if (!worker) await startWorker();
+      await actualProviderCatalogClient({
+        page,
+        fixture,
+        root,
+        dataDirectory,
+        workerId,
+        cliBinary,
+        startWorker,
+        stopWorker,
+        requests,
+        result,
+      });
+    }
     if (process.argv.includes("--model-operations")) {
       if (!worker) await startWorker();
       await actualModelOperationsClient({
@@ -1233,6 +1253,11 @@ try {
   for (const runtime of report.runtimes.slice(1)) {
     assert.deepEqual(runtime.steps, report.runtimes[0].steps);
     assert.deepEqual(runtime.projects, report.runtimes[0].projects);
+    if (process.argv.includes("--provider-catalog"))
+      assertProviderCatalogSummary(
+        runtime.providerCatalog.summary,
+        report.runtimes[0].providerCatalog.summary,
+      );
     if (process.argv.includes("--model-operations"))
       assert.deepEqual(
         runtime.modelOperations.summary,
