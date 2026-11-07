@@ -86,7 +86,7 @@ export async function prepareSuspensionChat(
   workerId,
   directory,
   model,
-  { maxConcurrentInference, taskOrigin = false } = {},
+  { maxConcurrentInference, taskOrigin = false, taskGoalOrigin = false } = {},
 ) {
   await eventually(
     () =>
@@ -126,6 +126,7 @@ export async function prepareSuspensionChat(
       nativeModel,
       maxConcurrentInference,
       taskOrigin,
+      taskGoalOrigin,
     }) => {
       const models = await import("/src/lib/api/models.ts");
       const provider = await models.createModelProvider({
@@ -173,6 +174,7 @@ export async function prepareSuspensionChat(
         task = await tasks.updateTaskDraft(chat.id, {
           rowVersion: created.task.rowVersion,
           briefMarkdown: "DURABLE_ORIGINAL_PROMPT",
+          ...(taskGoalOrigin ? { planGoalEnabled: true } : {}),
         });
       } else {
         const create = await (
@@ -203,6 +205,7 @@ export async function prepareSuspensionChat(
       nativeModel: model.model,
       maxConcurrentInference,
       taskOrigin,
+      taskGoalOrigin,
     },
   );
 }

@@ -988,6 +988,7 @@ export function createChatTurnRuntime({
                         },
                       },
                       taskInputRevision,
+                      encryptedTaskMessages?.response,
                     )
                   : undefined;
             const rawResultPromise = bridge.request(

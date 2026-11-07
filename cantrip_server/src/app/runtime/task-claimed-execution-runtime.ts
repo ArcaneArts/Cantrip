@@ -207,7 +207,7 @@ export function createTaskClaimedExecutionRuntime(
       let launchStage: TaskLaunchStage = "resolve-context";
       let preparationGuard: TaskOperationLeaseFence | null = null;
       try {
-        if (claim.cycle.operationKind === "finalize")
+        if (claim.cycle.operationKind === "finalize" && !resumption)
           preparationGuard =
             await repository.tasks.inferenceInputs.goals.preparationGuard(
               ownerId,
@@ -286,6 +286,50 @@ export function createTaskClaimedExecutionRuntime(
           { timeoutMs: TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS },
         );
         if (!task) throw new Error("The claimed Task no longer exists.");
+
+        if (resumption?.restore.source.kind === "goal") {
+          const original =
+            await repository.tasks.inferenceInputs.goals.restorationSource(
+              ownerId,
+              {
+                resumption: resumption.restore,
+                lease: claim.lease,
+              },
+            );
+          await retainTaskGoalLease(claim.lease);
+          await beginTurn(
+            context,
+            {
+              text: "Restore the suspended Task Goal.",
+              mode: "goal",
+              attachmentIds: [],
+              idempotencyKey: original.message.idempotencyKey,
+              modelId: taskModelId,
+              reasoningEffort: taskModelConfiguration.reasoningEffort,
+              customSubagentModel: taskModelConfiguration.customSubagentModel,
+              subagentModelId: taskModelConfiguration.subagentModelId,
+              subagentReasoningEffort:
+                taskModelConfiguration.subagentReasoningEffort,
+            },
+            {
+              ...scheduledTaskGoalTurnOptions(claim.lease),
+              purpose: "Restore suspended Task Goal",
+              taskResumption: resumption.restore,
+              onTaskResumed: resumption.onResumed,
+              onTaskRestoreFailed: resumption.onFailed,
+              encryptedTaskMessages: {
+                userMessage: original.message,
+                response: original.publication,
+              },
+              messageRole:
+                original.message.classification.role === "system"
+                  ? "system"
+                  : "user",
+              runtimes: [runtime],
+            },
+          );
+          return;
+        }
 
         const launchClaimedGoal = async (operationId: string) => {
           const guard = await repository.tasks.inferenceInputs.goals

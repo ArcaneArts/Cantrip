@@ -250,6 +250,26 @@ restored.command.taskResumption.source.operationId =
 restored.command.taskDispatchLease.fencingToken = 2;
 restored.command.taskInferenceInput.dispatch.fencingToken = 2;
 assert.ok(worker("fresh physical Task restoration", restored).ok);
+const goalRestored = structuredClone(restored);
+goalRestored.command.taskInferenceInput.kind = "goal";
+goalRestored.command.taskResumption.source.kind = "goal";
+goalRestored.command.resultMode = {
+  kind: "task-message-encrypted",
+  messageId: "00000000-0000-4000-8000-000000000010",
+  idempotencyKey: "assistant:fixture-goal",
+};
+delete goalRestored.command.prompt;
+delete goalRestored.command.protectedPrompt;
+goalRestored.command.protectedTaskPrompt = {
+  ...operation.userMessage,
+  classification: { role: "user", mode: "goal", attachmentIds: [] },
+};
+assert.ok(worker("fresh physical Goal restoration", goalRestored).ok);
+const changedGoalSource = structuredClone(goalRestored);
+delete changedGoalSource.command.taskResumption.source.kind;
+assert.ok(
+  worker("Goal restore cannot change source kind", changedGoalSource).issues,
+);
 for (const path of [
   ["source", "chatId"],
   ["source", "clientMessageId"],

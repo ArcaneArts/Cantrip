@@ -131,7 +131,7 @@ impl Repository {
     }
 
     pub async fn prepare_inference_input(&self, owner: &str, input: &Value) -> Result<Value> {
-        self.prepare_inference_input_at_revision(owner, input, None)
+        self.prepare_inference_input_at_revision(owner, input, None, None)
             .await
     }
 
@@ -140,10 +140,16 @@ impl Repository {
         owner: &str,
         input: &Value,
         expected_revision: Option<i64>,
+        publication: Option<&Value>,
     ) -> Result<Value> {
         if input["kind"] == "goal" {
             return self
-                .prepare_goal_inference_input_at_revision(owner, input, expected_revision)
+                .prepare_goal_inference_input_at_revision(
+                    owner,
+                    input,
+                    expected_revision,
+                    publication,
+                )
                 .await;
         }
         let mut receipt = input.clone();
@@ -206,11 +212,8 @@ impl Repository {
             return stale();
         }
         if receipt["kind"] == "goal" {
-            if phase == "native" {
-                return stale();
-            }
             return self
-                .dispatch_goal_inference_input(owner, worker, receipt, phase)
+                .dispatch_goal_inference_input(owner, worker, receipt, phase, metadata)
                 .await;
         }
         if receipt["workerId"] != worker {

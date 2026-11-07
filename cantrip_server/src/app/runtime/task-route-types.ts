@@ -46,7 +46,10 @@ interface TaskTurnCallbackInput {
   taskInferenceInputOperationId?: string;
 }
 
-interface TaskTurnOptions {
+interface TaskTurnOptions extends Pick<
+  import("./chat-turn-types.js").ChatTurnOptions,
+  "taskResumption" | "onTaskResumed" | "onTaskRestoreFailed" | "messageRole"
+> {
   encryptedTaskMessages?: {
     userMessage: TaskMessageOpaqueContent;
     response?: { id: string; idempotencyKey: string };

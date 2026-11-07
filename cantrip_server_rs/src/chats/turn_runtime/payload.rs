@@ -184,6 +184,7 @@ impl EventSink {
                                 revision.as_i64().context("Task input control revision")
                             })
                             .transpose()?,
+                        t.encrypted_task.as_ref().and_then(|v| v.get("response")),
                     )
                     .await?
             };

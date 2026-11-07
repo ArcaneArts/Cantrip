@@ -175,9 +175,47 @@ cancels an actual restoration waiting for provider capacity and verifies that
 freeing capacity cannot restart it. Late physical failure callbacks cannot fail
 the stopped logical Task; matching native terminal proof still retires recovery.
 
-These results qualify direct Task rounds. Planning/finalizer rounds, autonomous
-Task Goal accounting, and the complete resource/client matrix still require
-production qualification; this section does not claim those paths complete.
+These results qualify direct Task rounds. Planning/finalizer recovery, later
+autonomous Goal cycles, and the complete resource/client matrix still require
+production qualification.
+
+### Private Task Goal input
+
+The private Goal input created after Task planning and finalization now binds its
+actual native execution on the Goal dispatch cycle. It retains the completed
+finalizer unchanged. Its protected worker continuation uses version 2 to retain
+the original opaque Goal prompt, response-publication identity, and published
+event identities. The source registry remains version 3 with Task-content
+protection; current Task-content authorization is required after restart. No
+execution grant is serialized and no additional native patch is needed.
+
+Explicit Resume retains the original logical input and native thread/turn while
+acquiring a fresh physical receipt, worker generation, runtime generation, and
+dispatch lease. It reconstructs publication from the existing protected message
+and resumes the checkpoint without creating another Goal or submitting its
+prompt. Failed restoration and late process-loss callbacks retain recovery state;
+matching native completion retires it. Delivery cleanup recognizes the current
+physical receipt rather than misclassifying resumed delivery as replaced input.
+
+The real `--task-goal-origin` fixture performs encrypted browser Task planning,
+finalization, native Goal creation, a successful command, durable Pause, whole
+worker-tree termination, and explicit original-turn recovery. Both servers pass
+two cold rounds with concurrent Resume requests. The completed original command
+and native turn start appear once. Goal identity, objective and counters survive
+reopening, and startup/reopening dispatches no inference. The fixture retains the
+Goal's actual read-only planning policy; this case does not claim a writable
+Goal profile. A second completed command after Resume tests newly accumulated
+usage at a held provider boundary. With two pauses that boundary reports 480
+tokens in live and cold runs on both servers. The final status tool can run before its
+streaming response's usage event; its own additional usage is checked separately
+from the completed-work boundary.
+
+Use `--task-cold-rounds 2 --task-duplicate-resume` for repeated recovery,
+`--task-live-pause` for the surviving-process comparison, and the existing
+`--task-restore-damage missing|corrupt|incompatible` and `--task-cold-stop` controls
+for actual recovery errors and cancellation. This qualification covers the first
+private Goal input. It does not yet qualify subsequent native-generated Goal
+cycles or all Goal settings/resource/client combinations.
 
 ## Held managed attachment
 

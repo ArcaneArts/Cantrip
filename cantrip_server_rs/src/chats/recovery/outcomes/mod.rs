@@ -126,6 +126,10 @@ impl Service {
             .await
         {
             Ok(Some(goal)) => {
+                if goal["retained"] == true {
+                    self.publish_task(owner, text(&n["chatId"])?, &goal["chat"]);
+                    return Ok(());
+                }
                 if !goal["message"].is_null() {
                     self.dependencies
                         .live

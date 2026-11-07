@@ -4,6 +4,7 @@ import {
   type NativeTurnSuspension,
   type TaskInferenceInputReceipt,
   type TaskOperationRelayRequest,
+  type TaskMessageOpaqueContent,
 } from "@cantrip/protocol";
 import type { NativeSuspensionStore } from "../native-suspension-store.js";
 import type { TaskEventSealerState } from "../task-event-sealer-state.js";
@@ -24,9 +25,15 @@ export function createTaskSuspensionCapture(
   input: {
     receipt: TaskInferenceInputReceipt;
     projectId: string;
-    request: TaskOperationRelayRequest;
     events: () => Promise<TaskEventSealerState>;
-  },
+  } & (
+    | { kind: "round"; request: TaskOperationRelayRequest }
+    | {
+        kind: "goal";
+        prompt: TaskMessageOpaqueContent;
+        publication: { id: string; idempotencyKey: string };
+      }
+  ),
 ) {
   return async (active: { threadId: string; turnId: string }) => {
     const suspension = await runtime.captureTurnSuspension(
@@ -58,7 +65,15 @@ export function createTaskSuspensionCapture(
         active.threadId,
         active.turnId,
       ),
-      taskContinuation: { version: 1, request: input.request, events },
+      taskContinuation:
+        input.kind === "round"
+          ? { version: 1, request: input.request, events }
+          : {
+              version: 2,
+              prompt: input.prompt,
+              publication: input.publication,
+              events,
+            },
     });
     const observed = await runtime.inspectTurnSuspension(active.threadId);
     if (

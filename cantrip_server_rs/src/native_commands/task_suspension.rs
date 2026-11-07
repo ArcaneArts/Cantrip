@@ -187,7 +187,7 @@ impl super::Repository {
         );
         self.database.transaction(|tx| Box::pin(async move {
             context::lock_chat(tx, &owner, &chat).await?;
-            let rows = tx.query("SELECT inference_input::text FROM task_planning_rounds WHERE id=$1 AND chat_id=$2", &[&text(&lease["operationId"])?,&chat]).await?;
+            let rows = tx.query("SELECT CASE WHEN c.goal_input IS NOT NULL THEN c.goal_input ELSE r.inference_input END::text FROM task_dispatch_cycles c JOIN task_planning_rounds r ON r.id=c.operation_id AND r.chat_id=c.chat_id WHERE c.id=$1 AND c.chat_id=$2 AND c.owner_id=$3", &[&text(&lease["cycleId"])?,&chat,&owner]).await?;
             let Some(row) = rows.first() else {return Ok(false);};
             let Some(raw) = row.get::<Option<String>>(0)? else {return Ok(false);};
             let input: Value = serde_json::from_str(&raw)?;
@@ -503,7 +503,6 @@ pub(crate) async fn stopped_input_locked(
             saved["phase"].as_str(),
             Some("stopping" | "stopped" | "error")
         )
-        || !receipt["kind"].is_null()
         || receipt["workerId"] != worker
         || crate::tasks::resumption::physical(input)["receipt"] != *receipt
         || saved["target"]["workerId"] != receipt["workerId"]

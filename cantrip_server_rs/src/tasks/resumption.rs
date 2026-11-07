@@ -46,7 +46,11 @@ impl Repository {
                         false,
                     )
                     .await?;
-                    inference_inputs::context(tx, &owner, &original).await?;
+                    if original["kind"] == "goal" {
+                        goal_inference_inputs::context(tx, &owner, &original, true, false).await?;
+                    } else {
+                        inference_inputs::context(tx, &owner, &original).await?;
+                    }
                     let row = suspension::chat(tx, &owner, &chat).await?;
                     let state = suspension::read(&row)?.context("Task suspension missing")?;
                     if state["controlId"] != restore["controlId"]
@@ -74,22 +78,58 @@ impl Repository {
             })
             .await
     }
+    pub async fn goal_restoration_source(
+        &self,
+        owner: &str,
+        restore: &Value,
+        lease: &Value,
+    ) -> Result<Value> {
+        let (owner, restore, lease) = (owner.to_owned(), restore.clone(), lease.clone());
+        self.database.transaction(|tx| Box::pin(async move {
+            let original = parse("taskInferenceInputReceiptSchema", &restore["source"])?;
+            if original["kind"] != "goal" { return stale(); }
+            let chat = text(&original["chatId"])?;
+            dispatch_fence::assert(tx, &owner, &chat, &text(&original["dispatch"]["operationId"])?,
+                &json!({"kind":"leased","lease":lease}), false).await?;
+            let row = goal_inference_inputs::context(tx, &owner, &original, true, false).await?;
+            let cycle = goal_inference_inputs::cycle(tx, &owner, &chat, Some(&text(&lease["cycleId"])?)).await?
+                .ok_or_else(crate::task_dispatch::Conflict::stale)?;
+            let input = &cycle["goal_input"];
+            let current = suspension::chat(tx, &owner, &chat).await?;
+            let saved = suspension::read(&current)?.context("Task suspension missing")?;
+            let context = crate::native_commands::context::execution(tx, &owner, &chat).await?.context("Task source missing")?;
+            let source = crate::chats::native_task_suspension::source(tx, &context).await?.context("Task source missing")?;
+            if input["receipt"] != original || input["publication"].is_null() || !input["terminal"].is_null() ||
+                saved["controlId"] != restore["controlId"] || saved["phase"] != "resuming" || saved["action"] != "resume" ||
+                saved["checkpoint"] != restore["checkpoint"] || source.receipt != original ||
+                !crate::native_commands::task_suspension::matches_source(&saved, &current, &source) { return stale(); }
+            let m = &row["message"];
+            let message = parse("taskMessageOpaqueContentSchema", &json!({"id":m["id"],
+                "classification":json!({"role":m["role"],"mode":m["mode"],"attachmentIds":m["task_attachment_ids"]}),
+                "protectedContent":m["task_protected_content"],"reasoningEffort":m["reasoning_effort"],"idempotencyKey":m["idempotency_key"]}))?;
+            Ok(json!({"message":message,"publication":input["publication"]}))
+        })).await
+    }
     pub async fn prepare_resumption_input(&self, owner: &str, input: &Value) -> Result<Value> {
         let (owner, input) = (owner.to_owned(), input.clone());
         self.database.transaction(|tx| Box::pin(async move {
             let original = parse("taskInferenceInputReceiptSchema", &input["resumption"]["source"])?;
-            if !original["kind"].is_null() {return stale();}
+            let goal = original["kind"] == "goal";
+            if !original["kind"].is_null() && !goal {return stale();}
             let (chat, operation) = (text(&original["chatId"])?, text(&original["dispatch"]["operationId"])?);
             dispatch_fence::assert(tx, &owner, &chat, &operation,
                 &json!({"kind":"leased","lease":input["lease"]}), false).await?;
-            let row = inference_inputs::context(tx, &owner, &original).await?;
-            let state = &row["round"]["inference_input"];
+            let row = if goal {goal_inference_inputs::context(tx, &owner, &original, true, false).await?}
+                else {inference_inputs::context(tx, &owner, &original).await?};
+            let cycle = if goal {goal_inference_inputs::cycle(tx, &owner, &chat, Some(&text(&input["lease"]["cycleId"])?)).await?} else {None};
+            let state = if goal {&cycle.as_ref().ok_or_else(crate::task_dispatch::Conflict::stale)?["goal_input"]}
+                else {&row["round"]["inference_input"]};
             let checkpoint_owner = checkpoint_execution(state);
             let current = suspension::chat(tx, &owner, &chat).await?;
             let Some(saved) = suspension::read(&current)? else {return stale();};
             if state.is_null() || state["receipt"] != original || state["nativeExecution"].is_null() || state["nativeOwner"].is_null() ||
                 checkpoint_owner["nativeExecution"].is_null() || checkpoint_owner["nativeOwner"].is_null() || !state["terminal"].is_null() ||
-                state["accepted"] != true || state["dispatched"] != true || row["project"]["task_scheduling_paused"] == true ||
+                state["accepted"] != true || state["dispatched"] != true || (goal && state["publication"].is_null()) || row["project"]["task_scheduling_paused"] == true ||
                 input.get("expectedInputRevision").is_some_and(|revision| !revision.is_null() && row["chat"]["managed_input_revision"] != *revision) ||
                 saved["phase"] != "resuming" || saved["action"] != "resume" || saved["controlId"] != input["resumption"]["controlId"] ||
                 saved["checkpoint"] != input["resumption"]["checkpoint"] ||
@@ -111,7 +151,8 @@ impl Repository {
             let mut state = state.clone();
             state["resumption"] = json!({"controlId":saved["controlId"],"receipt":receipt,"accepted":false,"dispatched":false,
                 "checkpointOwner":json!({"receipt":checkpoint_owner["receipt"],"nativeExecution":checkpoint_owner["nativeExecution"],"nativeOwner":checkpoint_owner["nativeOwner"]})});
-            update(tx, Table::Round, &operation, &json!({"inference_input":state}), None).await?;
+            if goal {goal_inference_inputs::write(tx, &text(&input["lease"]["cycleId"])?, &state).await?;}
+            else {update(tx, Table::Round, &operation, &json!({"inference_input":state}), None).await?;}
             Ok(receipt)
         })).await
     }

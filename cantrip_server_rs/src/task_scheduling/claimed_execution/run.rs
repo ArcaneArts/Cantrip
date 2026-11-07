@@ -10,7 +10,7 @@ impl Service {
         let mut launch_stage = "resolve-context";
         let mut preparation_guard = None;
         let result:Result<()>=async {
-            if claim["cycle"]["operationKind"]=="finalize" {
+            if restoration.is_none() && claim["cycle"]["operationKind"]=="finalize" {
                 preparation_guard=self.tasks.goal_preparation_guard(owner,&text(&claim["cycle"]["chatId"])?,&claim["lease"]).await?;
             }
             let context=self.stage(claim,launch_stage,{
@@ -37,6 +37,20 @@ impl Service {
                 async move {let lookup=json!({"operationId":operation});futures::try_join!(tasks.get(&owner,&chat),tasks.get_operation_context(&owner,&chat,&lookup))}
             }).await?;
             let task=task.context("The claimed Task no longer exists.")?;
+            if let Some((restore, signal)) = restoration.as_ref().filter(|(restore, _)| restore["source"]["kind"] == "goal") {
+                let original = self.tasks.goal_restoration_source(owner, restore, &claim["lease"]).await?;
+                self.dependencies.goals.retain(&claim["lease"]).await?;
+                let mut hooks = self.dependencies.goals.scheduled_hooks(owner, &claim["lease"]);
+                hooks.task_restored = Some(signal.clone());
+                let input = json!({"text":"Restore the suspended Task Goal.","mode":"goal","attachmentIds":Vec::<Value>::new(),
+                    "idempotencyKey":original["message"]["idempotencyKey"],"modelId":model,"reasoningEffort":configuration["reasoningEffort"],
+                    "customSubagentModel":configuration["customSubagentModel"],"subagentModelId":configuration["subagentModelId"],"subagentReasoningEffort":configuration["subagentReasoningEffort"]});
+                let options = json!({"purpose":"Restore suspended Task Goal","taskResumption":restore,"taskDispatchLease":claim["lease"],
+                    "encryptedTaskMessages":json!({"userMessage":original["message"],"response":original["publication"]}),
+                    "messageRole":original["message"]["classification"]["role"],"runtimes":vec![runtime.clone()]});
+                self.dependencies.runtime.begin(owner, &context, &input, &options, hooks).await?;
+                return Ok(());
+            }
             if let Some(prior)=prior.as_ref().filter(|p|truthy(p.get("relayResult"))) {
                 if prior["round"]["kind"]=="finalize" {
                     self.launch_goal(owner,claim,&context,&runtime,&text(&prior["round"]["id"])?).await?;

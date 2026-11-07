@@ -22,13 +22,37 @@ pub(crate) async fn source(tx: &Transaction<'_>, context: &Value) -> Result<Opti
     }
     let chat = context["chatId"].as_str().context("Task suspension chat")?;
     let rows = tx.query("SELECT to_jsonb(r)::text,to_jsonb(t)::text FROM task_planning_rounds r INNER JOIN tasks t ON t.chat_id=r.chat_id AND t.active_operation_id=r.id WHERE t.chat_id=$1 LIMIT 1", &[&chat]).await?;
-    let Some(row) = rows.first() else {
-        return Ok(None);
+    let (round, task, state, goal_source) = if let Some(row) = rows.first() {
+        let round: Value = serde_json::from_str(&row.get::<String>(0)?)?;
+        let task: Value = serde_json::from_str(&row.get::<String>(1)?)?;
+        let state = round["inference_input"].clone();
+        (round, task, state, false)
+    } else {
+        let rows = tx.query("SELECT to_jsonb(r)::text,to_jsonb(t)::text,to_jsonb(c)::text FROM task_dispatch_cycles c INNER JOIN tasks t ON t.chat_id=c.chat_id AND t.active_operation_id IS NULL INNER JOIN task_planning_rounds r ON r.id=c.operation_id AND r.chat_id=c.chat_id WHERE c.chat_id=$1 ORDER BY c.created_at DESC,c.id DESC LIMIT 1", &[&chat]).await?;
+        let Some(row) = rows.first() else {
+            return Ok(None);
+        };
+        let round: Value = serde_json::from_str(&row.get::<String>(0)?)?;
+        let task: Value = serde_json::from_str(&row.get::<String>(1)?)?;
+        let cycle: Value = serde_json::from_str(&row.get::<String>(2)?)?;
+        let state = cycle["goal_input"].clone();
+        if task["plan_goal_enabled"] != true
+            || task["implementation_started_at"].is_null()
+            || round["kind"] != "finalize"
+            || task["planning_round"] != round["ordinal"]
+            || round["relay_result"]["goal"].is_null()
+            || cycle["operation_kind"] != "finalize"
+            || state["receipt"]["kind"] != "goal"
+        {
+            return Ok(None);
+        }
+        let message = state["receipt"]["clientMessageId"]
+            .as_str()
+            .context("Goal input message")?;
+        if tx.query("SELECT id FROM chat_messages WHERE id=$1 AND chat_id=$2 AND mode='goal' AND role IN ('system','user') AND task_protected_content IS NOT NULL", &[&message,&chat]).await?.is_empty() {return Ok(None);}
+        (round, task, state, true)
     };
-    let round: Value = serde_json::from_str(&row.get::<String>(0)?)?;
-    let task: Value = serde_json::from_str(&row.get::<String>(1)?)?;
-    let state = &round["inference_input"];
-    if round["status"] != "running"
+    if (!goal_source && round["status"] != "running")
         || matches!(task["state"].as_str(), Some("complete" | "failed"))
         || state["accepted"] != true
         || state["dispatched"] != true
@@ -37,12 +61,12 @@ pub(crate) async fn source(tx: &Transaction<'_>, context: &Value) -> Result<Opti
         || !state["terminal"].is_null()
         || state["nativeExecution"].is_null()
         || state["nativeOwner"].is_null()
-        || !state["receipt"]["kind"].is_null()
+        || (state["receipt"]["kind"] == "goal") != goal_source
     {
         return Ok(None);
     }
     let receipt = parse_response("taskInferenceInputReceiptSchema", Some(&state["receipt"]))?;
-    let physical = crate::tasks::resumption::checkpoint_execution(state);
+    let physical = crate::tasks::resumption::checkpoint_execution(&state);
     let native_execution = crate::wire::parse_property(
         "taskInferenceInputDispatchSchema",
         "nativeExecution",
@@ -53,7 +77,7 @@ pub(crate) async fn source(tx: &Transaction<'_>, context: &Value) -> Result<Opti
         .iter()
         .any(|key| receipt[*key] != context[*key])
         || receipt["dispatch"]["operationId"] != round["id"]
-        || receipt["clientMessageId"] != round["user_message_id"]
+        || (!goal_source && receipt["clientMessageId"] != round["user_message_id"])
     {
         return Ok(None);
     }
@@ -65,7 +89,7 @@ pub(crate) async fn source(tx: &Transaction<'_>, context: &Value) -> Result<Opti
     Ok(Some(Source {
         context: bound,
         task_round,
-        current_receipt: crate::tasks::resumption::physical(state)["receipt"].clone(),
+        current_receipt: crate::tasks::resumption::physical(&state)["receipt"].clone(),
         execution_receipt: parse_response(
             "taskInferenceInputReceiptSchema",
             Some(&physical["receipt"]),

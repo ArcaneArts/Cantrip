@@ -1873,13 +1873,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             },
             signal,
           );
-          if (!receipt.kind)
-            taskInputExecutions.bind(
-              receipt,
-              scope,
-              nativeExecution,
-              nativeRuntimeGeneration,
-            );
+          taskInputExecutions.bind(
+            receipt,
+            scope,
+            nativeExecution,
+            nativeRuntimeGeneration,
+          );
         },
       );
       admission.subscribe((status) => {
@@ -6332,14 +6331,27 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   taskInput: source,
                 },
               );
+              const saved = opened.taskContinuation;
+              const matchesInput =
+                saved?.version === 1
+                  ? command.resultMode.kind === "task-encrypted" &&
+                    isDeepStrictEqual(
+                      saved.request,
+                      command.resultMode.operation,
+                    )
+                  : saved?.version === 2 &&
+                    command.resultMode.kind === "task-message-encrypted" &&
+                    isDeepStrictEqual(
+                      saved.prompt,
+                      command.protectedTaskPrompt,
+                    ) &&
+                    saved.publication.id === command.resultMode.messageId &&
+                    saved.publication.idempotencyKey ===
+                      command.resultMode.idempotencyKey;
               if (
                 !opened.continuation ||
                 !opened.taskContinuation ||
-                command.resultMode.kind !== "task-encrypted" ||
-                !isDeepStrictEqual(
-                  opened.taskContinuation.request,
-                  command.resultMode.operation,
-                ) ||
+                !matchesInput ||
                 !isDeepStrictEqual(
                   opened.evidence,
                   command.taskResumption!.checkpoint,
@@ -6355,6 +6367,20 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               };
             })()
           : null;
+        const taskCheckpointContent =
+          command.resultMode.kind === "task-encrypted"
+            ? { kind: "round" as const, request: command.resultMode.operation }
+            : command.resultMode.kind === "task-message-encrypted" &&
+                command.protectedTaskPrompt
+              ? {
+                  kind: "goal" as const,
+                  prompt: command.protectedTaskPrompt,
+                  publication: {
+                    id: command.resultMode.messageId,
+                    idempotencyKey: command.resultMode.idempotencyKey,
+                  },
+                }
+              : null;
         const encryptedTaskSealer = encryptedTask
           ? new EncryptedTaskEventSealer(
               workerEncryption,
@@ -6641,8 +6667,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 preparationSignal
                   ? AbortSignal.any([preparationSignal, guiBridgeSignal])
                   : guiBridgeSignal,
-                command.resultMode.kind === "task-encrypted" &&
-                  encryptedTaskSealer
+                taskCheckpointContent && encryptedTaskSealer
                   ? createTaskSuspensionCapture(
                       runtime,
                       nativeSuspensionStore,
@@ -6651,7 +6676,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                           command.taskResumption?.source ??
                           command.taskInferenceInput,
                         projectId: command.policyProjectId!,
-                        request: command.resultMode.operation,
+                        ...taskCheckpointContent,
                         events: async () => {
                           await protectedEventQueue;
                           if (protectedEventFailure)
@@ -7702,7 +7727,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             const stop = command.taskStop;
             const round = stop.scope.taskRound;
             if (
-              stop.source.kind ||
               !round ||
               stop.source.chatId !== command.chatId ||
               command.threadId !== stop.active.threadId ||
