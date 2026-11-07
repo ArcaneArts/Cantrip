@@ -3,17 +3,17 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "f4cae70ef0f51bc832c2d4dc09f77826f7d7d0857c9cb92448a21350e9e6e861",
-    "baselineCommit": "951b108cc",
+    "sha256": "737d94cd97a7fd4ac1692b955528f9c644102c3bc8faf74970e44b79d40813d4",
+    "baselineCommit": "8bc4c5d8100124136b4d77df387b69164f5e40da",
     "counts": {
-      "routes": 557,
-      "workerCommands": 310,
-      "durableTables": 116,
-      "repositoryMethods": 367,
+      "routes": 584,
+      "workerCommands": 323,
+      "durableTables": 135,
+      "repositoryMethods": 369,
       "liveResources": 47
     },
-    "workingTreeNote": "Source metadata reconciled at 951b108cc with revisioned Task interruption, canonical first-Goal dispatch deferral, FIFO episode fencing, and SQL NULL recovery-marker cleanup. No Node route or worker command name is added; the existing public interrupt route is now registered in Rust. Direct formatting, mechanical protocol source export and git diff --check are the validation for this extension. No audit, tests, builds, typechecks, native patch application/checks, migration execution, native/helper execution, hosted validation or computer-use testing ran. Earlier runtime qualifications retained in individual rows do not validate this paired native/worker/server change. Declared durable table count remains116; full replacement and supported-platform acceptance remain outstanding.",
-    "migrationBackedTableCount": 122
+    "workingTreeNote": "Current-source reconciliation at 8bc4c5d810 includes 27 routes, 13 worker commands and 19 split-schema tables absent from the previous stored inventory. All nine regenerated contract manifests match current rebuilt TypeScript. Thirty-seven of 39 Node-changing commits since 951b108cc also edit Rust core; pairing is source evidence only. Actual production HTTP comparison found and fixes model-operation validation/cancellation error bodies. See docs/RUST_SERVER_SOURCE_DRIFT.md for executed evidence and remaining feature/platform qualification. Earlier category rows retain milestone-specific historical evidence and are not aggregate completion percentages.",
+    "durableTableCountScope": "All Drizzle tables exported by the actual current schema, independently compared at runtime to the source corpus. Does not count internal migration metadata or assert a current all-backend migration/data-preservation pass."
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
   "routes": {
@@ -6144,6 +6144,178 @@
         "remaining": [
           "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop-operations",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_desktop.rs",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop-operations/:operationId/observe",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_desktop.rs",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/package-operations",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_packages.rs",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/package-operations/:operationId/observe",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_packages.rs",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/package-operations/:operationId/continue",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_packages.rs",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/package-operations/:operationId/abandon",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_packages.rs",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/system-operations",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_systems.rs",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/system-operations/:operationId/observe",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_systems.rs",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/system-operations/:operationId/continue",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_systems.rs",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/system-operations/:operationId/recover",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_systems.rs",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/system-operations/:operationId/abandon",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_systems.rs",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cantrip-os/:instanceId/workspace-operations/:operationId/observe",
+        "implementation": "cantrip_server_rs/src/http/cantrip_os_workspace_operations.rs",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/model-operations/embedding",
+        "implementation": "cantrip_server_rs/src/http/model_operations.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-rust/model-operation-boundary-compatibility.mjs"
+        ],
+        "remaining": [
+          "HTTP error/configuration/ownership boundaries are qualified separately from successful protected inference, cancellation of actual running inference, usage accounting and supported-platform acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/model-operations/decision",
+        "implementation": "cantrip_server_rs/src/http/model_operations.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-rust/model-operation-boundary-compatibility.mjs"
+        ],
+        "remaining": [
+          "HTTP error/configuration/ownership boundaries are qualified separately from successful protected inference, cancellation of actual running inference, usage accounting and supported-platform acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/model-operations/embedding/cancel",
+        "implementation": "cantrip_server_rs/src/http/model_operations.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-rust/model-operation-boundary-compatibility.mjs"
+        ],
+        "remaining": [
+          "HTTP error/configuration/ownership boundaries are qualified separately from successful protected inference, cancellation of actual running inference, usage accounting and supported-platform acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/model-operations/decision/cancel",
+        "implementation": "cantrip_server_rs/src/http/model_operations.rs",
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-rust/model-operation-boundary-compatibility.mjs"
+        ],
+        "remaining": [
+          "HTTP error/configuration/ownership boundaries are qualified separately from successful protected inference, cancellation of actual running inference, usage accounting and supported-platform acceptance."
+        ]
       }
     ]
   },
@@ -7654,6 +7826,123 @@
           "Actual browser/full-worker CodeGraph/runtime asset effects, shared/mixed Redis and supported-platform/package acceptance remain required.",
           "Complete legacy upgrade, post-write Node rollback, performance, desktop/Winterhold rehearsal and Node-server removal remain required."
         ]
+      },
+      {
+        "command": "model.embedding",
+        "implementation": "cantrip_server_rs/src/http/model_operations.rs",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+        ]
+      },
+      {
+        "command": "model.decision",
+        "implementation": "cantrip_server_rs/src/http/model_operations.rs",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+        ]
+      },
+      {
+        "command": "model.operation.cancel",
+        "implementation": "cantrip_server_rs/src/http/model_operations.rs",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+        ]
+      },
+      {
+        "command": "chat.suspension.stop",
+        "implementation": "cantrip_server_rs/src/chats/automation_pause/durable_stop.rs",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+        ]
+      },
+      {
+        "command": "cantrip-os.packages.status",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+        ]
+      },
+      {
+        "command": "cantrip-os.packages.operation",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+        ]
+      },
+      {
+        "command": "cantrip-os.system.status",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+        ]
+      },
+      {
+        "command": "cantrip-os.system.capture",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+        ]
+      },
+      {
+        "command": "cantrip-os.system.replace",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+        ]
+      },
+      {
+        "command": "cantrip-os.system.rollback",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+        ]
+      },
+      {
+        "command": "cantrip-os.desktop.status",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+        ]
+      },
+      {
+        "command": "cantrip-os.desktop.operation",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+        ]
+      },
+      {
+        "command": "cantrip-os.backup.reset",
+        "implementation": "cantrip_server_rs/src/cantrip_os/",
+        "status": "partial",
+        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "remaining": [
+          "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+        ]
       }
     ]
   },
@@ -8674,6 +8963,323 @@
           "Opaque HTTP create/read/delete and primary/ready-replica persistence are locally qualified across all3 stores/auth modes. Complete table-consumer and product/platform acceptance remains required.",
           "Actual client/full-worker file encryption and transfer, mixed Node/Rust Redis coordination and supported-platform packaged acceptance remain required.",
           "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and final default cutover remain outstanding."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_backup_operations",
+        "exportName": "cantripOsBackupOperations",
+        "implementation": ["cantrip_server_rs/src/cantrip_os/backups.rs"],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_desktop_targets",
+        "exportName": "cantripOsDesktopTargets",
+        "implementation": ["cantrip_server_rs/src/cantrip_os/desktop.rs"],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_desktop_operations",
+        "exportName": "cantripOsDesktopOperations",
+        "implementation": ["cantrip_server_rs/src/cantrip_os/desktop.rs"],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_package_targets",
+        "exportName": "cantripOsPackageTargets",
+        "implementation": ["cantrip_server_rs/src/cantrip_os/packages.rs"],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_package_operations",
+        "exportName": "cantripOsPackageOperations",
+        "implementation": ["cantrip_server_rs/src/cantrip_os/packages.rs"],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_power_targets",
+        "exportName": "cantripOsPowerTargets",
+        "implementation": [
+          "cantrip_server_rs/src/cantrip_os/control.rs",
+          "cantrip_server_rs/src/cantrip_os/desktop.rs",
+          "cantrip_server_rs/src/cantrip_os/power.rs",
+          "cantrip_server_rs/src/cantrip_os/recovery.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_power_operations",
+        "exportName": "cantripOsPowerOperations",
+        "implementation": [
+          "cantrip_server_rs/src/cantrip_os/control.rs",
+          "cantrip_server_rs/src/cantrip_os/desktop.rs",
+          "cantrip_server_rs/src/cantrip_os/power.rs",
+          "cantrip_server_rs/src/cantrip_os/recovery.rs",
+          "cantrip_server_rs/src/cantrip_os/system_admission.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_system_targets",
+        "exportName": "cantripOsSystemTargets",
+        "implementation": [
+          "cantrip_server_rs/src/cantrip_os/system_admission.rs",
+          "cantrip_server_rs/src/cantrip_os/system_targets.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_system_operations",
+        "exportName": "cantripOsSystemOperations",
+        "implementation": [
+          "cantrip_server_rs/src/cantrip_os/control.rs",
+          "cantrip_server_rs/src/cantrip_os/power.rs",
+          "cantrip_server_rs/src/cantrip_os/recovery.rs",
+          "cantrip_server_rs/src/cantrip_os/system_admission.rs",
+          "cantrip_server_rs/src/cantrip_os/system_common.rs",
+          "cantrip_server_rs/src/cantrip_os/system_jobs.rs",
+          "cantrip_server_rs/src/cantrip_os/system_targets.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_workspace_operations",
+        "exportName": "cantripOsWorkspaceOperations",
+        "implementation": [
+          "cantrip_server_rs/src/cantrip_os/workspace_operations.rs",
+          "cantrip_server_rs/src/http.rs",
+          "cantrip_server_rs/src/http/cantrip_os.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "project_source_identities",
+        "exportName": "projectSourceIdentities",
+        "implementation": [
+          "cantrip_server_rs/src/cantrip_os/files.rs",
+          "cantrip_server_rs/src/cantrip_os/sources.rs",
+          "cantrip_server_rs/src/cantrip_os/worktrees.rs",
+          "cantrip_server_rs/src/file_documents/queries.json"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_instances",
+        "exportName": "cantripOsInstances",
+        "implementation": [
+          "cantrip_server_rs/src/cantrip_os/backups.rs",
+          "cantrip_server_rs/src/cantrip_os/control.rs",
+          "cantrip_server_rs/src/cantrip_os/desktop.rs",
+          "cantrip_server_rs/src/cantrip_os/mod.rs",
+          "cantrip_server_rs/src/cantrip_os/packages.rs",
+          "cantrip_server_rs/src/cantrip_os/power.rs",
+          "cantrip_server_rs/src/cantrip_os/recovery.rs",
+          "cantrip_server_rs/src/cantrip_os/sources.rs",
+          "cantrip_server_rs/src/cantrip_os/system_admission.rs",
+          "cantrip_server_rs/src/cantrip_os/system_common.rs",
+          "cantrip_server_rs/src/cantrip_os/system_jobs.rs",
+          "cantrip_server_rs/src/cantrip_os/system_targets.rs",
+          "cantrip_server_rs/src/cantrip_os/workspace_operations.rs",
+          "cantrip_server_rs/src/cantrip_os/worktrees.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_workspaces",
+        "exportName": "cantripOsWorkspaces",
+        "implementation": [
+          "cantrip_server_rs/src/cantrip_os/backups.rs",
+          "cantrip_server_rs/src/cantrip_os/control.rs",
+          "cantrip_server_rs/src/cantrip_os/desktop.rs",
+          "cantrip_server_rs/src/cantrip_os/mod.rs",
+          "cantrip_server_rs/src/cantrip_os/sources.rs",
+          "cantrip_server_rs/src/cantrip_os/workspace_operations.rs",
+          "cantrip_server_rs/src/cantrip_os/worktrees.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_project_sources",
+        "exportName": "cantripOsProjectSources",
+        "implementation": [
+          "cantrip_server_rs/src/cantrip_os/backups.rs",
+          "cantrip_server_rs/src/cantrip_os/mod.rs",
+          "cantrip_server_rs/src/cantrip_os/sources.rs",
+          "cantrip_server_rs/src/cantrip_os/worktrees.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_source_bindings",
+        "exportName": "cantripOsSourceBindings",
+        "implementation": [
+          "cantrip_server_rs/src/cantrip_os/backups.rs",
+          "cantrip_server_rs/src/cantrip_os/mod.rs",
+          "cantrip_server_rs/src/cantrip_os/run.rs",
+          "cantrip_server_rs/src/cantrip_os/sources.rs",
+          "cantrip_server_rs/src/cantrip_os/worktrees.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_existing_source_admissions",
+        "exportName": "cantripOsExistingSourceAdmissions",
+        "implementation": ["cantrip_server_rs/src/cantrip_os/sources.rs"],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_provision_admissions",
+        "exportName": "cantripOsProvisionAdmissions",
+        "implementation": ["cantrip_server_rs/src/cantrip_os/sources.rs"],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "cantrip_os_chat_placements",
+        "exportName": "cantripOsChatPlacements",
+        "implementation": [
+          "cantrip_server_rs/src/cantrip_os/chats.rs",
+          "cantrip_server_rs/src/terminals/linked_console.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
+        ]
+      },
+      {
+        "tableName": "inference_resource_revocations",
+        "exportName": "inferenceResourceRevocations",
+        "implementation": [
+          "cantrip_server_rs/src/workers/resource_revocations.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "scripts/server-schema-source-corpus.test.mjs"
+        ],
+        "remaining": [
+          "Current schema presence and source mapping do not establish complete persistence semantics, all-backend migration/data-preservation behavior or supported-platform acceptance."
         ]
       }
     ]
@@ -15201,6 +15807,40 @@
         "/api/cantrip-os/:instanceId/system-operations/:operationId",
         "/api/projects/:projectId/worktrees"
       ]
+    },
+    "currentSourceDriftAudit": {
+      "status": "partial",
+      "sourceBaseline": "8bc4c5d8100124136b4d77df387b69164f5e40da",
+      "evidence": [
+        "scripts/server-rust/source-drift-audit.mjs",
+        "scripts/server-rust/model-operation-boundary-compatibility.mjs",
+        "scripts/server-schema-source-corpus.test.mjs",
+        "scripts/surface-private-state-fields.test.mjs",
+        "docs/RUST_SERVER_SOURCE_DRIFT.md"
+      ],
+      "generatedContracts": "All nine match after rebuilding current TypeScript; schema equality is not behavioral parity.",
+      "sourcePairing": {
+        "nodeChangingCommits": 39,
+        "withRustCoreEdits": 37,
+        "nodeOnly": ["2060beb2a", "fc71cc21e"]
+      },
+      "remaining": [
+        "Successful current embedding/decision operations, cancellation while running and direct operation usage accounting.",
+        "Current catalog pagination/partial-scope discovery and operation-specific routing behavior.",
+        "Current CantripOS desktop/package/system/workspace lifecycle, failure and recovery behaviors.",
+        "Complete current native Task/Goal interruption/reconnect and supported-platform requalification.",
+        "Consolidate historical category-row limitations against current executed evidence before final replacement completion."
+      ],
+      "modelOperationBoundaryQualification": {
+        "platform": "darwin-arm64",
+        "storageModes": ["pglite", "bundled-postgres", "postgres"],
+        "authModes": ["none", "password", "accounts"],
+        "matchingCasePairs": 366,
+        "recordedHttpResponses": 732,
+        "cleanProductionServerExits": 18,
+        "scope": "Validation, owner/worker isolation, configuration failures, unavailable-worker cancellation and exact response headers/bodies; no successful inference claim.",
+        "rustExecutableSha256": "12fe4ca248e1aedd6eeea0a6934487a81ff74dc4ffab9cfb18d59359bb7c2fc1"
+      }
     }
   },
   "remainingAcceptance": [

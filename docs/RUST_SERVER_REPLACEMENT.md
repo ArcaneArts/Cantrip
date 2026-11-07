@@ -1,5 +1,13 @@
 # Rust server replacement
 
+Current source reconciliation finds paired Rust implementations for recent model,
+catalog, Task/Goal recovery and CantripOS changes. The refreshed inventory covers
+584 routes, 323 worker commands and 135 declared tables. Real HTTP comparison also
+found model-operation error-contract drift despite matching generated schemas.
+See [current source reconciliation](RUST_SERVER_SOURCE_DRIFT.md) for the fixes,
+evidence limits and remaining behavioral qualification. Node remains the default
+server and full replacement remains incomplete.
+
 The native CLI can activate converted profiles at the existing server pathname
 while retaining the previous directory. Local macOS tests pass actual process
 interruption and post-write reverse activation across all three storage modes,

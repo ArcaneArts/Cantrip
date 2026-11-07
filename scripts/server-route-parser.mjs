@@ -16,6 +16,22 @@ function unwrapType(path) {
   return path;
 }
 
+function fixedString(path, seen = new Set()) {
+  path = unwrapType(path);
+  if (path?.isStringLiteral()) return true;
+  if (path?.isTemplateLiteral())
+    return path.get("expressions").every((part) => fixedString(part, seen));
+  if (!path?.isIdentifier()) return false;
+  const binding = path.scope.getBinding(path.node.name);
+  if (
+    !binding?.constant ||
+    seen.has(binding) ||
+    !binding.path.isVariableDeclarator()
+  )
+    return false;
+  return fixedString(binding.path.get("init"), new Set([...seen, binding]));
+}
+
 function literalStrings(path, seen = new Set()) {
   path = unwrapType(path);
   if (path?.isStringLiteral()) return [path.node.value];
@@ -26,9 +42,21 @@ function literalStrings(path, seen = new Set()) {
     if (expressions.length === 0) return [quasis[0]];
     // Multiple varying bindings can be correlated; do not invent a Cartesian
     // product of routes that the application never registers.
-    if (expressions.length !== 1) return null;
-    const values = literalStrings(expressions[0], seen);
-    return values?.map((value) => `${quasis[0]}${value}${quasis[1]}`) ?? null;
+    if (expressions.filter((expression) => !fixedString(expression)).length > 1)
+      return null;
+    const values = expressions.map((expression) =>
+      literalStrings(expression, seen),
+    );
+    if (values.some((value) => !value?.length)) return null;
+    if (values.filter((value) => value.length > 1).length > 1) return null;
+    const count = Math.max(...values.map((value) => value.length));
+    return Array.from({ length: count }, (_, index) =>
+      values.reduce(
+        (result, value, column) =>
+          result + value[value.length === 1 ? 0 : index] + quasis[column + 1],
+        quasis[0],
+      ),
+    );
   }
   if (!path?.isIdentifier()) return null;
   const binding = path.scope.getBinding(path.node.name);
@@ -40,9 +68,22 @@ function literalStrings(path, seen = new Set()) {
     if (loop?.isForOfStatement() && loop.get("left") === declaration) {
       const values = unwrapType(loop.get("right"));
       if (!values.isArrayExpression()) return null;
-      const resolved = values
-        .get("elements")
-        .map((value) => literalStrings(value, nextSeen));
+      const pattern = binding.path.get("id");
+      const column = pattern.isArrayPattern()
+        ? pattern.node.elements.findIndex(
+            (element) =>
+              element?.type === "Identifier" && element.name === path.node.name,
+          )
+        : undefined;
+      if (column === -1) return null;
+      const resolved = values.get("elements").map((value) => {
+        if (column !== undefined) {
+          value = unwrapType(value);
+          if (!value.isArrayExpression()) return null;
+          value = value.get("elements")[column];
+        }
+        return literalStrings(value, nextSeen);
+      });
       return resolved.every((value) => value !== null) ? resolved.flat() : null;
     }
     return literalStrings(binding.path.get("init"), nextSeen);

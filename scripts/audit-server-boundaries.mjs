@@ -6,6 +6,8 @@ import {
 } from "./native-content-classifications.mjs";
 import { readWorkerCommandTypes } from "./worker-command-inventory.mjs";
 import { readStaticServerRoutes } from "./server-route-parser.mjs";
+import { guestDesktopAdmissionFieldRanges } from "./surface-private-state-fields.mjs";
+import { readServerSchemaSourceCorpus } from "./server-schema-source-corpus.mjs";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -110,7 +112,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "c01cedeb5ad07aa7eeee81033073509e4be8826ed45621e68200d85a2c5c61b9",
   applicationRoutes:
-    "b485aacdeea18de4574f3374759e8084ca36c7d03fe9726a0f8ec1be92be0ddd",
+    "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -118,13 +120,35 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
   workerCommands:
-    "e8dd67a75bc5f7847b5ed242e22d87f5a870f06daa9c1c31f6fef02c7060969c",
+    "f294dd3dcd68cf6417e52570b7efc90726d603a39131a22c1c57c72e164f0db3",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
 
 const DURABLE_TABLE_CLASSIFICATIONS = {
   ...nativeTableClassifications,
+  // Owner-scoped CantripOS admissions retain authority, generations and
+  // lifecycle facts. Private backup/provision intent and detailed package/system
+  // results stay encrypted; explicit placement paths are control metadata.
+  cantripOsBackupOperations: "endpoint-protected",
+  cantripOsDesktopTargets: "intentionally-public-control-plane",
+  cantripOsDesktopOperations: "intentionally-public-control-plane",
+  cantripOsPackageTargets: "intentionally-public-control-plane",
+  cantripOsPackageOperations: "endpoint-protected",
+  cantripOsPowerTargets: "intentionally-public-control-plane",
+  cantripOsPowerOperations: "intentionally-public-control-plane",
+  cantripOsSystemTargets: "intentionally-public-control-plane",
+  cantripOsSystemOperations: "endpoint-protected",
+  cantripOsWorkspaceOperations: "intentionally-public-control-plane",
+  projectSourceIdentities: "intentionally-public-control-plane",
+  cantripOsInstances: "intentionally-public-control-plane",
+  cantripOsWorkspaces: "intentionally-public-control-plane",
+  cantripOsProjectSources: "intentionally-public-control-plane",
+  cantripOsSourceBindings: "intentionally-public-control-plane",
+  cantripOsExistingSourceAdmissions: "intentionally-public-control-plane",
+  cantripOsProvisionAdmissions: "endpoint-protected",
+  cantripOsChatPlacements: "intentionally-public-control-plane",
+  inferenceResourceRevocations: "minimized-operational-metadata",
   systemState: "intentionally-public-control-plane",
   users: "intentionally-public-control-plane",
   accountLicenseWhitelist: "intentionally-public-control-plane",
@@ -739,9 +763,17 @@ async function surfacePrivateStateProductionDependencyAudit() {
         );
       }
     }
+    const guestAdmissionFields = guestDesktopAdmissionFieldRanges(sourceText);
     for (const field of prohibitedSurfacePrivateStateFields) {
       const expression = new RegExp(`\\b${field}\\b`, "gu");
       for (const match of sourceText.matchAll(expression)) {
+        if (
+          field === "desktopTarget" &&
+          guestAdmissionFields.some(
+            ([start, end]) => match.index >= start && match.index < end,
+          )
+        )
+          continue;
         failures.push(
           `${relativeFile}:${lineForOffset(sourceText, match.index)} references protected surface-state field ${field}`,
         );
@@ -3468,6 +3500,36 @@ function durableTableContentInventory(schemaText) {
 }
 
 function applicationRouteContentClassification(route) {
+  if (
+    /^\/api\/model-operations\/(?:embedding|decision)(?:\/cancel)?$/u.test(
+      route.path,
+    )
+  )
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "owner-resolved worker/model/route identity with opaque operation-bound request and response envelopes; inference content and provider credentials are opened only by the worker; cancellation carries identities only",
+    };
+  if (
+    /^\/api\/cantrip-os\/:instanceId\/(?:package-operations|system-operations)(?:\/|$)/u.test(
+      route.path,
+    )
+  )
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "owner-resolved immutable CantripOS operation admissions and target generations with endpoint-encrypted package/system diagnostics and receipts; guest archives and file contents remain on endpoints",
+    };
+  if (
+    /^\/api\/cantrip-os\/:instanceId\/(?:packages|system|workspaces\/:[^/]+\/desktop)/u.test(
+      route.path,
+    )
+  )
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale:
+        "owner-resolved CantripOS guest authority, exact target generations, immutable operation admissions and bounded lifecycle observations; private remote-surface state, pixels and file contents are not carried",
+    };
   if (route.path === "/api/internal/native-commands/goal-recovery-fence")
     return {
       classification: "minimized-operational-metadata",
@@ -3699,6 +3761,18 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (["model.embedding", "model.decision"].includes(command))
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "owner/worker/model/route-bound operation uses protected request, result and provider envelopes; only the worker opens inference content and credentials",
+    };
+  if (command === "model.operation.cancel")
+    return {
+      classification: "minimized-operational-metadata",
+      rationale:
+        "exact owner/server/worker/operation scope revokes an existing request without inference content or a new admission",
+    };
   if (command === "chat.goal.recover")
     return {
       classification: "endpoint-protected",
@@ -4718,18 +4792,9 @@ async function buildInventory() {
       tunnelFrameKinds,
     ),
   };
+  const schemaSources = await readServerSchemaSourceCorpus(repositoryRoot);
   const durableTables = durableTableContentInventory(
-    schemaText +
-      "\n" +
-      (await readFile(
-        resolve(dirname(schemaPath), "schema-alerts.ts"),
-        "utf8",
-      )) +
-      "\n" +
-      (await readFile(
-        resolve(dirname(schemaPath), "schema-conversation-usage.ts"),
-        "utf8",
-      )),
+    schemaSources.map(({ sourceText }) => sourceText).join("\n"),
   );
   const routes = parsedRoutes.map((parsedRoute) => {
     const contentBoundary = applicationRouteContentClassification(parsedRoute);
@@ -4898,7 +4963,7 @@ async function buildInventory() {
       agentOperations: "packages/protocol/src/index.ts",
       applicationRoutes: applicationSources.map(({ file }) => file),
       clientControlCommands: "packages/protocol/src/live.ts",
-      durableTables: "cantrip_server/src/db/schema.ts",
+      durableTables: schemaSources.map(({ file }) => file),
       liveProtocol: "packages/protocol/src/live.ts",
       remoteSurfaceStreamProtocol:
         "packages/protocol/src/remote-surface-stream.ts",
