@@ -6,11 +6,19 @@ optional package without a Worker, network listener or model credentials.
 
 Worker private archive helpers, durable jobs and real Docker/SSH roundtrips are implemented.
 Both Server implementations now own durable admissions and a paginated private
-catalogue. Cantrip's project settings now expose capture, history, restore,
-rollback and explicit recovery. The browser/full Worker Docker checkpoint uses
-production Server grants; restored-source adoption, installed-system controls
-and broader remote/lifecycle acceptance remain required.
+catalogue. Cantrip's project settings expose capture, history, restore,
+rollback and explicit recovery. Restored-source registration and instance/package
+controls build on those admissions. The browser/full Worker Docker checkpoint
+uses production Server grants; real external SSH acceptance remains required.
 See [the guest command guide](packages/recovery/README.md) for local administration.
+
+Capture stops the registered workspace services and remaining account processes.
+Save application work first. Close Chromium when its latest history/settings
+must be committed: filesystem backups do not save application memory, and a
+new navigation can still be buffered when the browser is terminated. A live
+SQLite lock does not mean capture cannot run; the recovery command coordinates
+writers before copying their files. See the [guest guide](packages/recovery/README.md)
+for the interruption policy and the acceptance record for actual tested scope.
 
 ## Format and keys
 

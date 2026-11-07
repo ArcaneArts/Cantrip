@@ -6,6 +6,11 @@ and executor packages. Removing it leaves those packages, ordinary desktops,
 and workspace files available. No Worker, conversation database, scheduler,
 or model-provider credentials are installed in the guest.
 
+The [Phase 5 distribution checkpoint](../../ACCEPTANCE.md#phase-5-distribution-acceptance-2026-11-07)
+records remote 0.11.0 with the refreshed AMD64 Docker/ISO and installed
+disable/remove/purge/reinstall preservation. Real external SSH product
+acceptance remains required.
+
 The Worker routes normal agent CUA and human previews to their captured Linux
 placement. The MCP client, turn authorization and provider credentials stay on
 the Worker. Project Settings → CantripOS → Open desktop supplies integrated

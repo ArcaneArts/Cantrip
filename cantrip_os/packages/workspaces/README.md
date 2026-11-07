@@ -4,6 +4,10 @@
 its service, local administrative CLI, versioned state, persistent accounts,
 independent desktop sessions, and a local browser workspace selector. The existing personal desktop works independently.
 
+The [Phase 5 distribution checkpoint](../../ACCEPTANCE.md#phase-5-distribution-acceptance-2026-11-07)
+records workspace 0.4.0 in the refreshed AMD64 Docker/ISO, retained installed
+accounts and real browser-profile restore into a different workspace UID.
+
 Build a portable, architecture-independent package from the repository root:
 
 ```sh
