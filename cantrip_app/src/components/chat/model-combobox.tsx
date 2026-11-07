@@ -1,4 +1,8 @@
-import type { ModelProfileSummary } from "@cantrip/protocol";
+import {
+  modelProfileOperation,
+  type ModelOperation,
+  type ModelProfileSummary,
+} from "@cantrip/protocol";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useRef, useState, type Ref } from "react";
 
@@ -19,6 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export interface ModelComboboxProps {
+  operation?: ModelOperation;
   ariaLabel: string;
   className?: string;
   disabled?: boolean;
@@ -130,6 +135,7 @@ export function ModelCombobox({
   getOptionDisabled,
   getOptionNote,
   models,
+  operation = "language",
   onValueChange,
   placeholder = "Select a model",
   searchPlaceholder,
@@ -138,7 +144,10 @@ export function ModelCombobox({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const selectedModel = models.find((model) => model.id === value);
+  const operationModels = models.filter(
+    (model) => modelProfileOperation(model) === operation,
+  );
+  const selectedModel = operationModels.find((model) => model.id === value);
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -188,7 +197,7 @@ export function ModelCombobox({
           getOptionDisabled={getOptionDisabled}
           getOptionNote={getOptionNote}
           inputRef={inputRef}
-          models={models}
+          models={operationModels}
           query={query}
           searchPlaceholder={searchPlaceholder}
           selectedValue={value}

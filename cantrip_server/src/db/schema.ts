@@ -1045,6 +1045,10 @@ export const providerCatalogSyncStates = pgTable(
 export const providerModelSuppressions = pgTable(
   "provider_model_suppressions",
   {
+    operation: text("operation")
+      .$type<ModelOperation>()
+      .notNull()
+      .default("language"),
     ownerId: text("owner_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -1055,7 +1059,16 @@ export const providerModelSuppressions = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.ownerId, table.providerModelId] })],
+  (table) => [
+    primaryKey({
+      name: "provider_model_suppressions_operation_pk",
+      columns: [table.ownerId, table.providerModelId, table.operation],
+    }),
+    check(
+      "provider_model_suppressions_operation_check",
+      sql`${table.operation} in ('language', 'embedding', 'decision')`,
+    ),
+  ],
 );
 
 export const modelProfiles = pgTable(

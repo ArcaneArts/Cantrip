@@ -1,5 +1,6 @@
 import {
   endpointModelInventorySchema,
+  endpointOperationMetadata,
   normalizeResponsesBaseUrl,
   type EndpointModelInventory,
   type EndpointModelInventoryItem,
@@ -22,9 +23,19 @@ const boolean = (value: unknown): boolean | null =>
 /** Unknown metadata stays unknown; it never prevents attempting inference. */
 export function normalizeEndpointModel(
   raw: unknown,
+  providerKind?: string,
 ): EndpointModelInventoryItem | null {
   const model = object(raw);
-  if (model.type === "embedding" || model.type === "decision") return null;
+  const operations = endpointOperationMetadata(model);
+  if (operations.operationCapabilities.decision?.status === "supported") {
+    const adapter =
+      providerKind === "lm-studio" || providerKind === "litellm"
+        ? "openai-decisions"
+        : providerKind === "llama-cpp" || providerKind === "vllm"
+          ? "system-one"
+          : null;
+    operations.operationCapabilities.decision.adapter = adapter;
+  }
   const id = text(model.id) ?? text(model.key);
   if (!id) return null;
   const capabilities = object(model.capabilities);
@@ -43,6 +54,7 @@ export function normalizeEndpointModel(
     : [];
   return {
     nativeModelId: id,
+    operationCapabilities: operations.operationCapabilities,
     displayName: text(model.display_name) ?? text(model.name) ?? id,
     description: text(model.description),
     contextWindow:
@@ -52,8 +64,12 @@ export function normalizeEndpointModel(
       positive(model.max_model_len) ??
       positive(metadata.n_ctx_train),
     maxOutputTokens: positive(model.max_output_tokens),
-    inputModalities: vision ? ["text", "image"] : ["text"],
-    outputModalities: ["text"],
+    inputModalities: operations.inputModalities.length
+      ? operations.inputModalities
+      : vision
+        ? ["text", "image"]
+        : ["text"],
+    outputModalities: operations.outputModalities,
     supportsTools:
       boolean(capabilities.trained_for_tool_use) ??
       boolean(model.supports_tool_calling),
@@ -136,7 +152,7 @@ export async function discoverEndpointModels(
     throw new Error("Model catalog did not contain a model list.");
   const models = new Map<string, EndpointModelInventoryItem>();
   for (const raw of catalog.data.slice(0, 1_000)) {
-    const model = normalizeEndpointModel(raw);
+    const model = normalizeEndpointModel(raw, provider.kind);
     if (model) models.set(model.nativeModelId, model);
   }
   if (provider.kind === "lm-studio") {
@@ -153,7 +169,7 @@ export async function discoverEndpointModels(
       );
       if (Array.isArray(rich.models))
         for (const raw of rich.models.slice(0, 1_000)) {
-          const model = normalizeEndpointModel(raw);
+          const model = normalizeEndpointModel(raw, provider.kind);
           if (!model) continue;
           const standard = models.get(model.nativeModelId);
           if (!standard) {
@@ -174,9 +190,18 @@ export async function discoverEndpointModels(
               model.displayName === model.nativeModelId
                 ? standard.displayName
                 : model.displayName,
+            operationCapabilities: {
+              ...standard.operationCapabilities,
+              ...model.operationCapabilities,
+            },
             inputModalities:
               model.supportsVision === null
-                ? standard.inputModalities
+                ? [
+                    ...new Set([
+                      ...standard.inputModalities,
+                      ...model.inputModalities,
+                    ]),
+                  ]
                 : model.inputModalities,
           });
         }

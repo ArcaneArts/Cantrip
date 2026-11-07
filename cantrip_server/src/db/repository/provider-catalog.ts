@@ -1,3 +1,4 @@
+import { discoveredModelOperations } from "@cantrip/protocol";
 import { createHash, randomUUID } from "node:crypto";
 
 import {
@@ -752,6 +753,9 @@ export class ProviderCatalogRepository {
           );
       }
 
+      const observedByName = new Map(
+        input.models.map((model) => [model.nativeModelId, model]),
+      );
       for (const models of providerCatalogBatches(providerModelRows)) {
         await transaction
           .insert(schema.providerModelAvailability)
@@ -760,6 +764,9 @@ export class ProviderCatalogRepository {
               id: randomUUID(),
               providerModelId: model.id,
               scopeKey: input.availabilityScope,
+              operationCapabilities:
+                observedByName.get(model.nativeModelId)
+                  ?.operationCapabilities ?? {},
               workerId: input.availabilityWorkerId ?? null,
               providerAccountId: input.availabilityProviderAccountId ?? null,
               state: input.availableNativeModelIds.has(model.nativeModelId)
@@ -775,6 +782,7 @@ export class ProviderCatalogRepository {
               schema.providerModelAvailability.scopeKey,
             ],
             set: {
+              operationCapabilities: sql`case when excluded.operation_capabilities = '{}'::jsonb then ${schema.providerModelAvailability.operationCapabilities} else excluded.operation_capabilities end`,
               state: sql`excluded.state`,
               workerId: sql`excluded.worker_id`,
               providerAccountId: sql`excluded.provider_account_id`,
@@ -789,11 +797,24 @@ export class ProviderCatalogRepository {
           transaction
             .select({
               providerModelId: schema.providerModelSuppressions.providerModelId,
+              operation: schema.providerModelSuppressions.operation,
             })
             .from(schema.providerModelSuppressions)
             .where(eq(schema.providerModelSuppressions.ownerId, ownerId)),
           transaction
-            .select({ modelName: schema.modelRoutes.modelName })
+            .select({
+              modelName: schema.modelRoutes.modelName,
+              profileId: schema.modelProfiles.id,
+              operation: schema.modelProfiles.operation,
+              managed: schema.modelProfiles.discoveryManaged,
+              reclassifiable: sql<boolean>`${schema.modelProfiles.updatedAt} = ${schema.modelProfiles.createdAt}
+                and (select count(*) from model_routes mr where mr.model_id = ${schema.modelProfiles.id}) = 1
+                and not exists (select 1 from provider_model_availability a
+                  where a.provider_model_id = ${schema.modelRoutes.providerModelId}
+                    and a.scope_key <> ${input.availabilityScope}
+                    and a.state <> 'unavailable'
+                    and coalesce(a.operation_capabilities->'language'->>'status', 'unknown') <> 'unsupported')`,
+            })
             .from(schema.modelRoutes)
             .innerJoin(
               schema.modelProfiles,
@@ -805,33 +826,87 @@ export class ProviderCatalogRepository {
             .where(eq(schema.modelRoutes.providerId, providerId)),
         ]);
         const suppressed = new Set(
-          suppressions.map(({ providerModelId }) => providerModelId),
+          suppressions.map((row) => `${row.providerModelId}:${row.operation}`),
         );
+        // Correct only discovery-managed legacy profiles. Explicit configurations remain explicit.
+        for (const route of existingRoutes) {
+          const metadata = observedByName.get(route.modelName);
+          const operations = discoveredModelOperations(
+            metadata?.operationCapabilities,
+          );
+          if (
+            route.managed &&
+            route.reclassifiable &&
+            route.operation === "language" &&
+            operations.length &&
+            !operations.includes("language")
+          ) {
+            const operation = operations[0]!;
+            await transaction
+              .update(schema.modelProfiles)
+              .set({ operation, defaultReasoningEffort: null, updatedAt: now })
+              .where(eq(schema.modelProfiles.id, route.profileId));
+            for (const column of [
+              schema.userSettings.defaultModelId,
+              schema.userSettings.defaultChatModelId,
+              schema.userSettings.defaultSubagentModelId,
+              schema.userSettings.labelingModelId,
+            ]) {
+              const subagentReset =
+                column === schema.userSettings.defaultSubagentModelId
+                  ? sql`, default_custom_subagent_model = false`
+                  : sql``;
+              await transaction.execute(
+                sql`update ${schema.userSettings} set ${sql.identifier(column.name)} = null, updated_at = ${now} ${subagentReset} where ${schema.userSettings.userId} = ${ownerId} and ${column} = ${route.profileId}`,
+              );
+            }
+            route.operation = operation;
+          }
+        }
         const routedNames = new Set(
-          existingRoutes.map(({ modelName }) => modelName),
+          existingRoutes.map((row) => `${row.modelName}:${row.operation}`),
         );
-        const catalogByName = new Map(
-          input.models.map((model) => [model.nativeModelId, model]),
-        );
-        const discovered = providerModelRows.filter(
-          (model) =>
-            (
+        const catalogByName = observedByName;
+        const discoveredModels = providerModelRows.flatMap((model) => {
+          if (
+            !(
               input.autoCreateNativeModelIds ?? input.availableNativeModelIds
-            ).has(model.nativeModelId) &&
-            !suppressed.has(model.id) &&
-            !routedNames.has(model.nativeModelId),
-        );
-        const discoveredModels = discovered.map((model) => ({
-          model,
-          profileId: `discovered:model:${model.id}`,
-          routeId: `discovered:route:${model.id}`,
-        }));
+            ).has(model.nativeModelId)
+          )
+            return [];
+          return discoveredModelOperations(
+            catalogByName.get(model.nativeModelId)?.operationCapabilities,
+          )
+            .filter(
+              (operation) =>
+                !suppressed.has(`${model.id}:${operation}`) &&
+                !routedNames.has(`${model.nativeModelId}:${operation}`),
+            )
+            .map((operation) => {
+              const legacyId = `discovered:model:${model.id}`;
+              const legacyOccupied = existingRoutes.some(
+                (route) =>
+                  route.profileId === legacyId && route.operation !== operation,
+              );
+              const suffix =
+                operation === "language" && !legacyOccupied
+                  ? ""
+                  : `:${operation}`;
+              return {
+                model,
+                operation,
+                profileId: `discovered:model:${model.id}${suffix}`,
+                routeId: `discovered:route:${model.id}${suffix}`,
+              };
+            });
+        });
         const discoveredModelBatches = providerCatalogBatches(discoveredModels);
         for (const models of discoveredModelBatches) {
           await transaction
             .insert(schema.modelProfiles)
             .values(
-              models.map(({ model, profileId }) => ({
+              models.map(({ model, profileId, operation }) => ({
+                operation,
                 id: profileId,
                 ownerId,
                 name: model.nativeModelId,
@@ -876,6 +951,13 @@ export class ProviderCatalogRepository {
                   schema.providerModels.nativeModelId,
                   input.defaultNativeModelId,
                 ),
+              ),
+            )
+            .innerJoin(
+              schema.modelProfiles,
+              and(
+                eq(schema.modelProfiles.id, schema.modelRoutes.modelId),
+                eq(schema.modelProfiles.operation, "language"),
               ),
             )
             .limit(1);

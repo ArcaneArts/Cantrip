@@ -143,7 +143,10 @@ export class ModelRepository {
   async deleteModelProfile(ownerId: string, modelId: string) {
     return this.database.transaction(async (transaction) => {
       const managedRoutes = await transaction
-        .select({ providerModelId: schema.modelRoutes.providerModelId })
+        .select({
+          providerModelId: schema.modelRoutes.providerModelId,
+          operation: schema.modelProfiles.operation,
+        })
         .from(schema.modelRoutes)
         .innerJoin(
           schema.modelProfiles,
@@ -154,16 +157,18 @@ export class ModelRepository {
           ),
         )
         .where(eq(schema.modelRoutes.modelId, modelId));
-      const providerModelIds = managedRoutes.flatMap(({ providerModelId }) =>
-        providerModelId ? [providerModelId] : [],
+      const providerModelIds = managedRoutes.flatMap(
+        ({ providerModelId, operation }) =>
+          providerModelId ? [{ providerModelId, operation }] : [],
       );
       if (providerModelIds.length > 0) {
         await transaction
           .insert(schema.providerModelSuppressions)
           .values(
-            providerModelIds.map((providerModelId) => ({
+            providerModelIds.map(({ providerModelId, operation }) => ({
               ownerId,
               providerModelId,
+              operation,
             })),
           )
           .onConflictDoNothing();
