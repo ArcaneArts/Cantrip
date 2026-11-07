@@ -353,7 +353,9 @@ console.log(
   `Installed ${skillTemplates.length} validated Cantrip skill template${skillTemplates.length === 1 ? "" : "s"}.`,
 );
 const cargoDirectory = path.join(preparedRoot, "codex-rs");
-const cargoTargetDirectory = path.join(outputDirectory, "target");
+const cargoTargetDirectory = process.env.CARGO_TARGET_DIR
+  ? path.resolve(root, process.env.CARGO_TARGET_DIR)
+  : path.join(outputDirectory, "target");
 const compiledDirectory = path.join(
   cargoTargetDirectory,
   development ? "debug" : "release",

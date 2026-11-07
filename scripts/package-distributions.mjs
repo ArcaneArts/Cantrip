@@ -15,6 +15,8 @@ import {
   bundleNodeRuntime,
   writeServiceLaunchers,
 } from "./package-runtime.mjs";
+import { packageNativeServer } from "./package-server-rust.mjs";
+import { configureDesktopServer } from "./desktop-server-runtime.mjs";
 import { verifyPackagedWorkerMcp } from "./verify-packaged-worker-mcp.mjs";
 import { verifyPackagedWorkerCua } from "./verify-packaged-worker-cua.mjs";
 
@@ -37,6 +39,8 @@ if (!supportedTargets.has(selection)) {
 let requestedTarget;
 let fromArtifacts = false;
 let skipProtocolBuild = false;
+let serverRuntime = "node";
+let postgresBin;
 for (let index = 3; index < process.argv.length; index += 1) {
   const argument = process.argv[index];
   if (argument === "--target") {
@@ -48,6 +52,14 @@ for (let index = 3; index < process.argv.length; index += 1) {
     index += 1;
   } else if (argument.startsWith("--target=")) {
     requestedTarget = argument.slice("--target=".length);
+  } else if (argument === "--server-runtime" || argument === "--postgres-bin") {
+    const value = process.argv[++index];
+    if (!value || value.startsWith("--"))
+      throw new Error(`${argument} requires a value`);
+    if (argument === "--server-runtime") serverRuntime = value;
+    else postgresBin = value;
+  } else if (argument.startsWith("--server-runtime=")) {
+    serverRuntime = argument.slice("--server-runtime=".length);
   } else if (argument === "--from-artifacts") {
     fromArtifacts = true;
   } else if (argument === "--skip-protocol-build") {
@@ -58,6 +70,16 @@ for (let index = 3; index < process.argv.length; index += 1) {
   }
 }
 
+if (!["node", "rust"].includes(serverRuntime))
+  throw new Error("--server-runtime must be node or rust");
+if (
+  selection !== "desktop-runtime" &&
+  (serverRuntime !== "node" || postgresBin)
+) {
+  throw new Error(
+    "--server-runtime and --postgres-bin are desktop-runtime options",
+  );
+}
 const packageTarget = normalizeTarget(requestedTarget);
 
 const platform = packageTarget.id;
@@ -198,7 +220,7 @@ async function packageDesktopRuntime() {
   if (fromArtifacts) {
     const serverArtifact = path.join(
       artifacts,
-      `cantrip-server-${packageTarget.id}`,
+      `cantrip-server${serverRuntime === "rust" ? "-rust" : ""}-${packageTarget.id}`,
     );
     const workerArtifact = path.join(
       artifacts,
@@ -206,10 +228,14 @@ async function packageDesktopRuntime() {
     );
     await requireDirectory(serverArtifact, "Packaged server");
     await requireDirectory(workerArtifact, "Packaged worker");
-    await cp(serverArtifact, path.join(runtime, "server"), { recursive: true });
+    await cp(serverArtifact, path.join(runtime, "server"), {
+      recursive: true,
+      dereference: serverRuntime === "rust",
+    });
     await cp(workerArtifact, path.join(runtime, "worker"), { recursive: true });
     for (const service of ["server", "worker"]) {
       const serviceRoot = path.join(runtime, service);
+      if (service === "server" && serverRuntime === "rust") continue;
       await rm(path.join(serviceRoot, "runtime"), {
         force: true,
         recursive: true,
@@ -222,14 +248,23 @@ async function packageDesktopRuntime() {
     buildCodex();
     buildCli();
     cuaBinary = buildCantripCua(root, { release: true });
-    buildSelectedServices("services");
-    await packageService("server", path.join(runtime, "server"), {
-      standalone: false,
-    });
+    buildSelectedServices(serverRuntime === "rust" ? "worker" : "services");
+    if (serverRuntime === "rust") {
+      await packageNativeServer({
+        target: packageTarget.id,
+        output: path.join(runtime, "server"),
+        postgresBin,
+      });
+    } else {
+      await packageService("server", path.join(runtime, "server"), {
+        standalone: false,
+      });
+    }
     await packageService("worker", path.join(runtime, "worker"), {
       standalone: false,
     });
   }
+  await configureDesktopServer(path.join(runtime, "server"), serverRuntime);
   await bundleNodeRuntime(runtime);
   await verifyPackagedWorkerCua(path.join(runtime, "worker"));
   console.log(

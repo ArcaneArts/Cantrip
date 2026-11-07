@@ -1,9 +1,9 @@
 use std::{
     fs,
     io::{BufRead, BufReader},
-    net::{TcpListener, TcpStream},
+    net::TcpListener,
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::Child,
     sync::{
         atomic::{AtomicBool, Ordering},
         Mutex,
@@ -30,6 +30,7 @@ use tauri_plugin_window_state::StateFlags;
 mod desktop_quit;
 #[cfg(target_os = "macos")]
 mod desktop_renderer_recovery;
+mod desktop_services;
 mod desktop_update;
 #[cfg(desktop)]
 mod desktop_window_placement;
@@ -44,7 +45,11 @@ mod synthetic_build;
 mod tunnel_forward;
 mod tunnel_ssh;
 
-use process_environment::configure_desktop_child;
+pub(crate) use desktop_services::terminate_child;
+use desktop_services::{
+    node_service_command, server_command, server_environment, spawn_service, wait_for_server,
+    worker_environment,
+};
 use project_share::ProjectShareMounts;
 use tunnel_forward::TunnelForwards;
 
@@ -266,34 +271,33 @@ fn set_macos_pro_mode(window: tauri::WebviewWindow, enabled: bool) -> Result<boo
     }
 }
 
-fn node_service_command(node: &Path, directory: &Path) -> Command {
-    let mut command = Command::new(node);
-    command.arg("dist/index.js").current_dir(directory);
-    command
-}
-
-fn spawn_node_service(
-    node: &Path,
-    directory: &Path,
-    environment: &[(&str, String)],
-    capture_stderr: bool,
-) -> Result<Child, String> {
-    let mut command = node_service_command(node, directory);
-    configure_desktop_child(&mut command);
-    command.stdout(Stdio::null()).stderr(if capture_stderr {
-        Stdio::piped()
-    } else {
-        Stdio::null()
-    });
-    for (key, value) in environment {
-        command.env(key, value);
+fn capture_server_output(app: tauri::AppHandle, child: &mut Child) {
+    fn capture(app: tauri::AppHandle, stream: impl std::io::Read + Send + 'static) {
+        thread::spawn(move || {
+            for line in BufReader::new(stream).lines() {
+                match line {
+                    Ok(line) if !line.trim().is_empty() => {
+                        app.state::<local_logs::LocalServiceLogs>()
+                            .server_output(&line);
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        app.state::<local_logs::LocalServiceLogs>().runtime_event(
+                            "warn", "Bundled server output could not be read",
+                            Some(json!({"event":"desktop.child.output.failed", "service":"server", "error":error.to_string()})),
+                        );
+                        break;
+                    }
+                }
+            }
+        });
     }
-    command.spawn().map_err(|error| {
-        format!(
-            "Could not start service in {}: {error}",
-            directory.display()
-        )
-    })
+    if let Some(stdout) = child.stdout.take() {
+        capture(app.clone(), stdout);
+    }
+    if let Some(stderr) = child.stderr.take() {
+        capture(app, stderr);
+    }
 }
 
 fn capture_child_stderr(app: tauri::AppHandle, child: &mut Child, service: &'static str) {
@@ -337,24 +341,6 @@ fn capture_child_stderr(app: tauri::AppHandle, child: &mut Child, service: &'sta
     });
 }
 
-fn wait_for_server(child: &mut Child, port: u16) -> Result<(), String> {
-    for _ in 0..100 {
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            return Ok(());
-        }
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|error| format!("Could not inspect local server: {error}"))?
-        {
-            return Err(format!(
-                "The bundled Cantrip Server exited during startup ({status})."
-            ));
-        }
-        thread::sleep(Duration::from_millis(100));
-    }
-    Err("The bundled Cantrip Server did not become ready within 10 seconds.".into())
-}
-
 fn reserve_local_listener(label: &str) -> Result<TcpListener, String> {
     TcpListener::bind(("127.0.0.1", 0))
         .map_err(|error| format!("Could not reserve a local {label} port: {error}"))
@@ -365,36 +351,6 @@ fn reserved_port(listener: &TcpListener, label: &str) -> Result<u16, String> {
         .local_addr()
         .map_err(|error| format!("Could not read reserved local {label} port: {error}"))
         .map(|address| address.port())
-}
-
-pub(crate) fn terminate_child(child: &mut Child) {
-    if child.try_wait().ok().flatten().is_some() {
-        return;
-    }
-    #[cfg(unix)]
-    {
-        let _ = Command::new("kill")
-            .args(["-TERM", &child.id().to_string()])
-            .status();
-        for _ in 0..20 {
-            if child.try_wait().ok().flatten().is_some() {
-                return;
-            }
-            thread::sleep(Duration::from_millis(100));
-        }
-    }
-    #[cfg(windows)]
-    {
-        let mut command = Command::new("taskkill");
-        configure_desktop_child(&mut command);
-        let _ = command
-            .args(["/PID", &child.id().to_string(), "/T", "/F"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-    let _ = child.kill();
-    let _ = child.wait();
 }
 
 #[tauri::command]
@@ -828,27 +784,17 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
     let worker_token = format!("desktop-{}-{token_seed}", std::process::id());
     let server_directory = resources.join("server");
     let worker_directory = resources.join("worker");
-    let mut server = spawn_node_service(
-        &node,
-        &server_directory,
-        &[
-            ("CANTRIP_SERVER_HOST", "127.0.0.1".into()),
-            ("CANTRIP_SERVER_PORT", port.to_string()),
-            ("CANTRIP_DEPLOYMENT_MODE", "local".into()),
-            ("CANTRIP_BOOTSTRAP_MODE", "tauri".into()),
-            ("CANTRIP_AUTH_MODE", "none".into()),
-            (
-                "CANTRIP_DATA_DIR",
-                data.join("server").to_string_lossy().into_owned(),
-            ),
-            ("CANTRIP_WORKER_TOKEN", worker_token.clone()),
-            (
-                "CANTRIP_SERVICE_LOG_DIR",
-                logs.join("server").to_string_lossy().into_owned(),
-            ),
-        ],
-        false,
+    let launch = server_command(&node, &server_directory)?;
+    let native_server = launch.native;
+    let mut server = spawn_service(
+        launch.command,
+        &server_environment(data.as_path(), &logs, port, &worker_token),
+        native_server,
+        native_server,
     )?;
+    if native_server {
+        capture_server_output(app.handle().clone(), &mut server);
+    }
     service_logs.runtime_event(
         "info",
         "Bundled Cantrip Server process started",
@@ -889,26 +835,10 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
         })),
     );
 
-    let mut worker = match spawn_node_service(
-        &node,
-        &worker_directory,
-        &[
-            ("CANTRIP_SERVER_URL", server_url.clone()),
-            ("CANTRIP_WORKER_TOKEN", worker_token),
-            ("CANTRIP_WORKER_DEVELOPMENT_BOOTSTRAP", "true".into()),
-            ("CANTRIP_WORKER_ID", "desktop-local".into()),
-            ("CANTRIP_WORKER_NAME", "Local Worker".into()),
-            (
-                "CANTRIP_WORKER_DATA_DIR",
-                data.join("worker").to_string_lossy().into_owned(),
-            ),
-            (
-                "CANTRIP_SERVICE_LOG_DIR",
-                logs.join("workers/desktop-local")
-                    .to_string_lossy()
-                    .into_owned(),
-            ),
-        ],
+    let mut worker = match spawn_service(
+        node_service_command(&node, &worker_directory),
+        &worker_environment(data.as_path(), &logs, &server_url, &worker_token),
+        false,
         true,
     ) {
         Ok(worker) => worker,
@@ -1016,6 +946,12 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init());
+    // Signal handlers are installed after build(), before setup() runs. These
+    // states must already exist when a signal arrives during service startup.
+    #[cfg(desktop)]
+    let builder = builder
+        .manage(DesktopShutdownState::default())
+        .manage(DesktopExitState::default());
     #[cfg(target_os = "macos")]
     let builder = builder.on_web_content_process_terminate(desktop_renderer_recovery::recover);
     #[cfg(desktop)]
@@ -1164,8 +1100,6 @@ pub fn run() {
             );
             #[cfg(desktop)]
             {
-                app.manage(DesktopShutdownState::default());
-                app.manage(DesktopExitState::default());
                 setup_tray(app)?;
                 #[cfg(target_os = "macos")]
                 setup_macos_application_menu(app)?;
