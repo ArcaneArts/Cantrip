@@ -319,6 +319,9 @@ describe("Explorer renderer modes", () => {
     expect(header!.fileMode).toBe("edit");
     expect(container.querySelector("textarea")?.readOnly).toBe(false);
     expect(container.textContent).toContain("Timed out saving view state");
+    await act(async () => header!.refresh());
+    await settle();
+    expect(container.textContent).toContain("Timed out saving view state");
   });
 
   it("still applies a genuinely changed persisted mode after opening inline", async () => {
@@ -368,14 +371,17 @@ describe("Explorer renderer modes", () => {
     vi.mocked(api.getExplorerFile).mockClear();
     await act(async () => refreshButton()!.click());
     await settle();
-    expect(invalidate).toHaveBeenCalledWith({
-      queryKey: [
-        "explorer-directory",
-        explorer.projectId,
-        explorer.worktreeId,
-        explorer.id,
-      ],
-    });
+    expect(invalidate).toHaveBeenCalledWith(
+      {
+        queryKey: [
+          "explorer-directory",
+          explorer.projectId,
+          explorer.worktreeId,
+          explorer.id,
+        ],
+      },
+      { throwOnError: true },
+    );
     expect(api.getExplorerFile).not.toHaveBeenCalled();
   });
 
