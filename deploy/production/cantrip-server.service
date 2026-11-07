@@ -14,6 +14,9 @@ Restart=always
 RestartSec=3
 TimeoutStopSec=30
 KillSignal=SIGTERM
+# The server drains writes and stops its private database. Send TERM only to
+# the owner; systemd still kills the whole cgroup if TimeoutStopSec expires.
+KillMode=mixed
 UMask=0077
 
 NoNewPrivileges=true

@@ -10,6 +10,8 @@ Group=cantrip
 WorkingDirectory=/opt/cantrip/releases/%i
 EnvironmentFile=/etc/cantrip/production.env
 ExecStart=/opt/cantrip/releases/%i/migrate.sh
+TimeoutStopSec=30
+KillMode=mixed
 UMask=0077
 
 NoNewPrivileges=true

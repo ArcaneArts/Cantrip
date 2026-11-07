@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 
 const scriptRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -294,6 +295,7 @@ export function validateDeploymentConfig(config) {
   if (config.platform !== "linux/amd64") {
     throw new Error("Production deployment currently requires linux/amd64.");
   }
+  serverDockerfile(config.serverRuntime);
   if (!/^[A-Za-z0-9.-]+$/u.test(config.sshHost)) {
     throw new Error("Deployment sshHost is invalid.");
   }
@@ -391,21 +393,36 @@ function runSsh(config, keyPath, remoteCommand, options = {}) {
   );
 }
 
-function writeRemoteEnvironment(config, keyPath, environmentFile) {
+function writeRemoteEnvironment(
+  config,
+  keyPath,
+  environmentFile,
+  remoteDirectory,
+) {
   const installEnvironment = [
     "set -eu",
-    "install -d -o root -g root -m 0700 /etc/cantrip",
-    "temporary=$(mktemp /etc/cantrip/production.env.XXXXXX)",
+    `temporary=$(mktemp ${remoteDirectory}/production.env.XXXXXX)`,
     "trap 'rm -f -- \"$temporary\"' EXIT HUP INT TERM",
     'cat > "$temporary"',
     'chown root:root "$temporary"',
     'chmod 0600 "$temporary"',
-    'mv -f "$temporary" /etc/cantrip/production.env',
+    `mv -f "$temporary" ${remoteDirectory}/production.env`,
     "trap - EXIT HUP INT TERM",
   ].join("; ");
   runSsh(config, keyPath, installEnvironment, {
     input: environmentFile,
   });
+}
+
+function serverDockerfile(runtime = "node") {
+  if (!["node", "rust"].includes(runtime)) {
+    throw new Error("Deployment serverRuntime must be node or rust.");
+  }
+  return path.join(
+    "deploy",
+    "docker",
+    runtime === "rust" ? "server-rust.Dockerfile" : "server.Dockerfile",
+  );
 }
 
 export function productionServerBuildArguments(
@@ -429,7 +446,7 @@ export function productionServerBuildArguments(
     "--output",
     `type=local,dest=${outputDirectory}`,
     "--file",
-    path.join("deploy", "docker", "server.Dockerfile"),
+    serverDockerfile(config.serverRuntime),
     ".",
   ];
 }
@@ -463,6 +480,7 @@ function uploadAndInstall(
   commit,
   artifactPath,
   deploymentDirectory,
+  environmentFile,
 ) {
   const remoteDirectory = `/tmp/cantrip-deploy-${commit}`;
   const destination = `${config.sshUser}@${config.sshHost}:${remoteDirectory}/`;
@@ -471,23 +489,24 @@ function uploadAndInstall(
     keyPath,
     `install -d -o root -g root -m 0700 ${remoteDirectory}`,
   );
-  command(
-    "scp",
-    [
-      ...sshOptions(keyPath),
-      artifactPath,
-      path.join(deploymentDirectory, "Caddyfile"),
-      path.join(deploymentDirectory, "cantrip-migrate@.service"),
-      path.join(deploymentDirectory, "cantrip-server.service"),
-      path.join(deploymentDirectory, "install.sh"),
-      destination,
-    ],
-    { inherit: true },
-  );
-  console.log(
-    `Installing Cantrip ${commit.slice(0, 12)} on ${config.sshHost}…`,
-  );
   try {
+    writeRemoteEnvironment(config, keyPath, environmentFile, remoteDirectory);
+    command(
+      "scp",
+      [
+        ...sshOptions(keyPath),
+        artifactPath,
+        path.join(deploymentDirectory, "Caddyfile"),
+        path.join(deploymentDirectory, "cantrip-migrate@.service"),
+        path.join(deploymentDirectory, "cantrip-server.service"),
+        path.join(deploymentDirectory, "install.sh"),
+        destination,
+      ],
+      { inherit: true },
+    );
+    console.log(
+      `Installing Cantrip ${commit.slice(0, 12)} on ${config.sshHost}…`,
+    );
     runSsh(
       config,
       keyPath,
@@ -498,7 +517,7 @@ function uploadAndInstall(
     runSsh(
       config,
       keyPath,
-      `rm -f -- ${remoteDirectory}/cantrip-server.tar.gz ${remoteDirectory}/Caddyfile ${remoteDirectory}/cantrip-migrate@.service ${remoteDirectory}/cantrip-server.service ${remoteDirectory}/install.sh && rmdir ${remoteDirectory}`,
+      `rm -f -- ${remoteDirectory}/cantrip-server.tar.gz ${remoteDirectory}/production.env ${remoteDirectory}/Caddyfile ${remoteDirectory}/cantrip-migrate@.service ${remoteDirectory}/cantrip-server.service ${remoteDirectory}/install.sh && rmdir ${remoteDirectory}`,
       { allowFailure: true },
     );
   }
@@ -558,17 +577,22 @@ export async function deployProduction({
   root = scriptRoot,
   commit,
   preparedSecrets,
+  serverRuntime,
 } = {}) {
   return withProductionSource({ root, commit }, (source) =>
-    deployProductionSource(source, preparedSecrets),
+    deployProductionSource(source, preparedSecrets, serverRuntime),
   );
 }
 
 async function deployProductionSource(
   { root, commit, versionPatch },
   preparedSecrets,
+  serverRuntime,
 ) {
-  const config = await loadDeploymentConfig(root);
+  const config = validateDeploymentConfig({
+    ...(await loadDeploymentConfig(root)),
+    ...(serverRuntime === undefined ? {} : { serverRuntime }),
+  });
   const deploymentDirectory = path.join(root, "deploy", "production");
   const { privateKey, environmentFile } =
     preparedSecrets ?? (await prepareProductionSecrets({ root }));
@@ -590,13 +614,13 @@ async function deployProductionSource(
       versionPatch,
       root,
     );
-    writeRemoteEnvironment(config, keyPath, environmentFile);
     uploadAndInstall(
       config,
       keyPath,
       commit,
       artifactPath,
       deploymentDirectory,
+      environmentFile,
     );
     await waitForPublicEndpoint(
       `https://${config.apiDomain}/readyz`,
@@ -616,8 +640,13 @@ const isMain =
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
-  deployProduction().catch((error) => {
-    console.error(error instanceof Error ? error.message : error);
-    process.exitCode = 1;
+  const { values } = parseArgs({
+    options: { "server-runtime": { type: "string" } },
   });
+  deployProduction({ serverRuntime: values["server-runtime"] }).catch(
+    (error) => {
+      console.error(error instanceof Error ? error.message : error);
+      process.exitCode = 1;
+    },
+  );
 }

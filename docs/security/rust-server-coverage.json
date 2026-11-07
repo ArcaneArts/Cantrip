@@ -15356,6 +15356,19 @@
         "scripts/server-rust/desktop-bundle-acceptance.mjs"
       ],
       "remaining": "Default cutover, production Node removal, broader product/performance/platform/representative deployment acceptance remain part of the active full replacement goal."
+    },
+    {
+      "branch": "codex/rust-winterhold-native",
+      "observedAt": "2026-11-07",
+      "platforms": ["linux-x64"],
+      "execution": "Local Ubuntu 24.04 ARM64 systemd host executing unchanged x64 artifacts through binfmt; no hosted validation or production deployment",
+      "conclusion": "All three storage modes passed actual installer, Caddy HTTPS, authenticated session/CSRF/CORS, App Live, migration/startup failure recovery, post-write code rollback and clean shutdown/restart acceptance.",
+      "scope": "18 actual installer invocations: 12 successful installations and six deliberate native CLI failures. PGlite/private PostgreSQL cover native-release rollback; TLS external PostgreSQL covers Node to Rust to Node to Rust with latest writes and sessions retained. The original group-wide SIGTERM interrupted private PostgreSQL; KillMode=mixed fixed real usage-flush/owner shutdown failures. Actual cgroup PIDs were reaped and namespace writes outside the profile were denied. This is local mixed-architecture service evidence, not bare-metal x64, mixed rolling, Windows or full replacement acceptance.",
+      "qualification": "docs/RUST_SERVER_WINTERHOLD.md",
+      "harnesses": ["scripts/server-rust/winterhold-systemd-acceptance.mjs"],
+      "artifactVersion": "1.1.2739",
+      "nativeBinarySha256": "9752afd5a94077c334ee03bb43a9001c7fe7f2a7810688ce7b268e0aee4e65c0",
+      "remaining": "Final default cutover and production Node removal; remaining product, coordination/mixed/fault, supported-platform and performance acceptance. No Winterhold production access was used."
     }
   ]
 }

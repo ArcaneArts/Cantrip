@@ -1,0 +1,141 @@
+# Native Winterhold deployment
+
+The production deployer can build and install the Rust distribution using the
+existing SSH, systemd and Caddy path. It never needs a Node runtime on the host
+to run the Rust server. The worker retains its own Node runtime.
+
+## Select the server
+
+The deployment source is the exact promoted `release` commit. To select Rust
+for the host phase:
+
+```sh
+pnpm deploy:server --server-runtime rust
+```
+
+This is a production deployment command, not a local test command. Run it only
+when a production deployment is authorized. It reads production credentials
+and contacts the configured host. The promoted snapshot must contain the native
+Dockerfile, packager, installer and matching server code.
+
+`deploy/production/deploy.json` also accepts `"serverRuntime": "rust"` or
+`"serverRuntime": "node"`. The full release command uses that committed choice;
+the host command's explicit option takes precedence. The current default stays
+Node until full replacement qualification and final cutover.
+
+Both implementations export the same distribution entry points, `start.sh` and
+`migrate.sh`. The installer executes those entry points rather than requiring a
+Node executable or using an artifact marker to infer runtime support. Rust
+packages include native PGlite and private PostgreSQL assets. Winterhold's
+production environment continues to select external PostgreSQL with
+`DATABASE_URL`; standalone native services can select either local backend.
+
+## Installation and failure recovery
+
+The deployer stages the candidate environment with the archive in a root-only
+temporary directory. It does not overwrite the active environment during upload.
+The installer extracts a new immutable release and validates the actual Caddy
+configuration before stopping the current service. It then:
+
+1. Saves the current environment, systemd units and proxy configuration.
+2. Stops the server, releasing local database ownership.
+3. Installs the candidate configuration and runs the real migration unit.
+4. Switches the active symlink and restarts Caddy and Cantrip.
+5. Requires an actual local readiness response, retains a root-only environment
+   snapshot in `/etc/cantrip/releases/<commit>/production.env`, and enables the
+   services.
+
+Migration, configuration-installation and startup/readiness failures restore the
+previous configuration and symlink. An already-running previous service is
+restarted and checked for readiness. First-install failures leave the server
+stopped. This process never restores a database snapshot or discards accepted
+writes. It is an offline single-host upgrade with a short service interruption;
+it does not establish mixed rolling-deployment compatibility.
+
+Both units use `KillMode=mixed`: systemd signals the server first so it can
+flush writes and stop its private database, with group cleanup if shutdown does
+not finish. The original group-wide SIGTERM interrupted the private PostgreSQL
+guardian during the actual rehearsal and made shutdown fail. See the
+[systemd process termination documentation](https://www.freedesktop.org/software/systemd/man/248/systemd.kill.html).
+
+Code rollback requires compatibility with the latest database schema. Stop the
+service, restore the previous release's saved environment, switch the symlink to
+that retained release, restart, and check readiness and authenticated operations.
+Do not substitute a pre-upgrade database snapshot for post-write rollback.
+Older deployments predating environment snapshots require the operator's
+preserved original environment. PGlite engine changes additionally need the
+tested logical conversion described in the
+[profile activation guide](RUST_SERVER_PROFILE_ACTIVATION.md); physical database
+directories are not interchangeable. The deployment installer does not silently
+convert or reset a database.
+
+## Local rehearsal
+
+Use isolated Docker resources and built distributions. The systemd fixture is
+privileged to exercise the actual service namespace restrictions; it mounts no
+host files or Docker socket. Build the server through
+`productionServerBuildArguments` with `serverRuntime: "rust"` and its exact Git
+commit count, exporting the `distribution` target to a new directory. Then run:
+
+```sh
+docker buildx build --platform linux/arm64 \
+  -f scripts/server-rust/systemd-ubuntu.Dockerfile \
+  --load -t cantrip-systemd-qa:ubuntu24 .
+node scripts/server-rust/winterhold-systemd-acceptance.mjs \
+  --artifact /absolute/path/to/native-linux-x64 \
+  --node-image cantrip-node-baseline:qa \
+  --systemd-image cantrip-systemd-qa:ubuntu24 \
+  --report .qa/winterhold/report.json
+```
+
+The Node baseline image must contain the existing standalone distribution at
+`/opt/cantrip`. Build it locally with `deploy/docker/server.Dockerfile` and the
+same commit-count version. It is comparison/rollback tooling, not a native
+server dependency.
+
+The driver exercises the actual production installer and units on isolated
+PGlite, private PostgreSQL and TLS-enabled external PostgreSQL databases. It
+checks HTTPS through Caddy's fixture CA, secure session cookies, CSRF-backed
+writes, CORS, App Live upgrades/initialization/ping, retained sessions and
+identity, failed native migrations and startup, configuration restoration,
+post-write code rollback, restart, SIGTERM status and database-child reaping.
+External PostgreSQL runs Node → Rust → Node → Rust against the latest database;
+the two local modes test native-release rollback without an engine conversion.
+
+Reports identify the artifact and systemd-host architectures separately. Docker
+Desktop's x64 systemd emulation failed to execute even basic services in the
+initial fixture. An ARM64 systemd host can instead execute the unchanged x64
+artifact using binfmt and an installed x64 ELF loader. That result is a local
+mixed-architecture service rehearsal, not bare-metal x64 Winterhold validation.
+Retain reports, journals, fixture profiles and artifact checksums before
+removing only that run's named containers and network. No GitHub Actions or
+production deployment is involved in this rehearsal.
+
+Full replacement still requires the remaining platform, product, coordination
+and performance acceptance, final default cutover and production Node removal.
+
+## Qualified local result
+
+The optimized `1.1.2739` x64 artifact passed the complete driver locally on
+2026-11-07, with PostgreSQL 18.6 tools and native PGlite 17.5. The unchanged Node
+baseline used the same application version. All three modes retained identity,
+sessions and writes through upgrade, both intentional failures, post-write
+rollback and return to Rust. All 18 installer calls behaved as expected: 12
+successful installations and six rejected candidates with recovery.
+
+Both local database modes exited cleanly and reaped their service cgroup;
+private PostgreSQL included 17 processes. No private-owner or bandwidth-flush
+shutdown errors remained. An actual write attempt inside the server's mount
+namespace failed with a read-only-filesystem error outside the allowed profile.
+All six observed external PostgreSQL connections used TLS. Node was absent from
+the host PATH, and the running native executable matched the exported binary:
+
+```text
+9752afd5a94077c334ee03bb43a9001c7fe7f2a7810688ce7b268e0aee4e65c0
+```
+
+The focused deploy/release suite passed 28 tests. The standard `pnpm check`
+stopped at unchanged Node decomposition budgets (`build-app.ts` 1532/1500 and
+`chat-turn-runtime.ts` 2336/1999); subsequent aggregate stages were not run or
+claimed as passing. The workflow-removal check passed. This result does not
+qualify Windows, native x64 systemd, mixed rolling deployment or performance.

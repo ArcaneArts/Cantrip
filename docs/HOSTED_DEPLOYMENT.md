@@ -92,9 +92,13 @@ If UFW is already installed, it allows OpenSSH, `80/tcp`, `443/tcp`, and
 Caddy and Cantrip at boot. The application listener remains bound to loopback
 on port 4310. The DigitalOcean cloud firewall remains the outer network
 boundary.
-If the newly restarted Server fails local readiness, the installer restores the
-previous application symlink and process. Database migrations are forward-only,
-so a database backup is still required before releases that alter schema.
+The installer stages configuration and restores the previous environment,
+service/proxy configuration and application symlink after migration or startup
+failure. It checks the restored service's readiness and preserves the latest
+database rather than restoring an old snapshot. Database migrations are
+forward-only, so a database backup is still required before releases that alter
+schema. Native Rust selection and the local systemd rehearsal are documented in
+[the native Winterhold guide](RUST_SERVER_WINTERHOLD.md).
 
 ## Container quick start
 
