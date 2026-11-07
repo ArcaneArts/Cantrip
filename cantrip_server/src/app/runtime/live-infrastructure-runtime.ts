@@ -60,6 +60,7 @@ export function createLiveInfrastructureRuntime({
       liveHub.receiveExternal(message.publication);
     }
   });
+  app.addHook("preClose", async () => coordinator?.beginShutdown?.());
   app.log.info(
     {
       instanceId: serverInstanceId,

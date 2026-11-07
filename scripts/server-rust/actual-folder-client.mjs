@@ -53,6 +53,7 @@ import { eventually, launchActualWorker } from "./full-worker.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { SharedProductFixture } from "./shared-product-fixture.mjs";
 import { verifySharedProductRolling } from "./shared-product-rolling.mjs";
+import { verifySharedProductOfflineShutdown } from "./shared-product-offline-shutdown.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { password } from "./security-fixtures.mjs";
 import { actualTerminalServices } from "./actual-terminal-services.mjs";
@@ -914,6 +915,15 @@ async function flow(
         dataDirectory,
         worker,
         credential,
+        result,
+      });
+    }
+    if (process.argv.includes("--redis-offline-shutdown")) {
+      if (!worker) await startWorker();
+      await verifySharedProductOfflineShutdown({
+        fixture,
+        worker,
+        workerId,
         result,
       });
     }

@@ -13,6 +13,10 @@ shares it across worker transport, WorkerLink and App Live. Readiness observes
 its actual command connection, and shutdown closes it after service drains.
 Transient recovery uses the observed instance count; background job recovery
 retains unexpired peer leases whenever coordination is configured.
+Shutdown starts a drain that settles unavailable Redis directory waiters before
+service cleanup. Healthy connections continue ordinary claim cleanup; normal
+operation retains offline queuing and reconnect. See
+[offline shutdown acceptance](RUST_SERVER_REDIS_OFFLINE_SHUTDOWN.md).
 The full worker now passes local resource/native execution and orderly mixed
 peer replacement checks described in [shared product acceptance](RUST_SERVER_SHARED_PRODUCT.md).
 Active-execution failures, long outages and supported-platform acceptance remain
@@ -332,3 +336,12 @@ Completed native work precedes replacement in this suite. It does not qualify
 in-flight execution failover, crash recovery, lease expiry, delayed
 acknowledgment, long Redis outage/shutdown, Redis TLS, multi-host networking,
 other platforms, performance or complete replacement readiness.
+
+The separate [offline shutdown suite](RUST_SERVER_REDIS_OFFLINE_SHUTDOWN.md)
+now covers the real production peers and full worker with Redis left unavailable
+beyond three presence TTLs. Both original implementations exceeded the unchanged
+30-second deadline. With shutdown draining, all four pairings exit cleanly:
+the observed Rust/Rust shutdown took 5.4 ms and pairings containing Node took
+0.95–1.35 seconds. Ordinary offline/reconnect and healthy resource/native
+Agent/Goal/history/rolling checks also passed. Long-outage recovery, active job
+failover and network blackholes remain separate requirements.
