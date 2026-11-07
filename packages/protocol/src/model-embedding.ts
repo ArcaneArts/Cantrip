@@ -10,6 +10,7 @@ import {
 } from "./model-operations.js";
 import { workerRuntimeProviderSchema } from "./worker-runtime-support.js";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
+import { boundedJsonValueSchema } from "./bounded-json.js";
 
 // Leave room for encryption, route metadata and the worker's 8 MiB control frame.
 export const MODEL_OPERATION_CONTENT_BYTES_LIMIT = 4 * 1024 * 1024;
@@ -66,7 +67,11 @@ export const embeddingSpaceIdentitySchema = z
     modelRevision: z.string().max(1000).nullable(),
     revisionVerified: z.boolean(),
     revisionSource: z.enum(["provider-catalog", "configured", "unknown"]),
-    dimensions: z.number().int().positive().max(65536),
+    dimensions: z.number().int().positive().nullable(),
+    representation: z
+      .enum(["dense", "sparse", "multi-vector", "hybrid"])
+      .optional(),
+    inputFormat: z.enum(["text", "chat"]).optional(),
     normalization: z.string().max(80),
     inputType: z.string().max(160).nullable(),
     configuredSpace: z.string().max(1000).nullable(),
@@ -95,23 +100,68 @@ export const embeddingInputSchema = z
     "Embedding item IDs must be unique.",
   )
   .refine(contentFits, "Embedding input exceeds 4 MiB. Submit smaller jobs.");
+const itemIdentity = {
+  id: identity,
+  index: z.number().int().nonnegative(),
+  metadata: boundedJsonValueSchema.optional(),
+};
+const denseValues = z.array(z.number().finite()).min(1).max(65536);
+const validSparse = (value: {
+  indices: number[];
+  values: number[];
+  tokens?: (string | null)[];
+}) =>
+  value.indices.length === value.values.length &&
+  new Set(value.indices).size === value.indices.length &&
+  (!value.tokens || value.tokens.length === value.indices.length);
+const sparseValues = z
+  .object({
+    indices: z.array(z.number().int().nonnegative()).max(65536),
+    values: z.array(z.number().finite()).max(65536),
+    tokens: z.array(z.string().nullable()).max(65536).optional(),
+  })
+  .strict()
+  .refine(validSparse, "Invalid sparse embedding coordinates.");
+export const embeddingItemSchema = z.discriminatedUnion("representation", [
+  z
+    .object({
+      ...itemIdentity,
+      representation: z.literal("dense"),
+      values: denseValues,
+      sourceEncoding: z.enum(["float", "base64"]),
+    })
+    .strict(),
+  z
+    .object({
+      ...itemIdentity,
+      representation: z.literal("multi-vector"),
+      values: z.array(denseValues).min(1).max(65536),
+      sourceEncoding: z.literal("float"),
+    })
+    .strict(),
+  z
+    .object({
+      ...itemIdentity,
+      representation: z.literal("sparse"),
+      ...sparseValues.shape,
+      sourceEncoding: z.literal("float"),
+    })
+    .strict()
+    .refine(validSparse, "Invalid sparse embedding coordinates."),
+  z
+    .object({
+      ...itemIdentity,
+      representation: z.literal("hybrid"),
+      values: denseValues,
+      sparse: sparseValues,
+      sourceEncoding: z.literal("float"),
+    })
+    .strict(),
+]);
 export const embeddingResultSchema = z
   .object({
     space: embeddingSpaceIdentitySchema,
-    items: z
-      .array(
-        z
-          .object({
-            id: identity,
-            index: z.number().int().nonnegative(),
-            representation: z.literal("dense"),
-            values: z.array(z.number().finite()).min(1).max(65536),
-            sourceEncoding: z.enum(["float", "base64"]),
-          })
-          .strict(),
-      )
-      .min(1)
-      .max(4096),
+    items: z.array(embeddingItemSchema).min(1).max(4096),
     usage: z
       .object({
         inputTokens: z.number().int().nonnegative().nullable(),
@@ -224,6 +274,7 @@ export function modelOperationContentContext(input: {
   });
 }
 export type EmbeddingInput = z.infer<typeof embeddingInputSchema>;
+export type EmbeddingItem = z.infer<typeof embeddingItemSchema>;
 export type EmbeddingResult = z.infer<typeof embeddingResultSchema>;
 export type EmbeddingSpaceIdentity = z.infer<
   typeof embeddingSpaceIdentitySchema

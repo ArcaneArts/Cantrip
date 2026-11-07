@@ -15,6 +15,11 @@ const adapters: Record<
   embedding: [
     ["openai-embeddings", "OpenAI-compatible embeddings"],
     ["ollama-embed", "Ollama embed"],
+    ["llama-embeddings", "llama.cpp native embeddings"],
+    ["vllm-embeddings", "vLLM embeddings / chat inputs"],
+    ["vllm-pooling", "vLLM embedding pooling"],
+    ["vllm-bge-m3", "vLLM BGE-M3 sparse plugin"],
+    ["cohere-embed", "Cohere-compatible Embed v2"],
   ],
   decision: [
     ["openai-decisions", "OpenAI Decisions"],
@@ -37,6 +42,24 @@ export function ModelOperationFields({
     operationOptions?: ModelOperationOptions;
   }): void;
 }) {
+  const mediaFormats: [string, string][] =
+    operation === "decision"
+      ? adapter === "system-one"
+        ? [["base64-images", "Shared base64 media"]]
+        : [["content-parts", "Content parts"]]
+      : adapter === "ollama-embed" || adapter === "vllm-bge-m3"
+        ? []
+        : adapter === "vllm-embeddings" || adapter === "vllm-pooling"
+          ? [
+              ["content-parts", "Chat content parts"],
+              ["media-urls", "Chat media URLs"],
+            ]
+          : adapter === "cohere-embed" || adapter === "llama-embeddings"
+            ? [["content-parts", "Content parts"]]
+            : [
+                ["content-parts", "Content parts"],
+                ["base64-images", "Base64 images (gateway)"],
+              ];
   const patch = (key: keyof ModelOperationOptions, value: unknown) => {
     const next = { ...options, [key]: value };
     if (value === undefined) delete next[key];
@@ -44,7 +67,12 @@ export function ModelOperationFields({
   };
   const textField = (
     label: string,
-    key: "inputType" | "normalization" | "modelRevision" | "embeddingSpace",
+    key:
+      | "inputType"
+      | "normalization"
+      | "modelRevision"
+      | "embeddingSpace"
+      | "messageRole",
   ) => (
     <label className="grid min-w-0 gap-1 text-xs">
       <span>{label}</span>
@@ -53,7 +81,7 @@ export function ModelOperationFields({
         maxLength={
           key === "embeddingSpace"
             ? 1000
-            : key === "normalization"
+            : key === "normalization" || key === "messageRole"
               ? 80
               : key === "modelRevision"
                 ? 500
@@ -122,6 +150,40 @@ export function ModelOperationFields({
               {textField("Normalization", "normalization")}
               {textField("Embedding space identifier", "embeddingSpace")}
               {numberField("Maximum items per batch", "maxBatchSize")}
+              {textField("Embedding message role", "messageRole")}
+              <label className="grid gap-1 text-xs">
+                <span>Vector representation</span>
+                <NativeSelect
+                  className={fieldClass}
+                  value={options?.vectorRepresentation ?? ""}
+                  onChange={(event) =>
+                    patch(
+                      "vectorRepresentation",
+                      event.target.value || undefined,
+                    )
+                  }
+                >
+                  <option value="">Provider response</option>
+                  <option value="dense">Dense</option>
+                  <option value="multi-vector">Multi-vector</option>
+                  <option value="sparse">Sparse</option>
+                  <option value="hybrid">Dense + sparse</option>
+                </NativeSelect>
+              </label>
+              <label className="grid gap-1 text-xs">
+                <span>vLLM pooling task</span>
+                <NativeSelect
+                  className={fieldClass}
+                  value={options?.poolingTask ?? ""}
+                  onChange={(event) =>
+                    patch("poolingTask", event.target.value || undefined)
+                  }
+                >
+                  <option value="">Adapter default</option>
+                  <option value="embed">Sequence embedding</option>
+                  <option value="token_embed">Token embedding</option>
+                </NativeSelect>
+              </label>
               <label className="grid gap-1 text-xs">
                 <span>Vector encoding</span>
                 <NativeSelect
@@ -168,10 +230,17 @@ export function ModelOperationFields({
               }
             >
               <option value="">Adapter default</option>
-              <option value="content-parts">Content parts</option>
-              <option value="base64-images">Base64 images</option>
-              <option value="data-url-files">Data URL files</option>
-              <option value="media-urls">Media URLs</option>
+              {mediaFormats.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+              {options?.mediaFormat &&
+              !mediaFormats.some(([value]) => value === options.mediaFormat) ? (
+                <option value={options.mediaFormat}>
+                  Saved format: {options.mediaFormat}
+                </option>
+              ) : null}
             </NativeSelect>
           </label>
           {(["providerRouting", "parameters"] as const).map((key) => (

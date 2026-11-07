@@ -18,7 +18,7 @@ import {
 } from "./inference-command.js";
 import type { WorkerInferenceAdmission } from "./inference-admission.js";
 import type { RuntimeProvider } from "./protected-secrets.js";
-import { ModelOperationError } from "./model-embedding.js";
+import { ModelOperationError } from "./model-operation-error.js";
 
 type Route = Omit<ModelOperationRoute, "provider"> & {
   provider: RuntimeProvider;
@@ -118,7 +118,10 @@ function makePayload(
     options.inputType ||
     options.encodingFormat ||
     options.normalization ||
-    options.embeddingSpace
+    options.embeddingSpace ||
+    options.vectorRepresentation ||
+    options.poolingTask ||
+    options.messageRole
   )
     fail(
       "invalid-request",

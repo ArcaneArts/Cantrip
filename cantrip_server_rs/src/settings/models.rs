@@ -17,7 +17,10 @@ fn adapter_matches(adapter: Option<&str>, operation: &str) -> bool {
     match adapter {
         None => true,
         Some("responses" | "chat-completions") => operation == "language",
-        Some("openai-embeddings" | "ollama-embed") => operation == "embedding",
+        Some(
+            "openai-embeddings" | "ollama-embed" | "llama-embeddings" | "vllm-embeddings"
+            | "vllm-pooling" | "vllm-bge-m3" | "cohere-embed",
+        ) => operation == "embedding",
         Some("openai-decisions" | "system-one" | "openrouter-decisions") => operation == "decision",
         _ => false,
     }

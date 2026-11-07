@@ -32,19 +32,72 @@ const next = await embed({
 });
 ```
 
-Items support ordered text and media parts. This execution milestone implements
-dense text vectors through OpenAI-compatible `/embeddings` and Ollama `/api/embed`,
-plus the documented joint text/image content-parts format on compatible endpoints
-such as OpenRouter. Float and OpenAI-compatible base64 vectors are normalized to
-finite number arrays, preserving their source encoding. Indices are validated and
-reordered to match the caller's items. Missing, duplicate, malformed, or
+Items support ordered text and media parts. Dense text vectors use compatible
+`/embeddings` and Ollama `/api/embed`, with joint text/image content parts on
+compatible endpoints such as OpenRouter. Native formats also preserve sparse,
+multi-vector and combined dense/sparse output. Float and supported base64 vectors
+become finite number arrays, preserving their source encoding. Indices are
+validated and reordered to match caller items. Missing, duplicate, malformed or
 inconsistent vectors fail the operation.
 
-Ollama receives `truncate: false`. No adapter silently truncates content, drops
-media, or transcribes audio. Audio/video parts, additional native media envelopes,
-sparse/multi-vector output require subsequent
-provider integrations; their presence in capability metadata is not a claim that
-this initial embedding transport implements them.
+Ollama receives `truncate: false` and Cohere-compatible requests use
+`truncate: "NONE"`. No adapter truncates content, drops media, transcribes audio or
+creates video frames. Provider-side model loading, templates, pooling configuration
+and accepted media remain the configured endpoint's responsibility.
+
+### Native embedding formats
+
+Select an operation API in the profile's advanced route configuration:
+
+| Adapter                    | Input and output                                                                                                                                                                                          |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenAI-compatible          | Text or joint text/image input parts; dense float/base64 output. A configured llama.cpp connection also uses its documented audio/video parts.                                                            |
+| Ollama embed               | Native text arrays and dense vectors.                                                                                                                                                                     |
+| llama.cpp native           | `/embeddings`, preserving nested vectors for every item, including unpooled token vectors. Ordered text/image/audio/video parts use llama.cpp's native content-part shapes.                               |
+| vLLM embeddings            | `/v1/embeddings`; plain text batches or a single chat-style item per request, including the served model's image/audio/video inputs.                                                                      |
+| vLLM embedding pooling     | `/pooling` with an explicit `embed` or `token_embed` task; dense or nested token vectors, never classification scores relabeled as embeddings.                                                            |
+| vLLM BGE-M3 plugin         | An already configured BGE-M3 sparse IO processor; dense, sparse or combined dense/sparse results retain actual token IDs and optional token text. Cantrip does not install or modify the serving runtime. |
+| Cohere-compatible Embed v2 | `/v2/embed`; text batches or mixed text/image inputs, dimensions/input modes, float/base64 output and truncation disabled.                                                                                |
+
+For a LiteLLM image route using its raw base64 input format, select the compatible
+adapter and `base64-images` media encoding. Each item must contain exactly one
+inline image. Mixed parts fail explicitly rather than losing text or images. The
+request stays on the configured gateway and retains its model alias and key.
+
+vLLM chat-style inputs use one user item per request so multiple independent items
+cannot accidentally become one conversation embedding. Each item rejoins FIFO.
+Configure `messageRole` for templates using roles such as `query` and `document`;
+`inputType` supplies the role when no explicit message role is selected. No prompt
+prefix, system instruction or template is invented by Cantrip. Additional native
+template and pooling parameters can be configured in the bounded parameter field.
+The selected chat input format stays consistent across a mixed job's batches and
+is recorded in the returned identity. A later text-only call pinned to that chat
+space uses the same chat input format instead of silently switching templates.
+
+`items[].representation` discriminates the result shape:
+
+- `dense`: `values` is one vector.
+- `multi-vector`: `values` is an ordered matrix; rows are retained without averaging
+  or flattening. Provider `late_chunking` information is retained under
+  `metadata.lateChunking` when returned.
+- `sparse`: `indices`, `values` and optional `tokens` preserve sparse coordinates.
+  The space dimensions are null when the endpoint does not report its vocabulary
+  dimension; the largest returned token ID is not substituted for it.
+- `hybrid`: `values` holds the dense vector and `sparse` holds the lexical component.
+  Space dimensions refer to the dense component, not the sparse vocabulary.
+
+`vectorRepresentation` optionally requires a particular output representation.
+For the BGE-M3 plugin it selects the native dense, sparse or combined task. For
+other adapters it validates the returned representation without inventing a
+conversion. Explicit L2 normalization applies to each dense row and sparse
+component independently. Shape-less base64 matrices are not flattened into dense
+vectors; use float encoding for nested pooling/chunk output.
+Base64 decoding accepts the documented little-endian float32 encoding. Other
+native numeric formats must use float JSON output so their bytes are not decoded
+with an incorrect dtype or byte order.
+For native vLLM base64, explicitly select dense representation. Native pooling
+defaults to `token_embed`, or `embed` when dense representation is selected;
+the explicit pooling task setting overrides that default.
 
 Dimensions and `input_type` are forwarded where selected. `normalization: "l2"`
 explicitly normalizes returned vectors; `none` leaves them unchanged. An omitted
@@ -57,7 +110,8 @@ compatibility can be established.
 
 The returned space identity includes configured model/route/provider IDs, requested
 and reported model names, dimensions, input mode, normalization, revision
-provenance, and a fingerprint of the effective configuration and endpoint. A
+provenance, and a fingerprint of the effective native request configuration and
+resolved adapter/endpoint. Inference content is excluded from that fingerprint. A
 missing reported model remains null. A configured revision or previously observed
 catalog digest is recorded with its source; it does not prove which weights the
 current HTTP request used. `revisionVerified` remains false for these adapters.
@@ -73,6 +127,10 @@ an explicitly pinned route, and does not automatically try another route.
 Input mode is part of this strict identity. Applications using asymmetric
 query/document modes must establish the model's paired-mode compatibility rather
 than treating different modes as interchangeable because dimensions match.
+Representation, pooling task, template parameters and message role also affect
+the identity. Older fingerprints that omitted the effective native envelope may
+fail this stricter comparison; callers must explicitly establish compatibility
+rather than relabel existing vectors automatically.
 
 ## Transport and ownership
 
@@ -114,9 +172,12 @@ Do not nest an independent acquisition while holding the same provider's ticket.
 The initial adapter contracts are grounded in the official
 [OpenAI embeddings guide](https://developers.openai.com/api/docs/guides/embeddings),
 [Ollama embed reference](https://docs.ollama.com/api/embed), and
-[OpenRouter embeddings reference](https://openrouter.ai/docs/api_reference/embeddings).
-Additional embedding media contracts remain part of the active implementation
-goal.
+[OpenRouter embeddings reference](https://openrouter.ai/docs/api_reference/embeddings),
+[llama.cpp server reference](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md),
+[vLLM embedding/pooling reference](https://docs.vllm.ai/en/latest/models/pooling_models/embed/),
+[vLLM token embedding reference](https://docs.vllm.ai/en/latest/models/pooling_models/token_embed/),
+[vLLM BGE-M3 plugin contract](https://docs.vllm.ai/en/latest/models/pooling_models/specific_models/#dense-and-sparse-output-through-an-io-processor-plugin),
+and [LiteLLM image embeddings](https://docs.litellm.ai/docs/embedding/supported_embedding#image-embeddings).
 
 ## Native decisions
 
