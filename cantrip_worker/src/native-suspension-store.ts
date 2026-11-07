@@ -8,6 +8,7 @@ import {
   taskInferenceInputReceiptSchema,
   nativeSuspensionEvidenceSchema,
   nativeTurnSuspensionSchema,
+  taskGoalCycleSuspensionSourceSchema,
   type NativeSuspensionEvidence,
   type NativeTurnSuspension,
 } from "@cantrip/protocol";
@@ -40,10 +41,31 @@ const scopeSchema = z
 // fresh authority for this source, not a serialized old runtime or socket.
 export const nativeSuspensionSourceSchema = nativeCommandSessionSchema
   .omit({ runtimeGeneration: true, connectionId: true })
-  .extend({ taskInput: taskInferenceInputReceiptSchema.optional() })
+  .extend({
+    taskInput: taskInferenceInputReceiptSchema.optional(),
+    taskGoalCycle: taskGoalCycleSuspensionSourceSchema.optional(),
+  })
   .strict()
   .superRefine((value, context) => {
     const task = value.taskInput;
+    const goal = value.taskGoalCycle;
+    if (
+      goal &&
+      (task ||
+        value.contextKind !== "project" ||
+        !value.projectId ||
+        goal.parent.chatId !== value.chatId ||
+        goal.threadId !== value.threadId ||
+        goal.parent.worktreeId !== value.placementId ||
+        goal.cycle.modelRouteId !== value.modelRouteId ||
+        goal.cycle.providerAccountId !== value.providerAccountId)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["taskGoalCycle"],
+        message:
+          "Goal checkpoint changed its canonical execution or placement.",
+      });
     if (
       task &&
       (value.contextKind !== "project" ||
@@ -92,7 +114,8 @@ const snapshotSchema = z
   ])
   .superRefine((value, context) => {
     const receipt = value.source.taskInput;
-    if ((value.version === 3) !== Boolean(receipt))
+    const goal = value.source.taskGoalCycle;
+    if ((value.version === 3) !== Boolean(receipt || goal))
       context.addIssue({
         code: "custom",
         path: ["source", "taskInput"],
@@ -113,6 +136,18 @@ const snapshotSchema = z
         code: "custom",
         path: ["task"],
         message: "Task continuation belongs to another canonical input.",
+      });
+    if (
+      value.version === 3 &&
+      goal &&
+      (value.task.version !== 2 ||
+        value.task.prompt.id !== goal.parent.clientMessageId ||
+        !isDeepStrictEqual(value.task.publication, goal.publication))
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["task"],
+        message: "Goal continuation changed its original publisher.",
       });
   });
 const recordSchema = z
@@ -223,7 +258,9 @@ export class NativeSuspensionStore {
       await this.protection.open(
         resourceBinding(record.evidence.suspension),
         record.protectedSource,
-        source.taskInput ? "task-content" : "chat-content",
+        source.taskInput || source.taskGoalCycle
+          ? "task-content"
+          : "chat-content",
       ),
     );
     if (
@@ -285,12 +322,20 @@ export class NativeSuspensionStore {
     const task = input.taskContinuation
       ? taskWorkerContinuationSchema.parse(input.taskContinuation)
       : null;
-    if (Boolean(source.taskInput) !== Boolean(task) || (task && !continuation))
+    if (
+      Boolean(source.taskInput || source.taskGoalCycle) !== Boolean(task) ||
+      (task && !continuation)
+    )
       throw new Error(
         "Task checkpoints require their original round and worker continuation.",
       );
     if (source.taskInput && source.taskInput.workerId !== scope.workerId)
       throw new Error("Task checkpoint belongs to another worker.");
+    if (
+      source.taskGoalCycle &&
+      source.taskGoalCycle.parent.workerId !== scope.workerId
+    )
+      throw new Error("Goal checkpoint belongs to another worker.");
     const version = task ? 3 : continuation ? 2 : 1;
     const snapshot = snapshotSchema.parse({
       version,

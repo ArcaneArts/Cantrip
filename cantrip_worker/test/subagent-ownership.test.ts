@@ -106,13 +106,14 @@ function notify(socket, method, params) {
   socket.send(JSON.stringify({ method, params }));
 }
 
-function completedTurn(socket, threadId, turnId, status = "completed") {
+function completedTurn(socket, threadId, turnId, status = "completed",
+  error = status === "completed" ? null : { message: "Late terminal failure", additionalDetails: null }) {
   notify(socket, "turn/completed", {
     threadId,
     turn: {
       id: turnId,
       status,
-      error: status === "completed" ? null : { message: "Late terminal failure", additionalDetails: null },
+      error,
       startedAt: fixtureStartedAt,
       completedAt: fixtureStartedAt + 1,
       durationMs: 10
@@ -387,7 +388,9 @@ server.on("connection", (socket) => {
             phase: "final_answer"
           }
         });
-        completedTurn(socket, rootThreadId, rootTurnId, "failed");
+        // Retain the legacy missing-error fallback. Explicit native failures
+        // after earlier output are covered separately and must stay failed.
+        completedTurn(socket, rootThreadId, rootTurnId, "failed", null);
       }, 25);
     }, 10);
   });
@@ -413,6 +416,15 @@ describe("native subagent execution ownership", () => {
     );
     expect(reconciledRootTurnStatus("failed", true, true)).toBe("interrupted");
     expect(reconciledRootTurnStatus("completed", true, true)).toBe("completed");
+  });
+
+  it("retains an actual native failure after earlier assistant output", () => {
+    expect(reconciledRootTurnStatus("failed", true, false, true)).toBe(
+      "failed",
+    );
+    expect(reconciledRootTurnStatus("failed", true, true, true)).toBe(
+      "interrupted",
+    );
   });
 
   it("parses native thread metadata without trusting missing parents", () => {

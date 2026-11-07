@@ -27,6 +27,7 @@ import {
   queueTaskGoalPlanning,
   startSuspensionTaskGoal,
   qualifyTaskGoalSuspension,
+  advanceSuspensionTaskGoalCycle,
 } from "./suspension-task-goal-browser.mjs";
 import { killOwnedWorkerTree } from "./owned-worker-tree.mjs";
 import { openSuspensionTerminal } from "./suspension-terminal-browser.mjs";
@@ -552,11 +553,23 @@ async function flow(kind, executable, cliBinary) {
       await launch();
     };
     if (taskGoalOrigin) {
+      const goalBoundary = process.argv.includes("--task-goal-cycle")
+        ? await advanceSuspensionTaskGoalCycle({
+            cycles: Number(option("--task-goal-cycles") ?? 1),
+            page,
+            chatId: chat.id,
+            boundary,
+            command,
+            model,
+            workerData,
+            result,
+          })
+        : boundary;
       result.taskGoalSuspension = await qualifyTaskGoalSuspension({
         page,
         projectId,
         chatId: chat.id,
-        boundary,
+        boundary: goalBoundary,
         command,
         result,
         model,
@@ -569,8 +582,17 @@ async function flow(kind, executable, cliBinary) {
         restoreDamage: option("--task-restore-damage"),
         stopOnly: process.argv.includes("--task-cold-stop"),
         stopDamage: option("--task-stop-damage"),
+        failCycle: process.argv.includes("--task-fail-cycle"),
+        cyclesAfterResume: Number(
+          option("--task-goal-cycles-after-resume") ?? 0,
+        ),
         restart: restartTask,
       });
+      result.serverDiagnostics = fixture.server?.diagnostics();
+      assert.doesNotMatch(
+        result.serverDiagnostics ?? "",
+        /Usage source alias belongs to another retained turn/u,
+      );
       return;
     }
     if (task) {

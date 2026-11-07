@@ -51,7 +51,8 @@ async fn intent(tx: &Transaction<'_>, owner: &str, chat: &str) -> Result<Option<
             .flatten(),
     )?;
     let resuming = saved.as_ref().is_some_and(|state| {
-        !state["target"]["taskRound"].is_null() && state["phase"] == "resuming"
+        (!state["target"]["taskRound"].is_null() || !state["target"]["taskGoalCycle"].is_null())
+            && state["phase"] == "resuming"
     });
     let mut value = json!({"paused":if resuming {json!(false)} else {context["automationPaused"].clone()},"scope":json!({
         "revision":context["managedInputRevision"],"workerId":context["workerId"],
@@ -61,7 +62,12 @@ async fn intent(tx: &Transaction<'_>, owner: &str, chat: &str) -> Result<Option<
         "orderEpoch":cycles.first().map(|row|row.get::<i64>(1)).transpose()?.unwrap_or(0)
     })});
     if let Some(source) = source {
-        value["scope"]["taskRound"] = source.task_round;
+        if !source.task_round.is_null() {
+            value["scope"]["taskRound"] = source.task_round;
+        }
+        if !source.task_goal_cycle.is_null() {
+            value["scope"]["taskGoalCycle"] = source.task_goal_cycle;
+        }
     }
     Ok(Some(crate::settings::parse_response(
         "taskPauseIntentSchema",
@@ -128,7 +134,7 @@ impl Repository {
             let Some(current) = rows.first() else {return Ok(None);};
             if expected.is_some_and(|expected| current.get::<i32>(0).ok() != Some(expected)) {return Ok(None);}
             let saved = saved_suspension(current.get::<Option<String>>(1)?)?;
-            let held = saved.as_ref().is_some_and(|state| !state["target"]["taskRound"].is_null() && !state["checkpoint"].is_null() &&
+            let held = saved.as_ref().is_some_and(|state| (!state["target"]["taskRound"].is_null() || !state["target"]["taskGoalCycle"].is_null()) && !state["checkpoint"].is_null() &&
                 matches!(state["phase"].as_str(),Some("paused"|"pausing"|"resuming"|"error")));
             if held && saved.as_ref().is_none_or(|state|state["action"] != "stop") && !(paused && saved.as_ref().is_some_and(|state|state["phase"] == "error" && state["action"] == "resume")) {
                 crate::native_commands::task_suspension::request_locked(tx, &owner, &chat, if paused {"pause"} else {"resume"}, None).await?;

@@ -133,6 +133,54 @@ fn stale<T>() -> Result<T> {
     )
 }
 impl Repository {
+    pub async fn commit_goal_cycle_outcome(
+        &self,
+        owner: &str,
+        worker: &str,
+        input: &Value,
+    ) -> Result<Value> {
+        let (owner, worker, input) = (owner.to_owned(), worker.to_owned(), input.clone());
+        self.database.transaction(|tx| Box::pin(async move {
+            let source = parse("taskGoalCycleSuspensionSourceSchema", &input["goalCycleSource"])?;
+            let note = &input["notification"];
+            let chat = text(&source["parent"]["chatId"])?;
+            crate::native_commands::context::lock_chat(tx, &owner, &chat).await?;
+            let cycle = one(Executor::Transaction(tx), "SELECT to_jsonb(c)::text FROM task_dispatch_cycles c WHERE c.id=$1 AND c.owner_id=$2 AND c.chat_id=$3 FOR UPDATE", &[&text(&source["cycle"]["cycleId"])?,&owner,&chat]).await?;
+            let Some(cycle) = cycle else { return Ok(json!({"committed":false,"retiredReason":"goal-cycle-replaced"})); };
+            let mut marker = cycle["goal_cycle_recovery"].clone();
+            if marker["suspension"]["source"] != source || cycle["goal_input"]["receipt"] != source["parent"] {
+                return Ok(json!({"committed":false,"retiredReason":"goal-cycle-replaced"}));
+            }
+            if !marker["suspension"]["restoration"].is_null() { return Ok(json!({"committed":false,"retiredReason":"goal-cycle-restored"})); }
+            if input["inputKind"] != "goal-cycle" || source["parent"]["workerId"] != worker.as_str() ||
+                ["chatId","clientMessageId","executionLaneId","worktreeId"].iter().any(|key| note[*key] != source["parent"][*key]) ||
+                !note["taskInferenceInputOperationId"].is_null() || (note["outcome"]["ok"] == true &&
+                (note["outcome"]["result"]["threadId"] != source["threadId"] || note["outcome"]["result"]["turnId"] != source["turnId"])) { return stale(); }
+            let message = if note["outcome"]["ok"] == true {
+                let result = parse("taskMessageRelayResultSchema", &note["outcome"]["result"]["structuredResult"])?;
+                let message = result["message"].clone();
+                if message["id"] != source["publication"]["id"] || message["idempotencyKey"] != source["publication"]["idempotencyKey"] { return stale(); }
+                Some(message)
+            } else { None };
+            let digest = format!("{:x}", Sha256::digest(note.stringify().as_bytes()));
+            if !marker["suspension"]["terminal"]["outcomeDigest"].is_null() && marker["suspension"]["terminal"]["outcomeDigest"] != digest.as_str() { return stale(); }
+            let row = crate::native_commands::suspension::chat(tx, &owner, &chat).await?;
+            if row["experience"] != "task" { return stale(); }
+            let saved = if let Some(message) = message {
+                crate::chats::message_writes::append_task_with(Executor::Transaction(tx), &owner, &chat, &message,
+                    Some(&json!({"executionLaneId":source["parent"]["executionLaneId"],"worktreeId":source["parent"]["worktreeId"]}))).await?.ok_or_else(crate::task_dispatch::Conflict::stale)?
+            } else { Value::Null };
+            let ok = note["outcome"]["ok"] == true;
+            if marker["suspension"]["terminal"].is_null() {
+                marker["suspension"]["terminal"] = json!({"ok":ok,"failureKind":if ok {Value::Null} else {json!("runtime")},"observedAt":now(),"projectedAt":Value::Null,
+                    "outcomeDigest":digest,"threadId":source["threadId"],"turnId":source["turnId"]});
+            }
+            tx.query("UPDATE task_dispatch_cycles SET goal_cycle_recovery=$2::text::jsonb WHERE id=$1", &[&text(&cycle["id"])?,&marker.stringify()]).await?;
+            crate::native_commands::task_suspension::retire_goal_cycle_locked(tx,&owner,&source,if ok {"completed"} else {"failed"}).await?;
+            Ok(json!({"committed":true,"message":saved,"chat":json!({"projectId":row["project_id"],"experience":row["experience"]})}))
+        })).await
+    }
+
     pub async fn pending_goal_cycle_recovery(
         &self,
         owner: &str,
@@ -304,11 +352,31 @@ impl Repository {
                 (truthy(marker.get("settled")) &&
                     (marker["settled"].get("operationId") != input.get("operationId") ||
                         marker["settled"].get("turnId") != input.get("turnId"))) { return stale(); }
-            if !truthy(marker.get("settled")) {
+            let mut suspension_source = marker["suspension"]["source"].clone();
+            if let Some(runtime) = input.get("nativeRuntimeGeneration").filter(|value| !value.is_null()) {
+                if !row["cycle"]["goal_input"].is_null() {
+                    if input.get("freshRuntimeGeneration").is_some_and(|fresh| !fresh.is_null() && fresh != runtime) { return stale(); }
+                    let publication = if suspension_source.is_null() {
+                        json!({"id":uuid::Uuid::new_v4().to_string(),"idempotencyKey":format!("assistant:goal-cycle:{}", text(&marker["sourceKey"])?)})
+                    } else { suspension_source["publication"].clone() };
+                    let actual = parse("taskGoalCycleSuspensionSourceSchema", &json!({
+                        "kind":"goal-cycle","sourceKey":marker["sourceKey"],"operationId":input["operationId"],
+                        "workerGeneration":input["workerGeneration"],"runtimeGeneration":runtime,
+                        "threadId":input["threadId"],"turnId":input["turnId"],"cycle":input["cycle"],
+                        "parent":row["cycle"]["goal_input"]["receipt"],"publication":publication
+                    }))?;
+                    if !suspension_source.is_null() && suspension_source != actual { return stale(); }
+                    suspension_source = actual;
+                }
+            }
+            if !truthy(marker.get("settled")) || (!suspension_source.is_null() && marker["suspension"].is_null()) {
+                if !suspension_source.is_null() { marker["suspension"] = json!({"source":suspension_source}); }
                 marker["settled"] = json!({"reason":"dispatched","operationId":input["operationId"],"turnId":input["turnId"]});
                 write(tx,&row["cycle"],&marker,true).await?;
             }
-            Ok(json!({"accepted":true}))
+            let mut result = json!({"accepted":true});
+            if !suspension_source.is_null() { result["suspensionSource"] = suspension_source; }
+            Ok(result)
         })).await
     }
 

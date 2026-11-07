@@ -71,6 +71,106 @@ export async function startSuspensionTaskGoal(page, chatId, rowVersion) {
   );
 }
 
+/** Finish the explicit input while keeping its Goal active, then wait for Core
+ * to begin its own next cycle. No application prompt or replacement turn is sent. */
+export async function advanceSuspensionTaskGoalCycle({
+  cycles = 1,
+  result,
+  ...options
+}) {
+  assert.ok(Number.isInteger(cycles) && cycles >= 1 && cycles <= 8);
+  const origins = [];
+  let boundary = options.boundary;
+  for (let cycle = 0; cycle < cycles; cycle++) {
+    const observed = {};
+    boundary = await advanceOneSuspensionTaskGoalCycle({
+      ...options,
+      boundary,
+      result: observed,
+    });
+    origins.push(observed.taskGoalCycleOrigin);
+  }
+  result.taskGoalCycleOrigin = {
+    before: origins[0].before,
+    first: origins[0].first,
+    native: origins.at(-1).native,
+    cycles: origins,
+  };
+  return boundary;
+}
+
+async function advanceOneSuspensionTaskGoalCycle({
+  page,
+  chatId,
+  boundary,
+  command,
+  model,
+  workerData,
+  result,
+}) {
+  const before = await page.evaluate(async (id) => {
+    const tasks = await import("/src/lib/api/tasks.ts");
+    const chats = await import("/src/lib/api/chats.ts");
+    return { task: await tasks.getTask(id), goal: await chats.getChatGoal(id) };
+  }, chatId);
+  const first = {
+    threadId: before.task.dispatch.codexThreadId,
+    turnId: before.task.dispatch.turnId,
+  };
+  const tool = model.reply({
+    text: "DURABLE_AUTONOMOUS_GOAL_TOOL",
+    hold: true,
+  });
+  const next = model.reply({
+    text: "DURABLE_AUTONOMOUS_GOAL_BOUNDARY",
+    hold: true,
+  });
+  boundary.calls = [];
+  boundary.text = "DURABLE_FIRST_GOAL_INPUT_COMPLETE";
+  boundary.release();
+  await eventually(
+    () => tool.entered,
+    (value) => assert.equal(value, true),
+  );
+  const history = await nativeEvents(workerData, first.threadId);
+  const starts = history.filter((event) => event.type === "task_started");
+  const current = starts.at(-1);
+  assert.ok(current);
+  assert.notEqual(
+    current.turn_id,
+    first.turnId,
+    "Core generated a later native Goal turn",
+  );
+  assert.equal(
+    history.filter(
+      (event) =>
+        event.type === "task_complete" && event.turn_id === first.turnId,
+    ).length,
+    1,
+  );
+  result.taskGoalCycleOrigin = {
+    before,
+    first,
+    native: { threadId: first.threadId, turnId: current.turn_id },
+  };
+  tool.calls = [
+    {
+      ...command,
+      arguments: {
+        cmd: "printf 'DURABLE_TOOL_RESULT\\n'",
+        yield_time_ms: 1000,
+        max_output_tokens: 1000,
+      },
+    },
+  ];
+  tool.release();
+  await eventually(
+    () => next.entered,
+    (value) => assert.equal(value, true),
+  );
+  return next;
+}
+
 export async function qualifyTaskGoalSuspension({
   page,
   projectId,
@@ -88,9 +188,15 @@ export async function qualifyTaskGoalSuspension({
   restoreDamage,
   stopOnly = false,
   stopDamage,
+  failCycle = false,
+  cyclesAfterResume = 0,
   restart,
 }) {
   const evidence = (result.taskGoalPauseEvidence = {});
+  const priorCycles =
+    result.taskGoalCycleOrigin?.cycles?.length ??
+    (result.taskGoalCycleOrigin ? 1 : 0);
+  const checkpointTokens = 240 + priorCycles * 240;
   // The Goal keeps the acknowledged read-only planning policy. Its completed
   // command must succeed under that policy and survive recovery without replay.
   assert.ok(
@@ -107,11 +213,27 @@ export async function qualifyTaskGoalSuspension({
     ),
   );
   const chat = () => suspensionChat(page, projectId, chatId);
-  const readGoal = () =>
-    page.evaluate(
-      async (id) => (await import("/src/lib/api/chats.ts")).getChatGoal(id),
-      chatId,
+  const readGoal = async () => {
+    const observed = await eventually(
+      () =>
+        page
+          .evaluate(
+            async (id) =>
+              (await import("/src/lib/api/chats.ts")).getChatGoal(id),
+            chatId,
+          )
+          .then(
+            (value) => ({ value }),
+            (error) => ({ error }),
+          ),
+      (result) => {
+        // A concurrent passive Task projection can invalidate a Goal read's
+        // observation fence. Require a successful current read within the bound.
+        if (result.error) throw result.error;
+      },
     );
+    return observed.value;
+  };
   const readTask = () =>
     page.evaluate(
       async (id) => (await import("/src/lib/api/tasks.ts")).getTask(id),
@@ -142,10 +264,14 @@ export async function qualifyTaskGoalSuspension({
   assert.equal(evidence.pausedChat.nativeSuspension.phase, "paused");
   assert.equal(evidence.pausedChat.nativeSuspension.resumable, true);
   const native = evidence.pausedChat.nativeSuspension.active;
-  evidence.pausedGoal = await readGoal();
+  if (result.taskGoalCycleOrigin)
+    assert.deepEqual(native, result.taskGoalCycleOrigin.native);
+  evidence.pausedGoal = await eventually(readGoal, (value) =>
+    assert.equal(value.goal.tokensUsed, checkpointTokens),
+  );
   const count = inferences();
-  assert.equal(count, 4);
-  assert.equal(evidence.pausedGoal.goal.tokensUsed, 240);
+  assert.equal(count, 4 + priorCycles * 2);
+  assert.equal(evidence.pausedGoal.goal.tokensUsed, checkpointTokens);
   if (pauseOnly) return { native, durable: true, requests: count };
   if (!livePause) await restart(native, 1);
   evidence.reopenedChat = await chat();
@@ -216,7 +342,7 @@ export async function qualifyTaskGoalSuspension({
     (value) => assert.equal(value, true),
   );
   evidence.resumedGoal = await readGoal();
-  assert.equal(evidence.resumedGoal.goal.tokensUsed, 240);
+  assert.equal(evidence.resumedGoal.goal.tokensUsed, checkpointTokens);
   assert.equal(
     evidence.resumedGoal.goal.createdAt,
     evidence.pausedGoal.goal.createdAt,
@@ -225,6 +351,41 @@ export async function qualifyTaskGoalSuspension({
     evidence.resumedGoal.goal.objective,
     evidence.pausedGoal.goal.objective,
   );
+  if (failCycle) {
+    const failed = model.reply({
+      status: 400,
+      error: "DURABLE_AUTONOMOUS_FAILURE",
+    });
+    continued.calls = [
+      {
+        ...command,
+        arguments: {
+          cmd: "printf 'DURABLE_BEFORE_FAILURE\\n'",
+          yield_time_ms: 1000,
+          max_output_tokens: 1000,
+        },
+      },
+    ];
+    continued.release();
+    await eventually(
+      () => failed.entered,
+      (value) => assert.equal(value, true),
+    );
+    evidence.failedChat = await eventually(chat, (value) => {
+      assert.equal(value.nativeSuspension.phase, "failed");
+      assert.equal(value.nativeSuspension.resumable, false);
+      assert.deepEqual(value.nativeSuspension.active, native);
+    });
+    const requests = inferences();
+    await delay(200);
+    assert.equal(
+      inferences(),
+      requests,
+      "A failed native Goal is not replayed",
+    );
+    assert.equal(requests, count + 2);
+    return { native, failed: true, requests };
+  }
   evidence.additionalRounds = [];
   for (let round = 2; round <= rounds; round++) {
     const control = {};
@@ -250,7 +411,10 @@ export async function qualifyTaskGoalSuspension({
     assert.equal(control.pausedChat.nativeSuspension.phase, "paused");
     assert.deepEqual(control.pausedChat.nativeSuspension.active, native);
     control.pausedGoal = await readGoal();
-    assert.equal(control.pausedGoal.goal.tokensUsed, 240 + (round - 1) * 120);
+    assert.equal(
+      control.pausedGoal.goal.tokensUsed,
+      checkpointTokens + (round - 1) * 120,
+    );
     const heldCount = inferences();
     if (!livePause) await restart(native, round);
     control.reopenedChat = await chat();
@@ -273,6 +437,22 @@ export async function qualifyTaskGoalSuspension({
       (await readGoal()).goal.tokensUsed,
       control.pausedGoal.goal.tokensUsed,
     );
+  }
+  if (cyclesAfterResume) {
+    const advanced = {};
+    continued = await advanceSuspensionTaskGoalCycle({
+      page,
+      chatId,
+      boundary: continued,
+      command,
+      model,
+      workerData,
+      result: advanced,
+      cycles: cyclesAfterResume,
+    });
+    evidence.afterResumeCycles = advanced.taskGoalCycleOrigin;
+    assert.equal(evidence.afterResumeCycles.native.threadId, native.threadId);
+    assert.notEqual(evidence.afterResumeCycles.native.turnId, native.turnId);
   }
   const finishGoal = result.tools.find(
     (entry) =>
@@ -307,7 +487,8 @@ export async function qualifyTaskGoalSuspension({
     ),
   );
   evidence.accountedGoal = await readGoal();
-  const completedWorkTokens = 240 + rounds * 120;
+  const completedWorkTokens =
+    checkpointTokens + rounds * 120 + cyclesAfterResume * 240;
   assert.equal(evidence.accountedGoal.goal.tokensUsed, completedWorkTokens);
   model.reply({ text: "DURABLE_TASK_GOAL_RECOVERED_FINAL" });
   completedWork.calls = [{ ...finishGoal, arguments: { status: "complete" } }];
@@ -315,6 +496,29 @@ export async function qualifyTaskGoalSuspension({
   evidence.completedTask = await eventually(readTask, (value) =>
     assert.equal(value.state, "complete"),
   );
+  const published = await eventually(
+    () =>
+      page.evaluate(
+        async (id) => (await import("/src/lib/api/chats.ts")).getMessages(id),
+        chatId,
+      ),
+    (messages) =>
+      assert.equal(
+        // Native event projections carry item correlation; the canonical
+        // command response is a separate, uncorrelated protected message.
+        messages.filter((message) =>
+          message.content.some(
+            (part) =>
+              part.type === "text" &&
+              part.text === "DURABLE_TASK_GOAL_RECOVERED_FINAL" &&
+              !part.correlation,
+          ),
+        ).length,
+        1,
+        "The browser decrypts exactly one canonical final response",
+      ),
+  );
+  evidence.completedMessageIds = published.map((message) => message.id);
   evidence.completedChat = await eventually(chat, (value) => {
     assert.equal(value.nativeSuspension.phase, "completed");
     assert.equal(value.nativeSuspension.resumable, false);
@@ -340,14 +544,18 @@ export async function qualifyTaskGoalSuspension({
     evidence.completedTask.dispatch.attemptCount,
     evidence.beforePause.task.dispatch.attemptCount,
   );
-  assert.equal(inferences(), 6 + rounds);
+  assert.equal(
+    inferences(),
+    6 + rounds + priorCycles * 2 + cyclesAfterResume * 2,
+  );
   const history = await nativeHistory(workerData, native.threadId);
   const userInputs = history.filter(
     (row) =>
       row.type === "response_item" &&
       row.payload.type === "message" &&
       row.payload.role === "user" &&
-      row.metadata?.retained_source?.id?.turn_id === native.turnId,
+      row.metadata?.retained_source?.id?.turn_id ===
+        (result.taskGoalCycleOrigin?.first.turnId ?? native.turnId),
   );
   assert.equal(
     userInputs.length,
@@ -370,7 +578,7 @@ export async function qualifyTaskGoalSuspension({
   );
   assert.equal(
     allCommands.length,
-    rounds + 2,
+    rounds + (cyclesAfterResume ? 1 : 2),
     "Every original, held-boundary and resumed command completes once",
   );
   assert.equal(

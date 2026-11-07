@@ -153,7 +153,7 @@ impl SettingsRepository {
         let owner = owner.to_owned();
         self.database.transaction(move |tx| Box::pin(async move {
             tx.query("SELECT id FROM users WHERE id=$1 FOR KEY SHARE", &[&owner]).await?;
-            let lock = Value::Array(vec!["model-operation-usage".into(),owner.clone().into(),source.clone().into()]).stringify();
+            let lock = Value::Array(vec![json!("model-operation-usage"),json!(owner),json!(source)]).stringify();
             tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", &[&lock]).await?;
             let existing = tx.query("SELECT to_jsonb(t) FROM token_usage_records t WHERE owner_id=$1 AND source_key=$2", &[&owner,&source]).await?;
             if let Some(row) = existing.first() {

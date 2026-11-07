@@ -111,6 +111,136 @@ const samples = {
     },
   ],
 };
+const cycleParent = {
+  ...structuredClone(command.taskInferenceInput),
+  kind: "goal",
+};
+const cycleSource = {
+  kind: "goal-cycle",
+  sourceKey: "f".repeat(64),
+  operationId: `native-inference:${suspension.active.threadId}:${suspension.active.turnId}:cycle-scope:cycle-attempt`,
+  workerGeneration: dispatch.workerGeneration,
+  runtimeGeneration: nativeBinding.nativeRuntimeGeneration,
+  ...suspension.active,
+  cycle: {
+    cycleId: cycleParent.dispatch.cycleId,
+    goalEpoch: "epoch",
+    scopeId: "cycle-scope",
+    gateAttemptId: "cycle-attempt",
+    runnerGeneration: "runner",
+    modelRouteId: cycleParent.modelRouteId,
+    providerAccountId: cycleParent.providerAccountId,
+    orderEpoch: 0,
+  },
+  parent: cycleParent,
+  publication: {
+    id: "00000000-0000-4000-8000-000000000010",
+    idempotencyKey: "assistant:goal-cycle:fixture",
+  },
+};
+protocol.taskGoalCycleSuspensionSourceSchema.parse(cycleSource);
+const cycleRestore = {
+  controlId: "00000000-0000-4000-8000-000000000008",
+  checkpoint: suspension.checkpoint,
+  source: cycleParent,
+  goalCycle: cycleSource,
+};
+const cycleDelivery = {
+  version: 1,
+  inputKind: "goal-cycle",
+  deliveryId: cycleSource.publication.id,
+  serverId: "fixture-server",
+  ownerId: "fixture-owner",
+  workerId: cycleParent.workerId,
+  goalCycleSource: cycleSource,
+  notification: {
+    type: "chat.turn.outcome",
+    chatId: cycleParent.chatId,
+    clientMessageId: cycleParent.clientMessageId,
+    executionLaneId: cycleParent.executionLaneId,
+    contextKind: "project",
+    scratchRootId: null,
+    worktreeId: cycleParent.worktreeId,
+    outcome: {
+      ok: true,
+      result: {
+        ...suspension.active,
+        text: "",
+        status: "completed",
+        structuredResult: {},
+      },
+    },
+  },
+};
+Object.assign(samples, {
+  taskGoalCycleSuspensionSourceSchema: [
+    cycleSource,
+    { ...cycleSource, parent: { ...cycleParent, kind: undefined } },
+    { ...cycleSource, operationId: "another-native-operation" },
+    {
+      ...cycleSource,
+      cycle: { ...cycleSource.cycle, cycleId: cycleSource.publication.id },
+    },
+  ],
+  taskTurnResumptionSchema: [
+    cycleRestore,
+    {
+      ...cycleRestore,
+      source: { ...cycleParent, operationId: cycleSource.publication.id },
+    },
+    {
+      ...cycleRestore,
+      goalCycle: {
+        ...cycleSource,
+        turnId: "another-turn",
+        operationId: `native-inference:${cycleSource.threadId}:another-turn:cycle-scope:cycle-attempt`,
+      },
+    },
+  ],
+  taskGoalOutcomeDeliverySchema: [
+    cycleDelivery,
+    { ...cycleDelivery, inputKind: "goal" },
+    {
+      ...cycleDelivery,
+      notification: {
+        ...cycleDelivery.notification,
+        taskInferenceInputOperationId: cycleParent.operationId,
+      },
+    },
+  ],
+  taskGoalOutcomeCommitSchema: [
+    {
+      deliveryId: cycleSource.publication.id,
+      goalCycleSourceKey: cycleSource.sourceKey,
+      committed: true,
+    },
+    { deliveryId: cycleSource.publication.id, committed: true },
+    {
+      deliveryId: cycleSource.publication.id,
+      goalCycleSourceKey: cycleSource.sourceKey,
+      taskInferenceInputOperationId: cycleParent.operationId,
+      committed: true,
+    },
+  ],
+});
+const cycleRefinementCases = [];
+for (const schema of [
+  "taskGoalCycleSuspensionSourceSchema",
+  "taskTurnResumptionSchema",
+  "taskGoalOutcomeDeliverySchema",
+  "taskGoalOutcomeCommitSchema",
+]) {
+  const [valid, ...invalid] = samples[schema];
+  samples[schema] = [valid];
+  for (const input of invalid) {
+    const expected = outcome(protocol[schema], input);
+    assert.ok(
+      expected.issues,
+      `${schema} must reject a different physical source`,
+    );
+    cycleRefinementCases.push({ schema, input, outcome: expected });
+  }
+}
 let count = 0;
 function emit(schema, value) {
   console.log(JSON.stringify({ schema, ...value }));
@@ -118,6 +248,7 @@ function emit(schema, value) {
 }
 for (const [schema, values] of Object.entries(samples))
   for (const value of vectorCases(schema, values)) emit(schema, value);
+for (const { schema, ...value } of cycleRefinementCases) emit(schema, value);
 for (const [index, input] of [
   { ...nativeBinding, phase: "dispatch" },
   { ...nativeBinding, nativeExecution: undefined },

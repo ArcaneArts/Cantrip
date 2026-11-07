@@ -14,6 +14,7 @@ use anyhow::{Context, Result};
 pub(crate) fn matches_source(state: &Value, chat: &Value, source: &Source) -> bool {
     suspension::same_source(state, chat, &source.context)
         && state["target"]["taskRound"] == source.task_round
+        && state["target"]["taskGoalCycle"] == source.task_goal_cycle
         && state["target"]["executionLaneId"] == source.receipt["executionLaneId"]
 }
 
@@ -80,11 +81,17 @@ pub(crate) async fn retire_locked(
     let receipt = &physical["receipt"];
     let actor = json!({"workerGeneration":physical["nativeOwner"]["workerGeneration"],"runtimeGeneration":physical["nativeOwner"]["runtimeGeneration"],
         "operationId":receipt["operationId"],"operationGeneration":receipt["operationId"]});
-    if state["target"]["taskRound"].is_null()
+    let same_execution = if !state["target"]["taskGoalCycle"].is_null() {
+        state["target"]["taskGoalCycle"]["cycleId"] == receipt["dispatch"]["cycleId"]
+            && state["target"]["taskGoalCycle"]["cycleId"] == original["dispatch"]["cycleId"]
+    } else {
+        !state["target"]["taskRound"].is_null()
+            && state["target"]["taskRound"]["inputOperationId"] == original["operationId"]
+            && state["target"]["taskRound"]["operationId"] == receipt["dispatch"]["operationId"]
+            && state["target"]["taskRound"]["cycleId"] == receipt["dispatch"]["cycleId"]
+    };
+    if !same_execution
         || suspension::terminal(&state)
-        || state["target"]["taskRound"]["inputOperationId"] != original["operationId"]
-        || state["target"]["taskRound"]["operationId"] != receipt["dispatch"]["operationId"]
-        || state["target"]["taskRound"]["cycleId"] != receipt["dispatch"]["cycleId"]
         || state["target"]["workerId"] != receipt["workerId"]
         || state["target"]["executionLaneId"] != receipt["executionLaneId"]
         || state["actor"] != actor
@@ -97,6 +104,40 @@ pub(crate) async fn retire_locked(
     state["checkpoint"] = Value::Null;
     state["error"] = Value::Null;
     suspension::save(tx, owner, &id, state, row["automation_paused"] == true).await
+}
+
+pub(crate) async fn retire_goal_cycle_locked(
+    tx: &Transaction<'_>,
+    owner: &str,
+    source: &Value,
+    outcome: &str,
+) -> Result<()> {
+    let chat = text(&source["parent"]["chatId"])?;
+    let row = suspension::chat(tx, owner, &chat).await?;
+    let Some(mut state) = suspension::read(&row)? else {
+        return Ok(());
+    };
+    let actor = json!({"workerGeneration":source["workerGeneration"],"runtimeGeneration":source["runtimeGeneration"],"operationId":source["operationId"],"operationGeneration":source["operationId"]});
+    if suspension::terminal(&state)
+        || state["action"] == "stop"
+        || state["target"]["taskGoalCycle"]["sourceKey"] != source["sourceKey"]
+        || state["target"]["threadId"] != source["threadId"]
+        || state["target"]["originalOperationId"] != source["operationId"]
+        || (!state["active"].is_null()
+            && (state["active"]["threadId"] != source["threadId"]
+                || state["active"]["turnId"] != source["turnId"]))
+        || (!state["actor"].is_null() && state["actor"] != actor)
+    {
+        return Ok(());
+    }
+    suspension::finish_time(&mut state)?;
+    state["phase"] = json!(outcome);
+    state["actor"] = actor;
+    state["actorControlId"] = state["controlId"].clone();
+    state["active"] = json!({"threadId":source["threadId"],"turnId":source["turnId"]});
+    state["checkpoint"] = Value::Null;
+    state["error"] = Value::Null;
+    suspension::save(tx, owner, &chat, state, row["automation_paused"] == true).await
 }
 
 pub(crate) async fn request_locked(
@@ -142,11 +183,17 @@ pub(crate) async fn request_locked(
         return reject("suspension-not-resumable");
     }
     let now = crate::auth::iso(crate::auth::now());
-    let mut state = previous.unwrap_or_else(|| json!({"version":1,"controlId":uuid::Uuid::new_v4().to_string(),"action":action,"phase":"pausing",
-        "target":json!({"workerId":source.context["workerId"],"contextKind":"project","projectId":source.context["projectId"],
+    let mut target = json!({"workerId":source.context["workerId"],"contextKind":"project","projectId":source.context["projectId"],
             "placementId":source.context["worktreeId"],"placementRevision":chat["placement_revision"],"cantripOsBindingId":chat["cantrip_os_binding_id"],
             "executionLaneId":source.context["executionLaneId"],"modelRouteId":source.context["modelRouteId"],"providerAccountId":source.context["providerAccountId"],
-            "threadId":source.context["threadId"],"originalOperationId":source.receipt["operationId"],"taskRound":source.task_round}),
+            "threadId":source.context["threadId"],"originalOperationId":if source.goal_cycle.is_null() {source.receipt["operationId"].clone()} else {source.goal_cycle["operationId"].clone()}});
+    if !source.task_round.is_null() {
+        target["taskRound"] = source.task_round.clone();
+    }
+    if !source.task_goal_cycle.is_null() {
+        target["taskGoalCycle"] = source.task_goal_cycle.clone();
+    }
+    let mut state = previous.unwrap_or_else(|| json!({"version":1,"controlId":uuid::Uuid::new_v4().to_string(),"action":action,"phase":"pausing","target":target,
         "active":Value::Null,"checkpoint":Value::Null,"actor":Value::Null,"actorControlId":Value::Null,"error":Value::Null,
         "requestedAt":now,"updatedAt":now,"pausedAt":Value::Null,"pausedMilliseconds":0}));
     state["controlId"] = json!(uuid::Uuid::new_v4().to_string());
@@ -208,8 +255,8 @@ impl super::Repository {
             let task = tx.query("SELECT active_operation_id FROM tasks WHERE chat_id=$1", &[&chat]).await?;
             let task = task.first().map(|row|row.get::<Option<String>>(0)).transpose()?.flatten();
             if let Some(previous) = &previous
-                && !previous["target"]["taskRound"].is_null() && suspension::terminal(previous) &&
-                    source.as_ref().map(|source| previous["target"]["taskRound"] == source.task_round &&
+                && (!previous["target"]["taskRound"].is_null() || !previous["target"]["taskGoalCycle"].is_null()) && suspension::terminal(previous) &&
+                    source.as_ref().map(|source| previous["target"]["taskRound"] == source.task_round && previous["target"]["taskGoalCycle"] == source.task_goal_cycle &&
                         previous["active"]["threadId"] == source.native_execution["threadId"] && previous["active"]["turnId"] == source.native_execution["turnId"])
                         .unwrap_or_else(||task.as_ref().is_none_or(|task|previous["target"]["taskRound"]["operationId"] == task.as_str())) {
                     return Ok(Some(json!({"state":previous,"context":Value::Null,"stop":Value::Null})));
@@ -259,7 +306,7 @@ impl super::Repository {
             if row["managed_input_revision"] != scope["revision"] {return reject("suspension-control-stale");}
             let context = context::execution(tx, &owner, &chat).await?.context("Task source missing")?;
             let source = native_task_suspension::source(tx, &context).await?.context("Task source missing")?;
-            if state["target"]["taskRound"] != scope["taskRound"] || state["active"] != stop["active"] || proof["active"] != stop["active"] {
+            if state["target"]["taskRound"] != scope["taskRound"] || state["target"]["taskGoalCycle"] != scope["taskGoalCycle"] || state["active"] != stop["active"] || proof["active"] != stop["active"] {
                 return reject("suspension-turn-mismatch");
             }
             if !matches_source(&state, &row, &source) || source.receipt != stop["source"] {return reject("suspension-authority-changed");}
@@ -281,13 +328,15 @@ impl super::Repository {
             context::lock_chat(tx, &owner, &chat).await?;
             let row = suspension::chat(tx, &owner, &chat).await?;
             let state = suspension::read(&row)?.context("Task suspension missing")?;
-            if state["controlId"] != control || state["phase"] != "resuming" || state["checkpoint"].is_null() || state["target"]["taskRound"].is_null() {
+            if state["controlId"] != control || state["phase"] != "resuming" || state["checkpoint"].is_null() || (state["target"]["taskRound"].is_null() && state["target"]["taskGoalCycle"].is_null()) {
                 return reject("suspension-control-stale");
             }
             let context = context::execution(tx, &owner, &chat).await?.context("Task source missing")?;
             let source = native_task_suspension::source(tx, &context).await?.context("Task source missing")?;
             if !matches_source(&state, &row, &source) {return reject("suspension-source-unavailable");}
-            Ok(json!({"controlId":control,"checkpoint":state["checkpoint"],"source":source.receipt}))
+            let mut restore = json!({"controlId":control,"checkpoint":state["checkpoint"],"source":source.receipt});
+            if !source.goal_cycle.is_null() { restore["goalCycle"] = source.goal_cycle; }
+            Ok(restore)
         })).await
     }
     pub async fn request_task_suspension(
@@ -378,6 +427,13 @@ impl super::Repository {
                 if !response["execution"]["checkpoint"].is_null() {return reject("unexpected-suspension-evidence");}
                 suspension::finish_time(&mut state)?;
                 state["phase"] = json!("running");
+            }
+            if !source.task_goal_cycle.is_null() {
+                let status = if paused {"paused"} else {"running"};
+                if tx.query("UPDATE task_dispatch_cycles SET state=$4,codex_thread_id=$5,turn_id=$6,paused_at=CASE WHEN $4='paused' THEN now() ELSE NULL END,updated_at=now() WHERE id=$1 AND owner_id=$2 AND chat_id=$3 AND goal_cycle_recovery->'suspension'->'source'->>'sourceKey'=$7 AND state IN ('claimed','running','paused') RETURNING id",
+                    &[&text(&source.task_goal_cycle["cycleId"])?,&owner,&chat,&status,&text(&active["threadId"])?,&text(&active["turnId"])?,&text(&source.task_goal_cycle["sourceKey"])?]).await?.is_empty() {
+                    return reject("suspension-authority-changed");
+                }
             }
             suspension::save(tx, &owner, &chat, state, paused).await?;
             suspension::read(&suspension::chat(tx, &owner, &chat).await?)?.context("Task suspension disappeared")
@@ -497,7 +553,17 @@ pub(crate) async fn stopped_input_locked(
         return Ok(None);
     };
     let native = &crate::tasks::resumption::checkpoint_execution(input)["nativeExecution"];
-    if saved["target"]["taskRound"].is_null()
+    let same_source = if !saved["target"]["taskGoalCycle"].is_null() {
+        input["receipt"]["kind"] == "goal"
+            && saved["target"]["taskGoalCycle"]["cycleId"] == receipt["dispatch"]["cycleId"]
+            && saved["target"]["taskGoalCycle"]["scopeId"] == input["nativeExecution"]["scopeId"]
+    } else {
+        !saved["target"]["taskRound"].is_null()
+            && saved["target"]["taskRound"]["inputOperationId"] == input["receipt"]["operationId"]
+            && saved["target"]["taskRound"]["operationId"] == receipt["dispatch"]["operationId"]
+            && saved["target"]["taskRound"]["cycleId"] == receipt["dispatch"]["cycleId"]
+    };
+    if !same_source
         || saved["action"] != "stop"
         || !matches!(
             saved["phase"].as_str(),
@@ -507,9 +573,6 @@ pub(crate) async fn stopped_input_locked(
         || crate::tasks::resumption::physical(input)["receipt"] != *receipt
         || saved["target"]["workerId"] != receipt["workerId"]
         || saved["target"]["executionLaneId"] != receipt["executionLaneId"]
-        || saved["target"]["taskRound"]["inputOperationId"] != input["receipt"]["operationId"]
-        || saved["target"]["taskRound"]["operationId"] != receipt["dispatch"]["operationId"]
-        || saved["target"]["taskRound"]["cycleId"] != receipt["dispatch"]["cycleId"]
         || native.is_null()
         || saved["active"]["threadId"] != native["threadId"]
         || saved["active"]["turnId"] != native["turnId"]

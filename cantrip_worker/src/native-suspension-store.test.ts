@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { taskInferenceInputReceiptSchema } from "@cantrip/protocol";
+import {
+  taskGoalCycleSuspensionSourceSchema,
+  taskInferenceInputReceiptSchema,
+} from "@cantrip/protocol";
 import { taskOperationRelayRequestSchema } from "@cantrip/protocol/tasks";
 import { wrapComponentKeyForWorker } from "@cantrip/crypto";
 import {
@@ -129,7 +132,7 @@ afterEach(async () => {
 });
 
 describe("native suspension source registry with actual worker encryption", () => {
-  it.each(["round", "goal"] as const)(
+  it.each(["round", "goal", "cycle"] as const)(
     "persists the original Task %s and event identities with only a Task grant",
     async (kind) => {
       const w = await worker(undefined, true, "task-content");
@@ -159,7 +162,7 @@ describe("native suspension source registry with actual worker encryption", () =
         operationId: randomUUID(),
       };
       const receipt = taskInferenceInputReceiptSchema.parse({
-        ...(kind === "goal" ? { kind: "goal" } : {}),
+        ...(kind !== "round" ? { kind: "goal" } : {}),
         operationId: randomUUID(),
         chatId: source.chatId,
         clientMessageId: request.userMessage.id,
@@ -177,7 +180,6 @@ describe("native suspension source registry with actual worker encryption", () =
           fencingToken: 1,
         },
       });
-      const taskSource = { ...source, taskInput: receipt };
       const continuation = captureWorkerTurn(
         workerTurnState(),
         suspension.turnId,
@@ -214,6 +216,34 @@ describe("native suspension source registry with actual worker encryption", () =
               },
               events: { ...roundContinuation.events, mode: "goal" as const },
             };
+      const cycle = {
+        cycleId: receipt.dispatch.cycleId,
+        goalEpoch: randomUUID(),
+        scopeId: randomUUID(),
+        gateAttemptId: randomUUID(),
+        runnerGeneration: randomUUID(),
+        modelRouteId: receipt.modelRouteId,
+        providerAccountId: receipt.providerAccountId,
+        orderEpoch: 0,
+      };
+      const taskSource =
+        kind === "cycle" && taskContinuation.version === 2
+          ? {
+              ...source,
+              taskGoalCycle: taskGoalCycleSuspensionSourceSchema.parse({
+                kind: "goal-cycle",
+                sourceKey: "b".repeat(64),
+                operationId: `native-inference:${source.threadId}:${suspension.turnId}:${cycle.scopeId}:${cycle.gateAttemptId}`,
+                workerGeneration: randomUUID(),
+                runtimeGeneration: randomUUID(),
+                threadId: source.threadId,
+                turnId: suspension.turnId,
+                cycle,
+                parent: receipt,
+                publication: taskContinuation.publication,
+              }),
+            }
+          : { ...source, taskInput: receipt };
       const evidence = await w.store.commit({
         ...input,
         source: taskSource,
@@ -234,6 +264,9 @@ describe("native suspension source registry with actual worker encryption", () =
         request.fingerprint,
         input.home,
         "SAVED_ASSISTANT",
+        ...(taskSource.taskGoalCycle
+          ? [taskSource.taskGoalCycle.operationId, cycle.goalEpoch]
+          : []),
       ])
         expect(bytes).not.toContain(privateValue);
       const denied = await worker(w.dataDirectory, false, "task-content");
@@ -292,7 +325,25 @@ describe("native suspension source registry with actual worker encryption", () =
                   prompt: { ...taskContinuation.prompt, id: randomUUID() },
                 },
         }),
-      ).rejects.toThrow("another canonical input");
+      ).rejects.toThrow(
+        kind === "cycle" ? "original publisher" : "another canonical input",
+      );
+      if (kind === "cycle" && taskContinuation.version === 2) {
+        await expect(
+          fresh.store.commit({
+            ...input,
+            source: taskSource,
+            continuation,
+            taskContinuation: {
+              ...taskContinuation,
+              publication: {
+                ...taskContinuation.publication,
+                id: randomUUID(),
+              },
+            },
+          }),
+        ).rejects.toThrow("original publisher");
+      }
       expect(
         await readFile(await file(w.dataDirectory, evidence.storageId), "utf8"),
       ).toBe(bytes);

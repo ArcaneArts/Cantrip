@@ -8,6 +8,7 @@ import type { RepositoryTransaction } from "./repository/database.js";
 import type { TaskInferenceInputState } from "./task-inference-inputs.js";
 import { TaskDispatchConflictError } from "./task-dispatch.js";
 import * as schema from "./schema.js";
+import { saveTaskGoalExecutionState } from "./task-goal-execution-state.js";
 import type { NativeSuspensionRepository } from "./repository/native-suspensions.js";
 
 /** The caller holds the actual Task dispatch/input/lane locks. Native Core has
@@ -82,12 +83,14 @@ export async function bindTaskNativeInput(
         resumption: { ...state.resumption, nativeExecution, nativeOwner },
       }
     : { ...state, nativeExecution, nativeOwner };
-  if (receipt.kind === "goal")
-    await tx
-      .update(schema.taskDispatchCycles)
-      .set({ goalInput: bound })
+  if (receipt.kind === "goal") {
+    const [cycle] = await tx
+      .select()
+      .from(schema.taskDispatchCycles)
       .where(eq(schema.taskDispatchCycles.id, receipt.dispatch.cycleId));
-  else
+    if (!cycle) stale();
+    await saveTaskGoalExecutionState(tx, cycle!, receipt, bound);
+  } else
     await tx
       .update(schema.taskPlanningRounds)
       .set({ inferenceInput: bound })

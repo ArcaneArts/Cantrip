@@ -5,6 +5,7 @@ import {
   type TaskInferenceInputReceipt,
   type TaskOperationRelayRequest,
   type TaskMessageOpaqueContent,
+  type TaskGoalCycleSuspensionSource,
 } from "@cantrip/protocol";
 import type { NativeSuspensionStore } from "../native-suspension-store.js";
 import type { TaskEventSealerState } from "../task-event-sealer-state.js";
@@ -29,9 +30,10 @@ export function createTaskSuspensionCapture(
   } & (
     | { kind: "round"; request: TaskOperationRelayRequest }
     | {
-        kind: "goal";
+        kind: "goal" | "goal-cycle";
         prompt: TaskMessageOpaqueContent;
         publication: { id: string; idempotencyKey: string };
+        goalCycle?: TaskGoalCycleSuspensionSource;
       }
   ),
 ) {
@@ -53,9 +55,17 @@ export function createTaskSuspensionCapture(
         contextKind: "project",
         projectId: input.projectId,
         placementId: input.receipt.worktreeId,
-        modelRouteId: input.receipt.modelRouteId,
-        providerAccountId: input.receipt.providerAccountId,
-        taskInput: input.receipt,
+        modelRouteId:
+          input.kind === "goal-cycle"
+            ? input.goalCycle!.cycle.modelRouteId
+            : input.receipt.modelRouteId,
+        providerAccountId:
+          input.kind === "goal-cycle"
+            ? input.goalCycle!.cycle.providerAccountId
+            : input.receipt.providerAccountId,
+        ...(input.kind === "goal-cycle"
+          ? { taskGoalCycle: input.goalCycle! }
+          : { taskInput: input.receipt }),
       },
       home: runtime.managedHistoryHome,
       suspension,

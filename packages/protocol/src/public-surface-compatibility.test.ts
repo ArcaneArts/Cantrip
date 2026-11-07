@@ -766,7 +766,9 @@ const inferenceRecoveryExports = [
 ].sort();
 
 const taskSuspensionExports = [
+  "nativeSuspensionTaskGoalCycleSchema",
   "nativeSuspensionTaskRoundSchema",
+  "taskGoalCycleSuspensionSourceSchema",
   "taskPauseRuntimeStateSchema",
   "taskTurnResumptionSchema",
   "taskTurnStopResultSchema",

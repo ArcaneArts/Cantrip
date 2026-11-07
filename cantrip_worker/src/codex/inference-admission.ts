@@ -159,6 +159,7 @@ interface NativeRequest {
     operationId: string,
     recovery: TaskGoalCycleRecovery | null,
     source: InferenceJournalRecord | null,
+    nativeRuntimeGeneration: string,
   ) => Promise<void>;
   threadId: string;
   turnId: string;
@@ -1132,6 +1133,7 @@ export class CodexInferenceAdmission {
           operationId,
           recovery,
           recovery ? null : await operation.ticket.privateTaskGoalSource(),
+          this.runtime.generation,
         );
         input.signal.throwIfAborted();
       }

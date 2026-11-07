@@ -12,6 +12,44 @@ fn interrupted(error: &anyhow::Error) -> bool {
         || downcast_ref::<super::super::live_mutations::WorkerUnavailable>(error).is_some()
 }
 impl Service {
+    /// Autonomous native completion observes the Goal without inventing an input
+    /// receipt or projecting its already completed parent again.
+    pub fn observe_cycle_outcome(
+        self: &Arc<Self>,
+        owner: &str,
+        source: &Value,
+    ) -> BoxFuture<'static, Result<()>> {
+        let (this, owner, source) = (self.clone(), owner.to_owned(), source.clone());
+        self.operations.run(async move {
+            let chat = text(&source["parent"]["chatId"])?;
+            let context = this.chats.execution_context(&owner, &chat).await?;
+            let task = this.tasks.get(&owner, &chat).await?;
+            let (Some(context), Some(task)) = (context, task) else {
+                return Ok(());
+            };
+            if context["experience"] != "task"
+                || context["threadId"] != source["threadId"]
+                || context["workerId"] != source["parent"]["workerId"]
+                || context["worktreeId"] != source["parent"]["worktreeId"]
+                || context["modelRouteId"] != source["cycle"]["modelRouteId"]
+                || context["providerAccountId"] != source["cycle"]["providerAccountId"]
+            {
+                return Ok(());
+            }
+            this.read_one(
+                &owner,
+                &context,
+                &task,
+                Observation {
+                    observe_execution: true,
+                    ..Observation::default()
+                },
+            )
+            .await?;
+            Ok(())
+        })
+    }
+
     pub fn scheduled_hooks(self: &Arc<Self>, owner: &str, lease: &Value) -> Hooks {
         Hooks {
             after_completed: Some(Arc::new({

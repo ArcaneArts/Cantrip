@@ -60,6 +60,90 @@ function fixture() {
 }
 
 describe("Task suspension physical ownership", () => {
+  it("selects only the restored Goal cycle and rejects two physical owners", async () => {
+    const f = fixture();
+    const sourceKey = "c".repeat(64);
+    const receipt = { ...f.receipt, kind: "goal" as const };
+    const foreign = { ...receipt, operationId: randomUUID() };
+    const capture = vi.fn(async () => f.evidence),
+      foreignCapture = vi.fn(async () => f.evidence);
+    const target = {
+      ...f.target,
+      taskGoalCycle: {
+        cycleId: receipt.dispatch.cycleId,
+        sourceKey,
+        operationId: "original-native-goal-operation",
+        goalEpoch: "original-goal-epoch",
+        scopeId: f.native.scopeId,
+      },
+    };
+    expect(
+      await f.registry.pauseState(
+        "chat",
+        f.scope,
+        target,
+        f.native,
+        true,
+        f.workerGeneration,
+        true,
+      ),
+    ).toBeNull();
+    f.registry.begin(
+      receipt,
+      f.scope,
+      undefined,
+      capture,
+      undefined,
+      sourceKey,
+    );
+    f.registry.bind(receipt, f.scope, f.native, f.runtimeGeneration);
+    f.registry.begin(
+      foreign,
+      f.scope,
+      undefined,
+      foreignCapture,
+      undefined,
+      "d".repeat(64),
+    );
+    f.registry.bind(foreign, f.scope, f.native, f.runtimeGeneration);
+    expect(
+      (
+        await f.registry.pauseState(
+          "chat",
+          f.scope,
+          target,
+          f.native,
+          true,
+          f.workerGeneration,
+        )
+      ).actor.operationId,
+    ).toBe(receipt.operationId);
+    expect(capture).toHaveBeenCalledOnce();
+    expect(foreignCapture).not.toHaveBeenCalled();
+    const duplicate = { ...receipt, operationId: randomUUID() };
+    f.registry.begin(
+      duplicate,
+      f.scope,
+      undefined,
+      capture,
+      undefined,
+      sourceKey,
+    );
+    f.registry.bind(duplicate, f.scope, f.native, f.runtimeGeneration);
+    await expect(
+      f.registry.pauseState(
+        "chat",
+        f.scope,
+        target,
+        f.native,
+        true,
+        f.workerGeneration,
+        true,
+      ),
+    ).rejects.toThrow("no unique canonical native owner");
+    expect(capture).toHaveBeenCalledOnce();
+  });
+
   it("requires the acknowledged native binding and captures only that canonical Task", async () => {
     const f = fixture();
     const capture = vi.fn(async () => f.evidence);

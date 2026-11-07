@@ -27,6 +27,10 @@ export class TaskGoalOutcomeDelivery {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private dirty = false;
   private failures = 0;
+  private readonly commits = new Map<
+    string,
+    { resolve(): void; reject(error: Error): void }
+  >();
 
   constructor(
     private readonly options: {
@@ -51,6 +55,8 @@ export class TaskGoalOutcomeDelivery {
     notification: OutcomeRecord["notification"],
     scope = this.options.scope(),
     inputKind: OutcomeRecord["inputKind"] = "goal",
+    goalCycleSource?: OutcomeRecord["goalCycleSource"],
+    waitForCommit = false,
   ): Promise<void> {
     const record = taskGoalOutcomeDeliverySchema.parse({
       ...scope,
@@ -58,7 +64,17 @@ export class TaskGoalOutcomeDelivery {
       inputKind,
       deliveryId: randomUUID(),
       notification,
+      ...(goalCycleSource ? { goalCycleSource } : {}),
     });
+    // A following autonomous cycle must not replace the single current source
+    // before its predecessor's actual terminal result is durably committed.
+    const committed =
+      goalCycleSource || waitForCommit
+        ? new Promise<void>((resolve, reject) => {
+            this.commits.set(record.deliveryId, { resolve, reject });
+          })
+        : null;
+    void committed?.catch(() => {});
     const directory = this.directory(scope);
     const filename = path.join(directory, record.deliveryId + ".json");
     const body = JSON.stringify(record);
@@ -75,6 +91,7 @@ export class TaskGoalOutcomeDelivery {
         )
           throw new Error("Task outcome delivery identity has another body.");
         this.wake();
+        if (committed) await committed;
         return;
       } catch (error) {
         this.options.onError(error);
@@ -155,6 +172,8 @@ export class TaskGoalOutcomeDelivery {
           // deletion/replacement retirement evidence; never a timeout.
           await rm(filename);
           await flushHistoryDirectory(directory);
+          this.commits.get(record.deliveryId)?.resolve();
+          this.commits.delete(record.deliveryId);
         } catch (error) {
           failure ??= error;
         }
@@ -165,6 +184,9 @@ export class TaskGoalOutcomeDelivery {
 
   close(): void {
     this.lifetime.abort(new Error("Task outcome delivery stopped."));
+    for (const pending of this.commits.values())
+      pending.reject(new Error("Task outcome delivery stopped."));
+    this.commits.clear();
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
   }

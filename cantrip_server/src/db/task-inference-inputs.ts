@@ -112,7 +112,7 @@ export class TaskInferenceInputRepository {
     private readonly lanes?: ChatExecutionLaneRepository,
     messages?: MessageWriteRepository,
   ) {
-    this.goalCycles = new TaskGoalCycleRecoveryRepository(database);
+    this.goalCycles = new TaskGoalCycleRecoveryRepository(database, messages);
     this.goals = new TaskGoalInferenceInputRepository(
       database,
       lanes,

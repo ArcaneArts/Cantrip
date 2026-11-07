@@ -173,6 +173,38 @@ export function installInternalNativeCommandRoutes(
         input.ownerId !== authentication.ownerId
       )
         return reply.code(409).send({ code: "stale-outcome-scope" });
+      if (input.inputKind === "goal-cycle") {
+        return runAsOwner(authentication.ownerId, async () => {
+          const result =
+            await repository.tasks.inferenceInputs.goalCycles.commitOutcome(
+              authentication.ownerId,
+              input.workerId,
+              input,
+            );
+          if (result.committed && result.message) {
+            try {
+              live.publishTaskMessage(result.message, result.chat);
+            } catch (error) {
+              app.log.warn(
+                {
+                  err: error,
+                  workerId: input.workerId,
+                  event: "task.outcome.publication-pending",
+                },
+                "Goal cycle outcome is committed; live publication remains pending",
+              );
+            }
+          }
+          return taskGoalOutcomeCommitSchema.parse({
+            deliveryId: input.deliveryId,
+            goalCycleSourceKey: input.goalCycleSource!.sourceKey,
+            committed: result.committed,
+            ...(!result.committed
+              ? { retiredReason: result.retiredReason }
+              : {}),
+          });
+        });
+      }
       const note = input.notification;
       if (!note.taskInferenceInputOperationId || !note.taskDispatchFence)
         return reply.code(400).send({ code: "invalid-task-goal-outcome" });

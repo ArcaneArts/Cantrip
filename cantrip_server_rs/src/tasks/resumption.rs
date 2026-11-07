@@ -24,6 +24,67 @@ fn stale<T>() -> Result<T> {
     Err(crate::task_dispatch::Conflict::stale().into())
 }
 
+pub(crate) fn goal_receipt(cycle: &Value, operation: Option<&Value>) -> Value {
+    let restored = &cycle["goal_cycle_recovery"]["suspension"]["restoration"]["receipt"];
+    if !restored.is_null()
+        && operation.is_none_or(|operation| restored["operationId"] == *operation)
+    {
+        restored.clone()
+    } else {
+        physical(&cycle["goal_input"])["receipt"].clone()
+    }
+}
+
+/// A view of a real restoration command, never another persisted logical input.
+pub(crate) fn goal_execution(cycle: &Value, receipt: &Value) -> Value {
+    let source = &cycle["goal_cycle_recovery"]["suspension"];
+    if receipt["operationId"].is_null()
+        || source["restoration"]["receipt"]["operationId"] != receipt["operationId"]
+    {
+        return cycle["goal_input"].clone();
+    }
+    if source["source"]["parent"] != cycle["goal_input"]["receipt"] {
+        return Value::Null;
+    }
+    let mut state = cycle["goal_input"].clone();
+    state["publication"] = source["source"]["publication"].clone();
+    state["nativeExecution"] = json!({"threadId":source["source"]["threadId"],"turnId":source["source"]["turnId"],"scopeId":source["source"]["cycle"]["scopeId"]});
+    state["nativeOwner"] = json!({"workerGeneration":source["source"]["workerGeneration"],"runtimeGeneration":source["source"]["runtimeGeneration"]});
+    state["resumption"] = source["restoration"].clone();
+    state["terminal"] = source["terminal"].clone();
+    state["routeChange"] = Value::Null;
+    state
+}
+
+pub(crate) async fn save_goal_execution(
+    tx: &Transaction<'_>,
+    cycle: &Value,
+    receipt: &Value,
+    state: &Value,
+) -> Result<()> {
+    if cycle["goal_cycle_recovery"]["suspension"]["restoration"]["receipt"]["operationId"]
+        != receipt["operationId"]
+    {
+        return goal_inference_inputs::write(tx, &text(&cycle["id"])?, state).await;
+    }
+    let mut marker = cycle["goal_cycle_recovery"].clone();
+    if marker["suspension"]["source"]["parent"] != cycle["goal_input"]["receipt"]
+        || state["resumption"].is_null()
+    {
+        return stale();
+    }
+    marker["suspension"]["restoration"] = state["resumption"].clone();
+    if !state["terminal"].is_null() {
+        marker["suspension"]["terminal"] = state["terminal"].clone();
+    }
+    tx.query(
+        "UPDATE task_dispatch_cycles SET goal_cycle_recovery=$2::text::jsonb WHERE id=$1",
+        &[&text(&cycle["id"])?, &marker.stringify()],
+    )
+    .await?;
+    Ok(())
+}
+
 impl Repository {
     pub async fn restored_execution_context(
         &self,
@@ -66,12 +127,16 @@ impl Repository {
                     let source = crate::chats::native_task_suspension::source(tx, &context)
                         .await?
                         .context("Task source missing")?;
-                    if source.receipt != original
+                    if source.receipt != original || source.goal_cycle != restore["goalCycle"]
                         || !crate::native_commands::task_suspension::matches_source(
                             &state, &row, &source,
                         )
                     {
                         return stale();
+                    }
+                    if !source.goal_cycle.is_null() {
+                        if tx.query("UPDATE chat_execution_lanes SET state='active',updated_at=now() WHERE id=$1 AND chat_id=$2 AND worker_id=$3 AND worktree_id=$4 AND activated_at=$5::text::timestamptz AND state IN ('idle','suspended','active') RETURNING id",
+                            &[&text(&original["executionLaneId"])?,&chat,&text(&original["workerId"])?,&text(&original["worktreeId"])?,&text(&original["executionLaneActivatedAt"])?]).await?.is_empty() { return stale(); }
                     }
                     Ok(source.context)
                 })
@@ -99,7 +164,9 @@ impl Repository {
             let saved = suspension::read(&current)?.context("Task suspension missing")?;
             let context = crate::native_commands::context::execution(tx, &owner, &chat).await?.context("Task source missing")?;
             let source = crate::chats::native_task_suspension::source(tx, &context).await?.context("Task source missing")?;
-            if input["receipt"] != original || input["publication"].is_null() || !input["terminal"].is_null() ||
+            let cycle_restore = !restore["goalCycle"].is_null();
+            if input["receipt"] != original || (if cycle_restore { source.goal_cycle != restore["goalCycle"] || !cycle["goal_cycle_recovery"]["suspension"]["terminal"].is_null() }
+                else { input["publication"].is_null() || !input["terminal"].is_null() }) ||
                 saved["controlId"] != restore["controlId"] || saved["phase"] != "resuming" || saved["action"] != "resume" ||
                 saved["checkpoint"] != restore["checkpoint"] || source.receipt != original ||
                 !crate::native_commands::task_suspension::matches_source(&saved, &current, &source) { return stale(); }
@@ -107,7 +174,7 @@ impl Repository {
             let message = parse("taskMessageOpaqueContentSchema", &json!({"id":m["id"],
                 "classification":json!({"role":m["role"],"mode":m["mode"],"attachmentIds":m["task_attachment_ids"]}),
                 "protectedContent":m["task_protected_content"],"reasoningEffort":m["reasoning_effort"],"idempotencyKey":m["idempotency_key"]}))?;
-            Ok(json!({"message":message,"publication":input["publication"]}))
+            Ok(json!({"message":message,"publication":if cycle_restore {source.goal_cycle["publication"].clone()} else {input["publication"].clone()}}))
         })).await
     }
     pub async fn prepare_resumption_input(&self, owner: &str, input: &Value) -> Result<Value> {
@@ -127,6 +194,31 @@ impl Repository {
             let checkpoint_owner = checkpoint_execution(state);
             let current = suspension::chat(tx, &owner, &chat).await?;
             let Some(saved) = suspension::read(&current)? else {return stale();};
+            if goal && !input["resumption"]["goalCycle"].is_null() {
+                let cycle = cycle.as_ref().ok_or_else(crate::task_dispatch::Conflict::stale)?;
+                let context = crate::native_commands::context::execution(tx, &owner, &chat).await?.context("Goal source missing")?;
+                let source = crate::chats::native_task_suspension::source(tx, &context).await?.context("Goal source missing")?;
+                let actor = json!({"operationId":source.execution_receipt["operationId"],"operationGeneration":source.execution_receipt["operationId"],
+                    "workerGeneration":source.native_owner["workerGeneration"],"runtimeGeneration":source.native_owner["runtimeGeneration"]});
+                if source.receipt != original || source.goal_cycle != input["resumption"]["goalCycle"] || source.goal_cycle.is_null() ||
+                    !crate::native_commands::task_suspension::matches_source(&saved,&current,&source) ||
+                    saved["phase"] != "resuming" || saved["action"] != "resume" || saved["controlId"] != input["resumption"]["controlId"] ||
+                    saved["checkpoint"] != input["resumption"]["checkpoint"] || saved["actor"] != actor ||
+                    saved["active"]["threadId"] != source.native_execution["threadId"] || saved["active"]["turnId"] != source.native_execution["turnId"] ||
+                    row["project"]["task_scheduling_paused"] == true || input.get("expectedInputRevision").is_some_and(|revision| !revision.is_null() && row["chat"]["managed_input_revision"] != *revision) { return stale(); }
+                let dispatch = Value::object(["cycleId","operationId","leaseOwner","fencingToken"].map(|key|(key,input["lease"][key].clone())));
+                let mut marker = cycle["goal_cycle_recovery"].clone();
+                if marker["suspension"]["restoration"]["controlId"] == saved["controlId"] && marker["suspension"]["restoration"]["receipt"]["dispatch"] == dispatch {
+                    return Ok(marker["suspension"]["restoration"]["receipt"].clone());
+                }
+                let mut receipt = original; receipt["operationId"] = json!(uuid::Uuid::new_v4().to_string()); receipt["dispatch"] = dispatch;
+                receipt["modelRouteId"] = source.goal_cycle["cycle"]["modelRouteId"].clone(); receipt["providerAccountId"] = source.goal_cycle["cycle"]["providerAccountId"].clone(); receipt["providerId"] = marker["providerId"].clone();
+                let receipt = parse("taskInferenceInputReceiptSchema", &receipt)?;
+                marker["suspension"]["restoration"] = json!({"controlId":saved["controlId"],"receipt":receipt,"accepted":false,"dispatched":false,
+                    "checkpointActor":actor,"checkpointExecution":source.native_execution});
+                tx.query("UPDATE task_dispatch_cycles SET goal_cycle_recovery=$2::text::jsonb WHERE id=$1", &[&text(&cycle["id"])?,&marker.stringify()]).await?;
+                return Ok(receipt);
+            }
             if state.is_null() || state["receipt"] != original || state["nativeExecution"].is_null() || state["nativeOwner"].is_null() ||
                 checkpoint_owner["nativeExecution"].is_null() || checkpoint_owner["nativeOwner"].is_null() || !state["terminal"].is_null() ||
                 state["accepted"] != true || state["dispatched"] != true || (goal && state["publication"].is_null()) || row["project"]["task_scheduling_paused"] == true ||

@@ -6,6 +6,7 @@ use super::{
 };
 use crate::{
     auth::service::AuthService,
+    operations::logging::{self, LogCall},
     settings::{self, repository::SettingsRepository},
     wire::{Value, value::json},
     workers::{command_bus::RequestTimeout, repository::WorkerRepository},
@@ -64,10 +65,11 @@ fn report_usage(
             })
             .await;
         if result.is_err() {
-            tracing::warn!(
-                event = "model.operation.usage-unavailable",
-                "Model operation usage could not be recorded."
-            );
+            (logging::server_logger())(LogCall::event(
+                "warn",
+                "Model operation usage could not be recorded.",
+                json!({"event":"model.operation.usage-unavailable"}),
+            ));
         }
     });
 }

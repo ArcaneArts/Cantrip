@@ -895,11 +895,11 @@ export class TaskDispatchRepository {
                   sql`${schema.chats.nativeSuspensionState}->>'controlId'=${options.nativeSuspension.controlId}`,
                   sql`${schema.chats.nativeSuspensionState}->>'phase'='resuming'`,
                   sql`${schema.chats.nativeSuspensionState}->>'action'='resume'`,
-                  sql`${schema.chats.nativeSuspensionState}->'target'->'taskRound'->>'cycleId'=${schema.taskDispatchCycles.id}`,
+                  sql`COALESCE(${schema.chats.nativeSuspensionState}->'target'->'taskRound'->>'cycleId', ${schema.chats.nativeSuspensionState}->'target'->'taskGoalCycle'->>'cycleId')=${schema.taskDispatchCycles.id}`,
                   sql`${schema.chats.nativeSuspensionState}->'checkpoint' <> 'null'::jsonb`,
                 )
               : sql`NOT COALESCE((
-              ${schema.chats.nativeSuspensionState}->'target'->'taskRound'->>'cycleId'=${schema.taskDispatchCycles.id}
+              COALESCE(${schema.chats.nativeSuspensionState}->'target'->'taskRound'->>'cycleId', ${schema.chats.nativeSuspensionState}->'target'->'taskGoalCycle'->>'cycleId')=${schema.taskDispatchCycles.id}
               AND (${schema.chats.nativeSuspensionState}->>'action'='stop' OR (
                 ${schema.chats.nativeSuspensionState}->'checkpoint' <> 'null'::jsonb
                 AND ${schema.chats.nativeSuspensionState}->>'phase' IN ('pausing','paused','resuming','error')

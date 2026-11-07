@@ -329,6 +329,7 @@ export class NativeCommandClient {
     if (
       (!result.committed && !result.retiredReason) ||
       result.deliveryId !== input.deliveryId ||
+      result.goalCycleSourceKey !== input.goalCycleSource?.sourceKey ||
       result.taskInferenceInputOperationId !==
         input.notification.taskInferenceInputOperationId
     )

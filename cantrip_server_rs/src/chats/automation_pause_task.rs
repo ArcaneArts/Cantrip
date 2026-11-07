@@ -113,7 +113,9 @@ impl Service {
                     .await?
                     .ok_or_else(|| failure(404, "Task source not found."))?;
                 suspension = None;
-                if !intent["scope"]["taskRound"].is_null() {
+                if !intent["scope"]["taskRound"].is_null()
+                    || !intent["scope"]["taskGoalCycle"].is_null()
+                {
                     let previous = self.chats.native_suspension(owner, chat).await?;
                     if intent["paused"] == false
                         && previous
