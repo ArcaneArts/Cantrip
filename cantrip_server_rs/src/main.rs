@@ -544,6 +544,7 @@ async fn run(arguments: Arguments) -> Result<()> {
             });
         }
         let shutdown_service = service.clone();
+        let shutdown_coordination = coordination.clone();
         axum::serve(
             listener,
             http::router(service.clone())
@@ -552,6 +553,9 @@ async fn run(arguments: Arguments) -> Result<()> {
         .with_graceful_shutdown(async move {
             tokio::select! { _=shutdown()=>{}, _=receiver, if watch_parent=>{} }
             eprintln!("{}", json!({"event":"server.shutdown.started"}));
+            if let Some(coordinator) = &shutdown_coordination {
+                coordinator.begin_shutdown();
+            }
             shutdown_service.execution.stop();
             shutdown_service.history_publication_delivery.stop();
             shutdown_service.live.transports.pre_close();

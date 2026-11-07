@@ -15,6 +15,7 @@ use tokio::{
 type Job = Box<dyn FnOnce(MultiplexedConnection) -> BoxFuture<'static, ()> + Send>;
 struct Lifetime {
     closing: watch::Sender<bool>,
+    draining: watch::Sender<bool>,
     task: Mutex<Option<AbortHandle>>,
 }
 impl Drop for Lifetime {
@@ -40,12 +41,14 @@ impl CommandConnection {
         let (queue, receiver) = mpsc::unbounded_channel();
         let lifetime = Arc::new(Lifetime {
             closing: watch::channel(false).0,
+            draining: watch::channel(false).0,
             task: Mutex::new(None),
         });
         let task = tokio::spawn(Self::run(
             manager.clone(),
             receiver,
             lifetime.closing.subscribe(),
+            lifetime.draining.subscribe(),
         ));
         *lifetime.task.lock().unwrap() = Some(task.abort_handle());
         Ok(Self {
@@ -60,9 +63,13 @@ impl CommandConnection {
     pub fn close(&self) {
         self.lifetime.closing.send_replace(true);
     }
+    pub fn begin_shutdown(&self) {
+        self.lifetime.draining.send_replace(true);
+    }
     async fn connected(
         manager: &ConnectionManager,
         closing: &mut watch::Receiver<bool>,
+        draining: &mut watch::Receiver<bool>,
     ) -> Option<MultiplexedConnection> {
         loop {
             if *closing.borrow() {
@@ -71,9 +78,16 @@ impl CommandConnection {
             if let Some(connection) = manager.try_get_connection() {
                 return Some(connection);
             }
+            // Normal directory requests wait through reconnect. Once the
+            // server is draining, an unavailable connection must instead
+            // settle queued work so services can finish before Redis closes.
+            if *draining.borrow() {
+                return None;
+            }
             tokio::select! {
                 biased;
                 _ = closing.changed() => return None,
+                _ = draining.changed() => {},
                 _ = manager.wait_for_connection() => {},
             }
         }
@@ -82,6 +96,7 @@ impl CommandConnection {
         manager: ConnectionManager,
         mut queue: mpsc::UnboundedReceiver<Job>,
         mut closing: watch::Receiver<bool>,
+        mut draining: watch::Receiver<bool>,
     ) {
         loop {
             if *closing.borrow() {
@@ -92,7 +107,8 @@ impl CommandConnection {
                 _ = closing.changed() => return,
                 job = queue.recv() => match job {Some(job)=>job,None=>return},
             };
-            let Some(connection) = Self::connected(&manager, &mut closing).await else {
+            let Some(connection) = Self::connected(&manager, &mut closing, &mut draining).await
+            else {
                 return;
             };
             let mut stop = closing.clone();

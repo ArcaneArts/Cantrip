@@ -11339,7 +11339,7 @@
       "remaining": [
         "Qualify in-flight native execution across mixed peers under server/worker/database crashes, lease renewal/expiry, delayed acknowledgments and consumer replay/backpressure. Full-worker resource/native execution and orderly peer replacement now pass the scoped local shared-product suite; those results do not establish active-job failover.",
         "Qualify malformed legacy relay payloads, arbitrary malformed RPC error envelopes and complete listener lifecycle/error fidelity. Preserve consumer-level replay/deduplication.",
-        "Qualify Redis TLS, long outages/expiry, service shutdown while Redis remains unavailable, supported platforms and packaged/deployment artifacts."
+        "Qualify Redis TLS, long-outage recovery/expiry and claim re-election, network partitions/blackholes, supported platforms and packaged/deployment artifacts. Production/full-worker shutdown with Redis left offline beyond three presence TTLs now passes the scoped local suite."
       ],
       "rustImplementation": [
         "cantrip_server_rs/src/coordination/mod.rs",
@@ -11395,6 +11395,7 @@
         "scripts/server-rust/coordinated-shutdown-compatibility.mjs",
         "scripts/server-rust/shared-product-fixture.mjs",
         "scripts/server-rust/shared-product-rolling.mjs",
+        "scripts/server-rust/shared-product-offline-shutdown.mjs",
         "scripts/server-rust/actual-folder-client.mjs",
         "scripts/server-rust/shared-runtime-http-compatibility.mjs",
         "scripts/server-rust/shared-runtime-node.mjs",
@@ -11459,6 +11460,58 @@
         "originalArchiveSha256": "db7f3d75b5a3301746bff39a767bf4c5c42506b08513527308b3875bfb64a031",
         "note": "cantrip_server_rs/third-party/redis/README.cantrip.md",
         "scope": "134 upstream files retained; multiplexed_connection.rs and connection_manager.rs gain three connection-observation methods. Inherited trailing whitespace is removed from those Rust files, README and CHANGELOG; all other upstream bytes match. Native ordered command queue preserves directory offline lifetime while publish/readiness observe actual command readiness. TLS/parser/auth/reconnect remain upstream; TLS operation still requires qualification."
+      },
+      "redisOfflineShutdownLocalAcceptance": {
+        "platform": "darwin-arm64",
+        "observedAt": "2026-11-07",
+        "database": "private shared external PostgreSQL",
+        "redisVersion": "8.10.3",
+        "nodeVersion": "24.22.1",
+        "nativeCodexVersion": "0.166.0",
+        "pairs": ["node/node", "node/rust", "rust/node", "rust/rust"],
+        "scenarioSteps": 40,
+        "cleanServerExits": 16,
+        "cleanWorkerExits": 12,
+        "observations": [
+          {
+            "pair": "node/node",
+            "outageMs": 15318.501959000001,
+            "shutdownMs": 1347.6039999999994
+          },
+          {
+            "pair": "node/rust",
+            "outageMs": 15310.675333000007,
+            "shutdownMs": 950.9440000000031
+          },
+          {
+            "pair": "rust/node",
+            "outageMs": 15312.425166,
+            "shutdownMs": 1201.6080419999926
+          },
+          {
+            "pair": "rust/rust",
+            "outageMs": 15307.077457999985,
+            "shutdownMs": 5.448667000018759
+          }
+        ],
+        "healthyRegression": {
+          "scenarioSteps": 140,
+          "cleanServerExits": 32,
+          "cleanWorkerExits": 32,
+          "orderlyPeerReplacements": 8,
+          "scope": "All four pairings; encrypted resources/files, workspace/dirty state, PTY/WorkerLink, actual native Agent/Goal/history and exact completed history/file retention during replacement."
+        },
+        "coordinatorRegressionScenarioGroups": 56,
+        "existingNodeCoordinationTests": 16,
+        "strictAllTargetsClippy": true,
+        "scope": "Real production server peers and full unchanged worker, Redis saved/killed and left offline beyond three presence TTLs. SQL readiness retained; original worker PID stays alive; both peers exit zero within unchanged30sec deadline without restoring Redis. Original Node and Rust baselines required SIGKILL. Shutdown-only draining settles offline directory waits; connected cleanup and ordinary reconnect remain intact.",
+        "qualification": "docs/RUST_SERVER_REDIS_OFFLINE_SHUTDOWN.md",
+        "harness": "scripts/server-rust/shared-product-offline-shutdown.mjs",
+        "nativeBinarySha256": "b74b9de9cbd10cbca7bc2ae78e98b0d5a61401b22e72b10833cdfe122b2fa34e",
+        "remaining": [
+          "TCP blackholes, long-outage recovery and claim re-election, in-flight native failover, leases/acknowledgments, Redis TLS and supported platforms.",
+          "Performance, final default Rust cutover and production Node removal remain part of the full replacement goal."
+        ]
       },
       "sharedProductLocalAcceptance": {
         "platform": "darwin-arm64",
@@ -15418,6 +15471,21 @@
         "scripts/server-rust/shared-product-rolling.mjs"
       ],
       "remaining": "Active-job failover/crash and lease/acknowledgment boundaries, long Redis outage/shutdown, TLS, supported platforms, performance, final default Rust cutover and production Node removal remain required. No Winterhold production deployment was performed."
+    },
+    {
+      "branch": "codex/rust-redis-offline-shutdown",
+      "observedAt": "2026-11-07",
+      "platforms": ["darwin-arm64"],
+      "execution": "Local only; optimized native server, real production Node entry, private PostgreSQL/Redis and full unchanged worker; no hosted validation",
+      "conclusion": "Confirmed and fixed production shutdown hangs with Redis unavailable. All four pairings retain the original live worker and exit cleanly after more than three presence TTLs offline; ordinary reconnect and healthy mixed product/rolling behavior remain qualified.",
+      "scope": "40 outage steps, 16 clean server/12 worker exits; 140 healthy resource/native Agent/Goal/history steps, 32 clean server/32 worker exits and eight replacements. Existing Redis56 groups, Node16 coordination tests and strict all-target Clippy pass. Both original baseline deadline failures remain retained.",
+      "qualification": "docs/RUST_SERVER_REDIS_OFFLINE_SHUTDOWN.md",
+      "harnesses": [
+        "scripts/server-rust/shared-product-offline-shutdown.mjs",
+        "scripts/server-rust/actual-folder-client.mjs",
+        "scripts/server-rust/redis-coordination-compatibility.mjs"
+      ],
+      "remaining": "Long-outage recovery and claim re-election, network blackholes, active native execution failures, lease/acknowledgment boundaries, Redis TLS, supported platforms, performance, default Rust cutover and production Node removal remain required."
     }
   ]
 }

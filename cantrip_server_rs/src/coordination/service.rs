@@ -14,6 +14,7 @@ pub trait RelayCoordinator: Send + Sync + 'static {
     fn unsubscribe(&self, id: u64);
     fn cached_worker(&self, worker: &JsString) -> Option<Value>;
     fn start(self: Arc<Self>) -> BoxFuture<'static, Result<()>>;
+    fn begin_shutdown(&self) {}
     fn close(&self) -> BoxFuture<'_, Result<()>>;
     fn health(&self) -> BoxFuture<'_, Result<bool>>;
     fn publish(&self, payload: Value, ttl: Option<f64>) -> BoxFuture<'_, Result<()>>;
@@ -65,6 +66,9 @@ impl RelayCoordinator for RedisCoordinator {
     }
     fn close(&self) -> BoxFuture<'_, Result<()>> {
         Box::pin(RedisCoordinator::close(self))
+    }
+    fn begin_shutdown(&self) {
+        RedisCoordinator::begin_shutdown(self);
     }
     fn health(&self) -> BoxFuture<'_, Result<bool>> {
         Box::pin(RedisCoordinator::health(self))

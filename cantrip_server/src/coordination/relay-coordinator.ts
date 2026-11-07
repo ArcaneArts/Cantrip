@@ -142,6 +142,7 @@ export interface RelayCoordinator {
   claimWorkerLinkSession(
     claim: WorkerLinkSessionClaim,
   ): Promise<WorkerLinkSessionClaim | null>;
+  beginShutdown?(): void;
   close(): Promise<void>;
   cachedWorker(workerId: string): WorkerPresenceClaim | null;
   findWorker(workerId: string): Promise<WorkerPresenceClaim | null>;
@@ -561,6 +562,7 @@ export class RedisRelayCoordinator extends BaseRelayCoordinator {
   readonly #subscriber;
   #heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   #started = false;
+  #shuttingDown = false;
 
   constructor(options: RedisRelayCoordinatorOptions) {
     super(
@@ -574,6 +576,7 @@ export class RedisRelayCoordinator extends BaseRelayCoordinator {
     this.#client = createClient({ url: options.url });
     this.#subscriber = this.#client.duplicate();
     this.#client.on("error", () => {
+      this.#closeUnavailableConnections();
       serverLogger.rateLimited(
         "coordination-redis-client-error",
         "error",
@@ -588,6 +591,7 @@ export class RedisRelayCoordinator extends BaseRelayCoordinator {
       );
     });
     this.#subscriber.on("error", () => {
+      this.#closeUnavailableConnections();
       serverLogger.rateLimited(
         "coordination-redis-subscriber-error",
         "error",
@@ -605,6 +609,7 @@ export class RedisRelayCoordinator extends BaseRelayCoordinator {
 
   async start(): Promise<void> {
     if (this.#started) return;
+    this.#shuttingDown = false;
     const startedAtMs = Date.now();
     serverLogger.event("info", "Redis relay coordination startup began", {
       event: "coordination.lifecycle.started",
@@ -928,7 +933,23 @@ export class RedisRelayCoordinator extends BaseRelayCoordinator {
     return healthy;
   }
 
+  beginShutdown(): void {
+    this.#shuttingDown = true;
+    this.#closeUnavailableConnections();
+  }
+
+  #closeUnavailableConnections(): void {
+    if (!this.#shuttingDown) return;
+    // During normal operation Redis owns its offline queue and reconnects.
+    // During shutdown, destroy unavailable connections to reject queued work;
+    // service drains must not wait for Redis to return before they can close.
+    for (const connection of [this.#client, this.#subscriber]) {
+      if (connection.isOpen && !connection.isReady) connection.destroy();
+    }
+  }
+
   async close(): Promise<void> {
+    this.beginShutdown();
     const startedAtMs = Date.now();
     serverLogger.event("info", "Redis relay coordination shutdown began", {
       event: "coordination.shutdown.started",

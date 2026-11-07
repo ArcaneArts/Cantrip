@@ -590,7 +590,13 @@ impl RedisCoordinator {
         }
         Ok(healthy)
     }
+    pub fn begin_shutdown(&self) {
+        if let Some(command) = self.connection.lock().unwrap().as_ref() {
+            command.begin_shutdown();
+        }
+    }
     pub async fn close(&self) -> Result<()> {
+        self.begin_shutdown();
         let mut tasks = self.tasks.lock().await;
         let at = now();
         self.log(
