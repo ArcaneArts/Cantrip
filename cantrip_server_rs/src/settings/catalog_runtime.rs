@@ -319,7 +319,9 @@ impl CatalogRuntime {
             Some("chatgpt") => Family::ChatGpt,
             Some("grok") => Family::Grok,
             Some("ollama") => Family::Ollama,
-            Some(kind) if super::endpoint_providers::worker_endpoint_kind(kind) => Family::Endpoint,
+            Some(_) if super::endpoint_providers::worker_catalog_provider(&provider) => {
+                Family::Endpoint
+            }
             _ => Family::Public,
         };
         if matches!(family, Family::Public) {

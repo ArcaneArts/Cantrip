@@ -10,6 +10,7 @@ export * from "./task-inference-route.js";
 export * from "./task-goal-outcome.js";
 export * from "./provider-definitions.js";
 export * from "./model-operations.js";
+export * from "./provider-operation-registry.js";
 export * from "./model-operation-discovery.js";
 export * from "./endpoint-models.js";
 export * from "./native-settings-state.js";
