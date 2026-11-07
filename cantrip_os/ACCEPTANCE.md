@@ -4388,3 +4388,93 @@ fresh recovery remain the next dependent block. Clone provisioning, external
 remote/current-native model/CUA acceptance and final normal OCI/DEB/ISO artifacts
 still prevent full Phase 5 completion. No guest package version or public image/
 ISO changed in this host-carrier cycle.
+
+## Phase 5: durable Worker system commands (2026-11-06)
+
+The registered Worker entrypoint now routes system status, capture, replacement
+and retained-original rollback to immutable private jobs. This is the Worker
+foundation. Server-owned admissions/catalogue, public HTTP/client controls and
+fresh authority reconciliation remain dependent work. No full Worker process,
+production account grant, current-native model/CUA or cloud acceptance is claimed
+by the Manager tests in this checkpoint.
+
+Discovery reads actual Docker archives without starting a guest process and
+supports stopped containers, configured identity relocation and guest-local
+symlinks. A previously verified exact physical target remains manageable if its
+own configuration and identity files break. Valid foreign identity and changed
+physical-container proof are rejected. Missing optional image metadata does not
+revoke a proven target. SSH-only management reports unsupported root-image
+operations rather than inventing power or disk authority.
+
+Private jobs bind the complete original command and scope. Repeated execution
+recovers that admission; observation never mutates. Explicit continuation sends
+only unrequested steps. Claimed capture or host transitions with missing original
+receipts remain unknown. Complete private archive authentication precedes plaintext
+staging, including validation of an existing staging file after receipt loss.
+Operation results use a separate encrypted domain bound to the full admission
+and original physical identity. Terminal ciphertext survives Manager restart,
+locked keys and unavailable Docker without replacement.
+
+Final actual tests used the normally compiled Manager modules and registered
+Worker command schema against Docker 26.1.5+dfsg1 on the disposable installed
+AMD64 Debian VM, through pinned SSH/private Unix-socket transport. They reused
+public Debian digest
+`sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2`.
+This is Linux Docker-in-VM acceptance, not repaired macOS Docker Desktop or a new
+full CantripOS distribution.
+
+Each case captures/encrypts a root containing `ed`, binary data at a Unicode path,
+mode 0640 and UID/GID 12345/23456. It then adds `bc` and newer root customization,
+removes only its captured image to force authenticated image loading, replaces
+the root and rolls back. Mounted data retains current contents across both
+transitions; later replacement root writes remain in its retained container.
+Actual startup counters verify one intended start per transition. The original's
+counter is three, including initial startup, capture resume and rollback. The
+replacement's counter is two: one inherited from the captured root and one
+actual replacement start.
+
+Real child coordinators are killed with SIGKILL after Docker creation or
+rollback-start, with their successful replies withheld. Read-only observation
+does not change the mutation count; explicit continuation completes future
+steps. Both final cases pass in 310.86 seconds. Eight actual 404 observations
+verify cleanup of only the owned fixture containers, images and volumes. Earlier
+two-case acceptance before the additional stopped-target assertion remains
+separate evidence.
+
+The creation-loss case changes the original guest identity after capture, then
+breaks both its identity and configuration files. Replacement still uses the
+previously proven physical target. Discovery of the restored older guest identity
+requires the exact completed replacement reference. It supplies no runtime
+handles. Rollback succeeds despite the retained original's broken files and
+honestly reports guest identity unavailable. Both cases finally stop the original
+and verify its management identity without executing a helper.
+
+Each final authenticated archive contains 82,352,640 bytes. SHA-256 values are
+`3b7730caca161bbfec76e2322745d6f2fac3d05d03f290b3ebc303d75048dfa3`
+(creation loss) and
+`7449265faed52a81bb203be0d90d7cd02e626bcec78d4f56da91d4ecff7cb992`
+(rollback-start loss). The normal packed host library is 29,320 bytes, SHA-256
+`a595f93744b3d8705e7452bb97fe48d983e7550a2eda265d48674435188ae19e`;
+all 15 packaged source files match and its extracted library observes the actual
+Engine. The own QA proxy is stopped afterward; the VM's existing Engine/base
+remain available for subsequent work.
+
+Validation passes 118 Worker OS tests, five system-crypto tests and 9,974 actual
+TypeScript/native contract cases plus seven explicit completion, Worker-envelope
+and ciphertext-bound cases. The ordinary OS suite passes 46 tests with nine
+opt-in integrations skipped, including the two executed separately above. Normal
+protocol/crypto/Worker builds, changed-file formatting, native formatting and diff
+checks pass. After rebasing onto `0bde2da05c771376e913fa98d5d69f8bb75fbf6b`,
+`pnpm check` stops at unchanged Server budgets 1532/1500 and 2333/1999. The full
+protocol suite passes 1,116 tests and retains four legacy count failures across
+source and compiled tests: 26 exports and four commands beyond old expectations.
+The same discrepancies reproduce on unchanged Primary. This cycle's 15 exports
+and four commands have separate reviewed assertions. Initial missing-oracle-fixture
+and test-hook typing failures are preserved separately rather than counted as
+passing validation.
+
+Private commands, journals, archives, source hashes, traces, package and results
+are retained under `cantrip_os/artifacts/phase5-system-worker`. No guest package
+version, OCI image or ISO changed. Server/client integration, fresh authority,
+clone identity handling, external remote/current-native model/CUA acceptance and
+final normal distributions remain required for the complete Phase 5 goal.

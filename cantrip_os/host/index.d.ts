@@ -98,6 +98,7 @@ export function finalizeRecreation(
   options?: { signal?: AbortSignal },
 ): Promise<void>;
 export class DockerApiError extends Error {
+  constructor(status: number, message: string);
   readonly status: number;
 }
 export class LocalDocker {

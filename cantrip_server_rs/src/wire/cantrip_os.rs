@@ -19,19 +19,25 @@ pub(super) fn refine(
             | "cantrip-os-reset-paths"
             | "cantrip-os-package-envelope"
             | "cantrip-os-package-outcome"
+            | "cantrip-os-system-envelope"
+            | "cantrip-os-system-outcome"
     ) {
         return Ok(false);
     }
     let value = result.value.as_ref().ok_or(ValidationError::Operation)?;
     let valid = match tag {
-        "cantrip-os-package-envelope" => {
-            value["ciphertext"]
-                .as_js_string()
-                .is_some_and(|ciphertext| {
-                    ciphertext.units().len() <= ((4usize * 1024 * 1024 + 16) * 4).div_ceil(3)
-                })
-        }
-        "cantrip-os-package-outcome" => {
+        "cantrip-os-package-envelope" | "cantrip-os-system-envelope" => value["ciphertext"]
+            .as_js_string()
+            .is_some_and(|ciphertext| {
+                let bytes = if tag == "cantrip-os-system-envelope" {
+                    16usize
+                } else {
+                    4usize
+                } * 1024
+                    * 1024;
+                ciphertext.units().len() <= ((bytes + 16) * 4).div_ceil(3)
+            }),
+        "cantrip-os-package-outcome" | "cantrip-os-system-outcome" => {
             value["state"].as_str() != Some("ready") || !value["protectedResult"].is_null()
         }
         "cantrip-os-file-placement" => {

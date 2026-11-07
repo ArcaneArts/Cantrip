@@ -2,6 +2,7 @@ import { cantripOsWorkspaceOperationFixtures } from "./cantrip-os-workspace-oper
 import { osDispatchFixtures } from "./cantrip-os-dispatch-fixtures.mjs";
 import { cantripOsDesktopFixtures } from "./cantrip-os-desktop-fixtures.mjs";
 import { cantripOsPackageFixtures } from "./cantrip-os-package-fixtures.mjs";
+import { cantripOsSystemFixtures } from "./cantrip-os-system-fixtures.mjs";
 import { cantripOsPowerFixtures } from "./cantrip-os-power-fixtures.mjs";
 import { worktreeWireFixtures } from "./worktree-wire-fixtures.mjs";
 
@@ -35,6 +36,7 @@ export function cantripOsWireFixtures() {
     ...cantripOsPowerFixtures(),
     ...cantripOsDesktopFixtures(),
     ...cantripOsPackageFixtures(),
+    ...cantripOsSystemFixtures(),
     ...cantripOsWorkspaceOperationFixtures(),
     cantripOsGuestPathSchema: [
       "/home/example",
