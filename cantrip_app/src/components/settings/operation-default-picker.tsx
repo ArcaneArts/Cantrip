@@ -1,4 +1,5 @@
 import {
+  modelProfileOperation,
   type ModelOperation,
   type ModelProfileSummary,
   type ModelProviderSummary,
@@ -28,7 +29,9 @@ export function OperationDefaultPicker({
   pending: boolean;
   onChange(value: string | null): void;
 }) {
-  const selected = models.find((model) => model.id === value);
+  const selected = models.find(
+    (model) => model.id === value && modelProfileOperation(model) === operation,
+  );
   const route = selected?.routes.find((route) => route.enabled);
   const provider = providers.find(
     (provider) => provider.id === route?.providerId,

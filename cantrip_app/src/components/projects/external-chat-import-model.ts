@@ -1,11 +1,12 @@
-import type {
-  ChatImportJobSummary,
-  ExternalChatImportReference,
-  ExternalChatSource,
-  ExternalChatThreadMetadata,
-  ProjectExternalChatDiscovery,
-  ProjectWorktreeSummary,
-  SettingsBundle,
+import {
+  modelProfileOperation,
+  type ChatImportJobSummary,
+  type ExternalChatImportReference,
+  type ExternalChatSource,
+  type ExternalChatThreadMetadata,
+  type ProjectExternalChatDiscovery,
+  type ProjectWorktreeSummary,
+  type SettingsBundle,
 } from "@cantrip/protocol";
 
 export const activeImportStates = new Set<ChatImportJobSummary["state"]>([
@@ -162,8 +163,10 @@ export function mergeChatImportJobs(
 }
 
 export function readyChatImportModels(settings: SettingsBundle | undefined) {
-  return (settings?.models ?? []).filter((model) =>
-    model.routes.some(({ enabled }) => enabled),
+  return (settings?.models ?? []).filter(
+    (model) =>
+      modelProfileOperation(model) === "language" &&
+      model.routes.some(({ enabled }) => enabled),
   );
 }
 

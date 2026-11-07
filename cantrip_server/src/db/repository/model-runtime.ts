@@ -296,6 +296,19 @@ export class ModelRepository {
           )
           .onConflictDoNothing();
       }
+      // The foreign key clears the ID on deletion; clear the paired override
+      // only for this owner's selected profile in the same transaction.
+      await transaction.execute(sql`
+        update ${schema.userSettings}
+        set default_custom_subagent_model = false, updated_at = ${new Date()}
+        where ${schema.userSettings.userId} = ${ownerId}
+          and ${schema.userSettings.defaultSubagentModelId} = ${modelId}
+          and exists (
+            select 1 from ${schema.modelProfiles}
+            where ${schema.modelProfiles.id} = ${modelId}
+              and ${schema.modelProfiles.ownerId} = ${ownerId}
+          )
+      `);
       const result = await transaction
         .delete(schema.modelProfiles)
         .where(

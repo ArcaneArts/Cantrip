@@ -6,6 +6,20 @@ embedding and decision defaults; discovery never selects either automatically.
 Provider tabs expose each operation separately. Subscription account connections
 do not acquire API-key operation access by sharing a provider's model names.
 
+Title generation, chat imports, and root/subagent configuration select language
+profiles only. A saved configuration whose profile is no longer a language model
+shows a configuration-needed state; opening its picker does not select a
+replacement or request its reasoning options.
+
+Deleting a profile clears defaults through its database foreign keys. Deleting a
+provider also clears defaults whose profiles lose their last enabled route,
+including embedding and decision defaults. Profiles remain available for manual
+configuration recovery, and defaults with another enabled route remain selected.
+The provider deletion and affected default updates are one transaction in both
+servers. Temporary unavailability and stale discovery do not clear defaults.
+Removing a selected custom subagent configuration also clears its paired override
+toggle so an empty custom selection cannot remain active.
+
 ## Embedding entry point
 
 The application exports `embed()` from `cantrip_app/src/lib/api.ts`. It accepts a
