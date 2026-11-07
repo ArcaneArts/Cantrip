@@ -1,5 +1,15 @@
 # Rust server replacement
 
+The desktop supervisor can now launch an explicitly packaged Rust server with
+the existing Node worker. Local macOS arm64 release-app tests exercise all three
+storage modes, genuine recovery-file confirmation and authentication, retained
+identity/settings, worker commands, logs and orderly shutdown. See the
+[desktop runtime qualification](RUST_SERVER_DESKTOP_RUNTIME.md) for commands,
+current-runtime evidence and remaining platform, migration and product work.
+The Node-created PGlite physical-copy attempt refuses to open safely; successful
+legacy conversion and post-write rollback are still required. Node remains the
+default server, and full replacement is incomplete.
+
 Native CantripOS and worktree `HEAD` reads now retain their existing read and
 project-guard behavior. The port also distinguishes public placement failures
 from private diagnostics. Workspace and package history cursors preserve the
