@@ -42,6 +42,11 @@ vi.mock("./cantrip-os-backup-controls", () => ({
     <section aria-label="Backup controls">Backups</section>
   ),
 }));
+vi.mock("./cantrip-os-system-controls", () => ({
+  CantripOsSystemControls: () => (
+    <section aria-label="System checkpoints and recovery">Systems</section>
+  ),
+}));
 import { CantripOsSettings } from "./cantrip-os-settings";
 let root: Root, host: HTMLDivElement, client: QueryClient;
 afterEach(async () => {
@@ -111,6 +116,11 @@ it("keeps one power and backup panel while instance observations repeatedly refr
     ).toHaveLength(1);
     expect(
       host.querySelectorAll('section[aria-label="Backup controls"]'),
+    ).toHaveLength(1);
+    expect(
+      host.querySelectorAll(
+        'section[aria-label="System checkpoints and recovery"]',
+      ),
     ).toHaveLength(1);
   }
   expect(

@@ -29,6 +29,7 @@ import { CantripOsBackupControls } from "./cantrip-os-backup-controls";
 import { CantripOsDesktopControls } from "./cantrip-os-desktop-controls";
 import { CantripOsPowerControls } from "./cantrip-os-power-controls";
 import { CantripOsPackageControls } from "./cantrip-os-package-controls";
+import { CantripOsSystemControls } from "./cantrip-os-system-controls";
 
 export function CantripOsSettings({
   project,
@@ -237,6 +238,11 @@ export function CantripOsSettings({
           />
           <CantripOsPackageControls
             key={`packages:${selected.id}`}
+            instance={selected}
+            onChanged={refreshLists}
+          />
+          <CantripOsSystemControls
+            key={`system:${selected.id}`}
             instance={selected}
             onChanged={refreshLists}
           />

@@ -4,10 +4,10 @@ This host administration checkpoint preserves a Docker container's writable
 system layer: installed software, its package database, `/etc`, and other root
 customization outside mounted data. It is the foundation for Phase 5 shared-system
 replacement and private Worker transfer. The Worker now has a durable encrypted
-archive pipeline; Server admissions, replacement/rollback controls and the client
-workflow remain subsequent work. The [retained system replacement
-carrier](SYSTEM_REPLACEMENT.md) now provides the separate host activation and
-rollback foundation.
+archive pipeline, Server-owned admissions and a
+[client checkpoint/recovery workflow](PRODUCT_WORKFLOW.md#shared-system-checkpoints-and-recovery).
+The [retained system replacement carrier](SYSTEM_REPLACEMENT.md) provides the
+separate host activation and rollback foundation.
 
 The external Worker remains the orchestrator. Nothing installs a Worker or model
 credentials in the guest. No guest executor or recovery helper is required for

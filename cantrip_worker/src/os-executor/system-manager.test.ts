@@ -60,6 +60,32 @@ async function fixture() {
   return { ...f, directory, manager, capture, result };
 }
 describe("Worker system command routing", () => {
+  it("never advertises private linked-source snapshots as reusable bases, including stale list labels", async () => {
+    const f = await fixture();
+    const command = {
+      type: "cantrip-os.system.status" as const,
+      scope: f.scope,
+      transport: f.capture.transport,
+    };
+    expect(await f.manager().handle(command)).toMatchObject({
+      bases: [{ imageId: f.baseId }],
+    });
+    const image = f.images.get(f.baseId)!;
+    image.Config.Labels["io.cantrip.os.source-mounts"] = JSON.stringify({
+      bindings: [],
+    });
+    expect(await f.manager().handle(command)).toMatchObject({ bases: [] });
+    const request = f.engine.request.bind(f.engine);
+    f.engine.request = async (method, path, ...options) => {
+      if (path.startsWith("/images/json"))
+        return [
+          { Id: f.baseId, Labels: { "io.cantrip.os": "foundation" } },
+        ] as never;
+      return request(method, path, ...options);
+    };
+    expect(await f.manager().handle(command)).toMatchObject({ bases: [] });
+    expect(f.effects).toEqual([]);
+  });
   it("can continue after keys lock while preparing the child capture admission", async () => {
     const f = await fixture(),
       manager = f.manager();

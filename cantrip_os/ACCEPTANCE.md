@@ -4573,3 +4573,96 @@ Guest packages and the host package are unchanged by this Server checkpoint.
 There is no new OCI/DEB/ISO distribution claim here. Real account grants, a full
 Worker/client system-operation flow, dedicated client review/history, real remote
 acceptance, clone identity/SSH-key handling and final artifacts remain required.
+
+## Phase 5: client system checkpoints, retained reset and rollback (2026-11-07)
+
+Project Settings → CantripOS now exposes root capture, checkpoint restore,
+exact-base reset, retained rollback, private history and explicit resulting-system
+recovery. Public request IDs and immutable intent are saved before sending.
+Reload/observation do not reissue an effect; retry uses the original UUID.
+Rollback can replace its own uncertain saved reminder without losing the original
+replacement reference. Completed results needing identity recovery keep history
+open. Encryption lock/account changes clear displayed private outcomes. SSH-only
+attachments do not advertise Docker image mutation.
+
+The isolated `codex/os-phase5-system-client` lane exercised the real app, native
+Server, full Worker, account encryption/grants and Docker Desktop on ARM64. All
+browser actions used Codex IAB. A disposable account/project created workspace
+`work` (UID 20000) and a Linux-owned folder. The root fixture used a Unicode/binary
+marker, mode 0640, UID/GID 12345/23456 and a real Debian marker package.
+
+Observed product workflows:
+
+- Checkpoint `8981ecc3` survived browser reply loss/reload. Original private
+  context decrypted despite the new maintenance fence. A separate browser
+  installation imported the original disposable recovery artifact and decrypted
+  the same retained history. Graceful Worker-only restart preserved the exact
+  request, ciphertext, context, container start timestamp and single image.
+- Browser restore `b87111aa` recovered root/package version 1 while mounted files
+  and source notes remained version 2. Its exact original container remained
+  stopped. Explicit identity recovery, runtime observation and source verification
+  were separate successful actions.
+- Browser rollback `ef1080db` succeeded with the guest executor disabled. It
+  returned the exact original root/package version 2, retained current mounted
+  files/version 3 and kept the replacement's later root/package version 3. The
+  mounted executor-disable preference remained disabled until explicitly enabled.
+  The ordinary IceWM/noVNC menu, terminal and `pwd` worked while it was disabled.
+- Browser base reset `fa9f152f` used the exact normal image below. It removed the
+  root marker/package, retained mounted files/source version 3 and allowed explicit
+  source verification and native workspace-executor startup. Browser undo
+  `7ffd5aa4` restored original root/package version 2, kept current mounted version
+  4 and retained the base candidate's later root/package version 4.
+- An actual Docker create event triggered SIGKILL of the full Worker during
+  browser operation `6da20fe5`. Its durable create claim lacked acknowledgement.
+  After Worker restart, browser observation found the same created candidate
+  without renaming, starting or duplicating it. Explicit continuation completed
+  that admission. Docker events prove exactly one candidate create and one start.
+  Final cleanup rollback `e03721e8` used the same Server API after browser control
+  became disabled in Work settings; it is not an additional browser acceptance
+  claim. Both prior rollback workflows above used the UI.
+- Observing/decrypting retired history preserved the current attachment/runtime
+  and immutable protected result. Rollback retired each original replacement's
+  continuation. No old runtime handles were restored.
+
+The full normal Docker build initially failed because the recovery-package stage
+omitted canonical `host/package-job.py`. The recipe now copies it explicitly.
+The normal image also declares its foundation label. Private linked-source,
+checkpoint and replacement images are excluded from reusable bases, with labels
+checked again on the selected exact image. Base choices show a distinguishing
+image ID. The normal final ARM64 base was:
+`sha256:7d5565f53c636f00d40ce9142e35612cd49b9a9a8fc0fd25aac8f01028042ecb`.
+It was actually activated/reset and used to open a retained native workspace.
+Installed packages were workspaces 0.4.0, executor 0.11.0, remote 0.10.0 and recovery
+0.5.0; htop, nano and Python were present. Installed recovery-job SHA-256 matched
+canonical source (`53541e3d4d93053aa16dbf3f4f07b30d86443a6f6c1164c35aa7624764ec0364`).
+Host and guest native manifests matched upstream `6ff1e1ca`, source manifest
+`2898d420717dfe2da8883a3360c048c90c559cbb15ed23c76e04d8b37eff171f`
+and patches `d7cb069533e88b1544862fea6d545ac01bbbbd4bce6ac3b7df6ea30faca79c67`.
+
+The browser run used the normally built native Server at `a689b9d96` and Worker
+at `74e88cb22` with this cycle's OS changes. At that time an unrelated missing
+catalog export prevented normal app startup. A QA-only Vite export allowed module
+linking and deliberately threw if model selection invoked it; repository app
+modules and backend routes were unchanged. Upstream PR #2739 subsequently fixed
+those imports. The final rebased normal app build passes without that shim.
+This does not retroactively prove an unmodified final-revision browser run.
+Native Server desktop creation returned actual 404 in this fixture; ordinary VNC
+worked. Current integrated desktop/model and real external SSH acceptance remain
+required, alongside clone identities and final normal ISO/install artifacts.
+
+Validation: 46 focused client tests (23 new), 123 Worker OS tests, 46 OS tests
+with nine opt-in cases skipped, and 14 host replacement tests passed. Normal app
+and Worker builds and the normal native Server build pass after rebase.
+`pnpm check` stops at unchanged Server budgets (1532/1500 and 2336/1999 lines);
+those files match current main. Final source revisions and earlier superseded
+build failures are retained in the evidence. No hosted ordinary-PR validation
+was introduced.
+
+Bounded logs, screenshots, manifests, source hashes and receipts are stored under
+ignored `artifacts/phase5-system-client/`. The private 777,717,773-byte system
+archive and 583,218,176-byte staging tar were hashed then deleted (1,360,935,949
+bytes total). All four owned containers, three volumes and three test images were
+removed and verified absent. Private test keys, Worker data and the disposable
+database were deleted; shared PostgreSQL and the user's ordinary OS were retained.
+Unused Docker builder cache cleanup reported 15.24 GB. Build caches and the
+worktree are removed after delivery; no final ISO publication is claimed here.

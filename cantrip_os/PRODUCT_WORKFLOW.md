@@ -627,14 +627,32 @@ Guest/executor restart ends those processes and creates a fresh runtime. Use
 **Check recovery**, verify the intended source and open fresh work after that
 transition. Existing chats retain their original placement.
 
-## Shared system recovery APIs
+## Shared system checkpoints and recovery
 
 The [system admission API](SYSTEM_REPLACEMENT.md#server-owned-system-admissions)
-now records private root captures, retained replacement/reset and rollback in both
-Server implementations. This is the backend foundation; a dedicated system
-review/history panel remains dependent work. Continue using the existing product
-recovery and source-verification controls after an explicit system identity
-recovery. Historical completion never resumes an old chat or terminal placement.
+records private root captures, retained replacement/reset and rollback in both
+Server implementations. In **Project Settings → CantripOS**, select the instance
+and use **System checkpoints and recovery**. Create a checkpoint, restore a
+completed checkpoint, or reset to an exact base image observed by the owning
+Worker. Review the destination and root/mount preservation before confirming.
+These actions affect every workspace on the instance. SSH-only attachments do
+not offer Docker image mutations.
+
+The original request is saved before its first send and survives a reload in
+this browser session. **Observe saved system request** reads its original
+admission; **Retry same admission** retains the same UUID and intent. Neither
+creates a second root operation. **Dismiss saved reminder** does not cancel an
+admitted operation. System history includes older operations and pagination;
+current carrier state is separate from an immutable historical outcome. Private
+outcomes require unlocked encryption and disappear when encryption locks or the
+account changes.
+
+A replacement history entry offers **Roll back replacement**, including when the
+guest helper is unavailable. Rollback refers to that exact original replacement
+and retains the later root layer as well. A ready result keeps its history open and offers explicit system
+identity recovery. Then use **Check recovery** and verify the intended source
+before opening fresh work. Historical completion never resumes an old chat,
+terminal or desktop handle.
 
 Keep the saved operation UUID and its returned attachment/target generations after
 a lost reply. Observe the original operation first. While its dispatch stage is

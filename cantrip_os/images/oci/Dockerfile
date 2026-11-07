@@ -4,7 +4,8 @@ RUN /package/build.sh /out
 
 FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4 AS recovery-package
 COPY packages/recovery/ /package/
-RUN /package/build.sh /out
+COPY host/package-job.py /package-job.py
+RUN CANTRIP_OS_PACKAGE_JOB_SOURCE=/package-job.py /package/build.sh /out
 
 FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4
 ENV DEBIAN_FRONTEND=noninteractive LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
@@ -46,3 +47,4 @@ ENV CANTRIP_OS_CONTAINER=1 DISPLAY=:0
 EXPOSE 6080 5900 6081
 VOLUME ["/home/cantrip", "/var/lib/cantrip-os-workspaces", "/var/lib/cantrip-os-executor"]
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/sbin/cantrip-os-start"]
+LABEL io.cantrip.os="foundation"
