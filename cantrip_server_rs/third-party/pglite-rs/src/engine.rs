@@ -412,7 +412,8 @@ impl Engine {
             .output()?;
         if !output.status.success() {
             return Err(Error::Boot(format!(
-                "initdb failed: {}",
+                "initdb failed ({}): {}",
+                output.status,
                 String::from_utf8_lossy(&output.stderr)
             )));
         }

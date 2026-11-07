@@ -10,6 +10,7 @@ pub mod database;
 pub mod database_transfer;
 pub mod direct_attachments;
 pub mod encryption;
+pub mod env_file;
 mod environment;
 pub mod file_documents;
 pub mod http;

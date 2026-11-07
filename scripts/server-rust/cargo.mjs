@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 const execute = promisify(execFile);
 export const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 
-export async function rustEnvironment() {
-  const environment = { ...process.env };
+export async function rustEnvironment(overrides = {}) {
+  const environment = { ...process.env, ...overrides };
   const { stdout: version } = await execute("rustc", ["-vV"], {
     cwd: repositoryRoot,
   });
