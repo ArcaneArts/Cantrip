@@ -32,6 +32,10 @@ import {
   inlineDecisionMedia as data,
   systemOneMedia,
 } from "./model-decision-media.js";
+import {
+  openAiDecisionQuestions,
+  systemOneDecisionQuestions,
+} from "./model-decision-questions.js";
 
 type Route = Omit<ModelOperationRoute, "provider"> & {
   provider: RuntimeProvider;
@@ -179,30 +183,7 @@ function makePayload(
         "invalid-request",
         "The OpenAI Decisions adapter does not accept these routing or media-format options.",
       );
-    const questions = request.questions.map((question) => ({
-      type: question.type,
-      name: question.id,
-      instructions:
-        question.type === "predicate" && question.criteria
-          ? `${question.instructions}\nTrue: ${question.criteria.true}\nFalse: ${question.criteria.false}`
-          : question.instructions,
-      ...(question.type === "choice"
-        ? {
-            choices: question.choices.map((choice) => ({
-              value: choice.id,
-              description: choice.description,
-            })),
-          }
-        : {}),
-      ...(question.type === "score"
-        ? {
-            levels: question.levels.map((level) => ({
-              label: level.id,
-              description: level.description,
-            })),
-          }
-        : {}),
-    }));
+    const questions = openAiDecisionQuestions(request.questions);
     body = {
       ...options.parameters,
       model: route.modelName,
@@ -226,31 +207,12 @@ function makePayload(
       ...(gatewayMedia ? decisionClipFields(media) : {}),
     };
   } else {
-    const questions = Object.fromEntries(
-      request.questions.map((question) => [
-        question.id,
-        {
-          type: question.type === "predicate" ? "noul" : question.type,
-          instructions: question.instructions,
-          ...(question.type === "predicate" && question.criteria
-            ? { criteria: question.criteria }
-            : {}),
-          ...(question.type === "choice"
-            ? {
-                criteria: Object.fromEntries(
-                  question.choices.map((choice) => [
-                    choice.id,
-                    choice.description,
-                  ]),
-                ),
-              }
-            : {}),
-          ...(question.type === "score"
-            ? { criteria: question.levels.map((level) => level.description) }
-            : {}),
-        },
-      ]),
+    const nativeQuestions = systemOneDecisionQuestions(
+      request.questions,
+      selected,
+      options.typesafeImages,
     );
+    const questions = nativeQuestions.questions;
     if (selected === "system-one") {
       if (options.providerRouting)
         fail(
@@ -266,6 +228,14 @@ function makePayload(
           : request.state,
         questions,
         ...nativeMedia.fields,
+        ...(Object.keys(nativeQuestions.assets).length
+          ? {
+              assets: {
+                ...object(nativeMedia.fields.assets),
+                ...nativeQuestions.assets,
+              },
+            }
+          : {}),
       };
     } else {
       if (options.typesafeImages)

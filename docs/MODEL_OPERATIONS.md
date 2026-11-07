@@ -401,6 +401,32 @@ to percentages or a universal confidence scale occurs. Optional predicate
 true/false criteria become explicit instructions in the OpenAI envelope and native
 criteria in System One/OpenRouter.
 
+The shared contract permits 1–255 choices or score levels. These are transport
+bounds across native formats, not a promise that each model accepts that many;
+the selected endpoint enforces its own smaller limits. Descriptions may be
+omitted or null. System One choices preserve null criteria, while a score level
+without a description uses its supplied ID as the native label. OpenAI options
+retain their ID/label and omit an absent description.
+
+`instructions` may be omitted for native models with a fixed question. Cantrip
+does not invent a prompt or send an empty instructions field. For example, a
+fixed OCR-consistency model can receive OCR text in `state`, its original and
+rendered images in shared `media`, and a predicate containing only `id` and
+`type`. This supports the [llama.cpp question constraints](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md#post-v1systemone-typesafe-compatible-system-one-api)
+without guessing constraints from model names.
+
+Each question may also provide `instructionImages`, an ordered list of image
+parts, alongside its text instructions. The OpenAI adapter emits native
+instruction content parts; see [question-specific images](https://developers.openai.com/api/docs/guides/decisions#include-images-in-question-instructions).
+OpenRouter uses its native question image parts, which its
+[multimodal contract](https://openrouter.ai/docs/guides/community/multimodal-decisions)
+currently permits on Jev routes. Other endpoints decide their actual support.
+On a System One gateway using the explicit TypeSafe image extension, these images
+become assets referenced by that question's instructions, separate from shared
+state images. The ordinary System One envelope rejects question-specific images
+instead of moving them into shared state or serializing them as text. All images
+remain subject to the same total protected-content size limit.
+
 Results restore request order, validate answer/question identity, selected choices,
 probability ranges/distributions and rubric score ranges, and retain the native
 answer alongside normalized fields. Explicit per-question errors produce a

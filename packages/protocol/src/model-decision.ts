@@ -12,7 +12,21 @@ import {
 
 const name = z.string().regex(/^[A-Za-z0-9_.-]{1,100}$/);
 const instructions = z.string().min(1).max(100000);
-const option = z.object({ id: name, description: instructions }).strict();
+const option = z
+  .object({
+    id: name,
+    description: instructions.nullable().optional(),
+  })
+  .strict();
+const questionContext = {
+  // Some native models have a fixed question and reject an instructions field.
+  instructions: instructions.optional(),
+  instructionImages: z
+    .array(modelInputPartSchema.options[1])
+    .min(1)
+    .max(128)
+    .optional(),
+};
 const distinct = (values: { id: string }[]) =>
   new Set(values.map((v) => v.id)).size === values.length;
 const fits = (value: unknown) =>
@@ -23,7 +37,7 @@ export const decisionQuestionSchema = z.discriminatedUnion("type", [
     .object({
       id: name,
       type: z.literal("predicate"),
-      instructions,
+      ...questionContext,
       criteria: z
         .object({ true: instructions, false: instructions })
         .strict()
@@ -34,11 +48,11 @@ export const decisionQuestionSchema = z.discriminatedUnion("type", [
     .object({
       id: name,
       type: z.literal("choice"),
-      instructions,
+      ...questionContext,
       choices: z
         .array(option)
-        .min(2)
-        .max(100)
+        .min(1)
+        .max(255)
         .refine(distinct, "Choice IDs must be unique."),
     })
     .strict(),
@@ -46,11 +60,11 @@ export const decisionQuestionSchema = z.discriminatedUnion("type", [
     .object({
       id: name,
       type: z.literal("score"),
-      instructions,
+      ...questionContext,
       levels: z
         .array(option)
-        .min(2)
-        .max(100)
+        .min(1)
+        .max(255)
         .refine(distinct, "Level IDs must be unique."),
     })
     .strict(),
@@ -81,8 +95,8 @@ const probability = z.number().finite().min(0).max(1);
 const common = { id: name, nativeAnswer: boundedJsonValueSchema };
 const distribution = z
   .array(z.object({ id: name, probability }).strict())
-  .min(2)
-  .max(100)
+  .min(1)
+  .max(255)
   .nullable();
 export const decisionAnswerSchema = z.discriminatedUnion("type", [
   z.object({ ...common, type: z.literal("predicate"), probability }).strict(),
@@ -102,7 +116,7 @@ export const decisionAnswerSchema = z.discriminatedUnion("type", [
       score: z.number().finite(),
       probabilities: distribution,
       confidence: probability.nullable(),
-      levels: z.array(option).min(2).max(100),
+      levels: z.array(option).min(1).max(255),
       semantics: z.literal("probability-weighted-zero-based-index"),
     })
     .strict(),
