@@ -1,0 +1,387 @@
+[
+  {
+    "method": "GET",
+    "path": "/api/github/repositories",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/github/repositories",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/github/repositories/cache",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/github/repository-owners",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/github/status",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/git/actions",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/git/history",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/git/status",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/github/issues",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/github/issues",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/github/issues/:issueNumber",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/github/issues/:issueNumber/close",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/github/issues/:issueNumber/comments",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/actions",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/agent/drafts",
+    "gitAgent": true
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/branches",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/branches/actions/apply",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/branches/actions/preview",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/:revision",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/:revision/signature",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/actions/apply",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/actions/preview",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/search",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/compare",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts/apply",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts/detail",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts/preview",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/diff",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/files/blame",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/files/history",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/force-push/apply",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/force-push/preview",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/graph/commits/:revision",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/graph/metrics",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/graph/snapshot",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/lfs",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/lfs/actions/apply",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/lfs/actions/preview",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/:operationId/amend",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/:operationId/control",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/current",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/preview",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/patch/apply",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/patch/preview",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/recovery",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/recovery/apply",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/recovery/preview",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/refs",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/remotes",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/remotes/actions/apply",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/remotes/actions/preview",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/revisions/:revision/diff",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes/:hash/diff",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes/actions/apply",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes/actions/preview",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/submodules",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/submodules/actions/apply",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/submodules/actions/preview",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags/:name",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags/actions/apply",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags/actions/preview",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/actions",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/checkout",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/lifecycle/apply",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/lifecycle/preview",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/github/releases",
+    "gitAgent": false
+  },
+  {
+    "method": "POST",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/github/releases",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/github/releases/:releaseId",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/history",
+    "gitAgent": false
+  },
+  {
+    "method": "GET",
+    "path": "/api/projects/:projectId/worktrees/:worktreeId/status",
+    "gitAgent": false
+  }
+]

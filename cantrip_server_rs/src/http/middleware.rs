@@ -471,11 +471,11 @@ pub(super) async fn guard(
     let audit_principal = principal.clone();
     let audit_path = request.uri().path().to_owned();
     let audit_method = request.method().as_str().to_owned();
-    let audit_pattern = request
+    let mut audit_pattern = request
         .extensions()
         .get::<axum::extract::MatchedPath>()
         .map_or_else(|| audit_path.clone(), |v| v.as_str().to_owned());
-    let route = audit_pattern
+    let mut route = audit_pattern
         .split('/')
         .map(|segment| {
             segment
@@ -485,6 +485,15 @@ pub(super) async fn guard(
         })
         .collect::<Vec<_>>()
         .join("/");
+    if super::removed_repository::unregistered_method(request.method(), &route) {
+        // Fastify does not match a route pattern for an unsupported method.
+        // Keep its raw-path rate-limit key and absent audit resource binding.
+        audit_pattern.clone_from(&audit_path);
+        route.clone_from(&audit_path);
+        request
+            .extensions_mut()
+            .remove::<axum::extract::MatchedPath>();
+    }
     // The reference rejects this entire legacy prefix in onRequest, after
     // authentication/CSRF but before rate limiting, payload parsing or dispatch.
     // This includes unknown routes and unsupported methods under the prefix.
@@ -493,6 +502,11 @@ pub(super) async fn guard(
             StatusCode::GONE,
             json!({"error":"This plaintext repository route was removed. Use the protected repository operation endpoint."}),
         ));
+    }
+    if rejection.is_none()
+        && let Some(message) = super::removed_repository::rejection(request.method(), &route)
+    {
+        rejection = Some(json_response(StatusCode::GONE, json!({"error":message})));
     }
     let upgrade =
         value(request.headers(), "upgrade").is_some_and(|s| s.eq_ignore_ascii_case("websocket"));

@@ -1,5 +1,13 @@
 # Rust server replacement
 
+The current production HTTP inventory probe confirms 33 active endpoints still
+fall through to Rust's generic 404, covering computer use, Chat lanes, project
+lifecycle/context, remote surfaces, worker logs and operational health/metrics.
+Seventy-two additional retired repository-route differences are corrected and
+qualified separately. See [HTTP inventory reconciliation](RUST_SERVER_HTTP_INVENTORY.md)
+for the exact scope and remaining families. These are implementation gaps;
+Node remains the default and full replacement remains incomplete.
+
 Current CantripOS root checkpoints, encrypted image restore, retained rollback
 and exact-base reset now pass actual browser/full-worker qualification across
 all three stores and all four Redis pairings. Actual Server loss at Docker commit

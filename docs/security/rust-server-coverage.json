@@ -2519,57 +2519,107 @@
       {
         "method": "GET",
         "path": "/api/github/status",
-        "implementation": "cantrip_server_rs/src/http/middleware.rs",
-        "status": "implemented",
-        "evidence": [
-          "scripts/server-rust/github-catalog-http-compatibility.mjs"
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
         ],
-        "remaining": [],
-        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler."
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/github-catalog-http-compatibility.mjs",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ],
+        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler.",
+        "retiredContract": "authenticated root 410 before parsing and request limits"
       },
       {
         "method": "GET",
         "path": "/api/github/repositories/cache",
-        "implementation": "cantrip_server_rs/src/http/middleware.rs",
-        "status": "implemented",
-        "evidence": [
-          "scripts/server-rust/github-catalog-http-compatibility.mjs"
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
         ],
-        "remaining": [],
-        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler."
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/github-catalog-http-compatibility.mjs",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ],
+        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler.",
+        "retiredContract": "authenticated root 410 before parsing and request limits"
       },
       {
         "method": "GET",
         "path": "/api/github/repository-owners",
-        "implementation": "cantrip_server_rs/src/http/middleware.rs",
-        "status": "implemented",
-        "evidence": [
-          "scripts/server-rust/github-catalog-http-compatibility.mjs"
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
         ],
-        "remaining": [],
-        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler."
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/github-catalog-http-compatibility.mjs",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ],
+        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler.",
+        "retiredContract": "authenticated root 410 before parsing and request limits"
       },
       {
         "method": "GET",
         "path": "/api/github/repositories",
-        "implementation": "cantrip_server_rs/src/http/middleware.rs",
-        "status": "implemented",
-        "evidence": [
-          "scripts/server-rust/github-catalog-http-compatibility.mjs"
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
         ],
-        "remaining": [],
-        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler."
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/github-catalog-http-compatibility.mjs",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ],
+        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler.",
+        "retiredContract": "authenticated root 410 before parsing and request limits"
       },
       {
         "method": "POST",
         "path": "/api/github/repositories",
-        "implementation": "cantrip_server_rs/src/http/middleware.rs",
-        "status": "implemented",
-        "evidence": [
-          "scripts/server-rust/github-catalog-http-compatibility.mjs"
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
         ],
-        "remaining": [],
-        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler."
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/github-catalog-http-compatibility.mjs",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ],
+        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler.",
+        "retiredContract": "authenticated root 410 before parsing and request limits"
       },
       {
         "method": "GET",
@@ -6543,6 +6593,2067 @@
         "remaining": [
           "Current supported-platform and packaged acceptance; mid-operation Worker/native loss and missing guest receipts remain outside this lifecycle qualification.",
           "Full replacement still requires remaining root-system, migration/rollback, performance, default-cutover and Node-removal acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/git/actions",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/git/history",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/git/status",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/github/issues",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/github/issues",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/github/issues/:issueNumber",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/github/issues/:issueNumber/close",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/github/issues/:issueNumber/comments",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/actions",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/agent/drafts",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "ordinary Git-agent handler with parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/branches",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/branches/actions/apply",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/branches/actions/preview",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/:revision",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/:revision/signature",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/actions/apply",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/actions/preview",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/search",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/compare",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts/apply",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts/detail",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts/preview",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/diff",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/files/blame",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/files/history",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/force-push/apply",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/force-push/preview",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/graph/commits/:revision",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/graph/metrics",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/graph/snapshot",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/lfs",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/lfs/actions/apply",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/lfs/actions/preview",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/:operationId/amend",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/:operationId/control",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/current",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/preview",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/patch/apply",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/patch/preview",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/recovery",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/recovery/apply",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/recovery/preview",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/refs",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/remotes",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/remotes/actions/apply",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/remotes/actions/preview",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/revisions/:revision/diff",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes/:hash/diff",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes/actions/apply",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes/actions/preview",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/submodules",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/submodules/actions/apply",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/submodules/actions/preview",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags/:name",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags/actions/apply",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags/actions/preview",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/actions",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/checkout",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/lifecycle/apply",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/lifecycle/preview",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/github/releases",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/github/releases",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/github/releases/:releaseId",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/history",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/status",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/removed_repository.rs",
+          "cantrip_server_rs/src/http/middleware.rs",
+          "cantrip_server_rs/contracts/removed-repository-routes.json"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "scripts/server-rust/removed-repository-contract.mjs",
+          "scripts/server-rust/removed-repository-http-compatibility.mjs"
+        ],
+        "retiredContract": "authenticated root 410 before parsing and request limits",
+        "remaining": [
+          "Current supported-platform and packaged acceptance. Retired plaintext handlers are intentionally not restored; active protected repository operations have separate coverage."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/compact",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 404,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/computer-use/operation",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 400,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/computer-use/preview",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 404,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/computer-use/preview/stop",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 400,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/execution-lanes",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 200,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/execution-lanes/:laneId/release",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 404,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/chats/:chatId/worktree",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 400,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/health",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 200,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/computer-use/authority",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 400,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/projects/:projectId",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 404,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/preferred-worker",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 400,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/remote-desktop-fleet",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 404,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/remote-desktops",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 200,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/remote-desktops",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 400,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/remote-surfaces",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 200,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/remote-surfaces",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 400,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/repository-stats",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 404,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/script-commands",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 400,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/tasks/workload",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 404,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/token-usage",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 404,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/worktree-policy",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 400,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/order",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 400,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/remote-desktops/:desktopId",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 404,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/remote-desktops/:desktopId",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 400,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/remote-surfaces/:surfaceId",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 404,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/remote-surfaces/:surfaceId",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 400,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/remote-surfaces/:surfaceId/connect",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 404,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/remote-surfaces/:surfaceId/resume",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 404,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/remote-surfaces/:surfaceId/suspend",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 404,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/terminals/:terminalId/script-commands",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 400,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/workers/:workerId/logs",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 404,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/workers/:workerId/logs/stream",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 404,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/metrics",
+        "status": "unported",
+        "evidence": [
+          "scripts/server-rust/http-route-inventory.mjs",
+          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+        ],
+        "observedBoundary": {
+          "platform": "darwin-arm64",
+          "database": "pglite",
+          "auth": "none",
+          "sourceStatus": 200,
+          "rustStatus": 404,
+          "rustResponse": "generic route-not-found"
+        },
+        "remaining": [
+          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
+          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
         ]
       }
     ]
@@ -16053,6 +18164,7 @@
         "nodeOnly": ["2060beb2a", "fc71cc21e"]
       },
       "remaining": [
+        "Implement the 33 active HTTP endpoints confirmed by the production inventory probe; see docs/RUST_SERVER_HTTP_INVENTORY.md. Retired repository 410 contracts are now separately qualified.",
         "Remaining CantripOS Worker/native interruption and missing-receipt behavior beyond the executed lifecycle and root-system scenarios, plus current platform requalification.",
         "Complete current native Task/Goal interruption/reconnect and supported-platform requalification.",
         "Consolidate historical category-row limitations against current executed evidence before final replacement completion."
@@ -16284,6 +18396,60 @@
         "Other missing/corrupt receipts, native-process failures, database/Redis outages, SSH guests, rendered UI and current packaged platforms remain outside this scoped result.",
         "Complete coverage reconciliation, final migration/rollback and performance, Rust default selection and production Node-server removal remain required."
       ]
+    },
+    "httpRouteInventoryReconciliation": {
+      "status": "partial",
+      "sourceBaseline": "898af08e4d87b41dc443288e66b038082b6f6b56",
+      "implementation": [
+        "cantrip_server_rs/src/http/removed_repository.rs",
+        "cantrip_server_rs/src/http/middleware.rs"
+      ],
+      "evidence": [
+        "docs/RUST_SERVER_HTTP_INVENTORY.md",
+        "scripts/server-rust/http-route-inventory.mjs",
+        "scripts/server-rust/removed-repository-contract.mjs",
+        "scripts/server-rust/removed-repository-http-compatibility.mjs"
+      ],
+      "discovery": {
+        "platform": "darwin-arm64",
+        "database": "pglite",
+        "auth": "none",
+        "requestsPerPeer": 584,
+        "requestErrors": 0,
+        "initialFallbackDifferences": 105,
+        "retiredFallbackDifferencesResolved": 72,
+        "remainingActiveFallbackDifferences": 33,
+        "scope": "Real HTTP empty-profile discovery, not full domain response or successful product parity."
+      },
+      "retiredRouteQualification": {
+        "pairedProfiles": 10,
+        "observations": 5036,
+        "pairedObservations": 2518,
+        "cleanServerExits": 20,
+        "retiredRoutes": 77,
+        "initialFallbacks": 105,
+        "finalFallbacks": 33,
+        "resolvedRetiredFallbacks": 72,
+        "broadHttpRequestsPerRun": 1168,
+        "rustExecutableSha256": "78e8e3649f59b86fe65b567ebcdb4c3673ad132bb3447b69cc0f308f9a7f8957"
+      },
+      "behavior": [
+        "General retired routes return 410 after authentication/CSRF/origin checks and before body parsing or API limits; the separate Git-agent handler retains its normal parser and budget.",
+        "Unsupported methods retain raw-path rate-limit keys and absent project resource IDs in persisted audit events.",
+        "All three local authentication modes across all three stores pass paired status/body/header/HEAD and audit checks. The hosted external PostgreSQL account profile proves per-route budget exemption/exhaustion and actual Retry-After bounds."
+      ],
+      "remaining": [
+        "Implement the 33 explicitly unported active HTTP endpoints grouped in the evidence document.",
+        "Reconcile other category rows/background services and qualify complete current behavior, supported platforms/packages, migrations/rollback and performance.",
+        "Default Rust cutover and production Node-server removal remain required."
+      ],
+      "localChecks": {
+        "strictAllTargetClippy": true,
+        "rustLibraryTestsPassed": 63,
+        "standardRepositoryCheck": "Stops on unchanged Node source line budgets 1532/1500 and2336/1999; downstream aggregate stages unrun.",
+        "broadHttpInventoryExitCode": 1,
+        "broadHttpInventoryReason": "The 33 active missing-route differences remain required implementation work."
+      }
     }
   },
   "remainingAcceptance": [

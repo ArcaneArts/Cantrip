@@ -89,6 +89,7 @@ mod provider_credentials;
 mod provider_management;
 mod provider_quota;
 mod provider_telemetry;
+mod removed_repository;
 mod replicas;
 mod repository_operations;
 mod run_configurations;
@@ -215,6 +216,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(usage::routes())
         .merge(policies::routes())
         .merge(projects::routes())
+        .merge(removed_repository::routes())
         .merge(folders::routes())
         .merge(chat_catalogs::routes())
         .merge(chat_attachments::routes())
