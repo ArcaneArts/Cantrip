@@ -15,6 +15,18 @@ pub fn worker_endpoint_kind(kind: &str) -> bool {
     definitions().contains_key(kind)
 }
 
+/// API-key connections use worker-held credentials. Public and built-in catalogs
+/// retain their existing sources; endpoint setup kinds remain a separate list.
+pub fn worker_catalog_provider(provider: &Json) -> bool {
+    let kind = provider["kind"].as_str().unwrap_or_default();
+    if kind == "openai-compatible" {
+        !super::openrouter::is_provider(kind, provider["baseUrl"].as_str().unwrap_or_default())
+            && !super::zai::is_coding_plan_provider(provider)
+    } else {
+        worker_endpoint_kind(kind)
+    }
+}
+
 pub fn label(kind: &str) -> &'static str {
     definitions()
         .get(kind)

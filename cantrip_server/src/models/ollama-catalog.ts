@@ -1,7 +1,7 @@
 import {
   ollamaModelInventorySchema,
   endpointModelInventorySchema,
-  isWorkerEndpointProviderKind,
+  usesWorkerModelCatalog,
   providerDefinitions,
   type EndpointModelInventoryItem,
   type OllamaModelInventoryItem,
@@ -156,7 +156,7 @@ export class OllamaCatalogService {
     ]);
     if (!provider) return null;
     if (!worker) throw new Error("Worker not found.");
-    if (!isWorkerEndpointProviderKind(provider.kind)) {
+    if (!usesWorkerModelCatalog(provider)) {
       throw new Error("Provider does not use worker endpoint discovery.");
     }
     const connection = {

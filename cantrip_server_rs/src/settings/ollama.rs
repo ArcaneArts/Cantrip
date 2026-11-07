@@ -170,9 +170,7 @@ impl SettingsRepository {
         };
         anyhow::ensure!(owned_worker.is_some(), "Worker not found.");
         anyhow::ensure!(
-            runtime["kind"]
-                .as_str()
-                .is_some_and(super::endpoint_providers::worker_endpoint_kind),
+            super::endpoint_providers::worker_catalog_provider(&runtime),
             "Provider does not use worker endpoint discovery."
         );
         let revision = runtime["connectionRevision"]

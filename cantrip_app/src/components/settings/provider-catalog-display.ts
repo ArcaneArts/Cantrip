@@ -7,8 +7,9 @@ import type {
 } from "@cantrip/protocol";
 import {
   isZaiCodingPlanBaseUrl,
-  isWorkerEndpointProviderKind,
+  usesWorkerModelCatalog,
   providerDefinitions,
+  operationProviderFamily,
 } from "@cantrip/protocol";
 
 export type CatalogDisplayStatus =
@@ -16,6 +17,10 @@ export type CatalogDisplayStatus =
 
 export function providerFamilyLabel(provider: ModelProviderSummary) {
   if (isZaiCodingPlanBaseUrl(provider.baseUrl)) return "Z.ai Coding Plan";
+  const family = operationProviderFamily(provider);
+  if (family === "openai") return "OpenAI API";
+  if (family === "openrouter") return "OpenRouter";
+  if (family === "xai") return "xAI API";
   return providerDefinitions[provider.kind].label;
 }
 
@@ -26,20 +31,16 @@ export function providerRouteLabel(provider: ModelProviderSummary) {
 
 export function providerSupportsCatalog(provider: ModelProviderSummary) {
   if (
-    isWorkerEndpointProviderKind(provider.kind) ||
+    usesWorkerModelCatalog(provider) ||
     provider.kind === "chatgpt" ||
     provider.kind === "grok"
   ) {
     return true;
   }
-  try {
-    return (
-      isZaiCodingPlanBaseUrl(provider.baseUrl) ||
-      new URL(provider.baseUrl).hostname.toLowerCase() === "openrouter.ai"
-    );
-  } catch {
-    return false;
-  }
+  return (
+    isZaiCodingPlanBaseUrl(provider.baseUrl) ||
+    operationProviderFamily(provider) === "openrouter"
+  );
 }
 
 export function catalogScopesForWorker(
@@ -126,7 +127,7 @@ export function catalogScopeLabel(
   workerId: string | null,
 ) {
   if (!providerSupportsCatalog(provider)) return "Custom IDs";
-  if (isWorkerEndpointProviderKind(provider.kind)) {
+  if (usesWorkerModelCatalog(provider)) {
     const workers = new Set(
       catalog?.availability.flatMap(({ workerId: id }) => (id ? [id] : [])) ??
         [],

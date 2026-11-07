@@ -19101,7 +19101,8 @@
         "vllm",
         "unsloth",
         "litellm",
-        "mlx-lm"
+        "mlx-lm",
+        "openai-compatible"
       ],
       "checks": []
     },

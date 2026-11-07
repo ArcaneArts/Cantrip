@@ -2,6 +2,7 @@ import {
   endpointModelInventorySchema,
   endpointOperationMetadata,
   normalizeResponsesBaseUrl,
+  registeredModelOperations,
   type EndpointModelInventory,
   type EndpointModelInventoryItem,
 } from "@cantrip/protocol";
@@ -24,9 +25,42 @@ const boolean = (value: unknown): boolean | null =>
 export function normalizeEndpointModel(
   raw: unknown,
   providerKind?: string,
+  baseUrl = "",
 ): EndpointModelInventoryItem | null {
   const model = object(raw);
+  const id = text(model.id) ?? text(model.key);
+  if (!id) return null;
   const operations = endpointOperationMetadata(model);
+  const registered = registeredModelOperations(
+    { kind: providerKind ?? "", baseUrl },
+    id,
+  );
+  // Advertised operation fields take precedence over maintained documentation.
+  for (const operation of ["language", "embedding", "decision"] as const) {
+    const advertised = operations.operationCapabilities[operation];
+    const fallback = registered[operation];
+    if (!advertised && fallback)
+      operations.operationCapabilities[operation] = fallback;
+  }
+  if (!operations.outputModalities.length) {
+    for (const [operation, modality] of [
+      ["language", "text"],
+      ["embedding", "embeddings"],
+      ["decision", "decisions"],
+    ] as const) {
+      if (registered[operation]?.status === "supported")
+        operations.outputModalities.push(modality);
+    }
+  }
+  if (!operations.inputModalities.length) {
+    operations.inputModalities = [
+      ...new Set(
+        Object.values(registered)
+          .filter((capability) => capability.status === "supported")
+          .flatMap((capability) => capability.inputModalities ?? []),
+      ),
+    ];
+  }
   if (operations.operationCapabilities.decision?.status === "supported") {
     const adapter =
       providerKind === "lm-studio" || providerKind === "litellm"
@@ -34,17 +68,18 @@ export function normalizeEndpointModel(
         : providerKind === "llama-cpp" || providerKind === "vllm"
           ? "system-one"
           : null;
-    operations.operationCapabilities.decision.adapter = adapter;
+    if (adapter) operations.operationCapabilities.decision.adapter = adapter;
   }
-  const id = text(model.id) ?? text(model.key);
-  if (!id) return null;
   const capabilities = object(model.capabilities);
   const metadata = object(model.meta);
   const instances = Array.isArray(model.loaded_instances)
     ? model.loaded_instances
     : null;
   const loadedConfig = object(object(instances?.[0]).config);
-  const vision = boolean(capabilities.vision) ?? boolean(model.supports_vision);
+  const vision =
+    boolean(capabilities.vision) ??
+    boolean(model.supports_vision) ??
+    boolean(model.has_vision_adapter);
   const reasoning = object(capabilities.reasoning);
   const efforts = Array.isArray(reasoning.allowed_options)
     ? reasoning.allowed_options.filter(
@@ -151,8 +186,8 @@ export async function discoverEndpointModels(
   if (!Array.isArray(catalog.data))
     throw new Error("Model catalog did not contain a model list.");
   const models = new Map<string, EndpointModelInventoryItem>();
-  for (const raw of catalog.data.slice(0, 1_000)) {
-    const model = normalizeEndpointModel(raw, provider.kind);
+  for (const raw of catalog.data) {
+    const model = normalizeEndpointModel(raw, provider.kind, provider.baseUrl);
     if (model) models.set(model.nativeModelId, model);
   }
   if (provider.kind === "lm-studio") {
@@ -168,8 +203,12 @@ export async function discoverEndpointModels(
         2_000,
       );
       if (Array.isArray(rich.models))
-        for (const raw of rich.models.slice(0, 1_000)) {
-          const model = normalizeEndpointModel(raw, provider.kind);
+        for (const raw of rich.models) {
+          const model = normalizeEndpointModel(
+            raw,
+            provider.kind,
+            provider.baseUrl,
+          );
           if (!model) continue;
           const standard = models.get(model.nativeModelId);
           if (!standard) {
@@ -210,7 +249,9 @@ export async function discoverEndpointModels(
     }
   }
   return endpointModelInventorySchema.parse({
-    models: [...models.values()].slice(0, 1_000),
+    // An oversized inventory fails explicitly and preserves the saved catalog;
+    // silently publishing its first page would mark missing models unavailable.
+    models: [...models.values()],
     observedAt: new Date().toISOString(),
   });
 }

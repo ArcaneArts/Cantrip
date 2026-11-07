@@ -164,7 +164,7 @@ export const workerCoreCommandSchemas = [
   z.object({
     type: z.literal("model.endpoint.catalog"),
     provider: workerRuntimeProviderSchema.extend({
-      kind: z.enum(endpointProviderKinds),
+      kind: z.enum([...endpointProviderKinds, "openai-compatible"]),
     }),
   }),
   z.object({

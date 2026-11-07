@@ -1,7 +1,4 @@
-import {
-  isWorkerEndpointProviderKind,
-  providerDefinitions,
-} from "@cantrip/protocol";
+import { usesWorkerModelCatalog, providerDefinitions } from "@cantrip/protocol";
 import {
   effectiveCuaEffects,
   cuaEffectWorkerStatusSchema,
@@ -187,7 +184,7 @@ export function installSettingsRouteRuntime(
     const settings = await repository.getSettings(ownerId);
     for (const provider of settings.providers) {
       if (
-        !isWorkerEndpointProviderKind(provider.kind) &&
+        !usesWorkerModelCatalog(provider) &&
         !isAccountProviderKind(provider.kind)
       ) {
         continue;
@@ -758,7 +755,7 @@ export function installSettingsRouteRuntime(
           undefined,
           false,
         );
-      } else if (isWorkerEndpointProviderKind(provider.kind)) {
+      } else if (usesWorkerModelCatalog(provider)) {
         void loadProviderCatalog(
           applicationOwnerId(),
           provider.id,
@@ -902,7 +899,7 @@ export function installSettingsRouteRuntime(
         } else if (
           nativeConfigurationChanged &&
           provider &&
-          isWorkerEndpointProviderKind(provider.kind)
+          usesWorkerModelCatalog(provider)
         ) {
           void loadProviderCatalog(ownerId, provider.id, undefined, true).catch(
             () => undefined,
@@ -934,7 +931,7 @@ export function installSettingsRouteRuntime(
       return zaiCatalogService.getProviderCatalog(ownerId, providerId);
     }
     if (
-      !isWorkerEndpointProviderKind(provider.kind) &&
+      !usesWorkerModelCatalog(provider) &&
       !isAccountProviderKind(provider.kind)
     ) {
       const catalog = await providerCatalogService.getProviderCatalog(

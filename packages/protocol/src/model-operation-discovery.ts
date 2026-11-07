@@ -52,7 +52,9 @@ export function endpointOperationMetadata(raw: unknown): {
     if (
       type === "vlm" ||
       (!["embedding", "embeddings"].includes(type) &&
-        (capabilities.vision === true || model.supports_vision === true))
+        (capabilities.vision === true ||
+          model.supports_vision === true ||
+          model.has_vision_adapter === true))
     )
       inputs.push("image");
   }
