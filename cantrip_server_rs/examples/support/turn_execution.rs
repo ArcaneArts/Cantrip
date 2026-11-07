@@ -624,6 +624,7 @@ pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
     };
     let empty = Value::object([] as [(&str, Value); 0]);
     let hooks = Hooks {
+        task_restored: None,
         structured: input["options"]
             .get("structuredResult")
             .map(|_| Structured {

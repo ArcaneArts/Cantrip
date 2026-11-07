@@ -76,12 +76,11 @@ impl Repository {
             if lane["worker_id"]!=worker.as_str() || lane["worktree_id"]!=r["worktreeId"]
                 || lane["activated_at"].as_js_string().and_then(crate::wire::date_milliseconds)!=r["executionLaneActivatedAt"].as_js_string().and_then(crate::wire::date_milliseconds)
                 || placement["chat"]["active_worker_id"]!=worker.as_str() || placement["chat"]["active_worktree_id"]!=r["worktreeId"] {return stale();}
-            if n["outcome"]["ok"] != true && !input["resumption"].is_null() && physical["nativeExecution"].is_null() {
-                if let Some(saved) = crate::native_commands::task_suspension::retain_locked(tx, &owner, &worker, &chat,
+            if n["outcome"]["ok"] != true && !input["resumption"].is_null() && physical["nativeExecution"].is_null()
+                && let Some(saved) = crate::native_commands::task_suspension::retain_locked(tx, &owner, &worker, &chat,
                     &r["dispatch"], &r["executionLaneId"], &r["clientMessageId"]).await? {
                     crate::native_commands::task_suspension::fail_restore_locked(tx, &owner, &chat, saved).await?;
                     return Ok(Some(json!({"state":"owned","message":Value::Null,"chat":routing})));
-                }
             }
             let mut message=Value::Null;
             if let Some(result)=&result {

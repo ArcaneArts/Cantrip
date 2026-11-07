@@ -806,6 +806,19 @@ export const contractRoots = [
   "projectExternalChatDiscoverySchema",
 ];
 
+export const projectExportContractRoots = [
+  "projectExportTargetSchema",
+  "projectExportMappingSchema",
+  "projectExportPreviewRequestSchema",
+  "projectExportTargetInspectionSchema",
+  "projectExportPreviewSchema",
+  "projectExportCreateSchema",
+  "projectExportChatResultSchema",
+  "projectExportItemOutcomeSchema",
+  "projectExportResultSchema",
+  "projectExportChatBeginResultSchema",
+];
+
 // Keep independently added roots self-contained. Numeric graph references must
 // not depend on the size of the base graph after an unrelated branch merges.
 export const runMcpContractRoots = [
@@ -865,6 +878,7 @@ export function sourceContractSchema(name) {
 }
 
 const refinements = new Map([
+  [protocol.projectExportCreateSchema, "project-export-chat-ids"],
   [protocol.externalChatAttachmentSchema, "external-chat-attachment"],
   [protocol.externalChatTranscriptSchema, "external-chat-transcript"],
   [protocol.nativeSuspensionRecordSchema, "native-suspension-record"],
@@ -1638,6 +1652,20 @@ if (
       ...(await resolveConfig(fileURLToPath(cliDestination))),
       filepath: fileURLToPath(cliDestination),
     }),
+  );
+  const exportDestination = new URL(
+    "../../cantrip_server_rs/contracts/project-exports.json",
+    import.meta.url,
+  );
+  await writeFile(
+    exportDestination,
+    await format(
+      JSON.stringify(buildContractManifest(projectExportContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(exportDestination))),
+        filepath: fileURLToPath(exportDestination),
+      },
+    ),
   );
   // Zod's strict object checks enumerate inherited Buffer properties as well
   // as byte indices. Retain Source's enumeration for binary-body contracts;

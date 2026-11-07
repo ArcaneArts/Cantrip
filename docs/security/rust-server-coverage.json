@@ -5575,6 +5575,46 @@
           "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
           "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/exports/preview",
+        "implementation": "cantrip_server_rs/src/http/project_exports.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/project_export_contracts.rs",
+          "cantrip_server_rs/tests/project_export_services.rs",
+          "scripts/server-rust/project-export-contract-oracle.mjs",
+          "scripts/server-rust/project-export-service-oracle.mjs",
+          "scripts/server-rust/project-export-http-compatibility.mjs",
+          "scripts/server-rust/project-export-http-worker.mjs",
+          "scripts/server-rust/project-export-http-lifecycle.mjs",
+          "docs/RUST_SERVER_PROJECT_EXPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker endpoint-key decryption, native Codex replay and persistent worker-file receipts remain required.",
+          "Mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback, performance, Winterhold rehearsal and final default cutover remain required. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/exports",
+        "implementation": "cantrip_server_rs/src/http/project_exports.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/project_export_contracts.rs",
+          "cantrip_server_rs/tests/project_export_services.rs",
+          "scripts/server-rust/project-export-contract-oracle.mjs",
+          "scripts/server-rust/project-export-service-oracle.mjs",
+          "scripts/server-rust/project-export-http-compatibility.mjs",
+          "scripts/server-rust/project-export-http-worker.mjs",
+          "scripts/server-rust/project-export-http-lifecycle.mjs",
+          "docs/RUST_SERVER_PROJECT_EXPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker endpoint-key decryption, native Codex replay and persistent worker-file receipts remain required.",
+          "Mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback, performance, Winterhold rehearsal and final default cutover remain required. Node remains the default server; worker remains Node."
+        ]
       }
     ]
   },
@@ -6787,6 +6827,94 @@
         "remaining": [
           "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
           "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
+        ]
+      },
+      {
+        "command": "project.export.target.inspect",
+        "implementation": [
+          "cantrip_server_rs/src/projects/exports/",
+          "cantrip_server_rs/src/http/project_exports.rs"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/project_export_contracts.rs",
+          "cantrip_server_rs/tests/project_export_services.rs",
+          "scripts/server-rust/project-export-contract-oracle.mjs",
+          "scripts/server-rust/project-export-service-oracle.mjs",
+          "scripts/server-rust/project-export-http-compatibility.mjs",
+          "scripts/server-rust/project-export-http-worker.mjs",
+          "scripts/server-rust/project-export-http-lifecycle.mjs",
+          "docs/RUST_SERVER_PROJECT_EXPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker endpoint-key decryption, native Codex replay and persistent worker-file receipts remain required.",
+          "Mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback, performance, Winterhold rehearsal and final default cutover remain required. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "project.export.chat.begin",
+        "implementation": [
+          "cantrip_server_rs/src/projects/exports/",
+          "cantrip_server_rs/src/http/project_exports.rs"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/project_export_contracts.rs",
+          "cantrip_server_rs/tests/project_export_services.rs",
+          "scripts/server-rust/project-export-contract-oracle.mjs",
+          "scripts/server-rust/project-export-service-oracle.mjs",
+          "scripts/server-rust/project-export-http-compatibility.mjs",
+          "scripts/server-rust/project-export-http-worker.mjs",
+          "scripts/server-rust/project-export-http-lifecycle.mjs",
+          "docs/RUST_SERVER_PROJECT_EXPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker endpoint-key decryption, native Codex replay and persistent worker-file receipts remain required.",
+          "Mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback, performance, Winterhold rehearsal and final default cutover remain required. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "project.export.chat.chunk",
+        "implementation": [
+          "cantrip_server_rs/src/projects/exports/",
+          "cantrip_server_rs/src/http/project_exports.rs"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/project_export_contracts.rs",
+          "cantrip_server_rs/tests/project_export_services.rs",
+          "scripts/server-rust/project-export-contract-oracle.mjs",
+          "scripts/server-rust/project-export-service-oracle.mjs",
+          "scripts/server-rust/project-export-http-compatibility.mjs",
+          "scripts/server-rust/project-export-http-worker.mjs",
+          "scripts/server-rust/project-export-http-lifecycle.mjs",
+          "docs/RUST_SERVER_PROJECT_EXPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker endpoint-key decryption, native Codex replay and persistent worker-file receipts remain required.",
+          "Mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback, performance, Winterhold rehearsal and final default cutover remain required. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "project.export.chat.complete",
+        "implementation": [
+          "cantrip_server_rs/src/projects/exports/",
+          "cantrip_server_rs/src/http/project_exports.rs"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/project_export_contracts.rs",
+          "cantrip_server_rs/tests/project_export_services.rs",
+          "scripts/server-rust/project-export-contract-oracle.mjs",
+          "scripts/server-rust/project-export-service-oracle.mjs",
+          "scripts/server-rust/project-export-http-compatibility.mjs",
+          "scripts/server-rust/project-export-http-worker.mjs",
+          "scripts/server-rust/project-export-http-lifecycle.mjs",
+          "docs/RUST_SERVER_PROJECT_EXPORTS.md"
+        ],
+        "remaining": [
+          "Actual client/full worker endpoint-key decryption, native Codex replay and persistent worker-file receipts remain required.",
+          "Mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback, performance, Winterhold rehearsal and final default cutover remain required. Node remains the default server; worker remains Node."
         ]
       }
     ]
@@ -13814,6 +13942,41 @@
         "Actual client/full worker encryption, filesystem attachment transfer and native replay remain required.",
         "Additional caller-interruption and mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback and final default cutover remain required."
       ]
+    },
+    "projectChatExports": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/projects/exports/",
+        "cantrip_server_rs/src/http/project_exports.rs",
+        "cantrip_server_rs/contracts/project-exports.json"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/project_export_contracts.rs",
+        "cantrip_server_rs/tests/project_export_services.rs",
+        "scripts/server-rust/project-export-contract-oracle.mjs",
+        "scripts/server-rust/project-export-service-oracle.mjs",
+        "scripts/server-rust/project-export-http-compatibility.mjs",
+        "scripts/server-rust/project-export-http-worker.mjs",
+        "scripts/server-rust/project-export-http-lifecycle.mjs",
+        "docs/RUST_SERVER_PROJECT_EXPORTS.md"
+      ],
+      "qualifiedScope": "macOS arm64, 0bde2da05 integrated immutable05bef artifact:10 independent protocol roots/2185cases and6555base-graph-growth comparisons;23actualSource relay and329actualSource route-error cases. All3stores/all3auth modes pass540recorded paired scenarios,621pairedHTTP observations,540complete pairedSQL comparisons of6domain tables,18caller destructions and18graceful shutdown/reopens withreceipt reuse. ActualfailedSELECT diagnostics,opaque multi-chunk transcripts,partial outcomes,invalidreplies,lostackreuse,reconnect compared. ExistingSourceAPI9/workeradapter5/importprotocol5333/nativeSuspension2 and strictall-targetClippy pass. Allqualification local.",
+      "finalMainIntegration": {
+        "head": "0bde2da05",
+        "qualification": "pass for declared local domain scope; model-operation migrations281-283; independent export graph; shared base graph byte-identical Main; semantics-preserving incomingTask/model lint cleanup; oldfixtureoptional restoration observer preserved asNone",
+        "platforms": ["macOS arm64"],
+        "artifactSha256": "05bef15777e6e41390c2e6e98b1eec04e365f78bfa61b276f358d1c17c9fad85"
+      },
+      "remaining": [
+        "Actual client/full worker endpoint-key decryption, native Codex replay and persistent worker-file receipts remain required.",
+        "Mixed Node/Rust Redis coordination, supported-platform artifacts/packaging, representative old-data upgrades, post-write rollback, performance, Winterhold rehearsal and final default cutover remain required. Node remains the default server; worker remains Node."
+      ],
+      "providerCatalogRegression": {
+        "database": "pglite",
+        "authModes": ["accounts", "none"],
+        "pairedHttpObservations": 272,
+        "passed": true
+      }
     }
   },
   "remainingAcceptance": [

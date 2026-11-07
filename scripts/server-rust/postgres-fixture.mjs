@@ -10,7 +10,10 @@ const require = createRequire(
 const postgres = require("postgres");
 
 export async function postgresFixture(directory, { url } = {}) {
-  const executable = !url && (await buildRustExample("database-fixture"));
+  const executable =
+    !url &&
+    (process.env.CANTRIP_RUST_DATABASE_FIXTURE_BINARY ??
+      (await buildRustExample("database-fixture")));
   const owner =
     !url &&
     (await startServer(

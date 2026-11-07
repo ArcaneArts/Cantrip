@@ -1,5 +1,11 @@
 # Rust server replacement
 
+Native project Chat export previews and opaque transcript relays are now
+implemented. See the [project export qualification](RUST_SERVER_PROJECT_EXPORTS.md)
+for Source comparisons, actual database/transport failures, all nine local
+storage/authentication combinations and remaining product/platform acceptance.
+The default server remains Node.
+
 Native external Chat imports and history discovery now include their SQL
 repository, durable executor, HTTP routes, opaque attachment relay, hydration,
 ordered Live publication and crash recovery. Local comparison passes all three

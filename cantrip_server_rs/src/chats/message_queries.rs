@@ -39,6 +39,16 @@ impl Repository {
         chat: &str,
         kind: MessageKind,
     ) -> Result<Vec<Value>> {
+        self.list_messages_with_query_context(owner, chat, kind, None)
+            .await
+    }
+    pub(crate) async fn list_messages_with_query_context(
+        &self,
+        owner: &str,
+        chat: &str,
+        kind: MessageKind,
+        context: Option<(&str, &[Value])>,
+    ) -> Result<Vec<Value>> {
         // Legacy/plain and Task reads authorize through the project. Protected
         // Agent reads instead authorize on the Chat, including standalone rows.
         let (joins, filter) = match kind {
@@ -58,13 +68,12 @@ impl Repository {
         let sql = format!(
             "SELECT to_jsonb(m)::text FROM chat_messages m INNER JOIN chats c ON c.id=m.chat_id {joins} WHERE {filter} AND m.chat_id=$2 ORDER BY m.sequence ASC"
         );
-        mapped(
-            checked(
-                self.database.query(&sql, &[&owner, &chat]).await,
-                &[owner, chat],
-            )?,
-            kind,
-        )
+        let result = self.database.query(&sql, &[&owner, &chat]).await;
+        let rows = match context {
+            Some((sql, params)) => crate::database::query_error::context(result, sql, params)?,
+            None => checked(result, &[owner, chat])?,
+        };
+        mapped(rows, kind)
     }
 
     pub async fn latest_encrypted_user_message(

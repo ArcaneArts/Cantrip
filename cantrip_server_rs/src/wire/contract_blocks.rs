@@ -5,12 +5,15 @@ const BASE: &str = include_str!("../../contracts/security.json");
 const RUN: &str = include_str!("../../contracts/mcp-run.json");
 const SURFACE: &str = include_str!("../../contracts/mcp-surface.json");
 const CLI: &str = include_str!("../../contracts/cli.json");
+const PROJECT_EXPORTS: &str = include_str!("../../contracts/project-exports.json");
 
 pub(super) fn load() -> Contracts {
     let mut contracts: Contracts = serde_json::from_str(BASE).expect("embedded protocol contracts");
     contracts.append(serde_json::from_str(RUN).expect("embedded Run MCP contracts"));
     contracts.append(serde_json::from_str(SURFACE).expect("embedded surface MCP contracts"));
     contracts.append(serde_json::from_str(CLI).expect("embedded CLI contracts"));
+    contracts
+        .append(serde_json::from_str(PROJECT_EXPORTS).expect("embedded project export contracts"));
     contracts.compile_patterns();
     contracts
 }
@@ -89,12 +92,17 @@ mod tests {
     fn cli_source_contracts_survive_unrelated_base_graph_growth() -> Result<()> {
         source_contracts_survive_growth(CLI, "CLI")
     }
+    #[test]
+    fn project_export_contracts_survive_unrelated_base_graph_growth() -> Result<()> {
+        source_contracts_survive_growth(PROJECT_EXPORTS, "project export")
+    }
 
     fn source_contracts_survive_growth(block: &str, label: &str) -> Result<()> {
         let base: Contracts = serde_json::from_str(BASE)?;
         let run: Contracts = serde_json::from_str(RUN)?;
         let surface: Contracts = serde_json::from_str(SURFACE)?;
         let cli: Contracts = serde_json::from_str(CLI)?;
+        let exports: Contracts = serde_json::from_str(PROJECT_EXPORTS)?;
         assert!(run.roots.keys().all(|name| !base.roots.contains_key(name)));
         assert!(
             surface
@@ -105,6 +113,15 @@ mod tests {
         assert!(cli.roots.keys().all(|name| !base.roots.contains_key(name)
             && !run.roots.contains_key(name)
             && !surface.roots.contains_key(name)));
+        assert!(
+            exports
+                .roots
+                .keys()
+                .all(|name| !base.roots.contains_key(name)
+                    && !run.roots.contains_key(name)
+                    && !surface.roots.contains_key(name)
+                    && !cli.roots.contains_key(name))
+        );
         let selected: Contracts = serde_json::from_str(block)?;
         let mut graphs = Vec::new();
         for extra_nodes in [0, 7, 41] {
@@ -117,6 +134,7 @@ mod tests {
             graph.append(serde_json::from_str(RUN)?);
             graph.append(serde_json::from_str(SURFACE)?);
             graph.append(serde_json::from_str(CLI)?);
+            graph.append(serde_json::from_str(PROJECT_EXPORTS)?);
             graph.compile_patterns();
             graphs.push(graph);
         }
@@ -124,12 +142,20 @@ mod tests {
         schemas.sort();
         let mut count = 0;
         for schema in schemas {
-            let output = Command::new("node")
-                .args([
+            let mut command = Command::new("node");
+            if label == "project export" {
+                command.args([
+                    "scripts/server-rust/project-export-contract-oracle.mjs",
+                    schema,
+                ]);
+            } else {
+                command.args([
                     "scripts/server-rust/security-oracle.mjs",
                     "--vectors",
                     schema,
-                ])
+                ]);
+            }
+            let output = command
                 .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap())
                 .output()?;
             anyhow::ensure!(

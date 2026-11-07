@@ -74,6 +74,7 @@ mod pane_layouts;
 mod policies;
 mod project_alerts;
 mod project_automations;
+mod project_exports;
 mod project_goal_observations;
 mod project_shares;
 mod project_surfaces;
@@ -223,6 +224,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(chat_forks::routes())
         .merge(chat_relocations::routes())
         .merge(chat_imports::routes())
+        .merge(project_exports::routes())
         .merge(external_chat_history::routes())
         .merge(chat_messages::routes())
         .merge(chat_preparation::routes())

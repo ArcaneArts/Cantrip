@@ -207,13 +207,12 @@ impl super::Repository {
             let source = if let Some(context) = context {native_task_suspension::source(tx, &context).await?} else {None};
             let task = tx.query("SELECT active_operation_id FROM tasks WHERE chat_id=$1", &[&chat]).await?;
             let task = task.first().map(|row|row.get::<Option<String>>(0)).transpose()?.flatten();
-            if let Some(previous) = &previous {
-                if !previous["target"]["taskRound"].is_null() && suspension::terminal(previous) &&
+            if let Some(previous) = &previous
+                && !previous["target"]["taskRound"].is_null() && suspension::terminal(previous) &&
                     source.as_ref().map(|source| previous["target"]["taskRound"] == source.task_round &&
                         previous["active"]["threadId"] == source.native_execution["threadId"] && previous["active"]["turnId"] == source.native_execution["turnId"])
                         .unwrap_or_else(||task.as_ref().is_none_or(|task|previous["target"]["taskRound"]["operationId"] == task.as_str())) {
                     return Ok(Some(json!({"state":previous,"context":Value::Null,"stop":Value::Null})));
-                }
             }
             let Some(source) = source else {return Ok(None);};
             if previous.as_ref().is_some_and(|state| !suspension::terminal(state) && !matches_source(state, &row, &source)) {

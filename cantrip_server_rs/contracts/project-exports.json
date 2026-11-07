@@ -1,0 +1,464 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "projectExportTargetSchema": 0,
+    "projectExportMappingSchema": 3,
+    "projectExportPreviewRequestSchema": 8,
+    "projectExportTargetInspectionSchema": 11,
+    "projectExportPreviewSchema": 19,
+    "projectExportCreateSchema": 42,
+    "projectExportChatResultSchema": 48,
+    "projectExportItemOutcomeSchema": 55,
+    "projectExportResultSchema": 64,
+    "projectExportChatBeginResultSchema": 70
+  },
+  "nodes": [
+    {
+      "type": "object",
+      "name": "projectExportTargetSchema",
+      "shape": { "kind": 1 },
+      "catchall": 2,
+      "checks": []
+    },
+    { "type": "literal", "values": ["codex-local"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectExportMappingSchema",
+      "shape": { "id": 4, "label": 5, "description": 6 },
+      "catchall": 7,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectExportPreviewRequestSchema",
+      "shape": { "target": 0, "worktreeId": 9 },
+      "catchall": 10,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectExportTargetInspectionSchema",
+      "shape": {
+        "target": 0,
+        "available": 12,
+        "destinationLabel": 13,
+        "message": 15,
+        "platform": 17
+      },
+      "catchall": 18,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 14, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 16, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectExportPreviewSchema",
+      "shape": {
+        "target": 0,
+        "targetLabel": 20,
+        "available": 21,
+        "destinationLabel": 22,
+        "message": 24,
+        "worker": 26,
+        "worktree": 31,
+        "maxChats": 36,
+        "supportedChatExperiences": 37,
+        "preserves": 39,
+        "flattens": 40
+      },
+      "catchall": 41,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 23, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 25, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "workerId": 27, "name": 28, "platform": 29 },
+      "catchall": 30,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "worktreeId": 32, "name": 33, "displayPath": 34 },
+      "catchall": 35,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 20, "inclusive": true }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 38,
+      "checks": [{ "check": "max_length", "maximum": 2, "when": "length" }]
+    },
+    { "type": "enum", "values": ["agent", "task"], "checks": [] },
+    {
+      "type": "array",
+      "element": 3,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 3,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectExportCreateSchema",
+      "shape": {
+        "operationId": 43,
+        "target": 0,
+        "worktreeId": 44,
+        "chatIds": 45
+      },
+      "catchall": 47,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "project-export-chat-ids",
+          "messageAfterPath": true,
+          "message": "Project export chat ids must be unique.",
+          "path": ["chatIds"]
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 46,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 20, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectExportChatResultSchema",
+      "shape": {
+        "chatId": 49,
+        "threadId": 50,
+        "destinationLabel": 51,
+        "messageCount": 52,
+        "reused": 53
+      },
+      "catchall": 54,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "projectExportItemOutcomeSchema",
+      "options": [56, 58],
+      "discriminator": "status",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "chatId": 49,
+        "threadId": 50,
+        "destinationLabel": 51,
+        "messageCount": 52,
+        "reused": 53,
+        "status": 57
+      },
+      "catchall": 54,
+      "checks": []
+    },
+    { "type": "literal", "values": ["exported"], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "status": 59, "chatId": 60, "code": 61, "message": 62 },
+      "catchall": 63,
+      "checks": []
+    },
+    { "type": "literal", "values": ["failed"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": [
+        "target-unavailable",
+        "encryption-unavailable",
+        "runtime-incompatible",
+        "worker-error"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectExportResultSchema",
+      "shape": {
+        "operationId": 65,
+        "target": 0,
+        "workerId": 66,
+        "worktreeId": 67,
+        "outcomes": 68
+      },
+      "catchall": 69,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 55,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 20, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "projectExportChatBeginResultSchema",
+      "options": [71, 74],
+      "discriminator": "status",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "status": 72 },
+      "catchall": 73,
+      "checks": []
+    },
+    { "type": "literal", "values": ["upload"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "chatId": 49,
+        "threadId": 50,
+        "destinationLabel": 51,
+        "messageCount": 52,
+        "status": 75,
+        "reused": 76
+      },
+      "catchall": 77,
+      "checks": []
+    },
+    { "type": "literal", "values": ["exported"], "checks": [] },
+    { "type": "literal", "values": [true], "checks": [] },
+    { "type": "never", "checks": [] }
+  ]
+}
