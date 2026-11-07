@@ -1,14 +1,21 @@
 # Rust server replacement
 
+The native CLI can activate converted profiles at the existing server pathname
+while retaining the previous directory. Local macOS tests pass actual process
+interruption and post-write reverse activation across all three storage modes,
+including shared native leases, missing-data failure safety and explicit repair
+from the latest logical export. See [profile activation](RUST_SERVER_PROFILE_ACTIVATION.md)
+for the commands, exact evidence and remaining packaged/client/platform scope.
+
 The desktop supervisor can now launch an explicitly packaged Rust server with
 the existing Node worker. Local macOS arm64 release-app tests exercise all three
 storage modes, genuine recovery-file confirmation and authentication, retained
 identity/settings, worker commands, logs and orderly shutdown. See the
 [desktop runtime qualification](RUST_SERVER_DESKTOP_RUNTIME.md) for commands,
 current-runtime evidence and remaining platform, migration and product work.
-The Node-created PGlite physical-copy attempt refuses to open safely; successful
-legacy conversion and post-write rollback are still required. Node remains the
-default server, and full replacement is incomplete.
+The Node-created PGlite physical directory requires logical conversion; packaged
+legacy conversion and post-write rollback acceptance are still required. Node
+remains the default server, and full replacement is incomplete.
 
 Native CantripOS and worktree `HEAD` reads now retain their existing read and
 project-guard behavior. The port also distinguishes public placement failures
