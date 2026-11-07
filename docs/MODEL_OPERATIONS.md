@@ -6,6 +6,15 @@ embedding and decision defaults; discovery never selects either automatically.
 Provider tabs expose each operation separately. Subscription account connections
 do not acquire API-key operation access by sharing a provider's model names.
 
+Each provider section searches its complete configured model set, including IDs
+and route aliases. Results use the picker's existing fuzzy ranking, with at most
+50 rows mounted per section. Default model pickers mount at most 100 model options
+per page. Page controls keep every result reachable; searching includes models on
+other pages and resets to the first result page. Counts describe the full filtered
+set. Paging and search never select a model or change a saved default. The saved
+selection remains visible on the picker trigger even when its row is on another
+page.
+
 Title generation, chat imports, and root/subagent configuration select language
 profiles only. A saved configuration whose profile is no longer a language model
 shows a configuration-needed state; opening its picker does not select a

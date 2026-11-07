@@ -34,6 +34,7 @@ import {
   useId,
   useMemo,
   useRef,
+  useState,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
@@ -52,6 +53,9 @@ import {
 } from "@/components/projects/token-usage-analytics";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ListPageControls } from "@/components/ui/list-page-controls";
+import { useConfiguredModelSearch } from "@/components/chat/model-search";
 import {
   StyledContextMenuContent,
   StyledContextMenuItem,
@@ -77,6 +81,7 @@ import {
 } from "./provider-setup";
 
 function ModelList({
+  label,
   models,
   providers,
   defaultModelId,
@@ -87,6 +92,7 @@ function ModelList({
   preferencesPending,
   details,
 }: {
+  label: string;
   models: readonly ModelProfileSummary[];
   providers: readonly ModelProviderSummary[];
   defaultModelId: string | null;
@@ -97,16 +103,56 @@ function ModelList({
   preferencesPending?: boolean;
   details?: ReadonlyMap<string, string>;
 }) {
+  const [query, setQuery] = useState("");
+  const [requestedPage, setPage] = useState(0);
+  const matches = useConfiguredModelSearch(models, query);
+  const pageSize = 50;
+  const page = Math.min(
+    requestedPage,
+    Math.max(0, Math.ceil(matches.length / pageSize) - 1),
+  );
+  const visible = matches.slice(page * pageSize, (page + 1) * pageSize);
+  const list = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (list.current) list.current.scrollTop = 0;
+  }, [query, page]);
   return (
     <div>
+      {models.length ? (
+        <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
+          <Input
+            type="search"
+            className="h-8 flex-1"
+            aria-label={`Search ${label}`}
+            placeholder={`Search ${label.toLocaleLowerCase()}…`}
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setPage(0);
+            }}
+          />
+          {query ? (
+            <span
+              role="status"
+              className="text-xs tabular-nums text-muted-foreground"
+            >
+              {matches.length.toLocaleString()} of{" "}
+              {models.length.toLocaleString()}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_64px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
         <span>Model</span>
         <span>Routes</span>
         <span>Configuration</span>
         <span className="text-right">Actions</span>
       </div>
-      <div className="divide-y border-t sm:border-t-0">
-        {models.map((model) => (
+      <div
+        ref={list}
+        className="max-h-[42vh] divide-y overflow-y-auto border-t sm:border-t-0"
+      >
+        {visible.map((model) => (
           <div
             key={model.id}
             data-high-contrast-row
@@ -203,6 +249,18 @@ function ModelList({
           </div>
         ))}
       </div>
+      {query && !matches.length ? (
+        <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+          No models match this search.
+        </p>
+      ) : null}
+      <ListPageControls
+        count={matches.length}
+        page={page}
+        pageSize={pageSize}
+        label={label.toLocaleLowerCase()}
+        onPageChange={setPage}
+      />
     </div>
   );
 }
@@ -263,40 +321,58 @@ export function ModelsSettings({
     () => scopedCapabilitiesByModel(catalog.data, workerId),
     [catalog.data, workerId],
   );
-  const languageModels = models.filter(
-    (model) => modelProfileOperation(model) === "language",
+  const languageModels = useMemo(
+    () => models.filter((model) => modelProfileOperation(model) === "language"),
+    [models],
   );
   const support = provider ? providerOperationSupport(provider) : null;
   const selectedTab = provider ? activeTab : "general";
-  const visibleModels = provider
-    ? modelsForProvider(models, provider.id)
-    : unassignedModels(models, providers);
-  const modelDetails = new Map<string, string>();
-  if (provider) {
-    const entries = new Map(
-      catalog.data?.models.map((entry) => [entry.nativeModelId, entry]),
-    );
-    const available = catalog.data
-      ? availableCatalogModelIds(catalog.data, workerId)
-      : new Set<string>();
-    for (const model of visibleModels) {
-      const route = model.routes.find(
-        (route) => route.providerId === provider.id,
+  const visibleModels = useMemo(
+    () =>
+      provider
+        ? modelsForProvider(models, provider.id)
+        : unassignedModels(models, providers),
+    [models, provider, providers],
+  );
+  const modelGroups = useMemo(() => {
+    const groups: Record<ModelOperation, ModelProfileSummary[]> = {
+      language: [],
+      embedding: [],
+      decision: [],
+    };
+    for (const model of visibleModels)
+      groups[modelProfileOperation(model)].push(model);
+    return groups;
+  }, [visibleModels]);
+  const modelDetails = useMemo(() => {
+    const details = new Map<string, string>();
+    if (provider) {
+      const entries = new Map(
+        catalog.data?.models.map((entry) => [entry.nativeModelId, entry]),
       );
-      const entry = route ? entries.get(route.modelName) : undefined;
-      const capability = entry ? (capabilitiesById.get(entry.id) ?? {}) : {};
-      const operation = modelProfileOperation(model);
-      const notes = [operationCapabilityText(operation, capability)];
-      if (operation === "embedding" && route?.operationOptions?.dimensions)
-        notes.push(
-          `${route.operationOptions.dimensions.toLocaleString()} configured dimensions`,
+      const available = catalog.data
+        ? availableCatalogModelIds(catalog.data, workerId)
+        : new Set<string>();
+      for (const model of visibleModels) {
+        const route = model.routes.find(
+          (route) => route.providerId === provider.id,
         );
-      if (entry && catalog.data && !available.has(entry.id))
-        notes.push("Unavailable in selected scope");
-      if (catalog.data?.servedStale) notes.push("Catalog stale");
-      modelDetails.set(model.id, notes.join(" · "));
+        const entry = route ? entries.get(route.modelName) : undefined;
+        const capability = entry ? (capabilitiesById.get(entry.id) ?? {}) : {};
+        const operation = modelProfileOperation(model);
+        const notes = [operationCapabilityText(operation, capability)];
+        if (operation === "embedding" && route?.operationOptions?.dimensions)
+          notes.push(
+            `${route.operationOptions.dimensions.toLocaleString()} configured dimensions`,
+          );
+        if (entry && catalog.data && !available.has(entry.id))
+          notes.push("Unavailable in selected scope");
+        if (catalog.data?.servedStale) notes.push("Catalog stale");
+        details.set(model.id, notes.join(" · "));
+      }
     }
-  }
+    return details;
+  }, [provider, catalog.data, capabilitiesById, visibleModels, workerId]);
   useEffect(() => {
     if (providersLoaded && activeTab !== selectedTab) onTabChange(selectedTab);
   }, [activeTab, selectedTab, onTabChange, providersLoaded]);
@@ -589,9 +665,7 @@ export function ModelsSettings({
           </p>
         ) : null}
         {(["language", "embedding", "decision"] as const).map((operation) => {
-          const operationModels = visibleModels.filter(
-            (model) => modelProfileOperation(model) === operation,
-          );
+          const operationModels = modelGroups[operation];
           if (!provider && !operationModels.length) return null;
           const unsupported = support?.[operation] === "unsupported";
           const defaultId =
@@ -630,6 +704,8 @@ export function ModelsSettings({
                 </Button>
               </div>
               <ModelList
+                key={`${selectedTab}:${operation}`}
+                label={`${modelOperationLabels[operation]} models`}
                 models={operationModels}
                 providers={providers}
                 defaultModelId={defaultId ?? null}
