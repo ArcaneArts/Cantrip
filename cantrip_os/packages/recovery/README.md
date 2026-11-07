@@ -67,6 +67,14 @@ restarted in reverse order; enable/disable preferences are preserved. Stopped
 desktop windows and processes are not resurrected. The receipt records the
 affected workspace IDs and remaining workspace writer PIDs.
 
+Capture preserves filesystem data after writers stop. Save work and close
+applications first when their latest history or settings must be committed.
+It does not save application memory: a newly visible Chromium visit can still
+be buffered and absent after termination. A live Chromium history database can
+also reject an independent SQLite reader with `database is locked`; that is not
+a reason to skip capture. Inspect the profile after the operation quiesces its
+writers, and verify the actual backup/restore outcome.
+
 Included root permissions are temporarily closed to ordinary workspace users.
 Linux filesystem watches reject changes during copying, including unavailable
 watch coverage. Arbitrary trusted root processes can bypass account permissions;

@@ -80,7 +80,9 @@ settings. The real Worker/grant/browser Docker checkpoint is recorded in
 [acceptance](ACCEPTANCE.md). **Register existing or restored Linux files** reserves fresh source bindings
 after restore; existing chats keep their captured placement. Local recovery,
 clone identity and current-native product evidence are recorded in acceptance.
-Real external SSH and final distribution acceptance remain open Phase 5 work.
+[Recorded AMD64 distribution acceptance](ACCEPTANCE.md#phase-5-distribution-acceptance-2026-11-07)
+covers the final Docker/ISO/packages, both live firmware boots and installed
+BIOS/UEFI boots. Real external SSH product acceptance remains open Phase 5 work.
 Guest transfer staging is root-private plaintext.
 
 From the repository root, with Node 22.13+ (or Node 24) and a running Docker engine:

@@ -7,6 +7,10 @@ existing worker. Docker/installed-VM and distribution evidence is recorded in
 [acceptance](../../ACCEPTANCE.md#phase-3-acceptance-and-distribution-2026-11-04).
 Installing this package alone does not move an existing chat into Linux.
 
+The [Phase 5 distribution checkpoint](../../ACCEPTANCE.md#phase-5-distribution-acceptance-2026-11-07)
+records executor 0.12.0 with the refreshed AMD64 Docker/ISO, native execution,
+installed BIOS/UEFI and optional-package preservation results at its exact source.
+
 `cantrip-os-executor` depends on the workspace package. It runs the pinned,
 reviewed `codex-exec-server` as each selected workspace account, with its own
 empty `CODEX_HOME`. It installs no worker or model-provider credentials. Source

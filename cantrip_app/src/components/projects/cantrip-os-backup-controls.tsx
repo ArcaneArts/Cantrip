@@ -450,7 +450,8 @@ export function CantripOsBackupControls({
         Backups are encrypted on the owning Worker. Capture, restore, reset and
         undo interrupt managed work across this OS's workspaces. The personal
         desktop is independent. Ignored files are included unless explicitly
-        excluded.
+        excluded. Save your work first; close applications to commit recent
+        browser history and settings before capture.
       </p>
       {error ? (
         <p role="alert" className="text-sm text-destructive">

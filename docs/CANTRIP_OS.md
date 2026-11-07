@@ -1072,7 +1072,19 @@ patch sets. Model/Worker orchestration and credentials remain outside the guest.
 
 The opt-in viewing tests close their own sessions/grants and delete the temporary
 view. Caller-owned private profiles, disposable guests and build caches need
-explicit final cleanup; retain bounded receipts and intended artifacts. Final
-AMD64 executor/ISO builds, refreshed live/install boot and an authorized external
-SSH machine remain required. Codex's disabled browser integration is recorded
-without using the owner's personal browser as a substitute.
+explicit final cleanup; retain bounded receipts and intended artifacts.
+
+The [Phase 5 distribution checkpoint](../cantrip_os/ACCEPTANCE.md#phase-5-distribution-acceptance-2026-11-07)
+records normal AMD64 Docker, ISO and four-package builds from `1f860ed0a`,
+fresh live BIOS/UEFI and installed disk-only BIOS/UEFI acceptance, real Chromium
+profile capture/restore, optional-package removal/reinstall and retained root
+customization. It qualifies that source and Linux runtime separately from the
+earlier Host model checkpoint. Disposable VM disks, Docker test resources and
+obsolete test archives were removed; the intended distribution artifacts and
+bounded evidence remain.
+
+Phase 5 remains in progress: an authorized real external SSH machine and the
+remaining complete remote product workflow are still required. Codex's disabled
+browser integration is recorded without using the owner's personal browser as
+a substitute. See the [operational workflow](../cantrip_os/PRODUCT_WORKFLOW.md)
+for attachment, recovery, private backups and preservation choices.

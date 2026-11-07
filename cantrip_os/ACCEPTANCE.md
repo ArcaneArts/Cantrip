@@ -4921,3 +4921,154 @@ acceptance remain unproven by this check. `pnpm check` still stops on the known
 Server budgets, 1532/1500 and 2336/1999. Formatting and diff checks pass; no hosted
 ordinary-PR validation was run. Small proof/build logs are retained under ignored
 `artifacts/phase5-iso-recovery-source/`.
+
+## Phase 5 distribution acceptance (2026-11-07)
+
+The normal full-edition builds completed from source revision
+`1f860ed0ae7470a74fed4947ed34fc40a60ac635`, tree
+`00184ef68641422220d806e9a8ad1ff4183fe59b`. The ISO recipe correction was
+delivered in [PR #2747](https://github.com/ArcaneArts/Cantrip/pull/2747), squash
+`b020df7414d61002d724e641e2739490a6a6d0e3`. All four optional packages were
+enabled. These artifacts qualify that recorded source, not subsequent Main
+native-runtime changes.
+
+The executor package contains the normal Linux AMD64 Codex 0.166.0 release
+executor, recipe 6, with patch fingerprint
+`11ba64258abf73b678aef876152c131ac3f828163b5a11d258e7ef882ab41cbf`.
+The installed manifest's four runtime artifacts were independently hashed and
+the native executables identified as AMD64 ELF. The earlier real-model/Worker
+checkpoint above separately qualifies its recorded Host development runtime;
+it is not evidence that every later patch set passed those model tests.
+
+### Artifacts
+
+Files are retained under ignored `cantrip_os/artifacts/phase5-distribution-final/`.
+Actual-byte hashes and package metadata are recorded in `final-iso.json`,
+`final-docker-archive.json` and `verified-normal-packages.json`. ISO and Docker
+exports have portable SHA-256 sidecars; the four Debian packages have catalogue
+sidecars.
+
+| Artifact                                        |         Bytes | SHA-256                                                            |
+| ----------------------------------------------- | ------------: | ------------------------------------------------------------------ |
+| `cantrip-os-amd64.iso`                          | 1,468,071,936 | `1a046f07a92495124e297510bfb5b2ae72cdd36e8e8d0e38d0793566adac0b55` |
+| `cantrip-os-1f860ed0a-amd64.docker.tar.gz`      |   523,498,858 | `798bd23b8cbf59b1e733ae60e7ff490e295e382f1933b2b28a9075b668fe4d9f` |
+| `packages/cantrip-os-executor_0.12.0_amd64.deb` |    18,284,292 | `1a6cf4f4d06a362895aff8a85a0c0cbce946593b889a3cb3878b6c96d6f2a4c9` |
+| `packages/cantrip-os-remote_0.11.0_amd64.deb`   |     2,001,524 | `10df81f54854cf8b352a72d8e5ff59a37e2450cb8356c27643eb947164556bd5` |
+| `packages/cantrip-os-workspaces_0.4.0_all.deb`  |        16,468 | `e82d169727c0ff8edc725b957c7a5e77ad6100678ce2c8a0b2aabcf3512a440e` |
+| `packages/cantrip-os-recovery_0.5.0_all.deb`    |        21,484 | `dc2e2c7173c5769890861ef23c1a5e9fe89c4379720cbd8b52b3642dec07e5a1` |
+
+The Docker archive passed gzip integrity and an actual Engine import, retaining
+image ID `sha256:906375a1166b6775fd46648621f54fb3473d55fce388193b41dfda2a54379414`.
+A fresh AMD64 container under macOS emulation, limited to 4 GiB and two CPUs,
+passed native workspace execution as UID 20000, passwordless sudo to UID 0,
+Unicode output and ordinary X desktop availability. Stop/start retained root
+customization, home files, modes, Linux/enrollment identities and the managed
+SSH key. New runtime/executor generations rejected the old captured binding
+with the actual generation-mismatch error. An initial fixture read status before
+the service reached `running`; the final run waited on actual service responses.
+Both temporary containers and their six anonymous volumes were removed.
+
+### Live media and installed system
+
+The complete final matrix exited 0 under QEMU 11.1.3 on the ARM64 host, using
+Q35/TCG, two virtual CPUs, 4 GiB RAM and virtio graphics. BIOS and EDK2 UEFI were
+both exercised. This is emulated AMD64 acceptance, not native AMD64 hardware or
+cloud acceptance. The guest reported Debian 13.7, Linux
+`6.12.115+deb13.1-amd64`, nano 8.4, Python/python3 3.13.5 and htop 3.4.1.
+
+| Boot                        | Actual result                                                                                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Fresh live BIOS             | Automatic login, all four current packages/services, IceWM, Chromium, native workspace execution/sudo/Unicode and saved browser history passed.                                |
+| Installed BIOS, ISO removed | `cantrip-install --erase /dev/vda` completed once; root was `/dev/vda3`. Automatic login, retained account/files/root customization and native execution passed.               |
+| Same installed disk, UEFI   | Root remained `/dev/vda3`; automatic login, retained identities, files, package installation, browser history and native execution passed.                                     |
+| Fresh live UEFI             | Automatic login, current packages/services, native execution, GUI launch and saved browser history passed. Its identity was fresh and installed-disk customization was absent. |
+
+Installation prepared a new Linux machine ID, enrollment identity and managed
+SSH key on the target only; the original live system retained its identities.
+The installed system initially had no executor attachment. Its machine,
+enrollment and SSH identities then survived package maintenance and the
+BIOS-to-UEFI reboot. The retained native proof counter contained exactly
+`live-bios`, `installed-bios`, `installed-uefi`; the separate fresh live system
+contained only `live-uefi`.
+
+Guest framebuffer inspection showed the actual rendered local Chromium proof
+page on the black live BIOS desktop. The preceding matrix also captured that
+rendered page on installed UEFI using this same ISO. Some final-matrix frames
+show only the desktop or browser startup; those frames do not establish a
+painted page. GUI launch/window observations and the independently read,
+committed browser History are separate recorded checks. Guest frames are not
+rendered Cantrip-client browser acceptance.
+
+The installed package test changed an executor conffile, then reinstalled the
+same package with `--force-confold` and verified the change survived. It disabled
+the three managed services, removed all four optional packages, purged them,
+reinstalled them and enabled services again. Ordinary X/root access remained
+usable throughout. Native execution worked after reinstall, with identities,
+the root marker's 0640 mode, the home document's 0751 mode and UID 1000, actual
+Chromium History and the interactively installed Debian `hello` package retained.
+This same-version conffile/lifecycle test does not claim arbitrary changes can
+merge into a new base image; the earlier package/system recovery checkpoints
+record their separate preservation and failed-operation cases.
+
+### Real browser profile capture and restore
+
+The assigned UID 20000 Chromium visited the local proof page and closed through
+IceWM's ordinary window-close request. Its actual History contained the URL and
+passed SQLite integrity checking. The same profile was reopened with a live
+window/process before the real recovery capture quiesced it. Capture and staged
+restore both succeeded into a different workspace, UID 20001. The original and
+restored databases retained the committed URL and passed integrity checks; the
+restored browser reopened on its assigned desktop and the database remained
+valid after closing it. The temporary 4,188,160-byte transfer archive and staging
+were removed. This is guest-package administration acceptance, supplementing
+the earlier encrypted Worker/Server backup tests; it is not an external-machine
+product test.
+
+The failed earlier attempts are retained: a live SQLite read returned
+`database is locked`, and terminating a just-opened browser could leave its
+newest visit buffered. The fixture now establishes committed browser state
+before exercising capture with live writers. No production gate or workaround
+was added. The backup UI and guides now explicitly say to save work and close
+applications when their latest history/settings must be committed. Capture
+preserves filesystem state after quiescence, not application memory, live windows
+or portable browser authentication.
+
+Other fixture corrections drained the serial console while observing the one
+ACPI poweroff request and observed an already retained workspace rather than
+attempting to create it again. Every final boot powered off with actual QEMU
+exit 0. A QEMU virtio GPU warning stack occurred during a focused live shutdown;
+that probe still reached kernel powerdown and QEMU exit 0. This is recorded as
+a platform observation, not a broad hardware qualification. Earlier failures
+remain failures in their original receipts.
+
+### Validation, cleanup and remaining acceptance
+
+The runnable final harness, events, operation receipts and guest frames are in
+ignored `artifacts/phase5-distribution-matrix6/`; earlier matrix attempts and the
+focused profile/poweroff diagnostics remain separately recorded. The final
+matrix's VM and 3,728,048,128 allocated bytes of disk/firmware state were deleted
+and their absence verified. Only bounded logs/frames remain. Earlier disposable
+VM state was also removed. Final Docker image, containers, anonymous volumes,
+ISO build volume and temporary builder images were removed after exporting and
+verifying the intended artifacts. Four obsolete Host test archives totaling
+853,576,618 bytes were removed after preserving small receipts.
+
+The owner's requested Docker cleanup subsequently reclaimed 13.81 GB of default
+builder cache; that cache no longer retains the earlier compact native bundle.
+Exact runtime artifacts remain in the final Debian packages. The ordinary
+CantripOS instance, unrelated databases and separate cross-builder state were
+preserved. Host free space was about 457 GiB after cleanup. Per-run ownership and
+cleanup receipts accompany the ignored evidence; no broad volume deletion was
+used.
+
+The full app TypeScript check and relevant shared package builds passed.
+`pnpm check` stops at the unchanged Server decomposition budgets, 1532/1500 and
+2336/1999. Scoped formatting, documentation links and diff checks are recorded
+with this delivery; no hosted ordinary-PR validation was run.
+
+Phase 5 remains in progress. An authorized real external SSH target/access is
+still required for the complete remote product workflow. Codex browser control
+is disabled in Work settings; API/client-transport and guest CUA evidence does
+not substitute for unrun rendered client acceptance. The owner's personal
+browser was not used. Secure Boot, physical hardware, ARM64 bootable media and
+general cloud provisioning remain outside this tested matrix.

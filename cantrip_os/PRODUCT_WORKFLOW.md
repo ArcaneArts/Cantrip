@@ -487,6 +487,12 @@ pending work or erase another account's saved request.
 
 ## Private workspace backups
 
+Save application work before capture. Close Chromium first when its latest
+history and settings must be committed. Capture stops workspace programs and
+backs up filesystem state; it does not save their unsaved memory. A browser
+profile can be restored and reopened with its committed data, while portable
+browser authentication is not promised.
+
 Open **Project settings → CantripOS**, select an instance/workspace and use
 **Private backups and recovery**. Unlock the account's encryption first. **Capture workspace**
 uses an optional private label and explicit home-relative exclusions, one per
