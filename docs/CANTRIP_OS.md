@@ -817,8 +817,8 @@ effects and excluded mounted files. Saved requests preserve their original UUID
 across reloads; history, continuation, pre-execution abandonment and explicit
 resulting-identity recovery keep the original admission and encryption context.
 Private outcomes clear on encryption lock or account change. Runtime and source
-verification remain separate from root recovery. Real remote acceptance, clone
-provisioning and final artifacts remain open; see the acceptance record for the
+verification remain separate from root recovery. Real remote acceptance and
+final artifacts remain open; see the acceptance record for the
 exact product checks and any upstream startup limitations.
 
 Fresh templates and copied OS installs now initialize distinct Linux machine
@@ -827,9 +827,21 @@ identities. The offline installer invokes package-owned clone hooks: executor
 host keys. Workspace files, accounts, configuration and preferences remain.
 Actual Docker copies receive fresh guest/runtime identities and reject the
 original binding, while the original retains its identity and host key. Normal
-restart and same-instance retained root recovery preserve enrollment. Full
-cross-instance workspace restore through Cantrip and final live/install ISO
-acceptance remain required.
+restart and same-instance retained root recovery preserve enrollment.
+
+Actual full Node Server/Worker acceptance now restores a private workspace onto
+a separately initialized Docker instance through the product APIs and real
+encryption grants. It verifies dirty/ignored/Unicode files, Git metadata, modes,
+UID remapping, closed browser-profile data and configuration. Corrupt input keeps
+the destination's original home usable. Machine/enrollment identities and SSH
+host keys stay with their respective instances; explicit restored-source
+registration creates fresh source/worktree/binding IDs. The original binding is
+verified on the original instance, and its native handle is rejected by the
+destination even when the same workspace name exists there. Repeated submission
+observes the original restore admission and encrypted receipt.
+
+This is local Docker product API acceptance. Current native model/CUA and real
+external SSH acceptance, and final live/install ISO acceptance, remain required.
 
 Attach a reachable cloud VM or physical install through authenticated transport.
 Exercise Linux-owned checkouts, remote editor access, reconnect, process/output

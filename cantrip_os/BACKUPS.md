@@ -208,7 +208,46 @@ the full Worker and Cantrip's browser controls, including a full Worker SIGKILL
 and historical capture observation. It is separate from the earlier ephemeral-key
 fixtures. See [the product workflow](PRODUCT_WORKFLOW.md#private-workspace-backups).
 
-Still required: restored-source adoption, installed-system product controls,
-full product/agent/remote acceptance, instance
-lifecycle and upgrade/customization preservation, and final recorded Docker/ISO
-distribution artifacts. A local VM reached over SSH is not cloud acceptance.
+Restored-source adoption and lifecycle/upgrade controls now have separate product
+acceptance records. Cross-instance restoration is covered by the following full
+Server/Worker API test. Current model/CUA and real external SSH acceptance,
+installed-system product coverage and final recorded Docker/ISO distributions
+remain required. A local VM reached over SSH is not cloud acceptance.
+
+## Cross-instance product test
+
+`cantrip_worker/test/os-cross-instance.product.integration.test.ts` uses the
+actual running Node Server, full external Worker, real account grants and guest
+packages. It creates two disposable Docker instances, captures through the
+product API, verifies encrypted-file permissions, corrupts that test archive,
+checks the existing destination home, restores the original archive bytes and
+restores into another new account. Both machines retain their distinct identities
+and SSH host keys. Source registration creates fresh binding/source/worktree IDs;
+the original binding remains on the original instance. An old native binding is
+rejected on the destination even with a running executor under the same workspace
+name. Repeating the immutable admission returns the original encrypted result.
+
+Run only against a disposable local profile with an initialized anonymous
+encryption profile and its saved recovery artifact. Approve the Worker's actual
+principal and grant `repository-content`, `private-surface-metadata` and
+`surface-private-state` through the normal registry, then refresh its grants.
+The Server must allow the test client's origin `http://127.0.0.1:5179`.
+
+```sh
+CANTRIP_OS_PRODUCT_TEST_ORIGIN=http://127.0.0.1:4322 \
+CANTRIP_OS_PRODUCT_TEST_RECOVERY=/absolute/private/recovery.json \
+CANTRIP_OS_PRODUCT_TEST_WORKER=disposable-worker-id \
+CANTRIP_OS_PRODUCT_TEST_WORKER_DATA=/absolute/private/worker \
+CANTRIP_OS_CROSS_INSTANCE_TEST_IMAGE=your-current-normal-image \
+  pnpm --filter @cantrip/worker exec vitest run \
+    test/os-cross-instance.product.integration.test.ts --maxWorkers=1
+```
+
+The test requires direct access to that disposable Worker's private archive
+directory for corruption injection. It removes its containers and anonymous
+volumes in `finally`. The caller owns the Server/Worker profile, private recovery
+file, archives, image and build caches and must remove those after testing. Set
+`CANTRIP_OS_PRODUCT_TEST_EVIDENCE` to retain bounded JSON assertions; it does not
+export key material or profile contents. The closed browser-profile fixture
+tests file/SQLite preservation, not portable browser authentication or current
+interactive browser/model acceptance.

@@ -508,6 +508,14 @@ it and checking the explicit replacement choice. Data is fully authenticated and
 staged before activation. **Roll back restore** uses its retained original and
 requires a separate confirmation. Browser data may require signing in again.
 
+To restore onto another machine, attach that independently initialized instance
+to the same Worker and select it as the destination before restoring the saved
+backup. Create a new workspace there. The archive retains its original capture
+identity; the destination keeps its own Linux machine ID, enrollment and SSH
+host keys. File ownership is remapped to the destination account. This transfers
+workspace files, not shared root changes, live processes or existing chat/source
+identities. Register the restored source explicitly afterward.
+
 An encrypted immutable admission is saved in this tab before submission. After a
 lost response or reload, **Resume saved request** submits that same admission;
 Server observes its original job. **Discard local draft** only clears the tab's
@@ -550,6 +558,13 @@ outstanding. Separate native Controller tests cover Git registration and a new
 secondary worktree in Docker and the installed VM; they do not substitute for
 full installed-system product or real remote/cloud acceptance. Phase 5 remains
 in progress.
+
+Separate full Node Server/Worker product API acceptance restores onto a second
+fresh Docker instance, checks UID remapping and both machines' retained identities,
+verifies new source bindings, and rejects the original native handle on the
+destination. A corrupt encrypted archive leaves an existing destination home
+usable. That test uses a closed SQLite browser-profile fixture; it does not add
+current browser interaction, model or external SSH acceptance.
 
 ## Retained instance power
 

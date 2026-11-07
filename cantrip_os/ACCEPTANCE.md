@@ -4731,3 +4731,87 @@ through the current Server/Worker, final ISO live/install boot, and real externa
 SSH/model/CUA acceptance remain required for the full Phase 5 goal. This local VM
 is not external/cloud acceptance. Bounded logs, package manifests and cleanup
 receipts belong under ignored `artifacts/phase5-restore-identities/`.
+
+## Phase 5: full Worker cross-instance workspace restore (2026-11-07)
+
+Isolated `codex/os-phase5-cross-instance-restore` adds an opt-in product API
+acceptance test. A full Node Server with a fresh private PGlite database and the
+full external Worker used actual account profile initialization, principal
+approval, encrypted component grants and refresh. No mocked command bus,
+controller, transport, recovery helper or archive implementation was used.
+This extends the earlier same-instance browser acceptance and the separate
+offline-clone identity tests.
+
+The normal OCI recipe was built from runtime source
+`fc2beeb354ab2ffb9a9f57050af3ef4e39637618`, with the unchanged normal executor
+0.12.0 and remote 0.11.0 Debian artifacts from the preceding cycle supplied as
+its ordinary build contexts. It built workspace 0.4.0 and recovery 0.5.0 through
+the normal recipe. Image ID:
+`sha256:d529610998dc26ebcc95608fbe6ff6a91164b34c45ba37961d05e1ff0e988f6f`.
+The image inspection, package input checksums and full build log are retained;
+no final distribution/ISO acceptance is claimed by this checkpoint.
+
+The final actual product test passes in 13.01 seconds:
+
+- Source instance `c8c32431` / UID 20000 captured operation `d29e0704` with an
+  explicitly excluded `.cache`. Capture used its registered Linux-owned folder
+  source containing an actual dirty Git repository. Ignored `.env` and binary
+  `node_modules` data, untracked Unicode filenames, mode 0751, Git history/status,
+  workspace configuration and a closed SQLite browser-profile fixture survived.
+- Destination instance `d69dc697` / UID 20002 restored operation `92f62175`.
+  Numeric ownership was remapped. Subsequent edits on the source remained there.
+  Both Linux machine IDs, guest enrollment IDs, owner/Worker attachments and
+  managed SSH host keys retained their distinct original values.
+- Corrupt archive restore `1083929b` failed with an authenticated private error
+  before activation. An existing target-home sentinel remained usable. The
+  fixture then restored the original encrypted bytes and completed the valid
+  restore into a separate new workspace.
+- Explicit source registration on the destination assigned fresh binding,
+  project-source and worktree IDs. The original binding remained on the source
+  instance/workspace and passed an explicit verification there. A running
+  destination executor under the same `original` workspace name rejected the
+  old native binding with `Executor attachment or generation mismatch`.
+- Repeating the saved restore admission after runtime recovery returned its
+  original operation and exact encrypted receipt. The retained private archive
+  was 235,282 bytes, mode 0600, SHA-256
+  `b40feeb5a19eef6d2694042524f7407ed69fbb9c9cf99cef0c96585dbc1b98fc`.
+
+The fixture uses synthetic closed Chromium-profile SQLite data. It does not
+claim browser sign-in portability, a current interactive Chromium session or
+model/CUA acceptance. The external Worker's existing Host native binary passed
+its normal version/capability probe but still rejected Main's `--scope` ownership
+argument in background reconciliation. Initial encryption-bootstrap warnings
+also remain in the raw log; explicit grant refresh succeeded and the tested
+operations used the granted keys. No current-native/model acceptance is claimed.
+Browser testing remained disabled by Codex Work settings; the personal browser
+was not used. This is local Docker product API acceptance, not external/cloud
+SSH or installed-system product acceptance.
+
+Related backup/reset/staging/encrypted-file unit suites pass 19 tests. The product
+case is skipped in that ordinary run and was executed separately with all five
+required opt-in inputs. The new test's strict standalone TypeScript check with
+Node types, Python syntax, formatting and `git diff --check` pass. The normal
+Worker and shared version/logging/protocol/crypto/glitch/NBT builds pass.
+`pnpm check` stops on the same Primary Server line budgets, 1532/1500 and
+2336/1999; no hosted ordinary-PR validation was run.
+
+Earlier fixture failures are retained honestly: the first verification stripped
+Git's status-column whitespace, and the first stricter stale-handle check reached
+an unopened destination executor. Those test setup defects were corrected;
+the final test verifies a running destination and the actual identity rejection.
+Initial ad-hoc typecheck invocations omitted TypeScript 6's `--ignoreConfig` and
+explicit Node types; the corrected invocation passes.
+
+All test containers and anonymous volumes were removed in `finally`. Both own
+Server/Worker processes exited normally. The disposable profile, recovery key
+artifact, four encrypted test archives, downloaded managed runtimes and database
+were deleted after recording bounded hashes/receipts, removing 2,452,445,702
+logical file bytes. The own test image and unused build cache were removed.
+The user's ordinary CantripOS, unrelated containers/databases and the large
+orphan PostgreSQL volume were preserved. Small logs, source/input hashes,
+assertions and cleanup receipts belong under ignored
+`artifacts/phase5-cross-instance-restore/`.
+
+The full Phase 5 goal remains active. Current native/model/CUA, an authorized
+real external SSH target, and final recorded OCI/DEB/AMD64 BIOS+UEFI live/install
+artifacts still require acceptance. No machine was purchased or provisioned.
