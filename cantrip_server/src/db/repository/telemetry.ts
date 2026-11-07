@@ -953,8 +953,13 @@ export class TelemetryRepository {
       ...(query.projectId
         ? [eq(schema.tokenUsageRecords.projectId, query.projectId)]
         : []),
-      ...(query.from ? [gte(modelOperationObservedAtSql, query.from)] : []),
-      ...(query.to ? [lte(modelOperationObservedAtSql, query.to)] : []),
+      // This CASE expression has no Drizzle timestamp-column encoder.
+      ...(query.from
+        ? [gte(modelOperationObservedAtSql, query.from.toISOString())]
+        : []),
+      ...(query.to
+        ? [lte(modelOperationObservedAtSql, query.to.toISOString())]
+        : []),
     ];
     const [quotaRows, tokenRows] = await Promise.all([
       this.database
@@ -1064,8 +1069,8 @@ export class TelemetryRepository {
       ...(query.projectId
         ? [eq(schema.tokenUsageRecords.projectId, query.projectId)]
         : []),
-      gte(modelOperationObservedAtSql, from),
-      lte(modelOperationObservedAtSql, to),
+      gte(modelOperationObservedAtSql, from.toISOString()),
+      lte(modelOperationObservedAtSql, to.toISOString()),
     ];
     const behaviorFilters = [
       eq(schema.modelBehaviorObservations.ownerId, ownerId),

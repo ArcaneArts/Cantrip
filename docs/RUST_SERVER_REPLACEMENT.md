@@ -1,5 +1,11 @@
 # Rust server replacement
 
+Successful protected embedding and typed decision operations now have full-worker
+qualification covering batching, pinned identity, cancellation, worker crash,
+exact replay and retained usage. Aggregate checks also expose and repair a Node
+PostgreSQL date-binding defect. See [model operation qualification](RUST_SERVER_MODEL_OPERATIONS.md)
+for the scenario, counters, evidence and remaining scope. Node remains the default.
+
 Actual single-server crash comparisons now pass Task, Agent and active Goal
 continuity across all three database modes with the full native worker. The
 paired startup repair retains unfinished GUI authority; a bounded worker
