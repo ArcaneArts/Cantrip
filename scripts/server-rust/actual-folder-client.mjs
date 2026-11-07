@@ -59,6 +59,7 @@ import { actualNativeInflightClient } from "./actual-native-inflight-client.mjs"
 import { SingleProductFixture } from "./single-product-fixture.mjs";
 import { actualSingleInflightClient } from "./actual-single-inflight-client.mjs";
 import { actualModelOperationsClient } from "./actual-model-operations-client.mjs";
+import { actualCantripOsClient } from "./actual-cantrip-os-client.mjs";
 import {
   actualProviderCatalogClient,
   assertProviderCatalogSummary,
@@ -105,7 +106,8 @@ const singleProduct =
   process.argv.includes("--native-single-recovery") ||
   process.argv.includes("--native-single-agent-recovery") ||
   process.argv.includes("--model-operations") ||
-  process.argv.includes("--provider-catalog");
+  process.argv.includes("--provider-catalog") ||
+  process.argv.includes("--cantrip-os");
 const selectedRuntime = option("--runtime");
 assert.ok(!selectedRuntime || ["node", "rust"].includes(selectedRuntime));
 const runtimeCases = sharedPair
@@ -170,6 +172,7 @@ async function flow(
     const pathname = new URL(request.url()).pathname;
     if (
       pathname.startsWith("/api/projects") ||
+      pathname.startsWith("/api/cantrip-os") ||
       pathname.startsWith("/api/model-operations/") ||
       pathname.startsWith("/api/chats/") ||
       pathname.startsWith("/api/skills") ||
@@ -985,6 +988,19 @@ async function flow(
           : {}),
       });
     }
+    if (process.argv.includes("--cantrip-os")) {
+      if (!worker) await startWorker();
+      await actualCantripOsClient({
+        page,
+        fixture,
+        root,
+        dataDirectory,
+        workerId,
+        startWorker,
+        stopWorker,
+        result,
+      });
+    }
     if (process.argv.includes("--provider-catalog")) {
       if (!worker) await startWorker();
       await actualProviderCatalogClient({
@@ -1253,6 +1269,11 @@ try {
   for (const runtime of report.runtimes.slice(1)) {
     assert.deepEqual(runtime.steps, report.runtimes[0].steps);
     assert.deepEqual(runtime.projects, report.runtimes[0].projects);
+    if (process.argv.includes("--cantrip-os"))
+      assert.deepEqual(
+        runtime.cantripOs.summary,
+        report.runtimes[0].cantripOs.summary,
+      );
     if (process.argv.includes("--provider-catalog"))
       assertProviderCatalogSummary(
         runtime.providerCatalog.summary,
