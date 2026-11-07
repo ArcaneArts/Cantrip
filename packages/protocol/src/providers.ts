@@ -613,6 +613,8 @@ export const modelRouteSummarySchema = modelRouteInputSchema.extend({
   providerModelId: z.string().min(1).nullable().default(null),
   position: z.number().int().nonnegative(),
   discoveryManaged: z.boolean().default(false),
+  // Presentation evidence only. Explicit inference never gates on catalog metadata.
+  languageSelectionConflict: z.boolean().optional(),
 });
 
 export const modelProfileCreateSchema = z.object({

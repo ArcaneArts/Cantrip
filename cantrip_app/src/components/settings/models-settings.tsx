@@ -1,4 +1,5 @@
 import {
+  isLanguageModelProfile,
   modelProfileOperation,
   providerOperationSupport,
 } from "@cantrip/protocol";
@@ -229,7 +230,12 @@ function ModelList({
                   variant="ghost"
                   title={`Use as default ${modelProfileOperation(model)} model`}
                   aria-label={`Use ${model.name} as default ${modelProfileOperation(model)} model`}
-                  disabled={preferencesPending || defaultModelId === model.id}
+                  disabled={
+                    preferencesPending ||
+                    defaultModelId === model.id ||
+                    (modelProfileOperation(model) === "language" &&
+                      !isLanguageModelProfile(model))
+                  }
                   onClick={() => onDefault(model)}
                 >
                   <Check className="size-3.5" />
@@ -322,7 +328,7 @@ export function ModelsSettings({
     [catalog.data, workerId],
   );
   const languageModels = useMemo(
-    () => models.filter((model) => modelProfileOperation(model) === "language"),
+    () => models.filter(isLanguageModelProfile),
     [models],
   );
   const support = provider ? providerOperationSupport(provider) : null;
@@ -346,6 +352,16 @@ export function ModelsSettings({
   }, [visibleModels]);
   const modelDetails = useMemo(() => {
     const details = new Map<string, string>();
+    for (const model of visibleModels) {
+      if (
+        modelProfileOperation(model) === "language" &&
+        !isLanguageModelProfile(model)
+      )
+        details.set(
+          model.id,
+          "Configured for language, but routes advertise only embeddings or decisions. Edit the routes or add a profile in the matching section. Saved selections are retained.",
+        );
+    }
     if (provider) {
       const entries = new Map(
         catalog.data?.models.map((entry) => [entry.nativeModelId, entry]),
@@ -360,7 +376,10 @@ export function ModelsSettings({
         const entry = route ? entries.get(route.modelName) : undefined;
         const capability = entry ? (capabilitiesById.get(entry.id) ?? {}) : {};
         const operation = modelProfileOperation(model);
-        const notes = [operationCapabilityText(operation, capability)];
+        const notes = [
+          ...(details.has(model.id) ? [details.get(model.id)!] : []),
+          operationCapabilityText(operation, capability),
+        ];
         if (operation === "embedding" && route?.operationOptions?.dimensions)
           notes.push(
             `${route.operationOptions.dimensions.toLocaleString()} configured dimensions`,

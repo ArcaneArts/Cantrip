@@ -147,3 +147,17 @@ export function modelProfileOperation(profile: {
 }): ModelOperation {
   return profile.operation ?? "language";
 }
+
+/** Preserve explicitly configured profiles while excluding confirmed non-language
+ * routes from new language selections. Unknown or conflicting observations and
+ * legacy peers without this presentation evidence remain selectable. */
+export function isLanguageModelProfile(profile: {
+  operation?: ModelOperation;
+  routes?: readonly { enabled: boolean; languageSelectionConflict?: boolean }[];
+}): boolean {
+  if (modelProfileOperation(profile) !== "language") return false;
+  const enabled = profile.routes?.filter((route) => route.enabled) ?? [];
+  return (
+    !enabled.length || enabled.some((route) => !route.languageSelectionConflict)
+  );
+}
