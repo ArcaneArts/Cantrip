@@ -14,7 +14,10 @@ import {
   inferenceCommandSignal,
   trackInferenceCommandOperation,
 } from "./inference-command.js";
-import type { WorkerInferenceAdmission } from "./inference-admission.js";
+import type {
+  InferencePreparationContext,
+  WorkerInferenceAdmission,
+} from "./inference-admission.js";
 import type { RuntimeProvider } from "./protected-secrets.js";
 import { ModelOperationError } from "./model-operation-error.js";
 import {
@@ -227,12 +230,13 @@ async function requestBatch(
   );
 }
 
-/** Standalone embedding execution with one independently admitted batch at a time.
- * This entry point does not inherit a native turn's reservation. */
+/** Bounded embedding batches, standalone or in an explicit native preparation.
+ * Each batch yields its capacity before the next batch rejoins provider FIFO. */
 export async function embed(input: {
   request: EmbeddingInput;
   route: Route;
   admission: WorkerInferenceAdmission;
+  preparation?: InferencePreparationContext;
   signal?: AbortSignal;
   fetcher?: typeof fetch;
   usageCollector?: ModelOperationUsageCollector;
@@ -266,7 +270,7 @@ export async function embed(input: {
       route.provider.inferenceCatalogCreatedRevision,
   });
   const signal = AbortSignal.any(
-    [input.signal, inferenceCommandSignal()].filter(
+    [input.signal, input.preparation?.signal, inferenceCommandSignal()].filter(
       (value): value is AbortSignal => Boolean(value),
     ),
   );
@@ -328,6 +332,8 @@ export async function embed(input: {
           providerCreationRevision:
             route.provider.inferenceCatalogCreatedRevision,
           signal,
+          preparation: input.preparation,
+          yieldAfter: true,
         },
         execute,
       );
