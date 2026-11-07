@@ -23,6 +23,11 @@ import { eventually, launchActualWorker } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
 import { prestartPreparationFixture } from "./prestart-preparation-fixture.mjs";
 import { qualifyTaskSuspension } from "./suspension-task-browser.mjs";
+import { stagePlan, startTaskStage } from "./suspension-task-stages.mjs";
+import {
+  damageSuspensionForRetry,
+  qualifySuspensionRestoreFailure,
+} from "./suspension-restore-browser.mjs";
 import {
   queueTaskGoalPlanning,
   startSuspensionTaskGoal,
@@ -89,6 +94,11 @@ const report = {
 };
 const nativeBinary = process.env.CANTRIP_CODEX_BIN;
 const taskGoalOrigin = process.argv.includes("--task-goal-origin");
+const taskStage = process.argv.includes("--task-planning-origin")
+  ? "plan"
+  : process.argv.includes("--task-finalizer-origin")
+    ? "finalize"
+    : "direct";
 let browser, vite, failure;
 
 function modelFunctions(tools, namespace) {
@@ -172,8 +182,11 @@ async function flow(kind, executable, cliBinary) {
     await launch(enrollment.code);
     const { chat, task, projectId, providerId, configuration } =
       await prepareSuspensionChat(page, workerId, directory, model, {
-        taskOrigin: process.argv.includes("--task-origin") || taskGoalOrigin,
-        taskGoalOrigin,
+        taskOrigin:
+          process.argv.includes("--task-origin") ||
+          taskGoalOrigin ||
+          taskStage !== "direct",
+        taskGoalOrigin: taskGoalOrigin || taskStage !== "direct",
         ...(process.argv.includes("--capacity-waiting") ||
         process.argv.includes("--task-stop-restoring")
           ? { maxConcurrentInference: 1 }
@@ -221,13 +234,22 @@ async function flow(kind, executable, cliBinary) {
         })
       : null;
     if (taskGoalOrigin) queueTaskGoalPlanning(model);
+    if (taskStage === "finalize")
+      model.reply({ text: JSON.stringify(stagePlan) });
     const tool = model.reply({ text: "DURABLE_TOOL_REQUEST", hold: true });
     let boundary = model.reply({ text: "DURABLE_BOUNDARY_ONE", hold: true });
     const prompt = "DURABLE_ORIGINAL_PROMPT";
     if (preparation && process.argv.includes("--live-preparation"))
       await openMountedSuspensionChat(page, vite.resolvedUrls.local[0], null);
     let acceptedPrompt;
-    if (taskGoalOrigin) {
+    if (taskStage !== "direct") {
+      result.taskAdmission = await startTaskStage(
+        page,
+        chat.id,
+        task.rowVersion,
+        taskStage,
+      );
+    } else if (taskGoalOrigin) {
       result.taskAdmission = await startSuspensionTaskGoal(
         page,
         chat.id,
@@ -398,9 +420,10 @@ async function flow(kind, executable, cliBinary) {
       {
         ...command,
         arguments: {
-          cmd: taskGoalOrigin
-            ? "printf 'DURABLE_TOOL_RESULT\\n'"
-            : "printf 'DURABLE_TOOL_RESULT\\n' | tee -a durable-cold-marker",
+          cmd:
+            taskGoalOrigin || taskStage !== "direct"
+              ? "printf 'DURABLE_TOOL_RESULT\\n'"
+              : "printf 'DURABLE_TOOL_RESULT\\n' | tee -a durable-cold-marker",
           yield_time_ms: 1000,
           max_output_tokens: 1000,
         },
@@ -597,6 +620,7 @@ async function flow(kind, executable, cliBinary) {
     }
     if (task) {
       result.taskSuspension = await qualifyTaskSuspension({
+        stage: taskStage,
         completeOnly: process.argv.includes("--task-complete"),
         pauseOnly: process.argv.includes("--task-pause-only"),
         livePause: process.argv.includes("--task-live-pause"),
@@ -887,6 +911,14 @@ async function flow(kind, executable, cliBinary) {
           result.checkpointDamage,
         );
       }
+      const restoreDamage =
+        round === 1 && option("--restore-damage")
+          ? await damageSuspensionForRetry(
+              workerData,
+              active,
+              option("--restore-damage"),
+            )
+          : null;
       const count = inferences();
       await launch();
       const reopened = await identity();
@@ -962,6 +994,17 @@ async function flow(kind, executable, cliBinary) {
         });
         return;
       }
+      if (restoreDamage)
+        result.restoreFailure = await qualifySuspensionRestoreFailure({
+          page,
+          origin: vite.resolvedUrls.local[0],
+          chatId: chat.id,
+          identity,
+          active,
+          inferences,
+          mounted: process.argv.includes("--mounted-ui"),
+          damage: restoreDamage,
+        });
       const polling =
         round === 1 && result.session
           ? completedSessionPoll(model, functions, result.session)

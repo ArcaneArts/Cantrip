@@ -32,11 +32,15 @@ const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
 type Json = Record<string, any>;
 const execute = promisify(execFile);
 
-function incompatibleCheckpoint(original: Buffer) {
+function incompatibleCheckpoint(
+  original: Buffer,
+  runtimeVersion = "incompatible-native-runtime/continuation-v99",
+) {
   const envelope = JSON.parse(original.toString());
   const record = JSON.parse(envelope.recordJson);
-  record.runtimeVersion = "incompatible-native-runtime/continuation-v99";
-  record.continuation = { unknownFutureContinuation: true };
+  record.runtimeVersion = runtimeVersion;
+  if (runtimeVersion.includes("incompatible-native-runtime"))
+    record.continuation = { unknownFutureContinuation: true };
   envelope.recordJson = JSON.stringify(record);
   envelope.sha256 = createHash("sha256")
     .update(envelope.recordJson)
@@ -483,6 +487,10 @@ describe.skipIf(!binary)(
                 : [
                     Buffer.from("{corrupt checkpoint"),
                     incompatibleCheckpoint(original),
+                    incompatibleCheckpoint(
+                      original,
+                      "0.166.0/cantrip-suspension-v8",
+                    ),
                   ]) {
                 if (damage) await writeFile(checkpointFile, damage);
                 const reason =
@@ -490,7 +498,7 @@ describe.skipIf(!binary)(
                     ? /missing/i
                     : damage?.equals(Buffer.from("{corrupt checkpoint"))
                       ? /corrupt/i
-                      : /runtime version is unsupported.*incompatible-native-runtime/i;
+                      : /runtime version is unsupported/i;
                 await expect(
                   rpc("turn/suspension", {
                     threadId,

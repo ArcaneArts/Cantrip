@@ -85,3 +85,44 @@ test("termination includes reparented tool daemons and leaves foreign groups ali
     await rm(root, { recursive: true });
   }
 });
+
+test("a scoped executable does not confer ownership of its foreign supervisor group", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "cantrip-shared-owned-tree-"));
+  const executable = path.join(root, "owned-node");
+  await link(process.execPath, executable);
+  const keepAlive = "setInterval(() => {}, 1000)";
+  const supervisor = `
+    const { spawn } = require("node:child_process");
+    const child = spawn(process.argv[1], ["-e", ${JSON.stringify(keepAlive)}], { stdio: "ignore" });
+    process.stdout.write(String(child.pid) + "\\n");
+    setInterval(() => {}, 1000);
+  `;
+  const foreign = spawn(process.execPath, ["-e", supervisor, executable], {
+    detached: true,
+    stdio: ["ignore", "pipe", "inherit"],
+  });
+  const worker = spawn(process.execPath, ["-e", keepAlive], {
+    detached: true,
+    stdio: "ignore",
+  });
+  try {
+    const [data] = await once(foreign.stdout, "data");
+    const scopedPid = Number(data.toString().trim());
+    const killed = await killOwnedWorkerTree(worker, {
+      executableRoots: [root],
+    });
+    assert.ok(killed.processes.some((row) => row.pid === scopedPid));
+    assert.ok(!killed.processes.some((row) => row.pid === foreign.pid));
+    assert.ok(!killed.groups.includes(foreign.pid));
+    process.kill(foreign.pid, 0);
+  } finally {
+    for (const child of [worker, foreign]) {
+      if (child.exitCode === null && child.signalCode === null) {
+        const closed = once(child, "close");
+        process.kill(-child.pid, "SIGKILL");
+        await closed;
+      }
+    }
+    await rm(root, { recursive: true });
+  }
+});

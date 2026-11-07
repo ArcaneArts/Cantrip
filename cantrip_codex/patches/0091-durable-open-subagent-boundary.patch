@@ -1,0 +1,80 @@
+--- a/codex-rs/core/src/agent/api.rs
++++ b/codex-rs/core/src/agent/api.rs
+@@ -105,6 +105,10 @@
+     /// This reads existing membership without registering the parent or loading children.
+     fn child_agent_paths(&self, parent: ThreadId) -> BoxFuture<'_, Vec<AgentPath>>;
+ 
++    /// Check actual open child threads (V1 and V2) and retained V2 membership.
++    /// This must not infer tree quiescence from model-context path availability.
++    fn has_open_children(&self, parent: ThreadId) -> BoxFuture<'_, Result<bool>>;
++
+     /// Check capacity before accepting work. This advisory check does not reserve a slot.
+     fn check_turn_admission(
+         &self,
+--- a/codex-rs/core/src/agent/control/api.rs
++++ b/codex-rs/core/src/agent/control/api.rs
+@@ -228,6 +228,20 @@
+         })
+     }
+ 
++    fn has_open_children(&self, parent: ThreadId) -> BoxFuture<'_, Result<bool>> {
++        Box::pin(async move {
++            if !self
++                .runtime
++                .open_thread_spawn_children(parent)
++                .await?
++                .is_empty()
++            {
++                return Ok(true);
++            }
++            Ok(!self.child_agent_paths(parent).await.is_empty())
++        })
++    }
++
+     fn child_agent_paths(&self, parent: ThreadId) -> BoxFuture<'_, Vec<AgentPath>> {
+         Box::pin(async move {
+             let Some(parent_path) = self
+--- a/codex-rs/core/src/session/durable_suspension.rs
++++ b/codex-rs/core/src/session/durable_suspension.rs
+@@ -37,7 +37,7 @@
+ use std::sync::atomic::AtomicU64;
+ use std::sync::atomic::Ordering;
+ 
+-pub(crate) const RUNTIME: &str = concat!(env!("CARGO_PKG_VERSION"), "/cantrip-suspension-v8");
++pub(crate) const RUNTIME: &str = concat!(env!("CARGO_PKG_VERSION"), "/cantrip-suspension-v9");
+ 
+ #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+ #[serde(rename_all = "camelCase", deny_unknown_fields)]
+@@ -894,14 +894,14 @@
+             .capture_stored_state()
+             .await
+             .map_err(invalid)?;
+-        let children = session
++        if session
+             .services
+             .agent_control
+-            .child_agent_paths(session.thread_id)
+-            .await;
+-        if !children.is_empty() {
++            .has_open_children(session.thread_id)
++            .await?
++        {
+             return Err(invalid(
+-                "durable suspension of native subagent trees is not available yet; the live turn remains paused",
++                "durable pause requires native subagent trees to finish and be closed; the live turn remains paused",
+             ));
+         }
+         {
+--- a/codex-rs/core/tests/suite/agent_control_tests.rs
++++ b/codex-rs/core/tests/suite/agent_control_tests.rs
+@@ -152,6 +152,10 @@
+         Box::pin(async { Vec::new() })
+     }
+ 
++    fn has_open_children(&self, _parent: ThreadId) -> BoxFuture<'_, CodexResult<bool>> {
++        Box::pin(async { Ok(false) })
++    }
++
+     fn check_turn_admission(
+         &self,
+         _version: MultiAgentVersion,

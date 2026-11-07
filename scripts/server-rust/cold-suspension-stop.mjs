@@ -6,7 +6,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import { eventually } from "./full-worker.mjs";
 
 export async function damageColdStopCheckpoint(workerData, active, mode) {
-  assert.ok(["missing", "corrupt", "incompatible"].includes(mode));
+  assert.ok(
+    ["missing", "corrupt", "incompatible", "previous-runtime"].includes(mode),
+  );
   const name =
     createHash("sha256").update(active.threadId).digest("hex") + ".json";
   const files = [];
@@ -24,8 +26,12 @@ export async function damageColdStopCheckpoint(workerData, active, mode) {
   if (mode === "corrupt") return writeFile(file, "{damaged native checkpoint");
   const envelope = JSON.parse(await readFile(file, "utf8"));
   const record = JSON.parse(envelope.recordJson);
-  record.runtimeVersion = "unsupported-native-runtime/continuation-v999";
-  record.continuation = { futureContinuation: true };
+  record.runtimeVersion =
+    mode === "previous-runtime"
+      ? "0.166.0/cantrip-suspension-v8"
+      : "unsupported-native-runtime/continuation-v999";
+  if (mode !== "previous-runtime")
+    record.continuation = { futureContinuation: true };
   envelope.recordJson = JSON.stringify(record);
   envelope.sha256 = createHash("sha256")
     .update(envelope.recordJson)
