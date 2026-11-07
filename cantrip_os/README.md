@@ -366,6 +366,8 @@ CANTRIP_OS_CLONE_TEST_IMAGE=cantrip-os-identities:dev \
 ```
 
 These tests remove their temporary containers, anonymous volumes and private copy
-image. The selected normal image remains the caller's responsibility. ISO
-live/install boot and full cross-instance product restore have separate acceptance
-requirements; Docker clone tests do not establish those results.
+image. The selected normal image remains the caller's responsibility. A separate
+[full Server/Worker acceptance test](BACKUPS.md#cross-instance-product-test)
+checks workspace restoration between independently initialized instances, UID
+remapping, corrupt archive rejection and fresh source identities. ISO live/install
+boot and external remote/model/CUA acceptance remain separate requirements.
