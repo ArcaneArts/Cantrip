@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+/usr/local/sbin/cantrip-os-identity initialize
 install -d -o cantrip -g cantrip -m 0700 /run/user/1000
 install -d -m 1777 /tmp/.X11-unix
 export XDG_RUNTIME_DIR=/run/user/1000

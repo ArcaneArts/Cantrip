@@ -386,3 +386,9 @@ Docker continues to use the same package-owned guardians without systemd.
 The SSH and CUA integration suites share their named disposable guest profiles.
 When selecting both suites in one Vitest command, add `--no-file-parallelism` so
 one suite's intentional desktop transitions do not invalidate the other's target.
+
+Version 0.11.0 installs the remote-package offline clone hook. New OS installs
+remove copied service host keys through the configured remote state directory.
+The first SSH service observation generates a fresh Ed25519 host key. Workspace
+files and remote configuration remain; ordinary restart and same-instance
+recovery preserve existing host keys. Removing the package removes its hook.

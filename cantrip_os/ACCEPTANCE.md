@@ -4666,3 +4666,68 @@ removed and verified absent. Private test keys, Worker data and the disposable
 database were deleted; shared PostgreSQL and the user's ordinary OS were retained.
 Unused Docker builder cache cleanup reported 15.24 GB. Build caches and the
 worktree are removed after delivery; no final ISO publication is claimed here.
+
+## Phase 5: fresh machine identity for templates and copied installs (2026-11-07)
+
+The prior normal Docker image contained a D-Bus machine ID generated during its
+build, shared by every fresh container. The foundation now removes build-time
+Linux IDs and initializes one identity on first boot. `/etc/machine-id` and D-Bus
+agree; restart retains that identity, including migration of an older D-Bus-only
+installation. The installed-system one-shot orders initialization before SSH,
+the desktop and optional integration services.
+
+The ISO installer now prepares the copied root as a new machine before binding
+live runtime mounts. The base helper resets Linux/system SSH identities; optional
+packages own their offline clone hooks. Executor 0.12.0 removes copied enrollment,
+and remote 0.11.0 removes copied service host keys through their configured state
+directories. Accounts, files, configuration and service preferences remain.
+Ordinary restart and retained same-instance root recovery do not run clone reset.
+
+Validation from isolated `codex/os-phase5-restore-identities`:
+
+- Normal ARM64 executor 0.12.0 and remote 0.11.0 package builds passed. Executable
+  clone hooks are present in both Debian payloads. The unchanged executor native
+  runtime was reused through the existing normal cached-runtime build context;
+  every binary/license hash matched its embedded manifest. Current package code
+  and file helpers were built normally.
+- Normal `os.mjs build` passed and produced
+  `sha256:dab29cd3dfdcd8b4bbf652e0d41df85c7745a4684b2a99a01199cc8110e38af4`.
+  A normal cached rebuild after rebase produced
+  `sha256:f798e5551eb7fcf70ea19fac4af195030463400d2fc48d43ad52134ca45c0638`;
+  its source revision and exact layers are recorded separately.
+  Both opt-in identity tests passed against that actual image in 12.223 seconds.
+- Fresh containers had different Linux IDs, retained their IDs through restart,
+  and preserved an existing legacy identity. Offline preparation removed copied
+  enrollment/key files while retaining workspace data and preferences.
+- Two fresh guests had distinct executor UUIDs and actual SSH service host keys.
+  A stopped guest's root was committed privately and its small retained state
+  copied into a new container before first boot. Offline clone preparation yielded
+  a fresh Linux ID, executor UUID, unattached enrollment and SSH host key. The
+  original retained its identity and host key. The copy rejected the original's
+  native execution binding. Test containers, anonymous volumes and private root
+  copy image were removed automatically.
+- The existing package lifecycle script passed on the new normal image: disable,
+  running/disabled reinstall, dependency removal, purge and reinstall left the
+  actual X display and viewer endpoint responding and retained files intact.
+  Both clone hooks disappeared with package removal and returned as executable
+  files after reinstall. Reinstalling all optional packages and restarting kept
+  the original enrollment, Linux ID and SSH service host key.
+- Existing local AMD64 installed Debian 13.7/systemd 257 accepted the shipped
+  service in `systemd-analyze verify`. Actual initialization retained its Linux/
+  D-Bus identity and all three existing system SSH public-key digests. The
+  temporary helper and remote test files were removed/restored afterward. Clone
+  preparation was never invoked on that live VM.
+
+The first QA-only layered image omitted executable permission on its copied
+startup script; actual tini exit 126 identified that fixture error. The normal
+recipe already applies that permission. A subsequent synthetic seeded-clone test
+read its temporary old ID before reset finished; an explicit test-command
+completion receipt corrected the harness race. Those initial failures remain in
+the evidence. The normal stopped-root clone test passed before and after that
+harness correction.
+
+These checks prove guest identity behavior. Full cross-instance workspace restore
+through the current Server/Worker, final ISO live/install boot, and real external
+SSH/model/CUA acceptance remain required for the full Phase 5 goal. This local VM
+is not external/cloud acceptance. Bounded logs, package manifests and cleanup
+receipts belong under ignored `artifacts/phase5-restore-identities/`.
