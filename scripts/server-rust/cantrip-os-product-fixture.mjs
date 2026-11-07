@@ -19,6 +19,8 @@ export class CantripOsProductFixture {
       (suffix) => `${this.name}-${suffix}`,
     );
     this.commands = [];
+    this.ownedContainers = new Set();
+    this.privateImages = new Set();
   }
   async docker(...args) {
     const entry = { args, startedAt: new Date().toISOString() };
@@ -70,11 +72,36 @@ export class CantripOsProductFixture {
       ]),
       this.image.Id,
     );
+    this.initialId = this.id;
+    this.ownedContainers.add(this.id);
     await this.save();
     return this;
   }
   exec(...args) {
     return this.docker("exec", this.id, ...args);
+  }
+  async fileProof(container, file) {
+    const { stdout } = await execute("python3", [
+      "-c",
+      "import subprocess,tarfile,io,hashlib,json,base64,sys;data=subprocess.check_output(['docker','cp',sys.argv[1]+':'+sys.argv[2],'-']);t=tarfile.open(fileobj=io.BytesIO(data));m=next(x for x in t if x.isfile());b=t.extractfile(m).read();print(json.dumps({'sha256':hashlib.sha256(b).hexdigest(),'bytes':len(b),'base64':base64.b64encode(b).decode(),'mode':m.mode,'uid':m.uid,'gid':m.gid}))",
+      container,
+      file,
+    ]);
+    const proof = JSON.parse(stdout);
+    this.commands.push({ args: ["cp", `${container}:${file}`, "-"], proof });
+    return proof;
+  }
+  async adopt(root) {
+    for (const key of [
+      "originalContainerId",
+      "targetContainerId",
+      "retainedContainerId",
+    ])
+      if (root[key]) this.ownedContainers.add(root[key]);
+    const current = (await this.json("inspect", this.name))[0];
+    assert.equal(current.Id, root.targetContainerId);
+    this.id = current.Id;
+    await this.save();
   }
   async target() {
     return this.json(
@@ -94,6 +121,9 @@ export class CantripOsProductFixture {
           id: this.id,
           volumes: this.volumes,
           image: this.image,
+          initialId: this.initialId,
+          ownedContainers: [...this.ownedContainers],
+          privateImages: [...this.privateImages],
           commands: this.commands,
         },
         null,
@@ -103,9 +133,35 @@ export class CantripOsProductFixture {
   }
   async close({ preserve = false } = {}) {
     if (!this.id) return;
-    await this.docker("logs", this.id);
+    this.ownedContainers = new Set(this.ownedContainers);
+    this.privateImages = new Set(this.privateImages);
+    const captured = await this.docker(
+      "image",
+      "ls",
+      "--no-trunc",
+      "--quiet",
+      "--filter",
+      `label=io.cantrip.os.system.container=${this.initialId}`,
+    );
+    for (const id of captured.split("\n").filter(Boolean))
+      this.privateImages.add(id);
+    const discovered = await this.docker(
+      "ps",
+      "-aq",
+      "--filter",
+      `name=^/${this.name}`,
+    );
+    for (const id of discovered.split("\n").filter(Boolean)) {
+      const actual = (await this.json("inspect", id))[0];
+      assert.equal(
+        actual.Config.Labels["io.cantrip.qa"],
+        "rust-server-product",
+      );
+      this.ownedContainers.add(actual.Id);
+      await this.docker("logs", actual.Id);
+      await this.docker("stop", "--time", "30", actual.Id);
+    }
     this.final = (await this.json("inspect", this.id))[0];
-    await this.docker("stop", "--time", "30", this.id);
     if (!preserve) {
       for (const [name, source] of [
         ["home", "/home/cantrip"],
@@ -134,8 +190,15 @@ export class CantripOsProductFixture {
           closed,
         ]);
       }
-      await this.docker("rm", this.id);
+      for (const id of this.ownedContainers) await this.docker("rm", id);
       await this.docker("volume", "rm", ...this.volumes);
+      for (const image of this.privateImages) {
+        try {
+          await this.docker("image", "rm", image);
+        } catch (error) {
+          if (!error.stderr?.includes("No such image")) throw error;
+        }
+      }
       const containers = await this.docker(
         "ps",
         "-aq",

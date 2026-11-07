@@ -5,6 +5,7 @@ import { eventually } from "./full-worker.mjs";
 import { CantripOsProductFixture } from "./cantrip-os-product-fixture.mjs";
 import { actualCantripOsPowerClient } from "./actual-cantrip-os-power-client.mjs";
 import { actualCantripOsPackageClient } from "./actual-cantrip-os-package-client.mjs";
+import { actualCantripOsSystemClient } from "./actual-cantrip-os-system-client.mjs";
 
 export async function actualCantripOsClient({
   page,
@@ -14,6 +15,7 @@ export async function actualCantripOsClient({
   workerId,
   startWorker,
   stopWorker,
+  crashWorker,
   result,
 }) {
   const guest = new CantripOsProductFixture(
@@ -33,6 +35,17 @@ export async function actualCantripOsClient({
       if (key === "ciphertext") {
         assert.ok(Buffer.from(value, "base64").length >= 16);
         return "<authenticated opaque outcome>";
+      }
+      if (
+        (key === "containerId" || key.endsWith("ContainerId")) &&
+        /^[a-f0-9]{64}$/.test(value)
+      ) {
+        if (!ids.has(value)) ids.set(value, `container:${ids.size}`);
+        return ids.get(value);
+      }
+      if (key === "requestSha256") {
+        assert.match(value, /^[a-f0-9]{64}$/);
+        return "<checked request digest>";
       }
       if (key.endsWith("At")) {
         assert.ok(Number.isFinite(Date.parse(value)), key);
@@ -195,6 +208,27 @@ export async function actualCantripOsClient({
     result.steps.push(
       "actual Docker guest attachment and retained workspace-create admission use the existing browser SDK and full worker without duplicate creation",
     );
+
+    if (process.argv.includes("--cantrip-os-system")) {
+      await actualCantripOsSystemClient({
+        page,
+        call,
+        os,
+        guest,
+        record,
+        instance,
+        selected,
+        fixture,
+        startWorker,
+        stopWorker,
+        crashWorker,
+        result,
+        report,
+      });
+      report.summary = report.snapshots;
+      succeeded = true;
+      return;
+    }
 
     const desktopOperations = [];
     for (const action of ["start", "restart", "stop"]) {

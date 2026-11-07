@@ -6184,29 +6184,39 @@
       {
         "method": "GET",
         "path": "/api/cantrip-os/:instanceId/system",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "implementation": ["cantrip_server_rs/src/http/cantrip_os_systems.rs"],
         "evidence": [
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
-          "docs/RUST_SERVER_READ_METHODS.md"
+          "docs/RUST_SERVER_READ_METHODS.md",
+          "docs/RUST_SERVER_CANTRIP_OS_SYSTEMS.md",
+          "scripts/server-rust/actual-cantrip-os-system-client.mjs",
+          "scripts/server-rust/cantrip-os-docker-fault.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
         ],
         "remaining": [
-          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+          "Current supported-platform/packaged acceptance and failure modes beyond the executed commit/create acknowledgement boundaries remain required.",
+          "Final migration/rollback, performance, default Rust selection and production Node-server removal remain required for full replacement."
         ]
       },
       {
         "method": "GET",
         "path": "/api/cantrip-os/:instanceId/system-operations",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "implementation": ["cantrip_server_rs/src/http/cantrip_os_systems.rs"],
         "evidence": [
           "scripts/server-rust/read-method-fixtures.mjs",
           "scripts/server-rust/read-method-http-compatibility.mjs",
-          "docs/RUST_SERVER_READ_METHODS.md"
+          "docs/RUST_SERVER_READ_METHODS.md",
+          "docs/RUST_SERVER_CANTRIP_OS_SYSTEMS.md",
+          "scripts/server-rust/actual-cantrip-os-system-client.mjs",
+          "scripts/server-rust/cantrip-os-docker-fault.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
         ],
         "remaining": [
-          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+          "Current supported-platform/packaged acceptance and failure modes beyond the executed commit/create acknowledgement boundaries remain required.",
+          "Final migration/rollback, performance, default Rust selection and production Node-server removal remain required for full replacement."
         ]
       },
       {
@@ -6311,40 +6321,68 @@
         "method": "POST",
         "path": "/api/cantrip-os/:instanceId/system-operations",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_systems.rs",
-        "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "docs/RUST_SERVER_CANTRIP_OS_SYSTEMS.md",
+          "scripts/server-rust/actual-cantrip-os-system-client.mjs",
+          "scripts/server-rust/cantrip-os-docker-fault.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
+        ],
         "remaining": [
-          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+          "Current supported-platform/packaged acceptance and failure modes beyond the executed commit/create acknowledgement boundaries remain required.",
+          "Final migration/rollback, performance, default Rust selection and production Node-server removal remain required for full replacement."
         ]
       },
       {
         "method": "POST",
         "path": "/api/cantrip-os/:instanceId/system-operations/:operationId/observe",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_systems.rs",
-        "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "docs/RUST_SERVER_CANTRIP_OS_SYSTEMS.md",
+          "scripts/server-rust/actual-cantrip-os-system-client.mjs",
+          "scripts/server-rust/cantrip-os-docker-fault.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
+        ],
         "remaining": [
-          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+          "Current supported-platform/packaged acceptance and failure modes beyond the executed commit/create acknowledgement boundaries remain required.",
+          "Final migration/rollback, performance, default Rust selection and production Node-server removal remain required for full replacement."
         ]
       },
       {
         "method": "POST",
         "path": "/api/cantrip-os/:instanceId/system-operations/:operationId/continue",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_systems.rs",
-        "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "docs/RUST_SERVER_CANTRIP_OS_SYSTEMS.md",
+          "scripts/server-rust/actual-cantrip-os-system-client.mjs",
+          "scripts/server-rust/cantrip-os-docker-fault.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
+        ],
         "remaining": [
-          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+          "Current supported-platform/packaged acceptance and failure modes beyond the executed commit/create acknowledgement boundaries remain required.",
+          "Final migration/rollback, performance, default Rust selection and production Node-server removal remain required for full replacement."
         ]
       },
       {
         "method": "POST",
         "path": "/api/cantrip-os/:instanceId/system-operations/:operationId/recover",
         "implementation": "cantrip_server_rs/src/http/cantrip_os_systems.rs",
-        "status": "partial",
-        "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_SOURCE_DRIFT.md",
+          "docs/RUST_SERVER_CANTRIP_OS_SYSTEMS.md",
+          "scripts/server-rust/actual-cantrip-os-system-client.mjs",
+          "scripts/server-rust/cantrip-os-docker-fault.mjs",
+          "scripts/server-rust/cantrip-os-product-fixture.mjs"
+        ],
         "remaining": [
-          "Current-source route implementation is present; complete successful-operation, failure/recovery and supported-platform acceptance must be established separately."
+          "Current supported-platform/packaged acceptance and failure modes beyond the executed commit/create acknowledgement boundaries remain required.",
+          "Final migration/rollback, performance, default Rust selection and production Node-server removal remain required for full replacement."
         ]
       },
       {
@@ -16015,7 +16053,7 @@
         "nodeOnly": ["2060beb2a", "fc71cc21e"]
       },
       "remaining": [
-        "Current CantripOS root checkpoint/capture, system replacement/rollback and physical-identity recovery; mid-operation Worker/native loss and missing guest receipts remain unqualified.",
+        "Remaining CantripOS Worker/native interruption and missing-receipt behavior beyond the executed lifecycle and root-system scenarios, plus current platform requalification.",
         "Complete current native Task/Goal interruption/reconnect and supported-platform requalification.",
         "Consolidate historical category-row limitations against current executed evidence before final replacement completion."
       ],
@@ -16190,9 +16228,61 @@
         "Package maintenance revokes previous execution authority: stale recovery returns409 and fresh explicit observation is required."
       ],
       "remaining": [
-        "Root checkpoint/capture, replacement/rollback and physical-identity recovery require separate current full-worker qualification.",
+        "Current root-system capture/replacement/rollback has separate local full-worker qualification in docs/RUST_SERVER_CANTRIP_OS_SYSTEMS.md; final platform and full replacement acceptance remain required.",
         "Mid-operation Worker/native failure, missing receipts, SSH guests, rendered UI/desktop streaming and supported-platform packaged acceptance remain outside this scoped local result.",
         "Final migration/rollback, performance, default Rust selection and production Node-server removal remain required."
+      ]
+    },
+    "fullWorkerCantripOsSystems": {
+      "status": "implemented-pending-platform-acceptance",
+      "sourceBaseline": "7c1433b3b455f179adee6cc3db01b5865c79d50b",
+      "evidence": [
+        "docs/RUST_SERVER_CANTRIP_OS_SYSTEMS.md",
+        "scripts/server-rust/actual-cantrip-os-system-client.mjs",
+        "scripts/server-rust/cantrip-os-docker-fault.mjs",
+        "scripts/server-rust/cantrip-os-product-fixture.mjs"
+      ],
+      "localQualification": {
+        "platform": "darwin-arm64",
+        "auth": "accounts",
+        "singleServerStorageModes": ["pglite", "bundled-postgres", "postgres"],
+        "singleServerPeers": ["node", "rust"],
+        "sharedPostgresPairs": [
+          "node/node",
+          "node/rust",
+          "rust/node",
+          "rust/rust"
+        ],
+        "redisVersion": "8.10.3",
+        "cells": 10,
+        "productSteps": 160,
+        "comparedSnapshots": 410,
+        "intentionalServerSigkills": 20,
+        "intentionalWorkerSigkills": 10,
+        "cleanProductionServerExits": 42,
+        "cleanWorkerExits": 50,
+        "completeServerLogsCheckedForPrivateMarkers": 124,
+        "physicalRootOperations": 50,
+        "rootEffectsPerCell": {
+          "commits": 1,
+          "creates": 2,
+          "starts": 5,
+          "stops": 5,
+          "renames": 8
+        },
+        "rustExecutableSha256": "20bb778bd097862de7be6e51ee9d2c90c57dce27700c14e856b53ce36054b985",
+        "unchangedProductionImplementation": true
+      },
+      "behavior": [
+        "Actual Server loss after Docker commit but before Worker acknowledgement retains one encrypted checkpoint and one commit; existing workspace post-commit crash assertions are retained.",
+        "Deleting the committed private image forces actual encrypted archive restore/loading; root rollback retains original and later roots plus current mounted data, bytes, modes and ownership.",
+        "Actual full Worker loss after candidate creation leaves an unknown admission. Observation has no root effects; explicit continuation activates that exact candidate once.",
+        "Base reset and rollback preserve latest mounted writes and both retained root layers; physical identity and guest execution recovery remain explicit and restore no historical handle.",
+        "Public root proofs bind to authenticated private results. Complete history, original contexts and exact ciphertext survive subsequent fences and actual Server/Worker restart."
+      ],
+      "remaining": [
+        "Other missing/corrupt receipts, native-process failures, database/Redis outages, SSH guests, rendered UI and current packaged platforms remain outside this scoped result.",
+        "Complete coverage reconciliation, final migration/rollback and performance, Rust default selection and production Node-server removal remain required."
       ]
     }
   },

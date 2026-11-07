@@ -8,6 +8,29 @@ the full replacement goal remains incomplete.
 
 ## Executed behavior
 
+The harness requires Docker and an owned foundation image with the workspace,
+executor, remote and recovery packages. Set `CANTRIP_TEST_OS_IMAGE` to that exact
+image/tag. Set `CANTRIP_TEST_OS_PACKAGE_DIRECTORY` to a test-driver directory
+containing the public workspace/recovery `.deb` files and their
+`<artifact-sha256>.json` catalog manifests. The helper copies that catalog into
+the ordinary worker profile. These inputs are isolated from the user's existing
+OS and worker data.
+
+The existing harness also accepts `CANTRIP_TEST_WORKER_PACKAGE`,
+`CANTRIP_TEST_CLI_BIN` and `CANTRIP_TEST_SERVER_BINARY` for staged current runtime
+artifacts. PostgreSQL runs use `CANTRIP_TEST_POSTGRES_BIN_DIR`; native PGlite can
+use an owned `PGLITE_RUNTIME_DIR`. For example, after setting those inputs:
+
+```sh
+node --import tsx scripts/server-rust/actual-folder-client.mjs \
+  --cantrip-os --database postgres --keep-fixture \
+  --report .qa/cantrip-os-lifecycle.json
+```
+
+Use `--runtime node` or `--runtime rust` for one peer. `--server-pair all` selects
+the four shared PostgreSQL/Redis pairings. Root-system qualification uses the
+separate `--cantrip-os-system` scenario.
+
 `actual-folder-client.mjs --cantrip-os` exercises account authentication,
 encryption grants and the normal administrative APIs:
 
@@ -108,9 +131,9 @@ still stops at unchanged Node line budgets: 1,532/1,500 in `build-app.ts` and
 2,336/1,999 in `chat-turn-runtime.ts`; downstream checks did not run. No development
 GitHub Actions job was dispatched.
 
-Root checkpoint/capture, system replacement/rollback and their physical-identity
-recovery require separate current full-worker qualification. Mid-operation
-worker/native failure, missing guest receipts, SSH guests, rendered UI and desktop
+Root checkpoint/capture, system replacement/rollback and physical-identity
+recovery now have separate [full-worker qualification](RUST_SERVER_CANTRIP_OS_SYSTEMS.md).
+Other worker/native failure boundaries, missing guest receipts, SSH guests, rendered UI and desktop
 streaming, supported-platform packaged acceptance, final migrations/rollback,
 performance, Rust default selection and production Node-server removal remain
 outside this milestone. The full server replacement remains active.
