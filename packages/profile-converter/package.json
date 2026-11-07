@@ -1,0 +1,15 @@
+{
+  "name": "@cantrip/profile-converter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@electric-sql/pglite-tools": "0.4.4"
+  }
+}

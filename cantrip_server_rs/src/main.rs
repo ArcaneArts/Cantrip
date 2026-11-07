@@ -54,6 +54,21 @@ struct Arguments {
     bundled_postgres_bin_dir: Option<PathBuf>,
     #[arg(long)]
     migrate_only: bool,
+    /// Prepare an existing stopped profile for the native runtime, retaining its original.
+    #[arg(long, requires="migrate_only", conflicts_with_all=["restore_profile","export_profile","restore_sql","export_sql","pack_profile","remember_database","activate_profile","recover_profile_activation","materialize_profile","publish_profile"])]
+    upgrade_profile: bool,
+    /// Node executable for the bounded legacy PGlite conversion tool only.
+    #[arg(long, requires = "upgrade_profile")]
+    legacy_node: Option<PathBuf>,
+    #[arg(long, requires = "upgrade_profile")]
+    legacy_profile_converter: Option<PathBuf>,
+    #[arg(
+        long,
+        hide = true,
+        requires = "migrate_only",
+        conflicts_with = "upgrade_profile"
+    )]
+    upgrade_source_probe: bool,
     /// Save the selected database connection privately after successful setup.
     #[arg(long, requires = "migrate_only", conflicts_with = "export_sql")]
     remember_database: bool,
@@ -110,6 +125,13 @@ async fn shutdown() {
 }
 
 fn main() -> Result<()> {
+    if std::env::args_os().nth(1).as_deref()
+        == Some(std::ffi::OsStr::new("--internal-profile-converter-owner"))
+    {
+        let code = tokio::runtime::Runtime::new()?
+            .block_on(cantrip_server::profile::upgrade::run_converter_owner())?;
+        std::process::exit(code);
+    }
     // The pipe-owned private database process has its own argument parser.
     #[cfg(unix)]
     if std::env::args_os().nth(1).as_deref()
@@ -139,7 +161,22 @@ fn main() -> Result<()> {
             std::env::set_var("PGLITE_RUNTIME_DIR", directory);
         }
     }
-    tokio::runtime::Runtime::new()?.block_on(run(arguments))
+    // Finish all startup environment mutation before creating owner or runtime
+    // threads. The owner duplicates stdin before any native database opens.
+    if arguments.migrate_only && arguments.shutdown_on_stdin_close {
+        cantrip_server::profile::upgrade::watch_operation_owner()?;
+    }
+    let probe = arguments.upgrade_source_probe;
+    let result = tokio::runtime::Runtime::new()?.block_on(run(arguments));
+    if probe
+        && result
+            .as_ref()
+            .is_err_and(|error| error.is::<cantrip_server::database::NativePgliteOpenFailure>())
+    {
+        eprintln!("{}", json!({"event":"profile.upgrade.native-open.failed"}));
+        std::process::exit(78);
+    }
+    result
 }
 
 async fn run(arguments: Arguments) -> Result<()> {
@@ -269,6 +306,22 @@ async fn run(arguments: Arguments) -> Result<()> {
     // Finish an actual pending directory switch before reading its saved backend
     // selection or creating/opening any database. Shared leases permit multiple
     // native external-database instances; activation holds the exclusive lease.
+    if arguments.upgrade_profile {
+        let executable = std::env::current_exe()?;
+        let receipt =
+            cantrip_server::profile::upgrade::prepare(cantrip_server::profile::upgrade::Options {
+                environment: &environment,
+                cwd: &cwd,
+                executable: &executable,
+                legacy_node: arguments.legacy_node.as_deref(),
+                legacy_converter: arguments.legacy_profile_converter.as_deref(),
+            })?;
+        println!(
+            "{}",
+            json!({"event":"profile.upgrade.completed","upgraded":receipt.is_some(),"receipt":receipt})
+        );
+        return Ok(());
+    }
     let profile_root = ServerConfig::data_directory(&environment, &cwd);
     let _profile_lease = if arguments.restore_profile.is_some() {
         cantrip_server::profile::exclusive_lease(&profile_root)?
@@ -287,10 +340,12 @@ async fn run(arguments: Arguments) -> Result<()> {
     }
     // An installation's saved configuration is explicit configuration too.
     // Supply distribution assets only after environment/CLI/profile selection.
+    let mut bundled_postgres_path = false;
     if let Some(directory) = arguments.bundled_postgres_bin_dir
         && let std::collections::hash_map::Entry::Vacant(entry) =
             environment.entry("CANTRIP_POSTGRES_BIN_DIR".into())
     {
+        bundled_postgres_path = true;
         entry.insert(
             directory
                 .to_str()
@@ -304,6 +359,10 @@ async fn run(arguments: Arguments) -> Result<()> {
         .transpose()?;
     if let Some(stage) = &profile_stage {
         config.data_directory = stage.data_directory().to_owned();
+    }
+    let mut persisted_config = config.clone();
+    if bundled_postgres_path {
+        persisted_config.postgres_bin_directory = None;
     }
     let config = Arc::new(config);
     let restore_sql = arguments
@@ -401,7 +460,13 @@ async fn run(arguments: Arguments) -> Result<()> {
             AuthRepository::new(database.clone()).local_user().await?;
         }
         if arguments.remember_database {
-            cantrip_server::profile::remember_database(&config)?;
+            cantrip_server::profile::remember_database(&persisted_config)?;
+        } else if !arguments.migrate_only {
+            // Ordinary serving still performs the actual open/migrations if a
+            // read-only configuration record cannot be updated.
+            if cantrip_server::profile::remember_database(&persisted_config).is_err() {
+                eprintln!("{}", json!({"level":"warn","event":"profile.database-configuration.write.failed"}));
+            }
         }
         Ok(())
     }.await;
@@ -625,7 +690,7 @@ async fn run(arguments: Arguments) -> Result<()> {
         // embedded database closes. Release it before publishing the profile.
         std::env::set_current_dir(&cwd)?;
         let receipt = stage.publish(
-            &config,
+            &persisted_config,
             profile_database.context("restored profile database receipt")?,
         )?;
         use std::io::Write;

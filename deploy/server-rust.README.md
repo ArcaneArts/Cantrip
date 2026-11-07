@@ -56,3 +56,50 @@ qualification. The canonical packaged desktop and hosted deployment defaults
 remain on the existing server until the full replacement acceptance and data
 migration/rollback work is complete. This artifact milestone does not by itself
 establish production cutover readiness.
+
+## Existing desktop profiles
+
+`pnpm package:app --server-runtime rust` opts into native desktop packaging.
+`--from-artifacts` reuses the selected native server and unchanged worker artifacts;
+it still builds and packages the small `@cantrip/profile-converter` tool. The
+worker's shared Node runtime supplies that bounded tool. The native server does
+not load it for serving or background work.
+
+Before starting the native desktop server, the supervisor runs `--migrate-only
+--upgrade-profile` with the same data directory and environment. It recovers an
+interrupted directory activation before reading the installation's backend.
+Existing external/private PostgreSQL selections proceed to their real normal
+startup. A new installation initializes through normal startup too.
+
+For an unmarked PGlite installation, preparation holds an exclusive profile
+lease, materializes a private physical copy, and actually opens/migrates that
+copy with the native engine. Only an engine-open failure permits the bounded
+legacy logical converter. Configuration, SQL, or migration failures do not
+select a fresh database or start the legacy converter. Successful validation
+activates the prepared profile and retains the original directory. Its private
+activation receipt names the retained backup. Normal native setup records
+ownership after the real database setup succeeds, avoiding a repeated copy on
+subsequent launches. Distribution PostgreSQL paths are not pinned into saved
+configuration; an explicitly configured custom binary path is retained.
+
+Standalone operators can run the same stopped-profile operation using
+`./migrate.sh --upgrade-profile --legacy-node /path/to/node
+--legacy-profile-converter /path/to/profile-converter/dist/index.mjs`.
+The legacy tool is needed only when the native PGlite open actually fails.
+The bundled converter uses the existing JavaScript PGlite 0.5.4 export runtime;
+a conversion failure retains the original and reports failure.
+
+For an explicit backend change, export a stopped full profile with
+`./migrate.sh --export-profile /private/latest-profile`, restore it to a new
+profile directory using `--restore-profile`, the selected `--database`, and
+its connection options, then activate that prepared directory with
+`--activate-profile`. Do not treat a backend environment change as a logical
+transfer of the old database.
+
+Rollback after accepted Rust writes must export the latest active profile.
+For a return to the legacy PGlite server, use the packaged converter's
+`--restore <latest-profile-bundle> <new-node-profile> <native-server-executable>`
+mode, activate that prepared Node profile while services are stopped, and then
+start the old package. Activating an old retained snapshot would discard later
+writes and is not the rollback procedure. Keep original and reverse-conversion
+evidence until the rollback window is closed.

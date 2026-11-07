@@ -785,6 +785,27 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
     let server_directory = resources.join("server");
     let worker_directory = resources.join("worker");
     let launch = server_command(&node, &server_directory)?;
+    if let Some(command) = launch.preparation {
+        let mut preparation = spawn_service(
+            command,
+            &server_environment(data.as_path(), &logs, port, &worker_token),
+            true,
+            true,
+        )?;
+        capture_server_output(app.handle().clone(), &mut preparation);
+        let completed = desktop_services::wait_for_preparation(&mut preparation, || {
+            app.state::<DesktopExitState>()
+                .approved
+                .load(Ordering::SeqCst)
+        })?;
+        if !completed {
+            return Ok(ManagedRuntime {
+                children: Mutex::new(Vec::new()),
+                local_worker: None,
+                server_url,
+            });
+        }
+    }
     let native_server = launch.native;
     let mut server = spawn_service(
         launch.command,

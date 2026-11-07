@@ -20,6 +20,8 @@ enum ServerRuntime {
     Rust {
         #[serde(rename = "postgresBin")]
         postgres_bin: std::path::PathBuf,
+        #[serde(rename = "profileConverter")]
+        profile_converter: Option<std::path::PathBuf>,
     },
 }
 
@@ -31,6 +33,7 @@ pub fn node_service_command(node: &Path, directory: &Path) -> Command {
 
 pub struct ServerLaunch {
     pub command: Command,
+    pub preparation: Option<Command>,
     pub native: bool,
 }
 
@@ -45,39 +48,60 @@ pub fn server_command(node: &Path, directory: &Path) -> Result<ServerLaunch, Str
         Err(error) => return Err(format!("Could not read {}: {error}", file.display())),
     };
     let native = matches!(&configuration, ServerRuntime::Rust { .. });
+    let mut preparation = None;
     let mut command = match configuration {
         ServerRuntime::Node => node_service_command(node, directory),
-        ServerRuntime::Rust { postgres_bin } => {
-            let mut command = Command::new(directory.join("bin").join(if cfg!(windows) {
-                "cantrip-server.exe"
-            } else {
-                "cantrip-server"
-            }));
-            command
-                .current_dir(directory)
-                .arg("--env-file-if-exists=.env")
-                .arg("--bundled-pglite-runtime-dir")
-                .arg(directory.join("pglite"))
-                .arg("--bundled-postgres-bin-dir")
-                .arg(directory.join(postgres_bin))
-                .arg("--shutdown-on-stdin-close")
-                .stdin(Stdio::piped());
-            #[cfg(target_os = "linux")]
-            {
-                let mut paths = vec![directory.join("lib")];
-                if let Some(current) = std::env::var_os("LD_LIBRARY_PATH") {
-                    paths.extend(std::env::split_paths(&current));
+        ServerRuntime::Rust {
+            postgres_bin,
+            profile_converter,
+        } => {
+            let native_command = || -> Result<Command, String> {
+                let mut command = Command::new(directory.join("bin").join(if cfg!(windows) {
+                    "cantrip-server.exe"
+                } else {
+                    "cantrip-server"
+                }));
+                command
+                    .current_dir(directory)
+                    .arg("--env-file-if-exists=.env")
+                    .arg("--bundled-pglite-runtime-dir")
+                    .arg(directory.join("pglite"))
+                    .arg("--bundled-postgres-bin-dir")
+                    .arg(directory.join(&postgres_bin))
+                    .arg("--shutdown-on-stdin-close")
+                    .stdin(Stdio::piped());
+                #[cfg(target_os = "linux")]
+                {
+                    let mut paths = vec![directory.join("lib")];
+                    if let Some(current) = std::env::var_os("LD_LIBRARY_PATH") {
+                        paths.extend(std::env::split_paths(&current));
+                    }
+                    command.env(
+                        "LD_LIBRARY_PATH",
+                        std::env::join_paths(paths).map_err(|error| error.to_string())?,
+                    );
                 }
-                command.env(
-                    "LD_LIBRARY_PATH",
-                    std::env::join_paths(paths).map_err(|error| error.to_string())?,
-                );
+                Ok(command)
+            };
+            if let Some(converter) = profile_converter {
+                let mut command = native_command()?;
+                command
+                    .args(["--migrate-only", "--upgrade-profile", "--legacy-node"])
+                    .arg(node)
+                    .arg("--legacy-profile-converter")
+                    .arg(directory.join(converter));
+                configure_desktop_child(&mut command);
+                preparation = Some(command);
             }
-            command
+            native_command()?
         }
     };
     configure_desktop_child(&mut command);
-    Ok(ServerLaunch { command, native })
+    Ok(ServerLaunch {
+        command,
+        preparation,
+        native,
+    })
 }
 
 pub fn spawn_service(
@@ -105,6 +129,35 @@ pub fn spawn_service(
     command
         .spawn()
         .map_err(|error| format!("Could not start {executable}: {error}"))
+}
+
+/// Conversion duration depends on the actual database size. Wait for its real
+/// completion, while allowing an approved desktop shutdown to cancel ownership.
+pub fn wait_for_preparation(
+    child: &mut Child,
+    mut cancelled: impl FnMut() -> bool,
+) -> Result<bool, String> {
+    loop {
+        if cancelled() {
+            terminate_child(child);
+            return Ok(false);
+        }
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => return Ok(true),
+            Ok(Some(status)) => {
+                return Err(format!(
+                    "Existing server data could not be prepared ({status}). The original data was retained; see the server logs."
+                ));
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(50)),
+            Err(error) => {
+                terminate_child(child);
+                return Err(format!(
+                    "Could not wait for server data preparation: {error}"
+                ));
+            }
+        }
+    }
 }
 
 pub fn terminate_child(child: &mut Child) {

@@ -81,7 +81,7 @@ pub enum DatabaseMode {
     Postgres,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerConfig {
     #[serde(skip_serializing_if = "Option::is_none")]

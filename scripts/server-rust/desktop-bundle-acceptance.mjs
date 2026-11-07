@@ -239,11 +239,10 @@ try {
         assert.ok(
           records.some(
             (r) =>
-              r.message.includes("Anonymous application session is ready") ||
-              (r.message.includes('"event":"session.refresh.completed"') &&
-                r.message.includes('"status":"authenticated"')),
+              r.message.includes('"event":"session.refresh.completed"') &&
+              r.message.includes('"status":"authenticated"'),
           ),
-          "release WebView must establish the existing anonymous client session",
+          "release WebView must finish encryption preparation and authenticate the existing client session",
         );
         return records;
       });

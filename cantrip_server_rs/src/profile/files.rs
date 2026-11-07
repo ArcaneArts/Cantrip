@@ -164,6 +164,22 @@ fn copy_file(source: &Path, destination: &Path, expected: Option<&Entry>) -> Res
 /// Materialize file references into an opaque snapshot. Directory cycles are
 /// actual unsnapshotable input; never recurse through our own output staging.
 pub(super) fn snapshot(source: &Path, destination: &Path, staging: &Path) -> Result<Vec<Entry>> {
+    snapshot_inner(source, destination, staging, false)
+}
+
+/// Copy the stopped physical profile for an actual native-open attempt. File
+/// references are materialized so engine recovery cannot follow a symlink back
+/// into the original. Unlike a logical bundle this includes managed storage.
+pub(super) fn copy_profile(source: &Path, destination: &Path, staging: &Path) -> Result<()> {
+    snapshot_inner(source, destination, staging, true).map(|_| ())
+}
+
+fn snapshot_inner(
+    source: &Path,
+    destination: &Path,
+    staging: &Path,
+    physical: bool,
+) -> Result<Vec<Entry>> {
     private_directory(destination)?;
     let source = match source.canonicalize() {
         Ok(path) => path,
@@ -177,10 +193,12 @@ pub(super) fn snapshot(source: &Path, destination: &Path, staging: &Path) -> Res
         for item in fs::read_dir(directory)? {
             let item = item?;
             let path = relative.join(item.file_name());
-            if reserved(&path) {
+            if !physical && reserved(&path) {
                 continue;
             }
-            safe(&path)?;
+            if !physical {
+                safe(&path)?;
+            }
             let location = item.path();
             let metadata = fs::metadata(&location)?;
             if metadata.is_dir() {

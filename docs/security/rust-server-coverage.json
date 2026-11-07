@@ -15341,6 +15341,21 @@
       "scope": "All six paired report JSON members independently inspected after verifying the artifact API head and SHA-256 digest and every ZIP CRC: three composed browser/full unchanged worker/native Codex flows each retain 19 steps, 11 worker stops, the original seven model POSTs plus nine verified TLS provider POSTs (three successes and six native authentication retries); three Task flows each retain 14 steps, five worker stops and nine model POSTs. All provider summaries and actual failure/recovery results match across peers. Scoped Linux evidence only; no packaging or complete replacement claim.",
       "artifactId": 13260567532,
       "artifactZipSha256": "10baa05e0e4914fdba2ef84e0312fcdb0539b35a7522a7dd356c898748e7b361"
+    },
+    {
+      "branch": "codex/rust-desktop-profile-conversion",
+      "observedAt": "2026-11-07",
+      "platforms": ["darwin-arm64"],
+      "execution": "local only; no hosted validation",
+      "conclusion": "Automatic packaged legacy PGlite conversion, actual existing-client continuity, post-write return to Node and re-upgrade, and app cancellation during a real conversion passed. Production launcher passed PGlite/private PostgreSQL/external PostgreSQL with the unchanged packaged worker.",
+      "scope": "Eight optimized native upgrade cases; real legacy Node PostgreSQL 18.3 to native PGlite 17.5 conversion; original files retained byte-for-byte; actual recovery save/confirmation, Keychain-backed encryption readiness, byte-identical opaque encryption profile, worker commands, write/restart, reverse migration carrying Rust writes, and conversion-owner death. This is local migration/desktop acceptance, not all-platform or complete-replacement acceptance.",
+      "qualification": "docs/security/rust-server-desktop-profile-upgrade.md",
+      "harnesses": [
+        "scripts/server-rust/desktop-profile-upgrade-compatibility.mjs",
+        "scripts/server-rust/desktop-runtime-acceptance.mjs",
+        "scripts/server-rust/desktop-bundle-acceptance.mjs"
+      ],
+      "remaining": "Default cutover, production Node removal, broader product/performance/platform/representative deployment acceptance remain part of the active full replacement goal."
     }
   ]
 }

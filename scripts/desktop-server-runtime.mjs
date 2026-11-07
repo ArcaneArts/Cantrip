@@ -27,6 +27,7 @@ export async function configureDesktopServer(directory, runtime) {
       await readFile(path.join(directory, "native-server.json"), "utf8"),
     );
     configuration.postgresBin = manifest.postgres.bin;
+    configuration.profileConverter = "../profile-converter/dist/index.mjs";
     await makeDesktopServerFilesWritable(directory);
   }
   await writeFile(
