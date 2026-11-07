@@ -72,6 +72,12 @@ struct Arguments {
     materialize_profile: Option<PathBuf>,
     #[arg(long, hide=true, requires_all=["data_dir","migrate_only"], conflicts_with_all=["materialize_profile","restore_profile","export_profile","restore_sql","export_sql","pack_profile","remember_database"])]
     publish_profile: Option<PathBuf>,
+    /// Activate a prepared, stopped profile and retain the previous directory.
+    #[arg(long, requires_all=["data_dir","migrate_only"], group="profile_activation", conflicts_with_all=["materialize_profile","publish_profile","restore_profile","export_profile","restore_sql","export_sql","pack_profile","remember_database"])]
+    activate_profile: Option<PathBuf>,
+    /// Finish an interrupted profile-directory activation without discarding data.
+    #[arg(long, requires_all=["data_dir","migrate_only"], group="profile_activation", conflicts_with_all=["materialize_profile","publish_profile","restore_profile","export_profile","restore_sql","export_sql","pack_profile","remember_database"])]
+    recover_profile_activation: bool,
     /// Restore trusted INSERT-format pg_dump SQL and pending migrations, then exit.
     #[arg(long, requires = "migrate_only")]
     restore_sql: Option<PathBuf>,
@@ -137,6 +143,39 @@ fn main() -> Result<()> {
 }
 
 async fn run(arguments: Arguments) -> Result<()> {
+    if let Some(prepared) = &arguments.activate_profile {
+        let receipt = cantrip_server::profile::activate_profile_with_progress(
+            prepared,
+            arguments
+                .data_dir
+                .as_ref()
+                .context("active profile destination")?,
+            |step| {
+                eprintln!(
+                    "{}",
+                    json!({"event":"profile.activation.progress","step":step})
+                )
+            },
+        )?;
+        println!(
+            "{}",
+            json!({"event":"profile.activation.completed","receipt":receipt})
+        );
+        return Ok(());
+    }
+    if arguments.recover_profile_activation {
+        let receipt = cantrip_server::profile::recover_profile_activation(
+            arguments
+                .data_dir
+                .as_ref()
+                .context("active profile destination")?,
+        )?;
+        println!(
+            "{}",
+            json!({"event":"profile.activation.recovered","receipt":receipt})
+        );
+        return Ok(());
+    }
     if let Some(root) = &arguments.materialize_profile {
         let receipt = cantrip_server::profile::Bundle::open(root)?
             .stage(
@@ -227,6 +266,15 @@ async fn run(arguments: Arguments) -> Result<()> {
     }
     // Resolve every path before native PostgreSQL can change the process cwd.
     let cwd = std::env::current_dir()?;
+    // Finish an actual pending directory switch before reading its saved backend
+    // selection or creating/opening any database. Shared leases permit multiple
+    // native external-database instances; activation holds the exclusive lease.
+    let profile_root = ServerConfig::data_directory(&environment, &cwd);
+    let _profile_lease = if arguments.restore_profile.is_some() {
+        cantrip_server::profile::exclusive_lease(&profile_root)?
+    } else {
+        cantrip_server::profile::lease(&profile_root)?
+    };
     let bundle = arguments
         .restore_profile
         .as_ref()

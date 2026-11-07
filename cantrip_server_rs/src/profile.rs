@@ -1,9 +1,14 @@
 //! Durable database selection for an installation. This is configuration, not
 //! a database-capability probe: the selected backend performs the actual open.
+mod activation;
 mod bundle;
 mod files;
 mod publish;
 use crate::config::{DatabaseMode, Environment, ServerConfig};
+pub use activation::{
+    ActivationReceipt, ActivationStep, ProfileLease, activate_profile,
+    activate_profile_with_progress, exclusive_lease, lease, recover_profile_activation,
+};
 use anyhow::{Result, anyhow};
 pub use bundle::{Bundle, ProfileReceipt, RestoreStage, export_profile, pack_profile};
 pub fn publish_directory(source: &Path, destination: &Path) -> Result<()> {

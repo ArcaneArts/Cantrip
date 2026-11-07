@@ -57,6 +57,13 @@ pub(super) fn directory(source: &Path, destination: &Path) -> io::Result<()> {
     };
     result?;
     #[cfg(unix)]
-    std::fs::File::open(destination.parent().unwrap_or(Path::new(".")))?.sync_all()?;
+    {
+        let destination_parent = destination.parent().unwrap_or(Path::new("."));
+        let source_parent = source.parent().unwrap_or(Path::new("."));
+        std::fs::File::open(destination_parent)?.sync_all()?;
+        if source_parent != destination_parent {
+            std::fs::File::open(source_parent)?.sync_all()?;
+        }
+    }
     Ok(())
 }

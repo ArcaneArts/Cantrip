@@ -117,14 +117,16 @@ cleanly. The early-startup SIGTERM regression also passes in the normal release
 shell. Desktop Rust tests pass 146 cases; the final log-only change passes its
 10 focused tests, and the packaging helpers pass 21 Node tests.
 
-An actual Node-created PGlite profile is not yet an accepted native upgrade.
-The native server refused to open its disposable physical copy with a
-`postgresql.conf` error. The original remained byte-preserved, and Node reopened
-the attempted copy with the same identity and preferences. This verifies failure
-safety, not successful conversion or rollback after native writes. Keep the
-existing default until a data-preserving conversion and reverse path pass.
+An existing Node PGlite directory needs logical conversion: the native server
+refused to open a disposable physical copy with a `postgresql.conf` error.
+The [profile activation component](RUST_SERVER_PROFILE_ACTIVATION.md) now passes
+offline logical conversion, interrupted in-place activation and reversal after
+accepted native writes across all three stores. It preserves the original
+directory and the active pathname. Desktop packaging still needs to bundle and
+automatically invoke that bounded conversion, then qualify existing-client
+recovery/Keychain continuity and update/rollback supervision before cutover.
 
-Windows, other supported platforms, installer/update behavior, existing-user
+Windows, other supported platforms, installer/update behavior, packaged existing-user
 migration and post-write rollback, full product/coordination/performance
 acceptance and default cutover remain required. The broad repository check
 still stops at unchanged Node source line limits; it is not green. All development
