@@ -14,6 +14,11 @@ export const modelOperationAdapterSchema = z.enum([
   "chat-completions",
   "openai-embeddings",
   "ollama-embed",
+  "llama-embeddings",
+  "vllm-embeddings",
+  "vllm-pooling",
+  "vllm-bge-m3",
+  "cohere-embed",
   "openai-decisions",
   "system-one",
   "openrouter-decisions",
@@ -26,6 +31,11 @@ export const modelOperationOptionsSchema = z
     dimensions: z.number().int().positive().optional(),
     inputType: z.string().trim().min(1).max(160).optional(),
     encodingFormat: z.enum(["float", "base64"]).optional(),
+    vectorRepresentation: z
+      .enum(["dense", "sparse", "multi-vector", "hybrid"])
+      .optional(),
+    poolingTask: z.enum(["embed", "token_embed"]).optional(),
+    messageRole: z.string().trim().min(1).max(80).optional(),
     inputModalities: z
       .array(z.string().trim().min(1).max(80))
       .max(32)
@@ -53,7 +63,15 @@ export function modelAdapterSupportsOperation(
   if (operation === "language")
     return adapter === "responses" || adapter === "chat-completions";
   if (operation === "embedding")
-    return adapter === "openai-embeddings" || adapter === "ollama-embed";
+    return [
+      "openai-embeddings",
+      "ollama-embed",
+      "llama-embeddings",
+      "vllm-embeddings",
+      "vllm-pooling",
+      "vllm-bge-m3",
+      "cohere-embed",
+    ].includes(adapter);
   return (
     adapter === "openai-decisions" ||
     adapter === "system-one" ||
@@ -84,7 +102,7 @@ export const modelOperationCapabilitiesSchema = z.object({
       supportedDimensions: z.array(positive).max(128).nullable().optional(),
       configurableDimensions: z.boolean().nullable().optional(),
       vectorRepresentation: z
-        .enum(["dense", "sparse", "multi-vector"])
+        .enum(["dense", "sparse", "multi-vector", "hybrid"])
         .nullable()
         .optional(),
       normalization: z.string().trim().min(1).max(80).nullable().optional(),

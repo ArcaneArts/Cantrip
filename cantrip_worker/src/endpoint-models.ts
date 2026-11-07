@@ -77,6 +77,11 @@ export function normalizeEndpointModel(
     operations.operationCapabilities.embedding.modelRevision = text(
       model.digest,
     );
+  if (
+    providerKind === "vllm" &&
+    operations.operationCapabilities.embedding?.status === "supported"
+  )
+    operations.operationCapabilities.embedding.adapter = "vllm-embeddings";
   const capabilities = object(model.capabilities);
   const metadata = object(model.meta);
   const instances = Array.isArray(model.loaded_instances)
