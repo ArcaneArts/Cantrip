@@ -13,19 +13,19 @@ impl Repository {
         input: &Value,
         captures: bool,
     ) -> Result<(Vec<Value>, Option<String>)> {
-        let cursor = if let Some(id) = input["cursor"].as_str() {
-            let row = self
-                .backup_get(owner, id)
-                .await?
-                .context("Backup cursor not found.")?;
-            ensure!(
-                !captures || row["action"] == "capture",
-                "Backup cursor not found."
-            );
-            Some(row)
-        } else {
-            None
-        };
+        let cursor =
+            if let Some(id) = input["cursor"].as_str() {
+                let row = self.backup_get(owner, id).await?.context(
+                    crate::cantrip_os::PlacementError("Backup cursor not found."),
+                )?;
+                ensure!(
+                    !captures || row["action"] == "capture",
+                    crate::cantrip_os::PlacementError("Backup cursor not found.")
+                );
+                Some(row)
+            } else {
+                None
+            };
         let id = cursor.as_ref().and_then(|v| v["operation_id"].as_str());
         let at = cursor.as_ref().and_then(|v| v["created_at"].as_str());
         let limit = input["limit"].as_i64().context("Backup page limit")?;
@@ -55,7 +55,7 @@ impl Repository {
             input.clone(),
         );
         self.database.transaction(|tx|Box::pin(async move {
-            ensure!(!tx.query("SELECT id FROM cantrip_os_instances WHERE id=$1 AND owner_id=$2 FOR UPDATE", &[&instance,&owner]).await?.is_empty(),"OS attachment not found.");
+            ensure!(!tx.query("SELECT id FROM cantrip_os_instances WHERE id=$1 AND owner_id=$2 FOR UPDATE", &[&instance,&owner]).await?.is_empty(),crate::cantrip_os::PlacementError("OS attachment not found."));
             let old=decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_backup_operations o WHERE operation_id=$1", &[&text(&input,"operationId")?]).await?)?;
             if let Some(old)=old.first() {
                 ensure!(old["owner_id"]==owner && old["instance_id"]==instance && old["request"]==input,"The operation ID belongs to a different backup admission.");
@@ -86,7 +86,7 @@ impl Repository {
         })).await
     }
     pub async fn backup_begin(&self, owner: &str, id: &str) -> Result<Value> {
-        self.rows("UPDATE cantrip_os_backup_operations SET revision=revision+1 WHERE owner_id=$1 AND operation_id=$2 RETURNING to_jsonb(cantrip_os_backup_operations)::text", &[&owner,&id]).await?.into_iter().next().context("Backup operation not found.")
+        self.rows("UPDATE cantrip_os_backup_operations SET revision=revision+1 WHERE owner_id=$1 AND operation_id=$2 RETURNING to_jsonb(cantrip_os_backup_operations)::text", &[&owner,&id]).await?.into_iter().next().context(crate::cantrip_os::PlacementError("Backup operation not found."))
     }
     pub async fn backup_authorize(
         &self,
@@ -104,7 +104,7 @@ impl Repository {
         self.database.transaction(|tx|Box::pin(async move {
             tx.query("SELECT i.id FROM cantrip_os_instances i JOIN cantrip_os_backup_operations o ON o.instance_id=i.id WHERE o.owner_id=$1 AND o.operation_id=$2 FOR UPDATE OF i", &[&owner,&id]).await?;
             let rows=decode(tx.query("SELECT jsonb_build_object('operation',to_jsonb(o),'instance',to_jsonb(i),'workspace',to_jsonb(w))::text FROM cantrip_os_backup_operations o JOIN cantrip_os_instances i ON i.id=o.instance_id JOIN cantrip_os_workspaces w ON w.id=o.workspace_id WHERE o.owner_id=$1 AND o.operation_id=$2 FOR UPDATE", &[&owner,&id]).await?)?;
-            let current=rows.first().context("Backup operation not found.")?;
+            let current=rows.first().context(crate::cantrip_os::PlacementError("Backup operation not found."))?;
             let (o,i,w)=(&current["operation"],&current["instance"],&current["workspace"]);let original=&o["command"]["scope"];
             let workspace=json!({"id":w["id"],"guestWorkspaceId":w["guest_workspace_id"],"uid":w["uid"],"gid":w["gid"],"homeGuestPath":w["home_guest_path"]});
             ensure!(i["owner_id"]==owner && i["attachment_generation"]==input["attachmentGeneration"] && i["attachment_generation"]==original["attachmentGeneration"] && i["runtime_generation"]==input["runtimeGeneration"] && i["guest_instance_id"]==original["guestInstanceId"] && i["worker_id"]==original["workerId"] && original["serverId"]==server && o["command"]["workspace"]==workspace,"The continuation target changed. Check recovery and select its current runtime before continuing.");
@@ -125,6 +125,8 @@ impl Repository {
         self.database.query("UPDATE cantrip_os_backup_operations SET result=$1::jsonb->'result',updated_at=now() WHERE owner_id=$1::jsonb->>'owner' AND operation_id=$1::jsonb->>'id' AND result->>'state' IS DISTINCT FROM 'ready' AND (revision=($1::jsonb->>'revision')::integer OR $1::jsonb->'result'->>'state'='ready')", &[&values]).await?;
         self.backup_get(owner, text(row, "operation_id")?)
             .await?
-            .context("Backup operation not found.")
+            .context(crate::cantrip_os::PlacementError(
+                "Backup operation not found.",
+            ))
     }
 }

@@ -1,5 +1,11 @@
 # Rust server replacement
 
+Native CantripOS and worktree `HEAD` reads now retain their existing read and
+project-guard behavior. The port also distinguishes public placement failures
+from private diagnostics. Workspace and package history cursors preserve the
+stored PostgreSQL timestamp precision. See [read-method compatibility](RUST_SERVER_READ_METHODS.md)
+for the actual HTTP/state regressions, local qualification and remaining acceptance.
+
 The remaining worker version, CodeGraph and managed web runtime maintenance
 handlers now execute natively. The port preserves existing owner/worktree context,
 validation, command deadlines and response-completion Live behavior. Local

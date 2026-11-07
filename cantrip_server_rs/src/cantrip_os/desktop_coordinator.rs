@@ -98,7 +98,9 @@ impl Coordinator {
                 .repository
                 .desktop_get(owner, instance, workspace, id)
                 .await?
-                .context("Desktop operation not found.")?,
+                .context(crate::cantrip_os::PlacementError(
+                    "Desktop operation not found.",
+                ))?,
         )
     }
     pub async fn desktop_list(

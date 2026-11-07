@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 
 impl Repository {
     pub async fn power_context(&self, owner: &str, instance: &str) -> Result<Value> {
-        self.rows("SELECT jsonb_build_object('instance',to_jsonb(i),'target',CASE WHEN i.transport->>'kind'='docker' AND p.attachment_generation=i.attachment_generation THEN to_jsonb(p) ELSE NULL END)::text FROM cantrip_os_instances i LEFT JOIN cantrip_os_power_targets p ON p.instance_id=i.id WHERE i.owner_id=$1 AND i.id=$2", &[&owner,&instance]).await?.into_iter().next().context("OS attachment not found.")
+        self.rows("SELECT jsonb_build_object('instance',to_jsonb(i),'target',CASE WHEN i.transport->>'kind'='docker' AND p.attachment_generation=i.attachment_generation THEN to_jsonb(p) ELSE NULL END)::text FROM cantrip_os_instances i LEFT JOIN cantrip_os_power_targets p ON p.instance_id=i.id WHERE i.owner_id=$1 AND i.id=$2", &[&owner,&instance]).await?.into_iter().next().context(crate::cantrip_os::PlacementError("OS attachment not found."))
     }
     pub async fn record_power_target(
         &self,
@@ -50,7 +50,7 @@ impl Repository {
         );
         self.database.transaction(|tx|Box::pin(async move {
             let parents=decode(tx.query("SELECT to_jsonb(i)::text FROM cantrip_os_instances i JOIN workers w ON w.id=i.worker_id AND w.owner_id=$1 AND w.unlinked_at IS NULL WHERE i.id=$2 AND i.owner_id=$1 FOR UPDATE OF i", &[&owner,&instance]).await?)?;
-            let i=parents.first().context("Owned OS attachment not found.")?;
+            let i=parents.first().context(crate::cantrip_os::PlacementError("Owned OS attachment not found."))?;
             let old=decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_power_operations o WHERE operation_id=$1", &[&text(&input,"operationId")?]).await?)?;
             if let Some(old)=old.first() {
                 ensure!(old["owner_id"]==owner && old["instance_id"]==instance && old["request"]==input,"This power operation ID belongs to another admission.");
@@ -69,13 +69,15 @@ impl Repository {
         })).await
     }
     pub async fn power_begin(&self, owner: &str, instance: &str, id: &str) -> Result<Value> {
-        self.rows("UPDATE cantrip_os_power_operations SET revision=revision+1 WHERE owner_id=$1 AND instance_id=$2 AND operation_id=$3 RETURNING to_jsonb(cantrip_os_power_operations)::text", &[&owner,&instance,&id]).await?.into_iter().next().context("Power operation not found.")
+        self.rows("UPDATE cantrip_os_power_operations SET revision=revision+1 WHERE owner_id=$1 AND instance_id=$2 AND operation_id=$3 RETURNING to_jsonb(cantrip_os_power_operations)::text", &[&owner,&instance,&id]).await?.into_iter().next().context(crate::cantrip_os::PlacementError("Power operation not found."))
     }
     pub async fn power_unknown(&self, owner: &str, row: &Value) -> Result<Value> {
         self.database.query("UPDATE cantrip_os_power_operations SET state='unknown',updated_at=now() WHERE owner_id=$1 AND operation_id=$2 AND revision=$3::bigint AND state NOT IN ('ready','failed')", &[&owner,&text(row,"operation_id")?,&row["revision"].as_i64().context("Power revision")?]).await?;
         self.power_get(owner, text(row, "instance_id")?, text(row, "operation_id")?)
             .await?
-            .context("Power operation not found.")
+            .context(crate::cantrip_os::PlacementError(
+                "Power operation not found.",
+            ))
     }
     pub async fn power_record(&self, owner: &str, row: &Value, result: Value) -> Result<Value> {
         let result = checked("cantripOsPowerOperationResultSchema", result)?;
@@ -112,7 +114,7 @@ impl Repository {
                 tx.query("UPDATE cantrip_os_instances SET status=CASE WHEN $1::jsonb->'result'->'observation'->>'running'='false' THEN 'disconnected' ELSE 'unknown' END,updated_at=now() WHERE id=$1::jsonb->'row'->>'instance_id' AND attachment_generation=$1::jsonb->'row'->>'attachment_generation' AND EXISTS(SELECT 1 FROM cantrip_os_power_targets p WHERE p.instance_id=cantrip_os_instances.id AND p.generation=$1::jsonb->'row'->>'target_generation')", &[&values]).await?;
             }
             let current=decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_power_operations o WHERE owner_id=$1 AND operation_id=$2", &[&owner,&text(&row,"operation_id")?]).await?)?;
-            current.into_iter().next().context("Power operation not found.")
+            current.into_iter().next().context(crate::cantrip_os::PlacementError("Power operation not found."))
         })).await
     }
     pub async fn power_list(
@@ -124,9 +126,9 @@ impl Repository {
         self.power_context(owner, instance).await?;
         let cursor = input["cursor"].as_str();
         if let Some(id) = cursor {
-            self.power_get(owner, instance, id)
-                .await?
-                .context("Power history cursor not found.")?;
+            self.power_get(owner, instance, id).await?.context(
+                crate::cantrip_os::PlacementError("Power history cursor not found."),
+            )?;
         }
         let limit = input["limit"].as_i64().context("Power page limit")?;
         let mut rows=self.rows("SELECT to_jsonb(o)::text FROM cantrip_os_power_operations o WHERE owner_id=$1 AND instance_id=$2 AND ($3::text IS NULL OR (created_at,operation_id)<(SELECT created_at,operation_id FROM cantrip_os_power_operations WHERE owner_id=$1 AND instance_id=$2 AND operation_id=$3)) ORDER BY created_at DESC,operation_id DESC LIMIT $4", &[&owner,&instance,&cursor,&(limit+1)]).await?;

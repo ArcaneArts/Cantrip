@@ -2173,7 +2173,10 @@
           "scripts/server-rust/worktree-coordinator-cases.mjs",
           "scripts/server-rust/actual-project-worktrees.mjs",
           "scripts/server-rust/actual-folder-client.mjs --worktrees",
-          "scripts/server-rust/actual-run-retirement.mjs"
+          "scripts/server-rust/actual-run-retirement.mjs",
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
         ],
         "remaining": [
           "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
@@ -5298,7 +5301,10 @@
         "status": "partial",
         "evidence": [
           "cantrip_server_rs/src/http/cantrip_os_power.rs",
-          "cantrip_server/src/app/routes/cantrip-os-power.ts"
+          "cantrip_server/src/app/routes/cantrip-os-power.ts",
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
         ],
         "remaining": [
           "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
@@ -5324,7 +5330,10 @@
         "status": "partial",
         "evidence": [
           "cantrip_server_rs/src/http/cantrip_os_power.rs",
-          "cantrip_server/src/app/routes/cantrip-os-power.ts"
+          "cantrip_server/src/app/routes/cantrip-os-power.ts",
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
         ],
         "remaining": [
           "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
@@ -5337,7 +5346,10 @@
         "status": "partial",
         "evidence": [
           "cantrip_server_rs/src/http/cantrip_os_power.rs",
-          "cantrip_server/src/app/routes/cantrip-os-power.ts"
+          "cantrip_server/src/app/routes/cantrip-os-power.ts",
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
         ],
         "remaining": [
           "Source-reviewed registration only; no compilation, HTTP compatibility, worker/native execution or supported-platform acceptance was run for this reconciliation."
@@ -5875,6 +5887,262 @@
         "remaining": [
           "Actual browser/full-worker CodeGraph/runtime asset effects, shared/mixed Redis and supported-platform/package acceptance remain required.",
           "Complete legacy upgrade, post-write Node rollback, performance, desktop/Winterhold rehearsal and Node-server removal remain required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os",
+        "status": "partial",
+        "implementation": ["cantrip_server_rs/src/http/cantrip_os.rs"],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/cantrip-os/run-sources",
+        "status": "partial",
+        "implementation": ["cantrip_server_rs/src/http/cantrip_os.rs"],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/:instanceId/workspaces",
+        "status": "partial",
+        "implementation": ["cantrip_server_rs/src/http/cantrip_os.rs"],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/cantrip-os/bindings",
+        "status": "partial",
+        "implementation": ["cantrip_server_rs/src/http/cantrip_os.rs"],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/backups",
+        "status": "partial",
+        "implementation": ["cantrip_server_rs/src/http/cantrip_os_backups.rs"],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/backup-operations",
+        "status": "partial",
+        "implementation": ["cantrip_server_rs/src/http/cantrip_os_backups.rs"],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/backup-operations/:operationId",
+        "status": "partial",
+        "implementation": ["cantrip_server_rs/src/http/cantrip_os_backups.rs"],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/:instanceId/workspace-operations",
+        "status": "partial",
+        "implementation": [
+          "cantrip_server_rs/src/http/cantrip_os_workspace_operations.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/:instanceId/workspace-operations/:operationId",
+        "status": "partial",
+        "implementation": [
+          "cantrip_server_rs/src/http/cantrip_os_workspace_operations.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop",
+        "status": "partial",
+        "implementation": ["cantrip_server_rs/src/http/cantrip_os_desktop.rs"],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop-operations",
+        "status": "partial",
+        "implementation": ["cantrip_server_rs/src/http/cantrip_os_desktop.rs"],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop-operations/:operationId",
+        "status": "partial",
+        "implementation": ["cantrip_server_rs/src/http/cantrip_os_desktop.rs"],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/:instanceId/packages",
+        "status": "partial",
+        "implementation": ["cantrip_server_rs/src/http/cantrip_os_packages.rs"],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/:instanceId/package-operations",
+        "status": "partial",
+        "implementation": ["cantrip_server_rs/src/http/cantrip_os_packages.rs"],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/:instanceId/package-operations/:operationId",
+        "status": "partial",
+        "implementation": ["cantrip_server_rs/src/http/cantrip_os_packages.rs"],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/:instanceId/system",
+        "status": "partial",
+        "implementation": ["cantrip_server_rs/src/http/cantrip_os_systems.rs"],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/:instanceId/system-operations",
+        "status": "partial",
+        "implementation": ["cantrip_server_rs/src/http/cantrip_os_systems.rs"],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/cantrip-os/:instanceId/system-operations/:operationId",
+        "status": "partial",
+        "implementation": ["cantrip_server_rs/src/http/cantrip_os_systems.rs"],
+        "evidence": [
+          "scripts/server-rust/read-method-fixtures.mjs",
+          "scripts/server-rust/read-method-http-compatibility.mjs",
+          "docs/RUST_SERVER_READ_METHODS.md"
+        ],
+        "remaining": [
+          "Read-method/catalog/history compatibility does not establish full guest/worker execution, platform packaging or complete server replacement acceptance."
         ]
       }
     ]
@@ -14761,6 +15029,90 @@
       "remaining": [
         "Actual browser/full-worker CodeGraph/runtime asset effects, shared/mixed Redis and supported-platform/package acceptance remain required.",
         "Complete legacy upgrade, post-write Node rollback, performance, desktop/Winterhold rehearsal and Node-server removal remain required."
+      ]
+    },
+    "readMethodCompatibility": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/http/worktrees.rs",
+        "cantrip_server_rs/src/http/cantrip_os.rs",
+        "cantrip_server_rs/src/http/cantrip_os_backups.rs",
+        "cantrip_server_rs/src/http/cantrip_os_workspace_operations.rs",
+        "cantrip_server_rs/src/http/cantrip_os_power.rs",
+        "cantrip_server_rs/src/http/cantrip_os_desktop.rs",
+        "cantrip_server_rs/src/http/cantrip_os_packages.rs",
+        "cantrip_server_rs/src/http/cantrip_os_systems.rs",
+        "cantrip_server_rs/src/cantrip_os/mod.rs",
+        "cantrip_server/src/db/repository/cantrip-os-workspace-operations.ts",
+        "cantrip_server/src/db/repository/cantrip-os-packages.ts"
+      ],
+      "evidence": [
+        "scripts/server-rust/read-method-fixtures.mjs",
+        "scripts/server-rust/read-method-http-compatibility.mjs",
+        "docs/RUST_SERVER_READ_METHODS.md",
+        "scripts/server-rust/read-method-report-qualification.mjs"
+      ],
+      "behavior": [
+        "HEAD retains GET read dispatch instead of operation admission/observation.",
+        "Source managed-folder worktree catalog guard deliberately distinguishes GET200 from HEAD409.",
+        "Only explicit typed placement failures expose their reviewed static text; internal failures retain generic operation errors.",
+        "All21 selected schema tables are compared before/after; package/system status observation writes retain Source behavior.",
+        "Workspace/package pagination uses persisted PostgreSQL cursor tuples rather than JavaScript Date parameters or millisecond-truncated projections."
+      ],
+      "localQualification": {
+        "base": "bcc378613887a72b49b6a3f6cbbf95a645ca1b43",
+        "platform": "macOS arm64",
+        "routes": 22,
+        "databaseModes": ["pglite", "postgres", "bundled-postgres"],
+        "profiles": [
+          "development",
+          "password",
+          "accounts",
+          "standalone-bootstrap"
+        ],
+        "finalMatrix": "passed: all12completecells independently rechecked",
+        "pairedReadHTTP": 3384,
+        "pairedCompleteSQL": 3384,
+        "selectedTables": 21,
+        "nativeArtifactSha256": "a5b848c79cb25cc93a36e019349bec02bf67854580ecc82db948d6d3e53b027d",
+        "nativeMutationRecoveryRepositoryTests": 8,
+        "nativeRedactionTests": 1,
+        "strictAllTargetClippy": "passed",
+        "sourceCantripOSTests": 7,
+        "sourceAffectedPaginationSuitesRerun": "2pass",
+        "appFocusedWorktreeTests": 56,
+        "appBuild": "passed",
+        "rootCheck": "fails on unchanged1532/1500 and2336/1999 server line budgets",
+        "sourceWorktreeGuide": "server1baselinefailure/59pass;worker2baselinefailures/92pass",
+        "provenance": "Original reports preserve earlier standalone setup failures; complete cells are individually rechecked and successful separate standalone runs supply all three missing cells. Canceled PGlite account row-order comparison is excluded; corrected PGlite profiles pass separately."
+      },
+      "remaining": [
+        "Full guest/worker execution, Redis/mixed coordination and supported-platform/product acceptance remain required.",
+        "Existing-data upgrade, post-write rollback, performance, desktop/Winterhold packaging and production Node removal remain required."
+      ],
+      "readRoutes": [
+        "/api/cantrip-os",
+        "/api/projects/:projectId/cantrip-os/run-sources",
+        "/api/cantrip-os/:instanceId/workspaces",
+        "/api/projects/:projectId/cantrip-os/bindings",
+        "/api/cantrip-os/backups",
+        "/api/cantrip-os/backup-operations",
+        "/api/cantrip-os/backup-operations/:operationId",
+        "/api/cantrip-os/:instanceId/workspace-operations",
+        "/api/cantrip-os/:instanceId/workspace-operations/:operationId",
+        "/api/cantrip-os/:instanceId/power",
+        "/api/cantrip-os/:instanceId/power-operations",
+        "/api/cantrip-os/:instanceId/power-operations/:operationId",
+        "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop",
+        "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop-operations",
+        "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop-operations/:operationId",
+        "/api/cantrip-os/:instanceId/packages",
+        "/api/cantrip-os/:instanceId/package-operations",
+        "/api/cantrip-os/:instanceId/package-operations/:operationId",
+        "/api/cantrip-os/:instanceId/system",
+        "/api/cantrip-os/:instanceId/system-operations",
+        "/api/cantrip-os/:instanceId/system-operations/:operationId",
+        "/api/projects/:projectId/worktrees"
       ]
     }
   },

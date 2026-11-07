@@ -10,7 +10,7 @@ impl Repository {
         let (owner, instance) = (owner.to_owned(), instance.to_owned());
         self.database.transaction(|tx| Box::pin(async move {
             let rows = decode(tx.query(OWNED, &[&owner, &instance]).await?)?;
-            let i = rows.first().context("Owned OS attachment not found.")?;
+            let i = rows.first().context(crate::cantrip_os::PlacementError("Owned OS attachment not found."))?;
             let old = decode(tx.query("SELECT to_jsonb(p)::text FROM cantrip_os_package_targets p WHERE instance_id=$1", &[&instance]).await?)?;
             let old = old.first().cloned().unwrap_or(Value::Null);
             let same = old["attachment_generation"] == i["attachment_generation"];
@@ -41,7 +41,7 @@ impl Repository {
         self.database.transaction(|tx| Box::pin(async move {
             let instance = text(&context["instance"], "id")?;
             let rows = decode(tx.query(OWNED, &[&owner, &instance]).await?)?;
-            let i = rows.first().context("Owned OS attachment not found.")?;
+            let i = rows.first().context(crate::cantrip_os::PlacementError("Owned OS attachment not found."))?;
             let targets = decode(tx.query("SELECT to_jsonb(p)::text FROM cantrip_os_package_targets p WHERE instance_id=$1", &[&instance]).await?)?;
             let p = targets.first().context("Package observation not found.")?;
             ensure!(i["attachment_generation"] == context["instance"]["attachment_generation"] && i["worker_id"] == context["instance"]["worker_id"] && i["guest_instance_id"] == context["instance"]["guest_instance_id"] && i["power_epoch"] == context["instance"]["power_epoch"] && p["attachment_generation"] == i["attachment_generation"] && p["observation_epoch"] == context["target"]["observation_epoch"], "The package observation changed before its target was recorded.");
@@ -82,7 +82,7 @@ impl Repository {
         );
         self.database.transaction(|tx| Box::pin(async move {
             let rows = decode(tx.query(OWNED, &[&owner, &instance]).await?)?;
-            let i = rows.first().context("Owned OS attachment not found.")?;
+            let i = rows.first().context(crate::cantrip_os::PlacementError("Owned OS attachment not found."))?;
             let old = decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_package_operations o WHERE operation_id=$1", &[&text(&input,"operationId")?]).await?)?;
             if let Some(old) = old.first() {
                 ensure!(old["owner_id"] == owner && old["instance_id"] == instance && old["request"] == input, "This package operation ID belongs to another admission.");
@@ -120,16 +120,16 @@ impl Repository {
         self.database.transaction(|tx| Box::pin(async move {
             if let Some(control) = &control {
                 let rows = decode(tx.query(OWNED, &[&owner, &instance]).await?)?;
-                let i = rows.first().context("Owned OS attachment not found.")?;
+                let i = rows.first().context(crate::cantrip_os::PlacementError("Owned OS attachment not found."))?;
                 ensure!(i["attachment_generation"] == control["attachmentGeneration"], "The original package attachment changed; no continuation was dispatched.");
             }
             let rows = decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_package_operations o WHERE owner_id=$1 AND instance_id=$2 AND operation_id=$3", &[&owner,&instance,&id]).await?)?;
-            let row = rows.first().context("Package operation not found.")?;
+            let row = rows.first().context(crate::cantrip_os::PlacementError("Package operation not found."))?;
             if let Some(control) = control {
                 ensure!(row["attachment_generation"] == control["attachmentGeneration"] && row["target_generation"] == control["targetGeneration"], "Package operation not found for the original target.");
             }
             let saved = decode(tx.query("UPDATE cantrip_os_package_operations SET revision=revision+1 WHERE owner_id=$1 AND instance_id=$2 AND operation_id=$3 RETURNING to_jsonb(cantrip_os_package_operations)::text", &[&owner,&instance,&id]).await?)?;
-            Ok(saved.first().context("Package operation not found.")?.clone())
+            Ok(saved.first().context(crate::cantrip_os::PlacementError("Package operation not found."))?.clone())
         })).await
     }
     pub async fn package_record(&self, owner: &str, original: &Value, raw: Value) -> Result<Value> {
@@ -156,14 +156,16 @@ impl Repository {
                 tx.query("UPDATE cantrip_os_instances SET runtime_generation=NULL,status='unknown',last_error=NULL,power_epoch=power_epoch+1,updated_at=now() WHERE owner_id=$1 AND id=$2 AND attachment_generation=$3 AND power_epoch=$4::bigint", &[&owner,&instance,&text(&original,"attachment_generation")?,&epoch]).await?;
             }
             let rows = decode(tx.query("SELECT to_jsonb(o)::text FROM cantrip_os_package_operations o WHERE owner_id=$1 AND operation_id=$2", &[&owner,&id]).await?)?;
-            Ok(rows.first().context("Package operation not found.")?.clone())
+            Ok(rows.first().context(crate::cantrip_os::PlacementError("Package operation not found."))?.clone())
         })).await
     }
     pub async fn package_unknown(&self, owner: &str, row: &Value) -> Result<Value> {
         self.database.query("UPDATE cantrip_os_package_operations SET state='unknown',updated_at=now() WHERE owner_id=$1 AND operation_id=$2 AND revision=$3::bigint AND state NOT IN ('ready','failed')", &[&owner,&text(row,"operation_id")?,&row["revision"].as_i64().context("Package revision")?]).await?;
         self.package_get(owner, text(row, "instance_id")?, text(row, "operation_id")?)
             .await?
-            .context("Package operation not found.")
+            .context(crate::cantrip_os::PlacementError(
+                "Package operation not found.",
+            ))
     }
     pub async fn package_list(
         &self,
@@ -171,12 +173,12 @@ impl Repository {
         instance: &str,
         input: &Value,
     ) -> Result<(Vec<Value>, Option<String>)> {
-        ensure!(!self.rows("SELECT to_jsonb(i)::text FROM cantrip_os_instances i WHERE owner_id=$1 AND id=$2", &[&owner,&instance]).await?.is_empty(),"OS attachment not found.");
+        ensure!(!self.rows("SELECT to_jsonb(i)::text FROM cantrip_os_instances i WHERE owner_id=$1 AND id=$2", &[&owner,&instance]).await?.is_empty(),crate::cantrip_os::PlacementError("OS attachment not found."));
         let cursor = input["cursor"].as_str().map(str::to_owned);
         if let Some(cursor) = &cursor {
-            self.package_get(owner, instance, cursor)
-                .await?
-                .context("Package history cursor not found.")?;
+            self.package_get(owner, instance, cursor).await?.context(
+                crate::cantrip_os::PlacementError("Package history cursor not found."),
+            )?;
         }
         let limit = input["limit"].as_i64().context("Package history limit")?;
         let mut rows = self.rows("SELECT to_jsonb(o)::text FROM cantrip_os_package_operations o WHERE owner_id=$1 AND instance_id=$2 AND ($3::text IS NULL OR (created_at,operation_id)<(SELECT created_at,operation_id FROM cantrip_os_package_operations WHERE owner_id=$1 AND instance_id=$2 AND operation_id=$3)) ORDER BY created_at DESC,operation_id DESC LIMIT $4", &[&owner,&instance,&cursor,&(limit+1)]).await?;

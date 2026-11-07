@@ -110,7 +110,9 @@ impl Coordinator {
                 .repository
                 .package_get(owner, instance, id)
                 .await?
-                .context("Package operation not found.")?,
+                .context(crate::cantrip_os::PlacementError(
+                    "Package operation not found.",
+                ))?,
         )
     }
     pub async fn package_list(&self, owner: &str, instance: &str, input: &Value) -> Result<Value> {

@@ -1,8 +1,4 @@
-use super::{
-    account, body, json_response,
-    middleware::Context,
-    settings::{error, parse},
-};
+use super::{account, body, json_response, middleware::Context, settings::parse};
 use crate::{auth::service::AuthService, cantrip_os::coordinator::Coordinator};
 use anyhow::{Context as _, Result};
 use axum::{
@@ -21,12 +17,13 @@ async fn execute(
     route: String,
     request: Request,
 ) -> Result<Response> {
+    let read = request.method() == Method::GET || request.method() == Method::HEAD;
     let coordinator = Coordinator::new(service);
     let instance = params.get("instanceId").context("Power instance")?;
     let value = if route.ends_with("/power") {
         coordinator.power_status(&owner, instance).await?
     } else if let Some(operation) = params.get("operationId") {
-        if request.method() == Method::GET {
+        if read {
             coordinator.power_get(&owner, instance, operation).await?
         } else {
             coordinator
@@ -34,7 +31,7 @@ async fn execute(
                 .await?
         }
     } else {
-        let list = request.method() == Method::GET;
+        let list = read;
         let raw = if list {
             Some(account::query(request.uri()))
         } else {
@@ -77,8 +74,8 @@ async fn handle(
         Ok(response) => response,
         Err(failure) => {
             eprintln!("CantripOS power request failed: {failure}");
-            error(
-                409,
+            super::cantrip_os::failure(
+                &failure,
                 "CantripOS power request failed. Observe its original admission before retrying.",
             )
         }

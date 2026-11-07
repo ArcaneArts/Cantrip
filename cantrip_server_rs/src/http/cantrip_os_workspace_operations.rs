@@ -1,8 +1,4 @@
-use super::{
-    account, json_response,
-    middleware::Context,
-    settings::{error, parse},
-};
+use super::{account, json_response, middleware::Context, settings::parse};
 use crate::{auth::service::AuthService, cantrip_os::coordinator::Coordinator};
 use anyhow::{Context as _, Result};
 use axum::{
@@ -20,10 +16,11 @@ async fn execute(
     params: HashMap<String, String>,
     request: Request,
 ) -> Result<Response> {
+    let read = request.method() == Method::GET || request.method() == Method::HEAD;
     let coordinator = Coordinator::new(service);
     let instance = params.get("instanceId").context("Workspace instance")?;
     let value = if let Some(operation) = params.get("operationId") {
-        if request.method() == Method::GET {
+        if read {
             coordinator
                 .workspace_operation_get(&owner, instance, operation)
                 .await?
@@ -60,8 +57,8 @@ async fn handle(
         Ok(response) => response,
         Err(failure) => {
             eprintln!("CantripOS workspace request failed: {failure}");
-            error(
-                409,
+            super::cantrip_os::failure(
+                &failure,
                 "CantripOS workspace request failed. Observe its original admission before retrying.",
             )
         }
