@@ -74,7 +74,32 @@ fn poisoned(value: &JsValue) -> bool {
 }
 
 pub(super) async fn parse_js(request: Request, limit: u64) -> Result<Option<JsValue>, Response> {
-    parse_body(request, limit, None, false).await
+    parse_body(request, limit, None, BinaryMode::Ignore).await
+}
+
+enum BinaryMode {
+    Ignore,
+    Enumerate,
+    Json,
+}
+
+/// Attachment uploads explicitly JSON.parse the registered Buffer body. Other
+/// media types still run their ordinary parser before the route rejects them.
+pub(super) async fn parse_attachment(
+    request: Request,
+    json_limit: u64,
+    binary_limit: u64,
+) -> Result<Option<JsValue>, Response> {
+    let binary = value(request.headers(), "content-type").is_some_and(|value| {
+        value
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .eq_ignore_ascii_case("application/octet-stream")
+    });
+    let parsed = parse_body(request, json_limit, Some(binary_limit), BinaryMode::Json).await?;
+    Ok(if binary { parsed } else { None })
 }
 
 /// Automation contracts read named data properties and enumerate unknown keys.
@@ -86,7 +111,13 @@ pub(super) async fn parse_js_buffer(
     json_limit: u64,
     binary_limit: u64,
 ) -> Result<Option<JsValue>, Response> {
-    parse_body(request, json_limit, Some(binary_limit), true).await
+    parse_body(
+        request,
+        json_limit,
+        Some(binary_limit),
+        BinaryMode::Enumerate,
+    )
+    .await
 }
 
 /// Routes which ignore their parsed input still use Fastify's registered
@@ -96,7 +127,7 @@ pub(super) async fn parse_ignored(
     json_limit: u64,
     binary_limit: u64,
 ) -> Result<(), Response> {
-    parse_body(request, json_limit, Some(binary_limit), false)
+    parse_body(request, json_limit, Some(binary_limit), BinaryMode::Ignore)
         .await
         .map(|_| ())
 }
@@ -105,7 +136,7 @@ async fn parse_body(
     request: Request,
     limit: u64,
     ignored_binary_limit: Option<u64>,
-    project_binary: bool,
+    binary_mode: BinaryMode,
 ) -> Result<Option<JsValue>, Response> {
     let content_type = value(request.headers(), "content-type");
     let kind = content_type
@@ -177,7 +208,11 @@ async fn parse_body(
         Ok(Some(JsValue::String(JsString::from(
             String::from_utf8_lossy(&bytes).into_owned(),
         ))))
-    } else if kind == "application/octet-stream" && project_binary {
+    } else if kind == "application/octet-stream" && matches!(binary_mode, BinaryMode::Json) {
+        // Unlike the application/json parser, Buffer JSON.parse does not
+        // remove a BOM or reject prototype-named data properties.
+        Ok(serde_json::from_str(&String::from_utf8_lossy(&bytes)).ok())
+    } else if kind == "application/octet-stream" && matches!(binary_mode, BinaryMode::Enumerate) {
         let mut value = JsValue::object(
             bytes
                 .into_iter()
