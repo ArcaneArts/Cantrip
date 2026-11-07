@@ -17,6 +17,7 @@ pub fn metadata_snapshot(model: &WireValue) -> Result<String> {
 }
 const FIELDS: &[(&str, &str, bool)] = &[
     ("nativeModelId", "native_model_id", true),
+    ("operationCapabilities", "operation_capabilities", false),
     ("canonicalModelId", "canonical_model_id", true),
     ("displayName", "display_name", true),
     ("description", "description", true),
@@ -62,7 +63,7 @@ fn default(field: &str) -> WireValue {
         "hidden" | "isDefault" => WireValue::Bool(false),
         "inputModalities" | "outputModalities" => WireValue::from_serialize(&json!(["text"])),
         "supportedReasoningEfforts" => WireValue::Array(vec![]),
-        "rawMetadata" => WireValue::object([] as [(&str, WireValue); 0]),
+        "rawMetadata" | "operationCapabilities" => WireValue::object([] as [(&str, WireValue); 0]),
         _ => WireValue::Null,
     }
 }
@@ -82,7 +83,7 @@ fn model_row(provider: &str, model: &WireValue) -> WireValue {
 }
 fn availability(row: &Value) -> Result<Value> {
     Ok(
-        json!({"id":row["id"],"providerModelId":row["provider_model_id"],"scopeKey":row["scope_key"],"workerId":row["worker_id"],"providerAccountId":row["provider_account_id"],"state":row["state"],"lastSeenAt":date(&row["last_seen_at"])?,"updatedAt":date(&row["updated_at"])?}),
+        json!({"id":row["id"],"providerModelId":row["provider_model_id"],"scopeKey":row["scope_key"],"operationCapabilities":row["operation_capabilities"],"workerId":row["worker_id"],"providerAccountId":row["provider_account_id"],"state":row["state"],"lastSeenAt":date(&row["last_seen_at"])?,"updatedAt":date(&row["updated_at"])?}),
     )
 }
 fn sync_state(row: &Value) -> Result<Value> {
@@ -233,7 +234,7 @@ impl SettingsRepository {
                 tx.query("INSERT INTO provider_model_catalog_snapshots(id,owner_id,provider_id,provider_account_id,worker_id,availability_scope,metadata_source,metadata_hash,observed_at) SELECT s.id,$2,$3,$4,$5,$6,s.source,s.hash,$7 FROM jsonb_to_recordset($1::jsonb) AS s(id text,source text,hash text) ON CONFLICT DO NOTHING", &[&json!(rows),&owner,&provider,&input.account_id,&input.worker_id,&input.availability_scope,&at]).await?;
             }
             let columns=FIELDS.iter().map(|(_,field,_)|*field).collect::<Vec<_>>();
-            let updates=columns.iter().map(|field|format!("{field}=excluded.{field}")).collect::<Vec<_>>().join(",");
+            let updates=columns.iter().map(|field| if *field == "operation_capabilities" { "operation_capabilities=CASE WHEN excluded.operation_capabilities='{}'::jsonb THEN provider_models.operation_capabilities ELSE excluded.operation_capabilities END".to_owned() } else { format!("{field}=excluded.{field}") }).collect::<Vec<_>>().join(",");
             for batch in input.models.chunks(BATCH) {
                 let rows=WireValue::Array(batch.iter().map(|model|model_row(&provider,model)).collect());
                 tx.query(&format!("INSERT INTO provider_models(id,provider_id,{},last_seen_at,updated_at) SELECT m.id,m.provider_id,{},$2,$2 FROM jsonb_populate_recordset(NULL::provider_models,$1::text::jsonb) m ON CONFLICT(provider_id,native_model_id) DO UPDATE SET {updates},last_seen_at=$2,updated_at=$2",columns.join(","),columns.iter().map(|field|format!("m.{field}")).collect::<Vec<_>>().join(",")), &[&rows.stringify(),&at]).await?;

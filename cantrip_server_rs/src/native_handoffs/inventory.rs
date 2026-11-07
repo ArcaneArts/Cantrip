@@ -19,7 +19,7 @@ impl Repository {
         }
         let state =
             settings_persistence::get(Executor::Database(&self.database), owner, chat).await?;
-        let rows=self.database.query("SELECT jsonb_build_object('providerId',p.id,'providerName',p.name,'kind',p.kind,'routeId',r.id,'name',r.model_name,'profileName',m.name)::text FROM model_routes r INNER JOIN model_providers p ON p.id=r.provider_id INNER JOIN model_profiles m ON m.id=r.model_id WHERE p.owner_id=$1 AND m.owner_id=$1 AND r.enabled=true ORDER BY p.name ASC,m.name ASC,r.position ASC",&[&owner]).await?;
+        let rows=self.database.query("SELECT jsonb_build_object('providerId',p.id,'providerName',p.name,'kind',p.kind,'routeId',r.id,'name',r.model_name,'profileName',m.name)::text FROM model_routes r INNER JOIN model_providers p ON p.id=r.provider_id INNER JOIN model_profiles m ON m.id=r.model_id WHERE p.owner_id=$1 AND m.owner_id=$1 AND m.operation='language' AND r.enabled=true ORDER BY p.name ASC,m.name ASC,r.position ASC",&[&owner]).await?;
         let rows = rows
             .iter()
             .map(|r| Ok(serde_json::from_str::<Value>(&r.get::<String>(0)?)?))

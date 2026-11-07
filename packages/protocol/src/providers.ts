@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  modelOperationSchema,
+  modelOperationCapabilitiesSchema,
+} from "./model-operations.js";
 import { modelProviderKinds } from "./provider-definitions.js";
 import {
   DEFAULT_MAX_CONCURRENT_INFERENCE,
@@ -308,6 +312,7 @@ export const providerModelMetadataSourceSchema = z.enum([
 ]);
 
 export const providerModelCatalogEntrySchema = z.object({
+  operationCapabilities: modelOperationCapabilitiesSchema.optional(),
   id: z.string().min(1),
   providerId: z.string().min(1),
   nativeModelId: z.string().trim().min(1).max(500),
@@ -347,6 +352,8 @@ export const providerModelAvailabilityStateSchema = z.enum([
 ]);
 
 export const providerModelAvailabilitySchema = z.object({
+  // Scoped observations override provider-wide capability metadata.
+  operationCapabilities: modelOperationCapabilitiesSchema.optional(),
   id: z.string().min(1),
   providerModelId: z.string().min(1),
   scopeKey: z.string().min(1).max(500),
@@ -604,6 +611,8 @@ export const modelRouteSummarySchema = modelRouteInputSchema.extend({
 });
 
 export const modelProfileCreateSchema = z.object({
+  // Omission on legacy updates preserves the profile operation.
+  operation: modelOperationSchema.optional(),
   name: z.string().trim().min(1).max(160),
   routes: z
     .array(modelRouteInputSchema)

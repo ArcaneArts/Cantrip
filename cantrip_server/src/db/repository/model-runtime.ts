@@ -83,6 +83,7 @@ export function toModelSummary(
   return {
     id: model.id,
     name: model.name,
+    operation: model.operation,
     canonicalModelId: model.canonicalModelId,
     defaultReasoningEffort: model.defaultReasoningEffort,
     discoveryManaged: model.discoveryManaged,
@@ -119,6 +120,7 @@ export class ModelRepository {
         id: modelId,
         ownerId,
         name: input.name,
+        operation: input.operation ?? "language",
       });
       await transaction.insert(schema.modelRoutes).values(
         input.routes.map((route, position) => ({
@@ -193,7 +195,10 @@ export class ModelRepository {
       return null;
     }
     const models = await this.database
-      .select({ id: schema.modelProfiles.id })
+      .select({
+        id: schema.modelProfiles.id,
+        operation: schema.modelProfiles.operation,
+      })
       .from(schema.modelProfiles)
       .where(
         and(
@@ -203,6 +208,8 @@ export class ModelRepository {
       )
       .limit(1);
     if (!models[0]) return null;
+    // Changing an operation would invalidate existing chats, defaults and indexes.
+    if (input.operation && input.operation !== models[0].operation) return null;
     const existingRoutes = await this.database
       .select()
       .from(schema.modelRoutes)
@@ -357,6 +364,7 @@ export class ModelRepository {
       .where(
         and(
           eq(schema.modelProfiles.ownerId, ownerId),
+          eq(schema.modelProfiles.operation, "language"),
           ...(!includeDisabled ? [eq(schema.modelRoutes.enabled, true)] : []),
           ...(modelId ? [eq(schema.modelProfiles.id, modelId)] : []),
           ...(providerId ? [eq(schema.modelProviders.id, providerId)] : []),
