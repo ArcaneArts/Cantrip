@@ -354,50 +354,84 @@ pub fn activate_profile_with_progress(
     mut progress: impl FnMut(ActivationStep),
 ) -> Result<ActivationReceipt> {
     let result = (|| {
-        let prepared = std::path::absolute(prepared)?;
         let location = Location::new(destination)?;
         let file = location.open_lock()?;
         file.lock()?;
-        if let Some(mut previous) = location.read()? {
-            let receipt = drive(&location, &mut previous, &mut progress)?;
-            if previous.prepared == prepared && !exists(&prepared)? {
-                // Repeating an acknowledged or lost-ack activation never swaps
-                // an old snapshot back over writes accepted since publication.
-                return Ok(receipt);
-            }
-        }
-        ensure!(
-            !prepared.starts_with(&location.destination)
-                && !location.destination.starts_with(&prepared),
-            "Prepared and active profile directories overlap"
-        );
-        let id = Uuid::new_v4();
-        let mut journal = Journal {
-            version: 1,
-            activation_id: id,
-            destination: location.destination.clone(),
-            prepared,
-            incoming: location
-                .parent
-                .join(format!(".cantrip-activation-incoming-{id}")),
-            backup: location
-                .parent
-                .join(format!(".cantrip-activation-backup-{id}")),
-            phase: Phase::Preparing,
-        };
-        // Prepared profiles come from a completed offline restore. Opening the
-        // directory and creating this marker exercise real filesystem operations.
-        fs::read_dir(&journal.prepared)?;
-        files::write_private(
-            &journal.prepared.join(journal.marker()),
-            id.to_string().as_bytes(),
-        )?;
-        #[cfg(unix)]
-        File::open(&journal.prepared)?.sync_all()?;
-        location.write(&journal)?;
-        drive(&location, &mut journal, &mut progress)
+        activate_locked(&location, prepared, &mut progress)
     })();
     result.map_err(|e| failure(e, "activating the prepared profile"))
+}
+
+fn activate_locked(
+    location: &Location,
+    prepared: &Path,
+    progress: &mut impl FnMut(ActivationStep),
+) -> Result<ActivationReceipt> {
+    let prepared = std::path::absolute(prepared)?;
+    if let Some(mut previous) = location.read()? {
+        let receipt = drive(location, &mut previous, progress)?;
+        if previous.prepared == prepared && !exists(&prepared)? {
+            // Repeating an acknowledged or lost-ack activation never swaps
+            // an old snapshot back over writes accepted since publication.
+            return Ok(receipt);
+        }
+    }
+    ensure!(
+        !prepared.starts_with(&location.destination)
+            && !location.destination.starts_with(&prepared),
+        "Prepared and active profile directories overlap"
+    );
+    let id = Uuid::new_v4();
+    let mut journal = Journal {
+        version: 1,
+        activation_id: id,
+        destination: location.destination.clone(),
+        prepared,
+        incoming: location
+            .parent
+            .join(format!(".cantrip-activation-incoming-{id}")),
+        backup: location
+            .parent
+            .join(format!(".cantrip-activation-backup-{id}")),
+        phase: Phase::Preparing,
+    };
+    // Prepared profiles come from a completed offline restore. Opening the
+    // directory and creating this marker exercise real filesystem operations.
+    fs::read_dir(&journal.prepared)?;
+    files::write_private(
+        &journal.prepared.join(journal.marker()),
+        id.to_string().as_bytes(),
+    )?;
+    #[cfg(unix)]
+    File::open(&journal.prepared)?.sync_all()?;
+    location.write(&journal)?;
+    drive(location, &mut journal, progress)
+}
+
+/// Preparation and publication share one exclusive lease. No native server can
+/// accept writes between the stopped-profile snapshot and its directory switch.
+pub(super) fn prepare_and_activate<T>(
+    destination: &Path,
+    prepare: impl FnOnce() -> Result<Option<(PathBuf, T)>>,
+) -> Result<Option<ActivationReceipt>> {
+    let _lease = exclusive_lease(destination)?;
+    let location = Location::new(destination)?;
+    if let Some(journal) = location.read()? {
+        // Explicit logical restore can repair a missing completed root, but an
+        // automatic upgrade must never reinterpret it as a fresh installation.
+        active_directory(&journal)?;
+    }
+    let Some((prepared, _owner)) = prepare()? else {
+        return Ok(None);
+    };
+    activate_locked(&location, &prepared, &mut |step| {
+        eprintln!(
+            "{}",
+            serde_json::json!({"event":"profile.activation.progress","step":step})
+        );
+    })
+    .map(Some)
+    .map_err(|e| failure(e, "activating the upgraded profile"))
 }
 
 pub fn recover_profile_activation(destination: &Path) -> Result<Option<ActivationReceipt>> {

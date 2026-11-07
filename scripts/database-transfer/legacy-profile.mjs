@@ -55,6 +55,7 @@ async function exportProfile({ source, output, executable }) {
       executable,
       [
         "--migrate-only",
+        "--shutdown-on-stdin-close",
         "--pack-profile",
         source,
         "--profile-sql",
@@ -91,6 +92,7 @@ async function restoreProfile({ source, output, executable }) {
       executable,
       [
         "--migrate-only",
+        "--shutdown-on-stdin-close",
         "--materialize-profile",
         source,
         "--data-dir",
@@ -127,7 +129,14 @@ async function restoreProfile({ source, output, executable }) {
     );
     await execute(
       executable,
-      ["--migrate-only", "--publish-profile", prepared, "--data-dir", output],
+      [
+        "--migrate-only",
+        "--shutdown-on-stdin-close",
+        "--publish-profile",
+        prepared,
+        "--data-dir",
+        output,
+      ],
       { maxBuffer: 1024 * 1024 },
     );
     return {

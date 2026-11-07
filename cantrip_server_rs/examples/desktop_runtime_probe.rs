@@ -55,6 +55,19 @@ fn main() -> Result<()> {
     drop(listener);
     let token = format!("desktop-probe-{}", std::process::id());
     let launch = server_command(&node, &resources.join("server")).map_err(anyhow::Error::msg)?;
+    if let Some(command) = launch.preparation {
+        let mut child = OwnedChild(
+            spawn_service(
+                command,
+                &server_environment(&data, &logs, port, &token),
+                true,
+                true,
+            )
+            .map_err(anyhow::Error::msg)?,
+        );
+        capture(&mut child.0);
+        wait_for_preparation(&mut child.0, || false).map_err(anyhow::Error::msg)?;
+    }
     let native = launch.native;
     let mut server = OwnedChild(
         spawn_service(

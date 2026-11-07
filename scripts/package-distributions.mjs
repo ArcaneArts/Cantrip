@@ -264,6 +264,19 @@ async function packageDesktopRuntime() {
       standalone: false,
     });
   }
+  if (serverRuntime === "rust") {
+    // Also build this small package in --from-artifacts mode. Reusing worker
+    // artifacts must not rebuild Codex, and the converter has no server code.
+    runPnpm(["--filter", "@cantrip/profile-converter", "build"]);
+    runPnpm([
+      "--config.node-linker=hoisted",
+      "--filter",
+      "@cantrip/profile-converter",
+      "deploy",
+      "--prod",
+      path.join(runtime, "profile-converter"),
+    ]);
+  }
   await configureDesktopServer(path.join(runtime, "server"), serverRuntime);
   await bundleNodeRuntime(runtime);
   await verifyPackagedWorkerCua(path.join(runtime, "worker"));

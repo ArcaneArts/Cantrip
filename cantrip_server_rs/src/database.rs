@@ -110,6 +110,17 @@ impl Transaction<'_> {
     }
 }
 
+/// Distinguishes a real engine-open failure from configuration, migration, or
+/// SQL failures when an offline upgrade tries a private legacy-profile copy.
+#[derive(Debug)]
+pub struct NativePgliteOpenFailure;
+impl std::fmt::Display for NativePgliteOpenFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("open native PGlite")
+    }
+}
+impl std::error::Error for NativePgliteOpenFailure {}
+
 impl Database {
     pub async fn pglite(directory: &Path) -> Result<Self> {
         // Resolve the host before the native engine changes TZ/PGTZ/LANG.
@@ -131,7 +142,7 @@ impl Database {
             },
         )
         .await
-        .context("open native PGlite")?;
+        .context(NativePgliteOpenFailure)?;
         if !initialized {
             database
                 .exec(&format!("ALTER SYSTEM SET TimeZone='{timezone}'"))

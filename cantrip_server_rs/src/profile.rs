@@ -4,6 +4,7 @@ mod activation;
 mod bundle;
 mod files;
 mod publish;
+pub mod upgrade;
 use crate::config::{DatabaseMode, Environment, ServerConfig};
 pub use activation::{
     ActivationReceipt, ActivationStep, ProfileLease, activate_profile,
@@ -69,6 +70,8 @@ fn failure(error: anyhow::Error, phase: &'static str) -> anyhow::Error {
 #[serde(rename_all = "camelCase")]
 struct DatabaseProfile {
     version: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime: Option<String>,
     database_mode: DatabaseMode,
     #[serde(skip_serializing_if = "Option::is_none")]
     database_url: Option<String>,
@@ -138,6 +141,7 @@ pub fn remember_database(config: &ServerConfig) -> Result<()> {
         .map_err(|_| anyhow!("Cannot create the database configuration directory."))?;
     let profile = DatabaseProfile {
         version: 1,
+        runtime: Some("rust".into()),
         database_mode: config.database_mode,
         database_url: if config.database_mode == DatabaseMode::Postgres {
             config.database_url.clone()
@@ -164,4 +168,19 @@ pub fn remember_database(config: &ServerConfig) -> Result<()> {
         .and_then(|directory| directory.sync_all())
         .map_err(|_| anyhow!("Cannot sync the database configuration directory."))?;
     Ok(())
+}
+
+/// An ownership record is written only after successful native database setup.
+/// It avoids re-copying an already converted installation at every app launch.
+fn native_runtime(root: &Path) -> bool {
+    // This is only an optimization. Invalid or unreadable metadata must not
+    // prevent an explicit backend from performing its real native operation.
+    std::fs::read(root.join(DATABASE_FILE))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<DatabaseProfile>(&bytes).ok())
+        .is_some_and(|profile| {
+            profile.version == 1
+                && profile.database_mode == DatabaseMode::Pglite
+                && profile.runtime.as_deref() == Some("rust")
+        })
 }
