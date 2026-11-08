@@ -2,8 +2,8 @@ use std::{sync::Arc, time::Instant};
 
 use axum::{
     Json, Router,
-    extract::State,
-    http::{Method, StatusCode, Uri, header::CONTENT_TYPE},
+    extract::{Request, State},
+    http::{StatusCode, header::CONTENT_TYPE},
     response::{IntoResponse, Response},
     routing::get,
 };
@@ -77,6 +77,7 @@ mod native_queue;
 mod native_settings;
 mod on_response;
 mod operational_status;
+pub mod request_logs;
 pub use operational_status::observe as observe_operations;
 mod pane_layouts;
 mod policies;
@@ -203,7 +204,22 @@ async fn ready(State(service): State<Arc<AuthService>>) -> Response {
     )
 }
 
-async fn not_found(method: Method, uri: Uri) -> Response {
+async fn not_found(State(service): State<Arc<AuthService>>, request: Request) -> Response {
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+    // Fastify applies its registered payload parser before the 404 handler,
+    // including an unsupported method at an otherwise registered path.
+    if matches!(
+        method.as_str(),
+        "DELETE" | "OPTIONS" | "PATCH" | "PUT" | "POST" | "QUERY"
+    ) {
+        let binary_limit = (service.config.upload_limit_bytes * 3).div_ceil(2) + 1024 * 1024;
+        if let Err(response) =
+            body::parse_fallback(request, service.config.api_body_limit_bytes, binary_limit).await
+        {
+            return response;
+        }
+    }
     json_response(
         StatusCode::NOT_FOUND,
         json!({
@@ -322,5 +338,6 @@ pub fn router(service: Arc<AuthService>) -> Router {
             service.clone(),
             operational_status::observe,
         ))
+        .layer(axum::middleware::from_fn(request_logs::observe))
         .with_state(service)
 }

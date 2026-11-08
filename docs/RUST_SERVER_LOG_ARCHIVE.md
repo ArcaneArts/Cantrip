@@ -115,7 +115,8 @@ Production lifecycle comparisons normalize timestamps, durations and global
 cursor positions. They assert the lifecycle contracts rather than equal total
 record counts.
 
-Additional HTTP/Pino, database, bridge and other operational consumers, console
-presentation, supported-platform artifacts, packaged acceptance and performance
-remain required. This milestone does not establish complete production logging
-parity or full server replacement.
+The [HTTP and console follow-up](RUST_SERVER_HTTP_LOGGING.md) adds actual request
+completion capture, console presentation and stream-error handling. Additional
+HTTP/Pino, database, bridge and other operational consumers, supported-platform
+artifacts, packaged acceptance and performance remain required. These scoped
+milestones do not establish complete production logging or full replacement.

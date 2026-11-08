@@ -15036,7 +15036,9 @@
         "cantrip_server_rs/src/http/worker_log_socket.rs",
         "cantrip_server_rs/src/operations/log_records.rs",
         "cantrip_server_rs/src/operations/log_archive.rs",
-        "cantrip_server_rs/src/operations/log_runtime.rs"
+        "cantrip_server_rs/src/operations/log_runtime.rs",
+        "cantrip_server_rs/src/operations/log_format.rs",
+        "cantrip_server_rs/src/http/request_logs.rs"
       ],
       "evidence": [
         "cantrip_server_rs/tests/service_logs.rs",
@@ -15067,11 +15069,17 @@
         "scripts/server-rust/log-runtime-server-compatibility.mjs",
         "docs/RUST_SERVER_LOG_ARCHIVE.md",
         "scripts/server-rust/log-profile-activation-compatibility.mjs",
-        "scripts/server-rust/log-profile-lease-compatibility.mjs"
+        "scripts/server-rust/log-profile-lease-compatibility.mjs",
+        "cantrip_server_rs/tests/log_format.rs",
+        "scripts/server-rust/log-format-oracle.mjs",
+        "scripts/server-rust/log-http-compatibility.mjs",
+        "scripts/server-rust/log-http-node-fixture.mjs",
+        "cantrip_server_rs/examples/log-http-fixture.rs",
+        "docs/RUST_SERVER_HTTP_LOGGING.md"
       ],
       "scope": "Native shared JSON operational log emission, UTF-16 text/key semantics, secret/context/error sanitization, sampled emission and bounded repeated-event windows match 65,937 actual Source sanitizer/error vectors and 2,136 actions/eight policy scenarios locally. Actual direct production log comparisons pass334 cases/15 groups, coordinator diagnostics575 cases, and routing583 cases/31 states per store on native PGlite/private/external PostgreSQL. This is not the complete operational logging/metrics product.",
       "remaining": [
-        "Reconcile additional production log consumers, including HTTP/Pino/database/bridge diagnostics and console presentation against current Source.",
+        "Reconcile additional production consumers, including remaining HTTP/Pino, database, bridge and other diagnostics against current Source. HTTP completion and console presentation now have scoped local qualification.",
         "Complete current supported-platform, packaged artifact and full replacement acceptance."
       ],
       "operationalHttpQualification": {
@@ -15126,13 +15134,34 @@
         "actualActorBoundaryTimer": true,
         "concurrentProducerDrainRecords": 128,
         "scope": "Real production entrypoints, startup/configuration failure, console filtering independent of capture, archive path precedence, legacy-file migration, SIGINT/SIGTERM, queued close and actual filesystem obstruction/recovery. Actual filesystem oracle covers rotation, quota, compression/recovery, restart, permissions, UTF-16 bytes and boundary scheduling. Clock seams qualify calendar/age behavior; gzip payloads are compared after decompression, not as identical compressed bytes.",
-        "remaining": "Additional production consumers, HTTP/Pino/database/bridge diagnostics and console presentation remain unreconciled. This does not establish identical whole-server record counts, supported-platform/package/performance or complete replacement acceptance.",
+        "remaining": "Additional production consumers remain unreconciled; HTTP completion and console presentation have separate scoped qualification. Whole-server record counts, supported-platform/package/performance and complete replacement acceptance remain unproven.",
         "profileActivationBoundaryCases": 4,
         "profileServerRestarts": 4,
         "heldArchiveWriteLeaseCases": 3,
         "optimizedArtifact": {
           "bytes": 93701168,
           "sha256": "85c6a5d4471914639618cf16c656e00c232a108406eb5b2520c5b85ba86116a8"
+        }
+      },
+      "httpConsoleQualification": {
+        "sourceBaseline": "2e175adb75cb557510ee722ece01e377e8f04360",
+        "platform": "darwin-arm64",
+        "serviceFormatterVectors": 480,
+        "httpFormatterVectors": 1006,
+        "durationVectors": 13,
+        "urlVectors": 11,
+        "timezones": ["UTC", "America/Chicago", "Asia/Kathmandu"],
+        "productionEntrypointPeerRuns": 16,
+        "storageModes": ["pglite", "bundled-postgres", "postgres"],
+        "controlledStreamCompletionsPerPeer": 9,
+        "controlledStreamWarningsPerPeer": 1,
+        "actualAppLiveUpgradePair": true,
+        "scope": "Actual ordinary response completion, HEAD/empty/held/abandoned streams, producer error after first chunk, exact console formatting and minimized persisted metadata. Actual production fallback parser regression and media/QUERY/retired-route precedence are compared through HTTP. This does not establish every socket/error/calendar boundary or complete logging/product/platform acceptance.",
+        "optimizedArtifact": {
+          "bytes": 93874608,
+          "sha256": "7b729e08e5fe35f55f487fe8c14137472a1e7d7d1cad07c596b1dbbf1822af45",
+          "productionEntrypointPeerRuns": 16,
+          "actualBlockedArchiveProfileLeaseCase": true
         }
       }
     },

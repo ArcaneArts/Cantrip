@@ -347,7 +347,10 @@ pub(super) async fn guard(
     mut request: Request,
     next: Next,
 ) -> Response {
-    let id = Uuid::new_v4().to_string();
+    let id = request
+        .extensions()
+        .get::<super::request_logs::RequestId>()
+        .map_or_else(|| Uuid::new_v4().to_string(), |id| id.0.clone());
     let origin = value(request.headers(), "origin");
     let requested_headers = value(request.headers(), "access-control-request-headers");
     let peer = request
