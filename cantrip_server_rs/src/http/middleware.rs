@@ -492,6 +492,7 @@ pub(super) async fn guard(
         .join("/");
     if super::removed_repository::unregistered_method(request.method(), &route)
         || super::project_administration::unregistered_method(request.method(), &route)
+        || super::chat_control::unregistered_method(request.method(), &route)
     {
         // Fastify does not match a route pattern for an unsupported method.
         // Keep its raw-path rate-limit key and absent audit resource binding.

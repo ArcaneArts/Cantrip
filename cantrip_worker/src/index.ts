@@ -2928,8 +2928,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           { explanation: null, steps: [], question: null },
           session.contextKind === "project"
             ? createManagedNativeOutputIdentityResolver({
-                mode: createNativeHistoryOutputModeResolver((threadId) =>
-                  runtime.readNativeHistory(threadId),
+                mode: createNativeHistoryOutputModeResolver(
+                  (threadId) => runtime.readNativeHistory(threadId),
+                  (threadId, observer) =>
+                    runtime.observeNativeHistory(threadId, observer),
                 ),
                 client: nativeHistoryClient,
                 scope: (threadId, agentScope) =>
@@ -6306,8 +6308,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               }),
               command.contextKind === "project" && command.nativeCommandReceipt
                 ? createManagedNativeOutputIdentityResolver({
-                    mode: createNativeHistoryOutputModeResolver((threadId) =>
-                      runtime.readNativeHistory(threadId),
+                    mode: createNativeHistoryOutputModeResolver(
+                      (threadId) => runtime.readNativeHistory(threadId),
+                      (threadId, observer) =>
+                        runtime.observeNativeHistory(threadId, observer),
                     ),
                     client: nativeHistoryClient,
                     scope: (threadId, agentScope) => {

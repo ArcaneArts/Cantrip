@@ -9,6 +9,7 @@ import { actualSkillSettingsClient } from "./actual-skill-settings-client.mjs";
 import { actualMcpSettingsClient } from "./actual-mcp-settings-client.mjs";
 import { actualProviderTestClient } from "./actual-provider-test-client.mjs";
 import { actualAgentTaskClient } from "./actual-agent-task-client.mjs";
+import { actualChatControls } from "./actual-chat-controls.mjs";
 
 export async function actualProjectChatClient({
   page,
@@ -101,18 +102,28 @@ export async function actualProjectChatClient({
       },
       { baseUrl: model.baseUrl, nativeModel: model.model, workerId },
     );
-    const chat = await page.evaluate(async (projectId) => {
-      const api = await import("/src/lib/api/conversations.ts");
-      window.agentProjectId = projectId;
-      window.agentCreation = await api.prepareConversationCreation(
-        projectId,
-        "Private actual Agent title",
-        false,
-      );
-      const created = await window.agentCreation();
-      window.folderLive.retainScope({ kind: "chat", chatId: created.id });
-      return created;
-    }, projectId);
+    const chat = await page.evaluate(
+      async ({ projectId, pinPrimary }) => {
+        const api = await import("/src/lib/api/conversations.ts");
+        window.agentProjectId = projectId;
+        window.agentCreation = await api.prepareConversationCreation(
+          projectId,
+          "Private actual Agent title",
+          false,
+        );
+        const created = await window.agentCreation();
+        if (pinPrimary)
+          await (
+            await import("/src/lib/api/chats.ts")
+          ).updateChatWorktree(created.id, {
+            worktreeId: created.activeWorktreeId,
+            mode: "pinned",
+          });
+        window.folderLive.retainScope({ kind: "chat", chatId: created.id });
+        return created;
+      },
+      { projectId, pinPrimary: process.argv.includes("--chat-controls") },
+    );
     const replay = await page.evaluate(() => window.agentCreation());
     result.projectChatId = chat.id;
     assert.equal(replay.id, chat.id);
@@ -480,6 +491,22 @@ export async function actualProjectChatClient({
     result.steps.push(
       "Agent creation and usage receipts, encrypted history and native Goal survive server/worker restart; public Goal clear succeeds without duplicate inference",
     );
+    if (process.argv.includes("--chat-controls"))
+      await actualChatControls({
+        page,
+        fixture,
+        projectId,
+        chatId: chat.id,
+        workerDataDirectory,
+        configuration,
+        readMessages,
+        idle,
+        model,
+        startWorker,
+        stopWorker,
+        result,
+        requests,
+      });
     if (process.argv.includes("--project-automations"))
       await actualProjectAutomationsClient({
         page,

@@ -202,6 +202,7 @@ export class ManagedExecutionRunner {
       method !== "thread/queue/start" &&
       method !== "thread/goal/set" &&
       method !== "thread/goal/clear" &&
+      method !== "thread/compact/start" &&
       method !== "turn/pause"
     )
       return Promise.resolve();
@@ -232,7 +233,13 @@ export class ManagedExecutionRunner {
           { threadId, runnerGeneration: this.generation },
           transport,
         );
-      } else if (this.invalidated && resumeAutonomy) {
+      } else if (
+        this.invalidated &&
+        (resumeAutonomy || method === "thread/compact/start")
+      ) {
+        // Compaction has its own admitted start. Stop/Goal clear invalidates
+        // the inference-only native gate, so renew its generation before the
+        // compact task reaches that boundary; retain the old source's abort.
         this.providerTransfer.discard();
         await this.rebind(threadId, transport);
       }

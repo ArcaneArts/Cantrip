@@ -7552,3 +7552,18 @@ replica SQL snapshots, actual INSERT failures, caller destruction, post-write
 reopen and real quotas. See [the attachment evidence and limitations](RUST_SERVER_CHAT_ATTACHMENTS.md).
 Node remains the default server; full product, platform, migration, rollback,
 packaging and Winterhold acceptance remain required.
+
+## Chat compaction, placement and execution lanes
+
+The native server now implements compact, worktree selection, lane list and
+lane release, preserving the actual worker command, lease/placement transaction,
+endpoint-encrypted message, caller-loss and response-completion event contracts.
+All nine local database/authentication pairs pass 756 paired HTTP cases and 18
+paired caller-loss operations. A separate six-cell browser/full-worker matrix
+passes 204 product steps with real native compaction/continuation, dirty Git
+protection, release replay and retained canonical encrypted history. Two current
+Node-worker integration failures discovered by that matrix are fixed without
+rewriting the worker or changing the native Codex bundle. See
+[the qualification, commands and limits](RUST_SERVER_CHAT_CONTROLS.md).
+The production route probe retains 25 active generic fallbacks, down from 29.
+Node remains the normal default; complete replacement acceptance remains open.

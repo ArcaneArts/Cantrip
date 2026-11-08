@@ -7966,22 +7966,32 @@
       {
         "method": "POST",
         "path": "/api/chats/:chatId/compact",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_CHAT_CONTROLS.md",
+          "scripts/server-rust/chat-control-http-compatibility.mjs",
+          "scripts/server-rust/chat-control-http-boundaries.mjs",
+          "scripts/server-rust/actual-chat-controls.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
         "observedBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
+          "sourceBaseline": "eac53fda28b918231f1c28fd94ce4fa3aee3733c",
           "sourceStatus": 404,
           "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
+          "rustResponse": {
+            "error": "Chat source not found."
+          },
+          "scope": "Current production empty-profile probe only; successful behavior is qualified separately by the paired HTTP and full-worker product matrices."
         },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+          "Final supported-platform/package, mixed-server recovery and complete replacement acceptance remain required; see the scoped qualification document."
+        ],
+        "implementation": [
+          "cantrip_server_rs/src/http/chat_control.rs",
+          "cantrip_server_rs/src/http/chat_control/compact.rs"
         ]
       },
       {
@@ -8050,64 +8060,106 @@
       {
         "method": "GET",
         "path": "/api/chats/:chatId/execution-lanes",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_CHAT_CONTROLS.md",
+          "scripts/server-rust/chat-control-http-compatibility.mjs",
+          "scripts/server-rust/chat-control-http-boundaries.mjs",
+          "scripts/server-rust/actual-chat-controls.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
         "observedBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
+          "sourceBaseline": "eac53fda28b918231f1c28fd94ce4fa3aee3733c",
           "sourceStatus": 200,
-          "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
+          "rustStatus": 200,
+          "rustResponse": [],
+          "scope": "Current production empty-profile probe only; successful behavior is qualified separately by the paired HTTP and full-worker product matrices."
         },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+          "Final supported-platform/package, mixed-server recovery and complete replacement acceptance remain required; see the scoped qualification document."
+        ],
+        "implementation": [
+          "cantrip_server_rs/src/http/chat_control.rs",
+          "cantrip_server_rs/src/http/chat_control/compact.rs"
         ]
       },
       {
         "method": "POST",
         "path": "/api/chats/:chatId/execution-lanes/:laneId/release",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_CHAT_CONTROLS.md",
+          "scripts/server-rust/chat-control-http-compatibility.mjs",
+          "scripts/server-rust/chat-control-http-boundaries.mjs",
+          "scripts/server-rust/actual-chat-controls.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
         "observedBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
+          "sourceBaseline": "eac53fda28b918231f1c28fd94ce4fa3aee3733c",
           "sourceStatus": 404,
           "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
+          "rustResponse": {
+            "error": "Execution lane not found."
+          },
+          "scope": "Current production empty-profile probe only; successful behavior is qualified separately by the paired HTTP and full-worker product matrices."
         },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+          "Final supported-platform/package, mixed-server recovery and complete replacement acceptance remain required; see the scoped qualification document."
+        ],
+        "implementation": [
+          "cantrip_server_rs/src/http/chat_control.rs",
+          "cantrip_server_rs/src/http/chat_control/compact.rs"
         ]
       },
       {
         "method": "PATCH",
         "path": "/api/chats/:chatId/worktree",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_CHAT_CONTROLS.md",
+          "scripts/server-rust/chat-control-http-compatibility.mjs",
+          "scripts/server-rust/chat-control-http-boundaries.mjs",
+          "scripts/server-rust/actual-chat-controls.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
         "observedBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
+          "sourceBaseline": "eac53fda28b918231f1c28fd94ce4fa3aee3733c",
           "sourceStatus": 400,
-          "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
+          "rustStatus": 400,
+          "rustResponse": {
+            "error": "Invalid request body",
+            "issues": [
+              {
+                "expected": "string",
+                "code": "invalid_type",
+                "path": ["worktreeId"],
+                "message": "Invalid input: expected string, received undefined"
+              },
+              {
+                "code": "invalid_value",
+                "values": ["agent-managed", "pinned"],
+                "path": ["mode"],
+                "message": "Invalid option: expected one of \"agent-managed\"|\"pinned\""
+              }
+            ]
+          },
+          "scope": "Current production empty-profile probe only; successful behavior is qualified separately by the paired HTTP and full-worker product matrices."
         },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+          "Final supported-platform/package, mixed-server recovery and complete replacement acceptance remain required; see the scoped qualification document."
+        ],
+        "implementation": [
+          "cantrip_server_rs/src/http/chat_control.rs",
+          "cantrip_server_rs/src/http/chat_control/compact.rs"
         ]
       },
       {
@@ -18144,7 +18196,7 @@
         "nodeOnly": ["2060beb2a", "fc71cc21e"]
       },
       "remaining": [
-        "Implement the 33 active HTTP endpoints confirmed by the production inventory probe; see docs/RUST_SERVER_HTTP_INVENTORY.md. Retired repository 410 contracts are now separately qualified.",
+        "Implement the 25 active HTTP endpoints confirmed by the current production inventory probe; retired repository, project-administration and Chat-control contracts are separately qualified.",
         "Remaining CantripOS Worker/native interruption and missing-receipt behavior beyond the executed lifecycle and root-system scenarios, plus current platform requalification.",
         "Complete current native Task/Goal interruption/reconnect and supported-platform requalification.",
         "Consolidate historical category-row limitations against current executed evidence before final replacement completion."
@@ -18158,6 +18210,11 @@
         "cleanProductionServerExits": 18,
         "scope": "Validation, owner/worker isolation, configuration failures, unavailable-worker cancellation and exact response headers/bodies; no successful inference claim.",
         "rustExecutableSha256": "12fe4ca248e1aedd6eeea0a6934487a81ff74dc4ffab9cfb18d59359bb7c2fc1"
+      },
+      "currentGeneratedContractQualification": {
+        "sourceBaseline": "eac53fda28b918231f1c28fd94ce4fa3aee3733c",
+        "matchingGraphs": 11,
+        "scope": "Current generated contract/source comparisons; schema equality is not behavioral parity."
       }
     },
     "singleServerNativeRecovery": {
@@ -18419,7 +18476,7 @@
         "All three local authentication modes across all three stores pass paired status/body/header/HEAD and audit checks. The hosted external PostgreSQL account profile proves per-route budget exemption/exhaustion and actual Retry-After bounds."
       ],
       "remaining": [
-        "Implement the 33 explicitly unported active HTTP endpoints grouped in the evidence document.",
+        "Implement the 25 explicitly unported active HTTP endpoints grouped in the evidence document; project administration and Chat controls are separately qualified.",
         "Reconcile other category rows/background services and qualify complete current behavior, supported platforms/packages, migrations/rollback and performance.",
         "Default Rust cutover and production Node-server removal remain required."
       ],
@@ -18429,6 +18486,17 @@
         "standardRepositoryCheck": "Stops on unchanged Node source line budgets 1532/1500 and2336/1999; downstream aggregate stages unrun.",
         "broadHttpInventoryExitCode": 1,
         "broadHttpInventoryReason": "The 33 active missing-route differences remain required implementation work."
+      },
+      "currentQualification": {
+        "sourceBaseline": "eac53fda28b918231f1c28fd94ce4fa3aee3733c",
+        "requestsPerPeer": 584,
+        "requestErrors": 0,
+        "cleanServerExits": 2,
+        "activeFallbacksBeforeChatControls": 29,
+        "remainingActiveFallbackDifferences": 25,
+        "inspectionExitCode": 1,
+        "rustExecutableSha256": "ed2073fde1fb2703723a078514f4bf79282dd46cd8318fbe9257a56b4a6ab9b4",
+        "scope": "Current production empty-profile HTTP probe; not full successful-operation or replacement acceptance."
       }
     },
     "projectAdministration": {
@@ -18457,6 +18525,57 @@
       "scope": "Source-equivalent bounded/coalesced post-commit preview revocation through the existing owned command bus, strict notification/acknowledgment validation and lifecycle drain. SQL Chat generation remains the durable authority fence.",
       "remaining": [
         "Computer-use operation and preview HTTP endpoints remain unported. Other-platform and full native preview product qualification remain required."
+      ]
+    },
+    "chatControls": {
+      "status": "implemented-pending-platform-acceptance",
+      "sourceBaseline": "eac53fda28b918231f1c28fd94ce4fa3aee3733c",
+      "implementation": [
+        "cantrip_server_rs/src/http/chat_control.rs",
+        "cantrip_server_rs/src/http/chat_control/compact.rs",
+        "cantrip_worker/src/codex/managed-execution-runner.ts",
+        "cantrip_worker/src/native-history-output-mode.ts",
+        "cantrip_worker/src/native-history-turn-context.ts"
+      ],
+      "evidence": [
+        "docs/RUST_SERVER_CHAT_CONTROLS.md",
+        "scripts/server-rust/chat-control-contract-oracle.mjs",
+        "scripts/server-rust/chat-control-http-compatibility.mjs",
+        "scripts/server-rust/chat-control-http-logs.mjs",
+        "scripts/server-rust/chat-control-http-boundaries.mjs",
+        "scripts/server-rust/actual-chat-controls.mjs",
+        "cantrip_worker/test/managed-execution-runner.test.ts",
+        "cantrip_worker/test/native-history-output-mode.test.ts"
+      ],
+      "localQualification": {
+        "platform": "darwin-arm64",
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "authenticationModes": ["none", "password", "accounts"],
+        "pairedProfiles": 9,
+        "pairedHttpCases": 756,
+        "httpObservations": 1512,
+        "pairedCallerLossOperations": 18,
+        "cleanControlledServerExits": 36,
+        "operationalLogRecords": 216,
+        "fullWorkerPeerCells": 6,
+        "fullWorkerProductSteps": 204,
+        "cleanFullWorkerServerExits": 36,
+        "cleanFullWorkerExits": 42,
+        "actualRunChildRetirements": 12,
+        "nativeModelPostsPerPeer": 6,
+        "rustExecutableSha256": "ed2073fde1fb2703723a078514f4bf79282dd46cd8318fbe9257a56b4a6ab9b4",
+        "rustLibraryTests": 65,
+        "focusedWorkerTests": 89,
+        "generatedContractGraphs": 11
+      },
+      "behavior": [
+        "Real native compaction checkpoint and subsequent continuation retain canonical encrypted history and original model attribution across server/worker restart.",
+        "Worktree placement and lane release preserve actual Git dirty status, logical branch leases, transactional rollback, encrypted system-message attribution/replay, and caller-loss continuity.",
+        "The Node worker renews the native runner for explicitly admitted compaction after Stop/Goal clear and observes original context before sealing early native output; no native Codex change or worker rewrite."
+      ],
+      "remaining": [
+        "Full GUI, current supported-platform/package, mixed-server interruption, performance, final migration/rollback and full-domain acceptance remain required.",
+        "Default Rust cutover and production Node-server removal remain required."
       ]
     }
   },
