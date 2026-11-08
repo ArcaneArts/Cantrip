@@ -3,6 +3,46 @@ use super::managed_console;
 use crate::wire::{Value, value::json};
 use anyhow::Result;
 
+pub(crate) fn agent(
+    owner: &str,
+    server: &str,
+    context: &Value,
+    binding: &Value,
+    now: i64,
+) -> Result<Option<Value>> {
+    let issued = binding["issuedAt"]
+        .as_js_string()
+        .and_then(crate::wire::date_milliseconds);
+    let expires = binding["expiresAt"]
+        .as_js_string()
+        .and_then(crate::wire::date_milliseconds);
+    if context["computerUseEnabled"] != true
+        || binding["ownerId"] != owner
+        || issued.is_some_and(|time| time as i128 > now as i128 + 60_000)
+        || expires.is_some_and(|time| time <= now)
+        || [
+            "contextKind",
+            "chatId",
+            "projectId",
+            "scratchRootId",
+            "workerId",
+            "executionLaneId",
+            "worktreeId",
+            "rootKind",
+        ]
+        .iter()
+        .any(|key| binding.get(key) != context.get(key))
+    {
+        return Ok(None);
+    }
+    let mut result = preview(owner, server, context)?;
+    result["executionLaneId"] = context["executionLaneId"].clone();
+    Ok(Some(crate::settings::parse_response(
+        "cuaAgentAuthoritySchema",
+        Some(&result),
+    )?))
+}
+
 pub(crate) fn preview(owner: &str, server: &str, context: &Value) -> Result<Value> {
     anyhow::ensure!(
         context["computerUseEnabled"] == true,
@@ -46,6 +86,46 @@ pub(crate) fn preview(owner: &str, server: &str, context: &Value) -> Result<Valu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn current_agent_authority_matches_source_placement_policy_and_clock_boundaries() -> Result<()>
+    {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap();
+        let output = std::process::Command::new("node")
+            .args([
+                "--import",
+                "tsx",
+                "scripts/server-rust/computer-use-authority-oracle.mjs",
+            ])
+            .current_dir(root)
+            .output()?;
+        anyhow::ensure!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let cases: Vec<Value> = serde_json::from_slice(&output.stdout)?;
+        assert!(cases.len() > 1_000);
+        for case in &cases {
+            let input = &case["input"];
+            let actual = agent(
+                input["ownerId"].as_str().unwrap(),
+                input["serverId"].as_str().unwrap(),
+                &input["context"],
+                &input["binding"],
+                input["now"].as_i64().unwrap(),
+            )?
+            .unwrap_or(Value::Null);
+            assert_eq!(actual, case["expected"], "{}", case["name"].stringify());
+        }
+        eprintln!(
+            "{} current Source agent authority cases matched",
+            cases.len()
+        );
+        Ok(())
+    }
 
     #[test]
     fn projects_owned_os_identity_without_transport_or_host_permission() -> Result<()> {

@@ -80,6 +80,7 @@ pub(super) async fn parse_js(request: Request, limit: u64) -> Result<Option<JsVa
 enum BinaryMode {
     Ignore,
     Enumerate,
+    Own,
     Json,
 }
 
@@ -118,6 +119,15 @@ pub(super) async fn parse_js_buffer(
         BinaryMode::Enumerate,
     )
     .await
+}
+
+/// Object.keys(Buffer) exposes its byte indices, without inherited methods.
+pub(super) async fn parse_js_own_buffer(
+    request: Request,
+    json_limit: u64,
+    binary_limit: u64,
+) -> Result<Option<JsValue>, Response> {
+    parse_body(request, json_limit, Some(binary_limit), BinaryMode::Own).await
 }
 
 /// Routes which ignore their parsed input still use Fastify's registered
@@ -212,18 +222,22 @@ async fn parse_body(
         // Unlike the application/json parser, Buffer JSON.parse does not
         // remove a BOM or reject prototype-named data properties.
         Ok(serde_json::from_str(&String::from_utf8_lossy(&bytes)).ok())
-    } else if kind == "application/octet-stream" && matches!(binary_mode, BinaryMode::Enumerate) {
+    } else if kind == "application/octet-stream"
+        && matches!(binary_mode, BinaryMode::Enumerate | BinaryMode::Own)
+    {
         let mut value = JsValue::object(
             bytes
                 .into_iter()
                 .enumerate()
                 .map(|(index, byte)| (index.to_string(), JsValue::Number(f64::from(byte)))),
         );
-        let inherited: Vec<String> =
-            serde_json::from_str(include_str!("../../contracts/js-buffer-keys.json"))
-                .expect("Source Buffer enumerable keys");
-        for key in inherited {
-            value[key.as_str()] = JsValue::Null;
+        if matches!(binary_mode, BinaryMode::Enumerate) {
+            let inherited: Vec<String> =
+                serde_json::from_str(include_str!("../../contracts/js-buffer-keys.json"))
+                    .expect("Source Buffer enumerable keys");
+            for key in inherited {
+                value[key.as_str()] = JsValue::Null;
+            }
         }
         Ok(Some(value))
     } else if (kind.is_empty() && bytes.is_empty())

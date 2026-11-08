@@ -497,6 +497,7 @@ pub(super) async fn guard(
         || super::worker_logs::unregistered_method(request.method(), &route)
         || super::project_insights::unregistered_method(request.method(), &route)
         || super::remote_surfaces::unregistered_method(request.method(), &route)
+        || super::computer_use::unregistered_method(request.method(), &route)
     {
         // Fastify does not match a route pattern for an unsupported method.
         // Keep its raw-path rate-limit key and absent audit resource binding.

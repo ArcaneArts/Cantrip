@@ -919,6 +919,18 @@ export const remoteSurfaceHttpContractRoots = [
   "remoteSurfaceWebRtcConfigurationSchema",
 ];
 
+export const computerUseHttpContractRoots = [
+  "computerUseRequestSchema",
+  "computerUseResponseSchema",
+  "computerUseChunkEventSchema",
+  "computerUseHttpResultSchema",
+  "computerUseActivityEventSchema",
+  "cuaPreviewLeaseSchema",
+  "cuaPreviewStopSchema",
+  "cuaPreviewStoppedSchema",
+  "cuaAgentAuthorityRequestSchema",
+];
+
 // Keep independently added roots self-contained. Numeric graph references must
 // not depend on the size of the base graph after an unrelated branch merges.
 export const runMcpContractRoots = [
@@ -1872,6 +1884,20 @@ if (
   const remoteSurfacesDestination = new URL(
     "../../cantrip_server_rs/contracts/remote-surface-http.json",
     import.meta.url,
+  );
+  const computerUseDestination = new URL(
+    "../../cantrip_server_rs/contracts/computer-use-http.json",
+    import.meta.url,
+  );
+  await writeFile(
+    computerUseDestination,
+    await format(
+      JSON.stringify(buildContractManifest(computerUseHttpContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(computerUseDestination))),
+        filepath: fileURLToPath(computerUseDestination),
+      },
+    ),
   );
   await writeFile(
     remoteSurfacesDestination,

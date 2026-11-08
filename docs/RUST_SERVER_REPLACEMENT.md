@@ -1,5 +1,14 @@
 # Rust server replacement
 
+Native computer-use operations, preview open/Stop and worker-authenticated agent
+authority now pass local HTTP, durable publication, real timeout and full-worker
+browser qualification. All three stores and all four shared peer pairings pass
+the scoped product scenario. The current production inventory has zero generic
+fallback differences across 584 declared method/path pairs. This does not prove
+complete behavior, native capture/input, platform or replacement acceptance.
+See [computer-use qualification](RUST_SERVER_COMPUTER_USE.md). Node remains the
+default; complete replacement remains unfinished.
+
 Native remote desktop/surface management and the legacy binary socket now pass
 local HTTP, state, lifecycle, pressure and accounting qualification. Existing
 browser APIs and the complete unchanged worker pass all three stores and all
@@ -32,12 +41,12 @@ computer-use authority revocation. See [project administration](RUST_SERVER_PROJ
 for exact scope, retained baseline failures and remaining acceptance. Node remains
 the default and full replacement remains incomplete.
 
-The current production HTTP inventory probe confirms four active endpoints still
-fall through to Rust's generic 404, all in computer use.
-Seventy-two additional retired repository-route differences are corrected and
-qualified separately. See [HTTP inventory reconciliation](RUST_SERVER_HTTP_INVENTORY.md)
-for the exact scope and remaining families. These are implementation gaps;
-Node remains the default and full replacement remains incomplete.
+The current production HTTP inventory probe has no remaining generic Rust 404
+differences. Seventy-two retired repository-route differences and all 33 active
+fallback differences discovered earlier have implementations with separate
+qualification. See [HTTP inventory reconciliation](RUST_SERVER_HTTP_INVENTORY.md)
+for exact scope and remaining acceptance. Node remains the default and full
+replacement remains incomplete.
 
 Current CantripOS root checkpoints, encrypted image restore, retained rollback
 and exact-base reset now pass actual browser/full-worker qualification across
