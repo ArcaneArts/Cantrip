@@ -3,18 +3,33 @@ use anyhow::{Context, Result};
 use axum::{
     Router,
     body::{Body, Bytes},
-    extract::{Path, State},
+    extract::{Path, Request, State},
     http::{StatusCode, header},
     response::{IntoResponse, Response},
     routing::get,
 };
 use cantrip_server::{config::Environment, http::request_logs, operations::log_runtime};
 use futures::stream;
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
+async fn fixture_observe(request: Request, next: axum::middleware::Next) -> Response {
+    let level = match request.uri().path().split('/').nth(4) {
+        Some("trace") => request_logs::LogLevel::Trace,
+        Some("debug") => request_logs::LogLevel::Debug,
+        Some("info") => request_logs::LogLevel::Info,
+        Some("warn") => request_logs::LogLevel::Warn,
+        Some("error") => request_logs::LogLevel::Error,
+        Some("fatal") => request_logs::LogLevel::Fatal,
+        Some("silent") => request_logs::LogLevel::Silent,
+        _ => return request_logs::observe(request, next).await,
+    };
+    request_logs::observe_with_level(request, next, level).await
+}
 async fn controlled(
     State(root): State<PathBuf>,
-    Path((kind, id)): Path<(String, String)>,
+    Path(params): Path<HashMap<String, String>>,
 ) -> Response {
+    let kind = params["kind"].clone();
+    let id = params["id"].clone();
     let body = stream::unfold(
         (0, root.join(id), kind),
         |(step, marker, kind)| async move {
@@ -65,7 +80,17 @@ async fn main() -> Result<()> {
                 }),
             )
             .route("/api/log-test/{kind}/{id}", get(controlled))
-            .layer(axum::middleware::from_fn(request_logs::observe))
+            .route(
+                "/api/log-test/level/{level}/status/{code}",
+                get(|Path(params): Path<HashMap<String, String>>| async move {
+                    (
+                        StatusCode::from_u16(params["code"].parse().unwrap()).unwrap(),
+                        "status",
+                    )
+                }),
+            )
+            .route("/api/log-test/level/{level}/{kind}/{id}", get(controlled))
+            .layer(axum::middleware::from_fn(fixture_observe))
             .with_state(root);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     println!(

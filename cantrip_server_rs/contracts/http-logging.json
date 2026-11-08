@@ -1,0 +1,3930 @@
+{
+  "schemaVersion": 1,
+  "routes": [
+    {
+      "method": "DELETE",
+      "path": "/api/admin/license-whitelist/:entryId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/analytics/provider-telemetry/:providerId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/attachments/:attachmentId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/automations/:automationId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/browsers/:browserId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/chats/:chatId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/chats/:chatId/goal",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/chats/:chatId/permanent",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/code-tabs/:codeTabId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/direct-attachments/:capabilityId",
+      "level": "warn"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/explorers/:explorerId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/policies/:policyId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/project-shares/:attachmentId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/project-views/:viewId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/projects/:projectId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/mcp-servers/:serverId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/run-configurations/:configurationId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/queued-prompts/:promptId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/remote-surfaces/:surfaceId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/settings/mcp-servers/:serverId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/settings/models/:modelId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/settings/providers/:providerId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/settings/providers/:providerId/accounts/:accountId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/skills",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/tasks/:chatId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/terminals/:terminalId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/tunnel-attachments/:attachmentId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/tunnels/:tunnelId",
+      "level": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/worker-links/:sessionId",
+      "level": "warn"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/worker-links/:sessionId/grants/:grantId",
+      "level": "warn"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/worker-links/:sessionId/peers/:peerSessionId",
+      "level": "warn"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/workers/:workerId",
+      "level": "warn"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/workers/:workerId/credentials/:credentialId",
+      "level": "warn"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/workspaces/:workspaceId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/audit-events",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/live-traffic",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/resource-usage",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/resource-usage/history",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/sessions",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/accounts",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/audit-events",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent-requests",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent-requests/:requestId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/analytics/provider-telemetry",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/analytics/provider-telemetry/:providerId/export",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/attachments/:attachmentId/content",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/session",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/bootstrap",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/browsers/:browserId/services",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/package-operations",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/package-operations/:operationId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/packages",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/power",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/power-operations",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/power-operations/:operationId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/system",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/system-operations",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/system-operations/:operationId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/workspace-operations",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/workspace-operations/:operationId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/workspaces",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop-operations",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop-operations/:operationId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/backup-operations",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/backup-operations/:operationId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/cantrip-os/backups",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat-imports/:jobId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat-relocations/:jobId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/composer-draft",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/customizations",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/customizations/external-preview",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/customizations/target",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/execution-lanes",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/goal",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/messages",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/native-settings",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/native-settings/models",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/permission-profiles",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/plan",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/preparation",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/queue",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/queue/operations/:operationId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/reasoning",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/relocations",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/runtime-handoffs",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/runtime-handoffs/:operationId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/runtime-selection",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/:chatId/skills",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/chats/archived",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/codex/auth/status",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/desktop-update/active-work",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/encryption/principals",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/encryption/principals/:principalId/grants",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/encryption/profile",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/file-documents/:documentId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/github/repositories",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/github/repositories/cache",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/github/repository-owners",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/github/status",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/health",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/api/internal/agent-operations/capabilities",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/api/internal/workers/automations",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/api/internal/workers/connect",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/internal/workers/providers/:providerId/accounts/:accountId/credential",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/api/live",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/policies",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/policies/:policyId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/policy-templates",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/policy-templates/:templateKey",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/project-alerts/counts",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/project-replica-jobs/:jobId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/alerts",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/alerts/:alertId/goal",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/archived-chats",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/automations",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/browser-services",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/browsers",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/cantrip-os/bindings",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/cantrip-os/run-sources",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/chat-imports",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/chats",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/code-tabs",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/conversations",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/effective-policies",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/execution-targets",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/explorers",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/external-chat-history",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/file-documents",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/folder-setup",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/git/history",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/git/status",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/github-conversion",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/github/issues",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/github/issues/:issueNumber",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/mcp-discovery/:workerId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/mcp-servers",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/panes",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/policies",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/remote-desktop-fleet",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/remote-desktops",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/remote-surfaces",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/replica-jobs",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/replicas",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/replicas/:replicaId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/repository-stats",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/run-configuration-secrets",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/run-configurations",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/run-configurations/:configurationId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/run-configurations/capabilities",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/run-configurations/detect",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/run-configurations/paths",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/script-commands",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/surface-launchers",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/tab-groups",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/tasks/pause",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/tasks/workload",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/terminals",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/token-usage",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/tunnels",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/views",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/workspace-layouts/:workspaceId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/codegraph",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/branches",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/:revision",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/:revision/signature",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/search",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/compare",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts/detail",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/diff",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/files/blame",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/files/history",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/graph/commits/:revision",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/graph/metrics",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/graph/snapshot",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/lfs",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/current",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/recovery",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/refs",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/remotes",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/revisions/:revision/diff",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes/:hash/diff",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/submodules",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags/:name",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/github/releases",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/github/releases/:releaseId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/history",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/status",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/remote-desktops/:desktopId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/remote-surfaces/:surfaceId/connect",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/computer-use/workers/:workerId/effects",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/mcp-discovery/:workerId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/mcp-servers",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/models/:modelId/reasoning",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/providers/:providerId/accounts",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/providers/:providerId/accounts/:accountId/rate-limit-resets",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/providers/:providerId/catalog",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/skill-audiences",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/skills",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/:chatId",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/:chatId/attachments",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/:chatId/dashboard",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/:chatId/inference-route",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/terminals/:terminalId/connect",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/terminals/:terminalId/script-commands",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/tunnel-attachments/:attachmentId/connect",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/tunnels",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tunnels/:tunnelId",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/api/worker-links/:sessionId/connect",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/workers",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/api/workers/:workerId/credentials",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/api/workers/:workerId/inference",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/api/workers/:workerId/logs",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/api/workers/:workerId/logs/stream",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/workers/:workerId/version",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/api/workers/enrollment-codes/:enrollmentCodeId",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/api/workers/management",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/api/workspaces",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/workspaces/:workspaceId/policies",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/workspaces/:workspaceId/repository-discovery",
+      "level": ""
+    },
+    {
+      "method": "GET",
+      "path": "/healthz",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/metrics",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/readyz",
+      "level": "warn"
+    },
+    {
+      "method": "GET",
+      "path": "/version",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/account/audit-events",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/account/live-traffic",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/account/resource-usage",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/account/resource-usage/history",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/account/sessions",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/admin/accounts",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/admin/audit-events",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/agent-requests",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/agent-requests/:requestId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/analytics/provider-telemetry",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/analytics/provider-telemetry/:providerId/export",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/attachments/:attachmentId/content",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/auth/session",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/bootstrap",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/browsers/:browserId/services",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/:instanceId/package-operations",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/:instanceId/package-operations/:operationId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/:instanceId/packages",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/:instanceId/power",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/:instanceId/power-operations",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/:instanceId/power-operations/:operationId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/:instanceId/system",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/:instanceId/system-operations",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/:instanceId/system-operations/:operationId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/:instanceId/workspace-operations",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/:instanceId/workspace-operations/:operationId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/:instanceId/workspaces",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop-operations",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop-operations/:operationId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/backup-operations",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/backup-operations/:operationId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/cantrip-os/backups",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chat-imports/:jobId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chat-relocations/:jobId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/composer-draft",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/customizations",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/customizations/external-preview",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/customizations/target",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/execution-lanes",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/goal",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/messages",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/native-settings",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/native-settings/models",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/permission-profiles",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/plan",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/preparation",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/queue",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/queue/operations/:operationId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/reasoning",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/relocations",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/runtime-handoffs",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/runtime-handoffs/:operationId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/runtime-selection",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/:chatId/skills",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/chats/archived",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/codex/auth/status",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/desktop-update/active-work",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/encryption/principals",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/encryption/principals/:principalId/grants",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/encryption/profile",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/file-documents/:documentId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/github/repositories",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/github/repositories/cache",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/github/repository-owners",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/github/status",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/health",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/internal/agent-operations/capabilities",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/internal/workers/automations",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/internal/workers/connect",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/internal/workers/providers/:providerId/accounts/:accountId/credential",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/live",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/policies",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/policies/:policyId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/policy-templates",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/policy-templates/:templateKey",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/project-alerts/counts",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/project-replica-jobs/:jobId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/alerts",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/alerts/:alertId/goal",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/archived-chats",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/automations",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/browser-services",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/browsers",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/cantrip-os/bindings",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/cantrip-os/run-sources",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/chat-imports",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/chats",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/code-tabs",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/conversations",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/effective-policies",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/execution-targets",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/explorers",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/external-chat-history",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/file-documents",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/folder-setup",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/git/history",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/git/status",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/github-conversion",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/github/issues",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/github/issues/:issueNumber",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/mcp-discovery/:workerId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/mcp-servers",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/panes",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/policies",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/remote-desktop-fleet",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/remote-desktops",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/remote-surfaces",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/replica-jobs",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/replicas",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/replicas/:replicaId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/repository-stats",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/run-configuration-secrets",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/run-configurations",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/run-configurations/:configurationId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/run-configurations/capabilities",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/run-configurations/detect",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/run-configurations/paths",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/script-commands",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/surface-launchers",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/tab-groups",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/tasks/pause",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/tasks/workload",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/terminals",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/token-usage",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/tunnels",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/views",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/workspace-layouts/:workspaceId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/codegraph",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/branches",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/:revision",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/:revision/signature",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/search",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/compare",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts/detail",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/diff",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/files/blame",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/files/history",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/graph/commits/:revision",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/graph/metrics",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/graph/snapshot",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/lfs",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/current",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/recovery",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/refs",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/remotes",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/revisions/:revision/diff",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes/:hash/diff",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/submodules",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags/:name",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/github/releases",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/github/releases/:releaseId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/history",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/status",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/remote-desktops/:desktopId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/remote-surfaces/:surfaceId/connect",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/settings",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/settings/computer-use/workers/:workerId/effects",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/settings/mcp-discovery/:workerId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/settings/mcp-servers",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/settings/models/:modelId/reasoning",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/settings/providers/:providerId/accounts",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/settings/providers/:providerId/accounts/:accountId/rate-limit-resets",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/settings/providers/:providerId/catalog",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/skill-audiences",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/skills",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/tasks/:chatId",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/tasks/:chatId/attachments",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/tasks/:chatId/dashboard",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/tasks/:chatId/inference-route",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/terminals/:terminalId/connect",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/terminals/:terminalId/script-commands",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/tunnel-attachments/:attachmentId/connect",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/tunnels",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/tunnels/:tunnelId",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/worker-links/:sessionId/connect",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/workers",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/workers/:workerId/credentials",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/workers/:workerId/inference",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/workers/:workerId/logs",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/workers/:workerId/logs/stream",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/workers/:workerId/version",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/workers/enrollment-codes/:enrollmentCodeId",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/workers/management",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/workspaces",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/workspaces/:workspaceId/policies",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/workspaces/:workspaceId/repository-discovery",
+      "level": ""
+    },
+    {
+      "method": "HEAD",
+      "path": "/healthz",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/metrics",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/readyz",
+      "level": "warn"
+    },
+    {
+      "method": "HEAD",
+      "path": "/version",
+      "level": ""
+    },
+    {
+      "method": "OPTIONS",
+      "path": "*",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/automations/:automationId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/browsers/:browserId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/chats/:chatId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/chats/:chatId/customizations/skill",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/chats/:chatId/goal",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/chats/:chatId/model",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/chats/:chatId/model-configuration",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/chats/:chatId/pause",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/chats/:chatId/permission-profile",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/chats/:chatId/plan",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/chats/:chatId/queue/order",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/chats/:chatId/reasoning",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/chats/:chatId/worktree",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/code-tabs/:codeTabId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/code-tabs/:codeTabId/worktree",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/encryption/profile/migration",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/explorers/:explorerId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/explorers/:explorerId/view-state",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/explorers/:explorerId/worktree",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/policies/:policyId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/policies/order",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/project-views/:viewId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/project-views/:viewId/worktree",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/builtin-surfaces/:definitionId/worktree",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/panes/:paneId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/panes/:paneId/members/order",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/panes/member",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/panes/member/presentation",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/panes/member/split",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/panes/order",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/panes/splits/:splitId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/policies",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/preferred-worker",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/surface-launchers",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/tab-groups/:groupId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/tab-groups/:groupId/members/order",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/tab-groups/member",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/tab-groups/order",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/tasks/pause",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/worktree-policy",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/projects/order",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/queued-prompts/:promptId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/remote-desktops/:desktopId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/remote-surfaces/:surfaceId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/settings",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/settings/destination",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/settings/models/:modelId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/settings/providers/:providerId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/settings/providers/:providerId/accounts/:accountId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/settings/providers/:providerId/accounts/order",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/skill-audiences",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/skills/configuration",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/tasks/:chatId/draft",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/tasks/:chatId/plan",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/terminals/:terminalId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/terminals/:terminalId/worktree",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/tunnels/:tunnelId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/workers/:workerId",
+      "level": "warn"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/workspaces/:workspaceId",
+      "level": ""
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/workspaces/:workspaceId/policies",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/account/password",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/license-whitelist",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent-requests/:requestId/respond",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout-all",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/mobile-sign-in/exchange",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/mobile-sign-in/grants",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/reauthenticate",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/register",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/browsers/:browserId/tunnel",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/backup-operations",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/package-operations",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/package-operations/:operationId/abandon",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/package-operations/:operationId/continue",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/package-operations/:operationId/observe",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/power-operations",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/power-operations/:operationId/observe",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/recovery",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/refresh",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/system-operations",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/system-operations/:operationId/abandon",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/system-operations/:operationId/continue",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/system-operations/:operationId/observe",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/system-operations/:operationId/recover",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/workspace-operations/:operationId/observe",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/workspaces",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop-operations",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/workspaces/:workspaceId/desktop-operations/:operationId/observe",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/attach",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/backup-operations/:operationId/recovery",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/inspect",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chat-imports/:jobId/retry",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chat-relocations/:jobId/cancel",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chat-relocations/:jobId/retry",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/archive",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/attachments",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/compact",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/completion/read",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/computer-use/operation",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/computer-use/preview",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/computer-use/preview/stop",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/console",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/customizations/external-import",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/customizations/external-import/status",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/customizations/mcp-oauth",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/customizations/mcp-oauth/status",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/customizations/mcp-reload",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/customizations/mcp-resource",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/execution-lanes/:laneId/release",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/file-references",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/files/operation",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/fork",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/goal",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/interrupt",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/messages",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/native-account-defaults",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/native-history/turns/read",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/native-settings/refresh",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/native-settings/update",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/network-shares",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/preparation",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/queue",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/relocations",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/restore",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/runtime-handoffs",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/runtime-handoffs/:operationId/cancel",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/runtime-handoffs/:operationId/retry",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/runtime-handoffs/source",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/sync",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/turns",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/turns/:messageId/retry",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/:chatId/usage",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/chats/archives/cleanup",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/codex/auth/device-login",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/codex/auth/logout",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/direct-attachments/:capabilityId/telemetry",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/encryption/grants/:grantId/revoke",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/encryption/principals",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/encryption/principals/:principalId/approve",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/encryption/principals/:principalId/grants",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/encryption/principals/:principalId/revoke",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/encryption/profile/initialize",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/explorers/:explorerId/operation",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/explorers/:explorerId/pin",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/file-documents/:documentId/operation",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/github/repositories",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/agent-operations",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/cli",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/computer-use/authority",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/admit",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/bind-preparation",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/continue",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/dispatch",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/events",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/goal-recovery-fence",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/inference-recovery",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/inference-resource-authorize",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/pending",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/permission-transition",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/receipt",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/settings-evidence",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/settings-observation",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/settings-refresh",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/suspension-execution",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/task-goal-cycle-dispatch",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/task-goal-outcome",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/task-input-dispatch",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-history/archive",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-history/archive-batches",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-history/archive-turns",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-history/ingest",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-history/open",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-history/resolve",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-model-inventory",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-queue/import",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-queue/import-ack",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-queue/lookup",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-queue/mutate",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-queue/read",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-queue/start-receipt",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-runtime-handoffs",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-runtime-handoffs/configuration",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/project-alerts/goals",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/workers/automations/:automationId/dispatch",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/workers/encryption/bootstrap",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/workers/enroll",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/workers/heartbeat",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/model-operations/decision",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/model-operations/decision/cancel",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/model-operations/embedding",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/model-operations/embedding/cancel",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/policies",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/policies/bootstrap",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/project-replica-jobs/:jobId/cancel",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/project-replica-jobs/:jobId/retry",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/automations",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/browsers",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/cantrip-os/bindings",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/cantrip-os/bindings/:bindingId/provision",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/cantrip-os/bindings/:bindingId/recover",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/cantrip-os/bindings/:bindingId/run-definitions",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/cantrip-os/bindings/:bindingId/verify",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/chat-imports",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/chats",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/code-tabs",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/execution-targets/resolve",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/explorers",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/exports",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/exports/preview",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/file-documents",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/folder-setup/retry",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/git/actions",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/github-conversion",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/github-conversion/preflight",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/github-conversion/retry",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/github/issues",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/github/issues/:issueNumber/close",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/github/issues/:issueNumber/comments",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/mcp-servers",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/network-shares",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/panes/member/close",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/panes/member/open",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/placement/resolve",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/remote-desktops",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/remote-surfaces",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/replicas",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/replicas/:replicaId/remove",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/replicas/:replicaId/repair-link",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/replicas/:replicaId/synchronize",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/run-configurations/flutter-devices",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/run-configurations/validate",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/tab-groups/member/close",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/tab-groups/member/open",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/tasks",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/terminals",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/views",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/workspace-layouts/:workspaceId/commands",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/workspace-layouts/:workspaceId/import-legacy-files",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/workspace-layouts/:workspaceId/seed",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/codegraph/rebuild",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/codegraph/sync",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/actions",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/agent/drafts",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/branches/actions/apply",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/branches/actions/preview",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/actions/apply",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/actions/preview",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts/apply",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts/preview",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/force-push/apply",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/force-push/preview",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/lfs/actions/apply",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/lfs/actions/preview",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/:operationId/amend",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/:operationId/control",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/preview",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/patch/apply",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/patch/preview",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/recovery/apply",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/recovery/preview",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/remotes/actions/apply",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/remotes/actions/preview",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes/actions/apply",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes/actions/preview",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/submodules/actions/apply",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/submodules/actions/preview",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags/actions/apply",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags/actions/preview",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/actions",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/checkout",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/lifecycle/apply",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/lifecycle/preview",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/github/releases",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/lock",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/repository-operation",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/unlock",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/prune",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/reconcile",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/from-folder",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/from-github",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/queued-prompts/:promptId/steer",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/remote-surfaces/:surfaceId/resume",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/remote-surfaces/:surfaceId/suspend",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/run-configuration-runtimes/operations",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/run-configuration-runtimes/output",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/run-configuration-runtimes/status",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/settings/mcp-servers",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/settings/models",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/settings/providers",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/settings/providers/:providerId/accounts",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/settings/providers/:providerId/accounts/:accountId/rate-limit-resets/consume",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/settings/providers/:providerId/catalog/refresh",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/settings/providers/:providerId/test",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/read",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/:chatId/begin-implementation",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/:chatId/continue",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/:chatId/inference-route",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/:chatId/plan",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/:chatId/recover",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/:chatId/retry",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/:chatId/start",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/terminals/:terminalId/direct",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/terminals/:terminalId/service/restart",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/tunnel-attachments/:attachmentId/direct",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tunnel-attachments/:attachmentId/direct-activate",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tunnel-attachments/:attachmentId/lease",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tunnels",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/tunnels/:tunnelId/attachments",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/worker-links/:sessionId/direct",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/worker-links/:sessionId/direct-activate",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/worker-links/:sessionId/grants/:grantId/renew",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/worker-links/:sessionId/observations/grant",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/worker-links/:sessionId/peers",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/worker-links/:sessionId/peers/:peerSessionId/mailbox",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/worker-links/:sessionId/peers/:peerSessionId/signals",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/worker-links/:sessionId/remote-surfaces/:surfaceId/grant",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/worker-links/:sessionId/renew",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/worker-links/:sessionId/route",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/worker-links/:sessionId/telemetry",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/worker-links/:sessionId/terminals/:terminalId/grant",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/worker-links/:sessionId/tunnel-attachments/:attachmentId/grant",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/workers/:workerId/codegraph/update-check",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/workers/:workerId/credentials/rotate",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/workers/:workerId/direct-probe",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/workers/:workerId/encryption/refresh",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/workers/:workerId/repository-operation",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/workers/:workerId/restart",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/workers/:workerId/web-runtimes/actions",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/workers/:workerId/worker-link/sessions",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/workers/enrollment-codes",
+      "level": "warn"
+    },
+    {
+      "method": "POST",
+      "path": "/api/workspaces",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/workspaces/:workspaceId/repository-discovery",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/workspaces/:workspaceId/repository-imports",
+      "level": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/workspaces/attached",
+      "level": ""
+    },
+    {
+      "method": "PUT",
+      "path": "/api/chats/:chatId/composer-draft",
+      "level": ""
+    },
+    {
+      "method": "PUT",
+      "path": "/api/chats/:chatId/customizations/skill-roots",
+      "level": ""
+    },
+    {
+      "method": "PUT",
+      "path": "/api/internal/workers/providers/:providerId/accounts/:accountId/credential",
+      "level": "warn"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/projects/:projectId/mcp-servers/:serverId",
+      "level": ""
+    },
+    {
+      "method": "PUT",
+      "path": "/api/projects/:projectId/run-configuration-secrets",
+      "level": ""
+    },
+    {
+      "method": "PUT",
+      "path": "/api/projects/:projectId/run-configurations/:configurationId",
+      "level": ""
+    },
+    {
+      "method": "PUT",
+      "path": "/api/settings/mcp-servers/:serverId",
+      "level": ""
+    },
+    {
+      "method": "PUT",
+      "path": "/api/skills/file",
+      "level": ""
+    },
+    {
+      "method": "PUT",
+      "path": "/api/terminals/:terminalId/service",
+      "level": ""
+    }
+  ]
+}

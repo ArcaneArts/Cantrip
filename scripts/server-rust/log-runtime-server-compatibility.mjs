@@ -23,6 +23,11 @@ import { databaseHealthCases } from "./database-health-cases.mjs";
 import { logRuntimeAuth } from "./log-runtime-auth.mjs";
 import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
 import { verifyAccountingRuntime } from "./accounting-runtime-cases.mjs";
+import {
+  targetPolicyCases,
+  verifyTargetPolicy,
+  targetPolicyNormalization,
+} from "./http-target-policy-cases.mjs";
 const WebSocket = createRequire(
   new URL("../../cantrip_server/package.json", import.meta.url),
 )("ws");
@@ -31,6 +36,7 @@ const { values } = parseArgs({
   options: {
     report: { type: "string" },
     "http-records": { type: "boolean", default: false },
+    "http-targets": { type: "boolean", default: false },
     "accounting-records": { type: "boolean", default: false },
     "database-records": { type: "boolean", default: false },
     "database-health": { type: "boolean", default: false },
@@ -52,7 +58,9 @@ console.error(JSON.stringify({ event: "log-production.created", root }));
 const report = { root, peers: [], completeReplacement: false };
 const password = "isolated production outage fixture password";
 const passwordHash =
-  values["database-health-outage"] || values["accounting-records"]
+  values["database-health-outage"] ||
+  values["accounting-records"] ||
+  values["http-targets"]
     ? await hashPassword(password)
     : undefined;
 let pg, failure;
@@ -72,11 +80,11 @@ const scenarios = [
   { name: "archive-recovery", database: "postgres", obstruct: true },
   { name: "startup-failure", database: "postgres", invalid: true },
 ];
-if (values["accounting-records"])
+if (values["accounting-records"] || values["http-targets"])
   for (const database of ["pglite", "bundled-postgres", "postgres"])
     for (const auth of ["password", "accounts"])
       scenarios.push({
-        name: `${database}-${auth}-accounting`,
+        name: `${database}-${auth}-${values["accounting-records"] ? "accounting" : "target-policy"}`,
         database,
         auth,
       });
@@ -346,6 +354,16 @@ try {
           for (let i = 0; i < count; i++)
             await request("/api/settings/providers/log-missing/catalog");
           await request("/readyz?token=private-log-query-marker");
+          if (
+            values["http-targets"] &&
+            (scenario.name.endsWith("-default") || scenario.auth)
+          )
+            result.targetPolicy = {
+              normalization: targetPolicyNormalization,
+              responses: await targetPolicyCases(origin, cookie, {
+                metrics: false,
+              }),
+            };
           if (values["http-records"] && scenario.name === "postgres-default") {
             for (const spec of [
               { method: "HEAD", route: "/api/auth/session", status: 200 },
@@ -702,6 +720,28 @@ try {
     const peers = report.peers
       .filter((peer) => peer.scenario === scenario.name)
       .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "node" ? -1 : 1));
+    if (peers[0].targetPolicy) {
+      const comparison = verifyTargetPolicy(
+        peers.map((peer) => ({
+          responses: peer.targetPolicy.responses,
+          records: peer.records,
+        })),
+      );
+      (report.targetPolicyPairs ??= []).push({
+        scenario: scenario.name,
+        ...comparison,
+      });
+      assert.equal(
+        comparison.wireDifferences.length,
+        0,
+        "Actual request-target responses and headers: " + scenario.name,
+      );
+      assert.equal(
+        comparison.loggingDifferences.length,
+        0,
+        "Actual route-level log filtering: " + scenario.name,
+      );
+    }
     if (
       healthRequested &&
       scenario.database === "postgres" &&

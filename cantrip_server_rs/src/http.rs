@@ -78,6 +78,8 @@ mod native_settings;
 mod on_response;
 mod operational_status;
 pub mod request_logs;
+mod request_target;
+mod route_table;
 pub use operational_status::observe as observe_operations;
 mod pane_layouts;
 mod policies;
@@ -206,7 +208,10 @@ async fn ready(State(service): State<Arc<AuthService>>) -> Response {
 
 async fn not_found(State(service): State<Arc<AuthService>>, request: Request) -> Response {
     let method = request.method().clone();
-    let uri = request.uri().clone();
+    let uri = request
+        .extensions()
+        .get::<axum::extract::OriginalUri>()
+        .map_or_else(|| request.uri().clone(), |original| original.0.clone());
     // Fastify applies its registered payload parser before the 404 handler,
     // including an unsupported method at an otherwise registered path.
     if matches!(
@@ -220,6 +225,9 @@ async fn not_found(State(service): State<Arc<AuthService>>, request: Request) ->
             return response;
         }
     }
+    fallback_response(&method, &uri)
+}
+fn fallback_response(method: &axum::http::Method, uri: &axum::http::Uri) -> Response {
     json_response(
         StatusCode::NOT_FOUND,
         json!({
@@ -230,7 +238,7 @@ async fn not_found(State(service): State<Arc<AuthService>>, request: Request) ->
 
 /// Foundation and session routes. Remaining domains are tracked in the ledger.
 pub fn router(service: Arc<AuthService>) -> Router {
-    Router::new()
+    let inner = Router::new()
         .route("/api", get(api))
         .route("/healthz", get(health))
         .route("/readyz", get(ready))
@@ -339,5 +347,6 @@ pub fn router(service: Arc<AuthService>) -> Router {
             operational_status::observe,
         ))
         .layer(axum::middleware::from_fn(request_logs::observe))
-        .with_state(service)
+        .with_state(service);
+    request_target::wrap(inner)
 }

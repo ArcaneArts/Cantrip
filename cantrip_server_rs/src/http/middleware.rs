@@ -351,6 +351,21 @@ pub(super) async fn guard(
         .extensions()
         .get::<super::request_logs::RequestId>()
         .map_or_else(|| Uuid::new_v4().to_string(), |id| id.0.clone());
+    if request
+        .extensions()
+        .get::<super::request_target::InvalidFallbackTarget>()
+        .is_some()
+    {
+        return finish(
+            &service,
+            &id,
+            None,
+            false,
+            false,
+            None,
+            super::fallback_response(request.method(), request.uri()),
+        );
+    }
     let origin = value(request.headers(), "origin");
     let requested_headers = value(request.headers(), "access-control-request-headers");
     let peer = request

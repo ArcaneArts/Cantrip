@@ -15041,7 +15041,10 @@
         "cantrip_server_rs/src/http/request_logs.rs",
         "cantrip_server_rs/src/database/startup.rs",
         "cantrip_server_rs/src/database/startup/key.rs",
-        "cantrip_server_rs/src/database/health.rs"
+        "cantrip_server_rs/src/database/health.rs",
+        "cantrip_server_rs/src/http/request_target.rs",
+        "cantrip_server_rs/src/http/route_table.rs",
+        "cantrip_server_rs/src/http/request_log_policy.rs"
       ],
       "evidence": [
         "cantrip_server_rs/tests/service_logs.rs",
@@ -15090,11 +15093,15 @@
         "scripts/server-rust/usage-diagnostics-oracle.mjs",
         "scripts/server-rust/accounting-runtime-cases.mjs",
         "scripts/server-rust/accounting-production-peer.mjs",
-        "scripts/server-rust/accounting-fault-compatibility.mjs"
+        "scripts/server-rust/accounting-fault-compatibility.mjs",
+        "docs/RUST_SERVER_REQUEST_TARGET.md",
+        "scripts/server-rust/http-log-policy-oracle.mjs",
+        "scripts/server-rust/http-log-policy-production.mjs",
+        "scripts/server-rust/http-target-policy-cases.mjs"
       ],
       "scope": "Native shared JSON operational log emission, UTF-16 text/key semantics, secret/context/error sanitization, sampled emission and bounded repeated-event windows match 65,937 actual Source sanitizer/error vectors and 2,136 actions/eight policy scenarios locally. Actual direct production log comparisons pass334 cases/15 groups, coordinator diagnostics575 cases, and routing583 cases/31 states per store on native PGlite/private/external PostgreSQL. This is not the complete operational logging/metrics product.",
       "remaining": [
-        "Reconcile remaining HTTP/Pino, bridge and other production diagnostics. Accounting producers, database lifecycle/health and bounded role-wide refusal/recovery now have scoped local qualification; broader product/database interruptions remain unqualified.",
+        "Reconcile remaining bridge and other production diagnostics/background consumers. HTTP target/route-level logging, accounting producers and database lifecycle/health have scoped local qualification; broader product/database interruptions remain unqualified.",
         "Complete current supported-platform, packaged artifact and full replacement acceptance."
       ],
       "operationalHttpQualification": {
@@ -15241,6 +15248,34 @@
         },
         "scope": "Actual reference classes/logger match full and minimized records, state, callbacks, receipts and noise policy. Actual production peers across all3stores and3authentication modes retain four normal startup/final-flush records each. External PostgreSQL P0001 errors reproduce bandwidth and both job failures, actual minute timers recover, original identity survives restart, and an actual receipt-table lock holds final shutdown until one additional receipt commits. Original missing persisted-record and duplicate-SIGTERM harness failures retained. No accounting state, SQL or timer policy changes.",
         "remaining": "Other production consumers, broader accounting/product/shared-instance interruptions, supported-platform/artifact/upgrade/rollback/performance/default-cutover/Node-server removal remain required."
+      },
+      "requestTargetQualification": {
+        "status": "implemented-pending-platform-acceptance",
+        "platform": "darwin-arm64",
+        "actualFastifyRegistrations": 785,
+        "referenceRouterProbes": 20391,
+        "referenceEarlyTargetErrors": 2428,
+        "productionRequestsPerPeer": 61,
+        "storageAuthPairs": 9,
+        "storageAuthTargetObservations": 1062,
+        "productionRegressionProcesses": 40,
+        "normalZeroExits": 30,
+        "expectedStartupFailureExits": 10,
+        "controlledCompletionRecordsPerPeer": 34,
+        "controlledStreamWarningsPerPeer": 5,
+        "controlledFiniteStatusResponsesPerPeer": 46,
+        "rustLibraryTests": 79,
+        "strictAllTargetClippy": true,
+        "behavior": "Actual target decoding before Axum dispatch; reserved escapes, UTF16 parameter limits, early 400/414 headers and absent ordinary request hooks, empty terminal parameters, method-fallback headers, malformed unknown-method fallback and all seven route log thresholds. Per-method native matching/decoded parameters agree with actual reference router. Actual production HTTP, request counters and controlled streamed completion/error/abandonment are separately exercised.",
+        "scope": "Local debug and optimized macOS arm64 candidates repeat the production matrix and raw HTTP comparison. Production matrix covers all nine storage/authentication pairs, independent raw HTTP external-PostgreSQL case includes metrics descriptors/series and HTTP counters. Changing metric values are not fully compared. Other server diagnostic producers, full product/fault/platform/artifact and replacement acceptance remain required.",
+        "standardRepositoryCheck": "Stops on unchanged Node app decomposition budgets1539/1500 and2336/1999; separate repository budget2284/2000. Actual source/check-file hash comparison to base retained; downstream aggregate stages unrun.",
+        "optimizedArtifact": {
+          "bytes": 94096528,
+          "sha256": "d996ade434170f8d15d082e39302ef5cba56d947f27ff3ea093e17038cfe4cc5",
+          "version": "1.1.2769",
+          "versionSource": "Actual paired production HTTP /version"
+        },
+        "upstreamRouterTestsDefaultFeatureDisabled": 44
       }
     },
     "legacyPGliteConversion": {
