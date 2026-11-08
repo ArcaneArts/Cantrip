@@ -9,6 +9,7 @@ use cantrip_server::{
     http,
     managed_postgres::ManagedPostgres,
     migrations::migrate,
+    operations::log_runtime,
 };
 use clap::{Parser, ValueEnum};
 use serde_json::json;
@@ -106,21 +107,23 @@ struct Arguments {
     shutdown_on_stdin_close: bool,
 }
 
-async fn shutdown() {
+async fn shutdown() -> &'static str {
     #[cfg(unix)]
     {
         match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
             Ok(mut terminate) => {
-                tokio::select! { _=tokio::signal::ctrl_c()=>{}, _=terminate.recv()=>{} }
+                tokio::select! { _=tokio::signal::ctrl_c()=>"sigint", _=terminate.recv()=>"sigterm" }
             }
             Err(_) => {
                 let _ = tokio::signal::ctrl_c().await;
+                "sigint"
             }
         }
     }
     #[cfg(not(unix))]
     {
         let _ = tokio::signal::ctrl_c().await;
+        "sigint"
     }
 }
 
@@ -167,7 +170,15 @@ fn main() -> Result<()> {
         cantrip_server::profile::upgrade::watch_operation_owner()?;
     }
     let probe = arguments.upgrade_source_probe;
-    let result = tokio::runtime::Runtime::new()?.block_on(run(arguments));
+    let result = tokio::runtime::Runtime::new()?.block_on(async {
+        let mut profile_lease = None;
+        let result = run(arguments, &mut profile_lease).await;
+        log_runtime::finish(result.as_ref().err()).await;
+        // Directory activation must also wait for accepted log writes and the
+        // final shutdown record, after the database has finished closing.
+        drop(profile_lease);
+        result
+    });
     if probe
         && result
             .as_ref()
@@ -179,7 +190,10 @@ fn main() -> Result<()> {
     result
 }
 
-async fn run(arguments: Arguments) -> Result<()> {
+async fn run(
+    arguments: Arguments,
+    profile_lease: &mut Option<cantrip_server::profile::ProfileLease>,
+) -> Result<()> {
     if let Some(prepared) = &arguments.activate_profile {
         let receipt = cantrip_server::profile::activate_profile_with_progress(
             prepared,
@@ -323,11 +337,17 @@ async fn run(arguments: Arguments) -> Result<()> {
         return Ok(());
     }
     let profile_root = ServerConfig::data_directory(&environment, &cwd);
-    let _profile_lease = if arguments.restore_profile.is_some() {
+    let startup_started = std::time::Instant::now();
+    *profile_lease = Some(if arguments.restore_profile.is_some() {
         cantrip_server::profile::exclusive_lease(&profile_root)?
     } else {
         cantrip_server::profile::lease(&profile_root)?
-    };
+    });
+    // Recovery may publish a profile into an absent destination. Creating its
+    // logs directory first would obstruct that real directory switch.
+    if !arguments.migrate_only {
+        log_runtime::initialize(&profile_root, &environment, &cwd).await;
+    }
     let bundle = arguments
         .restore_profile
         .as_ref()
@@ -354,6 +374,9 @@ async fn run(arguments: Arguments) -> Result<()> {
         );
     }
     let mut config = ServerConfig::read(&environment, &cwd)?;
+    if !arguments.migrate_only {
+        log_runtime::startup_started(&config);
+    }
     let profile_stage = bundle
         .map(|bundle| bundle.stage(&config.data_directory))
         .transpose()?;
@@ -487,6 +510,7 @@ async fn run(arguments: Arguments) -> Result<()> {
         return Err(error);
     }
     if !arguments.migrate_only {
+        log_runtime::database_ready(database.engine(), startup_started);
         let coordination: Option<Arc<dyn RelayCoordinator>> = if let Some(url) = &config.redis_url {
             let mut options = CoordinationOptions::new(
                 url.clone(),
@@ -525,6 +549,7 @@ async fn run(arguments: Arguments) -> Result<()> {
         service.logical_completion_delivery.start();
         service.history_publication_delivery.start();
         service.execution.start();
+        log_runtime::ready(database.engine(), coordination.is_some(), startup_started);
         use std::io::Write;
         writeln!(
             parent_output,
@@ -551,7 +576,8 @@ async fn run(arguments: Arguments) -> Result<()> {
                 .into_make_service_with_connect_info::<std::net::SocketAddr>(),
         )
         .with_graceful_shutdown(async move {
-            tokio::select! { _=shutdown()=>{}, _=receiver, if watch_parent=>{} }
+            let reason = tokio::select! { reason=shutdown()=>reason, _=receiver, if watch_parent=>"parent-closed" };
+            log_runtime::begin_shutdown(reason);
             eprintln!("{}", json!({"event":"server.shutdown.started"}));
             if let Some(coordinator) = &shutdown_coordination {
                 coordinator.begin_shutdown();

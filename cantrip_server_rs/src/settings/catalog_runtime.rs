@@ -136,24 +136,26 @@ impl CatalogBackend for Services {
     }
 }
 
-/// Operational output is intentionally separate from the pending shared native
-/// logger's redaction, rate-limit summaries, buffering and archive integration.
+/// Catalog diagnostics share the server's redaction, noise policy and archive.
 struct OperationalDiagnostics;
 impl CatalogDiagnostics for OperationalDiagnostics {
     fn event(&self, level: &'static str, context: Value, message: &'static str) -> Result<()> {
-        eprintln!(
-            "{}",
-            Value::object([
-                ("level", Value::String(level.into())),
-                ("message", Value::String(message.into())),
-                ("context", context)
-            ])
-            .stringify()
-        );
+        crate::operations::logging::server_logger()(crate::operations::logging::LogCall::event(
+            level, message, context,
+        ));
         Ok(())
     }
     fn rate_limited(&self, warning: CatalogWarning) -> Result<()> {
-        self.event(warning.level, warning.context, warning.message)
+        crate::operations::logging::server_logger()(crate::operations::logging::LogCall::repeated(
+            warning.key.into(),
+            warning.level,
+            warning.message,
+            warning.context,
+            Some(
+                crate::wire::value::json!({"summaryEvery":warning.summary_every,"windowMs":warning.window_ms}),
+            ),
+        ));
+        Ok(())
     }
 }
 pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;

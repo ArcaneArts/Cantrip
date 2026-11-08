@@ -27,21 +27,13 @@ mod quota;
 use auth_flow::AuthObservation;
 pub(crate) use quota::{QuotaAuthenticationUpdateError, REAUTH_MESSAGE};
 
-// Lifecycle only supplies fixed operational fields here. Shared native log
-// formatting, rate limiting, buffering and archival remain a separate pending
-// integration, as recorded in the server coverage ledger.
+// Lifecycle records use the same minimization and archive as other consumers.
 struct LifecycleLog;
 impl LifecycleLog {
-    fn emit(level: &str, context: Value, message: &'static str) {
-        eprintln!(
-            "{}",
-            Value::object([
-                ("level", Value::String(level.into())),
-                ("message", Value::String(message.into())),
-                ("context", context),
-            ])
-            .stringify()
-        );
+    fn emit(level: &'static str, context: Value, message: &'static str) {
+        crate::operations::logging::server_logger()(crate::operations::logging::LogCall::event(
+            level, message, context,
+        ));
     }
 }
 impl LifecycleDiagnostics for LifecycleLog {
