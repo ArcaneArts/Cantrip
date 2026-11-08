@@ -1173,6 +1173,10 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     return this.agentInteractions.expireAgentInteractionRequests(now);
   }
 
+  async expireOwnedAgentInteractionRequests(now = new Date()) {
+    return this.agentInteractions.expireOwnedAgentInteractionRequests(now);
+  }
+
   async interruptAgentInteractionRequests(
     chatId: string,
     executionLaneId?: string,

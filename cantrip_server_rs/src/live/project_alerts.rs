@@ -33,9 +33,6 @@ pub(super) fn watch(
     enabled: Arc<AtomicBool>,
 ) -> AbortHandle {
     tokio::spawn(async move {
-        let mut expiry = tokio::time::interval(Duration::from_secs(1));
-        expiry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        let mut expiry_failed = false;
         let inline = database.engine() == "pglite";
         while enabled.load(Ordering::Acquire) {
             let (inline_hub, inline_enabled) = (hub.clone(), enabled.clone());
@@ -49,20 +46,7 @@ pub(super) fn watch(
                 continue;
             };
             loop {
-                let notification = tokio::select! {
-                    notification = notifications.recv() => notification,
-                    _ = expiry.tick() => {
-                        // One indexed server sweep, independent of mounted Chats.
-                        let failed = crate::agent_interactions::Repository::new(
-                            crate::database::Executor::Database(&database),
-                        ).expire(None).await.is_err();
-                        if failed && !expiry_failed {
-                            eprintln!("{}", json!({"event":"project-alert.expiry-failed"}));
-                        }
-                        expiry_failed = failed;
-                        continue;
-                    }
-                };
+                let notification = notifications.recv().await;
                 match notification {
                     Ok((channel, payload)) => {
                         if channel == "cantrip_project_alerts" && !inline {

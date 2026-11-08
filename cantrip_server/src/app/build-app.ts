@@ -380,6 +380,7 @@ export async function buildApp({
     publishLiveInvalidation,
     repository,
     taskLiveInvalidationRouter,
+    runAsOwner,
   });
   const {
     chatImportJobExecutor,
@@ -592,13 +593,18 @@ export async function buildApp({
     updateTerminalStatus,
     workerPresenceFingerprints,
   } = interactiveSurfaceRuntime;
+  const agentInteractionExpiryOperations = new Set<Promise<unknown>>();
   const agentInteractionExpiryTimer = setInterval(() => {
-    void expireLiveAgentInteractionRequests().catch((error) => {
+    const pending = expireLiveAgentInteractionRequests().catch((error) => {
       app.log.error(
         { err: error },
         "Failed to expire pending agent interaction requests",
       );
     });
+    agentInteractionExpiryOperations.add(pending);
+    void pending.finally(() =>
+      agentInteractionExpiryOperations.delete(pending),
+    );
   }, AGENT_INTERACTION_EXPIRY_SWEEP_MS);
   agentInteractionExpiryTimer.unref();
 
@@ -1525,6 +1531,7 @@ export async function buildApp({
     // Closing the bridge settles handoffs with no command deadline. Keep the
     // database alive until their failure diagnostics have actually committed.
     await nativeRuntimeHandoffs.drained();
+    await Promise.allSettled([...agentInteractionExpiryOperations]);
     await database.close();
   });
 

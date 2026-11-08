@@ -101,6 +101,7 @@ pub struct AuthService {
     pub account_failover: Arc<crate::chats::account_failover::Service>,
     pub managed_console: Arc<crate::chats::managed_console::ManagedConsole>,
     pub chat_mutations: Arc<crate::chats::live_mutations::Service>,
+    pub interaction_expiry: crate::agent_interactions::expiry::Expiry,
     pub execution: Arc<crate::chats::execution_services::Service>,
     pub logical_completion_delivery:
         Arc<crate::native_commands::runtime::logical_delivery::LogicalDelivery>,
@@ -260,6 +261,8 @@ impl AuthService {
             },
             crate::operations::logging::server_logger(),
         );
+        let interaction_expiry =
+            crate::agent_interactions::expiry::Expiry::start(&chat_mutations, &worker_maintenance);
         let worker_links = crate::worker_links::service::Service::with_coordination(
             server_id.clone(),
             &config,
@@ -573,6 +576,7 @@ impl AuthService {
             model_routing,
             managed_console,
             chat_mutations,
+            interaction_expiry,
             execution,
             managed_preparation,
             native_handoffs,

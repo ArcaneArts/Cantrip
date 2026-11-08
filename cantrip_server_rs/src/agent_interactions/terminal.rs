@@ -5,6 +5,17 @@ use std::collections::HashSet;
 
 impl Repository<'_, '_> {
     pub async fn expire(&self, now: Option<DateTime<Utc>>) -> Result<Vec<Value>> {
+        Ok(self
+            .expire_owned(now)
+            .await?
+            .into_iter()
+            .map(|(_, interaction)| interaction)
+            .collect())
+    }
+    pub(crate) async fn expire_owned(
+        &self,
+        now: Option<DateTime<Utc>>,
+    ) -> Result<Vec<(String, Value)>> {
         let now = now.unwrap_or_else(crate::auth::now);
         // Expiry is intentionally global, even when an owner-scoped read calls it.
         let rows=self.rows("UPDATE agent_interaction_requests SET status='expired',resolved_at=$1,updated_at=$1 WHERE status='pending' AND expires_at<=$1 RETURNING to_jsonb(agent_interaction_requests)::text", &[&now]).await?;
@@ -17,7 +28,9 @@ impl Repository<'_, '_> {
                 self.restore(&text(&row["chat_id"])?).await?;
             }
         }
-        rows.iter().map(map).collect()
+        rows.iter()
+            .map(|row| Ok((text(&row["owner_id"])?, map(row)?)))
+            .collect()
     }
     pub async fn interrupt(&self, chat: &str, lane: Option<&str>) -> Result<Vec<Value>> {
         let now = crate::auth::now();

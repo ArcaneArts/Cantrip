@@ -72,12 +72,14 @@ queued work and periodic sweeps are composed in `auth/service.rs`. Existing
 milestones retain their separate behavior and interruption qualifications.
 This source mapping does not prove every background-service invariant.
 
-Two concrete source discrepancies require runtime reproduction and repair:
+The [approval-expiry qualification](RUST_SERVER_INTERACTION_EXPIRY.md) reproduces
+and repairs the first discrepancy, including the existing Node account-owner
+and shutdown-restoration defects. All nine local storage/authentication pairs
+and a real held-SQL shutdown pair pass. Current artifact/platform acceptance
+remains separate.
 
-- Node's one-second agent-interaction expiry sweep uses live mutations to
-  invalidate each affected Chat and its summary. Rust's current project-alert
-  watcher expires rows through the repository and publishes project alerts;
-  the corresponding expiry path through Chat live mutations is absent.
+One identified source discrepancy still requires runtime comparison:
+
 - Node's connected-worker registry refreshes worker-scoped catalogs and quota
   snapshots every 15 minutes. The Rust implementation has request/connection
   catalog work; an equivalent periodic producer has not been established.
