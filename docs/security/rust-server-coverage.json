@@ -8270,12 +8270,27 @@
       {
         "method": "GET",
         "path": "/api/projects/:projectId/remote-desktop-fleet",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "scripts/server-rust/remote-surface-http-compatibility.mjs",
+          "scripts/server-rust/remote-surface-http-cases.mjs",
+          "scripts/server-rust/remote-desktop-os-cases.mjs",
+          "scripts/server-rust/remote-surface-socket-cases.mjs",
+          "scripts/server-rust/remote-surface-boundary-cases.mjs",
+          "scripts/server-rust/remote-surface-timer-cases.mjs",
+          "scripts/server-rust/remote-surface-stress-cases.mjs",
+          "scripts/server-rust/remote-surface-startup-fault.mjs",
+          "scripts/server-rust/actual-remote-surfaces-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
+        "remaining": [
+          "Successful physical host desktop capture and full current CantripOS desktop/platform qualification remain required; the actual fleet is partial on both peers. Controlled positive OS replies and compared TURN credentials do not establish real desktop/TURN media deployment.",
+          "Final supported-platform/native-container-desktop artifacts, integrated migration/rollback/performance and complete replacement acceptance remain required. Node remains the default server; worker rewrite is outside this milestone."
+        ],
+        "implementation": "cantrip_server_rs/src/http/remote_desktop_fleet.rs",
+        "historicalDiscoveryBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
@@ -8283,20 +8298,32 @@
           "rustStatus": 404,
           "rustResponse": "generic route-not-found"
         },
-        "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+        "validatedSubset": "Local macOS arm64: all nine store/authentication pairs retain 624 paired HTTP observations, 555 paired command/state/socket cases and 18 clean server exits. Controlled-worker coverage includes revision races, caller destruction, OS generation fences, late acknowledgment, quotas, real deadlines, session/worker loss, physical socket pressure and exact durable traffic accounting. Actual browser/full-worker encrypted Chromium surface and WorkerLink flows pass all three stores and all four Redis pairings with restart retention. Current production route probe has no generic fallback for this endpoint."
       },
       {
         "method": "GET",
         "path": "/api/projects/:projectId/remote-desktops",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "scripts/server-rust/remote-surface-http-compatibility.mjs",
+          "scripts/server-rust/remote-surface-http-cases.mjs",
+          "scripts/server-rust/remote-desktop-os-cases.mjs",
+          "scripts/server-rust/remote-surface-socket-cases.mjs",
+          "scripts/server-rust/remote-surface-boundary-cases.mjs",
+          "scripts/server-rust/remote-surface-timer-cases.mjs",
+          "scripts/server-rust/remote-surface-stress-cases.mjs",
+          "scripts/server-rust/remote-surface-startup-fault.mjs",
+          "scripts/server-rust/actual-remote-surfaces-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
+        "remaining": [
+          "Successful physical host desktop capture and full current CantripOS desktop/platform qualification remain required; the actual fleet is partial on both peers. Controlled positive OS replies and compared TURN credentials do not establish real desktop/TURN media deployment.",
+          "Final supported-platform/native-container-desktop artifacts, integrated migration/rollback/performance and complete replacement acceptance remain required. Node remains the default server; worker rewrite is outside this milestone."
+        ],
+        "implementation": "cantrip_server_rs/src/http/remote_desktops.rs",
+        "historicalDiscoveryBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
@@ -8304,20 +8331,32 @@
           "rustStatus": 404,
           "rustResponse": "generic route-not-found"
         },
-        "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+        "validatedSubset": "Local macOS arm64: all nine store/authentication pairs retain 624 paired HTTP observations, 555 paired command/state/socket cases and 18 clean server exits. Controlled-worker coverage includes revision races, caller destruction, OS generation fences, late acknowledgment, quotas, real deadlines, session/worker loss, physical socket pressure and exact durable traffic accounting. Actual browser/full-worker encrypted Chromium surface and WorkerLink flows pass all three stores and all four Redis pairings with restart retention. Current production route probe has no generic fallback for this endpoint."
       },
       {
         "method": "POST",
         "path": "/api/projects/:projectId/remote-desktops",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "scripts/server-rust/remote-surface-http-compatibility.mjs",
+          "scripts/server-rust/remote-surface-http-cases.mjs",
+          "scripts/server-rust/remote-desktop-os-cases.mjs",
+          "scripts/server-rust/remote-surface-socket-cases.mjs",
+          "scripts/server-rust/remote-surface-boundary-cases.mjs",
+          "scripts/server-rust/remote-surface-timer-cases.mjs",
+          "scripts/server-rust/remote-surface-stress-cases.mjs",
+          "scripts/server-rust/remote-surface-startup-fault.mjs",
+          "scripts/server-rust/actual-remote-surfaces-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
+        "remaining": [
+          "Successful physical host desktop capture and full current CantripOS desktop/platform qualification remain required; the actual fleet is partial on both peers. Controlled positive OS replies and compared TURN credentials do not establish real desktop/TURN media deployment.",
+          "Final supported-platform/native-container-desktop artifacts, integrated migration/rollback/performance and complete replacement acceptance remain required. Node remains the default server; worker rewrite is outside this milestone."
+        ],
+        "implementation": "cantrip_server_rs/src/http/remote_desktops.rs",
+        "historicalDiscoveryBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
@@ -8325,20 +8364,32 @@
           "rustStatus": 404,
           "rustResponse": "generic route-not-found"
         },
-        "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+        "validatedSubset": "Local macOS arm64: all nine store/authentication pairs retain 624 paired HTTP observations, 555 paired command/state/socket cases and 18 clean server exits. Controlled-worker coverage includes revision races, caller destruction, OS generation fences, late acknowledgment, quotas, real deadlines, session/worker loss, physical socket pressure and exact durable traffic accounting. Actual browser/full-worker encrypted Chromium surface and WorkerLink flows pass all three stores and all four Redis pairings with restart retention. Current production route probe has no generic fallback for this endpoint."
       },
       {
         "method": "GET",
         "path": "/api/projects/:projectId/remote-surfaces",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "scripts/server-rust/remote-surface-http-compatibility.mjs",
+          "scripts/server-rust/remote-surface-http-cases.mjs",
+          "scripts/server-rust/remote-desktop-os-cases.mjs",
+          "scripts/server-rust/remote-surface-socket-cases.mjs",
+          "scripts/server-rust/remote-surface-boundary-cases.mjs",
+          "scripts/server-rust/remote-surface-timer-cases.mjs",
+          "scripts/server-rust/remote-surface-stress-cases.mjs",
+          "scripts/server-rust/remote-surface-startup-fault.mjs",
+          "scripts/server-rust/actual-remote-surfaces-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
+        "remaining": [
+          "Successful physical host desktop capture and full current CantripOS desktop/platform qualification remain required; the actual fleet is partial on both peers. Controlled positive OS replies and compared TURN credentials do not establish real desktop/TURN media deployment.",
+          "Final supported-platform/native-container-desktop artifacts, integrated migration/rollback/performance and complete replacement acceptance remain required. Node remains the default server; worker rewrite is outside this milestone."
+        ],
+        "implementation": "cantrip_server_rs/src/http/remote_surfaces.rs",
+        "historicalDiscoveryBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
@@ -8346,20 +8397,32 @@
           "rustStatus": 404,
           "rustResponse": "generic route-not-found"
         },
-        "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+        "validatedSubset": "Local macOS arm64: all nine store/authentication pairs retain 624 paired HTTP observations, 555 paired command/state/socket cases and 18 clean server exits. Controlled-worker coverage includes revision races, caller destruction, OS generation fences, late acknowledgment, quotas, real deadlines, session/worker loss, physical socket pressure and exact durable traffic accounting. Actual browser/full-worker encrypted Chromium surface and WorkerLink flows pass all three stores and all four Redis pairings with restart retention. Current production route probe has no generic fallback for this endpoint."
       },
       {
         "method": "POST",
         "path": "/api/projects/:projectId/remote-surfaces",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "scripts/server-rust/remote-surface-http-compatibility.mjs",
+          "scripts/server-rust/remote-surface-http-cases.mjs",
+          "scripts/server-rust/remote-desktop-os-cases.mjs",
+          "scripts/server-rust/remote-surface-socket-cases.mjs",
+          "scripts/server-rust/remote-surface-boundary-cases.mjs",
+          "scripts/server-rust/remote-surface-timer-cases.mjs",
+          "scripts/server-rust/remote-surface-stress-cases.mjs",
+          "scripts/server-rust/remote-surface-startup-fault.mjs",
+          "scripts/server-rust/actual-remote-surfaces-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
+        "remaining": [
+          "Successful physical host desktop capture and full current CantripOS desktop/platform qualification remain required; the actual fleet is partial on both peers. Controlled positive OS replies and compared TURN credentials do not establish real desktop/TURN media deployment.",
+          "Final supported-platform/native-container-desktop artifacts, integrated migration/rollback/performance and complete replacement acceptance remain required. Node remains the default server; worker rewrite is outside this milestone."
+        ],
+        "implementation": "cantrip_server_rs/src/http/remote_surfaces.rs",
+        "historicalDiscoveryBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
@@ -8367,10 +8430,7 @@
           "rustStatus": 404,
           "rustResponse": "generic route-not-found"
         },
-        "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+        "validatedSubset": "Local macOS arm64: all nine store/authentication pairs retain 624 paired HTTP observations, 555 paired command/state/socket cases and 18 clean server exits. Controlled-worker coverage includes revision races, caller destruction, OS generation fences, late acknowledgment, quotas, real deadlines, session/worker loss, physical socket pressure and exact durable traffic accounting. Actual browser/full-worker encrypted Chromium surface and WorkerLink flows pass all three stores and all four Redis pairings with restart retention. Current production route probe has no generic fallback for this endpoint."
       },
       {
         "method": "GET",
@@ -8483,12 +8543,27 @@
       {
         "method": "GET",
         "path": "/api/remote-desktops/:desktopId",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "scripts/server-rust/remote-surface-http-compatibility.mjs",
+          "scripts/server-rust/remote-surface-http-cases.mjs",
+          "scripts/server-rust/remote-desktop-os-cases.mjs",
+          "scripts/server-rust/remote-surface-socket-cases.mjs",
+          "scripts/server-rust/remote-surface-boundary-cases.mjs",
+          "scripts/server-rust/remote-surface-timer-cases.mjs",
+          "scripts/server-rust/remote-surface-stress-cases.mjs",
+          "scripts/server-rust/remote-surface-startup-fault.mjs",
+          "scripts/server-rust/actual-remote-surfaces-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
+        "remaining": [
+          "Successful physical host desktop capture and full current CantripOS desktop/platform qualification remain required; the actual fleet is partial on both peers. Controlled positive OS replies and compared TURN credentials do not establish real desktop/TURN media deployment.",
+          "Final supported-platform/native-container-desktop artifacts, integrated migration/rollback/performance and complete replacement acceptance remain required. Node remains the default server; worker rewrite is outside this milestone."
+        ],
+        "implementation": "cantrip_server_rs/src/http/remote_desktops.rs",
+        "historicalDiscoveryBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
@@ -8496,20 +8571,32 @@
           "rustStatus": 404,
           "rustResponse": "generic route-not-found"
         },
-        "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+        "validatedSubset": "Local macOS arm64: all nine store/authentication pairs retain 624 paired HTTP observations, 555 paired command/state/socket cases and 18 clean server exits. Controlled-worker coverage includes revision races, caller destruction, OS generation fences, late acknowledgment, quotas, real deadlines, session/worker loss, physical socket pressure and exact durable traffic accounting. Actual browser/full-worker encrypted Chromium surface and WorkerLink flows pass all three stores and all four Redis pairings with restart retention. Current production route probe has no generic fallback for this endpoint."
       },
       {
         "method": "PATCH",
         "path": "/api/remote-desktops/:desktopId",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "scripts/server-rust/remote-surface-http-compatibility.mjs",
+          "scripts/server-rust/remote-surface-http-cases.mjs",
+          "scripts/server-rust/remote-desktop-os-cases.mjs",
+          "scripts/server-rust/remote-surface-socket-cases.mjs",
+          "scripts/server-rust/remote-surface-boundary-cases.mjs",
+          "scripts/server-rust/remote-surface-timer-cases.mjs",
+          "scripts/server-rust/remote-surface-stress-cases.mjs",
+          "scripts/server-rust/remote-surface-startup-fault.mjs",
+          "scripts/server-rust/actual-remote-surfaces-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
+        "remaining": [
+          "Successful physical host desktop capture and full current CantripOS desktop/platform qualification remain required; the actual fleet is partial on both peers. Controlled positive OS replies and compared TURN credentials do not establish real desktop/TURN media deployment.",
+          "Final supported-platform/native-container-desktop artifacts, integrated migration/rollback/performance and complete replacement acceptance remain required. Node remains the default server; worker rewrite is outside this milestone."
+        ],
+        "implementation": "cantrip_server_rs/src/http/remote_desktops.rs",
+        "historicalDiscoveryBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
@@ -8517,20 +8604,32 @@
           "rustStatus": 404,
           "rustResponse": "generic route-not-found"
         },
-        "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+        "validatedSubset": "Local macOS arm64: all nine store/authentication pairs retain 624 paired HTTP observations, 555 paired command/state/socket cases and 18 clean server exits. Controlled-worker coverage includes revision races, caller destruction, OS generation fences, late acknowledgment, quotas, real deadlines, session/worker loss, physical socket pressure and exact durable traffic accounting. Actual browser/full-worker encrypted Chromium surface and WorkerLink flows pass all three stores and all four Redis pairings with restart retention. Current production route probe has no generic fallback for this endpoint."
       },
       {
         "method": "DELETE",
         "path": "/api/remote-surfaces/:surfaceId",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "scripts/server-rust/remote-surface-http-compatibility.mjs",
+          "scripts/server-rust/remote-surface-http-cases.mjs",
+          "scripts/server-rust/remote-desktop-os-cases.mjs",
+          "scripts/server-rust/remote-surface-socket-cases.mjs",
+          "scripts/server-rust/remote-surface-boundary-cases.mjs",
+          "scripts/server-rust/remote-surface-timer-cases.mjs",
+          "scripts/server-rust/remote-surface-stress-cases.mjs",
+          "scripts/server-rust/remote-surface-startup-fault.mjs",
+          "scripts/server-rust/actual-remote-surfaces-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
+        "remaining": [
+          "Successful physical host desktop capture and full current CantripOS desktop/platform qualification remain required; the actual fleet is partial on both peers. Controlled positive OS replies and compared TURN credentials do not establish real desktop/TURN media deployment.",
+          "Final supported-platform/native-container-desktop artifacts, integrated migration/rollback/performance and complete replacement acceptance remain required. Node remains the default server; worker rewrite is outside this milestone."
+        ],
+        "implementation": "cantrip_server_rs/src/http/remote_surfaces.rs",
+        "historicalDiscoveryBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
@@ -8538,20 +8637,32 @@
           "rustStatus": 404,
           "rustResponse": "generic route-not-found"
         },
-        "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+        "validatedSubset": "Local macOS arm64: all nine store/authentication pairs retain 624 paired HTTP observations, 555 paired command/state/socket cases and 18 clean server exits. Controlled-worker coverage includes revision races, caller destruction, OS generation fences, late acknowledgment, quotas, real deadlines, session/worker loss, physical socket pressure and exact durable traffic accounting. Actual browser/full-worker encrypted Chromium surface and WorkerLink flows pass all three stores and all four Redis pairings with restart retention. Current production route probe has no generic fallback for this endpoint."
       },
       {
         "method": "PATCH",
         "path": "/api/remote-surfaces/:surfaceId",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "scripts/server-rust/remote-surface-http-compatibility.mjs",
+          "scripts/server-rust/remote-surface-http-cases.mjs",
+          "scripts/server-rust/remote-desktop-os-cases.mjs",
+          "scripts/server-rust/remote-surface-socket-cases.mjs",
+          "scripts/server-rust/remote-surface-boundary-cases.mjs",
+          "scripts/server-rust/remote-surface-timer-cases.mjs",
+          "scripts/server-rust/remote-surface-stress-cases.mjs",
+          "scripts/server-rust/remote-surface-startup-fault.mjs",
+          "scripts/server-rust/actual-remote-surfaces-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
+        "remaining": [
+          "Successful physical host desktop capture and full current CantripOS desktop/platform qualification remain required; the actual fleet is partial on both peers. Controlled positive OS replies and compared TURN credentials do not establish real desktop/TURN media deployment.",
+          "Final supported-platform/native-container-desktop artifacts, integrated migration/rollback/performance and complete replacement acceptance remain required. Node remains the default server; worker rewrite is outside this milestone."
+        ],
+        "implementation": "cantrip_server_rs/src/http/remote_surfaces.rs",
+        "historicalDiscoveryBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
@@ -8559,20 +8670,32 @@
           "rustStatus": 404,
           "rustResponse": "generic route-not-found"
         },
-        "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+        "validatedSubset": "Local macOS arm64: all nine store/authentication pairs retain 624 paired HTTP observations, 555 paired command/state/socket cases and 18 clean server exits. Controlled-worker coverage includes revision races, caller destruction, OS generation fences, late acknowledgment, quotas, real deadlines, session/worker loss, physical socket pressure and exact durable traffic accounting. Actual browser/full-worker encrypted Chromium surface and WorkerLink flows pass all three stores and all four Redis pairings with restart retention. Current production route probe has no generic fallback for this endpoint."
       },
       {
         "method": "GET",
         "path": "/api/remote-surfaces/:surfaceId/connect",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "scripts/server-rust/remote-surface-http-compatibility.mjs",
+          "scripts/server-rust/remote-surface-http-cases.mjs",
+          "scripts/server-rust/remote-desktop-os-cases.mjs",
+          "scripts/server-rust/remote-surface-socket-cases.mjs",
+          "scripts/server-rust/remote-surface-boundary-cases.mjs",
+          "scripts/server-rust/remote-surface-timer-cases.mjs",
+          "scripts/server-rust/remote-surface-stress-cases.mjs",
+          "scripts/server-rust/remote-surface-startup-fault.mjs",
+          "scripts/server-rust/actual-remote-surfaces-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
+        "remaining": [
+          "Successful physical host desktop capture and full current CantripOS desktop/platform qualification remain required; the actual fleet is partial on both peers. Controlled positive OS replies and compared TURN credentials do not establish real desktop/TURN media deployment.",
+          "Final supported-platform/native-container-desktop artifacts, integrated migration/rollback/performance and complete replacement acceptance remain required. Node remains the default server; worker rewrite is outside this milestone."
+        ],
+        "implementation": "cantrip_server_rs/src/http/remote_surface_socket/mod.rs",
+        "historicalDiscoveryBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
@@ -8580,20 +8703,32 @@
           "rustStatus": 404,
           "rustResponse": "generic route-not-found"
         },
-        "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+        "validatedSubset": "Local macOS arm64: all nine store/authentication pairs retain 624 paired HTTP observations, 555 paired command/state/socket cases and 18 clean server exits. Controlled-worker coverage includes revision races, caller destruction, OS generation fences, late acknowledgment, quotas, real deadlines, session/worker loss, physical socket pressure and exact durable traffic accounting. Actual browser/full-worker encrypted Chromium surface and WorkerLink flows pass all three stores and all four Redis pairings with restart retention. Current production route probe has no generic fallback for this endpoint."
       },
       {
         "method": "POST",
         "path": "/api/remote-surfaces/:surfaceId/resume",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "scripts/server-rust/remote-surface-http-compatibility.mjs",
+          "scripts/server-rust/remote-surface-http-cases.mjs",
+          "scripts/server-rust/remote-desktop-os-cases.mjs",
+          "scripts/server-rust/remote-surface-socket-cases.mjs",
+          "scripts/server-rust/remote-surface-boundary-cases.mjs",
+          "scripts/server-rust/remote-surface-timer-cases.mjs",
+          "scripts/server-rust/remote-surface-stress-cases.mjs",
+          "scripts/server-rust/remote-surface-startup-fault.mjs",
+          "scripts/server-rust/actual-remote-surfaces-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
+        "remaining": [
+          "Successful physical host desktop capture and full current CantripOS desktop/platform qualification remain required; the actual fleet is partial on both peers. Controlled positive OS replies and compared TURN credentials do not establish real desktop/TURN media deployment.",
+          "Final supported-platform/native-container-desktop artifacts, integrated migration/rollback/performance and complete replacement acceptance remain required. Node remains the default server; worker rewrite is outside this milestone."
+        ],
+        "implementation": "cantrip_server_rs/src/http/remote_surfaces.rs",
+        "historicalDiscoveryBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
@@ -8601,20 +8736,32 @@
           "rustStatus": 404,
           "rustResponse": "generic route-not-found"
         },
-        "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+        "validatedSubset": "Local macOS arm64: all nine store/authentication pairs retain 624 paired HTTP observations, 555 paired command/state/socket cases and 18 clean server exits. Controlled-worker coverage includes revision races, caller destruction, OS generation fences, late acknowledgment, quotas, real deadlines, session/worker loss, physical socket pressure and exact durable traffic accounting. Actual browser/full-worker encrypted Chromium surface and WorkerLink flows pass all three stores and all four Redis pairings with restart retention. Current production route probe has no generic fallback for this endpoint."
       },
       {
         "method": "POST",
         "path": "/api/remote-surfaces/:surfaceId/suspend",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_REMOTE_SURFACES.md",
+          "scripts/server-rust/remote-surface-http-compatibility.mjs",
+          "scripts/server-rust/remote-surface-http-cases.mjs",
+          "scripts/server-rust/remote-desktop-os-cases.mjs",
+          "scripts/server-rust/remote-surface-socket-cases.mjs",
+          "scripts/server-rust/remote-surface-boundary-cases.mjs",
+          "scripts/server-rust/remote-surface-timer-cases.mjs",
+          "scripts/server-rust/remote-surface-stress-cases.mjs",
+          "scripts/server-rust/remote-surface-startup-fault.mjs",
+          "scripts/server-rust/actual-remote-surfaces-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
+        "remaining": [
+          "Successful physical host desktop capture and full current CantripOS desktop/platform qualification remain required; the actual fleet is partial on both peers. Controlled positive OS replies and compared TURN credentials do not establish real desktop/TURN media deployment.",
+          "Final supported-platform/native-container-desktop artifacts, integrated migration/rollback/performance and complete replacement acceptance remain required. Node remains the default server; worker rewrite is outside this milestone."
+        ],
+        "implementation": "cantrip_server_rs/src/http/remote_surfaces.rs",
+        "historicalDiscoveryBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
@@ -8622,10 +8769,7 @@
           "rustStatus": 404,
           "rustResponse": "generic route-not-found"
         },
-        "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+        "validatedSubset": "Local macOS arm64: all nine store/authentication pairs retain 624 paired HTTP observations, 555 paired command/state/socket cases and 18 clean server exits. Controlled-worker coverage includes revision races, caller destruction, OS generation fences, late acknowledgment, quotas, real deadlines, session/worker loss, physical socket pressure and exact durable traffic accounting. Actual browser/full-worker encrypted Chromium surface and WorkerLink flows pass all three stores and all four Redis pairings with restart retention. Current production route probe has no generic fallback for this endpoint."
       },
       {
         "method": "GET",

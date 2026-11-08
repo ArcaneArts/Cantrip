@@ -18,6 +18,7 @@ use crate::{
 use anyhow::Result;
 use futures::FutureExt;
 pub(crate) use reads::StoredTargetValidationError;
+pub(crate) use reads::remote as remote_summary;
 pub(crate) use reads::worktree as worktree_summary;
 use reads::{Kind, Reads};
 use std::sync::Arc;
@@ -27,6 +28,17 @@ pub struct TargetRepository {
     mcp_errors: bool,
 }
 impl TargetRepository {
+    pub(crate) async fn remote_surfaces(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
+        self.reads().remotes(owner, project).await
+    }
+    pub(crate) async fn remote_desktops(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
+        self.reads().desktops(owner, project).await
+    }
+    pub(crate) async fn remote_desktop(&self, owner: &str, id: &str) -> Result<Option<Value>> {
+        self.reads()
+            .desktop_context(owner, &Value::String(id.into()))
+            .await
+    }
     pub async fn worktrees(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
         self.reads().worktrees(owner, project).await
     }

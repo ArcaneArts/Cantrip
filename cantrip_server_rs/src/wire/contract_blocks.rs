@@ -15,6 +15,8 @@ const OPERATIONAL_STATUS: &str = include_str!("../../contracts/operational-statu
 const WORKER_LOGS: &str = include_str!("../../contracts/worker-logs.json");
 const PROJECT_INSIGHTS: &str = include_str!("../../contracts/project-insights.json");
 
+const REMOTE_SURFACE_HTTP: &str = include_str!("../../contracts/remote-surface-http.json");
+
 pub(super) fn load() -> Contracts {
     let mut contracts: Contracts = serde_json::from_str(BASE).expect("embedded protocol contracts");
     contracts.append(serde_json::from_str(RUN).expect("embedded Run MCP contracts"));
@@ -40,6 +42,9 @@ pub(super) fn load() -> Contracts {
     contracts.append(serde_json::from_str(WORKER_LOGS).expect("embedded worker log contracts"));
     contracts.append(
         serde_json::from_str(PROJECT_INSIGHTS).expect("embedded project insight contracts"),
+    );
+    contracts.append(
+        serde_json::from_str(REMOTE_SURFACE_HTTP).expect("embedded remote surface HTTP contracts"),
     );
     contracts.compile_patterns();
     contracts
@@ -161,6 +166,11 @@ mod tests {
         source_contracts_survive_growth(PROJECT_INSIGHTS, "project insights")
     }
 
+    #[test]
+    fn remote_surface_contracts_survive_unrelated_base_graph_growth() -> Result<()> {
+        source_contracts_survive_growth(REMOTE_SURFACE_HTTP, "remote surface HTTP")
+    }
+
     fn source_contracts_survive_growth(block: &str, label: &str) -> Result<()> {
         let base: Contracts = serde_json::from_str(BASE)?;
         let run: Contracts = serde_json::from_str(RUN)?;
@@ -175,6 +185,26 @@ mod tests {
         let operational_status: Contracts = serde_json::from_str(OPERATIONAL_STATUS)?;
         let worker_logs: Contracts = serde_json::from_str(WORKER_LOGS)?;
         let project_insights: Contracts = serde_json::from_str(PROJECT_INSIGHTS)?;
+        let remote_surfaces: Contracts = serde_json::from_str(REMOTE_SURFACE_HTTP)?;
+        assert!(remote_surfaces.roots.keys().all(|name| {
+            [
+                &base,
+                &run,
+                &surface,
+                &cli,
+                &exports,
+                &attachments,
+                &management,
+                &operations,
+                &administration,
+                &chat_control,
+                &operational_status,
+                &worker_logs,
+                &project_insights,
+            ]
+            .iter()
+            .all(|graph| !graph.roots.contains_key(name))
+        }));
         assert!(project_insights.roots.keys().all(|name| {
             [
                 &base,
@@ -329,6 +359,7 @@ mod tests {
             graph.append(serde_json::from_str(OPERATIONAL_STATUS)?);
             graph.append(serde_json::from_str(WORKER_LOGS)?);
             graph.append(serde_json::from_str(PROJECT_INSIGHTS)?);
+            graph.append(serde_json::from_str(REMOTE_SURFACE_HTTP)?);
             graph.compile_patterns();
             graphs.push(graph);
         }
@@ -337,7 +368,14 @@ mod tests {
         let mut count = 0;
         for schema in schemas {
             let mut command = Command::new("node");
-            if label == "project insights" {
+            if label == "remote surface HTTP" {
+                command.args([
+                    "--import",
+                    "tsx",
+                    "scripts/server-rust/remote-surface-contract-oracle.mjs",
+                    schema,
+                ]);
+            } else if label == "project insights" {
                 command.args([
                     "--import",
                     "tsx",

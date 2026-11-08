@@ -326,7 +326,7 @@ pub(super) fn resource(kind: Kind, raw: &Value) -> Result<Value> {
     }
     Ok(result)
 }
-pub(super) fn remote(raw: &Value, title: Value, state: Value, revision: Value) -> Result<Value> {
+pub(crate) fn remote(raw: &Value, title: Value, state: Value, revision: Value) -> Result<Value> {
     anyhow::ensure!(
         coercion::truthy(Some(&title)),
         "Remote Surface is missing its canonical protected label."
@@ -359,7 +359,7 @@ pub(super) fn remote(raw: &Value, title: Value, state: Value, revision: Value) -
     dates(&mut result, raw)?;
     Ok(result)
 }
-pub(super) fn desktop(view: &Value, raw: &Value) -> Result<Value> {
+pub(crate) fn desktop(view: &Value, raw: &Value) -> Result<Value> {
     anyhow::ensure!(
         raw["configuration"]["kind"] == "desktop",
         "Remote Desktop is not backed by a desktop surface."
@@ -377,7 +377,10 @@ pub(super) fn desktop(view: &Value, raw: &Value) -> Result<Value> {
             ("position", "position"),
         ],
     );
-    if let Some(source) = raw["configuration"].get("osSource") {
+    if let Some(source) = raw["configuration"]
+        .get("osSource")
+        .filter(|value| coercion::truthy(Some(value)))
+    {
         result["osSource"] = source.clone();
     }
     for (key, value) in mapped(

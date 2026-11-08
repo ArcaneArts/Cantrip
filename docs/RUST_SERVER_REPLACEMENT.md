@@ -1,5 +1,13 @@
 # Rust server replacement
 
+Native remote desktop/surface management and the legacy binary socket now pass
+local HTTP, state, lifecycle, pressure and accounting qualification. Existing
+browser APIs and the complete unchanged worker pass all three stores and all
+four shared peer pairings, including encrypted browser images/controls and
+restart retention. Actual host desktop capture and final platform acceptance
+remain required. See [remote-surface qualification](RUST_SERVER_REMOTE_SURFACES.md).
+Node remains the default and complete replacement remains unfinished.
+
 Native worker log reads and leased streams now pass actual HTTP/WebSocket,
 timer, backpressure and ownership-query interruption checks. Existing browser
 APIs and the full unchanged worker pass all three stores and all four shared
@@ -24,9 +32,8 @@ computer-use authority revocation. See [project administration](RUST_SERVER_PROJ
 for exact scope, retained baseline failures and remaining acceptance. Node remains
 the default and full replacement remains incomplete.
 
-The current production HTTP inventory probe confirms 21 active endpoints still
-fall through to Rust's generic 404, covering computer use, project
-context/insights and remote surfaces.
+The current production HTTP inventory probe confirms four active endpoints still
+fall through to Rust's generic 404, all in computer use.
 Seventy-two additional retired repository-route differences are corrected and
 qualified separately. See [HTTP inventory reconciliation](RUST_SERVER_HTTP_INVENTORY.md)
 for the exact scope and remaining families. These are implementation gaps;

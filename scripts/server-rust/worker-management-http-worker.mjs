@@ -12,6 +12,8 @@ export async function managementWorker({
   root,
   state,
   handlers = {},
+  onSurfaceFrame = () => undefined,
+  onSentSurfaceFrame = () => undefined,
 }) {
   const report = {
     ...heartbeat,
@@ -80,7 +82,7 @@ export async function managementWorker({
           }
         );
       },
-      undefined,
+      onSurfaceFrame,
       undefined,
       () => {
         connected = false;
@@ -108,6 +110,11 @@ export async function managementWorker({
     },
     pulse: () => sendHeartbeat(config, report),
     notify: (notification) => connection.sendNotification(notification),
+    surfaceFrame: (header, payload) => {
+      const accepted = connection.sendSurfaceFrame(header, payload);
+      if (accepted) onSentSurfaceFrame(header, payload);
+      return accepted;
+    },
     close() {
       connection.close();
     },
