@@ -1,0 +1,349 @@
+{
+  "systemHealthSchema": [
+    {
+      "status": "ok",
+      "service": "cantrip_server",
+      "database": {
+        "engine": "pglite",
+        "ready": true
+      },
+      "workers": {
+        "connected": 0
+      },
+      "live": {
+        "acceptedConnectionCount": 0,
+        "connectionCount": 0,
+        "currentCursor": 0,
+        "deliveredEventCount": 0,
+        "disconnectedConnectionCount": 0,
+        "heartbeatPongCount": 0,
+        "heartbeatTimeoutCount": 0,
+        "protocolViolationCount": 0,
+        "publicationCount": 0,
+        "queuePressureCount": 0,
+        "replayEventCount": 0,
+        "replaySessionCount": 0,
+        "replayedEventCount": 0,
+        "resyncRequiredCount": 0,
+        "resumeAttemptCount": 0,
+        "serverEpoch": "11111111-1111-4111-8111-111111111111",
+        "slowConsumerClosureCount": 0
+      },
+      "operations": {
+        "instanceId": "local-single-instance",
+        "uptimeSeconds": 0.157,
+        "http": {
+          "activeRequests": 1,
+          "requestCount": 2
+        },
+        "legacyFeatureTransports": {
+          "requestsByEndpoint": {
+            "remote-surface-transport": 0,
+            "terminal-direct": 0,
+            "terminal-relay": 0,
+            "tunnel-direct": 0,
+            "tunnel-direct-activate": 0,
+            "tunnel-relay": 0
+          }
+        },
+        "coordination": {
+          "cachedWorkers": 0,
+          "instanceCount": 1,
+          "maximumInstances": 1,
+          "receivedMessages": 0,
+          "rejectedMessages": 0,
+          "sentMessages": 0,
+          "shared": false
+        },
+        "workerCommands": {
+          "activeRequests": 0,
+          "connectedWorkers": 0,
+          "failedRequests": 0,
+          "routedRequests": 0,
+          "succeededRequests": 0
+        },
+        "workerLinkRelay": {
+          "channels": 0,
+          "connections": 0,
+          "queuedBytes": 0,
+          "queuedFrames": 0,
+          "queuedFramesByLane": {
+            "events": 0,
+            "interactive": 0,
+            "stream": 0,
+            "realtime": 0,
+            "bulk": 0
+          }
+        },
+        "tunnels": {
+          "activeConnections": 0,
+          "activeRoutes": 0,
+          "bytesFromSource": 0,
+          "bytesToSource": 0,
+          "closedConnections": 0,
+          "openedConnections": 0,
+          "rejectedConnections": 0,
+          "terminationsByReason": {
+            "normal": 0,
+            "revoked": 0,
+            "endpoint-disconnected": 0,
+            "idle-timeout": 0,
+            "lifetime-expired": 0,
+            "congested": 0,
+            "bandwidth-limit": 0,
+            "protocol-error": 0
+          }
+        },
+        "quotas": {
+          "activeRemoteSurfaces": 0,
+          "rejectedRelayBandwidth": 0,
+          "rejectedRemoteSurfaces": 0,
+          "rejectedUploads": 0,
+          "relayBytes": 0,
+          "uploadBytes": 0
+        },
+        "scheduler": {
+          "dispatchFailures": 0,
+          "dispatches": 0,
+          "dueOccurrences": 0,
+          "lastScanAt": null,
+          "lastScanDurationSeconds": 0,
+          "leaseContentions": 0,
+          "leaseRecoveries": 0,
+          "maximumLagSeconds": 0,
+          "scanFailures": 0,
+          "scans": 0
+        },
+        "accountUsage": {
+          "bandwidthMeter": {
+            "bufferedBytes": "297",
+            "bufferedEntries": 2,
+            "droppedBytes": "0",
+            "droppedMeasurements": "0",
+            "flushCount": 0,
+            "flushFailureCount": 0,
+            "lastFlushDurationMs": null,
+            "lastFlushedAt": null
+          },
+          "historyMaintenance": {
+            "completionCount": 1,
+            "failureCount": 0,
+            "lastCompletedAt": "2026-10-25T00:00:00.000Z",
+            "lastDurationMs": 4,
+            "lastErrorAt": null,
+            "lastSuccessfulAt": "2026-10-25T00:00:00.000Z",
+            "leaseContentionCount": 0,
+            "running": false,
+            "totals": {
+              "accountCount": 1,
+              "logicalServerBytes": "1205",
+              "logicalWorkerManagedBytes": "0",
+              "physicalDatabaseBytes": "17940603"
+            }
+          },
+          "storageReconciliation": {
+            "completionCount": 1,
+            "failureCount": 0,
+            "lastCompletedAt": "2026-10-25T00:00:00.000Z",
+            "lastDurationMs": 35,
+            "lastErrorAt": null,
+            "lastSuccessfulAt": "2026-10-25T00:00:00.000Z",
+            "leaseContentionCount": 0,
+            "running": false
+          }
+        }
+      },
+      "timestamp": "2026-10-25T00:00:00.000Z"
+    },
+    {
+      "status": "ok",
+      "service": "cantrip_server",
+      "database": {
+        "engine": "postgres",
+        "ready": true
+      },
+      "workers": {
+        "connected": 0
+      },
+      "live": {
+        "acceptedConnectionCount": 0,
+        "connectionCount": 0,
+        "currentCursor": 0,
+        "deliveredEventCount": 0,
+        "disconnectedConnectionCount": 0,
+        "heartbeatPongCount": 0,
+        "heartbeatTimeoutCount": 0,
+        "protocolViolationCount": 0,
+        "publicationCount": 0,
+        "queuePressureCount": 0,
+        "replayEventCount": 0,
+        "replaySessionCount": 0,
+        "replayedEventCount": 0,
+        "resyncRequiredCount": 0,
+        "resumeAttemptCount": 0,
+        "serverEpoch": "11111111-1111-4111-8111-111111111111",
+        "slowConsumerClosureCount": 0
+      },
+      "operations": {
+        "instanceId": "local-single-instance",
+        "uptimeSeconds": 0.157,
+        "http": {
+          "activeRequests": 1,
+          "requestCount": 2
+        },
+        "legacyFeatureTransports": {
+          "requestsByEndpoint": {
+            "remote-surface-transport": 0,
+            "terminal-direct": 0,
+            "terminal-relay": 0,
+            "tunnel-direct": 0,
+            "tunnel-direct-activate": 0,
+            "tunnel-relay": 0
+          }
+        },
+        "coordination": {
+          "cachedWorkers": 0,
+          "instanceCount": 1,
+          "maximumInstances": 1,
+          "receivedMessages": 0,
+          "rejectedMessages": 0,
+          "sentMessages": 0,
+          "shared": false
+        },
+        "workerCommands": {
+          "activeRequests": 0,
+          "connectedWorkers": 0,
+          "failedRequests": 0,
+          "routedRequests": 0,
+          "succeededRequests": 0
+        },
+        "workerLinkRelay": {
+          "channels": 0,
+          "connections": 0,
+          "queuedBytes": 0,
+          "queuedFrames": 0,
+          "queuedFramesByLane": {
+            "events": 0,
+            "interactive": 0,
+            "stream": 0,
+            "realtime": 0,
+            "bulk": 0
+          }
+        },
+        "tunnels": {
+          "activeConnections": 0,
+          "activeRoutes": 0,
+          "bytesFromSource": 0,
+          "bytesToSource": 0,
+          "closedConnections": 0,
+          "openedConnections": 0,
+          "rejectedConnections": 0,
+          "terminationsByReason": {
+            "normal": 0,
+            "revoked": 0,
+            "endpoint-disconnected": 0,
+            "idle-timeout": 0,
+            "lifetime-expired": 0,
+            "congested": 0,
+            "bandwidth-limit": 0,
+            "protocol-error": 0
+          }
+        },
+        "quotas": {
+          "activeRemoteSurfaces": 0,
+          "rejectedRelayBandwidth": 0,
+          "rejectedRemoteSurfaces": 0,
+          "rejectedUploads": 0,
+          "relayBytes": 0,
+          "uploadBytes": 0
+        },
+        "scheduler": {
+          "dispatchFailures": 0,
+          "dispatches": 0,
+          "dueOccurrences": 0,
+          "lastScanAt": null,
+          "lastScanDurationSeconds": 0,
+          "leaseContentions": 0,
+          "leaseRecoveries": 0,
+          "maximumLagSeconds": 0,
+          "scanFailures": 0,
+          "scans": 0
+        },
+        "accountUsage": {
+          "bandwidthMeter": {
+            "bufferedBytes": "297",
+            "bufferedEntries": 2,
+            "droppedBytes": "0",
+            "droppedMeasurements": "0",
+            "flushCount": 0,
+            "flushFailureCount": 0,
+            "lastFlushDurationMs": null,
+            "lastFlushedAt": null
+          },
+          "historyMaintenance": {
+            "completionCount": 1,
+            "failureCount": 0,
+            "lastCompletedAt": "2026-10-25T00:00:00.000Z",
+            "lastDurationMs": 4,
+            "lastErrorAt": null,
+            "lastSuccessfulAt": "2026-10-25T00:00:00.000Z",
+            "leaseContentionCount": 0,
+            "running": false,
+            "totals": {
+              "accountCount": 1,
+              "logicalServerBytes": "1205",
+              "logicalWorkerManagedBytes": "0",
+              "physicalDatabaseBytes": "17940603"
+            }
+          },
+          "storageReconciliation": {
+            "completionCount": 1,
+            "failureCount": 0,
+            "lastCompletedAt": "2026-10-25T00:00:00.000Z",
+            "lastDurationMs": 35,
+            "lastErrorAt": null,
+            "lastSuccessfulAt": "2026-10-25T00:00:00.000Z",
+            "leaseContentionCount": 0,
+            "running": false
+          }
+        }
+      },
+      "timestamp": "2026-10-25T00:00:00.000Z"
+    }
+  ],
+  "operationalProbeSchema": [
+    {
+      "status": "alive",
+      "service": "cantrip_server",
+      "timestamp": "2026-10-25T00:00:00.000Z"
+    },
+    {
+      "status": "ready",
+      "service": "cantrip_server",
+      "database": {
+        "engine": "pglite",
+        "status": "ready",
+        "latencyMs": 0.125
+      },
+      "coordination": {
+        "shared": false,
+        "status": "ready"
+      },
+      "timestamp": "2026-10-25T00:00:00.000Z"
+    },
+    {
+      "status": "not-ready",
+      "service": "cantrip_server",
+      "database": {
+        "engine": "postgres",
+        "status": "unavailable",
+        "latencyMs": 12
+      },
+      "coordination": {
+        "shared": true,
+        "status": "unavailable"
+      },
+      "timestamp": "2026-10-25T00:00:00.000Z"
+    }
+  ]
+}

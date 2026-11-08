@@ -92,10 +92,24 @@ mod cantrip_server {
             }
         }
 
+        async fn close_database(State(service): State<Arc<AuthService>>) -> Response {
+            match service.repository.database.close().await {
+                Ok(()) => Json(serde_json::json!({"closed":true})).into_response(),
+                Err(error) => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, format!("{error:#}")).into_response()
+                }
+            }
+        }
+
         pub fn router(service: Arc<AuthService>) -> Router {
             let controls = Router::new()
                 .route("/__fixture/sql", post(setup))
                 .route("/__fixture/live", post(publish_live))
+                .route("/__fixture/close-database", post(close_database))
+                .layer(axum::middleware::from_fn_with_state(
+                    service.clone(),
+                    ::cantrip_server::http::observe_operations,
+                ))
                 .with_state(service.clone());
             ::cantrip_server::http::router(service).merge(controls)
         }

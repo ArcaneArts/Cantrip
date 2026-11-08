@@ -878,6 +878,11 @@ export const chatControlContractRoots = [
   "chatCompactAcceptedSchema",
 ];
 
+export const operationalStatusContractRoots = [
+  "systemHealthSchema",
+  "operationalProbeSchema",
+];
+
 // Keep independently added roots self-contained. Numeric graph references must
 // not depend on the size of the base graph after an unrelated branch merges.
 export const runMcpContractRoots = [
@@ -1788,6 +1793,20 @@ if (
   const chatControlDestination = new URL(
     "../../cantrip_server_rs/contracts/chat-control.json",
     import.meta.url,
+  );
+  const operationalStatusDestination = new URL(
+    "../../cantrip_server_rs/contracts/operational-status.json",
+    import.meta.url,
+  );
+  await writeFile(
+    operationalStatusDestination,
+    await format(
+      JSON.stringify(buildContractManifest(operationalStatusContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(operationalStatusDestination))),
+        filepath: fileURLToPath(operationalStatusDestination),
+      },
+    ),
   );
   await writeFile(
     chatControlDestination,
