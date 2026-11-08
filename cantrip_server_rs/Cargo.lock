@@ -360,6 +360,7 @@ dependencies = [
  "indexmap",
  "jiff",
  "libc",
+ "matchit",
  "native-tls",
  "num-bigint",
  "os_pipe",
@@ -384,6 +385,7 @@ dependencies = [
  "tokio-postgres",
  "tokio-tungstenite 0.28.0",
  "tokio-tungstenite 0.29.0",
+ "tower",
  "tungstenite 0.29.0",
  "unicode-normalization",
  "url",
@@ -1457,8 +1459,6 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 [[package]]
 name = "matchit"
 version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "md-5"

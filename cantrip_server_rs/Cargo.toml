@@ -9,6 +9,8 @@ publish = false
 anyhow = "1"
 argon2 = { version = "0.5", features = ["std"] }
 axum = { version = "0.8", features = ["ws"] }
+matchit = { version = "=0.8.4", features = ["cantrip-empty-params"] }
+tower = { version = "0.5", features = ["util"] }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
@@ -64,6 +66,7 @@ sha2 = "0.10"
 
 [patch.crates-io]
 hyper = { path = "third-party/hyper" }
+matchit = { path = "third-party/matchit" }
 
 [dev-dependencies]
 async-compression = { version = "0.4", features = ["tokio", "gzip"] }

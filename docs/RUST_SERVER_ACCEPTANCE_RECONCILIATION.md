@@ -105,6 +105,10 @@ cover all three stores, configuration, signals, failure and actual archive
 recovery. The [HTTP and console qualification](RUST_SERVER_HTTP_LOGGING.md)
 adds actual response-completion capture, console presentation and stream-error
 behavior, and repairs fallback parser ordering exposed by the comparison.
+The [request-target and route-level comparison](RUST_SERVER_REQUEST_TARGET.md)
+also repairs URL decoding, early 400/414 responses, empty terminal parameters,
+method-fallback headers and Pino child-level filtering. Its actual raw HTTP and
+controlled-stream comparisons retain their distinct qualification scope.
 The [database lifecycle qualification](RUST_SERVER_DATABASE_LIFECYCLE.md) adds
 connection/migration/probe diagnostics and repairs connection/subscription retry
 boundaries and retained-key initialization. A subsequent production comparison

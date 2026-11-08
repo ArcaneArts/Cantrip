@@ -1,9 +1,12 @@
 //! Observe actual response completion without changing the response or its bytes.
+#[path = "request_log_policy.rs"]
+mod policy;
 use crate::{
     operations::{log_format, log_runtime, log_sanitize},
     wire::{JsString, value::json},
 };
 use axum::{extract::Request, http::Method, middleware::Next, response::Response};
+pub use policy::LogLevel;
 use std::time::Instant;
 
 #[derive(Clone)]
@@ -55,14 +58,34 @@ pub fn completed(id: &str, method: &str, path: &str, code: u16, duration: f64) {
     let record = json!({"timestamp":crate::auth::now().to_rfc3339_opts(chrono::SecondsFormat::Millis,true),"system":"server","level":level,"message":log_sanitize::text(&JsString::new(message)),"context":log_sanitize::context(&context)});
     log_runtime::capture_http(record);
 }
-pub async fn observe(mut request: Request, next: Next) -> Response {
+pub async fn observe(request: Request, next: Next) -> Response {
+    if !log_runtime::is_initialized()
+        || request
+            .extensions()
+            .get::<super::request_target::InvalidFallbackTarget>()
+            .is_some()
+    {
+        return next.run(request).await;
+    }
+    let level = policy::level(request.method().as_str(), &request.uri().to_string());
+    observe_with_level(request, next, level).await
+}
+/// The production wrapper always selects actual registered-route policy. A
+/// controlled HTTP fixture can supply the same level as its Fastify route.
+pub async fn observe_with_level(mut request: Request, next: Next, level: LogLevel) -> Response {
     if !log_runtime::is_initialized() {
         return next.run(request).await;
     }
     let started = Instant::now();
     let id = uuid::Uuid::new_v4().to_string();
     let method = request.method().clone();
-    let path = request.uri().to_string();
+    let path = request
+        .extensions()
+        .get::<axum::extract::OriginalUri>()
+        .map_or_else(
+            || request.uri().to_string(),
+            |original| original.0.to_string(),
+        );
     request.extensions_mut().insert(RequestId(id.clone()));
     let response = next.run(request).await;
     // The existing Fastify WebSocket plugin writes successful upgrades directly
@@ -79,6 +102,9 @@ pub async fn observe(mut request: Request, next: Next) -> Response {
     let method = method.as_str().to_owned();
     let completion = move |error: Option<&axum::Error>| {
         if let Some(error) = error {
+            if !level.stream_warning() {
+                return;
+            }
             let mut cause: &(dyn std::error::Error + 'static) = error;
             while let Some(inner) = cause.source() {
                 cause = inner;
@@ -91,7 +117,7 @@ pub async fn observe(mut request: Request, next: Next) -> Response {
                     context,
                 ),
             );
-        } else {
+        } else if level.incoming() {
             completed(
                 &id,
                 &method,

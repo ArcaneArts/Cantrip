@@ -183,6 +183,13 @@ pub async fn observe(
     request: Request,
     next: Next,
 ) -> Response {
+    if request
+        .extensions()
+        .get::<super::request_target::InvalidFallbackTarget>()
+        .is_some()
+    {
+        return next.run(request).await;
+    }
     let started = Instant::now();
     let method = request.method().clone();
     let path = request.extensions().get::<MatchedPath>().map_or_else(

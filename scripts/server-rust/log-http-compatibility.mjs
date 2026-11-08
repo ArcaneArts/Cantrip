@@ -111,6 +111,44 @@ try {
           await delay(100);
         }
       }
+      for (const level of [
+        "trace",
+        "debug",
+        "info",
+        "warn",
+        "error",
+        "fatal",
+        "silent",
+      ]) {
+        for (const method of ["GET", "HEAD"])
+          for (const code of [200, 404, 500]) {
+            const route = `/level/${level}/status/${code}`;
+            const response = await fetch(base + route, { method });
+            const body = await response.text();
+            assert.equal(response.status, code);
+            assert.equal(body, method === "HEAD" ? "" : "status");
+            peer.responses.push({
+              method,
+              route,
+              status: response.status,
+              body,
+            });
+          }
+        const id = `level-${level}`;
+        const response = await fetch(base + `/level/${level}/failed/${id}`);
+        const reader = response.body.getReader();
+        assert.equal(
+          Buffer.from((await reader.read()).value).toString(),
+          "first\n",
+        );
+        const control = await fetch(base + `/finite/control-${id}`);
+        await control.text();
+        await seen(`GET /api/log-test/finite/control-${id} -> 200 OK`);
+        await writeFile(path.join(data, id), "release");
+        await reader.read().catch(() => {});
+        // Observe the closed socket before advancing, preserving producer order.
+        await delay(100);
+      }
     } finally {
       await server.close();
       peer.exit = {
@@ -154,8 +192,8 @@ try {
       });
     assert.equal(
       peer.streamErrors.length,
-      1,
-      "Exactly one generic warning observes the failed response stream",
+      5,
+      "Default plus trace/debug/info/warn streams capture warnings; error/fatal/silent suppress them",
     );
     assert.ok(
       peer.stderr.includes(
@@ -167,6 +205,11 @@ try {
       !JSON.stringify(peer.records).includes("controlled-private-stream-body"),
     );
   }
+  assert.deepEqual(
+    report.peers[1].responses,
+    report.peers[0].responses,
+    "Route levels preserve actual response status and body",
+  );
   assert.deepEqual(
     report.peers[1].http,
     report.peers[0].http,
