@@ -1,8 +1,16 @@
 # Rust server replacement
 
-The current production HTTP inventory probe confirms 33 active endpoints still
+Native project removal, preferences and ordering now pass actual HTTP/state/worker
+comparisons across all three stores and local authentication modes. Full-browser
+and unchanged full-worker tests verify real Run retirement, file preservation or
+deletion, and restart retention on every store. The port also retains SQL-triggered
+computer-use authority revocation. See [project administration](RUST_SERVER_PROJECT_ADMINISTRATION.md)
+for exact scope, retained baseline failures and remaining acceptance. Node remains
+the default and full replacement remains incomplete.
+
+The current production HTTP inventory probe confirms 29 active endpoints still
 fall through to Rust's generic 404, covering computer use, Chat lanes, project
-lifecycle/context, remote surfaces, worker logs and operational health/metrics.
+context/insights, remote surfaces, worker logs and operational health/metrics.
 Seventy-two additional retired repository-route differences are corrected and
 qualified separately. See [HTTP inventory reconciliation](RUST_SERVER_HTTP_INVENTORY.md)
 for the exact scope and remaining families. These are implementation gaps;

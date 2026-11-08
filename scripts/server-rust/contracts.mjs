@@ -864,6 +864,13 @@ export const workerOperationContractRoots = [
   "managedWebRuntimeActionResultSchema",
 ];
 
+export const projectAdministrationContractRoots = [
+  "projectPreferredWorkerUpdateSchema",
+  "projectWorktreePolicyUpdateSchema",
+  "projectRemoveSchema",
+  "computerUseAuthorityChangeSchema",
+];
+
 // Keep independently added roots self-contained. Numeric graph references must
 // not depend on the size of the base graph after an unrelated branch merges.
 export const runMcpContractRoots = [
@@ -899,6 +906,12 @@ export const cliContractRoots = [
 // Compatibility oracles use this registry, never the generated native manifest.
 export function sourceContractSchema(name) {
   return (
+    (name === "computerUseAuthorityChangeSchema"
+      ? computerUsePreview.cuaPreviewAuthoritySchema
+          .pick({ ownerId: true })
+          .extend({ scope: computerUsePreview.cuaPreviewRevocationSchema })
+          .strict()
+      : undefined) ??
     protocol[name] ??
     computerUsePreview[name] ??
     computerUseAgent[name] ??
@@ -1760,6 +1773,20 @@ if (
   const operationsDestination = new URL(
     "../../cantrip_server_rs/contracts/worker-operations.json",
     import.meta.url,
+  );
+  const administrationDestination = new URL(
+    "../../cantrip_server_rs/contracts/project-administration.json",
+    import.meta.url,
+  );
+  await writeFile(
+    administrationDestination,
+    await format(
+      JSON.stringify(buildContractManifest(projectAdministrationContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(administrationDestination))),
+        filepath: fileURLToPath(administrationDestination),
+      },
+    ),
   );
   await writeFile(
     operationsDestination,

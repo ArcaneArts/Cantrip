@@ -3,6 +3,7 @@ import {
   replicaProductJobEvents,
 } from "./actual-project-replicas.mjs";
 import { actualProjectWorktrees } from "./actual-project-worktrees.mjs";
+import { actualProjectAdministration } from "./actual-project-administration.mjs";
 import { actualTaskClient } from "./actual-task-client.mjs";
 import { actualProjectChatClient } from "./actual-project-chat-client.mjs";
 import { providerTestBoundary } from "./provider-test-boundary.mjs";
@@ -136,6 +137,8 @@ const reportPath = option("--report");
 const liveTaskDiagnostics =
   process.argv.includes("--task-diagnostics") ||
   process.argv.includes("--postgres-errors");
+const fullServerLogs =
+  liveTaskDiagnostics || process.argv.includes("--project-administration");
 const surfaceFixtureRequests = [];
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-actual-folder-"));
 const appRoot = path.join(repositoryRoot, "cantrip_app");
@@ -240,7 +243,8 @@ async function flow(
         traceShutdown:
           process.argv.includes("--trace-worker-shutdown") ||
           process.argv.includes("--replicas") ||
-          process.argv.includes("--worktrees"),
+          process.argv.includes("--worktrees") ||
+          process.argv.includes("--project-administration"),
         ...(process.argv.includes("--surfaces")
           ? {
               chromiumExecutable: chromium.executablePath(),
@@ -338,7 +342,8 @@ async function flow(
     if (
       process.argv.includes("--project-surfaces") ||
       process.argv.includes("--worktrees") ||
-      process.argv.includes("--replicas")
+      process.argv.includes("--replicas") ||
+      process.argv.includes("--project-administration")
     ) {
       execFileSync("git", ["init", "--initial-branch=main", existingPath]);
       execFileSync("git", ["-C", existingPath, "add", "retained.txt"]);
@@ -522,7 +527,8 @@ async function flow(
       normalizeProjectSourcePath(await realpath(existingPath)),
       process.argv.includes("--project-surfaces") ||
         process.argv.includes("--worktrees") ||
-        process.argv.includes("--replicas")
+        process.argv.includes("--replicas") ||
+        process.argv.includes("--project-administration")
         ? "git"
         : "folder",
     );
@@ -730,6 +736,7 @@ async function flow(
       fileDocuments ||
       projectSurfaces ||
       process.argv.includes("--worktrees") ||
+      process.argv.includes("--project-administration") ||
       process.argv.includes("--replicas") ||
       process.argv.includes("--github-conversion") ||
       process.argv.includes("--tasks") ||
@@ -1064,6 +1071,24 @@ async function flow(
       });
     }
     result.requests = requests;
+    if (process.argv.includes("--project-administration")) {
+      if (!worker) await startWorker();
+      await actualProjectAdministration({
+        page,
+        fixture,
+        root,
+        executable: surfaceRepositoryBinary,
+        workerId,
+        attached: opened,
+        existingPath,
+        create,
+        waitJob,
+        filesystem,
+        startWorker,
+        stopWorker,
+        result,
+      });
+    }
     result.events = await page.evaluate(() => window.folderEvents);
     assert.deepEqual(errors, []);
   } finally {
@@ -1087,18 +1112,23 @@ async function flow(
   }
 }
 try {
-  const executable = liveTaskDiagnostics
-    ? await buildRustExample("http-sql-fixture")
-    : (process.env.CANTRIP_TEST_SERVER_BINARY ?? (await buildRustServer()));
+  const usesNative = runtimeCases.some((kinds) => kinds.includes("rust"));
+  const executable = !usesNative
+    ? undefined
+    : liveTaskDiagnostics
+      ? await buildRustExample("http-sql-fixture")
+      : (process.env.CANTRIP_TEST_SERVER_BINARY ?? (await buildRustServer()));
   if (
     process.argv.includes("--surfaces") ||
     process.argv.includes("--tunnels") ||
     process.argv.includes("--project-shares") ||
-    process.argv.includes("--worktrees")
+    process.argv.includes("--worktrees") ||
+    process.argv.includes("--project-administration")
   )
-    surfaceRepositoryBinary = await buildRustExample(
-      "project-repository-fixture",
-    );
+    surfaceRepositoryBinary = !usesNative
+      ? undefined
+      : (process.env.CANTRIP_TEST_PROJECT_REPOSITORY_BINARY ??
+        (await buildRustExample("project-repository-fixture")));
   const cliBinary =
     process.env.CANTRIP_TEST_CLI_BIN ?? (await buildWorkerCli());
   const nativeProbeBinary = process.argv.includes("--native-probe")
@@ -1211,7 +1241,7 @@ try {
       workerDiagnostics: [],
     };
     report.runtimes.push(result);
-    if (liveTaskDiagnostics) {
+    if (fullServerLogs) {
       const start = fixture.start.bind(fixture);
       fixture.start = async (...args) => {
         await start(...args);
@@ -1232,12 +1262,16 @@ try {
       } finally {
         if (server) {
           const observation = {
+            exit: {
+              code: server.child.exitCode,
+              signal: server.child.signalCode,
+            },
             stages: server.events.filter(
               (event) => event.event === "server.shutdown.stage",
             ),
             diagnostics: server.diagnostics(),
           };
-          if (liveTaskDiagnostics) {
+          if (fullServerLogs) {
             try {
               observation.fullDiagnostics = await readFile(
                 result.serverDiagnosticFiles.at(-1),

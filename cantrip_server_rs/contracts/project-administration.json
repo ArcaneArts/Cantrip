@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "projectPreferredWorkerUpdateSchema": 0,
+    "projectWorktreePolicyUpdateSchema": 3,
+    "projectRemoveSchema": 5,
+    "computerUseAuthorityChangeSchema": 8
+  },
+  "nodes": [
+    {
+      "type": "object",
+      "name": "projectPreferredWorkerUpdateSchema",
+      "shape": { "workerId": 1 },
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 2, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "projectWorktreePolicyUpdateSchema",
+      "shape": { "policy": 4 },
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "worktreePolicySchema",
+      "values": ["direct", "agent-managed", "required-for-writes"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "projectRemoveSchema",
+      "shape": { "deleteLocalFiles": 6 },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 7,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "ownerId": 9, "scope": 10 },
+      "catchall": 21,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "name": "cuaIdSchema",
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-utf8-256",
+          "messageAfterPath": true
+        },
+        {
+          "check": "refinement",
+          "tag": "worker-wire-cua-id",
+          "messageAfterPath": true
+        }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "cuaPreviewRevocationSchema",
+      "options": [11, 14, 17],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 12, "chatId": 9 },
+      "catchall": 13,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 15, "projectId": 9 },
+      "catchall": 16,
+      "checks": []
+    },
+    { "type": "literal", "values": ["project"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 18, "contextKind": 19 },
+      "catchall": 20,
+      "checks": []
+    },
+    { "type": "literal", "values": ["inherited-default"], "checks": [] },
+    { "type": "enum", "values": ["project", "standalone"], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] }
+  ]
+}

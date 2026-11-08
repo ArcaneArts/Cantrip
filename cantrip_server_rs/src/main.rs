@@ -594,6 +594,11 @@ async fn run(arguments: Arguments) -> Result<()> {
             service.direct_attachments.close().await
         );
         shutdown_step!("worker-links-close", service.worker_links.close().await)?;
+        service.computer_use_revocations.stop();
+        shutdown_step!(
+            "computer-use-revocations",
+            service.computer_use_revocations.drained().await
+        );
         shutdown_step!("worker-bridge-close", service.workers.close().await)?;
         shutdown_step!("execution", service.execution.drained().await);
         shutdown_step!(

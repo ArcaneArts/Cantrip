@@ -8155,44 +8155,34 @@
       {
         "method": "DELETE",
         "path": "/api/projects/:projectId",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_PROJECT_ADMINISTRATION.md",
+          "scripts/server-rust/project-administration-http-compatibility.mjs",
+          "scripts/server-rust/project-administration-boundaries.mjs",
+          "scripts/server-rust/actual-project-administration.mjs"
         ],
-        "observedBoundary": {
-          "platform": "darwin-arm64",
-          "database": "pglite",
-          "auth": "none",
-          "sourceStatus": 404,
-          "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
-        },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+          "Supported-platform and final packaged/update/deployment acceptance remain required; these scoped results do not complete the server replacement."
+        ],
+        "implementation": "cantrip_server_rs/src/http/project_administration.rs",
+        "verifiedLocally": "macOS ARM64: complete HTTP/SQL/Live/audit and cleanup-command comparison across all three stores and none/password/accounts auth; actual browser/current full worker, real Run retirement, file preservation/deletion and restart across all three stores. Held replies and actual client cancellation match Source."
       },
       {
         "method": "PATCH",
         "path": "/api/projects/:projectId/preferred-worker",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_PROJECT_ADMINISTRATION.md",
+          "scripts/server-rust/project-administration-http-compatibility.mjs",
+          "scripts/server-rust/project-administration-boundaries.mjs",
+          "scripts/server-rust/actual-project-administration.mjs"
         ],
-        "observedBoundary": {
-          "platform": "darwin-arm64",
-          "database": "pglite",
-          "auth": "none",
-          "sourceStatus": 400,
-          "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
-        },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+          "Supported-platform and final packaged/update/deployment acceptance remain required; these scoped results do not complete the server replacement."
+        ],
+        "implementation": "cantrip_server_rs/src/http/project_administration.rs",
+        "verifiedLocally": "macOS ARM64: complete HTTP/SQL/Live/audit and cleanup-command comparison across all three stores and none/password/accounts auth; actual browser/current full worker, real Run retirement, file preservation/deletion and restart across all three stores. Held replies and actual client cancellation match Source."
       },
       {
         "method": "GET",
@@ -8386,44 +8376,34 @@
       {
         "method": "PATCH",
         "path": "/api/projects/:projectId/worktree-policy",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_PROJECT_ADMINISTRATION.md",
+          "scripts/server-rust/project-administration-http-compatibility.mjs",
+          "scripts/server-rust/project-administration-boundaries.mjs",
+          "scripts/server-rust/actual-project-administration.mjs"
         ],
-        "observedBoundary": {
-          "platform": "darwin-arm64",
-          "database": "pglite",
-          "auth": "none",
-          "sourceStatus": 400,
-          "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
-        },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+          "Supported-platform and final packaged/update/deployment acceptance remain required; these scoped results do not complete the server replacement."
+        ],
+        "implementation": "cantrip_server_rs/src/http/project_administration.rs",
+        "verifiedLocally": "macOS ARM64: complete HTTP/SQL/Live/audit and cleanup-command comparison across all three stores and none/password/accounts auth; actual browser/current full worker, real Run retirement, file preservation/deletion and restart across all three stores. Held replies and actual client cancellation match Source."
       },
       {
         "method": "PATCH",
         "path": "/api/projects/order",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_PROJECT_ADMINISTRATION.md",
+          "scripts/server-rust/project-administration-http-compatibility.mjs",
+          "scripts/server-rust/project-administration-boundaries.mjs",
+          "scripts/server-rust/actual-project-administration.mjs"
         ],
-        "observedBoundary": {
-          "platform": "darwin-arm64",
-          "database": "pglite",
-          "auth": "none",
-          "sourceStatus": 400,
-          "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
-        },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+          "Supported-platform and final packaged/update/deployment acceptance remain required; these scoped results do not complete the server replacement."
+        ],
+        "implementation": "cantrip_server_rs/src/http/project_administration.rs",
+        "verifiedLocally": "macOS ARM64: complete HTTP/SQL/Live/audit and cleanup-command comparison across all three stores and none/password/accounts auth; actual browser/current full worker, real Run retirement, file preservation/deletion and restart across all three stores. Held replies and actual client cancellation match Source."
       },
       {
         "method": "GET",
@@ -18450,6 +18430,34 @@
         "broadHttpInventoryExitCode": 1,
         "broadHttpInventoryReason": "The 33 active missing-route differences remain required implementation work."
       }
+    },
+    "projectAdministration": {
+      "status": "implemented-pending-platform-acceptance",
+      "evidence": [
+        "docs/RUST_SERVER_PROJECT_ADMINISTRATION.md",
+        "scripts/server-rust/project-administration-http-compatibility.mjs",
+        "scripts/server-rust/project-administration-boundaries.mjs",
+        "scripts/server-rust/actual-project-administration.mjs"
+      ],
+      "verifiedLocally": "Nine profile pairs: 65 cases each, 1224 HTTP observations, 18 clean server exits. Three supplemental account/store pairs validate notifications, pending terminal acknowledgments and caller disappearance. Six actual browser/full-worker storage cells: 132 steps, 12 real Run child terminations, 24 clean server and 30 clean worker exits.",
+      "remaining": [
+        "Final supported-platform, packaged-update, performance and complete-domain/background-service acceptance; Rust remains opt-in and the Node production server remains present."
+      ]
+    },
+    "computerUseAuthorityNotifications": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": "cantrip_server_rs/src/computer_use_revocations.rs",
+      "evidence": [
+        "docs/RUST_SERVER_PROJECT_ADMINISTRATION.md",
+        "scripts/server-rust/project-administration-http-compatibility.mjs",
+        "scripts/server-rust/project-administration-boundaries.mjs",
+        "scripts/server-rust/actual-project-administration.mjs",
+        "scripts/server-rust/project-administration-contract-oracle.mjs"
+      ],
+      "scope": "Source-equivalent bounded/coalesced post-commit preview revocation through the existing owned command bus, strict notification/acknowledgment validation and lifecycle drain. SQL Chat generation remains the durable authority fence.",
+      "remaining": [
+        "Computer-use operation and preview HTTP endpoints remain unported. Other-platform and full native preview product qualification remain required."
+      ]
     }
   },
   "remainingAcceptance": [
