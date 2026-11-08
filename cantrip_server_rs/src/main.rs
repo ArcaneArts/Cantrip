@@ -575,6 +575,7 @@ async fn run(arguments: Arguments) -> Result<()> {
         service.workspace_discovery.stop();
         service.scratch_roots.stop();
         service.interaction_expiry.stop();
+        service.worker_catalog_refresh.stop();
         service.worker_maintenance.stop();
         service.tunnel_leases.stop();
         shutdown_step!(

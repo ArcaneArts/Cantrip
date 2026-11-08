@@ -263,17 +263,25 @@ try {
           catalog("catalog-zai", "/refresh"),
           { json: { ignored: true } },
         );
-        await visit(
-          "custom provider conflict",
+        const customWithoutWorker = await visit(
+          "custom provider discovery requires a worker",
           "GET",
           catalog("catalog-custom"),
-          { status: 409 },
+          { status: 503 },
         );
-        await visit(
-          "custom provider refresh conflict",
+        assert.equal(
+          customWithoutWorker.error,
+          "No worker is available for OpenAI compatible discovery.",
+        );
+        const customRefreshWithoutWorker = await visit(
+          "custom provider refresh requires a worker",
           "POST",
           catalog("catalog-custom", "/refresh"),
-          { status: 409, json: null },
+          { status: 503, json: null },
+        );
+        assert.equal(
+          customRefreshWithoutWorker.error,
+          "No worker is available for OpenAI compatible discovery.",
         );
         if (mode === "accounts")
           await visit(
@@ -416,6 +424,17 @@ try {
         await worker.open();
         assert.equal((await worker.message()).state, "pending");
         assert.equal((await worker.message()).state, "ready");
+        const custom = await visit(
+          "custom endpoint discovers models on the worker",
+          "GET",
+          pendingCatalog("catalog-custom"),
+        );
+        assert.equal(custom.models[0].nativeModelId, "shared-model");
+        const customCommand = result.commands.findLast(
+          (command) => command.provider.id === "catalog-custom",
+        );
+        assert.equal(customCommand.type, "model.endpoint.catalog");
+        assert.equal(customCommand.provider.name, "OpenAI compatible");
         await endpointCatalogHttpCases({
           visit,
           result,
