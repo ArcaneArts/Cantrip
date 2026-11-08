@@ -56,6 +56,12 @@ impl ResolvedSession {
     }
 }
 
+/// Retained identity provisioned before application services start.
+pub struct PreparedDatabase {
+    database: Arc<Database>,
+    local: UserSummary,
+}
+
 pub struct AuthService {
     pub coordination: Option<Arc<dyn crate::coordination::RelayCoordinator>>,
     pub config: Arc<ServerConfig>,
@@ -111,6 +117,10 @@ pub struct AuthService {
 }
 
 impl AuthService {
+    pub async fn prepare_database(database: Arc<Database>) -> Result<PreparedDatabase> {
+        let local = AuthRepository::new(database.clone()).local_user().await?;
+        Ok(PreparedDatabase { database, local })
+    }
     pub async fn initialize(
         database: Arc<Database>,
         config: Arc<ServerConfig>,
@@ -124,12 +134,20 @@ impl AuthService {
         config: Arc<ServerConfig>,
         coordination: Option<Arc<dyn crate::coordination::RelayCoordinator>>,
     ) -> Result<Arc<Self>> {
+        let prepared = Self::prepare_database(database).await?;
+        Self::with_prepared_database(prepared, config, coordination).await
+    }
+    pub async fn with_prepared_database(
+        prepared: PreparedDatabase,
+        config: Arc<ServerConfig>,
+        coordination: Option<Arc<dyn crate::coordination::RelayCoordinator>>,
+    ) -> Result<Arc<Self>> {
+        let PreparedDatabase { database, local } = prepared;
         let operational_metrics =
             Arc::new(crate::operations::metrics::OperationalMetrics::default());
         let repository = AuthRepository::new(database.clone());
         // The existing connector always provisions the retained local identity,
         // including on an account server; only its principal is mode-dependent.
-        let local = repository.local_user().await?;
         let passwords = PasswordService::default();
         repository
             .configured_administrator(&config, &passwords)

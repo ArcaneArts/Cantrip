@@ -42,7 +42,7 @@ fn collectors(service: &AuthService, captured_usage: Option<Value>) -> Value {
 }
 async fn health_value(service: &AuthService, owner: &str) -> Result<Response> {
     let started = Instant::now();
-    service.repository.database.query("SELECT 1", &[]).await?;
+    service.repository.database.ping().await?;
     service
         .operational_metrics
         .database_probe(true, started.elapsed().as_secs_f64() * 1000.0);

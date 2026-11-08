@@ -105,8 +105,12 @@ cover all three stores, configuration, signals, failure and actual archive
 recovery. The [HTTP and console qualification](RUST_SERVER_HTTP_LOGGING.md)
 adds actual response-completion capture, console presentation and stream-error
 behavior, and repairs fallback parser ordering exposed by the comparison.
-Additional operational consumers remain unreconciled; scoped passes do not
-prove identical whole-server logging or complete background-service invariants.
+The [database lifecycle qualification](RUST_SERVER_DATABASE_LIFECYCLE.md) adds
+connection/migration/probe diagnostics and repairs connection/subscription retry
+boundaries and retained-key initialization. Its separate role-wide outage
+comparison remains open. Additional operational consumers remain unreconciled;
+scoped passes do not prove identical whole-server logging or complete
+background-service invariants.
 
 Continue those comparisons before final product/fault/performance and supported
 artifact acceptance. Rust default selection and production Node-server removal
