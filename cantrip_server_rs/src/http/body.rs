@@ -142,6 +142,72 @@ pub(super) async fn parse_ignored(
         .map(|_| ())
 }
 
+pub(super) async fn parse_fallback(
+    request: Request,
+    json_limit: u64,
+    binary_limit: u64,
+) -> Result<(), Response> {
+    if request.method().as_str() == "QUERY" {
+        if !request.headers().contains_key(header::CONTENT_TYPE) {
+            return Err(parser_error(
+                400,
+                "FST_ERR_ROUTE_MISSING_CONTENT_TYPE",
+                "Method 'QUERY' must provide a 'Content-Type' header.",
+            ));
+        }
+        if !request.headers().contains_key(header::TRANSFER_ENCODING)
+            && value(request.headers(), "content-length").is_none_or(|v| v == "0")
+        {
+            return Err(parser_error(
+                400,
+                "FST_ERR_ROUTE_MISSING_CONTENT",
+                "Method 'QUERY' must provide a request body.",
+            ));
+        }
+    }
+    let content_type = value(request.headers(), "content-type");
+    let kind = if let Some(raw) = content_type {
+        let media = raw.split(';').next().unwrap_or("");
+        let invalid = || {
+            parser_error(
+                415,
+                "FST_ERR_CTP_INVALID_MEDIA_TYPE",
+                "Unsupported Media Type",
+            )
+        };
+        let Some((kind, subtype)) = media.split_once('/') else {
+            return Err(invalid());
+        };
+        let kind = kind
+            .trim_start_matches(crate::text::whitespace)
+            .to_lowercase();
+        let subtype = subtype
+            .trim_end_matches(crate::text::whitespace)
+            .to_lowercase();
+        let token = |value: &str| {
+            !value.is_empty()
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"_!#$%&'*+.^`|~-".contains(&byte))
+        };
+        if !token(&kind) || !token(&subtype) {
+            return Err(invalid());
+        }
+        format!("{kind}/{subtype}")
+    } else {
+        String::new()
+    };
+    // Fastify's content-type parser deliberately calls the 404 handler when
+    // no registered parser exists. Known parsers still validate their input.
+    if !matches!(
+        kind.as_str(),
+        "application/json" | "text/plain" | "application/octet-stream"
+    ) {
+        return Ok(());
+    }
+    parse_ignored(request, json_limit, binary_limit).await
+}
+
 async fn parse_body(
     request: Request,
     limit: u64,

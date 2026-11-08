@@ -1,5 +1,7 @@
 //! Operational counters ported alongside their owning transport consumers.
+mod http_status_names;
 pub mod log_archive;
+pub mod log_format;
 pub mod log_records;
 pub mod log_runtime;
 pub mod log_sanitize;

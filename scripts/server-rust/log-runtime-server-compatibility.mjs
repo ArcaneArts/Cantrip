@@ -1,6 +1,7 @@
 // Actual production entrypoints; the ordinary Node app fixture does not initialize logs.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import {
   mkdtemp,
   mkdir,
@@ -18,8 +19,16 @@ import { setTimeout as delay } from "node:timers/promises";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { fixtureEnvironment } from "./process.mjs";
 import { repositoryRoot } from "./build.mjs";
+const WebSocket = createRequire(
+  new URL("../../cantrip_server/package.json", import.meta.url),
+)("ws");
 
-const { values } = parseArgs({ options: { report: { type: "string" } } });
+const { values } = parseArgs({
+  options: {
+    report: { type: "string" },
+    "http-records": { type: "boolean", default: false },
+  },
+});
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-log-production-"));
 console.error(JSON.stringify({ event: "log-production.created", root }));
 const report = { root, peers: [], completeReplacement: false };
@@ -174,6 +183,7 @@ try {
             result.responses.push({
               route,
               status: response.status,
+              requestId: response.headers.get("x-request-id"),
               body: await response.json(),
             });
             assert.equal(
@@ -191,6 +201,151 @@ try {
           for (let i = 0; i < count; i++)
             await request("/api/settings/providers/log-missing/catalog");
           await request("/readyz?token=private-log-query-marker");
+          if (values["http-records"] && scenario.name === "postgres-default") {
+            for (const spec of [
+              { method: "HEAD", route: "/api/auth/session", status: 200 },
+              {
+                method: "OPTIONS",
+                route: "/api/settings",
+                status: 204,
+                headers: { "access-control-request-method": "GET" },
+              },
+              { method: "OPTIONS", route: "/api/settings", status: 400 },
+              {
+                method: "GET",
+                route: "/api/settings",
+                status: 403,
+                headers: { origin: "https://forbidden.example" },
+              },
+              {
+                method: "POST",
+                route: "/api/settings",
+                status: 400,
+                headers: { "content-type": "application/json" },
+                body: "{",
+              },
+              {
+                method: "PATCH",
+                route: "/api/settings",
+                status: 400,
+                headers: { "content-type": "application/json" },
+                body: "{",
+              },
+              ...["POST", "PUT", "PATCH", "DELETE"].flatMap((method) => [
+                {
+                  method,
+                  route: "/api/log-missing-fallback",
+                  status: 400,
+                  headers: { "content-type": "application/json" },
+                  body: "{",
+                },
+                {
+                  method,
+                  route: "/api/log-missing-fallback",
+                  status: 404,
+                  headers: { "content-type": "application/json" },
+                  body: "null",
+                },
+              ]),
+              ...["", "json", "application /json"].map((type) => ({
+                method: "POST",
+                route: "/api/log-missing-fallback",
+                status: 415,
+                headers: { "content-type": type },
+                body: "x",
+              })),
+              {
+                method: "POST",
+                route: "/api/log-missing-fallback",
+                status: 404,
+                headers: { "content-type": "application/xml" },
+                body: "x",
+              },
+              {
+                method: "POST",
+                route: "/api/log-missing-fallback",
+                status: 400,
+                headers: { "content-type": "application/json" },
+                body: "",
+              },
+              {
+                method: "POST",
+                route: "/api/log-missing-fallback",
+                status: 404,
+                headers: { "content-type": "application/octet-stream" },
+                body: Buffer.from([0, 255]),
+              },
+              {
+                method: "POST",
+                route: "/api/log-missing-fallback",
+                status: 404,
+                headers: { "content-type": "text/plain" },
+                body: "text",
+              },
+              {
+                method: "QUERY",
+                route: "/api/log-missing-fallback",
+                status: 400,
+              },
+              {
+                method: "QUERY",
+                route: "/api/log-missing-fallback",
+                status: 400,
+                headers: { "content-type": "application/json" },
+                body: "",
+              },
+              {
+                method: "POST",
+                route: "/api/github/log-removed",
+                status: 410,
+                headers: { "content-type": "application/json" },
+                body: "{",
+              },
+            ]) {
+              const response = await fetch(origin + spec.route, {
+                method: spec.method,
+                headers: {
+                  cookie,
+                  origin: "http://127.0.0.1:5173",
+                  ...spec.headers,
+                },
+                body: spec.body,
+              });
+              const observed = {
+                route: spec.route,
+                method: spec.method,
+                status: response.status,
+                requestId: response.headers.get("x-request-id"),
+                body: await response.text(),
+              };
+              result.responses.push(observed);
+              assert.equal(observed.status, spec.status);
+            }
+          }
+          if (values["http-records"] && scenario.name === "postgres-default") {
+            const socket = new WebSocket(
+              origin.replace("http://", "ws://") + "/api/live",
+              { headers: { cookie, origin: "http://127.0.0.1:5173" } },
+            );
+            const closed = new Promise((resolve, reject) => {
+              socket.once("error", reject);
+              socket.once("close", (code, reason) =>
+                resolve({ code, reason: reason.toString() }),
+              );
+            });
+            closed.catch(() => {});
+            try {
+              await new Promise((resolve, reject) => {
+                socket.once("open", resolve);
+                socket.once("error", reject);
+              });
+              socket.close(1000, "logging-check");
+              result.websocket = await closed;
+              assert.equal(result.websocket.code, 1000);
+            } finally {
+              if (socket.readyState !== WebSocket.CLOSED) socket.terminate();
+            }
+          }
           result.expectedCatalogRecords = count;
           assert.ok(
             !result.stdout.includes("provider.catalog.refresh-started"),
@@ -229,10 +384,69 @@ try {
         );
       const event = (name) =>
         result.records.filter((record) => record.context?.event === name);
+      if (result.websocket)
+        assert.equal(
+          event("http.request.completed").filter(
+            (record) => record.context.path === "/api/live",
+          ).length,
+          0,
+          "Raw WebSocket upgrades do not become completed ordinary HTTP requests",
+        );
       if (scenario.invalid) {
         assert.equal(event("server.startup.failed").length, 1);
         assert.equal(event("server.startup.failed")[0].level, "fatal");
       } else {
+        if (values["http-records"]) {
+          const requests = result.responses.filter(
+            (response) =>
+              response.route === "/api/settings/providers/log-missing/catalog",
+          );
+          const records = event("http.request.completed").filter(
+            (record) =>
+              record.context.path ===
+              "/api/settings/providers/log-missing/catalog",
+          );
+          assert.equal(
+            records.length,
+            requests.length,
+            "Every actual HTTP completion is archived",
+          );
+          assert.deepEqual(
+            records.map((record) => ({
+              id: record.context.requestId,
+              code: record.context.statusCode,
+              method: record.context.method,
+              status: record.context.status,
+            })),
+            requests.map((request) => ({
+              id: request.requestId,
+              code: request.status,
+              method: "GET",
+              status: "failed",
+            })),
+          );
+          for (const request of result.responses.filter(
+            (request) => request.method,
+          )) {
+            const found = event("http.request.completed").filter(
+              (record) => record.context.requestId === request.requestId,
+            );
+            assert.equal(
+              found.length,
+              1,
+              "Early/HEAD/error completion is logged exactly once",
+            );
+            assert.equal(found[0].context.method, request.method);
+            assert.equal(found[0].context.path, request.route);
+            assert.equal(found[0].context.statusCode, request.status);
+          }
+          assert.ok(
+            result.stderr.includes(
+              "GET /api/settings/providers/log-missing/catalog -> 404 Not Found (",
+            ),
+            "Actual HTTP warnings use the existing console presentation",
+          );
+        }
         assert.equal(
           event("provider.catalog.refresh-started").filter(
             (record) => record.context.providerId === "log-missing",
@@ -333,6 +547,23 @@ try {
       summaries[0],
       `${scenario.name}: lifecycle contracts`,
     );
+    if (values["http-records"] && scenario.name === "postgres-default") {
+      const normalize = (p) =>
+        p.responses
+          .filter((r) => r.method)
+          .map((r) => {
+            let body = r.body;
+            try {
+              body = JSON.parse(body);
+            } catch {}
+            return { route: r.route, method: r.method, status: r.status, body };
+          });
+      assert.deepEqual(
+        normalize(peers[1]),
+        normalize(peers[0]),
+        "Actual fallback/parser precedence and error contracts match",
+      );
+    }
   }
 } catch (error) {
   failure = error;

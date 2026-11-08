@@ -9,7 +9,7 @@ use crate::{
     wire::{Value, value::json},
 };
 use std::{
-    io::Write,
+    io::{IsTerminal, Write},
     path::{Component, Path, PathBuf},
     sync::{
         Arc, Mutex, OnceLock,
@@ -31,6 +31,7 @@ struct Runtime {
     thread: Mutex<Option<thread::JoinHandle<()>>>,
 }
 struct Console {
+    colors: bool,
     stdout: Mutex<os_pipe::PipeWriter>,
     stderr: Mutex<os_pipe::PipeWriter>,
 }
@@ -44,8 +45,18 @@ fn buffer() -> &'static Mutex<Buffer> {
 }
 static CONSOLE: OnceLock<Console> = OnceLock::new();
 static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
+static INITIALIZED: AtomicBool = AtomicBool::new(false);
 static SHUTDOWN_STARTED: Mutex<Option<Instant>> = Mutex::new(None);
 pub fn capture(record: Value) {
+    capture_kind(record, false)
+}
+pub fn capture_http(record: Value) {
+    capture_kind(record, true)
+}
+pub fn is_initialized() -> bool {
+    INITIALIZED.load(Ordering::Acquire)
+}
+fn capture_kind(record: Value, http: bool) {
     {
         // Cursor assignment and archive admission share one order even when
         // several Tokio/OS threads emit at the same time.
@@ -73,7 +84,13 @@ pub fn capture(record: Value) {
     } else {
         &console.stdout
     };
-    let _ = writeln!(destination.lock().unwrap(), "{}", record.stringify());
+    let line = if http {
+        super::log_format::http(&record, console.colors)
+    } else {
+        super::log_format::service(&record, console.colors)
+            .unwrap_or_else(|_| record.stringify().into())
+    };
+    let _ = writeln!(destination.lock().unwrap(), "{}", line.lossy());
 }
 pub fn read_buffer(options: &Value) -> anyhow::Result<Value> {
     buffer().lock().unwrap().read(options)
@@ -123,8 +140,12 @@ pub fn archive_options(data: &Path, environment: &Environment, cwd: &Path) -> Op
     Options::server(directory, legacy)
 }
 pub async fn initialize(data: &Path, environment: &Environment, cwd: &Path) {
+    INITIALIZED.store(true, Ordering::Release);
     if let (Ok(stdout), Ok(stderr)) = (os_pipe::dup_stdout(), os_pipe::dup_stderr()) {
         let _ = CONSOLE.set(Console {
+            colors: std::env::var_os("NO_COLOR").is_none()
+                && std::env::var_os("FORCE_COLOR")
+                    .map_or_else(|| std::io::stdout().is_terminal(), |v| v != "0"),
             stdout: Mutex::new(stdout),
             stderr: Mutex::new(stderr),
         });
