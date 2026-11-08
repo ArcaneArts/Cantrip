@@ -7,7 +7,7 @@ use crate::{
     auth::service::AuthService,
     wire::Value,
     workers::{
-        bridge::{Continuity, Outgoing, Peer},
+        bridge::{Continuity, Peer},
         credentials,
         service::WorkerService,
     },
@@ -23,8 +23,10 @@ use std::{
     sync::{Arc, atomic::Ordering},
     time::Duration,
 };
-use tungstenite::{Message, protocol::CloseFrame};
+use tungstenite::Message;
 use uuid::Uuid;
+#[path = "worker_socket_output.rs"]
+mod output;
 
 const V1: &str = "cantrip-worker-auth-ready-v1";
 const V2: &str = "cantrip-worker-auth-ready-v2";
@@ -81,12 +83,15 @@ fn connection(state: &str, generation: &str, protocol: &str, server: &str) -> St
     value.stringify()
 }
 async fn close(socket: &mut WebSocket, code: u16, reason: &str) {
+    socket.finish_close_handshake();
+    write_close(socket, code, reason).await;
+}
+// A broken frame parser must retain the bounded raw-byte drain instead of
+// parsing the remaining oversized/invalid payload while awaiting an ACK.
+async fn write_close(socket: &mut WebSocket, code: u16, reason: &str) {
     let _ = tokio::time::timeout(
         Duration::from_secs(1),
-        socket.send(Message::Close(Some(CloseFrame {
-            code: code.into(),
-            reason: reason.to_owned().into(),
-        }))),
+        socket.send(output::close_message(code, reason.to_owned())),
     )
     .await;
 }
@@ -97,10 +102,16 @@ async fn connect(
 ) -> Response {
     let query = account::query(request.uri());
     let authorization = middleware::value(request.headers(), "authorization");
+    let lifetime = service.live.transports.begin();
     websocket::upgrade(
         request,
         service.config.websocket_max_payload_bytes as usize,
-        move |socket, selected| run(socket, service, ctx, query, authorization, selected),
+        move |mut socket, selected| {
+            // Runtime/database shutdown waits through actual TCP cleanup, even
+            // after the worker bridge has finished its logical shutdown.
+            socket.on_closed(move || drop(lifetime));
+            run(socket, service, ctx, query, authorization, selected)
+        },
     )
 }
 async fn run(
@@ -178,7 +189,7 @@ async fn run(
     }
     let mut shutdown = state.shutdown.subscribe();
     if *shutdown.borrow() {
-        close(&mut socket, 1001, "Server shutting down").await;
+        close(&mut socket, 1005, "").await;
         return;
     }
     let authentication = async {
@@ -227,12 +238,12 @@ async fn run(
             input=async{socket.as_mut().unwrap().recv().await},if socket.is_some()=>{match input{
                 Some(Ok(Message::Close(_)))=>{abandoned=true;buffer.clear();let _=socket.as_mut().unwrap().flush().await;socket=None;},
                 None=>{abandoned=true;buffer.clear();socket=None;},
-                Some(Err(error))=>{abandoned=true;buffer.clear();if let Some(code)=protocol_close(&error){close(socket.as_mut().unwrap(),code,"").await;}socket=None;},
+                Some(Err(error))=>{abandoned=true;buffer.clear();if let Some(code)=protocol_close(&error){write_close(socket.as_mut().unwrap(),code,"").await;}socket=None;},
                 Some(Ok(message))=>{if !abandoned&& let Err((code,reason))=buffer.push(message){abandoned=true;buffer.clear();close(socket.as_mut().unwrap(),code,reason).await;}}
             }},
             _=shutdown.changed()=>{
                 buffer.clear();
-                if let Some(socket)=socket.as_mut(){close(socket,1001,"Server shutting down").await;}
+                if let Some(socket)=socket.as_mut(){close(socket,1005,"").await;}
                 drop(socket.take());
                 // As with a peer close, shutdown must finish credential usage
                 // and the owner lookup. Main drains these handshake permits
@@ -299,12 +310,12 @@ async fn run(
                 _=attaching_close.changed()=>continue,
                 _=shutdown.changed()=>{
                     peer.open.store(false, Ordering::Release);
-                    buffer.clear();close(&mut socket,1001,"Server shutting down").await;return;
+                    buffer.clear();close(&mut socket,1005,"").await;return;
                 },
                 input=socket.recv()=>match input {
                     None=>{peer.open.store(false,Ordering::Release);return;},
                     Some(Ok(Message::Close(_)))=>{peer.open.store(false,Ordering::Release);buffer.clear();let _=socket.flush().await;return;},
-                    Some(Err(error))=>{peer.open.store(false,Ordering::Release);buffer.clear();if let Some(code)=protocol_close(&error){close(&mut socket,code,"").await;}return;},
+                    Some(Err(error))=>{peer.open.store(false,Ordering::Release);buffer.clear();if let Some(code)=protocol_close(&error){write_close(&mut socket,code,"").await;}return;},
                     Some(Ok(message))=>{if let Err((code,reason))=buffer.push(message){peer.open.store(false,Ordering::Release);buffer.clear();close(&mut socket,code,reason).await;return;}},
                 },
                 result=&mut attaching=>break result,
@@ -425,50 +436,58 @@ async fn run(
         );
     }
     drop(buffer);
-    let (mut sink, mut stream) = socket.split();
-    let mut closing = peer.closing.subscribe();
-    let writer = async {
-        loop {
-            let closed = closing.borrow().clone();
-            let stopped = *shutdown.borrow();
-            if let Some((code, reason)) =
-                closed.or_else(|| stopped.then(|| (1001, "Server shutting down".into())))
-            {
-                peer.open.store(false, Ordering::Release);
-                let _ = tokio::time::timeout(
-                    Duration::from_secs(1),
-                    sink.send(Message::Close(Some(CloseFrame {
-                        code: code.into(),
-                        reason: reason.into(),
-                    }))),
-                )
-                .await;
-                break;
-            }
-            tokio::select! {biased;_ = closing.changed()=>continue,_ = shutdown.changed()=>continue,message=output.recv()=>{
-                let Some(message)=message else{break};match message{
-                    Outgoing::Close(code,reason)=>{let _=tokio::time::timeout(Duration::from_secs(1),sink.send(Message::Close(Some(CloseFrame{code:code.into(),reason:reason.into()})))).await;break},
-                    Outgoing::Text(mut text)=>{let message=Message::Text(text.take().into());tokio::select!{biased;_=closing.changed()=>continue,_=shutdown.changed()=>continue,result=sink.send(message)=>{if result.is_err(){break}}}},
-                    Outgoing::Binary(mut frame)=>{let message=Message::Binary(tungstenite::Bytes::from_owner(frame.take()));tokio::select!{biased;_=closing.changed()=>continue,_=shutdown.changed()=>continue,result=sink.send(message)=>{if result.is_err(){break}}}}
-                    Outgoing::Tunnel(mut frame)=>{let message=Message::Binary(tungstenite::Bytes::from_owner(frame.take()));tokio::select!{biased;_=closing.changed()=>continue,_=shutdown.changed()=>continue,result=sink.send(message)=>{if result.is_err(){break}}}}
-                    Outgoing::Surface(mut frame)=>{let message=Message::Binary(tungstenite::Bytes::from_owner(frame.take()));tokio::select!{biased;_=closing.changed()=>continue,_=shutdown.changed()=>continue,result=sink.send(message)=>{if result.is_err(){break}}}}
-                }
-            }}
-        }
-    };
+    // Bridge interruption belongs to actual transport closure, not the act of
+    // queuing/sending our CLOSE. Keep late responses on this generation valid.
+    let bridge = state.bridge.clone().local_arc();
+    let closed_worker = worker.clone();
+    let closed_peer = peer.clone();
+    socket.on_closed(move || bridge.interrupted(&closed_worker, &closed_peer));
+    let force_close = socket.force_close_signal();
+    let close_deadline = socket.close_deadline_signal();
+    let (sink, mut stream) = socket.split();
+    let writer = output::run(sink, &mut output, &peer, shutdown);
     tokio::pin!(writer);
+    let mut writer_done = false;
     let mut input_closed = false;
     loop {
-        tokio::select! {_=&mut writer=>break,message=stream.next(),if !input_closed=>{match message{
-            Some(Ok(Message::Close(frame)))=>{input_closed=true;let (code,reason)=frame.map_or((1000,String::new()),|frame|(frame.code.into(),frame.reason.to_string()));peer.close(code,&reason);},
-            Some(Err(error))=>{if let Some(code)=protocol_close(&error){input_closed=true;peer.close(code,"");}else{break}},
-            None=>break,
-            Some(Ok(message))=>receive(state.bridge.local(),&service.usage,&worker,&peer,message)
-        }}}
+        if writer_done && input_closed {
+            break;
+        }
+        let deadline = peer.close_deadline();
+        tokio::select! {
+            result = &mut writer, if !writer_done => {
+                if !result { break; }
+                writer_done = true;
+            },
+            _ = output::expired(deadline) => {
+                force_close.store(true, Ordering::Release);
+                break;
+            },
+            message = stream.next(), if !input_closed => match message {
+                Some(Ok(Message::Close(frame))) => {
+                    input_closed = true;
+                    let (code, reason) = frame.map_or((1005, String::new()), |frame|
+                        (frame.code.into(), frame.reason.to_string()));
+                    peer.close(code, &reason);
+                },
+                Some(Err(error)) => {
+                    // Source also observes actual socket errors independently
+                    // of the subsequent close event.
+                    state.bridge.clone().local_arc().interrupted(&worker, &peer);
+                    if let Some(code) = protocol_close(&error) {
+                        input_closed = true;
+                        peer.close(code, "");
+                    } else { break; }
+                },
+                None => break,
+                Some(Ok(message)) => receive(state.bridge.local(), &service.usage, &worker, &peer, message),
+            }
+        }
     }
+    close_deadline.send_replace(peer.close_deadline());
     peer.open.store(false, Ordering::Release);
-    state.bridge.clone().local_arc().interrupted(&worker, &peer);
 }
+
 fn protocol_close(error: &tungstenite::Error) -> Option<u16> {
     match error {
         tungstenite::Error::Utf8(..) => Some(1007),

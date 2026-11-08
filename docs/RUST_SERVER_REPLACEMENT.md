@@ -1,5 +1,13 @@
 # Rust server replacement
 
+Native local worker-bridge diagnostics, private request sequencing, callback
+order and closing handshakes now pass scoped local qualification. Both candidate
+builds pass all nine storage/authentication production pairs; the optimized
+executable also passes eighteen dedicated wire/authentication server runs. Real
+TCP pressure, close deadlines and held credential storage retain their distinct
+evidence in [worker bridge qualification](RUST_SERVER_WORKER_BRIDGE.md). Node
+remains the default server and complete replacement is unfinished.
+
 Authenticated worker reconnects now start native legacy credential capture and
 purge. All nine local storage/authentication pairs pass; the actual optimized
 executable additionally passes real deadlines, query failure/recovery, blocked

@@ -24,6 +24,10 @@ import { logRuntimeAuth } from "./log-runtime-auth.mjs";
 import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
 import { verifyAccountingRuntime } from "./accounting-runtime-cases.mjs";
 import {
+  workerBridgeRuntimeCases,
+  verifyWorkerBridgeRuntime,
+} from "./worker-bridge-runtime-cases.mjs";
+import {
   targetPolicyCases,
   verifyTargetPolicy,
   targetPolicyNormalization,
@@ -35,8 +39,10 @@ const WebSocket = createRequire(
 const { values } = parseArgs({
   options: {
     report: { type: "string" },
+    scenario: { type: "string" },
     "http-records": { type: "boolean", default: false },
     "http-targets": { type: "boolean", default: false },
+    "worker-bridge-records": { type: "boolean", default: false },
     "accounting-records": { type: "boolean", default: false },
     "database-records": { type: "boolean", default: false },
     "database-health": { type: "boolean", default: false },
@@ -60,7 +66,8 @@ const password = "isolated production outage fixture password";
 const passwordHash =
   values["database-health-outage"] ||
   values["accounting-records"] ||
-  values["http-targets"]
+  values["http-targets"] ||
+  values["worker-bridge-records"]
     ? await hashPassword(password)
     : undefined;
 let pg, failure;
@@ -80,7 +87,11 @@ const scenarios = [
   { name: "archive-recovery", database: "postgres", obstruct: true },
   { name: "startup-failure", database: "postgres", invalid: true },
 ];
-if (values["accounting-records"] || values["http-targets"])
+if (
+  values["accounting-records"] ||
+  values["http-targets"] ||
+  values["worker-bridge-records"]
+)
   for (const database of ["pglite", "bundled-postgres", "postgres"])
     for (const auth of ["password", "accounts"])
       scenarios.push({
@@ -146,6 +157,13 @@ if (values["database-records"]) {
     key: "invalid-private-key-marker",
     explicitKey: true,
   });
+}
+if (values.scenario) {
+  const selected = scenarios.filter(
+    (scenario) => scenario.name === values.scenario,
+  );
+  assert.equal(selected.length, 1, "Select an existing production scenario");
+  scenarios.splice(0, scenarios.length, ...selected);
 }
 try {
   pg = await postgresFixture(path.join(root, "postgres"));
@@ -265,12 +283,14 @@ try {
       child.stderr.on("data", (chunk) => {
         result.stderr += chunk;
       });
-      const waitForConsole = async (fragment) => {
+      const waitForConsole = async (fragment, previous = 0) => {
         const deadline = Date.now() + 10000;
         while (
-          !(result.stdout + result.stderr)
+          (result.stdout + result.stderr)
             .replace(/\x1b\[[0-9;]*m/g, "")
-            .includes(fragment)
+            .split(fragment).length -
+            1 <=
+          previous
         ) {
           assert.ok(
             Date.now() < deadline,
@@ -286,7 +306,7 @@ try {
         child.once("error", no);
         child.once("close", (code, signal) => yes({ code, signal }));
       });
-      let stopTimer;
+      let stopTimer, controlledBridgeWorker;
       try {
         if (scenario.invalid) {
           stopTimer = setTimeout(
@@ -327,6 +347,17 @@ try {
           );
           const { cookie } = authentication;
           result.authentication = authentication.evidence;
+          if (
+            values["worker-bridge-records"] &&
+            (scenario.name.endsWith("-default") || scenario.auth)
+          )
+            controlledBridgeWorker = await workerBridgeRuntimeCases(
+              origin,
+              cookie,
+              dataDirectory,
+              waitForConsole,
+              result,
+            );
           if (accounting)
             await waitForConsole("Account usage history maintenance completed");
           const request = async (route) => {
@@ -522,6 +553,7 @@ try {
             result.stdout.includes("Cantrip Server is ready"),
             "Info service output remains visible, including an error console threshold",
           );
+          await controlledBridgeWorker?.prepareShutdown();
         }
       } finally {
         try {
@@ -536,6 +568,7 @@ try {
             }
           }
         } finally {
+          controlledBridgeWorker?.close();
           await healthCases?.close();
         }
       }
@@ -570,6 +603,11 @@ try {
         result.databaseHealthRecords = healthCases.verify(result.records);
       if (accounting)
         result.accountingRecords = verifyAccountingRuntime(result.records);
+      if (result.workerBridge)
+        result.workerBridgeRecords = verifyWorkerBridgeRuntime(
+          result.records,
+          result.workerBridge,
+        );
       if (scenario.failDatabase)
         assert.equal(
           result.databaseHealth.startupFailures.length,
@@ -757,6 +795,13 @@ try {
         peers[1].accountingRecords,
         peers[0].accountingRecords,
         "Actual production accounting lifecycle records match",
+      );
+    if (peers[0].workerBridgeRecords)
+      assert.deepEqual(
+        peers[1].workerBridgeRecords,
+        peers[0].workerBridgeRecords,
+        "Actual production bridge commands, reconnect and shutdown: " +
+          scenario.name,
       );
     if (
       (retryRequested && scenario.name === "postgres-default") ||

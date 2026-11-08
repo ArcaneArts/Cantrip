@@ -603,8 +603,8 @@ async fn run(
             shutdown_service.workers.pre_close();
         })
         .await?;
-        // Pre-close interrupts sockets with their normal disconnect semantics.
-        // Finish active HTTP requests before permanently closing the bridge,
+        // Pre-close queues socket CLOSE frames. Physical peer closure retains
+        // normal disconnect semantics. Finish HTTP before closing the bridge,
         // disabling publications, or draining service/database owners.
         service.logical_completion_delivery.stop();
         service.managed_preparation.stop();

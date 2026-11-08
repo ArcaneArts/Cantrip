@@ -46,6 +46,7 @@ pub(super) struct WebSocket {
     completed: Completion,
     force_close: Arc<AtomicBool>,
     close_deadline: tokio::sync::watch::Sender<Option<tokio::time::Instant>>,
+    wait_for_close: bool,
 }
 impl WebSocket {
     pub async fn recv(&mut self) -> Option<Result<Message, Error>> {
@@ -65,6 +66,19 @@ impl WebSocket {
         &self,
     ) -> tokio::sync::watch::Sender<Option<tokio::time::Instant>> {
         self.close_deadline.clone()
+    }
+    /// Authentication can retain its database owner after its handler releases
+    /// socket IO. Planned close must still wait for the real peer ACK, whereas
+    /// malformed-frame cleanup keeps its bounded raw-byte drain.
+    pub fn finish_close_handshake(&mut self) {
+        self.wait_for_close = true;
+        self.close_deadline.send_if_modified(|deadline| {
+            if deadline.is_some() {
+                return false;
+            }
+            *deadline = Some(tokio::time::Instant::now() + Duration::from_secs(30));
+            true
+        });
     }
 }
 impl Stream for WebSocket {
@@ -94,6 +108,7 @@ impl Drop for WebSocket {
             return;
         };
         let completed = std::mem::take(&mut self.completed);
+        let wait_for_close = self.wait_for_close;
         let deadline = self
             .close_deadline
             .borrow()
@@ -110,6 +125,15 @@ impl Drop for WebSocket {
                     // Reading a client Close queues its automatic ACK even
                     // when a subsequent explicit Close cannot be written.
                     let _ = socket.flush().await;
+                    if wait_for_close {
+                        use futures::StreamExt;
+                        while let Some(Ok(message)) = socket.next().await {
+                            if matches!(message, Message::Close(_)) {
+                                break;
+                            }
+                        }
+                        let _ = socket.flush().await;
+                    }
                     let mut io = socket.into_inner();
                     // send() has flushed any close frame. Half-close writing,
                     // then discard remaining bytes without parsing/allocating.
@@ -233,6 +257,7 @@ where
                     completed: Completion::default(),
                     force_close: Arc::new(AtomicBool::new(false)),
                     close_deadline: tokio::sync::watch::channel(None).0,
+                    wait_for_close: false,
                 },
                 selected,
             )

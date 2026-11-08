@@ -1,5 +1,8 @@
 //! Local command correlation and reconnect continuity. Domain event consumers
 //! attach async handlers; responses complete only after preceding events.
+#[path = "bridge_logs.rs"]
+mod logs;
+use logs::{ConnectionLog, FinishLog};
 #[path = "link_frames.rs"]
 mod link_frames;
 #[path = "surface_frames.rs"]
@@ -24,6 +27,7 @@ pub use super::{
     output::Queued,
 };
 use crate::wire::{self, JsString, Value};
+use indexmap::{IndexMap, IndexSet};
 use std::{
     collections::HashMap,
     fmt,
@@ -104,6 +108,8 @@ pub struct Peer {
     pub open: AtomicBool,
     pub output: mpsc::UnboundedSender<Outgoing>,
     pub closing: watch::Sender<Option<(u16, String)>>,
+    output_order: Mutex<()>,
+    close_started: Mutex<Option<tokio::time::Instant>>,
     buffered: Buffered,
 }
 impl Peer {
@@ -126,6 +132,8 @@ impl Peer {
                 open: AtomicBool::new(true),
                 output: tx,
                 closing: watch::channel(None).0,
+                output_order: Mutex::new(()),
+                close_started: Mutex::new(None),
                 buffered: Buffered::default(),
             }),
             rx,
@@ -138,12 +146,17 @@ impl Peer {
         self.buffered.bytes()
     }
     fn send_text(&self, text: String) -> bool {
+        let _order = self.output_order.lock().unwrap();
+        if !self.is_open() {
+            return false;
+        }
         let bytes = super::output::framed_size(text.len());
         self.output
             .send(Outgoing::Text(self.buffered.reserve(text, bytes)))
             .is_ok()
     }
     fn send_frame(&self, frame: crate::worker_links::frame::Frame) -> bool {
+        let _order = self.output_order.lock().unwrap();
         if !self.is_open() {
             return false;
         }
@@ -154,10 +167,22 @@ impl Peer {
         self.output.send(Outgoing::Binary(queued)).is_ok()
     }
     pub fn close(&self, code: u16, reason: &str) {
+        let _order = self.output_order.lock().unwrap();
         if self.open.swap(false, Ordering::AcqRel) {
+            *self.close_started.lock().unwrap() = Some(tokio::time::Instant::now());
             self.closing.send_replace(Some((code, reason.into())));
             let _ = self.output.send(Outgoing::Close(code, reason.into()));
         }
+    }
+    /// 1005 represents an absent status locally; it must never be put on wire.
+    pub fn close_empty(&self) {
+        self.close(1005, "");
+    }
+    pub fn close_deadline(&self) -> Option<tokio::time::Instant> {
+        self.close_started
+            .lock()
+            .unwrap()
+            .map(|at| at + Duration::from_secs(30))
     }
 }
 pub type EventHandler = Arc<
@@ -170,6 +195,9 @@ enum Delivery {
     Finished,
 }
 struct Pending {
+    request_id: String,
+    started_at: f64,
+    response_duration: Mutex<Option<f64>>,
     worker: String,
     command: String,
     delivery: mpsc::UnboundedSender<Delivery>,
@@ -185,10 +213,11 @@ pub enum BridgeNotice {
 }
 #[derive(Default)]
 struct State {
-    peers: HashMap<String, Arc<Peer>>,
-    identities: HashMap<String, Continuity>,
+    peers: IndexMap<String, Arc<Peer>>,
+    identities: IndexMap<String, Continuity>,
     continuities: HashMap<String, Option<Continuity>>,
-    interruptions: HashMap<String, Uuid>,
+    interruptions: IndexMap<String, Uuid>,
+    interrupted_at: HashMap<String, f64>,
     timers: HashMap<String, AbortHandle>,
     pending: HashMap<String, Arc<Pending>>,
 }
@@ -201,7 +230,7 @@ pub struct WorkerBridge {
     routed: AtomicU64,
     succeeded: AtomicU64,
     failed: AtomicU64,
-    inference_sequence: AtomicU64,
+    inference_sequence: Mutex<num_bigint::BigUint>,
     notifications: Arc<Notifications>,
     frames: Arc<Frames>,
     tunnel_frames: Arc<Frames<crate::tunnels::frame::Frame>>,
@@ -210,6 +239,7 @@ pub struct WorkerBridge {
     offline: Arc<OfflineListeners>,
     record_usage: Option<crate::live::UsageRecorder>,
     logger: crate::operations::logging::Logger,
+    clock: crate::operations::logging::Clock,
 }
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -254,6 +284,19 @@ impl WorkerBridge {
         record_usage: Option<crate::live::UsageRecorder>,
         logger: crate::operations::logging::Logger,
     ) -> Arc<Self> {
+        Self::with_usage_logger_and_clock(
+            grace,
+            record_usage,
+            logger,
+            Arc::new(|| chrono::Utc::now().timestamp_millis() as f64),
+        )
+    }
+    pub fn with_usage_logger_and_clock(
+        grace: Duration,
+        record_usage: Option<crate::live::UsageRecorder>,
+        logger: crate::operations::logging::Logger,
+        clock: crate::operations::logging::Clock,
+    ) -> Arc<Self> {
         Arc::new(Self {
             closed: AtomicBool::new(false),
             state: Mutex::new(State::default()),
@@ -263,7 +306,7 @@ impl WorkerBridge {
             routed: AtomicU64::new(0),
             succeeded: AtomicU64::new(0),
             failed: AtomicU64::new(0),
-            inference_sequence: AtomicU64::new(0),
+            inference_sequence: Mutex::new(num_bigint::BigUint::default()),
             notifications: Arc::new(Notifications::default()),
             frames: Arc::new(Frames::default()),
             tunnel_frames: Arc::new(Frames::default()),
@@ -272,9 +315,13 @@ impl WorkerBridge {
             offline: Arc::new(OfflineListeners::default()),
             record_usage,
             logger,
+            clock,
         })
     }
     fn finish(&self, pending: &Pending, result: Outcome) {
+        self.finish_as(pending, result, None)
+    }
+    fn finish_as(&self, pending: &Pending, result: Outcome, log: Option<FinishLog>) {
         if let Some(tx) = pending.completion.lock().unwrap().take() {
             if let Some(timer) = pending.timer.lock().unwrap().take() {
                 timer.abort();
@@ -283,6 +330,9 @@ impl WorkerBridge {
                 self.succeeded.fetch_add(1, Ordering::Relaxed);
             } else {
                 self.failed.fetch_add(1, Ordering::Relaxed);
+            }
+            if let Some(log) = log {
+                self.command_finished(pending, &result, log);
             }
             let _ = tx.send(result);
             let _ = pending.delivery.send(Delivery::Finished);
@@ -293,23 +343,25 @@ impl WorkerBridge {
         state: &mut State,
         worker: &str,
         error: CommandError,
-    ) -> (Option<Arc<Peer>>, bool) {
-        let socket = state.peers.remove(worker);
+    ) -> (Option<Arc<Peer>>, bool, usize) {
+        let socket = state.peers.shift_remove(worker);
         let had = socket.is_some()
             | state.identities.contains_key(worker)
             | state.interruptions.contains_key(worker);
         if let Some(timer) = state.timers.remove(worker) {
             timer.abort();
         }
-        state.identities.remove(worker);
+        state.identities.shift_remove(worker);
         state.continuities.remove(worker);
-        state.interruptions.remove(worker);
+        state.interruptions.shift_remove(worker);
+        state.interrupted_at.remove(worker);
         let ids = state
             .pending
             .iter()
             .filter(|(_, p)| p.worker == worker)
             .map(|(id, _)| id.clone())
             .collect::<Vec<_>>();
+        let rejected = ids.len();
         for id in ids {
             if let Some(pending) = state.pending.remove(&id) {
                 if let Some(timer) = pending.timer.lock().unwrap().take() {
@@ -318,14 +370,15 @@ impl WorkerBridge {
                 self.finish(&pending, Err(error.clone()));
             }
         }
-        (socket, had)
+        (socket, had, rejected)
     }
     fn finish_termination(
         &self,
         worker: &str,
-        (socket, had): (Option<Arc<Peer>>, bool),
+        (socket, had, rejected): (Option<Arc<Peer>>, bool, usize),
         close: Option<(u16, &str)>,
     ) {
+        self.commands_abandoned(worker, rejected);
         // Source calls disconnect listeners after removing the connection but
         // before closing its socket. Run callbacks outside the state lock so
         // reentrant attachment and subscription changes remain possible.
@@ -350,6 +403,7 @@ impl WorkerBridge {
         let mut state = self.state.lock().unwrap();
         let had = state.peers.contains_key(worker) || state.interruptions.contains_key(worker);
         if had && state.continuities.get(worker).cloned().flatten() != peer.continuity {
+            self.connection_log(worker, ConnectionLog::IdentityChanged);
             let ended = self.terminate(
                 &mut state,
                 worker,
@@ -378,15 +432,23 @@ impl WorkerBridge {
         state
             .continuities
             .insert(worker.into(), peer.continuity.clone());
-        state.interruptions.remove(worker);
+        state.interruptions.shift_remove(worker);
+        let disconnected_at = state.interrupted_at.remove(worker).filter(|at| *at != 0.0);
         if let Some(timer) = state.timers.remove(worker) {
             timer.abort();
         }
         if let Some(previous) = previous
             && previous.id != peer.id
         {
+            self.connection_log(worker, ConnectionLog::Replaced);
             previous.close(1012, "Worker reconnected");
         }
+        self.connection_log(
+            worker,
+            disconnected_at.map_or(ConnectionLog::Connected, |at| {
+                ConnectionLog::Recovered(((self.clock)() - at).max(0.0))
+            }),
+        );
         true
     }
     pub fn connection_identity(&self, worker: &str) -> Option<Continuity> {
@@ -408,6 +470,7 @@ impl WorkerBridge {
     }
     pub fn disconnect(&self, worker: &str, reason: &str, code: u16) {
         let _lifecycle = self.lifecycle.lock();
+        self.connection_log(worker, ConnectionLog::Revoked(code));
         let ended = self.terminate(
             &mut self.state.lock().unwrap(),
             worker,
@@ -435,13 +498,15 @@ impl WorkerBridge {
         if state.peers.get(worker).is_none_or(|p| p.id != peer.id) {
             return;
         }
-        state.peers.remove(worker);
+        state.peers.shift_remove(worker);
+        state.interrupted_at.insert(worker.into(), (self.clock)());
         let generation = Uuid::new_v4();
         state.interruptions.insert(worker.into(), generation);
         if let Some(timer) = state.timers.remove(worker) {
             timer.abort();
         }
         let _ = self.notices.send(BridgeNotice::Interrupted(worker.into()));
+        self.connection_log(worker, ConnectionLog::Interrupted);
         if self.grace.is_zero() {
             let ended = self.terminate(
                 &mut state,
@@ -449,8 +514,8 @@ impl WorkerBridge {
                 CommandError::unavailable(format!("Worker {worker} disconnected.")),
             );
             drop(state);
-            self.disconnected.deliver(worker);
             self.finish_termination(worker, ended, None);
+            self.disconnected.deliver(worker);
             return;
         }
         let bridge = Arc::downgrade(self);
@@ -465,6 +530,10 @@ impl WorkerBridge {
                 if !state.peers.contains_key(&worker)
                     && state.interruptions.get(&worker) == Some(&generation)
                 {
+                    bridge.connection_log(
+                        &worker,
+                        ConnectionLog::Offline(grace.as_secs_f64() * 1000.0),
+                    );
                     let ended = bridge.terminate(
                         &mut state,
                         &worker,
@@ -496,6 +565,8 @@ impl WorkerBridge {
             return;
         }
         let pending = state.pending.remove(id).unwrap();
+        *pending.response_duration.lock().unwrap() =
+            Some(((self.clock)() - pending.started_at).max(0.0));
         if let Some(timer) = pending.timer.lock().unwrap().take() {
             timer.abort();
         }
@@ -534,9 +605,11 @@ impl WorkerBridge {
             return;
         }
         let Ok(input) = serde_json::from_str::<Value>(text) else {
+            self.invalid_control(worker);
             return;
         };
         let Ok(envelope) = wire::parse("workerServerEnvelopeSchema", Some(&input)) else {
+            self.invalid_control(worker);
             return;
         };
         match envelope["kind"].as_str() {
@@ -612,31 +685,19 @@ impl WorkerBridge {
             // The Node bridge rejects an offline worker before encoding, and
             // encoding failures do not admit a request, timer or routing metric.
             if !self.is_connected(worker) {
+                self.command_offline(worker, &command);
                 return Err(CommandError::not_sent(format!(
                     "Worker {worker} is offline."
                 )));
             }
             let id = Uuid::new_v4().to_string();
             let kind = command["type"].as_str().unwrap_or("").to_owned();
-            let sequence = self
-                .inference_sequence
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
-                    value.checked_add(1)
-                })
-                .map_err(|_| {
-                    CommandError::unavailable("Worker command sequence is exhausted.".into())
-                })?
-                + 1;
             let envelope = Value::object([
                 ("kind", Value::String("request".into())),
                 ("requestId", Value::String(id.clone().into())),
                 ("command", command),
                 ("inferenceAdmissionAck", Value::Bool(true)),
                 ("modelOperationUsage", Value::Bool(true)),
-                (
-                    "inferenceSequence",
-                    Value::String(sequence.to_string().into()),
-                ),
             ]);
             let envelope =
                 wire::parse("workerRequestEnvelopeSchema", Some(&envelope)).map_err(|error| {
@@ -649,10 +710,13 @@ impl WorkerBridge {
                         inference: None,
                     }
                 })?;
-            let encoded = envelope.stringify();
+            let mut encoded = envelope.stringify();
             let (tx, rx) = oneshot::channel();
             let (events, delivery) = mpsc::unbounded_channel();
             let pending = Arc::new(Pending {
+                request_id: id.clone(),
+                started_at: (self.clock)(),
+                response_duration: Mutex::new(None),
                 worker: worker.into(),
                 command: kind.clone(),
                 delivery: events,
@@ -696,9 +760,9 @@ impl WorkerBridge {
                                             if !target.deadline.lock().unwrap().remaining().is_some_and(|left| left.is_zero()) { continue; }
                                             if state.pending.get(&key).is_some_and(|p| Arc::ptr_eq(p, &target)) {
                                                 state.pending.remove(&key);
-                                                bridge.finish(&target, Err(CommandError::command(
+                                                bridge.finish_as(&target, Err(CommandError::command(
                                                     format!("Worker command {} timed out.", target.command),
-                                                    "worker-command-timeout", &key)));
+                                                    "worker-command-timeout", &key)),Some(FinishLog::Timeout));
                                             }
                                             return;
                                         }
@@ -710,17 +774,29 @@ impl WorkerBridge {
                     *pending.timer.lock().unwrap() = Some(task.abort_handle());
                 }
                 self.routed.fetch_add(1, Ordering::Relaxed);
+                self.command_dispatched(&pending);
                 state.pending.insert(id.clone(), pending.clone());
+                // Match the reference's private BigInt allocation in actual
+                // send order. Encoding failures never consume an identity;
+                // failed send attempts do. Append only the decimal field.
+                let sequence = {
+                    let mut sequence = self.inference_sequence.lock().unwrap();
+                    *sequence += 1_u8;
+                    sequence.to_str_radix(10)
+                };
+                encoded.truncate(encoded.len() - 1);
+                encoded.push_str(&format!(",\"inferenceSequence\":\"{sequence}\"}}"));
                 let bytes = encoded.len();
                 if !peer.send_text(encoded) {
                     state.pending.remove(&id);
-                    self.finish(
+                    self.finish_as(
                         &pending,
                         Err(CommandError::command(
                             format!("Worker command {kind} could not be dispatched."),
                             "worker-command-dispatch-failed",
                             &id,
                         )),
+                        Some(FinishLog::Dispatch),
                     );
                 } else if let Some(record) = &self.record_usage {
                     record(&peer.identity.owner, false, bytes, true);
@@ -752,12 +828,12 @@ impl WorkerBridge {
                             if let Some(timer) = target.timer.lock().unwrap().take() {
                                 timer.abort();
                             }
-                            bridge.finish(&target, Err(error));
+                            bridge.finish_as(&target, Err(error), Some(FinishLog::EventHandler));
                             break;
                         }
                     }
                     Delivery::Response(result) => {
-                        bridge.finish(&target, result);
+                        bridge.finish_as(&target, result, Some(FinishLog::Response));
                         break;
                     }
                 }
@@ -766,18 +842,31 @@ impl WorkerBridge {
         rx.await
             .unwrap_or_else(|_| Err(CommandError::unavailable("Server is shutting down.".into())))
     }
+    /// Fastify's preClose queues empty CLOSE frames without terminating bridge
+    /// state. Responses already in flight remain valid until the peer closes.
+    pub fn pre_close(&self) {
+        let _lifecycle = self.lifecycle.lock();
+        for peer in self.state.lock().unwrap().peers.values() {
+            peer.close_empty();
+        }
+    }
     pub fn close(&self) {
         let _lifecycle = self.lifecycle.lock();
+        let counts = {
+            let state = self.state.lock().unwrap();
+            (state.peers.len(), state.pending.len())
+        };
+        self.shutdown_log(Some(counts));
         self.closed.store(true, Ordering::Release);
         let workers = {
             let state = self.state.lock().unwrap();
             state
                 .peers
                 .keys()
-                .chain(state.identities.keys())
                 .chain(state.interruptions.keys())
+                .chain(state.identities.keys())
                 .cloned()
-                .collect::<std::collections::HashSet<_>>()
+                .collect::<IndexSet<_>>()
         };
         for worker in workers {
             let ended = self.terminate(
@@ -793,5 +882,6 @@ impl WorkerBridge {
         self.surface_frames.clear();
         self.disconnected.clear();
         self.offline.clear();
+        self.shutdown_log(None);
     }
 }

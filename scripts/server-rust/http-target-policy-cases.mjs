@@ -78,6 +78,21 @@ const normalized = (body) => {
 function comparison(row) {
   const body = structuredClone(row.body);
   if (
+    row.method === "GET" &&
+    Array.isArray(body) &&
+    decodeURI(new URL(row.target, "http://127.0.0.1").pathname) ===
+      "/api/workers"
+  ) {
+    for (const worker of body) {
+      if (worker.lastSeenAt === null) continue;
+      assert.equal(
+        new Date(worker.lastSeenAt).toISOString(),
+        worker.lastSeenAt,
+      );
+      worker.lastSeenAt = "<heartbeat>";
+    }
+  }
+  if (
     body &&
     typeof body === "object" &&
     body.service === "cantrip_server" &&
@@ -189,6 +204,8 @@ function headersForComparison(row) {
   return headers;
 }
 export const targetPolicyNormalization = {
+  workerHeartbeats:
+    "Worker-list lastSeenAt timestamps are validated before peer-local clock normalization; null and every other field remain compared.",
   timestampsAndLatencies:
     "Validated ISO timestamps and finite nonnegative durations",
   metrics:
