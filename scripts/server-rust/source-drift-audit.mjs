@@ -20,6 +20,8 @@ import {
   operationalStatusContractRoots,
   workerLogContractRoots,
   projectInsightContractRoots,
+  remoteSurfaceHttpContractRoots,
+  computerUseHttpContractRoots,
 } from "./contracts.mjs";
 import { repositoryRoot } from "./build.mjs";
 
@@ -69,6 +71,8 @@ for (const [file, roots] of [
   ["operational-status.json", operationalStatusContractRoots],
   ["worker-logs.json", workerLogContractRoots],
   ["project-insights.json", projectInsightContractRoots],
+  ["remote-surface-http.json", remoteSurfaceHttpContractRoots],
+  ["computer-use-http.json", computerUseHttpContractRoots],
   ["endpoint-providers.json", null],
 ]) {
   const raw = await readFile(

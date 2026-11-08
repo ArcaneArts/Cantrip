@@ -14293,7 +14293,9 @@
         "implementation": "cantrip_server_rs/src/workers/service.rs",
         "evidence": [
           "scripts/server-rust/live-compatibility.mjs",
-          "scripts/server-rust/worker-client-compatibility.mjs"
+          "scripts/server-rust/worker-client-compatibility.mjs",
+          "scripts/server-rust/worker-enrollment-live-compatibility.mjs",
+          "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md"
         ],
         "remaining": ["Shared coordination and remaining domain publishers."]
       },
@@ -14978,12 +14980,25 @@
         "cantrip_server_rs/tests/worker_repository.rs",
         "cantrip_server_rs/tests/worker_boundaries.rs",
         "scripts/server-rust/worker-compatibility.mjs",
-        "scripts/server-rust/worker-client-compatibility.mjs"
+        "scripts/server-rust/worker-client-compatibility.mjs",
+        "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
+        "scripts/server-rust/worker-enrollment-live-compatibility.mjs"
       ],
       "remaining": [
+        "Qualify current complete UI/worker behavior and supported platform/packaged artifacts."
+      ],
+      "historicalRemaining": [
         "Full worker index/runtime and actual app UI acceptance remain required; the browser integration runs unchanged API modules and worker components with a controlled command handler.",
         "Enrollment mutations do not yet publish all Node App Live invalidations. A retained JSON-suite observation saw Node currentCursor 16 versus Rust 0 after enrollment creation; isolated parser Live cases run before those separate domain mutations."
-      ]
+      ],
+      "responseCompletionQualification": {
+        "storageAuthPairs": 9,
+        "pairedHttp": 99,
+        "pairedPublicationObservations": 81,
+        "pairedInvalidations": 27,
+        "cleanServerExits": 18,
+        "scope": "Actual HTTP/App Live create-code/rotate/revoke and failed/read boundaries. Actual Node audit-completion observation sequences response effects; offline enrolled worker rotation has no worker command substitution."
+      }
     },
     "endpointEncryptionRegistry": {
       "status": "implemented-pending-platform-acceptance",
@@ -15091,27 +15106,93 @@
         "scripts/server-rust/legacy-export-literals.mjs",
         "scripts/server-rust/historical-pglite-fixture.mjs",
         "cantrip_server_rs/examples/database-transfer-fixture.rs",
-        "scripts/server-rust/database-transfer-race.mjs"
+        "scripts/server-rust/database-transfer-race.mjs",
+        "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
+        "scripts/server-rust/desktop-profile-upgrade-compatibility.mjs"
       ],
       "validatedSubset": "Local macOS: bounded offline SDK0.5.4/pg_dump0.4.4 conversion opens a private copy; all1665original profile files retain bytes/modes. Production Rust --restore-sql --migrate-only restores current schema to all3stores with115exact table snapshots/4sequence states, numeric/JSONB/bytea/generated/Unicode/microsecond data, original Drizzle history and local-user timestamps retained. A genuine233-migration fixture with worker/chat/root cycle upgrades through all3pending SQL migrations and matches the actual Node migrator. Late restore failures and pending-upgrade failures roll back the whole transaction. Exact replay rejects existing destination without changing it. SQLSTATE survives while invalid private values stay out of CLI errors. Actual SQL execution witnesses followed by SIGKILL prove import/upgrade interruption, rollback, restart and identical retry on all3stores. External PostgreSQL may finish the interrupted query before detecting its lost client; the final successful retry proves eventual rollback. Two real external PostgreSQL CLI processes wait on the shared startup migration lock; one succeeds, the other fails42P06, and the final full snapshot/sequence state matches. The complete repository check still fails the existing source-provider assertion at local-foundation.test.ts:7218; no blanket green check claim. Platform follow-up: actual Linux PG16 failure reproduced against Docker PostgreSQL16.15. Export adapts only its generated leading transaction_timeout setting with a real set_config attempt, catching only undefined_object. Current/historical native transfers retain all115table snapshots and4sequence states into PG16.15 as well as nativePGlite17.5/privatePG17.9; a multiline row contains the same setting text and remains intact. Original platform migration job on Windows passed; current follow-up head still requires observed platform acceptance. Follow-up all3store current/historical SIGKILL/retry suites pass after the prelude adaptation. Broad pnpm check in this turn had21sourcefailures/1628pass/71skip under concurrent work; sequential reruns of all16failedfiles on clean baseline/current each49pass and reproduce only local-foundation.test.ts:7218. No blanket green claim.",
       "literalPreservationFollowup": "Real roundtrip reproduced upstream global cleanup deleting restrict/unrestrict lines from multiline TEXT and SQL function bodies. Adapter now calls the pinned generated WASM factory directly and removes only paired generated leading/trailing commands. A real same-key literal/function restore passes; actual invalid-option errors retain private diagnostics but default rendering is redacted, and the session/search_path remains usable. Complete current/historical all-store SIGKILL/retry transfers also retain function results and distinguish SQL NULL from JSON null. Expanded current/historical PG16.15 transfers and strict all-target Clippy/native database contracts pass. Broad pnpm check exits1 with1662source tests passing57skipped and the previously reproduced provider assertion at local-foundation.test.ts:7218 failing. Current-head platform acceptance remains required.",
       "remaining": [
+        "Qualify broader historical physical-runtime profiles and explicit backend changes against current supported-platform packaged artifacts.",
+        "Complete full-product post-write rollback and current installation/update supervision acceptance."
+      ],
+      "historicalRemaining": [
         "Complete packaged existing-installation activation; local CLI now preserves file/key/profile/backend state through installationProfileTransfer.",
         "Extend representative CLI post-write reverse conversion to complete product rollback and explicit installation backend changes.",
         "Bundle the bounded conversion tool and required runtime assets; prove real installation upgrades and packaged Windows/Linux/macOS artifacts.",
         "Observe the configured platform jobs; SQL transfer is not the complete server replacement.",
         "Verify representative older physical PGlite runtime/PostgreSQL-major profiles with matching bounded conversion; older SQL history alone does not prove runtime format compatibility."
-      ]
+      ],
+      "packagedConversionQualification": {
+        "mergeCommit": "40020c2489bf9c090f70690d5cbd9ce283965ee9",
+        "archiveSha256": "ff57c9fc8efc40680c73a98ea36d1dcb2ed1b4eda716c580992083fcb57ff3ad",
+        "qualifiedCases": 8,
+        "actualApp": "Legacy Node to native to post-write Node rollback to native re-upgrade, retaining client encryption/recovery identity and worker.",
+        "scope": "Historical local macOS arm64; raw selected archive reports re-read and checked against original member hashes during reconciliation. Current full-platform/product acceptance remains incomplete."
+      }
     },
     "fullPostWriteRollback": {
       "status": "partial",
-      "limitedEvidence": "Existing auth/encryption/policy/workspace suites retain selected writes across Node/Rust/Node on external PostgreSQL. Native SQL export adds current/historical all-store database rollback after real password-authenticated Rust workspace/protection writes. Complete-profile CLI transfer now retains original keys/files/backend selection, compares all115tables4sequences and lets actualNode retain session/CSRF/serverUUID plus Rust workspace revision2 and write revision3 on all3stores. Packaged existing-profile activation and product-wide post-write rollback remain incomplete; see installationProfileTransfer."
+      "limitedEvidence": "Native logical/profile reversal, automatic packaged legacy conversion and actual app post-write rollback/re-upgrade have scoped historical local evidence. Winterhold additionally qualifies external PostgreSQL Node/Rust post-write code rollback over TLS. Broader current artifact/platform/historical-profile and full-product rollback acceptance remains incomplete.",
+      "historicalLimitedEvidence": "Existing auth/encryption/policy/workspace suites retain selected writes across Node/Rust/Node on external PostgreSQL. Native SQL export adds current/historical all-store database rollback after real password-authenticated Rust workspace/protection writes. Complete-profile CLI transfer now retains original keys/files/backend selection, compares all115tables4sequences and lets actualNode retain session/CSRF/serverUUID plus Rust workspace revision2 and write revision3 on all3stores. Packaged existing-profile activation and product-wide post-write rollback remain incomplete; see installationProfileTransfer.",
+      "evidence": [
+        "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
+        "docs/RUST_SERVER_PROFILE_ACTIVATION.md",
+        "docs/RUST_SERVER_DESKTOP_RUNTIME.md",
+        "docs/RUST_SERVER_WINTERHOLD.md"
+      ]
     },
     "desktopPackaging": {
-      "status": "unported"
+      "historicalStatus": "unported",
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_app/src-tauri/src/desktop_services.rs",
+        "scripts/package-distributions.mjs",
+        "scripts/desktop-server-runtime.mjs"
+      ],
+      "evidence": [
+        "docs/RUST_SERVER_DESKTOP_RUNTIME.md",
+        "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
+        "scripts/server-rust/desktop-runtime-acceptance.mjs",
+        "scripts/server-rust/desktop-bundle-acceptance.mjs",
+        "scripts/server-rust/desktop-profile-upgrade-compatibility.mjs"
+      ],
+      "delivery": [
+        "https://github.com/ArcaneArts/Cantrip/pull/2749",
+        "https://github.com/ArcaneArts/Cantrip/pull/2752"
+      ],
+      "scope": "Implemented opt-in native supervisor/packaging with historical local macOS arm64 all-store launcher and actual app evidence. Default remains Node. The existing-profile milestone subsequently packages bounded automatic conversion.",
+      "remaining": [
+        "Qualify current integrated artifacts, supported platforms, installer/update supervision and full product/failure/performance matrix.",
+        "Complete final Rust default cutover and production Node-server removal."
+      ]
     },
     "winterholdDelivery": {
-      "status": "unported"
+      "historicalStatus": "unported",
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "scripts/deploy-production.mjs",
+        "deploy/docker/server-rust.Dockerfile",
+        "deploy/production/install.sh"
+      ],
+      "evidence": [
+        "docs/RUST_SERVER_WINTERHOLD.md",
+        "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
+        "scripts/server-rust/winterhold-systemd-acceptance.mjs"
+      ],
+      "delivery": "https://github.com/ArcaneArts/Cantrip/pull/2753",
+      "historicalQualification": {
+        "artifactVersion": "1.1.2739",
+        "nativeBinarySha256": "9752afd5a94077c334ee03bb43a9001c7fe7f2a7810688ce7b268e0aee4e65c0",
+        "storageModes": ["pglite", "bundled-postgres", "postgres"],
+        "installerInvocations": 18,
+        "expectedRejectedCandidates": 6,
+        "scope": "Local ARM64 Ubuntu systemd fixture executing the x64 native artifact through binfmt, with actual Caddy HTTPS/TLS external PostgreSQL and post-write code rollback. No production host deployment or bare-metal x64/Windows claim."
+      },
+      "remaining": [
+        "Qualify current integrated artifacts and remaining supported platforms, product/fault/coordination/performance requirements.",
+        "Final Rust default cutover and production Node removal. Production deployment remains separately unauthorized."
+      ]
     },
     "productionNodeRemoval": {
       "status": "unimplemented"
@@ -18657,7 +18738,9 @@
         "scripts/server-rust/model-operation-boundary-compatibility.mjs",
         "scripts/server-schema-source-corpus.test.mjs",
         "scripts/surface-private-state-fields.test.mjs",
-        "docs/RUST_SERVER_SOURCE_DRIFT.md"
+        "docs/RUST_SERVER_SOURCE_DRIFT.md",
+        "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
+        "scripts/server-rust/worker-enrollment-live-compatibility.mjs"
       ],
       "generatedContracts": "All nine match after rebuilding current TypeScript; schema equality is not behavioral parity.",
       "sourcePairing": {
@@ -18666,10 +18749,9 @@
         "nodeOnly": ["2060beb2a", "fc71cc21e"]
       },
       "remaining": [
-        "Implement the 25 active HTTP endpoints confirmed by the current production inventory probe; retired repository, project-administration and Chat-control contracts are separately qualified.",
-        "Remaining CantripOS Worker/native interruption and missing-receipt behavior beyond the executed lifecycle and root-system scenarios, plus current platform requalification.",
-        "Complete current native Task/Goal interruption/reconnect and supported-platform requalification.",
-        "Consolidate historical category-row limitations against current executed evidence before final replacement completion."
+        "Reproduce and repair agent-interaction expiry Chat/summary publication and periodic connected-worker catalog/quota refresh discrepancies.",
+        "Complete current native execution interruption/reconnect, supported-platform/package/product/performance acceptance and final default cutover/removal.",
+        "Continue consolidating historical category limitations against actual current source and scoped executed evidence."
       ],
       "modelOperationBoundaryQualification": {
         "platform": "darwin-arm64",
@@ -18682,10 +18764,17 @@
         "rustExecutableSha256": "12fe4ca248e1aedd6eeea0a6934487a81ff74dc4ffab9cfb18d59359bb7c2fc1"
       },
       "currentGeneratedContractQualification": {
-        "sourceBaseline": "eac53fda28b918231f1c28fd94ce4fa3aee3733c",
-        "matchingGraphs": 11,
-        "scope": "Current generated contract/source comparisons; schema equality is not behavioral parity."
-      }
+        "sourceBaseline": "eaac677e3019392f4e36e0b813fb7d94f7292370",
+        "matchingGraphsAndProviderMap": 16,
+        "schemaGraphs": 15,
+        "scope": "Current rebuilt Source contracts including remote-surface and computer-use graphs. Equality does not establish runtime or complete replacement acceptance."
+      },
+      "historicalRemaining": [
+        "Implement the 25 active HTTP endpoints confirmed by the current production inventory probe; retired repository, project-administration and Chat-control contracts are separately qualified.",
+        "Remaining CantripOS Worker/native interruption and missing-receipt behavior beyond the executed lifecycle and root-system scenarios, plus current platform requalification.",
+        "Complete current native Task/Goal interruption/reconnect and supported-platform requalification.",
+        "Consolidate historical category-row limitations against current executed evidence before final replacement completion."
+      ]
     },
     "singleServerNativeRecovery": {
       "status": "partial",
@@ -19141,6 +19230,30 @@
       "remaining": [
         "Native physical capture/input and native-agent product acceptance.",
         "Representative repeated performance, supported-platform/package and complete replacement acceptance."
+      ]
+    },
+    "backgroundServiceReconciliation": {
+      "status": "partial",
+      "evidence": [
+        "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
+        "cantrip_server/src/app/build-app.ts",
+        "cantrip_server/src/app/runtime/background-job-runtime.ts",
+        "cantrip_server_rs/src/auth/service.rs"
+      ],
+      "mappedDurableJobFamilies": [
+        "project-replicas",
+        "project-folder-setup",
+        "workspace-repository-discovery",
+        "standalone-chat-roots",
+        "project-github-conversion",
+        "chat-relocation",
+        "chat-import"
+      ],
+      "scope": "Source composition mapping only; each family retains its own existing behavior/fault acceptance. Does not prove all background services.",
+      "remaining": [
+        "Actual Node expiry timer publishes affected Chat/summary invalidations; native project-alert watcher expires repository rows without the equivalent Chat mutation publication. Runtime comparison and repair required.",
+        "Establish and qualify equivalent fifteen-minute connected-worker catalog/quota periodic refresh.",
+        "Finish complete background-service and lifecycle reconciliation."
       ]
     }
   },

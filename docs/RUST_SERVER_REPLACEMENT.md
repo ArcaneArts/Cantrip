@@ -1,5 +1,11 @@
 # Rust server replacement
 
+The [current acceptance reconciliation](RUST_SERVER_ACCEPTANCE_RECONCILIATION.md)
+distinguishes historical ledger limitations from implemented desktop/Winterhold
+work and remaining acceptance. It also records the repaired worker enrollment
+notification gap and two background-service paths requiring runtime comparison.
+Full replacement remains incomplete and Node remains the default server.
+
 Native computer-use operations, preview open/Stop and worker-authenticated agent
 authority now pass local HTTP, durable publication, real timeout and full-worker
 browser qualification. All three stores and all four shared peer pairings pass
@@ -106,9 +112,11 @@ storage modes, genuine recovery-file confirmation and authentication, retained
 identity/settings, worker commands, logs and orderly shutdown. See the
 [desktop runtime qualification](RUST_SERVER_DESKTOP_RUNTIME.md) for commands,
 current-runtime evidence and remaining platform, migration and product work.
-The Node-created PGlite physical directory requires logical conversion; packaged
-legacy conversion and post-write rollback acceptance are still required. Node
-remains the default server, and full replacement is incomplete.
+The Node-created PGlite physical directory requires logical conversion. PR #2752
+subsequently packaged automatic conversion and qualified local actual-app
+upgrade/post-write rollback/re-upgrade. Broader current-artifact, historical-profile
+and platform acceptance remains required. Node remains the default server, and
+full replacement is incomplete.
 
 Native CantripOS and worktree `HEAD` reads now retain their existing read and
 project-guard behavior. The port also distinguishes public placement failures

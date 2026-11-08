@@ -487,6 +487,27 @@ async fn handle(
     )
     .await
     {
+        Ok(response)
+            if !matches!(method, Method::GET | Method::HEAD | Method::OPTIONS)
+                && path.starts_with("/api/workers/")
+                && response.status().as_u16() < 400 =>
+        {
+            let owner = ctx
+                .principal
+                .user
+                .as_ref()
+                .expect("Admitted worker mutation principal")
+                .id
+                .clone();
+            let worker = params.get("workerId").cloned();
+            let live = service.live.clone();
+            // Match the reference onResponse hook, including null identity
+            // for enrollment-code creation and no event on failed mutations.
+            super::on_response::completed(response, move || match worker {
+                Some(worker) => live.invalidate(&owner, "worker", &worker),
+                None => live.invalidate_resource(&owner, "worker"),
+            })
+        }
         Ok(response) => response,
         Err(error) => middleware::failure(&service, &ctx.id, &error),
     }
