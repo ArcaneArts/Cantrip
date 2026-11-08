@@ -43,10 +43,13 @@ retain their native-server precedence. No executable-presence probe selects a
 different server after a configured native launch fails.
 
 Existing distributions without that configuration retain their Node launcher.
-Native selection does not activate a legacy database conversion. Use a fresh
-QA profile or an explicitly migrated copy until the existing-installation
-upgrade/rollback milestone is qualified; do not use this build option to claim
-production cutover readiness.
+The subsequent existing-profile milestone (PR #2752) packages the bounded
+converter and prepares a legacy Node profile through the production launcher
+before native startup. It retains the original profile and supports restart
+without the converter after successful activation. See the
+[current acceptance reconciliation](RUST_SERVER_ACCEPTANCE_RECONCILIATION.md)
+for archived actual-app upgrade and post-write rollback evidence. Explicit Rust
+selection does not establish final production cutover readiness.
 
 ## Lifecycle and logs
 
@@ -122,9 +125,10 @@ refused to open a disposable physical copy with a `postgresql.conf` error.
 The [profile activation component](RUST_SERVER_PROFILE_ACTIVATION.md) now passes
 offline logical conversion, interrupted in-place activation and reversal after
 accepted native writes across all three stores. It preserves the original
-directory and the active pathname. Desktop packaging still needs to bundle and
-automatically invoke that bounded conversion, then qualify existing-client
-recovery/Keychain continuity and update/rollback supervision before cutover.
+directory and the active pathname. PR #2752 subsequently bundled automatic
+conversion and qualified local existing-client recovery-file continuity,
+encrypted identity, actual worker commands and post-write rollback/re-upgrade.
+Current supported-platform and complete update/product acceptance remain required.
 
 Windows, other supported platforms, installer/update behavior, packaged existing-user
 migration and post-write rollback, full product/coordination/performance
