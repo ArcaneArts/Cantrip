@@ -8,6 +8,10 @@ import {
   actualOperationalStatus,
   operationalProductToken,
 } from "./actual-operational-status-client.mjs";
+import {
+  actualWorkerLogs,
+  actualWorkerLogsDisconnected,
+} from "./actual-worker-logs-client.mjs";
 import { actualTaskClient } from "./actual-task-client.mjs";
 import { actualProjectChatClient } from "./actual-project-chat-client.mjs";
 import { providerTestBoundary } from "./provider-test-boundary.mjs";
@@ -22,6 +26,7 @@ import {
 // Filesystem assertions inspect only disposable test directories. No transport,
 // command handler, crypto adapter or repository implementation is substituted.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import {
@@ -144,6 +149,7 @@ const liveTaskDiagnostics =
 const fullServerLogs =
   liveTaskDiagnostics ||
   process.argv.includes("--operational-status") ||
+  process.argv.includes("--worker-logs") ||
   process.argv.includes("--project-administration") ||
   process.argv.includes("--chat-controls");
 const surfaceFixtureRequests = [];
@@ -746,7 +752,17 @@ async function flow(
         phase: "connected",
         secrets: [...names, existingPath, missingPath],
       });
+    if (process.argv.includes("--worker-logs"))
+      await actualWorkerLogs({
+        page,
+        fixture,
+        workerId,
+        result,
+        phase: "connected",
+      });
     await stopWorker();
+    if (process.argv.includes("--worker-logs"))
+      await actualWorkerLogsDisconnected({ page, result, phase: "connected" });
     const scratch = projectShares
       ? await prepareExistingScratch(dataDirectory)
       : undefined;
@@ -766,6 +782,7 @@ async function flow(
       process.argv.includes("--project-chats") ||
       process.argv.includes("--chat-controls") ||
       process.argv.includes("--operational-status") ||
+      process.argv.includes("--worker-logs") ||
       process.argv.includes("--workspace-discovery")
         ? Number(new URL(fixture.server.origin).port)
         : 0;
@@ -907,22 +924,40 @@ async function flow(
     result.steps.push(
       "server restart retains identity, encrypted labels, source handles and all completed job states",
     );
-    if (process.argv.includes("--operational-status")) {
+    if (
+      process.argv.includes("--operational-status") ||
+      process.argv.includes("--worker-logs")
+    ) {
       await startWorker();
       await page.evaluate(() => window.folderLive.start());
       await eventually(workers, (values) =>
         assert.equal(values[0].online, true),
       );
-      await actualOperationalStatus({
-        fixture,
-        page,
-        worker,
-        result,
-        databaseMode,
-        phase: "restarted",
-        secrets: [...names, existingPath, missingPath],
-      });
+      if (process.argv.includes("--operational-status"))
+        await actualOperationalStatus({
+          fixture,
+          page,
+          worker,
+          result,
+          databaseMode,
+          phase: "restarted",
+          secrets: [...names, existingPath, missingPath],
+        });
+      if (process.argv.includes("--worker-logs"))
+        await actualWorkerLogs({
+          page,
+          fixture,
+          workerId,
+          result,
+          phase: "restarted",
+        });
       await stopWorker();
+      if (process.argv.includes("--worker-logs"))
+        await actualWorkerLogsDisconnected({
+          page,
+          result,
+          phase: "restarted",
+        });
       await page.evaluate(() => window.folderLive.stop());
     }
     result.projects = wire.map((project) => ({
@@ -1299,6 +1334,25 @@ try {
       const start = fixture.start.bind(fixture);
       fixture.start = async (...args) => {
         await start(...args);
+        for (const peer of fixture.peers ?? [fixture]) {
+          const child = peer.server.child;
+          const observation = {
+            kind: peer.kind,
+            pid: child.pid,
+            command: child.spawnfile,
+            arguments: child.spawnargs.slice(1),
+          };
+          try {
+            const bytes = await readFile(child.spawnfile);
+            observation.executableSha256 = createHash("sha256")
+              .update(bytes)
+              .digest("hex");
+            observation.executableBytes = bytes.length;
+          } catch (error) {
+            observation.executableObservationError = error.message;
+          }
+          (result.serverProcesses ??= []).push(observation);
+        }
         const generation = (result.serverDiagnosticFiles ??= []).length + 1;
         const file = path.join(root, `${kind}-server-${generation}.stderr.log`);
         appendFileSync(file, "");

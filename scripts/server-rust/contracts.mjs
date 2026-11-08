@@ -883,6 +883,14 @@ export const operationalStatusContractRoots = [
   "operationalProbeSchema",
 ];
 
+export const workerLogContractRoots = [
+  "workerLogReadQuerySchema",
+  "serviceLogReadResultSchema",
+  "workerLogStreamStartResultSchema",
+  "workerLogStreamRenewResultSchema",
+  "workerLogStreamServerMessageSchema",
+];
+
 // Keep independently added roots self-contained. Numeric graph references must
 // not depend on the size of the base graph after an unrelated branch merges.
 export const runMcpContractRoots = [
@@ -1797,6 +1805,20 @@ if (
   const operationalStatusDestination = new URL(
     "../../cantrip_server_rs/contracts/operational-status.json",
     import.meta.url,
+  );
+  const workerLogsDestination = new URL(
+    "../../cantrip_server_rs/contracts/worker-logs.json",
+    import.meta.url,
+  );
+  await writeFile(
+    workerLogsDestination,
+    await format(
+      JSON.stringify(buildContractManifest(workerLogContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(workerLogsDestination))),
+        filepath: fileURLToPath(workerLogsDestination),
+      },
+    ),
   );
   await writeFile(
     operationalStatusDestination,

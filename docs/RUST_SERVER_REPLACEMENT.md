@@ -1,5 +1,12 @@
 # Rust server replacement
 
+Native worker log reads and leased streams now pass actual HTTP/WebSocket,
+timer, backpressure and ownership-query interruption checks. Existing browser
+APIs and the full unchanged worker pass all three stores and all four shared
+Node/Rust peer pairings before and after restart. See
+[worker log qualification](RUST_SERVER_WORKER_LOGS.md) for evidence and limits.
+Node remains the default and the complete replacement is unfinished.
+
 Native operational health and Prometheus now use the real HTTP, database,
 worker, Live, usage and coordination collectors. Local comparison passes all
 three stores/authentication modes, actual database/caller failures, hosted
@@ -17,9 +24,9 @@ computer-use authority revocation. See [project administration](RUST_SERVER_PROJ
 for exact scope, retained baseline failures and remaining acceptance. Node remains
 the default and full replacement remains incomplete.
 
-The current production HTTP inventory probe confirms 23 active endpoints still
+The current production HTTP inventory probe confirms 21 active endpoints still
 fall through to Rust's generic 404, covering computer use, project
-context/insights, remote surfaces and worker logs.
+context/insights and remote surfaces.
 Seventy-two additional retired repository-route differences are corrected and
 qualified separately. See [HTTP inventory reconciliation](RUST_SERVER_HTTP_INVENTORY.md)
 for the exact scope and remaining families. These are implementation gaps;

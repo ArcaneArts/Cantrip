@@ -12,6 +12,7 @@ const WORKER_OPERATIONS: &str = include_str!("../../contracts/worker-operations.
 const PROJECT_ADMINISTRATION: &str = include_str!("../../contracts/project-administration.json");
 const CHAT_CONTROL: &str = include_str!("../../contracts/chat-control.json");
 const OPERATIONAL_STATUS: &str = include_str!("../../contracts/operational-status.json");
+const WORKER_LOGS: &str = include_str!("../../contracts/worker-logs.json");
 
 pub(super) fn load() -> Contracts {
     let mut contracts: Contracts = serde_json::from_str(BASE).expect("embedded protocol contracts");
@@ -35,6 +36,7 @@ pub(super) fn load() -> Contracts {
     contracts.append(
         serde_json::from_str(OPERATIONAL_STATUS).expect("embedded operational status contracts"),
     );
+    contracts.append(serde_json::from_str(WORKER_LOGS).expect("embedded worker log contracts"));
     contracts.compile_patterns();
     contracts
 }
@@ -145,6 +147,11 @@ mod tests {
         source_contracts_survive_growth(OPERATIONAL_STATUS, "operational status")
     }
 
+    #[test]
+    fn worker_log_contracts_survive_unrelated_base_graph_growth() -> Result<()> {
+        source_contracts_survive_growth(WORKER_LOGS, "worker logs")
+    }
+
     fn source_contracts_survive_growth(block: &str, label: &str) -> Result<()> {
         let base: Contracts = serde_json::from_str(BASE)?;
         let run: Contracts = serde_json::from_str(RUN)?;
@@ -157,6 +164,24 @@ mod tests {
         let administration: Contracts = serde_json::from_str(PROJECT_ADMINISTRATION)?;
         let chat_control: Contracts = serde_json::from_str(CHAT_CONTROL)?;
         let operational_status: Contracts = serde_json::from_str(OPERATIONAL_STATUS)?;
+        let worker_logs: Contracts = serde_json::from_str(WORKER_LOGS)?;
+        assert!(worker_logs.roots.keys().all(|name| {
+            [
+                &base,
+                &run,
+                &surface,
+                &cli,
+                &exports,
+                &attachments,
+                &management,
+                &operations,
+                &administration,
+                &chat_control,
+                &operational_status,
+            ]
+            .iter()
+            .all(|graph| !graph.roots.contains_key(name))
+        }));
         assert!(operational_status.roots.keys().all(|name| {
             [
                 &base,
@@ -274,6 +299,7 @@ mod tests {
             graph.append(serde_json::from_str(PROJECT_ADMINISTRATION)?);
             graph.append(serde_json::from_str(CHAT_CONTROL)?);
             graph.append(serde_json::from_str(OPERATIONAL_STATUS)?);
+            graph.append(serde_json::from_str(WORKER_LOGS)?);
             graph.compile_patterns();
             graphs.push(graph);
         }
@@ -282,7 +308,14 @@ mod tests {
         let mut count = 0;
         for schema in schemas {
             let mut command = Command::new("node");
-            if label == "operational status" {
+            if label == "worker logs" {
+                command.args([
+                    "--import",
+                    "tsx",
+                    "scripts/server-rust/worker-log-contract-oracle.mjs",
+                    schema,
+                ]);
+            } else if label == "operational status" {
                 command.args([
                     "--import",
                     "tsx",
