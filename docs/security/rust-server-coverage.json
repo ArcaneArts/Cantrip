@@ -15038,7 +15038,10 @@
         "cantrip_server_rs/src/operations/log_archive.rs",
         "cantrip_server_rs/src/operations/log_runtime.rs",
         "cantrip_server_rs/src/operations/log_format.rs",
-        "cantrip_server_rs/src/http/request_logs.rs"
+        "cantrip_server_rs/src/http/request_logs.rs",
+        "cantrip_server_rs/src/database/startup.rs",
+        "cantrip_server_rs/src/database/startup/key.rs",
+        "cantrip_server_rs/src/database/health.rs"
       ],
       "evidence": [
         "cantrip_server_rs/tests/service_logs.rs",
@@ -15075,11 +15078,14 @@
         "scripts/server-rust/log-http-compatibility.mjs",
         "scripts/server-rust/log-http-node-fixture.mjs",
         "cantrip_server_rs/examples/log-http-fixture.rs",
-        "docs/RUST_SERVER_HTTP_LOGGING.md"
+        "docs/RUST_SERVER_HTTP_LOGGING.md",
+        "docs/RUST_SERVER_DATABASE_LIFECYCLE.md",
+        "scripts/server-rust/database-health-cases.mjs",
+        "scripts/server-rust/database-health-proxy.mjs"
       ],
       "scope": "Native shared JSON operational log emission, UTF-16 text/key semantics, secret/context/error sanitization, sampled emission and bounded repeated-event windows match 65,937 actual Source sanitizer/error vectors and 2,136 actions/eight policy scenarios locally. Actual direct production log comparisons pass334 cases/15 groups, coordinator diagnostics575 cases, and routing583 cases/31 states per store on native PGlite/private/external PostgreSQL. This is not the complete operational logging/metrics product.",
       "remaining": [
-        "Reconcile additional production consumers, including remaining HTTP/Pino, database, bridge and other diagnostics against current Source. HTTP completion and console presentation now have scoped local qualification.",
+        "Reconcile remaining HTTP/Pino, account-usage, bridge and other production diagnostics. Database lifecycle/health now has scoped local qualification, with the distinct role-wide outage comparison still open.",
         "Complete current supported-platform, packaged artifact and full replacement acceptance."
       ],
       "operationalHttpQualification": {
@@ -15161,6 +15167,26 @@
           "bytes": 93874608,
           "sha256": "7b729e08e5fe35f55f487fe8c14137472a1e7d7d1cad07c596b1dbbf1822af45",
           "productionEntrypointPeerRuns": 16,
+          "actualBlockedArchiveProfileLeaseCase": true
+        }
+      },
+      "databaseLifecycleQualification": {
+        "sourceBaseline": "61a578a6959d91379ae1265fa51f49befe9c81b8",
+        "platform": "darwin-arm64",
+        "productionEntrypointPeerRuns": 30,
+        "storageModes": ["pglite", "bundled-postgres", "postgres"],
+        "actualRejectedStartupConnectionsBeforeRecoveryPerPeer": 6,
+        "successfulAttempt": 7,
+        "actualRejectedNotificationConnectionsBeforeRecoveryPerPeer": 6,
+        "actualExhaustedAttemptsPerPeer": 30,
+        "slowActualQueryAcknowledgementsPerPeer": 2,
+        "lostActualQueryAcknowledgementsPerPeer": 6,
+        "retainedKeyCases": 6,
+        "scope": "Actual production entrypoints, existing SQL journal/local identity, PostgreSQL subscriptions and serving initialization retry/cleanup, retained key bytes/errors/permissions/bypass, successful slow probes and real post-execution TCP loss with recovery. Distinct full-role outage remains open: current Node/driver later requests can remain pending beyond60seconds; raw direct/proxy observations retained. Not full database fault, product, shared-instance, platform/package/performance or replacement acceptance.",
+        "optimizedArtifact": {
+          "bytes": 93968608,
+          "sha256": "1229cf8b37e1e00c759734460f1d6b67c43df80a7038e7a9593a9366b9f01604",
+          "productionEntrypointPeerRuns": 58,
           "actualBlockedArchiveProfileLeaseCase": true
         }
       }

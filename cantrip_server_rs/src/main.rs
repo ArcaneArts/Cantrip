@@ -423,30 +423,40 @@ async fn run(
     } else {
         None
     };
-    let mut managed = None;
-    let database = match config.database_mode {
-        DatabaseMode::Pglite => {
-            // Use the existing root name. The native engine must report actual
-            // format errors; it must never select a fresh database as fallback.
-            Database::pglite(&config.data_directory.join("server-db")).await?
-        }
-        DatabaseMode::Postgres => {
-            let url = config
-                .database_url
-                .as_deref()
-                .context("postgres mode requires DATABASE_URL or --database-url")?;
-            Database::postgres_url(url).await?
-        }
-        DatabaseMode::BundledPostgres => {
-            let bin = config.postgres_bin_directory.as_ref().context("bundled-postgres mode requires --postgres-bin-dir until runtime packaging is integrated")?;
-            let runtime =
-                ManagedPostgres::start(&config.data_directory.join("postgres"), bin).await?;
-            let database = Database::postgres(runtime.configuration()).await?;
-            managed = Some(runtime);
-            database
-        }
+    let mut connected = if arguments.migrate_only {
+        None
+    } else {
+        Some(cantrip_server::database::startup::connect(&config).await?)
     };
-    let database = Arc::new(database);
+    let mut managed = connected
+        .as_mut()
+        .and_then(|connection| connection.managed.take());
+    let database = if let Some(connection) = &connected {
+        connection.database.clone()
+    } else {
+        Arc::new(match config.database_mode {
+            DatabaseMode::Pglite => {
+                // Use the existing root name. The native engine must report actual
+                // format errors; it must never select a fresh database as fallback.
+                Database::pglite(&config.data_directory.join("server-db")).await?
+            }
+            DatabaseMode::Postgres => {
+                let url = config
+                    .database_url
+                    .as_deref()
+                    .context("postgres mode requires DATABASE_URL or --database-url")?;
+                Database::postgres_url(url).await?
+            }
+            DatabaseMode::BundledPostgres => {
+                let bin = config.postgres_bin_directory.as_ref().context("bundled-postgres mode requires --postgres-bin-dir until runtime packaging is integrated")?;
+                let runtime =
+                    ManagedPostgres::start(&config.data_directory.join("postgres"), bin).await?;
+                let database = Database::postgres(runtime.configuration()).await?;
+                managed = Some(runtime);
+                database
+            }
+        })
+    };
     let mut profile_database = None;
     let prepared: Result<()> = async {
         if let Some(file) = export_profile {
@@ -478,7 +488,9 @@ async fn run(
         if let Some(stage) = &profile_stage {
             profile_database = Some(stage.restore(&database).await?);
         }
-        migrate(&database).await?;
+        if connected.is_none() {
+            migrate(&database).await?;
+        }
         if arguments.migrate_only && !restoring {
             AuthRepository::new(database.clone()).local_user().await?;
         }
@@ -528,8 +540,11 @@ async fn run(
         } else {
             None
         };
-        let service = match AuthService::with_coordination(
-            database.clone(),
+        let service = match AuthService::with_prepared_database(
+            connected
+                .take()
+                .context("prepared serving database")?
+                .prepared,
             config.clone(),
             coordination.clone(),
         )
