@@ -891,6 +891,15 @@ export const workerLogContractRoots = [
   "workerLogStreamServerMessageSchema",
 ];
 
+export const projectInsightContractRoots = [
+  "projectRepositoryStatsSchema",
+  "projectTokenUsageSchema",
+  "protectedScriptCommandListSchema",
+  "projectTaskWorkloadOpaqueSchema",
+  "repositoryOperationOpaqueSchema",
+  "scriptCommandOperationIdSchema",
+];
+
 // Keep independently added roots self-contained. Numeric graph references must
 // not depend on the size of the base graph after an unrelated branch merges.
 export const runMcpContractRoots = [
@@ -926,6 +935,9 @@ export const cliContractRoots = [
 // Compatibility oracles use this registry, never the generated native manifest.
 export function sourceContractSchema(name) {
   return (
+    (name === "scriptCommandOperationIdSchema"
+      ? protocol.endpointContentContextSchema.shape.operationId
+      : undefined) ??
     (name === "computerUseAuthorityChangeSchema"
       ? computerUsePreview.cuaPreviewAuthoritySchema
           .pick({ ownerId: true })
@@ -956,6 +968,7 @@ export function sourceContractSchema(name) {
 }
 
 const refinements = new Map([
+  [protocol.projectTaskWorkloadOpaqueItemSchema, "task-workload-chat-binding"],
   [protocol.cantripVersionSchema, "worker-operation-version"],
   [
     protocol.managedWebRuntimeActionRequestSchema,
@@ -1809,6 +1822,20 @@ if (
   const workerLogsDestination = new URL(
     "../../cantrip_server_rs/contracts/worker-logs.json",
     import.meta.url,
+  );
+  const projectInsightsDestination = new URL(
+    "../../cantrip_server_rs/contracts/project-insights.json",
+    import.meta.url,
+  );
+  await writeFile(
+    projectInsightsDestination,
+    await format(
+      JSON.stringify(buildContractManifest(projectInsightContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(projectInsightsDestination))),
+        filepath: fileURLToPath(projectInsightsDestination),
+      },
+    ),
   );
   await writeFile(
     workerLogsDestination,

@@ -5,8 +5,9 @@ historical coverage-ledger omissions. Four lifecycle/preference endpoints now
 pass [project-administration qualification](RUST_SERVER_PROJECT_ADMINISTRATION.md),
 four more pass [Chat-control qualification](RUST_SERVER_CHAT_CONTROLS.md),
 two pass [operational qualification](RUST_SERVER_OPERATIONAL_STATUS.md), and two
-pass [worker-log qualification](RUST_SERVER_WORKER_LOGS.md);
-the current live probe retains 21 active fallbacks. Node remains the default
+pass [worker-log qualification](RUST_SERVER_WORKER_LOGS.md), and five pass
+[project-insight qualification](RUST_SERVER_PROJECT_INSIGHTS.md);
+the current live probe retains 16 active fallbacks. Node remains the default
 server and the full replacement is incomplete.
 
 ## Executed discovery
@@ -96,9 +97,10 @@ Qualified native executable SHA-256:
 That milestone's repeat production inventory run completed all 1,168 requests
 with both process exits zero and 33 active fallbacks. The subsequent native
 project-administration implementation resolves four, Chat controls resolve
-four more, operational health/metrics resolve two, and worker logs resolve two.
+four more, operational health/metrics resolve two, worker logs resolve two,
+and project/terminal insights resolve five.
 The current probe completes the same 1,168 requests with clean exits and exactly
-21 active fallbacks below.
+16 active fallbacks below.
 The inspection command therefore exits
 one, as intended for an unfinished
 replacement. Earlier discovery and fixture failures are retained separately.
@@ -117,12 +119,11 @@ The remaining active families require complete behavior, including their
 authorization, persistence, worker commands, notifications and recovery. An
 error-body shim or a registered path alone does not satisfy these requirements.
 
-| Family                                | Routes | Missing public behavior                                                      |
-| ------------------------------------- | -----: | ---------------------------------------------------------------------------- |
-| Computer use                          |      4 | Operation, preview open/stop and internal agent authority                    |
-| Project/terminal context and insights |      5 | Repository stats, token usage, Task workload and script-command context      |
-| Remote desktops and surfaces          |     12 | Project catalogs/fleet, creation, reading/updating, connection and lifecycle |
-| Total                                 |     21 |                                                                              |
+| Family                       | Routes | Missing public behavior                                                      |
+| ---------------------------- | -----: | ---------------------------------------------------------------------------- |
+| Computer use                 |      4 | Operation, preview open/stop and internal agent authority                    |
+| Remote desktops and surfaces |     12 | Project catalogs/fleet, creation, reading/updating, connection and lifecycle |
+| Total                        |     16 |                                                                              |
 
 Existing Rust repositories and worker transports can support parts of these
 families, but their corresponding production HTTP behavior still needs to be

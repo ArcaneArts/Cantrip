@@ -83,6 +83,7 @@ mod project_alerts;
 mod project_automations;
 mod project_exports;
 mod project_goal_observations;
+mod project_insights;
 mod project_shares;
 mod project_surfaces;
 mod project_workspaces;
@@ -229,6 +230,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(policies::routes())
         .merge(projects::routes())
         .merge(project_administration::routes())
+        .merge(project_insights::routes())
         .merge(removed_repository::routes())
         .merge(folders::routes())
         .merge(chat_catalogs::routes())
