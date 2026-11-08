@@ -103,17 +103,59 @@ audits pass. The aggregate check stops at unchanged Node budgets 1,539/1,500 and
 2,336/1,999; the separate repository budget is 2,284/2,000. Actual baseline
 file/tool byte comparisons are retained; downstream aggregate checks were not run.
 
+## Role-wide refusal and recovery
+
+The subsequent `--database-health-outage` comparison uses actual production
+entrypoints and external PostgreSQL under none, password and accounts
+authentication. The private database role loses connection admission; its
+existing backend PIDs are terminated and observed gone. Six readiness calls run
+concurrently. After an actual backend FATAL 53300, admission stays revoked for
+another 500 ms. Every response completed during refusal must be 503/unavailable,
+and no health SELECT may complete successfully during that phase. Then role
+access is restored without waiting for all HTTP callers to settle. Callers must
+settle within their deadline; a successful response requires an actual successful
+query witness after restoration. A fresh readiness request must return 200.
+
+Each peer first accepts a settings write. After recovery it must retain that
+write, server identity, user and session expiry, with the original cookie and
+CSRF token still usable. Another accepted write proves resumed operation. The
+authenticated cases log in or register through public HTTP; they do not seed
+sessions through SQL or log in again after recovery. Anonymous mode explicitly
+retains its null user and CSRF state.
+
+All 32 production peers pass locally on macOS arm64 using the version-aligned
+optimized executable (93,968,608 bytes, SHA-256
+`803772b1d87a825c121c50a5838afa371891e5d769680e51f5886002dca62a84`).
+Both implementations report version 1.1.2767. The six external-PostgreSQL outage
+peers return all 36 refusal probes as 503, recover to 200, retain accepted state
+and sessions, accept post-recovery writes and exit zero. The complete run also
+retains the all-three-store production baseline, twelve held slow-probe cases,
+36 post-execution TCP-loss failures, parser/console/archive comparisons and key
+validation. Its 22 normal peers exit zero; ten deliberate invalid-startup peers
+exit one without forced termination.
+
+The deterministic pre-outage health records still compare exactly after the
+existing timestamp/cursor/duration normalization. An actual HTTP completion
+marker identifies that boundary. All subsequent outage diagnostics are retained
+separately; their rate-summary counts are not asserted identical across different
+driver reconnection schedules. Original sequential-probe timeouts, direct/proxy
+driver observations, the nullable anonymous-session oracle error and an earlier
+artifact-version mismatch remain retained. The version mismatch was resolved
+by rebuilding, rather than discarding version fields. No native pool policy or
+production server behavior changes in this qualification.
+
+```sh
+CANTRIP_RUST_SERVER_BINARY=/absolute/path/to/current/cantrip-server \
+  node --import tsx scripts/server-rust/log-runtime-server-compatibility.mjs \
+  --http-records --database-records --database-health-outage \
+  --report /absolute/path/to/database-outage.json
+```
+
 ## Remaining acceptance
 
-The separate `--database-health-outage` comparison remains open. After all role
-connections are terminated and further connections are refused, later Node
-probes can remain pending beyond sixty seconds while access stays revoked;
-Rust returns actual connection failures sooner. A raw postgres-js experiment
-reproduces later pending requests with and without the proxy. Shorter initial
-experiments also needed forced Node termination; the later EOF-preserving proxy
-run exits zero after access is restored. Original failures, exact earlier helper
-inputs and raw driver observations are retained. This is not a passing broad
-outage comparison, and no native pool behavior is changed to imitate it here.
+This bounded role-admission fault does not prove long outages, actual postmaster
+crashes/restarts, native PGlite failure recovery, transaction or dispatch
+interruption, every reconnect schedule, or shared-instance product recovery.
 
 Current product/fault/shared-instance, supported-platform/artifact, historical
 upgrade/rollback and performance acceptance remain required. Additional

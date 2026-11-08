@@ -4,7 +4,7 @@ import net from "node:net";
 import { once } from "node:events";
 import assert from "node:assert/strict";
 
-export async function databaseHealthProxy(upstream, { onError } = {}) {
+export async function databaseHealthProxy(upstream, { onError, onProbe } = {}) {
   const target = new URL(upstream),
     sockets = new Set();
   let armed, held;
@@ -78,6 +78,13 @@ export async function databaseHealthProxy(upstream, { onError } = {}) {
           });
         }
         const sql = frame[0] === 67 ? executions.shift() : undefined;
+        if (frame[0] === 67 && /^select\s+1\s*;?\s*$/i.test(sql ?? ""))
+          onProbe?.({
+            actualSql: sql,
+            actualCommandComplete: frame.subarray(5).toString(),
+            actualBackend: true,
+            at: Date.now(),
+          });
         if (
           armed &&
           frame[0] === 67 &&
