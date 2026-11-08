@@ -88,6 +88,7 @@ pub struct AuthService {
     pub tunnel_runtime: Arc<crate::tunnels::runtime::Runtime>,
     pub project_shares: Arc<crate::project_shares::Service>,
     pub computer_use_revocations: Arc<crate::computer_use_revocations::Service>,
+    pub computer_use: Arc<crate::computer_use::Service>,
     pub transport_metrics: Arc<crate::operations::TransportMetrics>,
     pub operational_metrics: Arc<crate::operations::metrics::OperationalMetrics>,
     pub model_routing: Arc<crate::chats::routing::ModelRouting>,
@@ -529,6 +530,12 @@ impl AuthService {
             server_id.clone(),
         )
         .await?;
+        let computer_use = crate::computer_use::Service::new(
+            repository.database.clone(),
+            chat_mutations.clone(),
+            worker_maintenance.clone(),
+            workers.bridge.clone(),
+        );
         Ok(Arc::new(Self {
             coordination,
             config,
@@ -560,6 +567,7 @@ impl AuthService {
             tunnel_runtime,
             project_shares,
             computer_use_revocations,
+            computer_use,
             transport_metrics: Arc::new(Default::default()),
             operational_metrics,
             model_routing,

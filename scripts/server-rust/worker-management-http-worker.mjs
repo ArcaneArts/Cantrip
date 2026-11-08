@@ -59,11 +59,11 @@ export async function managementWorker({
     connected = false;
     connection = new WorkerConnection(
       config,
-      async (command) => {
+      async (command, emit) => {
         if (command.type === "worktree.observation.configure")
           return { accepted: true, paths: [] };
         if (Object.hasOwn(handlers, command.type))
-          return handlers[command.type](command);
+          return handlers[command.type](command, emit);
         if (command.type !== "worker.restart") {
           state.background.push(command);
           throw new Error(

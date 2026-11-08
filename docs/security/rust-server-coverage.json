@@ -8015,65 +8015,74 @@
       {
         "method": "POST",
         "path": "/api/chats/:chatId/computer-use/operation",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_COMPUTER_USE.md",
+          "scripts/server-rust/computer-use-http-compatibility.mjs",
+          "scripts/server-rust/computer-use-authority-oracle.mjs",
+          "scripts/server-rust/computer-use-contract-oracle.mjs",
+          "scripts/server-rust/actual-computer-use-client.mjs"
         ],
-        "observedBoundary": {
+        "remaining": [
+          "Complete native capture/input and native-agent product qualification, supported platform/package and performance acceptance. This route does not independently establish complete server replacement."
+        ],
+        "implementation": "cantrip_server_rs/src/http/computer_use/operation.rs",
+        "historicalDiscoveryBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
           "sourceStatus": 400,
           "rustStatus": 404,
           "rustResponse": "generic route-not-found"
-        },
-        "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+        }
       },
       {
         "method": "POST",
         "path": "/api/chats/:chatId/computer-use/preview",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_COMPUTER_USE.md",
+          "scripts/server-rust/computer-use-http-compatibility.mjs",
+          "scripts/server-rust/computer-use-authority-oracle.mjs",
+          "scripts/server-rust/computer-use-contract-oracle.mjs",
+          "scripts/server-rust/actual-computer-use-client.mjs"
         ],
-        "observedBoundary": {
+        "remaining": [
+          "Complete native capture/input and native-agent product qualification, supported platform/package and performance acceptance. This route does not independently establish complete server replacement."
+        ],
+        "implementation": "cantrip_server_rs/src/http/computer_use/preview.rs",
+        "historicalDiscoveryBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
           "sourceStatus": 404,
           "rustStatus": 404,
           "rustResponse": "generic route-not-found"
-        },
-        "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+        }
       },
       {
         "method": "POST",
         "path": "/api/chats/:chatId/computer-use/preview/stop",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_COMPUTER_USE.md",
+          "scripts/server-rust/computer-use-http-compatibility.mjs",
+          "scripts/server-rust/computer-use-authority-oracle.mjs",
+          "scripts/server-rust/computer-use-contract-oracle.mjs",
+          "scripts/server-rust/actual-computer-use-client.mjs"
         ],
-        "observedBoundary": {
+        "remaining": [
+          "Complete native capture/input and native-agent product qualification, supported platform/package and performance acceptance. This route does not independently establish complete server replacement."
+        ],
+        "implementation": "cantrip_server_rs/src/http/computer_use/preview.rs",
+        "historicalDiscoveryBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
           "sourceStatus": 400,
           "rustStatus": 404,
           "rustResponse": "generic route-not-found"
-        },
-        "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+        }
       },
       {
         "method": "GET",
@@ -8217,23 +8226,26 @@
       {
         "method": "POST",
         "path": "/api/internal/computer-use/authority",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_COMPUTER_USE.md",
+          "scripts/server-rust/computer-use-http-compatibility.mjs",
+          "scripts/server-rust/computer-use-authority-oracle.mjs",
+          "scripts/server-rust/computer-use-contract-oracle.mjs",
+          "scripts/server-rust/actual-computer-use-client.mjs"
         ],
-        "observedBoundary": {
+        "remaining": [
+          "Complete native capture/input and native-agent product qualification, supported platform/package and performance acceptance. This route does not independently establish complete server replacement."
+        ],
+        "implementation": "cantrip_server_rs/src/http/computer_use_agent.rs",
+        "historicalDiscoveryBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
           "sourceStatus": 400,
           "rustStatus": 404,
           "rustResponse": "generic route-not-found"
-        },
-        "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+        }
       },
       {
         "method": "DELETE",
@@ -18934,28 +18946,39 @@
         "All three local authentication modes across all three stores pass paired status/body/header/HEAD and audit checks. The hosted external PostgreSQL account profile proves per-route budget exemption/exhaustion and actual Retry-After bounds."
       ],
       "remaining": [
-        "Implement the 16 remaining active HTTP endpoints: remote desktops/surfaces12 and computer use4. Project/terminal insights, worker logs, operational health, project administration and Chat controls have separate local qualification.",
         "Reconcile other category rows/background services and qualify complete current behavior, supported platforms/packages, migrations/rollback and performance.",
         "Default Rust cutover and production Node-server removal remain required."
       ],
       "localChecks": {
         "strictAllTargetClippy": true,
-        "rustLibraryTestsPassed": 63,
+        "rustLibraryTestsPassed": 76,
         "standardRepositoryCheck": "Stops on unchanged Node source line budgets 1532/1500 and2336/1999; downstream aggregate stages unrun.",
-        "broadHttpInventoryExitCode": 1,
-        "broadHttpInventoryReason": "The 33 active missing-route differences remain required implementation work."
+        "broadHttpInventoryExitCode": 0,
+        "broadHttpInventoryReason": "Zero generic route fallback differences; successful product/domain and complete replacement acceptance remain separate."
       },
       "currentQualification": {
-        "sourceBaseline": "c11b66ceaf1e2248ff4a3d6226822771cd670a32",
+        "sourceBaseline": "46e0bd2789bb64a2c1ff11900161c5e8e7100911",
         "requestsPerPeer": 584,
         "requestErrors": 0,
         "cleanServerExits": 2,
-        "activeFallbacksBeforeChatControls": 29,
-        "remainingActiveFallbackDifferences": 16,
-        "inspectionExitCode": 1,
-        "rustExecutableSha256": "ec9f126f8551ae1188fc44f3bb377bcc8554ea64da6a37e604ea9457966dc934",
-        "scope": "Current production empty-profile HTTP probe; not full successful-operation or replacement acceptance."
-      }
+        "remainingActiveFallbackDifferences": 0,
+        "inspectionExitCode": 0,
+        "rustExecutableSha256": "ef856f33477671eb4adabe05690383a2bbe601a34bd61b8879095a4f19b44d80",
+        "scope": "Current production empty-profile HTTP probe. Zero generic route fallback differences does not establish successful-operation parity, background-service completeness or replacement acceptance."
+      },
+      "historicalQualifications": [
+        {
+          "sourceBaseline": "c11b66ceaf1e2248ff4a3d6226822771cd670a32",
+          "requestsPerPeer": 584,
+          "requestErrors": 0,
+          "cleanServerExits": 2,
+          "activeFallbacksBeforeChatControls": 29,
+          "remainingActiveFallbackDifferences": 16,
+          "inspectionExitCode": 1,
+          "rustExecutableSha256": "ec9f126f8551ae1188fc44f3bb377bcc8554ea64da6a37e604ea9457966dc934",
+          "scope": "Current production empty-profile HTTP probe; not full successful-operation or replacement acceptance."
+        }
+      ]
     },
     "projectAdministration": {
       "status": "implemented-pending-platform-acceptance",
@@ -19081,6 +19104,43 @@
       "remaining": [
         "Current supported-platform, packaged desktop/container and complete replacement acceptance remain required.",
         "Full Task plan/message execution acceptance, existing-data upgrade and post-write rollback, performance and integrated domain/background reconciliation remain whole-replacement requirements. Node remains the default server."
+      ]
+    },
+    "computerUseHttp": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/http/computer_use",
+        "cantrip_server_rs/src/http/computer_use_agent.rs",
+        "cantrip_server_rs/src/computer_use"
+      ],
+      "evidence": [
+        "docs/RUST_SERVER_COMPUTER_USE.md",
+        "scripts/server-rust/computer-use-http-compatibility.mjs",
+        "scripts/server-rust/computer-use-authority-oracle.mjs",
+        "scripts/server-rust/computer-use-contract-oracle.mjs",
+        "scripts/server-rust/actual-computer-use-client.mjs"
+      ],
+      "localQualification": {
+        "platform": "darwin-arm64",
+        "storageAuthPairs": 9,
+        "pairedHttpObservations": 603,
+        "pairedCommandStateCases": 162,
+        "cleanServerExits": 18,
+        "productionLimitHttpPerPeer": 89,
+        "productionLimitCasesPerPeer": 19,
+        "fullWorkerProductCells": 10,
+        "fullWorkerProductSteps": 140,
+        "fullWorkerCleanServerExits": 28,
+        "fullWorkerCleanWorkerStops": 30,
+        "sharedPairs": ["node/node", "node/rust", "rust/node", "rust/rust"],
+        "sourceAuthorityCases": 1600,
+        "sourceSchemaComparisons": 9300,
+        "rustLibraryTests": 76
+      },
+      "scope": "Controlled replies qualify HTTP/durable contracts. Full browser/unchanged worker qualifies sealed native capabilities, declined protected approval, feature revocation, retained Stop and restart. Native physical input/capture and native-agent execution are not proven.",
+      "remaining": [
+        "Native physical capture/input and native-agent product acceptance.",
+        "Representative repeated performance, supported-platform/package and complete replacement acceptance."
       ]
     }
   },

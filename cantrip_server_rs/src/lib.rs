@@ -4,6 +4,7 @@ pub mod browsers;
 pub mod cantrip_os;
 pub mod chats;
 pub mod cli;
+pub mod computer_use;
 pub mod computer_use_revocations;
 pub mod config;
 pub mod coordination;

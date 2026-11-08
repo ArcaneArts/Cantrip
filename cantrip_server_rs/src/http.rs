@@ -53,6 +53,8 @@ mod chat_sync;
 mod cli;
 mod cli_commands;
 mod cli_runs;
+mod computer_use;
+mod computer_use_agent;
 mod conversations;
 mod direct_attachments;
 mod encryption;
@@ -264,6 +266,8 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(native_handoffs::routes())
         .merge(native_events::routes())
         .merge(native_admission::routes())
+        .merge(computer_use_agent::routes())
+        .merge(computer_use::routes())
         .merge(native_history::routes())
         .merge(native_model_inventory::routes())
         .merge(native_coordination::routes())

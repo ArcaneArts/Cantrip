@@ -375,6 +375,7 @@ async fn run(
             .synchronize_inference(&owner, &worker),
     );
     service.execution.worker_connected(&worker);
+    service.computer_use.subscribe(&worker);
     crate::project_alerts::worker_connected(
         service.clone(),
         owner.clone(),

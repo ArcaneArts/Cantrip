@@ -10,6 +10,10 @@ import {
 } from "./actual-remote-surfaces-client.mjs";
 import { actualProjectInsights } from "./actual-project-insights-client.mjs";
 import {
+  prepareActualComputerUse,
+  actualComputerUse,
+} from "./actual-computer-use-client.mjs";
+import {
   actualOperationalStatus,
   operationalProductToken,
 } from "./actual-operational-status-client.mjs";
@@ -160,6 +164,7 @@ const fullServerLogs =
   process.argv.includes("--operational-status") ||
   process.argv.includes("--worker-logs") ||
   process.argv.includes("--remote-surfaces") ||
+  process.argv.includes("--computer-use") ||
   process.argv.includes("--project-administration") ||
   process.argv.includes("--chat-controls");
 const surfaceFixtureRequests = [];
@@ -658,6 +663,7 @@ async function flow(
     // Subsequent document/browser flows use the worker through the public API.
     if (
       (needsRemoteSurface ||
+        process.argv.includes("--computer-use") ||
         process.argv.includes("--project-shares") ||
         process.argv.includes("--file-documents") ||
         process.argv.includes("--workspaces") ||
@@ -728,6 +734,14 @@ async function flow(
         phase: "connected",
       });
     // Capture after optional resource creation commits its project updates.
+    const computerUse = process.argv.includes("--computer-use")
+      ? await prepareActualComputerUse({
+          page,
+          projectId: created.id,
+          workerId,
+          result,
+        })
+      : undefined;
     const legacySurface = process.argv.includes("--remote-surfaces")
       ? await prepareActualRemoteSurface({
           page,
@@ -760,6 +774,7 @@ async function flow(
       missingPath,
       dataDirectory,
       ...(legacySurface ? [legacySurface.token, legacySurface.url] : []),
+      ...(computerUse ? [computerUse.title] : []),
       ...(surface
         ? [surface.token, surface.url, "Private WorkerLink browser"]
         : []),
@@ -798,6 +813,7 @@ async function flow(
       : undefined;
     await page.evaluate(() => window.folderLive.stop());
     const retainedPort =
+      computerUse ||
       surface ||
       legacySurface ||
       tunnel ||
@@ -893,6 +909,7 @@ async function flow(
     if (
       surface ||
       legacySurface ||
+      computerUse ||
       tunnel ||
       projectShares ||
       fileDocuments ||
@@ -900,6 +917,13 @@ async function flow(
       process.argv.includes("--replicas")
     ) {
       await startWorker();
+      if (computerUse)
+        await actualComputerUse({
+          page,
+          prepared: computerUse,
+          result,
+          phase: "retained",
+        });
       if (projectSurfaces)
         await retainedWorkerProjectSurfaces({
           page,

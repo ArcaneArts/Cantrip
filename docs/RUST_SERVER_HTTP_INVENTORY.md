@@ -7,8 +7,9 @@ four more pass [Chat-control qualification](RUST_SERVER_CHAT_CONTROLS.md),
 two pass [operational qualification](RUST_SERVER_OPERATIONAL_STATUS.md), and two
 pass [worker-log qualification](RUST_SERVER_WORKER_LOGS.md), and five pass
 [project-insight qualification](RUST_SERVER_PROJECT_INSIGHTS.md), and twelve pass
-[remote-surface qualification](RUST_SERVER_REMOTE_SURFACES.md);
-the current live probe retains four active fallbacks. Node remains the default
+[remote-surface qualification](RUST_SERVER_REMOTE_SURFACES.md), and four pass
+[computer-use qualification](RUST_SERVER_COMPUTER_USE.md);
+the current live probe retains zero active fallbacks. Node remains the default
 server and the full replacement is incomplete.
 
 ## Executed discovery
@@ -99,35 +100,31 @@ That milestone's repeat production inventory run completed all 1,168 requests
 with both process exits zero and 33 active fallbacks. The subsequent native
 project-administration implementation resolves four, Chat controls resolve
 four more, operational health/metrics resolve two, worker logs resolve two,
-project/terminal insights resolve five, and remote desktops/surfaces resolve twelve.
-The current probe completes the same 1,168 requests with clean exits and exactly
-four active fallbacks below.
-The inspection command therefore exits
-one, as intended for an unfinished
-replacement. Earlier discovery and fixture failures are retained separately.
+project/terminal insights resolve five, remote desktops/surfaces resolve twelve,
+and computer use resolves four.
+The current probe completes the same 1,168 requests with clean exits and zero
+generic fallback differences. The inspection command exits zero. Its exact
+production executable SHA-256 is
+`ef856f33477671eb4adabe05690383a2bbe601a34bd61b8879095a4f19b44d80`.
+Earlier discovery and fixture failures are retained separately. This result
+does not establish complete response parity or successful product behavior.
 
 Fresh workspace/Node builds, contract comparisons, source/boundary/workflow
-audits, strict all-target Clippy, all 63 Rust library tests and formatting/syntax
+audits, strict all-target Clippy, all 76 Rust library tests and formatting/syntax
 checks pass locally.
 The standard `pnpm check` still stops at unchanged Node source limits:
 `build-app.ts` 1,532/1,500 and `chat-turn-runtime.ts` 2,336/1,999. Downstream
 aggregate checks did not run. This result does not establish platform/package,
 complete-domain, performance or replacement acceptance.
 
-## Active route gaps
+## Remaining acceptance
 
-The remaining active families require complete behavior, including their
-authorization, persistence, worker commands, notifications and recovery. An
-error-body shim or a registered path alone does not satisfy these requirements.
+The probe no longer identifies active generic fallback gaps. Every family still
+requires complete behavior, including authorization, persistence, worker commands,
+notifications and recovery. A registered path or an invalid-input response alone
+does not satisfy those requirements. The last four computer-use rows now record
+their implementation and scoped qualification rather than an unported status.
 
-| Family       | Routes | Missing public behavior                                   |
-| ------------ | -----: | --------------------------------------------------------- |
-| Computer use |      4 | Operation, preview open/stop and internal agent authority |
-| Total        |      4 |                                                           |
-
-Existing Rust repositories and worker transports can support parts of these
-families, but their corresponding production HTTP behavior still needs to be
-ported and qualified. The ledger records these routes explicitly as unported.
 Other category rows and background-service limitations still require
 reconciliation. Final platform/artifact, migration/rollback and performance
 acceptance, default Rust selection and production Node-server removal remain
