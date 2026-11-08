@@ -230,9 +230,9 @@ impl WorkerService {
         )
     }
     pub fn pre_close(&self) {
-        // Close socket ingress before waiting for active HTTP requests. Pending
-        // commands retain their normal disconnect/reconnect grace, as in the
-        // reference WebSocket plugin's preClose hook.
+        // Queue close behind admitted output, then stop new handshakes. Sending
+        // a close frame alone does not interrupt an existing bridge generation.
+        self.bridge.local().pre_close();
         self.shutdown.send_replace(true);
     }
     pub async fn close(&self) -> Result<()> {

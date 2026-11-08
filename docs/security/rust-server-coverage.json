@@ -15097,7 +15097,14 @@
         "docs/RUST_SERVER_REQUEST_TARGET.md",
         "scripts/server-rust/http-log-policy-oracle.mjs",
         "scripts/server-rust/http-log-policy-production.mjs",
-        "scripts/server-rust/http-target-policy-cases.mjs"
+        "scripts/server-rust/http-target-policy-cases.mjs",
+        "docs/RUST_SERVER_WORKER_BRIDGE.md",
+        "cantrip_server_rs/tests/worker_bridge_diagnostics.rs",
+        "cantrip_server_rs/src/http/worker_socket_output_tests.rs",
+        "scripts/server-rust/worker-bridge-diagnostics-oracle.mjs",
+        "scripts/server-rust/worker-bridge-runtime-cases.mjs",
+        "scripts/server-rust/worker-close-handshake-compatibility.mjs",
+        "scripts/server-rust/worker-authentication-close-cases.mjs"
       ],
       "scope": "Native shared JSON operational log emission, UTF-16 text/key semantics, secret/context/error sanitization, sampled emission and bounded repeated-event windows match 65,937 actual Source sanitizer/error vectors and 2,136 actions/eight policy scenarios locally. Actual direct production log comparisons pass334 cases/15 groups, coordinator diagnostics575 cases, and routing583 cases/31 states per store on native PGlite/private/external PostgreSQL. This is not the complete operational logging/metrics product.",
       "remaining": [
@@ -15276,6 +15283,35 @@
           "versionSource": "Actual paired production HTTP /version"
         },
         "upstreamRouterTestsDefaultFeatureDisabled": 44
+      },
+      "workerBridgeDiagnosticsQualification": {
+        "status": "implemented-with-scoped-local-qualification",
+        "sourceBaseline": "94f45ddb14e99f6702c828f2ffa12e1413477d29",
+        "platform": "darwin-arm64",
+        "referenceScenarios": 24,
+        "referenceSnapshots": 233,
+        "focusedIntegrationTests": 16,
+        "libraryTests": 80,
+        "productionEntrypointPeerRuns": 40,
+        "normalStorageAuthenticationPairs": 9,
+        "debugArtifact": {
+          "bytes": 179601040,
+          "sha256": "7f469d28e216a5bb432d51eb4e2403cac97c69a711ca27cbcab084ff2db49f19"
+        },
+        "scope": "Actual Source/native full and minimized local-bridge records, exact encoded packets after validated UUID aliasing, counters/callbacks/outcomes. Actual production processes use unchanged worker transport with controlled endpoint effects. Exact lifecycle comparison observes peer disconnect before signal; separate connected-shutdown wire cases exercise late response, held/early/missing ACK, actual30s deadline and15s grace. Real credential-row-lock shutdown retains TCP until ACK and commits original usage exactly once after release. Unix TCP test retains two4MiB frames and reservations through actual backpressure before CLOSE. Rejected1008authentication also retains TCP until its actual close ACK; malformed-frame paths preserve bounded raw draining.",
+        "remaining": "Other production consumers and full worker resource/native-execution, current supported platforms/artifacts, complete product/fault/coordination, upgrade/post-write rollback, performance, Rust-default cutover and production Node-server removal remain required.",
+        "qualification": "docs/RUST_SERVER_WORKER_BRIDGE.md",
+        "currentAuthenticationDebugArtifact": {
+          "bytes": 179602464,
+          "sha256": "c8bc228eedee1b177ced26ee46cb760014b6025c895d8f5e3d3103d18edc484e"
+        },
+        "optimizedArtifact": {
+          "bytes": 94122160,
+          "sha256": "f688067f1d565b104fc9e4415cfbacfe82705a1b019011a11eb02080486f9ef7",
+          "actualVersion": "1.1.2770",
+          "productionEntrypointPeerRuns": 40,
+          "dedicatedWireAuthenticationServerRuns": 18
+        }
       }
     },
     "legacyPGliteConversion": {
@@ -15416,7 +15452,14 @@
         "scripts/server-rust/worker-ingress-compatibility.mjs",
         "cantrip_server_rs/tests/worker_command_contracts.rs",
         "cantrip_server_rs/tests/worker_request_admission.rs",
-        "scripts/server-rust/actual-worker-client.mjs"
+        "scripts/server-rust/actual-worker-client.mjs",
+        "docs/RUST_SERVER_WORKER_BRIDGE.md",
+        "cantrip_server_rs/tests/worker_bridge_diagnostics.rs",
+        "cantrip_server_rs/src/http/worker_socket_output_tests.rs",
+        "scripts/server-rust/worker-bridge-diagnostics-oracle.mjs",
+        "scripts/server-rust/worker-bridge-runtime-cases.mjs",
+        "scripts/server-rust/worker-close-handshake-compatibility.mjs",
+        "scripts/server-rust/worker-authentication-close-cases.mjs"
       ],
       "scope": "Native HTTP/1 upgrade (versions 8/13, ready v1/v2 and legacy), credential authentication, bounded pre-authentication buffering/capacity, close-frame transport cleanup, response correlation, local reconnect/deadline/event callback sequencing and credential delivery/revocation. Actual browser APIs and unchanged worker components exercise enrollment/rotation/persistence/reconnect/revocation. Full incoming text-envelope validation, ordered events and worker-scoped notification listeners now use the production bridge. Native notification prefixes execute in registration order; asynchronous completions are independent, and subscriptions survive reconnect. A loopback-only observer fixture compares actual HTTP/WS routing through unchanged worker transport components on all three stores locally. This does not implement the command resource domains.",
       "remaining": [
@@ -15424,7 +15467,36 @@
         "Domain event/notification persistence and consumers, binary relays and supported-platform acceptance for the new outgoing command changes. Incoming ingress PR 2286 passed all three platforms.",
         "Shared coordination, resource reconciliation and execution recovery hooks.",
         "Whole app UI and remaining full worker resource/execution flows across supported artifacts/platforms. The actual full worker Ollama catalog flow is locally verified on all three stores, including retained enrollment and process restart."
-      ]
+      ],
+      "workerBridgeDiagnosticsQualification": {
+        "status": "implemented-with-scoped-local-qualification",
+        "sourceBaseline": "94f45ddb14e99f6702c828f2ffa12e1413477d29",
+        "platform": "darwin-arm64",
+        "referenceScenarios": 24,
+        "referenceSnapshots": 233,
+        "focusedIntegrationTests": 16,
+        "libraryTests": 80,
+        "productionEntrypointPeerRuns": 40,
+        "normalStorageAuthenticationPairs": 9,
+        "debugArtifact": {
+          "bytes": 179601040,
+          "sha256": "7f469d28e216a5bb432d51eb4e2403cac97c69a711ca27cbcab084ff2db49f19"
+        },
+        "scope": "Actual Source/native full and minimized local-bridge records, exact encoded packets after validated UUID aliasing, counters/callbacks/outcomes. Actual production processes use unchanged worker transport with controlled endpoint effects. Exact lifecycle comparison observes peer disconnect before signal; separate connected-shutdown wire cases exercise late response, held/early/missing ACK, actual30s deadline and15s grace. Real credential-row-lock shutdown retains TCP until ACK and commits original usage exactly once after release. Unix TCP test retains two4MiB frames and reservations through actual backpressure before CLOSE. Rejected1008authentication also retains TCP until its actual close ACK; malformed-frame paths preserve bounded raw draining.",
+        "remaining": "Other production consumers and full worker resource/native-execution, current supported platforms/artifacts, complete product/fault/coordination, upgrade/post-write rollback, performance, Rust-default cutover and production Node-server removal remain required.",
+        "qualification": "docs/RUST_SERVER_WORKER_BRIDGE.md",
+        "currentAuthenticationDebugArtifact": {
+          "bytes": 179602464,
+          "sha256": "c8bc228eedee1b177ced26ee46cb760014b6025c895d8f5e3d3103d18edc484e"
+        },
+        "optimizedArtifact": {
+          "bytes": 94122160,
+          "sha256": "f688067f1d565b104fc9e4415cfbacfe82705a1b019011a11eb02080486f9ef7",
+          "actualVersion": "1.1.2770",
+          "productionEntrypointPeerRuns": 40,
+          "dedicatedWireAuthenticationServerRuns": 18
+        }
+      }
     },
     "appLiveTransport": {
       "status": "partial",

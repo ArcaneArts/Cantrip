@@ -131,3 +131,12 @@ Continue those comparisons before final product/fault/performance and supported
 artifact acceptance. Rust default selection and production Node-server removal
 remain required. Schema equality, source pairing and zero route fallbacks do not
 substitute for those requirements.
+
+The [worker bridge comparison](RUST_SERVER_WORKER_BRIDGE.md) qualifies native
+diagnostics, packet sequence/callback repairs and connected shutdown handshakes.
+All nine storage/authentication pairs pass on debug and optimized candidates;
+separate actual wire tests cover held/early/missing ACKs, late responses and
+blocked credential storage. Rejected authentication also retains its close ACK.
+The optimized candidate also passes eighteen dedicated wire/authentication
+server runs. Supported-artifact and complete replacement acceptance remain
+separate.

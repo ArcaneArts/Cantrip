@@ -52,6 +52,7 @@ impl WorkerBridge {
 }
 impl Peer {
     fn send_surface_frame(&self, frame: Frame) -> bool {
+        let _order = self.output_order.lock().unwrap();
         if !self.is_open() {
             return false;
         }

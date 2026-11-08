@@ -127,7 +127,7 @@ async function flow(fixture) {
     assert.deepEqual(offline, {
       ok: false,
       message: "Worker offline-fixture-worker is offline.",
-      code: null,
+      code: "worker-command-not-sent",
     });
     commandAdmission.offline = offline;
     const connect = () =>
