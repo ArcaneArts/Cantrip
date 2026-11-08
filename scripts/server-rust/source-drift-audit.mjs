@@ -17,6 +17,7 @@ import {
   workerOperationContractRoots,
   projectAdministrationContractRoots,
   chatControlContractRoots,
+  operationalStatusContractRoots,
 } from "./contracts.mjs";
 import { repositoryRoot } from "./build.mjs";
 
@@ -63,6 +64,7 @@ for (const [file, roots] of [
   ["worker-operations.json", workerOperationContractRoots],
   ["project-administration.json", projectAdministrationContractRoots],
   ["chat-control.json", chatControlContractRoots],
+  ["operational-status.json", operationalStatusContractRoots],
   ["endpoint-providers.json", null],
 ]) {
   const raw = await readFile(

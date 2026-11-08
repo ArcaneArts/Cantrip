@@ -88,6 +88,7 @@ pub struct AuthService {
     pub project_shares: Arc<crate::project_shares::Service>,
     pub computer_use_revocations: Arc<crate::computer_use_revocations::Service>,
     pub transport_metrics: Arc<crate::operations::TransportMetrics>,
+    pub operational_metrics: Arc<crate::operations::metrics::OperationalMetrics>,
     pub model_routing: Arc<crate::chats::routing::ModelRouting>,
     pub worktree_observations: Arc<crate::projects::observations::Service>,
     pub project_operations: Arc<crate::projects::coordinator::Coordinator>,
@@ -119,6 +120,8 @@ impl AuthService {
         config: Arc<ServerConfig>,
         coordination: Option<Arc<dyn crate::coordination::RelayCoordinator>>,
     ) -> Result<Arc<Self>> {
+        let operational_metrics =
+            Arc::new(crate::operations::metrics::OperationalMetrics::default());
         let repository = AuthRepository::new(database.clone());
         // The existing connector always provisions the retained local identity,
         // including on an account server; only its principal is mode-dependent.
@@ -556,6 +559,7 @@ impl AuthService {
             project_shares,
             computer_use_revocations,
             transport_metrics: Arc::new(Default::default()),
+            operational_metrics,
             model_routing,
             managed_console,
             chat_mutations,

@@ -4,6 +4,10 @@ import {
 } from "./actual-project-replicas.mjs";
 import { actualProjectWorktrees } from "./actual-project-worktrees.mjs";
 import { actualProjectAdministration } from "./actual-project-administration.mjs";
+import {
+  actualOperationalStatus,
+  operationalProductToken,
+} from "./actual-operational-status-client.mjs";
 import { actualTaskClient } from "./actual-task-client.mjs";
 import { actualProjectChatClient } from "./actual-project-chat-client.mjs";
 import { providerTestBoundary } from "./provider-test-boundary.mjs";
@@ -139,6 +143,7 @@ const liveTaskDiagnostics =
   process.argv.includes("--postgres-errors");
 const fullServerLogs =
   liveTaskDiagnostics ||
+  process.argv.includes("--operational-status") ||
   process.argv.includes("--project-administration") ||
   process.argv.includes("--chat-controls");
 const surfaceFixtureRequests = [];
@@ -156,6 +161,9 @@ const report = {
   scope:
     "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Optional --github-conversion uses the existing encrypted APIs and full worker to link matching public history in a fresh managed folder, preserve dirty bytes and identities, and restart without SQL seeding or command substitutions. Optional --tasks uses existing encrypted Task APIs, the full production worker and bundled Codex for direct execution, planning, native Goal completion, failure/retry, paused admissions and retained restart; only public model HTTP responses are controlled. Optional --project-chats exercises retained Agent creation and usage, real managed native preparation, encrypted turns, completed canonical history, native Goal tools, exact restart retention and Goal clear; only public model HTTP responses are controlled. Optional --chat-controls adds real native compaction and continuation, dirty Git worktree/lane release, encrypted system-message replay and exact committed restart retention to the existing Agent/worktree flows. Optional --chat-customizations adds actual skills, extra roots, MCP and bound permission configuration with native restart recovery. Optional --skill-settings adds actual project/account skill files, audiences, encrypted recovery deletion and retained restart. Optional --mcp-settings uses an acceptance-only owned worker home and the existing encrypted browser SDK for MCP CRUD, full discovery, copy, native resource access and restart. Shared --server-pair runs exercise production peers on private shared PostgreSQL/Redis with the browser and full worker on opposite peers; --rolling-servers replaces application and worker-owner peers without restarting that worker. Full UI, packaged/platform, active-job server-crash, long-outage/Redis TLS and whole replacement acceptance remain separate.",
   runtimes: [],
+  operationalStatusScope: process.argv.includes("--operational-status")
+    ? "Existing browser getSystemHealth, authenticated Prometheus and full worker/Live before and after retained server restart. Shared peers additionally exercise actual Redis stop/restart, readiness and cached coordination collectors without replacing the worker. Active-job failover, TLS deployment and supported-platform/package acceptance remain separate."
+    : null,
   taskDiagnostics: liveTaskDiagnostics
     ? "Development SQL fixture executable; unchanged production startup, routes, worker and native runtime. Failed Task runs retain scoped read-only database snapshots before teardown."
     : null,
@@ -728,6 +736,16 @@ async function flow(
     result.steps.push(
       "server receives opaque labels, encrypted repository operations and routing handles without private names or paths",
     );
+    if (process.argv.includes("--operational-status"))
+      await actualOperationalStatus({
+        fixture,
+        page,
+        worker,
+        result,
+        databaseMode,
+        phase: "connected",
+        secrets: [...names, existingPath, missingPath],
+      });
     await stopWorker();
     const scratch = projectShares
       ? await prepareExistingScratch(dataDirectory)
@@ -747,6 +765,7 @@ async function flow(
       singleProduct ||
       process.argv.includes("--project-chats") ||
       process.argv.includes("--chat-controls") ||
+      process.argv.includes("--operational-status") ||
       process.argv.includes("--workspace-discovery")
         ? Number(new URL(fixture.server.origin).port)
         : 0;
@@ -888,6 +907,24 @@ async function flow(
     result.steps.push(
       "server restart retains identity, encrypted labels, source handles and all completed job states",
     );
+    if (process.argv.includes("--operational-status")) {
+      await startWorker();
+      await page.evaluate(() => window.folderLive.start());
+      await eventually(workers, (values) =>
+        assert.equal(values[0].online, true),
+      );
+      await actualOperationalStatus({
+        fixture,
+        page,
+        worker,
+        result,
+        databaseMode,
+        phase: "restarted",
+        secrets: [...names, existingPath, missingPath],
+      });
+      await stopWorker();
+      await page.evaluate(() => window.folderLive.stop());
+    }
     result.projects = wire.map((project) => ({
       originKind: project.originKind,
       setupStatus: project.setupStatus,
@@ -1218,6 +1255,9 @@ try {
       liveSqlFixture: liveTaskDiagnostics,
       environment: {
         CANTRIP_AUTH_MODE: "accounts",
+        ...(process.argv.includes("--operational-status")
+          ? { CANTRIP_METRICS_TOKEN: operationalProductToken }
+          : {}),
         ...(process.argv.includes("--worker-links")
           ? workerLinkRoute === "relay"
             ? { CANTRIP_WORKER_LINK_RELAY_ONLY: "true" }

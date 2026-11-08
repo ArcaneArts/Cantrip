@@ -129,17 +129,35 @@
         "path": "/healthz",
         "implementation": "cantrip_server_rs/src/http.rs",
         "status": "implemented",
-        "evidence": ["scripts/server-rust/compatibility.mjs"],
+        "evidence": [
+          "scripts/server-rust/compatibility.mjs",
+          "docs/RUST_SERVER_OPERATIONAL_STATUS.md",
+          "scripts/server-rust/operational-status-http-compatibility.mjs",
+          "scripts/server-rust/operational-status-fault-compatibility.mjs",
+          "scripts/server-rust/operational-status-hosted-compatibility.mjs",
+          "scripts/server-rust/actual-operational-status-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs",
+          "scripts/server-rust/operational-status-lock-cases.mjs"
+        ],
         "remaining": []
       },
       {
         "method": "GET",
         "path": "/readyz",
         "implementation": "cantrip_server_rs/src/http.rs",
-        "status": "partial",
-        "evidence": ["scripts/server-rust/compatibility.mjs"],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/compatibility.mjs",
+          "docs/RUST_SERVER_OPERATIONAL_STATUS.md",
+          "scripts/server-rust/operational-status-http-compatibility.mjs",
+          "scripts/server-rust/operational-status-fault-compatibility.mjs",
+          "scripts/server-rust/operational-status-hosted-compatibility.mjs",
+          "scripts/server-rust/actual-operational-status-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs",
+          "scripts/server-rust/operational-status-lock-cases.mjs"
+        ],
         "remaining": [
-          "Shared coordination health/readiness and operational metrics are unported."
+          "Current supported-platform/native-container-desktop artifact acceptance and full replacement acceptance remain required; see the scoped operational qualification document."
         ]
       },
       {
@@ -8165,22 +8183,35 @@
       {
         "method": "GET",
         "path": "/api/health",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "docs/RUST_SERVER_OPERATIONAL_STATUS.md",
+          "scripts/server-rust/operational-status-http-compatibility.mjs",
+          "scripts/server-rust/operational-status-fault-compatibility.mjs",
+          "scripts/server-rust/operational-status-hosted-compatibility.mjs",
+          "scripts/server-rust/actual-operational-status-client.mjs",
+          "scripts/server-rust/operational-status-lock-cases.mjs"
         ],
         "observedBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
+          "sourceBaseline": "d16227b1fa7acaa4425ee738df2477ae59474699",
           "sourceStatus": 200,
-          "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
+          "rustStatus": 200,
+          "nativeArtifactSha256": "25b3eb0ca828d42d65de6808e342860221827c33894933842987921c7b31779e",
+          "contentType": "application/json; charset=utf-8",
+          "scope": "Current production empty-profile probe; complete operational behavior has separate all-store/auth, actual-fault, hosted and full-worker browser/shared-peer qualification."
         },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+          "Current supported-platform/native-container-desktop artifact acceptance and full replacement acceptance remain required; see the scoped operational qualification document."
+        ],
+        "implementation": [
+          "cantrip_server_rs/src/http/operational_status.rs",
+          "cantrip_server_rs/src/operations/metrics.rs",
+          "cantrip_server_rs/src/operations/metrics/prometheus.rs"
         ]
       },
       {
@@ -8670,22 +8701,35 @@
       {
         "method": "GET",
         "path": "/metrics",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_HTTP_INVENTORY.md",
+          "docs/RUST_SERVER_OPERATIONAL_STATUS.md",
+          "scripts/server-rust/operational-status-http-compatibility.mjs",
+          "scripts/server-rust/operational-status-fault-compatibility.mjs",
+          "scripts/server-rust/operational-status-hosted-compatibility.mjs",
+          "scripts/server-rust/actual-operational-status-client.mjs",
+          "scripts/server-rust/operational-status-lock-cases.mjs"
         ],
         "observedBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
+          "sourceBaseline": "d16227b1fa7acaa4425ee738df2477ae59474699",
           "sourceStatus": 200,
-          "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
+          "rustStatus": 200,
+          "nativeArtifactSha256": "25b3eb0ca828d42d65de6808e342860221827c33894933842987921c7b31779e",
+          "contentType": "text/plain; version=0.0.4; charset=utf-8",
+          "scope": "Current production empty-profile probe; complete operational behavior has separate all-store/auth, actual-fault, hosted and full-worker browser/shared-peer qualification."
         },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+          "Current supported-platform/native-container-desktop artifact acceptance and full replacement acceptance remain required; see the scoped operational qualification document."
+        ],
+        "implementation": [
+          "cantrip_server_rs/src/http/operational_status.rs",
+          "cantrip_server_rs/src/operations/metrics.rs",
+          "cantrip_server_rs/src/operations/metrics/prometheus.rs"
         ]
       }
     ]
@@ -14592,21 +14636,53 @@
       "status": "partial",
       "implementation": [
         "cantrip_server_rs/src/operations/log_sanitize.rs",
-        "cantrip_server_rs/src/operations/logging.rs"
+        "cantrip_server_rs/src/operations/logging.rs",
+        "cantrip_server_rs/src/http/operational_status.rs",
+        "cantrip_server_rs/src/operations/metrics.rs",
+        "cantrip_server_rs/src/operations/metrics/prometheus.rs"
       ],
       "evidence": [
         "cantrip_server_rs/tests/service_logs.rs",
         "scripts/server-rust/service-log-oracle.mjs",
         "scripts/server-rust/direct-attachment-compatibility.mjs",
         "scripts/server-rust/chat-runtime-repository-compatibility.mjs",
-        "scripts/server-rust/worker-link-coordinator-compatibility.mjs"
+        "scripts/server-rust/worker-link-coordinator-compatibility.mjs",
+        "docs/RUST_SERVER_OPERATIONAL_STATUS.md",
+        "scripts/server-rust/operational-status-http-compatibility.mjs",
+        "scripts/server-rust/operational-status-fault-compatibility.mjs",
+        "scripts/server-rust/operational-status-hosted-compatibility.mjs",
+        "scripts/server-rust/actual-operational-status-client.mjs",
+        "scripts/server-rust/http-route-inventory.mjs",
+        "scripts/server-rust/operational-metrics-oracle.mjs",
+        "scripts/server-rust/operational-status-lock-cases.mjs"
       ],
-      "scope": "Unmerged shared JSON operational log emission, UTF-16 text/key semantics, secret/context/error sanitization, sampled emission and bounded repeated-event windows match 65,937 actual Source sanitizer/error vectors and 2,136 actions/eight policy scenarios locally. Actual direct production log comparisons pass334 cases/15 groups, coordinator diagnostics575 cases, and routing583 cases/31 states per store on native PGlite/private/external PostgreSQL. This is not the complete operational logging/metrics product.",
+      "scope": "Native shared JSON operational log emission, UTF-16 text/key semantics, secret/context/error sanitization, sampled emission and bounded repeated-event windows match 65,937 actual Source sanitizer/error vectors and 2,136 actions/eight policy scenarios locally. Actual direct production log comparisons pass334 cases/15 groups, coordinator diagnostics575 cases, and routing583 cases/31 states per store on native PGlite/private/external PostgreSQL. This is not the complete operational logging/metrics product.",
       "remaining": [
-        "Log buffer/archive services, production formatting and HTTP log APIs.",
-        "Full production metrics endpoint and remaining consumers.",
-        "Supported-platform/package acceptance."
-      ]
+        "Log buffer/archive services, production presentation and worker HTTP log reads/streaming.",
+        "Reconcile remaining background-service/operational consumers against current Source.",
+        "Current supported-platform and packaged acceptance."
+      ],
+      "operationalHttpQualification": {
+        "sourceBaseline": "d16227b1fa7acaa4425ee738df2477ae59474699",
+        "platform": "darwin-arm64",
+        "normalStorageAuthPairs": 9,
+        "pairedBehaviorObservations": 543,
+        "faultStorageAuthPairs": 9,
+        "pairedFaultObservations": 72,
+        "hostedPairedObservations": 23,
+        "browserFullWorkerCells": 6,
+        "sharedPeerPairings": [
+          "node/node",
+          "node/rust",
+          "rust/node",
+          "rust/rust"
+        ],
+        "fullProductSteps": 114,
+        "fullProductServerExits": 28,
+        "fullProductWorkerExits": 30,
+        "scope": "Actual collectors, existing health SDK, authorized complete Prometheus, database/Redis/caller failures, legacy headers/101/logs and retained restart. Source scheduler scan recorder currently has no production caller. Platform/package/performance and full replacement acceptance remain required.",
+        "collectorOrdering": "Actual relation-lock red/green: Source samples Live after worker query; usage retains pre-query capture. Native initially returned1 after real close, now returns0."
+      }
     },
     "legacyPGliteConversion": {
       "status": "partial",
@@ -18862,6 +18938,24 @@
         "scripts/server-rust/redis-coordination-compatibility.mjs"
       ],
       "remaining": "Long-outage recovery and claim re-election, network blackholes, active native execution failures, lease/acknowledgment boundaries, Redis TLS, supported platforms, performance, default Rust cutover and production Node removal remain required."
+    },
+    {
+      "branch": "codex/rust-operational-status",
+      "observedAt": "2026-11-07",
+      "platforms": ["darwin-arm64"],
+      "execution": "Local only; optimized native and production Node entries, existing browser SDK, full current Node worker and private PostgreSQL/Redis. Hosted tests exercise forwarding policy without a TLS/deployment claim.",
+      "conclusion": "Operational health/metrics are native; actual production route probe retains 23 active fallbacks and completeReplacement remains false.",
+      "scope": "543 paired behavior observations,72 paired fault observations,23 hosted observations;114 full-product steps with28 clean server/30 worker exits.67 Rust library tests,strictall-target Clippy,twelve generated graphs,boundary/workflow checks pass. Root pnpm check still exits1 at unchanged Node decomposition limits.",
+      "qualification": "docs/RUST_SERVER_OPERATIONAL_STATUS.md",
+      "harnesses": [
+        "scripts/server-rust/operational-status-http-compatibility.mjs",
+        "scripts/server-rust/operational-status-fault-compatibility.mjs",
+        "scripts/server-rust/operational-status-hosted-compatibility.mjs",
+        "scripts/server-rust/actual-operational-status-client.mjs",
+        "scripts/server-rust/http-route-inventory.mjs",
+        "scripts/server-rust/operational-status-lock-cases.mjs"
+      ],
+      "remaining": "Other23 active routes/background services, full platform/package/upgrade/post-write rollback/performance acceptance, default Rust cutover and production Node-server removal."
     }
   ]
 }

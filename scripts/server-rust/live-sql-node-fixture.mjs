@@ -8,6 +8,17 @@ const require = createRequire(
 const { sql } = require("drizzle-orm");
 
 export function installLiveSqlFixture(app, database) {
+  // A real connection shutdown in an explicitly opted-in disposable fixture.
+  // Production does not install this control or replace database queries.
+  app.post("/__fixture/close-database", async () => {
+    const closing = database.close();
+    // The control now owns that shutdown. The Source app's later onClose must
+    // await the same operation instead of invoking PGlite's UNLISTEN callbacks
+    // again on its already closed runtime. Queries and ping remain unchanged.
+    database.close = () => closing;
+    await closing;
+    return { closed: true };
+  });
   app.post("/__fixture/sql", async (request) => {
     let values,
       statementIndex = -1;

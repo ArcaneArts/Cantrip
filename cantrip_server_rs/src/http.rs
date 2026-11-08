@@ -74,6 +74,8 @@ mod native_model_inventory;
 mod native_queue;
 mod native_settings;
 mod on_response;
+mod operational_status;
+pub use operational_status::observe as observe_operations;
 mod pane_layouts;
 mod policies;
 mod project_administration;
@@ -172,6 +174,10 @@ async fn ready(State(service): State<Arc<AuthService>>) -> Response {
         None => true,
     };
     let success = database_ready && coordination_ready;
+    let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
+    service
+        .operational_metrics
+        .database_probe(database_ready, latency_ms);
     json_response(
         if success {
             StatusCode::OK
@@ -181,7 +187,7 @@ async fn ready(State(service): State<Arc<AuthService>>) -> Response {
         json!({
             "status": if success { "ready" } else { "not-ready" },
             "service":"cantrip_server",
-            "database": {"engine":database.engine(), "status":if database_ready { "ready" } else { "unavailable" }, "latencyMs":started.elapsed().as_secs_f64()*1000.0},
+            "database": {"engine":database.engine(), "status":if database_ready { "ready" } else { "unavailable" }, "latencyMs":latency_ms},
             "coordination": {"shared":service.coordination.is_some(), "status":if coordination_ready { "ready" } else { "unavailable" }},
             "timestamp":timestamp()
         }),
@@ -203,6 +209,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .route("/api", get(api))
         .route("/healthz", get(health))
         .route("/readyz", get(ready))
+        .merge(operational_status::routes())
         .merge(sessions::routes())
         .merge(project_alerts::routes())
         .merge(project_automations::routes())
@@ -294,6 +301,10 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .layer(axum::middleware::from_fn_with_state(
             service.clone(),
             middleware::guard,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            service.clone(),
+            operational_status::observe,
         ))
         .with_state(service)
 }

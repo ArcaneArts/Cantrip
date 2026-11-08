@@ -3,8 +3,9 @@
 The live inventory audit identifies missing Rust HTTP behavior in addition to
 historical coverage-ledger omissions. Four lifecycle/preference endpoints now
 pass [project-administration qualification](RUST_SERVER_PROJECT_ADMINISTRATION.md),
-and four more pass [Chat-control qualification](RUST_SERVER_CHAT_CONTROLS.md);
-the current live probe retains 25 active fallbacks. Node remains the default
+four more pass [Chat-control qualification](RUST_SERVER_CHAT_CONTROLS.md),
+and two pass [operational qualification](RUST_SERVER_OPERATIONAL_STATUS.md);
+the current live probe retains 23 active fallbacks. Node remains the default
 server and the full replacement is incomplete.
 
 ## Executed discovery
@@ -93,9 +94,10 @@ Qualified native executable SHA-256:
 `78e8e3649f59b86fe65b567ebcdb4c3673ad132bb3447b69cc0f308f9a7f8957`.
 That milestone's repeat production inventory run completed all 1,168 requests
 with both process exits zero and 33 active fallbacks. The subsequent native
-project-administration implementation resolves four, and Chat controls resolve
-four more. The current probe completes the same 1,168 requests with clean exits
-and exactly 25 active fallbacks below. The inspection command therefore exits
+project-administration implementation resolves four, Chat controls resolve
+four more, and operational health/metrics resolve two. The current probe completes
+the same 1,168 requests with clean exits and exactly 23 active fallbacks below.
+The inspection command therefore exits
 one, as intended for an unfinished
 replacement. Earlier discovery and fixture failures are retained separately.
 
@@ -119,8 +121,7 @@ error-body shim or a registered path alone does not satisfy these requirements.
 | Project/terminal context and insights |      5 | Repository stats, token usage, Task workload and script-command context      |
 | Remote desktops and surfaces          |     12 | Project catalogs/fleet, creation, reading/updating, connection and lifecycle |
 | Worker logs                           |      2 | Retained reads and streaming                                                 |
-| Health and metrics                    |      2 | Authenticated operational health and authorized Prometheus output            |
-| Total                                 |     25 |                                                                              |
+| Total                                 |     23 |                                                                              |
 
 Existing Rust repositories and worker transports can support parts of these
 families, but their corresponding production HTTP behavior still needs to be

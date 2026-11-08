@@ -1,5 +1,14 @@
 # Rust server replacement
 
+Native operational health and Prometheus now use the real HTTP, database,
+worker, Live, usage and coordination collectors. Local comparison passes all
+three stores/authentication modes, actual database/caller failures, hosted
+forwarding policy and full browser/worker restart flows. All four shared peer
+pairings additionally pass actual Redis outage/recovery. See
+[operational qualification](RUST_SERVER_OPERATIONAL_STATUS.md) for exact scope
+and remaining acceptance. Node remains the default and full replacement is
+incomplete.
+
 Native project removal, preferences and ordering now pass actual HTTP/state/worker
 comparisons across all three stores and local authentication modes. Full-browser
 and unchanged full-worker tests verify real Run retirement, file preservation or
@@ -8,9 +17,9 @@ computer-use authority revocation. See [project administration](RUST_SERVER_PROJ
 for exact scope, retained baseline failures and remaining acceptance. Node remains
 the default and full replacement remains incomplete.
 
-The current production HTTP inventory probe confirms 29 active endpoints still
-fall through to Rust's generic 404, covering computer use, Chat lanes, project
-context/insights, remote surfaces, worker logs and operational health/metrics.
+The current production HTTP inventory probe confirms 23 active endpoints still
+fall through to Rust's generic 404, covering computer use, project
+context/insights, remote surfaces and worker logs.
 Seventy-two additional retired repository-route differences are corrected and
 qualified separately. See [HTTP inventory reconciliation](RUST_SERVER_HTTP_INVENTORY.md)
 for the exact scope and remaining families. These are implementation gaps;
