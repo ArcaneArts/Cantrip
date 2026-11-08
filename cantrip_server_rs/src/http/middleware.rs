@@ -475,6 +475,11 @@ pub(super) async fn guard(
         .extensions()
         .get::<axum::extract::MatchedPath>()
         .map_or_else(|| audit_path.clone(), |v| v.as_str().to_owned());
+    if request.method() == Method::DELETE
+        && super::project_administration::static_project_id(&audit_pattern).is_some()
+    {
+        audit_pattern = "/api/projects/{projectId}".to_owned();
+    }
     let mut route = audit_pattern
         .split('/')
         .map(|segment| {
@@ -485,7 +490,9 @@ pub(super) async fn guard(
         })
         .collect::<Vec<_>>()
         .join("/");
-    if super::removed_repository::unregistered_method(request.method(), &route) {
+    if super::removed_repository::unregistered_method(request.method(), &route)
+        || super::project_administration::unregistered_method(request.method(), &route)
+    {
         // Fastify does not match a route pattern for an unsupported method.
         // Keep its raw-path rate-limit key and absent audit resource binding.
         audit_pattern.clone_from(&audit_path);

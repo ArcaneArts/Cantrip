@@ -11,6 +11,8 @@ use chrono::{DateTime, Utc};
 use icu_collator::{Collator, CollatorBorrowed, options::CollatorOptions};
 use icu_locale_core::Locale;
 use std::{collections::HashMap, sync::Arc};
+mod preferences;
+pub use preferences::PreferredWorkerConflict;
 
 pub struct ProjectRepository {
     database: Arc<Database>,

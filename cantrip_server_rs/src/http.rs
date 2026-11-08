@@ -75,6 +75,7 @@ mod native_settings;
 mod on_response;
 mod pane_layouts;
 mod policies;
+mod project_administration;
 mod project_alerts;
 mod project_automations;
 mod project_exports;
@@ -216,6 +217,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(usage::routes())
         .merge(policies::routes())
         .merge(projects::routes())
+        .merge(project_administration::routes())
         .merge(removed_repository::routes())
         .merge(folders::routes())
         .merge(chat_catalogs::routes())

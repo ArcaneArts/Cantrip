@@ -14,6 +14,7 @@ export async function startRetirementProbe({
   worktree,
   result,
   deleteDefinition = false,
+  projectDeletion = false,
 }) {
   const configurationId = randomUUID();
   const secret = randomUUID();
@@ -172,22 +173,32 @@ setInterval(() => {}, 1000);
       (state) => assert.equal(state, "exited"),
     );
     evidence.exitObservation = { witnessReads };
-    const remaining = await page.evaluate(
-      async ({ projectId, configurationId, worktreeId }) => {
-        const api = await import("/src/lib/run-configuration-api.ts");
-        return api.listRunConfigurationRuntimes(projectId, {
-          configurationId,
-          targetWorktreeId: worktreeId,
-        });
-      },
-      { projectId, configurationId, worktreeId: worktree.id },
-    );
+    const remaining = projectDeletion
+      ? await page.evaluate(
+          async (id) =>
+            (await window.folderCrypto.getProjects()).filter(
+              (p) => p.id === id,
+            ),
+          projectId,
+        )
+      : await page.evaluate(
+          async ({ projectId, configurationId, worktreeId }) => {
+            const api = await import("/src/lib/run-configuration-api.ts");
+            return api.listRunConfigurationRuntimes(projectId, {
+              configurationId,
+              targetWorktreeId: worktreeId,
+            });
+          },
+          { projectId, configurationId, worktreeId: worktree.id },
+        );
     assert.deepEqual(remaining, []);
     evidence.exit = exited;
     result.steps.push(
-      deleteDefinition
-        ? "definition deletion stops the real Run child, removes its definition file and retires durable runtime state"
-        : "worktree deletion stops the real Run child before removing its directory and retires durable runtime state",
+      projectDeletion
+        ? "project deletion stops the real Run child before filesystem cleanup and retires the project and runtime"
+        : deleteDefinition
+          ? "definition deletion stops the real Run child, removes its definition file and retires durable runtime state"
+          : "worktree deletion stops the real Run child before removing its directory and retires durable runtime state",
     );
   };
 }

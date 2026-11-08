@@ -86,6 +86,7 @@ pub struct AuthService {
     pub tunnel_leases: Arc<crate::tunnels::sweep::LeaseSweeper>,
     pub tunnel_runtime: Arc<crate::tunnels::runtime::Runtime>,
     pub project_shares: Arc<crate::project_shares::Service>,
+    pub computer_use_revocations: Arc<crate::computer_use_revocations::Service>,
     pub transport_metrics: Arc<crate::operations::TransportMetrics>,
     pub model_routing: Arc<crate::chats::routing::ModelRouting>,
     pub worktree_observations: Arc<crate::projects::observations::Service>,
@@ -518,6 +519,12 @@ impl AuthService {
             live.clone(),
             worker_links.clone(),
         );
+        let computer_use_revocations = crate::computer_use_revocations::Service::start(
+            repository.database.clone(),
+            workers.commands.clone(),
+            server_id.clone(),
+        )
+        .await?;
         Ok(Arc::new(Self {
             coordination,
             config,
@@ -547,6 +554,7 @@ impl AuthService {
             tunnel_leases,
             tunnel_runtime,
             project_shares,
+            computer_use_revocations,
             transport_metrics: Arc::new(Default::default()),
             model_routing,
             managed_console,
