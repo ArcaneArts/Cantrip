@@ -111,7 +111,9 @@ capture the opaque credential, persist revision 1 and acknowledge purge. Rust
 sends neither command and retains `migration-needed` at revision 0; both
 processes exit zero. Rust's existing `migrate_worker` service has no production
 caller. The reproduction is retained with this milestone; that repair remains
-separate work. Remaining full product, fault, coordination,
+separate work. The subsequent [credential reconnect qualification](RUST_SERVER_CREDENTIAL_RECONNECT.md)
+repairs that composition and records its actual failure/recovery and shutdown
+scope. Remaining full product, fault, coordination,
 performance, historical-profile, current-artifact and supported-platform
 acceptance, Rust default selection and production Node-server removal remain
 required.

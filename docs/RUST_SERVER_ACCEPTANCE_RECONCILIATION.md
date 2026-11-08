@@ -87,15 +87,19 @@ fifteen-minute interval and held-INSERT shutdown with fixture SQL routes absent
 on both peers. A broader catalog comparison additionally repairs the custom endpoint
 label in native errors and worker commands.
 
-The next discrepancy is reproduced by a local external-PostgreSQL account
-comparison retained with this milestone:
+The [credential reconnect qualification](RUST_SERVER_CREDENTIAL_RECONNECT.md)
+reproduces and repairs the next discrepancy: Rust's existing migration
+coordinator had no production worker-connection caller. All nine local
+storage/authentication pairs now match capture/purge, identity and revision
+guards, nonportable credentials, failures, repeated reconnects and public
+counter logs. The current optimized artifact also passes actual deadlines,
+query failure/recovery, held credential UPDATE shutdown and retained
+restart/purge. This does not establish real provider login or actual worker
+credential-file encryption/deletion.
 
-- Node invokes automatic legacy provider credential migration when a worker
-  connects. The reference captures the opaque credential, stores revision 1 and
-  completes purge; Rust sends no capture/purge commands and retains
-  `migration-needed` at revision 0. Both servers exit zero. Rust has the migration
-  coordinator, but its `migrate_worker` method has no production caller. Repair
-  that composition and qualify ownership, failures and shutdown next.
+Remaining background/operational reconciliation includes production log
+consumers and buffer/archive services. Source composition mapping and these
+scoped comparisons do not prove complete background-service invariants.
 
 Continue those comparisons before final product/fault/performance and supported
 artifact acceptance. Rust default selection and production Node-server removal

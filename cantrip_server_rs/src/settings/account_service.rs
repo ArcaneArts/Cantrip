@@ -20,6 +20,7 @@ use tokio::sync::Notify;
 mod auth_flow;
 mod auth_observations;
 mod catalog_refresh;
+mod credential_reconnect;
 mod inference_delivery;
 mod providers;
 mod quota;

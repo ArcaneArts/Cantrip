@@ -55,7 +55,7 @@ export async function managementWorker({
   });
   let connection,
     connected = false;
-  const start = async () => {
+  const start = async ({ heartbeat = true } = {}) => {
     connected = false;
     connection = new WorkerConnection(
       config,
@@ -98,7 +98,7 @@ export async function managementWorker({
       () => connected,
       (value) => assert.equal(value, true),
     );
-    await sendHeartbeat(config, report);
+    if (heartbeat) await sendHeartbeat(config, report);
   };
   await start();
   return {

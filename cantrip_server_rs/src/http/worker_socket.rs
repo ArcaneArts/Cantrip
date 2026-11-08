@@ -374,6 +374,11 @@ async fn run(
             .provider_accounts
             .synchronize_inference(&owner, &worker),
     );
+    drop(
+        service
+            .provider_accounts
+            .migrate_worker_credentials(&owner, &worker),
+    );
     service
         .worker_catalog_refresh
         .worker_connected(owner.clone(), worker.clone());

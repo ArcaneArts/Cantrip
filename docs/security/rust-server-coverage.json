@@ -19268,11 +19268,12 @@
       ],
       "scope": "Source composition mapping only; each family retains its own existing behavior/fault acceptance. Does not prove all background services.",
       "remaining": [
-        "Repair automatic connected-worker legacy provider credential migration: actual external-PostgreSQL account comparison observes Source capture/purge and signed-in revision1; native sends neither command and retains migration-needed revision0. Existing migrate_worker service has no production caller.",
-        "Finish complete background-service and lifecycle reconciliation, current supported-platform/package and full replacement acceptance."
+        "Reconcile remaining production operational log consumers, buffer/archive services and complete background-service invariants against current Source.",
+        "Finish current supported-platform/package, complete product/fault/coordination/performance acceptance and final Rust default/production Node removal."
       ],
       "resolvedGlobalExpiry": "See interactionExpiry: independent native producer, owner-scoped mutations, actual failure/recovery and shutdown drain; existing reference owner/shutdown bugs reproduced and repaired.",
-      "resolvedWorkerCatalogRefresh": "Native reconnect refresh and actual fifteen-minute timer pass local comparison; see workerCatalogRefresh for exact evidence and pending production/platform qualification."
+      "resolvedWorkerCatalogRefresh": "Native reconnect refresh and actual fifteen-minute timer pass local comparison; see workerCatalogRefresh for exact evidence and pending production/platform qualification.",
+      "resolvedCredentialReconnect": "See workerCredentialReconnect: actual missing connection caller reproduced, native coordinator composed with owned lifetime/public counters;9 storage/auth pairs, real deadlines, query failure/recovery and held credential UPDATE shutdown/restart pass."
     },
     "interactionExpiry": {
       "status": "implemented-pending-platform-acceptance",
@@ -19375,6 +19376,59 @@
       "remaining": [
         "Finish current optimized periodic/artifact qualification and broader supported-platform, product, fault, coordination, migration/rollback and performance acceptance.",
         "Complete Rust default cutover and production Node-server removal."
+      ]
+    },
+    "workerCredentialReconnect": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/settings/account_service/credential_reconnect.rs",
+        "cantrip_server_rs/src/settings/account_service.rs",
+        "cantrip_server_rs/src/http/worker_socket.rs"
+      ],
+      "evidence": [
+        "docs/RUST_SERVER_CREDENTIAL_RECONNECT.md",
+        "scripts/server-rust/worker-credential-reconnect-compatibility.mjs",
+        "scripts/server-rust/worker-credential-reconnect-fixtures.mjs",
+        "scripts/server-rust/worker-credential-reconnect-shutdown.mjs"
+      ],
+      "qualification": {
+        "platform": "darwin-arm64",
+        "storageAuthPairs": 9,
+        "pairedHttp": 27,
+        "pairedWorkerCommands": 243,
+        "pairedPublicSummaries": 18,
+        "pairedPersistenceStages": 18,
+        "cleanServerExits": 18,
+        "opaqueCredentialsAndExistingRevisionsPreserved": true,
+        "committedStoreObservedBeforePurge": true,
+        "foreignAndSignedOutExcluded": true,
+        "disabledAccountsStillMigrated": true,
+        "counterOnlyLogPrivacyBothStreams": true,
+        "actualFifteenSecondDeadlinePair": true,
+        "actualRelationFailureAndRecovery": true,
+        "heldCredentialUpdateShutdownAndRestartPair": true,
+        "optimizedProduction": {
+          "bytes": 93623392,
+          "sha256": "a86cfad01fc4de089f0114a794f447b8edee8aa3f8199ee78a173f187ae780a2",
+          "database": "postgres",
+          "auth": "accounts",
+          "pairedHttp": 4,
+          "pairedWorkerCommands": 60,
+          "pairedPublicSummaries": 6,
+          "pairedPersistenceStages": 4,
+          "actualQueryFailure": true,
+          "heldUpdateShutdown": true,
+          "restartPurgePreservesRevision": true,
+          "lifecycleCleanServerExits": 4,
+          "fixtureSqlControlBoth": 404,
+          "separateActualDeadlinePair": true,
+          "deadlineCleanServerExits": 2
+        }
+      },
+      "scope": "Actual HTTP/SQL/WebSocket and process lifecycle with unchanged WorkerConnection and controlled provider capture/purge replies; not actual provider login or full-worker credential-file encryption/deletion.",
+      "remaining": [
+        "Complete remaining operational consumers/buffer/archive and full product, fault, coordination, current-artifact, supported-platform, historical-upgrade/rollback and performance acceptance.",
+        "Complete final Rust default selection and production Node-server removal."
       ]
     }
   },

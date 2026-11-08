@@ -1,12 +1,20 @@
 # Rust server replacement
 
+Authenticated worker reconnects now start native legacy credential capture and
+purge. All nine local storage/authentication pairs pass; the actual optimized
+executable additionally passes real deadlines, query failure/recovery, blocked
+credential storage during shutdown and retained restart/purge. See
+[credential reconnect qualification](RUST_SERVER_CREDENTIAL_RECONNECT.md) for
+opaque-data, counter-only logging and exact evidence limits. Node remains the
+default server and full replacement is incomplete.
+
 Native worker-scoped catalog/quota maintenance now runs after authenticated
 connections and every fifteen minutes. All nine local storage/authentication
 pairs, actual fifteen-minute timers and held-SQL shutdown pass. The current
 optimized executable also passes the real interval and held-INSERT shutdown.
 The broader comparison also repairs custom endpoint labels. See [worker provider maintenance](RUST_SERVER_WORKER_CATALOG_REFRESH.md)
 for exact scope and remaining acceptance. Automatic reconnect legacy-credential
-migration is the next identified comparison. Node remains the default server
+migration is qualified separately above. Node remains the default server
 and complete replacement is unfinished.
 
 Native global approval expiry now publishes owner-scoped Chat, Task and
