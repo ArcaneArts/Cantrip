@@ -12,6 +12,13 @@ worker pairing, credentials, heartbeat storage and foundational control sockets.
 Storage supports native PGlite, private managed PostgreSQL and external
 PostgreSQL. The worker remains Node.
 
+Project statistics, token usage, encrypted project/terminal script discovery
+and opaque Task workload now have native HTTP handlers. Current local
+Source/Rust comparisons and full browser/worker restart flows pass all three
+stores and four Redis pairings. See
+[`docs/RUST_SERVER_PROJECT_INSIGHTS.md`](../docs/RUST_SERVER_PROJECT_INSIGHTS.md)
+for exact scope and remaining replacement requirements.
+
 External Chat imports and Codex history discovery now use the native repository,
 executor, HTTP routes, attachment relay and immutable hydration path. See
 [`docs/RUST_SERVER_CHAT_IMPORTS.md`](../docs/RUST_SERVER_CHAT_IMPORTS.md) for the

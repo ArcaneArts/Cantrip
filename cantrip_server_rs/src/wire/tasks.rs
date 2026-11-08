@@ -100,6 +100,7 @@ pub(super) fn refine(
             | "task-goal-input-source"
             | "task-goal-input-capture"
             | "task-goal-handoff-source"
+            | "task-workload-chat-binding"
     ) {
         return Ok(false);
     }
@@ -116,6 +117,20 @@ pub(super) fn refine(
             .push(json!({"code":"custom","message":message,"path":at}));
     };
     match tag {
+        "task-workload-chat-binding" => {
+            if value["plan"]["chatId"] != value["task"]["chatId"]
+                || value["messages"]
+                    .as_array()
+                    .ok_or(ValidationError::Operation)?
+                    .iter()
+                    .any(|message| message["chatId"] != value["task"]["chatId"])
+            {
+                custom(
+                    &[],
+                    "Task workload material must belong to the same Task Chat.",
+                );
+            }
+        }
         "task-goal-suspension-source" => {
             if value["parent"]["kind"] != "goal"
                 || value["parent"]["dispatch"]["cycleId"] != value["cycle"]["cycleId"]

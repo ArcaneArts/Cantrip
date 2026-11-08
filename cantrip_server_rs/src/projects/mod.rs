@@ -2,6 +2,7 @@ pub mod coordinator;
 pub mod exports;
 pub mod observations;
 pub mod placement;
+mod placement_queries;
 pub mod removal;
 pub mod replicas;
 pub mod repository;

@@ -21,6 +21,7 @@ mod models;
 pub mod native_inventory;
 pub mod ollama;
 pub mod openrouter;
+mod project_usage;
 pub mod provider_connection;
 mod providers;
 mod query_error;

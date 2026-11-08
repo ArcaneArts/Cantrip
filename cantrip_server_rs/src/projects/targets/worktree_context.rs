@@ -37,7 +37,13 @@ impl TargetRepository {
         let rows = if let Some(raw_id) = raw_id {
             super::mcp_queries::context_in_project(result, "runWorktree", owner, project, raw_id)?
         } else {
-            result?
+            super::mcp_queries::context_in_project(
+                result,
+                "runWorktree",
+                owner,
+                project,
+                &json!(worktree),
+            )?
         };
         rows.first().map(|row| {
             let project = row.get::<String>(0)?;

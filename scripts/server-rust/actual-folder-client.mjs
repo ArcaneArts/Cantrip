@@ -4,6 +4,7 @@ import {
 } from "./actual-project-replicas.mjs";
 import { actualProjectWorktrees } from "./actual-project-worktrees.mjs";
 import { actualProjectAdministration } from "./actual-project-administration.mjs";
+import { actualProjectInsights } from "./actual-project-insights-client.mjs";
 import {
   actualOperationalStatus,
   operationalProductToken,
@@ -148,6 +149,7 @@ const liveTaskDiagnostics =
   process.argv.includes("--postgres-errors");
 const fullServerLogs =
   liveTaskDiagnostics ||
+  process.argv.includes("--project-insights") ||
   process.argv.includes("--operational-status") ||
   process.argv.includes("--worker-logs") ||
   process.argv.includes("--project-administration") ||
@@ -708,7 +710,16 @@ async function flow(
           requests,
         })
       : undefined;
-    // Capture after browser creation has committed its project layout update.
+    if (process.argv.includes("--project-insights"))
+      await actualProjectInsights({
+        page,
+        projectId: created.id,
+        workerId,
+        directory: await filesystem(created.id),
+        result,
+        phase: "connected",
+      });
+    // Capture after optional resource creation commits its project updates.
     const wire = await page.evaluate(() =>
       window.folderWire.getProjectWireList(),
     );
@@ -783,6 +794,7 @@ async function flow(
       process.argv.includes("--chat-controls") ||
       process.argv.includes("--operational-status") ||
       process.argv.includes("--worker-logs") ||
+      process.argv.includes("--project-insights") ||
       process.argv.includes("--workspace-discovery")
         ? Number(new URL(fixture.server.origin).port)
         : 0;
@@ -926,7 +938,8 @@ async function flow(
     );
     if (
       process.argv.includes("--operational-status") ||
-      process.argv.includes("--worker-logs")
+      process.argv.includes("--worker-logs") ||
+      process.argv.includes("--project-insights")
     ) {
       await startWorker();
       await page.evaluate(() => window.folderLive.start());
@@ -948,6 +961,15 @@ async function flow(
           page,
           fixture,
           workerId,
+          result,
+          phase: "restarted",
+        });
+      if (process.argv.includes("--project-insights"))
+        await actualProjectInsights({
+          page,
+          projectId: created.id,
+          workerId,
+          directory: await filesystem(created.id),
           result,
           phase: "restarted",
         });

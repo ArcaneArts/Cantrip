@@ -8375,86 +8375,78 @@
       {
         "method": "GET",
         "path": "/api/projects/:projectId/repository-stats",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_PROJECT_INSIGHTS.md",
+          "scripts/server-rust/project-insights-http-compatibility.mjs",
+          "scripts/server-rust/project-insights-http-cases.mjs",
+          "scripts/server-rust/project-insight-contract-oracle.mjs",
+          "scripts/server-rust/project-placement-query-manifest.mjs",
+          "scripts/server-rust/actual-project-insights-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
-          "platform": "darwin-arm64",
-          "database": "pglite",
-          "auth": "none",
-          "sourceStatus": 404,
-          "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
-        },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+          "Current supported-platform, packaged desktop/container and complete replacement acceptance remain required."
+        ],
+        "implementation": "cantrip_server_rs/src/http/project_insights.rs"
       },
       {
         "method": "GET",
         "path": "/api/projects/:projectId/script-commands",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_PROJECT_INSIGHTS.md",
+          "scripts/server-rust/project-insights-http-compatibility.mjs",
+          "scripts/server-rust/project-insights-http-cases.mjs",
+          "scripts/server-rust/project-insight-contract-oracle.mjs",
+          "scripts/server-rust/project-placement-query-manifest.mjs",
+          "scripts/server-rust/actual-project-insights-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
-          "platform": "darwin-arm64",
-          "database": "pglite",
-          "auth": "none",
-          "sourceStatus": 400,
-          "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
-        },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+          "Current supported-platform, packaged desktop/container and complete replacement acceptance remain required."
+        ],
+        "implementation": "cantrip_server_rs/src/http/project_insights.rs"
       },
       {
         "method": "GET",
         "path": "/api/projects/:projectId/tasks/workload",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_PROJECT_INSIGHTS.md",
+          "scripts/server-rust/project-insights-http-compatibility.mjs",
+          "scripts/server-rust/project-insights-http-cases.mjs",
+          "scripts/server-rust/project-insight-contract-oracle.mjs",
+          "scripts/server-rust/project-placement-query-manifest.mjs",
+          "scripts/server-rust/actual-project-insights-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
-          "platform": "darwin-arm64",
-          "database": "pglite",
-          "auth": "none",
-          "sourceStatus": 404,
-          "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
-        },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+          "Current supported-platform, packaged desktop/container and complete replacement acceptance remain required."
+        ],
+        "implementation": "cantrip_server_rs/src/http/project_insights.rs"
       },
       {
         "method": "GET",
         "path": "/api/projects/:projectId/token-usage",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_PROJECT_INSIGHTS.md",
+          "scripts/server-rust/project-insights-http-compatibility.mjs",
+          "scripts/server-rust/project-insights-http-cases.mjs",
+          "scripts/server-rust/project-insight-contract-oracle.mjs",
+          "scripts/server-rust/project-placement-query-manifest.mjs",
+          "scripts/server-rust/actual-project-insights-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
-          "platform": "darwin-arm64",
-          "database": "pglite",
-          "auth": "none",
-          "sourceStatus": 404,
-          "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
-        },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+          "Current supported-platform, packaged desktop/container and complete replacement acceptance remain required."
+        ],
+        "implementation": "cantrip_server_rs/src/http/project_insights.rs"
       },
       {
         "method": "PATCH",
@@ -8638,23 +8630,21 @@
       {
         "method": "GET",
         "path": "/api/terminals/:terminalId/script-commands",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_PROJECT_INSIGHTS.md",
+          "scripts/server-rust/project-insights-http-compatibility.mjs",
+          "scripts/server-rust/project-insights-http-cases.mjs",
+          "scripts/server-rust/project-insight-contract-oracle.mjs",
+          "scripts/server-rust/project-placement-query-manifest.mjs",
+          "scripts/server-rust/actual-project-insights-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
-        "observedBoundary": {
-          "platform": "darwin-arm64",
-          "database": "pglite",
-          "auth": "none",
-          "sourceStatus": 400,
-          "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
-        },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
-        ]
+          "Current supported-platform, packaged desktop/container and complete replacement acceptance remain required."
+        ],
+        "implementation": "cantrip_server_rs/src/http/project_insights.rs"
       },
       {
         "method": "GET",
@@ -10485,6 +10475,78 @@
         "remaining": [
           "Current supported-platform desktop/native/container artifact acceptance and broader coordination faults remain required.",
           "The complete server replacement still requires remaining domain/background-service reconciliation, performance and final upgrade/post-write rollback acceptance, Rust-default cutover and production Node-server removal."
+        ]
+      },
+      {
+        "command": "project.repository-stats",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/project_insights.rs",
+        "evidence": [
+          "docs/RUST_SERVER_PROJECT_INSIGHTS.md",
+          "scripts/server-rust/project-insights-http-compatibility.mjs",
+          "scripts/server-rust/project-insights-http-cases.mjs",
+          "scripts/server-rust/project-insight-contract-oracle.mjs",
+          "scripts/server-rust/project-placement-query-manifest.mjs",
+          "scripts/server-rust/actual-project-insights-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform, packaged desktop/container and complete replacement acceptance remain required."
+        ]
+      },
+      {
+        "command": "project.folder-stats",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/project_insights.rs",
+        "evidence": [
+          "docs/RUST_SERVER_PROJECT_INSIGHTS.md",
+          "scripts/server-rust/project-insights-http-compatibility.mjs",
+          "scripts/server-rust/project-insights-http-cases.mjs",
+          "scripts/server-rust/project-insight-contract-oracle.mjs",
+          "scripts/server-rust/project-placement-query-manifest.mjs",
+          "scripts/server-rust/actual-project-insights-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform, packaged desktop/container and complete replacement acceptance remain required."
+        ]
+      },
+      {
+        "command": "project.script-commands",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/project_insights.rs",
+        "evidence": [
+          "docs/RUST_SERVER_PROJECT_INSIGHTS.md",
+          "scripts/server-rust/project-insights-http-compatibility.mjs",
+          "scripts/server-rust/project-insights-http-cases.mjs",
+          "scripts/server-rust/project-insight-contract-oracle.mjs",
+          "scripts/server-rust/project-placement-query-manifest.mjs",
+          "scripts/server-rust/actual-project-insights-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform, packaged desktop/container and complete replacement acceptance remain required."
+        ]
+      },
+      {
+        "command": "project.script-commands.inspect",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/project_insights.rs",
+        "evidence": [
+          "docs/RUST_SERVER_PROJECT_INSIGHTS.md",
+          "scripts/server-rust/project-insights-http-compatibility.mjs",
+          "scripts/server-rust/project-insights-http-cases.mjs",
+          "scripts/server-rust/project-insight-contract-oracle.mjs",
+          "scripts/server-rust/project-placement-query-manifest.mjs",
+          "scripts/server-rust/actual-project-insights-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform, packaged desktop/container and complete replacement acceptance remain required."
         ]
       }
     ]
@@ -14044,6 +14106,24 @@
         "remaining": [
           "Actual browser/full-worker supervisor restart, shared/mixed Redis consumers and current supported-platform/packaged acceptance remain required.",
           "Representative legacy upgrades, post-write Node rollback, performance, Winterhold rehearsal and default cutover remain required for complete replacement."
+        ]
+      },
+      {
+        "method": "getProjectTokenUsage",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/settings/project_usage.rs",
+        "evidence": [
+          "docs/RUST_SERVER_PROJECT_INSIGHTS.md",
+          "scripts/server-rust/project-insights-http-compatibility.mjs",
+          "scripts/server-rust/project-insights-http-cases.mjs",
+          "scripts/server-rust/project-insight-contract-oracle.mjs",
+          "scripts/server-rust/project-placement-query-manifest.mjs",
+          "scripts/server-rust/actual-project-insights-client.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform, packaged desktop/container and complete replacement acceptance remain required."
         ]
       }
     ]
@@ -18710,7 +18790,7 @@
         "All three local authentication modes across all three stores pass paired status/body/header/HEAD and audit checks. The hosted external PostgreSQL account profile proves per-route budget exemption/exhaustion and actual Retry-After bounds."
       ],
       "remaining": [
-        "Implement the 25 explicitly unported active HTTP endpoints grouped in the evidence document; project administration and Chat controls are separately qualified.",
+        "Implement the 16 remaining active HTTP endpoints: remote desktops/surfaces12 and computer use4. Project/terminal insights, worker logs, operational health, project administration and Chat controls have separate local qualification.",
         "Reconcile other category rows/background services and qualify complete current behavior, supported platforms/packages, migrations/rollback and performance.",
         "Default Rust cutover and production Node-server removal remain required."
       ],
@@ -18722,14 +18802,14 @@
         "broadHttpInventoryReason": "The 33 active missing-route differences remain required implementation work."
       },
       "currentQualification": {
-        "sourceBaseline": "eac53fda28b918231f1c28fd94ce4fa3aee3733c",
+        "sourceBaseline": "c11b66ceaf1e2248ff4a3d6226822771cd670a32",
         "requestsPerPeer": 584,
         "requestErrors": 0,
         "cleanServerExits": 2,
         "activeFallbacksBeforeChatControls": 29,
-        "remainingActiveFallbackDifferences": 25,
+        "remainingActiveFallbackDifferences": 16,
         "inspectionExitCode": 1,
-        "rustExecutableSha256": "ed2073fde1fb2703723a078514f4bf79282dd46cd8318fbe9257a56b4a6ab9b4",
+        "rustExecutableSha256": "ec9f126f8551ae1188fc44f3bb377bcc8554ea64da6a37e604ea9457966dc934",
         "scope": "Current production empty-profile HTTP probe; not full successful-operation or replacement acceptance."
       }
     },
@@ -18810,6 +18890,53 @@
       "remaining": [
         "Full GUI, current supported-platform/package, mixed-server interruption, performance, final migration/rollback and full-domain acceptance remain required.",
         "Default Rust cutover and production Node-server removal remain required."
+      ]
+    },
+    "projectInsights": {
+      "status": "implemented-pending-platform-acceptance",
+      "sourceBaseline": "c11b66ceaf1e2248ff4a3d6226822771cd670a32",
+      "implementation": [
+        "cantrip_server_rs/src/http/project_insights.rs",
+        "cantrip_server_rs/src/settings/project_usage.rs",
+        "cantrip_server_rs/src/projects/placement_queries.rs",
+        "cantrip_server_rs/src/wire/tasks.rs"
+      ],
+      "evidence": [
+        "docs/RUST_SERVER_PROJECT_INSIGHTS.md",
+        "scripts/server-rust/project-insights-http-compatibility.mjs",
+        "scripts/server-rust/project-insights-http-cases.mjs",
+        "scripts/server-rust/project-insight-contract-oracle.mjs",
+        "scripts/server-rust/project-placement-query-manifest.mjs",
+        "scripts/server-rust/actual-project-insights-client.mjs",
+        "scripts/server-rust/actual-folder-client.mjs",
+        "scripts/server-rust/http-route-inventory.mjs"
+      ],
+      "localAcceptance": {
+        "platform": "darwin-arm64",
+        "controlledPairs": 9,
+        "pairedHttp": 954,
+        "pairedCommandStateCases": 666,
+        "controlledCleanServerExits": 18,
+        "productCells": 10,
+        "productSteps": 110,
+        "productCleanServerExits": 28,
+        "productCleanWorkerExits": 30,
+        "actual30SecondWorkerDeadlines": true,
+        "nativeVersion": "1.1.2757",
+        "nativeExecutableSha256": "ec9f126f8551ae1188fc44f3bb377bcc8554ea64da6a37e604ea9457966dc934",
+        "productionRequestsPerPeer": 584,
+        "remainingActiveHttpFallbacks": 16
+      },
+      "behavior": [
+        "Project source selection and Git/folder statistics, actual worker deadlines and strict result/kind validation.",
+        "Project/terminal script ciphertext retains separate context, placement checks, authenticated metadata and error boundaries; no plaintext script content is opened server-side.",
+        "Lifetime/UTC token totals, future days, deletion/tie grouping, JavaScript aggregate-number semantics and existing agent-time analytics.",
+        "Opaque Task workload retains owner/archive filters, whole-turn pagination and same-chat plan/message binding; real SQL snapshots prove no read-side dispatch or mutations.",
+        "Browser/full worker decrypt actual command lists and encrypted Task draft workload, reject wrong worktree AAD, retain identities/content across restart, and work across four Redis pairings."
+      ],
+      "remaining": [
+        "Current supported-platform, packaged desktop/container and complete replacement acceptance remain required.",
+        "Full Task plan/message execution acceptance, existing-data upgrade and post-write rollback, performance and integrated domain/background reconciliation remain whole-replacement requirements. Node remains the default server."
       ]
     }
   },
