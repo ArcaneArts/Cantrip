@@ -1,6 +1,7 @@
 //! Shared lifecycle for the two account-usage background services. Completion
 //! is recorded before callbacks/operational totals, matching their Node order.
 use super::{meter::MAX_SAFE_INTEGER, meter_service::Clock, types::iso};
+use crate::operations::logging::{self, Logger};
 use anyhow::{Result, ensure};
 use chrono::{DateTime, Utc};
 use futures::{
@@ -52,6 +53,7 @@ pub struct Job {
     followup: Followup,
     now: Clock,
     name: &'static str,
+    logger: Logger,
 }
 impl Job {
     pub fn new(
@@ -77,6 +79,25 @@ impl Job {
         followup: Followup,
         totals: Option<Value>,
         now: Clock,
+    ) -> Result<Arc<Self>> {
+        Self::with_clock_and_logger(
+            name,
+            interval_ms,
+            operation,
+            followup,
+            totals,
+            now,
+            logging::server_logger(),
+        )
+    }
+    pub fn with_clock_and_logger(
+        name: &'static str,
+        interval_ms: u64,
+        operation: Operation,
+        followup: Followup,
+        totals: Option<Value>,
+        now: Clock,
+        logger: Logger,
     ) -> Result<Arc<Self>> {
         ensure!(
             (1..=MAX_SAFE_INTEGER).contains(&interval_ms),
@@ -105,6 +126,7 @@ impl Job {
             followup,
             now,
             name,
+            logger,
         }))
     }
     pub fn start(self: &Arc<Self>, immediately: bool) {
@@ -147,6 +169,7 @@ impl Job {
             return in_flight.clone();
         }
         let started = (self.now)();
+        super::diagnostics::started(&self.logger, self.name);
         let job = self.clone();
         let completion = async move {
             let result = async {
@@ -156,34 +179,52 @@ impl Job {
                 {
                     let mut control = job.control.lock().unwrap();
                     control.stats.last_completed_at = Some(iso(&completed));
-                    control.stats.last_duration_ms = Some(completed.timestamp_millis() - started.timestamp_millis());
+                    control.stats.last_duration_ms =
+                        Some(completed.timestamp_millis() - started.timestamp_millis());
                     control.stats.last_result = Some(value.as_ref().clone());
                     if result.acquired {
                         control.stats.completion_count += 1.0;
                         control.stats.last_successful_at = control.stats.last_completed_at.clone();
-                    } else { control.stats.lease_contention_count += 1.0; }
+                    } else {
+                        control.stats.lease_contention_count += 1.0;
+                    }
                 }
-                if let Some(totals) = (job.followup)(value.clone(),result.acquired).await? {
+                if let Some(totals) = (job.followup)(value.clone(), result.acquired).await? {
                     job.control.lock().unwrap().stats.totals = Some(totals);
                 }
-                eprintln!("{}",serde_json::json!({"event":format!("account-usage.{}.{}",job.name,if result.acquired{"completed"}else{"lease-unavailable"}),"subsystem":"account-usage","status":if result.acquired{"completed"}else{"skipped"}}));
-                Ok::<_,anyhow::Error>(value)
-            }.await;
+                super::diagnostics::completed(
+                    &job.logger,
+                    job.name,
+                    result.acquired,
+                    &value,
+                    completed.timestamp_millis() - started.timestamp_millis(),
+                );
+                Ok::<_, anyhow::Error>(value)
+            }
+            .await;
             let value = match result {
                 Ok(value) => Some(value),
-                Err(_) => {
+                Err(error) => {
                     let failed = (job.now)();
                     let mut control = job.control.lock().unwrap();
                     control.stats.failure_count += 1.0;
                     control.stats.last_error_at = Some(iso(&failed));
-                    control.stats.last_duration_ms = Some(failed.timestamp_millis() - started.timestamp_millis());
-                    eprintln!("{}",serde_json::json!({"event":format!("account-usage.{}.failed",job.name),"subsystem":"account-usage","reasonCode":"database-error","status":"failed"}));
+                    control.stats.last_duration_ms =
+                        Some(failed.timestamp_millis() - started.timestamp_millis());
+                    super::diagnostics::failed(
+                        &job.logger,
+                        job.name,
+                        failed.timestamp_millis() - started.timestamp_millis(),
+                        &error,
+                    );
                     None
                 }
             };
             job.control.lock().unwrap().in_flight = None;
             value
-        }.boxed().shared();
+        }
+        .boxed()
+        .shared();
         control.in_flight = Some(completion.clone());
         drop(control);
         tokio::spawn(completion.clone());

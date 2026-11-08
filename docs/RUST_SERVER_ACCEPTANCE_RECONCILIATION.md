@@ -115,6 +115,14 @@ Additional operational consumers remain unreconciled;
 scoped passes do not prove identical whole-server logging or complete
 background-service invariants.
 
+The [accounting diagnostics comparison](RUST_SERVER_ACCOUNTING_DIAGNOSTICS.md)
+reproduces missing native persisted records and routes reconciliation, history
+maintenance and bandwidth-meter producers through shared capture and noise
+control. Its current local qualification includes actual reference classes,
+all nine storage/authentication production pairs and real PostgreSQL timer
+failure/recovery and held-final-flush shutdown. Other production consumers and
+the original full replacement acceptance remain required.
+
 Continue those comparisons before final product/fault/performance and supported
 artifact acceptance. Rust default selection and production Node-server removal
 remain required. Schema equality, source pairing and zero route fallbacks do not
