@@ -1,0 +1,95 @@
+{
+  "workerLogReadQuerySchema": [
+    {},
+    {
+      "afterCursor": "2",
+      "beforeCursor": "9",
+      "limit": "2",
+      "minimumLevel": "debug"
+    },
+    { "afterCursor": "0x10", "limit": "5e1", "minimumLevel": "fatal" }
+  ],
+  "serviceLogReadResultSchema": [
+    {
+      "records": [],
+      "nextCursor": 0,
+      "oldestCursor": null,
+      "latestCursor": 0,
+      "hasMore": false,
+      "truncated": false
+    },
+    {
+      "records": [
+        {
+          "cursor": 7,
+          "timestamp": "2026-10-25T00:00:00.000Z",
+          "system": " worker \t",
+          "level": "warn",
+          "message": "Quoted \" log \\ and newline\n é",
+          "context": {
+            "private": "fixture-only",
+            "nested": [null, true, 17],
+            "surrogate": "\ud800"
+          },
+          "ignored": "stripped"
+        }
+      ],
+      "nextCursor": 7,
+      "oldestCursor": 3,
+      "latestCursor": 9,
+      "hasMore": true,
+      "truncated": true,
+      "ignored": "stripped"
+    }
+  ],
+  "workerLogStreamStartResultSchema": [{ "accepted": true, "latestCursor": 9 }],
+  "workerLogStreamRenewResultSchema": [{ "accepted": true }],
+  "workerLogStreamServerMessageSchema": [
+    {
+      "type": "ready",
+      "subscriptionId": "11111111-1111-4111-8111-111111111111",
+      "nextCursor": 0
+    },
+    {
+      "type": "batch",
+      "records": [
+        {
+          "cursor": 2,
+          "timestamp": "2026-10-25T00:00:00.000Z",
+          "system": "worker",
+          "level": "info",
+          "message": "Observed log",
+          "context": null
+        }
+      ],
+      "nextCursor": 2,
+      "oldestCursor": 1,
+      "latestCursor": 4,
+      "truncated": false
+    },
+    {
+      "type": "error",
+      "code": "worker-offline",
+      "message": "Worker disconnected.",
+      "retryable": true
+    },
+    {
+      "type": "error",
+      "code": "stream-unavailable",
+      "message": "Worker log stream could not start.",
+      "retryable": true
+    },
+    {
+      "type": "error",
+      "code": "authorization-failed",
+      "message": "Authorization failed.",
+      "retryable": false
+    },
+    {
+      "type": "error",
+      "code": "invalid-request",
+      "message": "Invalid request.",
+      "retryable": false
+    }
+  ]
+}

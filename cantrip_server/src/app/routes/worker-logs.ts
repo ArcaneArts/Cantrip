@@ -135,16 +135,6 @@ export function installWorkerLogRoutes(
       }
       const principal = authenticatedPrincipal(request);
       const workerId = request.params.workerId;
-      const worker = await repository.getWorker(principal.user.id, workerId);
-      if (!worker) {
-        socket.close(1008, "Worker log stream is not authorized");
-        return;
-      }
-      if (!bridge.isConnected(workerId) || !bridge.subscribeNotifications) {
-        socket.close(1013, "Worker is offline");
-        return;
-      }
-
       const subscriptionId = randomUUID();
       let started = false;
       let closed = false;
@@ -199,6 +189,16 @@ export function installWorkerLogRoutes(
         return true;
       };
       socket.once("close", cleanup);
+      const worker = await repository.getWorker(principal.user.id, workerId);
+      if (closed || socket.readyState !== 1) return;
+      if (!worker) {
+        socket.close(1008, "Worker log stream is not authorized");
+        return;
+      }
+      if (!bridge.isConnected(workerId) || !bridge.subscribeNotifications) {
+        socket.close(1013, "Worker is offline");
+        return;
+      }
       heartbeatTimer = setInterval(() => {
         if (socket.readyState === 1) socket.ping();
       }, WORKER_LOG_STREAM_HEARTBEAT_MS);
@@ -252,11 +252,14 @@ export function installWorkerLogRoutes(
           stopWorkerStream();
           return;
         }
-        send({
-          type: "ready",
-          subscriptionId,
-          nextCursor: query.data.afterCursor,
-        });
+        if (
+          !send({
+            type: "ready",
+            subscriptionId,
+            nextCursor: query.data.afterCursor,
+          })
+        )
+          return;
         renewTimer = setInterval(() => {
           void bridge
             .request(

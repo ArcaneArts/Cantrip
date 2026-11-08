@@ -122,6 +122,8 @@ mod worker_link_surfaces;
 mod worker_link_terminals;
 mod worker_link_tunnels;
 mod worker_links;
+mod worker_log_socket;
+mod worker_logs;
 mod worker_maintenance;
 mod worker_management;
 mod worker_operations;
@@ -210,6 +212,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .route("/healthz", get(health))
         .route("/readyz", get(ready))
         .merge(operational_status::routes())
+        .merge(worker_logs::routes())
         .merge(sessions::routes())
         .merge(project_alerts::routes())
         .merge(project_automations::routes())

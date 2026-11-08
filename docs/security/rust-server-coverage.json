@@ -8659,43 +8659,71 @@
       {
         "method": "GET",
         "path": "/api/workers/:workerId/logs",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_WORKER_LOGS.md",
+          "scripts/server-rust/worker-log-http-compatibility.mjs",
+          "scripts/server-rust/worker-log-http-cases.mjs",
+          "scripts/server-rust/worker-log-stream-cases.mjs",
+          "scripts/server-rust/worker-log-timer-cases.mjs",
+          "scripts/server-rust/worker-log-stress-cases.mjs",
+          "scripts/server-rust/worker-log-query-lifetime.mjs",
+          "scripts/server-rust/actual-worker-logs-client.mjs",
+          "scripts/server-rust/worker-log-contract-oracle.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
         "observedBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
+          "sourceBaseline": "18fbd121fc90ddedf1dc6abd43f37376fe3ec502",
           "sourceStatus": 404,
           "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
+          "nativeArtifactSha256": "658eb13dd75f0cacfcd9d275241ec37228f551af6cb23f30355872ce85936f36",
+          "scope": "Current production absent-worker/non-upgrade probe only. Successful HTTP/WebSocket, real timers/faults, existing browser/full worker and all four shared peer pairings have separate qualification; Source also includes the reproduced ownership-query cleanup repair."
         },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+          "Current supported-platform desktop/native/container artifact acceptance and broader coordination faults remain required.",
+          "The complete server replacement still requires remaining domain/background-service reconciliation, performance and final upgrade/post-write rollback acceptance, Rust-default cutover and production Node-server removal."
+        ],
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_logs.rs",
+          "cantrip_server_rs/src/http/worker_log_socket.rs"
         ]
       },
       {
         "method": "GET",
         "path": "/api/workers/:workerId/logs/stream",
-        "status": "unported",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
-          "scripts/server-rust/http-route-inventory.mjs",
-          "docs/RUST_SERVER_HTTP_INVENTORY.md"
+          "docs/RUST_SERVER_WORKER_LOGS.md",
+          "scripts/server-rust/worker-log-http-compatibility.mjs",
+          "scripts/server-rust/worker-log-http-cases.mjs",
+          "scripts/server-rust/worker-log-stream-cases.mjs",
+          "scripts/server-rust/worker-log-timer-cases.mjs",
+          "scripts/server-rust/worker-log-stress-cases.mjs",
+          "scripts/server-rust/worker-log-query-lifetime.mjs",
+          "scripts/server-rust/actual-worker-logs-client.mjs",
+          "scripts/server-rust/worker-log-contract-oracle.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
         ],
         "observedBoundary": {
           "platform": "darwin-arm64",
           "database": "pglite",
           "auth": "none",
+          "sourceBaseline": "18fbd121fc90ddedf1dc6abd43f37376fe3ec502",
           "sourceStatus": 404,
           "rustStatus": 404,
-          "rustResponse": "generic route-not-found"
+          "nativeArtifactSha256": "658eb13dd75f0cacfcd9d275241ec37228f551af6cb23f30355872ce85936f36",
+          "scope": "Current production absent-worker/non-upgrade probe only. Successful HTTP/WebSocket, real timers/faults, existing browser/full worker and all four shared peer pairings have separate qualification; Source also includes the reproduced ownership-query cleanup repair."
         },
         "remaining": [
-          "Implement the complete existing Source endpoint, including successful behavior, authorization, persistence/events, worker routing and recovery where applicable. Invalid-body or absent-resource response shims do not satisfy this requirement.",
-          "Qualify the implementation with existing clients/worker, all required stores and supported deployment/platform artifacts."
+          "Current supported-platform desktop/native/container artifact acceptance and broader coordination faults remain required.",
+          "The complete server replacement still requires remaining domain/background-service reconciliation, performance and final upgrade/post-write rollback acceptance, Rust-default cutover and production Node-server removal."
+        ],
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_logs.rs",
+          "cantrip_server_rs/src/http/worker_log_socket.rs"
         ]
       },
       {
@@ -10357,6 +10385,106 @@
         "evidence": ["docs/RUST_SERVER_SOURCE_DRIFT.md"],
         "remaining": [
           "Current source and generated command schema are present; exact native-worker execution, failure/recovery and supported-platform acceptance remain separate requirements."
+        ]
+      },
+      {
+        "command": "diagnostics.logs.read",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_logs.rs",
+          "cantrip_server_rs/src/http/worker_log_socket.rs"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_WORKER_LOGS.md",
+          "scripts/server-rust/worker-log-http-compatibility.mjs",
+          "scripts/server-rust/worker-log-http-cases.mjs",
+          "scripts/server-rust/worker-log-stream-cases.mjs",
+          "scripts/server-rust/worker-log-timer-cases.mjs",
+          "scripts/server-rust/worker-log-stress-cases.mjs",
+          "scripts/server-rust/worker-log-query-lifetime.mjs",
+          "scripts/server-rust/actual-worker-logs-client.mjs",
+          "scripts/server-rust/worker-log-contract-oracle.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
+        ],
+        "validatedSubset": "Native server admission, dispatch, lease cleanup, strict replies and notification forwarding through actual WorkerConnection and full existing worker; worker logging/execution remain Node.",
+        "remaining": [
+          "Current supported-platform desktop/native/container artifact acceptance and broader coordination faults remain required.",
+          "The complete server replacement still requires remaining domain/background-service reconciliation, performance and final upgrade/post-write rollback acceptance, Rust-default cutover and production Node-server removal."
+        ]
+      },
+      {
+        "command": "diagnostics.logs.stream.start",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_logs.rs",
+          "cantrip_server_rs/src/http/worker_log_socket.rs"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_WORKER_LOGS.md",
+          "scripts/server-rust/worker-log-http-compatibility.mjs",
+          "scripts/server-rust/worker-log-http-cases.mjs",
+          "scripts/server-rust/worker-log-stream-cases.mjs",
+          "scripts/server-rust/worker-log-timer-cases.mjs",
+          "scripts/server-rust/worker-log-stress-cases.mjs",
+          "scripts/server-rust/worker-log-query-lifetime.mjs",
+          "scripts/server-rust/actual-worker-logs-client.mjs",
+          "scripts/server-rust/worker-log-contract-oracle.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
+        ],
+        "validatedSubset": "Native server admission, dispatch, lease cleanup, strict replies and notification forwarding through actual WorkerConnection and full existing worker; worker logging/execution remain Node.",
+        "remaining": [
+          "Current supported-platform desktop/native/container artifact acceptance and broader coordination faults remain required.",
+          "The complete server replacement still requires remaining domain/background-service reconciliation, performance and final upgrade/post-write rollback acceptance, Rust-default cutover and production Node-server removal."
+        ]
+      },
+      {
+        "command": "diagnostics.logs.stream.renew",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_logs.rs",
+          "cantrip_server_rs/src/http/worker_log_socket.rs"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_WORKER_LOGS.md",
+          "scripts/server-rust/worker-log-http-compatibility.mjs",
+          "scripts/server-rust/worker-log-http-cases.mjs",
+          "scripts/server-rust/worker-log-stream-cases.mjs",
+          "scripts/server-rust/worker-log-timer-cases.mjs",
+          "scripts/server-rust/worker-log-stress-cases.mjs",
+          "scripts/server-rust/worker-log-query-lifetime.mjs",
+          "scripts/server-rust/actual-worker-logs-client.mjs",
+          "scripts/server-rust/worker-log-contract-oracle.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
+        ],
+        "validatedSubset": "Native server admission, dispatch, lease cleanup, strict replies and notification forwarding through actual WorkerConnection and full existing worker; worker logging/execution remain Node.",
+        "remaining": [
+          "Current supported-platform desktop/native/container artifact acceptance and broader coordination faults remain required.",
+          "The complete server replacement still requires remaining domain/background-service reconciliation, performance and final upgrade/post-write rollback acceptance, Rust-default cutover and production Node-server removal."
+        ]
+      },
+      {
+        "command": "diagnostics.logs.stream.stop",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_logs.rs",
+          "cantrip_server_rs/src/http/worker_log_socket.rs"
+        ],
+        "evidence": [
+          "docs/RUST_SERVER_WORKER_LOGS.md",
+          "scripts/server-rust/worker-log-http-compatibility.mjs",
+          "scripts/server-rust/worker-log-http-cases.mjs",
+          "scripts/server-rust/worker-log-stream-cases.mjs",
+          "scripts/server-rust/worker-log-timer-cases.mjs",
+          "scripts/server-rust/worker-log-stress-cases.mjs",
+          "scripts/server-rust/worker-log-query-lifetime.mjs",
+          "scripts/server-rust/actual-worker-logs-client.mjs",
+          "scripts/server-rust/worker-log-contract-oracle.mjs",
+          "scripts/server-rust/http-route-inventory.mjs"
+        ],
+        "validatedSubset": "Native server admission, dispatch, lease cleanup, strict replies and notification forwarding through actual WorkerConnection and full existing worker; worker logging/execution remain Node.",
+        "remaining": [
+          "Current supported-platform desktop/native/container artifact acceptance and broader coordination faults remain required.",
+          "The complete server replacement still requires remaining domain/background-service reconciliation, performance and final upgrade/post-write rollback acceptance, Rust-default cutover and production Node-server removal."
         ]
       }
     ]
@@ -14639,7 +14767,9 @@
         "cantrip_server_rs/src/operations/logging.rs",
         "cantrip_server_rs/src/http/operational_status.rs",
         "cantrip_server_rs/src/operations/metrics.rs",
-        "cantrip_server_rs/src/operations/metrics/prometheus.rs"
+        "cantrip_server_rs/src/operations/metrics/prometheus.rs",
+        "cantrip_server_rs/src/http/worker_logs.rs",
+        "cantrip_server_rs/src/http/worker_log_socket.rs"
       ],
       "evidence": [
         "cantrip_server_rs/tests/service_logs.rs",
@@ -14654,11 +14784,20 @@
         "scripts/server-rust/actual-operational-status-client.mjs",
         "scripts/server-rust/http-route-inventory.mjs",
         "scripts/server-rust/operational-metrics-oracle.mjs",
-        "scripts/server-rust/operational-status-lock-cases.mjs"
+        "scripts/server-rust/operational-status-lock-cases.mjs",
+        "docs/RUST_SERVER_WORKER_LOGS.md",
+        "scripts/server-rust/worker-log-http-compatibility.mjs",
+        "scripts/server-rust/worker-log-http-cases.mjs",
+        "scripts/server-rust/worker-log-stream-cases.mjs",
+        "scripts/server-rust/worker-log-timer-cases.mjs",
+        "scripts/server-rust/worker-log-stress-cases.mjs",
+        "scripts/server-rust/worker-log-query-lifetime.mjs",
+        "scripts/server-rust/actual-worker-logs-client.mjs",
+        "scripts/server-rust/worker-log-contract-oracle.mjs"
       ],
       "scope": "Native shared JSON operational log emission, UTF-16 text/key semantics, secret/context/error sanitization, sampled emission and bounded repeated-event windows match 65,937 actual Source sanitizer/error vectors and 2,136 actions/eight policy scenarios locally. Actual direct production log comparisons pass334 cases/15 groups, coordinator diagnostics575 cases, and routing583 cases/31 states per store on native PGlite/private/external PostgreSQL. This is not the complete operational logging/metrics product.",
       "remaining": [
-        "Log buffer/archive services, production presentation and worker HTTP log reads/streaming.",
+        "Reconcile remaining server log buffer/archive services and production presentation against current Source.",
         "Reconcile remaining background-service/operational consumers against current Source.",
         "Current supported-platform and packaged acceptance."
       ],
@@ -14682,6 +14821,25 @@
         "fullProductWorkerExits": 30,
         "scope": "Actual collectors, existing health SDK, authorized complete Prometheus, database/Redis/caller failures, legacy headers/101/logs and retained restart. Source scheduler scan recorder currently has no production caller. Platform/package/performance and full replacement acceptance remain required.",
         "collectorOrdering": "Actual relation-lock red/green: Source samples Live after worker query; usage retains pre-query capture. Native initially returned1 after real close, now returns0."
+      },
+      "workerLogHttpQualification": {
+        "platform": "darwin-arm64",
+        "storageAuthPairs": 9,
+        "pairedHttpObservations": 513,
+        "pairedStreamCommandCases": 264,
+        "cleanControlledServerExits": 18,
+        "browserFullWorkerCells": 6,
+        "sharedPeerPairings": [
+          "node/node",
+          "node/rust",
+          "rust/node",
+          "rust/rust"
+        ],
+        "fullProductSteps": 130,
+        "fullProductServerExits": 28,
+        "fullProductWorkerExits": 30,
+        "nativeArtifactSha256": "658eb13dd75f0cacfcd9d275241ec37228f551af6cb23f30355872ce85936f36",
+        "scope": "Actual owned log reads, initial batch/ACK ordering, real five-second deadlines/25-second heartbeats/minute leases, late ACKs, session revocation, invalid frames, real TCP slow readers and exact durable egress accounting. Actual PostgreSQL relation-lock caller loss has a retained Source red/green reproduction. Initial-batch pressure closes before ready and admits no renewal after61seconds. Supported-platform/package and full replacement acceptance remain required."
       }
     },
     "legacyPGliteConversion": {
@@ -18956,6 +19114,27 @@
         "scripts/server-rust/operational-status-lock-cases.mjs"
       ],
       "remaining": "Other23 active routes/background services, full platform/package/upgrade/post-write rollback/performance acceptance, default Rust cutover and production Node-server removal."
+    },
+    {
+      "branch": "codex/rust-worker-log-http",
+      "observedAt": "2026-11-08",
+      "platforms": ["darwin-arm64"],
+      "execution": "Local only; actual Source/native HTTP and WebSockets, real timers and PostgreSQL relation locks, actual paused TCP readers, existing browser APIs, full unchanged Node worker and all four private PostgreSQL/Redis peer pairings. Release product runs observe actual spawned executable bytes and hashes.",
+      "conclusion": "Worker log HTTP and leased streams are native; current production route probe retains21 active fallbacks and completeReplacement remains false.",
+      "scope": "Worker log reads, leases, notification ordering, session/disconnect cleanup, backpressure, actual usage persistence and retained restart.",
+      "qualification": "docs/RUST_SERVER_WORKER_LOGS.md",
+      "harnesses": [
+        "scripts/server-rust/worker-log-http-compatibility.mjs",
+        "scripts/server-rust/worker-log-http-cases.mjs",
+        "scripts/server-rust/worker-log-stream-cases.mjs",
+        "scripts/server-rust/worker-log-timer-cases.mjs",
+        "scripts/server-rust/worker-log-stress-cases.mjs",
+        "scripts/server-rust/worker-log-query-lifetime.mjs",
+        "scripts/server-rust/actual-worker-logs-client.mjs",
+        "scripts/server-rust/worker-log-contract-oracle.mjs",
+        "scripts/server-rust/http-route-inventory.mjs"
+      ],
+      "remaining": "Other21 active routes/background services, current platform/package/upgrade/post-write rollback/performance acceptance, final desktop/Winterhold rehearsal, Rust-default cutover and production Node-server removal."
     }
   ]
 }

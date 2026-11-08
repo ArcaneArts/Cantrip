@@ -130,8 +130,10 @@ that variable; product checks use `CANTRIP_TEST_SERVER_BINARY`. Existing
 artifacts. Use one shared Cargo target with incremental compilation and debug
 symbols disabled when building additional test helpers.
 
-Worker log buffer/archive/HTTP services, the other 23 active routes and remaining
-background-service coverage still need completion. Current supported-platform
+Subsequent [worker-log qualification](RUST_SERVER_WORKER_LOGS.md) completes native
+worker HTTP reads and leased streaming; the current inventory retains 21 active
+route gaps. Remaining server log buffer/archive and background-service coverage
+still need reconciliation. Current supported-platform
 and packaged artifacts, longer mixed-server execution/recovery, existing-data
 upgrade/post-write rollback, performance comparisons, default Rust cutover and
 production Node removal remain required. No GitHub Actions validation or

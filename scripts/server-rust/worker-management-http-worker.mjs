@@ -107,6 +107,7 @@ export async function managementWorker({
       return connected;
     },
     pulse: () => sendHeartbeat(config, report),
+    notify: (notification) => connection.sendNotification(notification),
     close() {
       connection.close();
     },
