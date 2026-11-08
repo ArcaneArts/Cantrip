@@ -871,6 +871,13 @@ export const projectAdministrationContractRoots = [
   "computerUseAuthorityChangeSchema",
 ];
 
+export const chatControlContractRoots = [
+  "chatWorktreeUpdateSchema",
+  "chatExecutionLaneReleaseSchema",
+  "chatExecutionLaneListSchema",
+  "chatCompactAcceptedSchema",
+];
+
 // Keep independently added roots self-contained. Numeric graph references must
 // not depend on the size of the base graph after an unrelated branch merges.
 export const runMcpContractRoots = [
@@ -1777,6 +1784,20 @@ if (
   const administrationDestination = new URL(
     "../../cantrip_server_rs/contracts/project-administration.json",
     import.meta.url,
+  );
+  const chatControlDestination = new URL(
+    "../../cantrip_server_rs/contracts/chat-control.json",
+    import.meta.url,
+  );
+  await writeFile(
+    chatControlDestination,
+    await format(
+      JSON.stringify(buildContractManifest(chatControlContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(chatControlDestination))),
+        filepath: fileURLToPath(chatControlDestination),
+      },
+    ),
   );
   await writeFile(
     administrationDestination,

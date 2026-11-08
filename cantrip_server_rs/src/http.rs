@@ -38,6 +38,7 @@ mod chat_attachments;
 mod chat_catalogs;
 mod chat_configuration;
 mod chat_console;
+mod chat_control;
 mod chat_customizations;
 mod chat_execution;
 mod chat_forks;
@@ -223,6 +224,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(chat_catalogs::routes())
         .merge(chat_attachments::routes())
         .merge(chat_configuration::routes())
+        .merge(chat_control::routes())
         .merge(chat_customizations::routes())
         .merge(conversations::routes())
         .merge(chat_execution::routes())

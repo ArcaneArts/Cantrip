@@ -169,44 +169,94 @@ describe("managed execution runner", () => {
     expect(f.handler.declined).toHaveBeenCalledWith(decline);
   });
 
-  it("reconciles an uncertain bind with the same tuple on the next explicit request", async () => {
-    const f = fixture();
-    await f.runner.beforeNativeDispatch(
-      "turn/interrupt",
-      "thread-1",
-      "runtime-1",
-    );
-    f.runtime.bindManagedExecution.mockRejectedValueOnce(
-      new Error("connection response lost"),
-    );
-    await expect(
-      f.runner.beforeNativeDispatch(
-        "thread/goal/set",
+  it.each(["turn/interrupt", "thread/goal/clear"])(
+    "rearms an explicitly admitted compaction after %s without restoring its old admission",
+    async (method) => {
+      const f = fixture();
+      const previous = f.runner.configuration.runnerGeneration;
+      await f.runner.beforeNativeDispatch(
+        method,
         "thread-1",
         "runtime-1",
-        true,
-      ),
-    ).rejects.toThrow("response lost");
-    const first = f.runtime.bindManagedExecution.mock.calls[0];
-    await f.runner.beforeNativeDispatch(
-      "thread/goal/set",
-      "thread-1",
-      "runtime-1",
-      true,
-    );
-    expect(f.runtime.bindManagedExecution.mock.calls[1]).toEqual(first);
-  });
+        false,
+        method === "thread/goal/clear",
+      );
+      await f.runner.beforeNativeDispatch(
+        "thread/compact/start",
+        "thread-1",
+        "runtime-1",
+      );
+      const next = f.runner.configuration.runnerGeneration;
+      expect(next).not.toBe(previous);
+      expect(f.runtime.bindManagedExecution).toHaveBeenCalledExactlyOnceWith(
+        {
+          threadId: "thread-1",
+          runnerGeneration: next,
+          expectedRunnerGeneration: previous,
+        },
+        "runtime-1",
+      );
+      await expect(async () =>
+        f.handlers.get(previous)!.requested(
+          {
+            threadId: "thread-1",
+            runnerGeneration: previous,
+            attemptId: "stale-attempt",
+            turnId: "stale-turn",
+            trigger: "queue",
+            input: {},
+          },
+          new AbortController().signal,
+        ),
+      ).rejects.toThrow();
+      expect(f.handler.requested).not.toHaveBeenCalled();
+    },
+  );
 
-  it("rejects a replaced transport before any native side effect", async () => {
-    const f = fixture();
-    f.runner.prepared("thread-1");
-    f.runtime.transportGeneration = "runtime-2";
-    expect(f.runner.belongsToCurrentTransport()).toBe(false);
-    await expect(
-      f.runner.beforeNativeDispatch("turn/interrupt", "thread-1", "runtime-1"),
-    ).rejects.toThrow("replaced native transport");
-    expect(f.runtime.invalidateManagedExecution).not.toHaveBeenCalled();
-  });
+  it.each(["thread/goal/set", "thread/compact/start"])(
+    "reconciles an uncertain %s bind with the same tuple on the next explicit request",
+    async (method) => {
+      const f = fixture();
+      await f.runner.beforeNativeDispatch(
+        "turn/interrupt",
+        "thread-1",
+        "runtime-1",
+      );
+      f.runtime.bindManagedExecution.mockRejectedValueOnce(
+        new Error("connection response lost"),
+      );
+      await expect(
+        f.runner.beforeNativeDispatch(
+          method,
+          "thread-1",
+          "runtime-1",
+          method === "thread/goal/set",
+        ),
+      ).rejects.toThrow("response lost");
+      const first = f.runtime.bindManagedExecution.mock.calls[0];
+      await f.runner.beforeNativeDispatch(
+        method,
+        "thread-1",
+        "runtime-1",
+        method === "thread/goal/set",
+      );
+      expect(f.runtime.bindManagedExecution.mock.calls[1]).toEqual(first);
+    },
+  );
+
+  it.each(["turn/interrupt", "thread/compact/start"])(
+    "rejects a replaced transport before %s has any native side effect",
+    async (method) => {
+      const f = fixture();
+      f.runner.prepared("thread-1");
+      f.runtime.transportGeneration = "runtime-2";
+      expect(f.runner.belongsToCurrentTransport()).toBe(false);
+      await expect(
+        f.runner.beforeNativeDispatch(method, "thread-1", "runtime-1"),
+      ).rejects.toThrow("replaced native transport");
+      expect(f.runtime.invalidateManagedExecution).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not reuse a pre-start handler cleared by an unsuccessful runtime startup", () => {
     const f = fixture(null);

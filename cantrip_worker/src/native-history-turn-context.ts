@@ -130,6 +130,12 @@ export class NativeHistoryTurnContextIndex {
 /** Presentation needs invariant cwd/mode, not a guessed winner among retained
  * compaction contexts. Root attribution is returned for separate lineage checks.
  * Missing evidence defers projection only; it is never a native-input gate. */
+export class NativeHistoryTurnContextPending extends Error {
+  constructor() {
+    super("Original native turn context is not yet retained.");
+    this.name = "NativeHistoryTurnContextPending";
+  }
+}
 export function resolveNativeHistoryTurnContext(contexts: Context[]): {
   cwd: string;
   mode: "default" | "plan";
@@ -138,8 +144,7 @@ export function resolveNativeHistoryTurnContext(contexts: Context[]): {
   const cwd = new Set(contexts.map((value) => value.cwd));
   const mode = new Set(contexts.map((value) => value.collaborationMode));
   const root = new Set(contexts.map((value) => value.rootTurnId));
-  if (!contexts.length)
-    throw new Error("Original native turn context is not yet retained.");
+  if (!contexts.length) throw new NativeHistoryTurnContextPending();
   if (cwd.size !== 1 || mode.size !== 1 || root.size !== 1)
     throw new Error(
       "Retained native turn contexts disagree on presentation scope.",
