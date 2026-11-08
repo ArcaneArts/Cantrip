@@ -15033,7 +15033,10 @@
         "cantrip_server_rs/src/operations/metrics.rs",
         "cantrip_server_rs/src/operations/metrics/prometheus.rs",
         "cantrip_server_rs/src/http/worker_logs.rs",
-        "cantrip_server_rs/src/http/worker_log_socket.rs"
+        "cantrip_server_rs/src/http/worker_log_socket.rs",
+        "cantrip_server_rs/src/operations/log_records.rs",
+        "cantrip_server_rs/src/operations/log_archive.rs",
+        "cantrip_server_rs/src/operations/log_runtime.rs"
       ],
       "evidence": [
         "cantrip_server_rs/tests/service_logs.rs",
@@ -15057,13 +15060,19 @@
         "scripts/server-rust/worker-log-stress-cases.mjs",
         "scripts/server-rust/worker-log-query-lifetime.mjs",
         "scripts/server-rust/actual-worker-logs-client.mjs",
-        "scripts/server-rust/worker-log-contract-oracle.mjs"
+        "scripts/server-rust/worker-log-contract-oracle.mjs",
+        "cantrip_server_rs/tests/log_records.rs",
+        "scripts/server-rust/log-records-oracle.mjs",
+        "scripts/server-rust/log-archive-compatibility.mjs",
+        "scripts/server-rust/log-runtime-server-compatibility.mjs",
+        "docs/RUST_SERVER_LOG_ARCHIVE.md",
+        "scripts/server-rust/log-profile-activation-compatibility.mjs",
+        "scripts/server-rust/log-profile-lease-compatibility.mjs"
       ],
       "scope": "Native shared JSON operational log emission, UTF-16 text/key semantics, secret/context/error sanitization, sampled emission and bounded repeated-event windows match 65,937 actual Source sanitizer/error vectors and 2,136 actions/eight policy scenarios locally. Actual direct production log comparisons pass334 cases/15 groups, coordinator diagnostics575 cases, and routing583 cases/31 states per store on native PGlite/private/external PostgreSQL. This is not the complete operational logging/metrics product.",
       "remaining": [
-        "Reconcile remaining server log buffer/archive services and production presentation against current Source.",
-        "Reconcile remaining background-service/operational consumers against current Source.",
-        "Current supported-platform and packaged acceptance."
+        "Reconcile additional production log consumers, including HTTP/Pino/database/bridge diagnostics and console presentation against current Source.",
+        "Complete current supported-platform, packaged artifact and full replacement acceptance."
       ],
       "operationalHttpQualification": {
         "sourceBaseline": "d16227b1fa7acaa4425ee738df2477ae59474699",
@@ -15104,6 +15113,27 @@
         "fullProductWorkerExits": 30,
         "nativeArtifactSha256": "658eb13dd75f0cacfcd9d275241ec37228f551af6cb23f30355872ce85936f36",
         "scope": "Actual owned log reads, initial batch/ACK ordering, real five-second deadlines/25-second heartbeats/minute leases, late ACKs, session revocation, invalid frames, real TCP slow readers and exact durable egress accounting. Actual PostgreSQL relation-lock caller loss has a retained Source red/green reproduction. Initial-batch pressure closes before ready and admits no renewal after61seconds. Supported-platform/package and full replacement acceptance remain required."
+      },
+      "serverLogArchiveQualification": {
+        "sourceBaseline": "c14a56216d337d639a87ebf8c6962a4c7db30ac3",
+        "platform": "darwin-arm64",
+        "persistedMinimizationVectors": 800,
+        "bufferOperations": 1280,
+        "filesystemScenarios": 12,
+        "filesystemSteps": 172,
+        "productionEntrypointPeerRuns": 16,
+        "storageModes": ["pglite", "bundled-postgres", "postgres"],
+        "actualActorBoundaryTimer": true,
+        "concurrentProducerDrainRecords": 128,
+        "scope": "Real production entrypoints, startup/configuration failure, console filtering independent of capture, archive path precedence, legacy-file migration, SIGINT/SIGTERM, queued close and actual filesystem obstruction/recovery. Actual filesystem oracle covers rotation, quota, compression/recovery, restart, permissions, UTF-16 bytes and boundary scheduling. Clock seams qualify calendar/age behavior; gzip payloads are compared after decompression, not as identical compressed bytes.",
+        "remaining": "Additional production consumers, HTTP/Pino/database/bridge diagnostics and console presentation remain unreconciled. This does not establish identical whole-server record counts, supported-platform/package/performance or complete replacement acceptance.",
+        "profileActivationBoundaryCases": 4,
+        "profileServerRestarts": 4,
+        "heldArchiveWriteLeaseCases": 3,
+        "optimizedArtifact": {
+          "bytes": 93701168,
+          "sha256": "85c6a5d4471914639618cf16c656e00c232a108406eb5b2520c5b85ba86116a8"
+        }
       }
     },
     "legacyPGliteConversion": {
@@ -19268,7 +19298,7 @@
       ],
       "scope": "Source composition mapping only; each family retains its own existing behavior/fault acceptance. Does not prove all background services.",
       "remaining": [
-        "Reconcile remaining production operational log consumers, buffer/archive services and complete background-service invariants against current Source.",
+        "Reconcile remaining production operational log consumers and console presentation, and complete background-service invariants against current Source. The bounded buffer and daily archive have separate current local qualification.",
         "Finish current supported-platform/package, complete product/fault/coordination/performance acceptance and final Rust default/production Node removal."
       ],
       "resolvedGlobalExpiry": "See interactionExpiry: independent native producer, owner-scoped mutations, actual failure/recovery and shutdown drain; existing reference owner/shutdown bugs reproduced and repaired.",
@@ -19427,7 +19457,7 @@
       },
       "scope": "Actual HTTP/SQL/WebSocket and process lifecycle with unchanged WorkerConnection and controlled provider capture/purge replies; not actual provider login or full-worker credential-file encryption/deletion.",
       "remaining": [
-        "Complete remaining operational consumers/buffer/archive and full product, fault, coordination, current-artifact, supported-platform, historical-upgrade/rollback and performance acceptance.",
+        "Complete remaining operational log consumers and console presentation, and full product, fault, coordination, current-artifact, supported-platform, historical-upgrade/rollback and performance acceptance.",
         "Complete final Rust default selection and production Node-server removal."
       ]
     }

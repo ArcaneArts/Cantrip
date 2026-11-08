@@ -321,7 +321,7 @@ pub fn server() -> &'static Arc<Emitter> {
         Emitter::new(
             "server".into(),
             Arc::new(|| chrono::Utc::now().timestamp_millis() as f64),
-            Arc::new(|record| eprintln!("{}", record.stringify())),
+            Arc::new(super::log_runtime::capture),
         )
     })
 }
@@ -339,7 +339,9 @@ pub fn error_details(error: &anyhow::Error) -> Value {
         _ => error.downcast_ref::<crate::workers::bridge::CommandError>(),
     };
     let name =
-        if bridge.is_some_and(|error| error.encoding_error.is_some())
+        if let Some(error) = error.downcast_ref::<crate::config::ConfigError>() {
+            error.name
+        } else if bridge.is_some_and(|error| error.encoding_error.is_some())
             || super::shared_failure::downcast_ref::<crate::settings::ResponseValidationError>(
                 error,
             )

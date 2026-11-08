@@ -97,9 +97,14 @@ query failure/recovery, held credential UPDATE shutdown and retained
 restart/purge. This does not establish real provider login or actual worker
 credential-file encryption/deletion.
 
-Remaining background/operational reconciliation includes production log
-consumers and buffer/archive services. Source composition mapping and these
-scoped comparisons do not prove complete background-service invariants.
+The [server log archive qualification](RUST_SERVER_LOG_ARCHIVE.md) adds the
+bounded minimized-record buffer and daily native filesystem archive, wires the
+production startup/shutdown lifetime and routes catalog/account lifecycle
+diagnostics through shared capture. Sixteen production Node/Rust peer runs
+cover all three stores, configuration, signals, failure and actual archive
+recovery. Additional operational consumers and console presentation remain
+unreconciled; scoped archive passes do not prove identical whole-server logging
+or complete background-service invariants.
 
 Continue those comparisons before final product/fault/performance and supported
 artifact acceptance. Rust default selection and production Node-server removal
