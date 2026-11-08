@@ -48,6 +48,7 @@ export interface LiveMutationRuntimeDependencies {
     },
   ) => void;
   repository: ServerRepository;
+  runAsOwner: <T>(ownerId: string, operation: () => T) => T;
   taskLiveInvalidationRouter: TaskLiveInvalidationRouter;
 }
 
@@ -63,6 +64,7 @@ export function createLiveMutationRuntime({
   livePublishingEnabled,
   publishLiveInvalidation,
   repository,
+  runAsOwner,
   taskLiveInvalidationRouter,
 }: LiveMutationRuntimeDependencies) {
   const publishProjectAutomationChange = (
@@ -514,20 +516,26 @@ export function createLiveMutationRuntime({
   const expireLiveAgentInteractionRequests = async (
     ...input: Parameters<typeof repository.expireAgentInteractionRequests>
   ): ReturnType<typeof repository.expireAgentInteractionRequests> => {
-    const interactions = await repository.expireAgentInteractionRequests(
-      ...input,
-    );
-    const chats = new Map<string, string | null>();
-    for (const interaction of interactions) {
+    const rows = await repository.expireOwnedAgentInteractionRequests(...input);
+    const chats = new Map<
+      string,
+      { ownerId: string; projectId: string | null }
+    >();
+    for (const { ownerId, interaction } of rows) {
       if (interaction.provenance.chatId) {
-        chats.set(interaction.provenance.chatId, interaction.projectId);
+        chats.set(interaction.provenance.chatId, {
+          ownerId,
+          projectId: interaction.projectId,
+        });
       }
     }
-    for (const [chatId, projectId] of chats) {
-      publishChatInvalidation(chatId, "agent-interaction");
-      publishChatSummary(chatId, projectId);
+    for (const [chatId, { ownerId, projectId }] of chats) {
+      runAsOwner(ownerId, () => {
+        publishChatInvalidation(chatId, "agent-interaction");
+        publishChatSummary(chatId, projectId);
+      });
     }
-    return interactions;
+    return rows.map(({ interaction }) => interaction);
   };
   const updateLiveChatPlanMode = async (
     ...input: Parameters<typeof repository.updateChatPlanMode>

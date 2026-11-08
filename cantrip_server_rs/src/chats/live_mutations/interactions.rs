@@ -1,6 +1,25 @@
 use super::*;
 use crate::{agent_interactions, database::Executor, wire::coercion::truthy};
 impl Service {
+    pub async fn expire_interactions(self: &Arc<Self>) -> Result<()> {
+        let interactions = self.interactions().expire_owned(None).await?;
+        let mut chats = indexmap::IndexMap::new();
+        for (owner, interaction) in interactions {
+            if let Some(chat) = interaction["provenance"]["chatId"]
+                .as_str()
+                .filter(|chat| !chat.is_empty())
+            {
+                chats.insert((owner, chat.to_owned()), interaction["projectId"].clone());
+            }
+        }
+        for ((owner, chat), project) in chats {
+            let pending =
+                self.invalidate_chat(&owner, &chat, "agent-interaction", &Value::Null, None);
+            self.publish_summary(&owner, &json!(chat), &project);
+            self.fanout(pending.into_iter().collect());
+        }
+        Ok(())
+    }
     fn interactions(&self) -> agent_interactions::Repository<'_, '_> {
         agent_interactions::Repository::new(Executor::Database(&self.database))
     }

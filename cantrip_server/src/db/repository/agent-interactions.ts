@@ -713,6 +713,15 @@ export class AgentInteractionRepository {
   async expireAgentInteractionRequests(
     now = new Date(),
   ): Promise<AgentInteractionRequestWire[]> {
+    const rows = await this.expireOwnedAgentInteractionRequests(now);
+    return rows.map(({ interaction }) => interaction);
+  }
+
+  async expireOwnedAgentInteractionRequests(
+    now = new Date(),
+  ): Promise<
+    Array<{ ownerId: string; interaction: AgentInteractionRequestWire }>
+  > {
     const rows = await this.database
       .update(schema.agentInteractionRequests)
       .set({ status: "expired", resolvedAt: now, updatedAt: now })
@@ -733,7 +742,10 @@ export class AgentInteractionRepository {
     for (const chatId of chatIds) {
       await this.restoreChatAfterInteractions(chatId);
     }
-    return rows.map(toAgentInteractionRequestWire);
+    return rows.map((row) => ({
+      ownerId: row.ownerId,
+      interaction: toAgentInteractionRequestWire(row),
+    }));
   }
 
   async interruptAgentInteractionRequests(

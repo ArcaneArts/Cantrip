@@ -1,9 +1,16 @@
 # Rust server replacement
 
+Native global approval expiry now publishes owner-scoped Chat, Task and
+standalone notifications, with actual SQL failure/recovery and held-write
+shutdown qualification. The paired work also fixes Node's missing global owner
+context and interrupted restoration during shutdown. See
+[approval expiry](RUST_SERVER_INTERACTION_EXPIRY.md) for exact local scope and
+remaining acceptance. Node remains the default and full replacement is incomplete.
+
 The [current acceptance reconciliation](RUST_SERVER_ACCEPTANCE_RECONCILIATION.md)
 distinguishes historical ledger limitations from implemented desktop/Winterhold
 work and remaining acceptance. It also records the repaired worker enrollment
-notification gap and two background-service paths requiring runtime comparison.
+and approval-expiry gaps and the remaining periodic catalog-refresh comparison.
 Full replacement remains incomplete and Node remains the default server.
 
 Native computer-use operations, preview open/Stop and worker-authenticated agent

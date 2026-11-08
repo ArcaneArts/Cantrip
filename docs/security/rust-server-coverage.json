@@ -3,16 +3,16 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "737d94cd97a7fd4ac1692b955528f9c644102c3bc8faf74970e44b79d40813d4",
-    "baselineCommit": "8bc4c5d8100124136b4d77df387b69164f5e40da",
+    "sha256": "c1e4f7efa3701671b8f54477a8d6e74b51b22a263544e0b6c66bfd2f26353d32",
+    "baselineCommit": "9a08bb04264ae9ad5414f1fbce858a1343b5e58d",
     "counts": {
       "routes": 584,
       "workerCommands": 323,
       "durableTables": 135,
-      "repositoryMethods": 369,
+      "repositoryMethods": 370,
       "liveResources": 47
     },
-    "workingTreeNote": "Current-source reconciliation at 8bc4c5d810 includes 27 routes, 13 worker commands and 19 split-schema tables absent from the previous stored inventory. All nine regenerated contract manifests match current rebuilt TypeScript. Thirty-seven of 39 Node-changing commits since 951b108cc also edit Rust core; pairing is source evidence only. Actual production HTTP comparison found and fixes model-operation validation/cancellation error bodies. See docs/RUST_SERVER_SOURCE_DRIFT.md for executed evidence and remaining feature/platform qualification. Earlier category rows retain milestone-specific historical evidence and are not aggregate completion percentages.",
+    "workingTreeNote": "Current reconciliation adds one internal global expiry helper retaining owner metadata beside mapped requests; no external route, command, schema, migration or wire-owner field is added. Approval expiry now qualifies actual Chat/Task/standalone publication, two accounts, SQL failure/recovery and held-UPDATE shutdown. Historical category rows retain their original scopes; see docs/RUST_SERVER_INTERACTION_EXPIRY.md and RUST_SERVER_ACCEPTANCE_RECONCILIATION.md. Full replacement remains incomplete.",
     "durableTableCountScope": "All Drizzle tables exported by the actual current schema, independently compared at runtime to the source corpus. Does not count internal migration metadata or assert a current all-backend migration/data-preservation pass."
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
@@ -14281,6 +14281,19 @@
         "remaining": [
           "Current supported-platform, packaged desktop/container and complete replacement acceptance remain required."
         ]
+      },
+      {
+        "method": "expireOwnedAgentInteractionRequests",
+        "implementation": "cantrip_server_rs/src/agent_interactions/terminal.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "docs/RUST_SERVER_INTERACTION_EXPIRY.md",
+          "scripts/server-rust/interaction-expiry-live-compatibility.mjs"
+        ],
+        "scope": "Private global expiry result retains the stored owner outside public wire objects; the original public expiry method still returns its prior result shape.",
+        "remaining": [
+          "Supported-platform/artifact and complete product/fault acceptance."
+        ]
       }
     ]
   },
@@ -18740,7 +18753,8 @@
         "scripts/surface-private-state-fields.test.mjs",
         "docs/RUST_SERVER_SOURCE_DRIFT.md",
         "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
-        "scripts/server-rust/worker-enrollment-live-compatibility.mjs"
+        "scripts/server-rust/worker-enrollment-live-compatibility.mjs",
+        "docs/RUST_SERVER_INTERACTION_EXPIRY.md"
       ],
       "generatedContracts": "All nine match after rebuilding current TypeScript; schema equality is not behavioral parity.",
       "sourcePairing": {
@@ -18749,7 +18763,7 @@
         "nodeOnly": ["2060beb2a", "fc71cc21e"]
       },
       "remaining": [
-        "Reproduce and repair agent-interaction expiry Chat/summary publication and periodic connected-worker catalog/quota refresh discrepancies.",
+        "Establish and qualify periodic connected-worker catalog/quota refresh; global approval expiry now has separate actual timer/SQL/Live/shutdown qualification.",
         "Complete current native execution interruption/reconnect, supported-platform/package/product/performance acceptance and final default cutover/removal.",
         "Continue consolidating historical category limitations against actual current source and scoped executed evidence."
       ],
@@ -19238,7 +19252,10 @@
         "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
         "cantrip_server/src/app/build-app.ts",
         "cantrip_server/src/app/runtime/background-job-runtime.ts",
-        "cantrip_server_rs/src/auth/service.rs"
+        "cantrip_server_rs/src/auth/service.rs",
+        "docs/RUST_SERVER_INTERACTION_EXPIRY.md",
+        "scripts/server-rust/interaction-expiry-live-compatibility.mjs",
+        "scripts/server-rust/interaction-expiry-shutdown.mjs"
       ],
       "mappedDurableJobFamilies": [
         "project-replicas",
@@ -19251,10 +19268,64 @@
       ],
       "scope": "Source composition mapping only; each family retains its own existing behavior/fault acceptance. Does not prove all background services.",
       "remaining": [
-        "Actual Node expiry timer publishes affected Chat/summary invalidations; native project-alert watcher expires repository rows without the equivalent Chat mutation publication. Runtime comparison and repair required.",
         "Establish and qualify equivalent fifteen-minute connected-worker catalog/quota periodic refresh.",
-        "Finish complete background-service and lifecycle reconciliation."
-      ]
+        "Finish complete background-service and lifecycle reconciliation, current supported-platform/package and full replacement acceptance."
+      ],
+      "resolvedGlobalExpiry": "See interactionExpiry: independent native producer, owner-scoped mutations, actual failure/recovery and shutdown drain; existing reference owner/shutdown bugs reproduced and repaired."
+    },
+    "interactionExpiry": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/agent_interactions/expiry.rs",
+        "cantrip_server_rs/src/agent_interactions/terminal.rs",
+        "cantrip_server_rs/src/chats/live_mutations/interactions.rs",
+        "cantrip_server_rs/src/auth/service.rs",
+        "cantrip_server_rs/src/main.rs"
+      ],
+      "evidence": [
+        "docs/RUST_SERVER_INTERACTION_EXPIRY.md",
+        "scripts/server-rust/interaction-expiry-live-compatibility.mjs",
+        "scripts/server-rust/interaction-expiry-shutdown.mjs"
+      ],
+      "qualification": {
+        "platform": "darwin-arm64",
+        "storageAuthPairs": 9,
+        "pairedHttp": 21,
+        "pairedPublicationStages": 30,
+        "pairedNotificationEvents": 105,
+        "cleanServerExits": 18,
+        "actualTimer": true,
+        "opaqueContentPreserved": true,
+        "simultaneousAccounts": true,
+        "actualSqlFailuresAndRecovery": true,
+        "heldPostgresUpdateShutdownPair": "Actual process shutdown with the SQL operation still blocked; after release both peers commit expiry, restore Chat status and exit0.",
+        "optimizedProduction": {
+          "bytes": 93374272,
+          "sha256": "9819464e16a2a78201f311a287a7abf9881411d70eb14e9ebb0b160dfbe7bc60",
+          "database": "postgres",
+          "auth": "accounts",
+          "simultaneousAccounts": true,
+          "sqlFailureRecovery": true,
+          "heldUpdateShutdown": true,
+          "fixtureSqlControlStatusBoth": 404,
+          "cleanServerExits": 2
+        }
+      },
+      "referenceRepairs": [
+        "Account-mode timer had no owner context after global expiry; private owned results now bind each publication to the stored owner.",
+        "Reference database closed while started expiry still needed Chat restoration; started operations now drain before database close."
+      ],
+      "remaining": [
+        "Complete the remaining current optimized/packaged artifact matrix, supported platforms and broader product/coordination/fault/performance requirements.",
+        "Complete final Rust default cutover and production Node-server removal."
+      ],
+      "localChecks": {
+        "strictAllTargetClippy": true,
+        "rustLibraryTests": 76,
+        "sourceInteractionTests": 19,
+        "sourceTypecheckBuild": true,
+        "aggregateRepositoryCheck": "Stops at Node app budgets1539/1500 (baseline1532) and2336/1999. Separately executed repository budget fails unchanged native-commands2284/2000, reproduced on cleanPrimary. Downstream aggregate stages unrun."
+      }
     }
   },
   "remainingAcceptance": [
