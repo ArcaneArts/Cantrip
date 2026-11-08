@@ -1,5 +1,10 @@
 //! Canonical remote-surface execution contexts and status publication.
+pub mod attachments;
+mod catalog;
+mod desktops;
 pub mod frame;
+mod mutations;
+pub mod webrtc;
 use crate::{
     database::Database, live::LiveService, projects::targets::TargetRepository, wire::Value,
 };
@@ -9,6 +14,14 @@ use std::sync::Arc;
 pub struct Repository {
     database: Arc<Database>,
 }
+#[derive(Debug)]
+pub struct StateConflict;
+impl std::fmt::Display for StateConflict {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Remote Surface private state changed before this update.")
+    }
+}
+impl std::error::Error for StateConflict {}
 impl Repository {
     pub fn new(database: Arc<Database>) -> Self {
         Self { database }

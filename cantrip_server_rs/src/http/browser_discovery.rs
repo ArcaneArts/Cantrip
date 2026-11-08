@@ -24,10 +24,10 @@ const WORKER_LIMIT: usize = 64;
 const SERVICE_LIMIT: usize = 1_024;
 const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(20);
 
-fn bounded(text: &JsString, limit: usize) -> JsString {
+pub(super) fn bounded(text: &JsString, limit: usize) -> JsString {
     JsString::new(text.units()[..text.len().min(limit)].to_vec())
 }
-fn named(prefix: &str, name: &JsString, suffix: &str) -> JsString {
+pub(super) fn named(prefix: &str, name: &JsString, suffix: &str) -> JsString {
     JsString::new(
         prefix
             .encode_utf16()

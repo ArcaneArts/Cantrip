@@ -900,6 +900,25 @@ export const projectInsightContractRoots = [
   "scriptCommandOperationIdSchema",
 ];
 
+export const remoteSurfaceHttpContractRoots = [
+  "encryptedRemoteSurfaceCreateSchema",
+  "encryptedRemoteSurfaceUpdateSchema",
+  "remoteSurfaceWireSummarySchema",
+  "remoteSurfaceWireListSchema",
+  "encryptedRemoteDesktopCreateSchema",
+  "encryptedRemoteDesktopUpdateSchema",
+  "remoteDesktopWireSummarySchema",
+  "remoteDesktopWireListSchema",
+  "remoteDesktopFleetWireSchema",
+  "remoteDesktopProtectedInventorySchema",
+  "remoteDesktopProbeResultSchema",
+  "remoteDesktopOsSourceSchema",
+  "remoteDesktopPreparedGenerationSchema",
+  "remoteSurfaceViewportSchema",
+  "remoteSurfaceConnectionMessageSchema",
+  "remoteSurfaceWebRtcConfigurationSchema",
+];
+
 // Keep independently added roots self-contained. Numeric graph references must
 // not depend on the size of the base graph after an unrelated branch merges.
 export const runMcpContractRoots = [
@@ -935,6 +954,11 @@ export const cliContractRoots = [
 // Compatibility oracles use this registry, never the generated native manifest.
 export function sourceContractSchema(name) {
   return (
+    (name === "remoteDesktopPreparedGenerationSchema"
+      ? protocol.remoteDesktopOsSourceSchema
+          .pick({ desktopGeneration: true })
+          .required()
+      : undefined) ??
     (name === "scriptCommandOperationIdSchema"
       ? protocol.endpointContentContextSchema.shape.operationId
       : undefined) ??
@@ -1095,6 +1119,27 @@ function registerChecks(schema, tags) {
     );
   tags.forEach((tag, index) => registerCustom(schema, index, tag));
 }
+registerChecks(protocol.remoteDesktopPrivateInventoryOpaqueSchema, [
+  "worker-command-surface-kind:remote-desktop-inventory",
+]);
+registerChecks(protocol.encryptedRemoteSurfaceCreateSchema, [
+  "remote-surface-create",
+]);
+registerChecks(protocol.encryptedRemoteSurfaceUpdateSchema, [
+  "remote-surface-update",
+]);
+registerChecks(protocol.remoteSurfaceWireSummarySchema, [
+  "remote-surface-wire",
+]);
+registerChecks(protocol.encryptedRemoteDesktopCreateSchema, [
+  "desktop-os-source",
+  "browser-placement",
+  "desktop-title",
+]);
+registerChecks(protocol.remoteDesktopWireSummarySchema, ["desktop-wire-title"]);
+registerChecks(protocol.remoteDesktopFleetWireWorkerSchema, [
+  "desktop-fleet-inventory",
+]);
 registerChecks(protocol.cantripOsPackageProtectedResultSchema, [
   "cantrip-os-package-envelope",
 ]);
@@ -1486,6 +1531,7 @@ const allowedTypes = new Set([
   "intersection",
   "nullable",
   "optional",
+  "nonoptional",
   "default",
   "prefault",
   "readonly",
@@ -1822,6 +1868,20 @@ if (
   const workerLogsDestination = new URL(
     "../../cantrip_server_rs/contracts/worker-logs.json",
     import.meta.url,
+  );
+  const remoteSurfacesDestination = new URL(
+    "../../cantrip_server_rs/contracts/remote-surface-http.json",
+    import.meta.url,
+  );
+  await writeFile(
+    remoteSurfacesDestination,
+    await format(
+      JSON.stringify(buildContractManifest(remoteSurfaceHttpContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(remoteSurfacesDestination))),
+        filepath: fileURLToPath(remoteSurfacesDestination),
+      },
+    ),
   );
   const projectInsightsDestination = new URL(
     "../../cantrip_server_rs/contracts/project-insights.json",

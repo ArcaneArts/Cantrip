@@ -46,6 +46,9 @@ pub(super) fn apply(
     if super::project_surfaces::refine(tag, result, path, message)? {
         return Ok(());
     }
+    if super::remote_surfaces::refine(tag, result, path, message)? {
+        return Ok(());
+    }
     if super::browsers::refine(tag, result, path, message)? {
         return Ok(());
     }

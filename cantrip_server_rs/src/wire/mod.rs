@@ -22,6 +22,7 @@ mod project_tabs;
 mod projects;
 mod public_chats;
 mod refinements;
+mod remote_surfaces;
 mod run_configurations;
 mod tasks;
 mod terminals;
@@ -310,6 +311,17 @@ impl Contracts {
                     Some(&node.default_value),
                     path,
                 )?;
+            }
+            "nonoptional" => {
+                result = self.run(node.inner_type.expect("required contract"), input, path)?;
+                if result.value.is_none() && result.issues.is_empty() {
+                    result.issue(
+                        json!({"code":"invalid_type","expected":"nonoptional"}),
+                        path,
+                        "Invalid input: expected nonoptional, received undefined".into(),
+                        true,
+                    );
+                }
             }
             "optional" | "nullable" | "default" | "prefault" | "readonly" | "forward" => {
                 result = self.run(node.inner_type.expect("inner contract"), input, path)?

@@ -94,6 +94,10 @@ mod provider_credentials;
 mod provider_management;
 mod provider_quota;
 mod provider_telemetry;
+mod remote_desktop_fleet;
+mod remote_desktops;
+mod remote_surface_socket;
+mod remote_surfaces;
 mod removed_repository;
 mod replicas;
 mod repository_operations;
@@ -231,6 +235,9 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(projects::routes())
         .merge(project_administration::routes())
         .merge(project_insights::routes())
+        .merge(remote_surfaces::routes())
+        .merge(remote_desktops::routes())
+        .merge(remote_desktop_fleet::routes())
         .merge(removed_repository::routes())
         .merge(folders::routes())
         .merge(chat_catalogs::routes())

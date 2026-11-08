@@ -323,7 +323,20 @@ export function installRemoteSurfaceConnectionRoute(
           send({ type: "error", message, recoverable: true });
           socket.close(1013, "Remote Surface unavailable");
         }
-      })();
+      })().catch((error: unknown) => {
+        // Setup reads and even the failure-status write can reject before the
+        // attach catch completes. Keep one failed socket from killing the server.
+        app.log.error(
+          { err: error, surfaceId: request.params.surfaceId },
+          "Remote Surface connection failed",
+        );
+        send({
+          type: "error",
+          message: "Remote Surface could not be opened.",
+          recoverable: true,
+        });
+        socket.close(1013, "Remote Surface unavailable");
+      });
     },
   );
 }

@@ -4,6 +4,10 @@ import {
 } from "./actual-project-replicas.mjs";
 import { actualProjectWorktrees } from "./actual-project-worktrees.mjs";
 import { actualProjectAdministration } from "./actual-project-administration.mjs";
+import {
+  prepareActualRemoteSurface,
+  actualRemoteSurface,
+} from "./actual-remote-surfaces-client.mjs";
 import { actualProjectInsights } from "./actual-project-insights-client.mjs";
 import {
   actualOperationalStatus,
@@ -142,6 +146,9 @@ const runtimeCases = sharedPair
   : selectedRuntime
     ? [[selectedRuntime]]
     : [["node"], ["rust"]];
+const needsRemoteSurface =
+  process.argv.includes("--surfaces") ||
+  process.argv.includes("--remote-surfaces");
 const workerLinkRoute = option("--worker-link-route") ?? "relay";
 const reportPath = option("--report");
 const liveTaskDiagnostics =
@@ -152,6 +159,7 @@ const fullServerLogs =
   process.argv.includes("--project-insights") ||
   process.argv.includes("--operational-status") ||
   process.argv.includes("--worker-logs") ||
+  process.argv.includes("--remote-surfaces") ||
   process.argv.includes("--project-administration") ||
   process.argv.includes("--chat-controls");
 const surfaceFixtureRequests = [];
@@ -263,7 +271,7 @@ async function flow(
           process.argv.includes("--replicas") ||
           process.argv.includes("--worktrees") ||
           process.argv.includes("--project-administration"),
-        ...(process.argv.includes("--surfaces")
+        ...(needsRemoteSurface
           ? {
               chromiumExecutable: chromium.executablePath(),
               chromiumTraceDirectory: path.resolve(".qa/rust-server"),
@@ -649,7 +657,7 @@ async function flow(
     // The preceding terminal offline case intentionally stops the worker.
     // Subsequent document/browser flows use the worker through the public API.
     if (
-      (process.argv.includes("--surfaces") ||
+      (needsRemoteSurface ||
         process.argv.includes("--project-shares") ||
         process.argv.includes("--file-documents") ||
         process.argv.includes("--workspaces") ||
@@ -720,6 +728,16 @@ async function flow(
         phase: "connected",
       });
     // Capture after optional resource creation commits its project updates.
+    const legacySurface = process.argv.includes("--remote-surfaces")
+      ? await prepareActualRemoteSurface({
+          page,
+          projectId: created.id,
+          workerId,
+          origin: vite.resolvedUrls.local[0],
+          protocolUrl: `/@fs${repositoryRoot}/packages/protocol/src/index.ts`,
+          result,
+        })
+      : undefined;
     const wire = await page.evaluate(() =>
       window.folderWire.getProjectWireList(),
     );
@@ -741,6 +759,7 @@ async function flow(
       existingPath,
       missingPath,
       dataDirectory,
+      ...(legacySurface ? [legacySurface.token, legacySurface.url] : []),
       ...(surface
         ? [surface.token, surface.url, "Private WorkerLink browser"]
         : []),
@@ -780,6 +799,7 @@ async function flow(
     await page.evaluate(() => window.folderLive.stop());
     const retainedPort =
       surface ||
+      legacySurface ||
       tunnel ||
       projectShares ||
       fileDocuments ||
@@ -872,6 +892,7 @@ async function flow(
     if (workspace) await retainedWorkspaceClient({ page, workspace, result });
     if (
       surface ||
+      legacySurface ||
       tunnel ||
       projectShares ||
       fileDocuments ||
@@ -894,6 +915,8 @@ async function flow(
           document: fileDocuments,
           result,
         });
+      if (legacySurface)
+        await actualRemoteSurface({ page, surface: legacySurface, result });
       if (surface)
         await actualWorkerBrowserSurface({
           page,
@@ -1226,7 +1249,6 @@ try {
       ? await buildRustExample("http-sql-fixture")
       : (process.env.CANTRIP_TEST_SERVER_BINARY ?? (await buildRustServer()));
   if (
-    process.argv.includes("--surfaces") ||
     process.argv.includes("--tunnels") ||
     process.argv.includes("--project-shares") ||
     process.argv.includes("--worktrees") ||
