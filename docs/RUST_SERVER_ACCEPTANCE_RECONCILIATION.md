@@ -107,8 +107,11 @@ adds actual response-completion capture, console presentation and stream-error
 behavior, and repairs fallback parser ordering exposed by the comparison.
 The [database lifecycle qualification](RUST_SERVER_DATABASE_LIFECYCLE.md) adds
 connection/migration/probe diagnostics and repairs connection/subscription retry
-boundaries and retained-key initialization. Its separate role-wide outage
-comparison remains open. Additional operational consumers remain unreconciled;
+boundaries and retained-key initialization. A subsequent production comparison
+passes actual role-wide PostgreSQL refusal/recovery under all three authentication
+modes, retaining original sessions and accepted writes. Its bounded admission
+fault does not establish long outages or other database/product interruptions.
+Additional operational consumers remain unreconciled;
 scoped passes do not prove identical whole-server logging or complete
 background-service invariants.
 

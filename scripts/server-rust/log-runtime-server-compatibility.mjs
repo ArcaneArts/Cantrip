@@ -20,6 +20,8 @@ import { postgresFixture } from "./postgres-fixture.mjs";
 import { fixtureEnvironment } from "./process.mjs";
 import { repositoryRoot } from "./build.mjs";
 import { databaseHealthCases } from "./database-health-cases.mjs";
+import { logRuntimeAuth } from "./log-runtime-auth.mjs";
+import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
 const WebSocket = createRequire(
   new URL("../../cantrip_server/package.json", import.meta.url),
 )("ws");
@@ -46,6 +48,10 @@ const healthRequested =
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-log-production-"));
 console.error(JSON.stringify({ event: "log-production.created", root }));
 const report = { root, peers: [], completeReplacement: false };
+const password = "isolated production outage fixture password";
+const passwordHash = values["database-health-outage"]
+  ? await hashPassword(password)
+  : undefined;
 let pg, failure;
 const scenarios = [
   { name: "postgres-default", database: "postgres", burst: 24 },
@@ -63,6 +69,13 @@ const scenarios = [
   { name: "archive-recovery", database: "postgres", obstruct: true },
   { name: "startup-failure", database: "postgres", invalid: true },
 ];
+if (values["database-health-outage"])
+  for (const auth of ["password", "accounts"])
+    scenarios.push({
+      name: `postgres-${auth}-outage`,
+      database: "postgres",
+      auth,
+    });
 if (values["database-exhaustion"])
   scenarios.push({
     name: "postgres-retry-exhausted",
@@ -137,6 +150,13 @@ try {
         CANTRIP_LOG_LEVEL: scenario.threshold ?? "info",
       };
       const args = ["--port", String(port), "--database", scenario.database];
+      if (scenario.auth) {
+        env.CANTRIP_AUTH_MODE = scenario.auth;
+        env.CANTRIP_REGISTRATION_ENABLED = "true";
+        delete env.CANTRIP_WORKER_TOKEN;
+        if (scenario.auth === "password")
+          env.CANTRIP_PASSWORD_HASH = passwordHash;
+      }
       let healthCases;
       if (
         scenario.database !== "pglite" &&
@@ -149,7 +169,8 @@ try {
           process.env.CANTRIP_TEST_POSTGRES_BIN_DIR,
         );
       if (
-        (healthRequested && scenario.name === "postgres-default") ||
+        (healthRequested &&
+          (scenario.name === "postgres-default" || scenario.auth)) ||
         scenario.failDatabase
       ) {
         healthCases = await databaseHealthCases(env.DATABASE_URL, {
@@ -262,12 +283,13 @@ try {
             );
             await delay(50);
           }
-          const session = await fetch(origin + "/api/auth/session");
-          assert.equal(session.status, 200);
-          const cookie = session.headers
-            .getSetCookie()
-            .map((value) => value.split(";")[0])
-            .join("; ");
+          const authentication = await logRuntimeAuth(
+            origin,
+            scenario.auth ?? "none",
+            password,
+          );
+          const { cookie } = authentication;
+          result.authentication = authentication.evidence;
           const request = async (route) => {
             const response = await fetch(origin + route, {
               headers: { cookie, origin: "http://127.0.0.1:5173" },
@@ -440,7 +462,20 @@ try {
           }
           if (healthCases) {
             result.databaseHealth = healthCases.result;
-            await healthCases.run(origin, cookie);
+            await healthCases.run(origin, cookie, async (fragment) => {
+              const deadline = Date.now() + 10000;
+              while (
+                !(result.stdout + result.stderr)
+                  .replace(/\x1b\[[0-9;]*m/g, "")
+                  .includes(fragment)
+              ) {
+                assert.ok(
+                  Date.now() < deadline,
+                  "Actual console completion: " + fragment,
+                );
+                await delay(10);
+              }
+            });
           }
           result.expectedCatalogRecords = count;
           assert.ok(
@@ -647,7 +682,10 @@ try {
     const peers = report.peers
       .filter((peer) => peer.scenario === scenario.name)
       .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "node" ? -1 : 1));
-    if (healthRequested && scenario.name === "postgres-default")
+    if (
+      healthRequested &&
+      (scenario.name === "postgres-default" || scenario.auth)
+    )
       assert.deepEqual(
         peers[1].databaseHealthRecords,
         peers[0].databaseHealthRecords,

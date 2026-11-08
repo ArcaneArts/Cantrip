@@ -15081,11 +15081,13 @@
         "docs/RUST_SERVER_HTTP_LOGGING.md",
         "docs/RUST_SERVER_DATABASE_LIFECYCLE.md",
         "scripts/server-rust/database-health-cases.mjs",
-        "scripts/server-rust/database-health-proxy.mjs"
+        "scripts/server-rust/database-health-proxy.mjs",
+        "scripts/server-rust/database-outage-cases.mjs",
+        "scripts/server-rust/log-runtime-auth.mjs"
       ],
       "scope": "Native shared JSON operational log emission, UTF-16 text/key semantics, secret/context/error sanitization, sampled emission and bounded repeated-event windows match 65,937 actual Source sanitizer/error vectors and 2,136 actions/eight policy scenarios locally. Actual direct production log comparisons pass334 cases/15 groups, coordinator diagnostics575 cases, and routing583 cases/31 states per store on native PGlite/private/external PostgreSQL. This is not the complete operational logging/metrics product.",
       "remaining": [
-        "Reconcile remaining HTTP/Pino, account-usage, bridge and other production diagnostics. Database lifecycle/health now has scoped local qualification, with the distinct role-wide outage comparison still open.",
+        "Reconcile remaining HTTP/Pino, account-usage, bridge and other production diagnostics. Database lifecycle/health and bounded role-wide refusal/recovery now have scoped local qualification; long outages and other database/product interruptions remain unqualified.",
         "Complete current supported-platform, packaged artifact and full replacement acceptance."
       ],
       "operationalHttpQualification": {
@@ -15188,6 +15190,28 @@
           "sha256": "1229cf8b37e1e00c759734460f1d6b67c43df80a7038e7a9593a9366b9f01604",
           "productionEntrypointPeerRuns": 58,
           "actualBlockedArchiveProfileLeaseCase": true
+        }
+      },
+      "databaseOutageQualification": {
+        "sourceBaseline": "06a5b9a531cc02e77ccb21fa27d6d3ff69db88ea",
+        "platform": "darwin-arm64",
+        "version": "1.1.2767",
+        "productionEntrypointPeerRuns": 32,
+        "baselineStorageModes": ["pglite", "bundled-postgres", "postgres"],
+        "outageStorageMode": "postgres",
+        "outageAuthenticationProfiles": ["none", "password", "accounts"],
+        "outagePeerRuns": 6,
+        "actualRefusalResponses": 36,
+        "additionalRefusalHoldMsAfterActualBackendRejection": 500,
+        "slowActualQueryAcknowledgements": 12,
+        "lostActualQueryAcknowledgements": 36,
+        "cleanNormalExits": 22,
+        "expectedInvalidStartupExits": 10,
+        "scope": "Actual role admission is revoked, specific old backend PIDs are terminated and observed gone, six concurrent readiness calls cannot report success during refusal or without actual query completion, and role access is restored before requiring all callers to settle. Actual public login/registration, original cookie/user/CSRF/expiry, accepted settings/server identity, post-recovery writes and clean shutdown pass. Deterministic pre-outage records still compare exactly; raw outage diagnostics retain driver-dependent scheduling. Original sequential timeouts, nullable-session oracle failure and stale-version mismatch are retained. No native pool or production behavior changes.",
+        "remaining": "Long outages, actual postmaster/PGlite interruption, transaction/dispatch boundaries, shared-instance product recovery and full supported-platform/artifact/upgrade/rollback/performance/default-cutover/Node-removal acceptance remain required.",
+        "optimizedArtifact": {
+          "bytes": 93968608,
+          "sha256": "803772b1d87a825c121c50a5838afa371891e5d769680e51f5886002dca62a84"
         }
       }
     },

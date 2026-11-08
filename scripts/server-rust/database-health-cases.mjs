@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { databaseHealthProxy } from "./database-health-proxy.mjs";
+import { databaseOutageCases } from "./database-outage-cases.mjs";
 const postgres = createRequire(
   new URL("../../cantrip_server/package.json", import.meta.url),
 )("postgres");
@@ -21,6 +22,8 @@ export async function databaseHealthCases(
   const role = "health_" + randomUUID().replaceAll("-", "");
   const password = "privatehealth" + randomUUID().replaceAll("-", "");
   let proxy, startupRecovery;
+  const errors = [],
+    probes = [];
   const result = { slow: [], failed: [], recovered: null, startupFailures: [] };
   try {
     await admin.unsafe(`CREATE ROLE "${role}" LOGIN PASSWORD '${password}'`);
@@ -36,6 +39,7 @@ export async function databaseHealthCases(
       );
     proxy = await databaseHealthProxy(url.href, {
       onError(error) {
+        errors.push(error);
         if (
           error.code !== "53300" ||
           result.startupFailures.length >= startupFailures
@@ -49,6 +53,9 @@ export async function databaseHealthCases(
           });
         }
       },
+      onProbe(probe) {
+        probes.push(probe);
+      },
     });
   } catch (error) {
     await admin.end({ timeout: 5 });
@@ -60,7 +67,7 @@ export async function databaseHealthCases(
   return {
     url: proxy.url,
     result,
-    async run(origin, cookie) {
+    async run(origin, cookie, waitForConsole) {
       if (startupFailures) {
         assert.equal(
           result.startupFailures.length,
@@ -117,30 +124,16 @@ export async function databaseHealthCases(
         });
       }
       if (includeOutage)
-        try {
-          await admin.unsafe(`ALTER ROLE "${role}" CONNECTION LIMIT 0`);
-          const stopped =
-            await admin`SELECT pid,pg_terminate_backend(pid) AS terminated FROM pg_stat_activity WHERE usename=${role} AND pid<>pg_backend_pid()`;
-          assert.ok(
-            stopped.length > 0 && stopped.every((row) => row.terminated),
-            "Real owned role connections are terminated",
-          );
-          result.terminated = stopped.length;
-          for (let index = 0; index < 6; index++) {
-            const response = await fetch(origin + "/readyz", {
-              signal: AbortSignal.timeout(60000),
-            });
-            const body = await response.json();
-            assert.equal(response.status, 503);
-            assert.equal(body.database.status, "unavailable");
-            (result.outageFailures ??= []).push({
-              status: response.status,
-              database: body.database.status,
-            });
-          }
-        } finally {
-          await restore();
-        }
+        result.outage = await databaseOutageCases({
+          origin,
+          cookie,
+          admin,
+          role,
+          errors,
+          probes,
+          waitForConsole,
+          progress: (result.outage = {}),
+        });
       const response = await fetch(origin + "/readyz", {
         signal: AbortSignal.timeout(60000),
       });
@@ -153,7 +146,22 @@ export async function databaseHealthCases(
       };
     },
     verify(records) {
-      const health = records.filter((record) =>
+      let controlled = records;
+      if (result.outage) {
+        const boundary = records.findIndex(
+          (record) =>
+            record.context?.event === "http.request.completed" &&
+            record.context.requestId === result.outage.boundary.requestId,
+        );
+        assert.ok(boundary >= 0, "Actual boundary completion is retained");
+        controlled = records.slice(0, boundary);
+        result.outage.diagnostics = records
+          .slice(boundary)
+          .filter((record) =>
+            record.context?.event?.startsWith("database.health."),
+          );
+      }
+      const health = controlled.filter((record) =>
         record.context?.event?.startsWith("database.health."),
       );
       assert.equal(
