@@ -3,6 +3,7 @@ use super::{
     FlushBatch, FlushResult,
     meter::{Measurement, NormalizedMeasurement, Options, State, Stats},
 };
+use crate::operations::logging::{self, Logger};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use futures::{
@@ -35,12 +36,7 @@ pub struct Meter {
     publish: Option<Publisher>,
     now: Clock,
     wall: WallClock,
-}
-fn log(event: &str, reason: &str) {
-    eprintln!(
-        "{}",
-        serde_json::json!({"event":event,"subsystem":"account-usage","reasonCode":reason})
-    );
+    logger: Logger,
 }
 impl Meter {
     pub fn new(
@@ -66,6 +62,25 @@ impl Meter {
         now: Clock,
         wall: WallClock,
     ) -> Result<Arc<Self>> {
+        Self::with_clocks_and_logger(
+            options,
+            sink,
+            observe,
+            publish,
+            now,
+            wall,
+            logging::server_logger(),
+        )
+    }
+    pub fn with_clocks_and_logger(
+        options: Options,
+        sink: Sink,
+        observe: Option<Observer>,
+        publish: Option<Publisher>,
+        now: Clock,
+        wall: WallClock,
+        logger: Logger,
+    ) -> Result<Arc<Self>> {
         let meter = Arc::new(Self {
             control: Mutex::new(Control {
                 state: State::new(options)?,
@@ -79,6 +94,7 @@ impl Meter {
             publish,
             now,
             wall,
+            logger,
         });
         meter.schedule_interval();
         Ok(meter)
@@ -98,10 +114,10 @@ impl Meter {
                         .as_ref()
                         .is_some_and(|observe| observe(value).is_err())
                     {
-                        log("account-usage.observer.failed", "observer-failed");
+                        super::diagnostics::observer_failed(&self.logger);
                     }
                 },
-                |_| log("account-usage.meter.dropped", "buffer-capacity-reached"),
+                |entries| super::diagnostics::capacity_reached(&self.logger, entries),
             )
         };
         if outcome == super::meter::RecordOutcome::Recorded {
@@ -129,40 +145,39 @@ impl Meter {
                 .expect("buffered usage batch")
         };
         let meter = self.clone();
+        let entries = batch.entries.len();
         let started = (self.wall)();
         let completion = async move {
             let result = (meter.sink)(batch).await;
             let duration = (meter.wall)() - started;
-            let (success, owners) = {
+            let (success, owners, completed) = {
                 let mut control = meter.control.lock().unwrap();
                 match result {
-                    Ok(result) => match control.state.committed(result, (meter.now)(), duration) {
-                        Ok(owners) => (true, owners),
-                        Err(_) => {
-                            log(
-                                "account-usage.bandwidth-flush.failed",
-                                "completion-state-failed",
-                            );
-                            (false, vec![])
+                    Ok(result) => {
+                        let completed = (result.applied, result.owner_ids.len());
+                        match control.state.committed(result, (meter.now)(), duration) {
+                            Ok(owners) => (true, owners, Some(completed)),
+                            Err(error) => {
+                                super::diagnostics::flush_failed(&meter.logger, duration, &error);
+                                (false, vec![], None)
+                            }
                         }
-                    },
-                    Err(_) => {
+                    }
+                    Err(error) => {
                         control.state.failed(duration);
-                        log(
-                            "account-usage.bandwidth-flush.failed",
-                            "database-write-failed",
-                        );
-                        (false, vec![])
+                        super::diagnostics::flush_failed(&meter.logger, duration, &error);
+                        (false, vec![], None)
                     }
                 }
             };
             if !owners.is_empty()
-                && meter
-                    .publish
-                    .as_ref()
-                    .is_some_and(|publish| publish(owners).is_err())
+                && let Some(publish) = &meter.publish
+                && let Err(error) = publish(owners)
             {
-                log("account-usage.live-invalidation.failed", "callback-failed");
+                super::diagnostics::publication_failed(&meter.logger, &error);
+            }
+            if let Some((applied, owners)) = completed {
+                super::diagnostics::flushed(&meter.logger, applied, entries, owners, duration);
             }
             meter.control.lock().unwrap().in_flight = None;
             meter.schedule_threshold();

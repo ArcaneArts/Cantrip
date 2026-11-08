@@ -15083,11 +15083,18 @@
         "scripts/server-rust/database-health-cases.mjs",
         "scripts/server-rust/database-health-proxy.mjs",
         "scripts/server-rust/database-outage-cases.mjs",
-        "scripts/server-rust/log-runtime-auth.mjs"
+        "scripts/server-rust/log-runtime-auth.mjs",
+        "docs/RUST_SERVER_ACCOUNTING_DIAGNOSTICS.md",
+        "cantrip_server_rs/src/usage/diagnostics.rs",
+        "cantrip_server_rs/tests/usage_diagnostics.rs",
+        "scripts/server-rust/usage-diagnostics-oracle.mjs",
+        "scripts/server-rust/accounting-runtime-cases.mjs",
+        "scripts/server-rust/accounting-production-peer.mjs",
+        "scripts/server-rust/accounting-fault-compatibility.mjs"
       ],
       "scope": "Native shared JSON operational log emission, UTF-16 text/key semantics, secret/context/error sanitization, sampled emission and bounded repeated-event windows match 65,937 actual Source sanitizer/error vectors and 2,136 actions/eight policy scenarios locally. Actual direct production log comparisons pass334 cases/15 groups, coordinator diagnostics575 cases, and routing583 cases/31 states per store on native PGlite/private/external PostgreSQL. This is not the complete operational logging/metrics product.",
       "remaining": [
-        "Reconcile remaining HTTP/Pino, account-usage, bridge and other production diagnostics. Database lifecycle/health and bounded role-wide refusal/recovery now have scoped local qualification; long outages and other database/product interruptions remain unqualified.",
+        "Reconcile remaining HTTP/Pino, bridge and other production diagnostics. Accounting producers, database lifecycle/health and bounded role-wide refusal/recovery now have scoped local qualification; broader product/database interruptions remain unqualified.",
         "Complete current supported-platform, packaged artifact and full replacement acceptance."
       ],
       "operationalHttpQualification": {
@@ -15213,6 +15220,27 @@
           "bytes": 93968608,
           "sha256": "803772b1d87a825c121c50a5838afa371891e5d769680e51f5886002dca62a84"
         }
+      },
+      "accountingDiagnosticsQualification": {
+        "sourceBaseline": "2a1b77240ff9966d54e11fc455610f17eb00f081",
+        "platform": "darwin-arm64",
+        "referenceProducerSteps": 88,
+        "focusedNativeTests": 18,
+        "debugProductionPeerRuns": 40,
+        "storageAuthenticationPairs": 9,
+        "capturedNormalAccountingRecords": 72,
+        "debugFaultProductionProcesses": 4,
+        "actualMinuteTimerFailureAndRecovery": true,
+        "actualHeldFinalFlushAndRetainedRestart": true,
+        "optimizedArtifact": {
+          "bytes": 93881168,
+          "sha256": "950862836b2ff00835464067650ae5d58838ea68e726b1ac236367041de06c17",
+          "version": "1.1.2768",
+          "productionPeerRuns": 40,
+          "faultProductionProcesses": 4
+        },
+        "scope": "Actual reference classes/logger match full and minimized records, state, callbacks, receipts and noise policy. Actual production peers across all3stores and3authentication modes retain four normal startup/final-flush records each. External PostgreSQL P0001 errors reproduce bandwidth and both job failures, actual minute timers recover, original identity survives restart, and an actual receipt-table lock holds final shutdown until one additional receipt commits. Original missing persisted-record and duplicate-SIGTERM harness failures retained. No accounting state, SQL or timer policy changes.",
+        "remaining": "Other production consumers, broader accounting/product/shared-instance interruptions, supported-platform/artifact/upgrade/rollback/performance/default-cutover/Node-server removal remain required."
       }
     },
     "legacyPGliteConversion": {

@@ -159,5 +159,6 @@ interruption, every reconnect schedule, or shared-instance product recovery.
 
 Current product/fault/shared-instance, supported-platform/artifact, historical
 upgrade/rollback and performance acceptance remain required. Additional
-account-usage, bridge, HTTP/Pino and other operational consumers remain to
-reconcile. Rust default cutover and production Node-server removal are unfinished.
+bridge, HTTP/Pino and other operational consumers remain to reconcile. Accounting
+producers have separate [scoped qualification](RUST_SERVER_ACCOUNTING_DIAGNOSTICS.md).
+Rust default cutover and production Node-server removal are unfinished.

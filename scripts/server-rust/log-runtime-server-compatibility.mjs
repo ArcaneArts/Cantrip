@@ -22,6 +22,7 @@ import { repositoryRoot } from "./build.mjs";
 import { databaseHealthCases } from "./database-health-cases.mjs";
 import { logRuntimeAuth } from "./log-runtime-auth.mjs";
 import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { verifyAccountingRuntime } from "./accounting-runtime-cases.mjs";
 const WebSocket = createRequire(
   new URL("../../cantrip_server/package.json", import.meta.url),
 )("ws");
@@ -30,6 +31,7 @@ const { values } = parseArgs({
   options: {
     report: { type: "string" },
     "http-records": { type: "boolean", default: false },
+    "accounting-records": { type: "boolean", default: false },
     "database-records": { type: "boolean", default: false },
     "database-health": { type: "boolean", default: false },
     "database-health-outage": { type: "boolean", default: false },
@@ -49,9 +51,10 @@ const root = await mkdtemp(path.join(tmpdir(), "cantrip-log-production-"));
 console.error(JSON.stringify({ event: "log-production.created", root }));
 const report = { root, peers: [], completeReplacement: false };
 const password = "isolated production outage fixture password";
-const passwordHash = values["database-health-outage"]
-  ? await hashPassword(password)
-  : undefined;
+const passwordHash =
+  values["database-health-outage"] || values["accounting-records"]
+    ? await hashPassword(password)
+    : undefined;
 let pg, failure;
 const scenarios = [
   { name: "postgres-default", database: "postgres", burst: 24 },
@@ -69,7 +72,15 @@ const scenarios = [
   { name: "archive-recovery", database: "postgres", obstruct: true },
   { name: "startup-failure", database: "postgres", invalid: true },
 ];
-if (values["database-health-outage"])
+if (values["accounting-records"])
+  for (const database of ["pglite", "bundled-postgres", "postgres"])
+    for (const auth of ["password", "accounts"])
+      scenarios.push({
+        name: `${database}-${auth}-accounting`,
+        database,
+        auth,
+      });
+else if (values["database-health-outage"])
   for (const auth of ["password", "accounts"])
     scenarios.push({
       name: `postgres-${auth}-outage`,
@@ -170,6 +181,7 @@ try {
         );
       if (
         (healthRequested &&
+          scenario.database === "postgres" &&
           (scenario.name === "postgres-default" || scenario.auth)) ||
         scenario.failDatabase
       ) {
@@ -245,6 +257,23 @@ try {
       child.stderr.on("data", (chunk) => {
         result.stderr += chunk;
       });
+      const waitForConsole = async (fragment) => {
+        const deadline = Date.now() + 10000;
+        while (
+          !(result.stdout + result.stderr)
+            .replace(/\x1b\[[0-9;]*m/g, "")
+            .includes(fragment)
+        ) {
+          assert.ok(
+            Date.now() < deadline,
+            "Actual console completion: " + fragment,
+          );
+          await delay(10);
+        }
+      };
+      const accounting =
+        values["accounting-records"] &&
+        (scenario.name.endsWith("-default") || scenario.auth);
       const completion = new Promise((yes, no) => {
         child.once("error", no);
         child.once("close", (code, signal) => yes({ code, signal }));
@@ -290,6 +319,8 @@ try {
           );
           const { cookie } = authentication;
           result.authentication = authentication.evidence;
+          if (accounting)
+            await waitForConsole("Account usage history maintenance completed");
           const request = async (route) => {
             const response = await fetch(origin + route, {
               headers: { cookie, origin: "http://127.0.0.1:5173" },
@@ -462,20 +493,7 @@ try {
           }
           if (healthCases) {
             result.databaseHealth = healthCases.result;
-            await healthCases.run(origin, cookie, async (fragment) => {
-              const deadline = Date.now() + 10000;
-              while (
-                !(result.stdout + result.stderr)
-                  .replace(/\x1b\[[0-9;]*m/g, "")
-                  .includes(fragment)
-              ) {
-                assert.ok(
-                  Date.now() < deadline,
-                  "Actual console completion: " + fragment,
-                );
-                await delay(10);
-              }
-            });
+            await healthCases.run(origin, cookie, waitForConsole);
           }
           result.expectedCatalogRecords = count;
           assert.ok(
@@ -532,6 +550,8 @@ try {
         );
       if (healthCases && !scenario.invalid)
         result.databaseHealthRecords = healthCases.verify(result.records);
+      if (accounting)
+        result.accountingRecords = verifyAccountingRuntime(result.records);
       if (scenario.failDatabase)
         assert.equal(
           result.databaseHealth.startupFailures.length,
@@ -684,12 +704,19 @@ try {
       .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "node" ? -1 : 1));
     if (
       healthRequested &&
+      scenario.database === "postgres" &&
       (scenario.name === "postgres-default" || scenario.auth)
     )
       assert.deepEqual(
         peers[1].databaseHealthRecords,
         peers[0].databaseHealthRecords,
         "Actual database slow/failure/repeated-event diagnostics match",
+      );
+    if (peers[0].accountingRecords)
+      assert.deepEqual(
+        peers[1].accountingRecords,
+        peers[0].accountingRecords,
+        "Actual production accounting lifecycle records match",
       );
     if (
       (retryRequested && scenario.name === "postgres-default") ||
