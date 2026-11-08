@@ -28,6 +28,11 @@ pub fn worker_catalog_provider(provider: &Json) -> bool {
 }
 
 pub fn label(kind: &str) -> &'static str {
+    // Custom compatible endpoints use worker discovery too, although they are
+    // excluded from the registry of dedicated worker endpoint setup kinds.
+    if kind == "openai-compatible" {
+        return "OpenAI compatible";
+    }
     definitions()
         .get(kind)
         .and_then(|definition| definition["label"].as_str())

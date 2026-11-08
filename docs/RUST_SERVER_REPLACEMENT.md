@@ -1,5 +1,14 @@
 # Rust server replacement
 
+Native worker-scoped catalog/quota maintenance now runs after authenticated
+connections and every fifteen minutes. All nine local storage/authentication
+pairs, actual fifteen-minute timers and held-SQL shutdown pass. The current
+optimized executable also passes the real interval and held-INSERT shutdown.
+The broader comparison also repairs custom endpoint labels. See [worker provider maintenance](RUST_SERVER_WORKER_CATALOG_REFRESH.md)
+for exact scope and remaining acceptance. Automatic reconnect legacy-credential
+migration is the next identified comparison. Node remains the default server
+and complete replacement is unfinished.
+
 Native global approval expiry now publishes owner-scoped Chat, Task and
 standalone notifications, with actual SQL failure/recovery and held-write
 shutdown qualification. The paired work also fixes Node's missing global owner
@@ -10,7 +19,8 @@ remaining acceptance. Node remains the default and full replacement is incomplet
 The [current acceptance reconciliation](RUST_SERVER_ACCEPTANCE_RECONCILIATION.md)
 distinguishes historical ledger limitations from implemented desktop/Winterhold
 work and remaining acceptance. It also records the repaired worker enrollment
-and approval-expiry gaps and the remaining periodic catalog-refresh comparison.
+and approval-expiry gaps, the catalog-refresh implementation and the remaining
+automatic legacy-credential migration comparison.
 Full replacement remains incomplete and Node remains the default server.
 
 Native computer-use operations, preview open/Stop and worker-authenticated agent

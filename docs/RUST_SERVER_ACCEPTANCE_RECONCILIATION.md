@@ -78,11 +78,24 @@ and shutdown-restoration defects. All nine local storage/authentication pairs
 and a real held-SQL shutdown pair pass. Current artifact/platform acceptance
 remains separate.
 
-One identified source discrepancy still requires runtime comparison:
+The [worker catalog/quota comparison](RUST_SERVER_WORKER_CATALOG_REFRESH.md)
+reproduces missing native reconnect refresh, implements that refresh and the
+fifteen-minute producer, and passes all nine local storage/authentication pairs.
+Separate peers also pass the real fifteen-minute interval and a held quota
+INSERT during shutdown. The current optimized executable also passes the actual
+fifteen-minute interval and held-INSERT shutdown with fixture SQL routes absent
+on both peers. A broader catalog comparison additionally repairs the custom endpoint
+label in native errors and worker commands.
 
-- Node's connected-worker registry refreshes worker-scoped catalogs and quota
-  snapshots every 15 minutes. The Rust implementation has request/connection
-  catalog work; an equivalent periodic producer has not been established.
+The next discrepancy is reproduced by a local external-PostgreSQL account
+comparison retained with this milestone:
+
+- Node invokes automatic legacy provider credential migration when a worker
+  connects. The reference captures the opaque credential, stores revision 1 and
+  completes purge; Rust sends no capture/purge commands and retains
+  `migration-needed` at revision 0. Both servers exit zero. Rust has the migration
+  coordinator, but its `migrate_worker` method has no production caller. Repair
+  that composition and qualify ownership, failures and shutdown next.
 
 Continue those comparisons before final product/fault/performance and supported
 artifact acceptance. Rust default selection and production Node-server removal

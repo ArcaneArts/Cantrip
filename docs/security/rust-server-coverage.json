@@ -19268,10 +19268,11 @@
       ],
       "scope": "Source composition mapping only; each family retains its own existing behavior/fault acceptance. Does not prove all background services.",
       "remaining": [
-        "Establish and qualify equivalent fifteen-minute connected-worker catalog/quota periodic refresh.",
+        "Repair automatic connected-worker legacy provider credential migration: actual external-PostgreSQL account comparison observes Source capture/purge and signed-in revision1; native sends neither command and retains migration-needed revision0. Existing migrate_worker service has no production caller.",
         "Finish complete background-service and lifecycle reconciliation, current supported-platform/package and full replacement acceptance."
       ],
-      "resolvedGlobalExpiry": "See interactionExpiry: independent native producer, owner-scoped mutations, actual failure/recovery and shutdown drain; existing reference owner/shutdown bugs reproduced and repaired."
+      "resolvedGlobalExpiry": "See interactionExpiry: independent native producer, owner-scoped mutations, actual failure/recovery and shutdown drain; existing reference owner/shutdown bugs reproduced and repaired.",
+      "resolvedWorkerCatalogRefresh": "Native reconnect refresh and actual fifteen-minute timer pass local comparison; see workerCatalogRefresh for exact evidence and pending production/platform qualification."
     },
     "interactionExpiry": {
       "status": "implemented-pending-platform-acceptance",
@@ -19326,6 +19327,55 @@
         "sourceTypecheckBuild": true,
         "aggregateRepositoryCheck": "Stops at Node app budgets1539/1500 (baseline1532) and2336/1999. Separately executed repository budget fails unchanged native-commands2284/2000, reproduced on cleanPrimary. Downstream aggregate stages unrun."
       }
+    },
+    "workerCatalogRefresh": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/settings/catalog_refresh.rs",
+        "cantrip_server_rs/src/settings/account_service/catalog_refresh.rs",
+        "cantrip_server_rs/src/http/worker_socket.rs",
+        "cantrip_server_rs/src/auth/service.rs",
+        "cantrip_server_rs/src/main.rs"
+      ],
+      "evidence": [
+        "docs/RUST_SERVER_WORKER_CATALOG_REFRESH.md",
+        "scripts/server-rust/worker-catalog-refresh-compatibility.mjs",
+        "scripts/server-rust/worker-catalog-refresh-observations.mjs",
+        "scripts/server-rust/worker-catalog-refresh-shutdown.mjs"
+      ],
+      "qualification": {
+        "platform": "darwin-arm64",
+        "storageAuthPairs": 9,
+        "pairedHttp": 27,
+        "pairedWorkerCommands": 189,
+        "pairedPersistenceStages": 36,
+        "cleanServerExits": 18,
+        "actualFifteenMinutePair": true,
+        "heldQuotaInsertShutdownPair": true,
+        "currentOptimizedPeriodic": {
+          "bytes": 93504064,
+          "sha256": "40ff4bdcdeeda5d7d31f6981636fb9168299d613448da590f6a530a313e5c8c2",
+          "database": "postgres",
+          "auth": "accounts",
+          "pairedHttp": 4,
+          "pairedWorkerCommands": 30,
+          "pairedPersistenceStages": 5,
+          "actualFifteenMinutePair": true,
+          "heldQuotaInsertShutdownPair": true,
+          "fixtureSqlControlBoth": 404,
+          "cleanServerExits": 2
+        }
+      },
+      "semantics": [
+        "Authenticated owner/worker registry and connection-triggered refresh",
+        "Fifteen-minute connected-worker refresh; force=false catalogs then independent enabled-account quota reads",
+        "Worker credential-grant filtering and all-settled failure isolation",
+        "Owned operation drain before database close; producer holds weak service references"
+      ],
+      "remaining": [
+        "Finish current optimized periodic/artifact qualification and broader supported-platform, product, fault, coordination, migration/rollback and performance acceptance.",
+        "Complete Rust default cutover and production Node-server removal."
+      ]
     }
   },
   "remainingAcceptance": [

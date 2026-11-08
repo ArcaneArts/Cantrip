@@ -19,6 +19,7 @@ use std::sync::{
 use tokio::sync::Notify;
 mod auth_flow;
 mod auth_observations;
+mod catalog_refresh;
 mod inference_delivery;
 mod providers;
 mod quota;
@@ -96,6 +97,9 @@ fn sign_out_input(owner: &str, provider: &str, target: &Json) -> Result<SignOutI
     })
 }
 impl AccountService {
+    pub(crate) fn worker_is_connected(&self, worker: &str) -> bool {
+        self.commands.is_connected(worker)
+    }
     pub fn new(
         repository: SettingsRepository,
         commands: Arc<LimitedCommandBus>,

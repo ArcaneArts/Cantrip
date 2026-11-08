@@ -7,6 +7,7 @@ pub mod agent_time;
 pub mod authentication;
 pub mod catalog;
 mod catalog_hash;
+pub mod catalog_refresh;
 pub mod catalog_runtime;
 pub mod chatgpt;
 pub mod credential_migrations;

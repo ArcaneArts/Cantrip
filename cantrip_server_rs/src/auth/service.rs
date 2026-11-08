@@ -72,6 +72,7 @@ pub struct AuthService {
     pub usage: Arc<crate::usage::service::UsageService>,
     pub provider_accounts: Arc<crate::settings::account_service::AccountService>,
     pub provider_catalogs: Arc<crate::settings::catalog_runtime::CatalogRuntime>,
+    pub worker_catalog_refresh: crate::settings::catalog_refresh::Refresh,
     pub mutation_audits: Arc<super::audit::AuditService>,
     pub project_replicas: Arc<crate::projects::replicas::service::ReplicaService>,
     pub chat_relocations: Arc<crate::chats::relocations::service::Service>,
@@ -214,6 +215,8 @@ impl AuthService {
             provider_catalogs.clone(),
             workers.bridge.clone(),
         );
+        let worker_catalog_refresh =
+            crate::settings::catalog_refresh::Refresh::start(&provider_accounts);
         let mutation_audits = super::audit::AuditService::new(repository.clone());
         let folder_setup = crate::projects::folders::service::FolderService::new(
             repository.database.clone(),
@@ -554,6 +557,7 @@ impl AuthService {
             usage,
             provider_accounts,
             provider_catalogs,
+            worker_catalog_refresh,
             mutation_audits,
             folder_setup,
             project_replicas,
